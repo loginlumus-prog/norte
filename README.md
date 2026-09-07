@@ -114,7 +114,7 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
 | `src/servidor/planos.ts` | Cotas por plano e o que custa a loja extra |
 | `src/ui/` | Componentes: Botão, Campo, Aviso, Situação, Cartão, Tabela, Estrutura |
 | `src/app/globals.css` | As fichas de cor e os dois temas |
-| `src/ui/painel.tsx` | Número, gráfico e ranque do painel |
+| `src/ui/painel.tsx` | Número, gráfico, ranque e a tira de contagens coloridas |
 
 ### Ao criar tabela nova
 

@@ -3,7 +3,8 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
-import { Cartao, Aviso } from '@/ui/base'
+import { Cartao, Aviso, Ponto } from '@/ui/base'
+import { Tira, Falta } from '@/ui/painel'
 import { MENU } from '@/ui/menu'
 import type { Tema } from '@/ui/TrocaTema'
 import { Modulos } from './Modulos'
@@ -28,14 +29,20 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
     }),
   )
 
+  // Campo vazio não é "não informado" em cinza — é pendência em âmbar. A
+  // diferença entre as duas é se a pessoa vai preencher ou vai ignorar.
   const linha = (r: string, v?: string | null) => (
-    <div className="flex justify-between gap-4 border-b border-borda-suave py-1.5 last:border-0">
+    <div className="flex items-center justify-between gap-4 border-b border-borda-suave py-2 last:border-0">
       <span className="text-tinta-3">{r}</span>
-      <span className="text-right font-medium text-tinta">
-        {v || <span className="font-normal text-tinta-3">não informado</span>}
-      </span>
+      <span className="text-right font-medium text-tinta">{v || <Falta />}</span>
     </div>
   )
+
+  const campos = [
+    empresa.nome, dados?.razaoSocial, dados?.documento, dados?.inscricaoEstadual,
+    dados?.regime, dados?.telefone, dados?.whatsapp, dados?.email, dados?.agenteNome,
+  ]
+  const preenchidos = campos.filter(Boolean).length
 
   return (
     <Estrutura
@@ -46,6 +53,13 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
       tema={tema}
       titulo="Configurações"
     >
+      <Tira
+        itens={[
+          { rotulo: 'módulos ligados', quantos: empresa.modulos.length, nivel: 'bom' },
+          { rotulo: 'campos em branco', quantos: campos.length - preenchidos, nivel: 'atencao' },
+        ]}
+      />
+
       <Cartao titulo="O que sua empresa usa">
         {pode(sessao, 'empresa.configurar') ? (
           <Modulos empresa={slug} ligados={empresa.modulos} />
@@ -54,7 +68,16 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
         )}
       </Cartao>
 
-      <Cartao titulo="Dados da empresa">
+      <Cartao
+        titulo="Dados da empresa"
+        acao={
+          preenchidos < campos.length ? (
+            <Ponto nivel="atencao" quantos={campos.length - preenchidos} titulo="campos em branco" />
+          ) : (
+            <Ponto nivel="bom" titulo="tudo preenchido" />
+          )
+        }
+      >
         <div className="flex flex-col text-sm">
           {linha('Nome', empresa.nome)}
           {linha('Razão social', dados?.razaoSocial)}

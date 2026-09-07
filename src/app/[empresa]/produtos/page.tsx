@@ -3,7 +3,8 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
-import { Cartao, Situacao, Vazio } from '@/ui/base'
+import { Cartao, Situacao, Vazio, Ponto } from '@/ui/base'
+import { Tira } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
 import { MENU } from '@/ui/menu'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -67,6 +68,22 @@ export default async function Produtos({
 
   const podeVerPreco = pode(sessao, 'produto.ver')
 
+  // Conta a situação de cada variação uma vez, para a tira de cima e para o
+  // cabeçalho de cada produto falarem a mesma coisa.
+  const situacaoDe = (v: { estoques: { quantidade: unknown; minimo: unknown }[] }) => {
+    const q = v.estoques.reduce((t, e) => t + Number(e.quantidade), 0)
+    const min = Number(v.estoques[0]?.minimo ?? 0)
+    if (q <= 0) return 'critico' as const
+    if (min > 0 && q <= min) return 'atencao' as const
+    return 'bom' as const
+  }
+  const todas = produtos.flatMap((p) => p.variacoes)
+  const conta = {
+    bom: todas.filter((v) => situacaoDe(v) === 'bom').length,
+    atencao: todas.filter((v) => situacaoDe(v) === 'atencao').length,
+    critico: todas.filter((v) => situacaoDe(v) === 'critico').length,
+  }
+
   return (
     <Estrutura
       empresa={empresa}
@@ -81,6 +98,16 @@ export default async function Produtos({
         ) : undefined
       }
     >
+      {produtos.length > 0 && (
+        <Tira
+          itens={[
+            { rotulo: 'com estoque', quantos: conta.bom, nivel: 'bom' },
+            { rotulo: 'no mínimo', quantos: conta.atencao, nivel: 'atencao' },
+            { rotulo: 'acabaram', quantos: conta.critico, nivel: 'critico' },
+          ]}
+        />
+      )}
+
       {produtos.length === 0 && (
         <Cartao>
           <Vazio>Nenhum produto cadastrado ainda.</Vazio>
@@ -92,6 +119,8 @@ export default async function Produtos({
           (s, v) => s + v.estoques.reduce((t, e) => t + Number(e.quantidade), 0),
           0,
         )
+        const acabaram = p.variacoes.filter((v) => situacaoDe(v) === 'critico').length
+        const noMinimo = p.variacoes.filter((v) => situacaoDe(v) === 'atencao').length
 
         return (
           <Cartao
@@ -101,7 +130,9 @@ export default async function Produtos({
               <span className="flex items-center gap-2 text-xs text-tinta-3">
                 {p.marca && <span>{p.marca}</span>}
                 {podeVerPreco && <span className="numero">{dinheiro(p.precoVista)} à vista</span>}
-                <Situacao nivel={total > 0 ? 'neutro' : 'critico'}>
+                {acabaram > 0 && <Ponto nivel="critico" quantos={acabaram} titulo="acabaram" />}
+                {noMinimo > 0 && <Ponto nivel="atencao" quantos={noMinimo} titulo="no mínimo" />}
+                <Situacao nivel={total > 0 ? 'bom' : 'critico'}>
                   {quantidade(total, p.medida)} {onde.unidadeId ? 'aqui' : 'no total'}
                 </Situacao>
               </span>
@@ -148,8 +179,7 @@ export default async function Produtos({
                   largura: '9rem',
                   celula: (v) => {
                     const q = v.estoques.reduce((t, e) => t + Number(e.quantidade), 0)
-                    const min = Number(v.estoques[0]?.minimo ?? 0)
-                    const nivel = q <= 0 ? 'critico' : min > 0 && q <= min ? 'atencao' : 'neutro'
+                    const nivel = situacaoDe(v)
                     return (
                       <Situacao nivel={nivel}>
                         {q <= 0 ? 'acabou' : quantidade(q, p.medida)}

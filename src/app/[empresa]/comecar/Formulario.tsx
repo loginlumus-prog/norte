@@ -95,7 +95,14 @@ export function Formulario({ empresa, nomeAtual }: { empresa: string; nomeAtual:
         </div>
       </Cartao>
 
-      <Cartao titulo="O que você usa">
+      <Cartao
+        titulo="O que você usa"
+        acao={
+          <span className="numero rounded-full bg-bom-fundo px-2 py-0.5 text-xs font-bold text-bom">
+            {TODOS.filter((m) => marcado(m)).length} de {TODOS.length}
+          </span>
+        }
+      >
         <p className="mb-3 text-sm text-tinta-2">
           O que ficar desmarcado <b>não aparece no sistema</b>. Nada some para sempre — dá
           para ligar depois em Configurações, quando o negócio mudar.
@@ -130,11 +137,12 @@ export function Formulario({ empresa, nomeAtual }: { empresa: string; nomeAtual:
       )}
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-tinta-3">
+        <p className="flex items-center gap-2 text-xs text-tinta-3">
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-info-vivo" />
           Dados de pagamento e certificado digital não entram aqui — eles têm tela própria,
           e só você digita.
         </p>
-        <Botao type="submit" carregando={pendente}>
+        <Botao type="submit" tom="confirmar" carregando={pendente}>
           {pendente ? 'Salvando...' : 'Começar a usar'}
         </Botao>
       </div>

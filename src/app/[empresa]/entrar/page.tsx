@@ -16,7 +16,7 @@ export default async function Entrar({ params }: { params: Promise<{ empresa: st
         <div className="flex items-center gap-2">
           <span
             aria-hidden
-            className="size-6 rounded"
+            className="size-7 rounded-norte shadow-norte"
             style={{ background: org.corMarca || 'var(--marca)' }}
           />
           <span className="text-lg font-bold tracking-tight text-tinta">{org.nome}</span>

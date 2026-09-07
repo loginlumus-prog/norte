@@ -184,3 +184,53 @@ export function Secao({ titulo, children }: { titulo: string; children: ReactNod
 }
 
 export { brl, brlCurto }
+
+/* ── Tira de resumo ───────────────────────────────────────── */
+
+/**
+ * A linha de contagens coloridas que abre uma tela: "12 no estoque · 3 no
+ * mínimo · 1 acabou".
+ *
+ * Serve para a pessoa saber o tamanho do problema antes de ler a lista. Item
+ * com zero some — mostrar "0 acabou" em vermelho apagado é ruído, e ruído
+ * ensina a ignorar a cor.
+ */
+export function Tira({
+  itens,
+}: {
+  itens: { rotulo: string; quantos: number; nivel: 'bom' | 'atencao' | 'critico' | 'neutro' }[]
+}) {
+  const visiveis = itens.filter((i) => i.quantos > 0)
+  if (visiveis.length === 0) return null
+
+  const cor = {
+    bom: { ponto: 'bg-bom-vivo', texto: 'text-bom' },
+    atencao: { ponto: 'bg-atencao-vivo', texto: 'text-atencao' },
+    critico: { ponto: 'bg-critico-vivo', texto: 'text-critico' },
+    neutro: { ponto: 'bg-tinta-3', texto: 'text-tinta-2' },
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      {visiveis.map((i) => (
+        <span key={i.rotulo} className="flex items-center gap-1.5 text-sm">
+          <span aria-hidden className={cx('size-2 rounded-full', cor[i.nivel].ponto)} />
+          <span className={cx('numero font-bold', cor[i.nivel].texto)}>{i.quantos}</span>
+          <span className="text-tinta-2">{i.rotulo}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/* ── Falta preencher ──────────────────────────────────────── */
+
+/** Marca um dado que ainda não foi informado, sem parecer defeito. */
+export function Falta({ children = 'falta preencher' }: { children?: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-atencao-fundo px-2 py-0.5 text-xs font-semibold text-atencao">
+      <span aria-hidden className="size-1.5 rounded-full bg-atencao-vivo" />
+      {children}
+    </span>
+  )
+}

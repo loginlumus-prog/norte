@@ -15,13 +15,17 @@ export const cx = (...p: (string | false | null | undefined)[]) => p.filter(Bool
 
 /* ── Botão ────────────────────────────────────────────────── */
 
-type Tom = 'principal' | 'secundario' | 'discreto' | 'perigo'
+type Tom = 'principal' | 'confirmar' | 'secundario' | 'discreto' | 'perigo'
 
 const TOM: Record<Tom, string> = {
   principal: 'bg-marca text-marca-tinta hover:bg-marca-forte border-transparent',
+  // Verde é para o que CONCLUI: fechar venda, receber, dar baixa. A ação
+  // principal comum continua sendo a cor da marca, senão tudo vira verde e
+  // o verde deixa de querer dizer alguma coisa.
+  confirmar: 'bg-bom-vivo text-white hover:brightness-95 border-transparent',
   secundario: 'bg-superficie text-tinta hover:bg-superficie-2 border-borda',
   discreto: 'bg-transparent text-tinta-2 hover:bg-superficie-2 hover:text-tinta border-transparent',
-  perigo: 'bg-critico-fundo text-critico hover:brightness-95 border-transparent',
+  perigo: 'bg-critico-vivo text-white hover:brightness-95 border-transparent',
 }
 
 export function Botao({
@@ -125,6 +129,20 @@ const AVISO: Record<Nivel, string> = {
   neutro: 'bg-superficie-2 text-tinta-2',
 }
 
+const BARRA: Record<Nivel, string> = {
+  bom: 'border-l-[3px] border-l-bom-vivo',
+  atencao: 'border-l-[3px] border-l-atencao-vivo',
+  critico: 'border-l-[3px] border-l-critico-vivo',
+  neutro: 'border-l-[3px] border-l-tinta-3',
+}
+
+const BOLA: Record<Nivel, string> = {
+  bom: 'bg-bom-vivo',
+  atencao: 'bg-atencao-vivo',
+  critico: 'bg-critico-vivo',
+  neutro: 'bg-tinta-3',
+}
+
 export function Aviso({
   nivel = 'neutro',
   children,
@@ -136,9 +154,14 @@ export function Aviso({
     <div
       // 'alert' faz o leitor de tela anunciar sem a pessoa precisar procurar
       role={nivel === 'critico' ? 'alert' : 'status'}
-      className={cx('rounded-norte px-3 py-2 text-sm font-medium', AVISO[nivel])}
+      className={cx(
+        'flex items-start gap-2.5 rounded-norte px-3 py-2.5 text-sm font-medium',
+        BARRA[nivel],
+        AVISO[nivel],
+      )}
     >
-      {children}
+      <span aria-hidden className={cx('mt-1.5 size-2 shrink-0 rounded-full', BOLA[nivel])} />
+      <span>{children}</span>
     </div>
   )
 }
@@ -268,7 +291,8 @@ export function Marcar({
       className={cx(
         'flex cursor-pointer items-start gap-3 rounded-norte border border-borda',
         'bg-superficie p-3 transition-colors hover:bg-superficie-2',
-        'has-checked:border-marca has-checked:bg-marca-suave',
+        // Escolhido tem que se ver de longe: borda verde, fundo verde claro.
+        'has-checked:border-bom-vivo has-checked:bg-bom-fundo',
         className,
       )}
     >
@@ -276,7 +300,7 @@ export function Marcar({
         {...resto}
         id={meuId}
         type="checkbox"
-        className="mt-0.5 size-4 shrink-0 accent-[var(--marca)]"
+        className="mt-0.5 size-4 shrink-0 accent-[var(--bom-vivo)]"
       />
       <span className="flex flex-col gap-0.5">
         <span className="text-sm font-semibold text-tinta">{titulo}</span>
