@@ -140,8 +140,10 @@ desenvolvimento:
   verdade. Por isso `POOL_MAX=1` no `.env`. Qualquer coisa sensível a
   concorrência precisa ser validada no banco hospedado.
 - **`npm run conferir` quer banco novo.** Ele cria convite, venda e gente; na
-  segunda rodada seguida sobra estado do anterior. Rode `npm run banco` de
-  novo (a pasta `.banco/` some) antes de conferir outra vez.
+  segunda rodada seguida sobra estado do anterior. E o freio de login deixa
+  contas bloqueadas por 15 minutos de propósito — a segunda rodada reprova
+  justamente porque a defesa funcionou. Rode `npm run banco` de novo (a pasta
+  `.banco/` some) antes de conferir outra vez.
 - **Conexão não sobrevive a transação abortada.** Postgres de verdade recupera;
   este não. Por isso o `npm run conferir` só faz leitura — checagem do tipo
   "esta escrita tem que dar erro" envenenaria a conexão e as seguintes

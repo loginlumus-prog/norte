@@ -1,15 +1,13 @@
 'use server'
 
+// Server Action é endereço público — ver o comentário em `balcao/acoes.ts`.
+// A capacidade `financeiro.lancar` é exigida lá dentro, em `lancar()` e
+// `marcarPago()`, junto da unidade.
+
 import { revalidatePath } from 'next/cache'
-import { lerSessao } from '@/servidor/sessao'
+import { exigirSessao } from '@/servidor/pagina'
 import { lancar, marcarPago } from '@/servidor/financeiro'
 import type { TipoLancamento } from '@prisma/client'
-
-async function sessaoDe(slug: string) {
-  const s = await lerSessao(slug)
-  if (!s) throw new Error('Sua sessão expirou. Entre de novo.')
-  return s
-}
 
 export type EstadoLanc = { erro?: string; ok?: string }
 
@@ -18,7 +16,7 @@ export async function novoLancamento(
   _anterior: EstadoLanc,
   form: FormData,
 ): Promise<EstadoLanc> {
-  const s = await sessaoDe(slug)
+  const s = await exigirSessao(slug)
 
   const valor = Number(String(form.get('valor') ?? '').replace(',', '.'))
   const descricao = String(form.get('descricao') ?? '')
@@ -55,7 +53,7 @@ export async function novoLancamento(
 }
 
 export async function pagar(slug: string, id: string) {
-  const s = await sessaoDe(slug)
+  const s = await exigirSessao(slug)
   await marcarPago(s, id, new Date())
   revalidatePath(`/${slug}/financeiro`)
 }

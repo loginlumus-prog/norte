@@ -70,6 +70,12 @@ model Org {
   logoUrl   String? @map("logo_url")
   corMarca  String? @map("cor_marca")
 
+  /// Teto de desconto do balcao, em PORCENTO do preco de tabela.
+  /// Existe porque preco que chega do navegador e' pedido, nao ordem: sem
+  /// teto, quem opera o balcao vende a peca de R$ 500 por um centavo e o
+  /// relatorio nunca acusa. Zero = balcao nao da desconto nenhum.
+  descontoMaximo Decimal @default(10) @map("desconto_maximo") @db.Decimal(5, 2)
+
   unidades  Unidade[]
   usuarios  Usuario[]
   acessos   Acesso[]
@@ -96,6 +102,7 @@ model Org {
   contasFin      ContaFinanceira[]
   lancamentos    Lancamento[]
   recorrentes    Recorrente[]
+  tentativas     TentativaLogin[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -170,6 +177,13 @@ model Usuario {
 
   ativo       Boolean   @default(true)
   ultimoLogin DateTime? @map("ultimo_login")
+
+  /// Toda sessao emitida ANTES deste instante deixa de valer.
+  /// Sem isto, tirar o acesso de alguem so faz efeito quando o cookie dele
+  /// expira — ate 12 horas depois. Demitiu de manha, continua vendendo a
+  /// tarde. Trocar a senha, desativar a conta e mexer no papel empurram esta
+  /// data para agora, e a sessao antiga morre na proxima tela que ele abrir.
+  sessoesDesde DateTime @default(now()) @map("sessoes_desde")
 
   acessos   Acesso[]
   auditoria Auditoria[]
@@ -953,4 +967,37 @@ enum GrupoDRE {
   FINANCEIRA
   /// O que não cabe em nenhuma acima.
   OUTRA
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SEGURANÇA
+// ═══════════════════════════════════════════════════════════
+
+/// Toda tentativa de entrar, certa ou errada.
+///
+/// Existe por dois motivos, e o segundo é o que mais importa:
+///
+/// 1. É o freio. Sem contar tentativa, uma lista de senhas comuns rodando a
+///    noite inteira contra `/empresa/entrar` acaba entrando em alguma conta —
+///    não porque o sistema é fraco, mas porque alguém usou "123456".
+///
+/// 2. É prova. Quando o cliente perguntar "alguém tentou entrar na minha
+///    conta?", a resposta precisa ser um número, não um encolher de ombros.
+///
+/// Grava o e-mail DIGITADO, mesmo que não exista: contar só o que existe
+/// entregaria, pelo comportamento, quais e-mails têm cadastro.
+model TentativaLogin {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  email   String
+  ip      String?
+  sucesso Boolean @default(false)
+
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@index([orgId, email, criadaEm])
+  @@index([orgId, ip, criadaEm])
+  @@map("tentativas_login")
 }

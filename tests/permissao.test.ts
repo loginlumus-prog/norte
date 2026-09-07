@@ -6,6 +6,7 @@ import {
   podeConceder,
   SemPermissao,
   type Sessao,
+  type Papel,
 } from '../src/servidor/permissao'
 
 const LOJA_3 = 'uni-3'
@@ -231,5 +232,50 @@ describe('conceder papel: ninguém dá o que não tem', () => {
       { papel: 'SUPORTE', unidadeId: null, expiraEm: new Date('2020-01-01') },
     ])
     expect(podeConceder(vencido, 'BALCAO')).toBe(false)
+  })
+})
+
+
+// ─────────────────────────────────────────────────────────────
+// DESCONTO — a capacidade que separa "abater" de "abater sem teto"
+// ─────────────────────────────────────────────────────────────
+
+describe('desconto acima do teto', () => {
+  const com = (papel: Papel): Sessao => ({
+    orgId: 'org-a',
+    usuarioId: 'u1',
+    nome: 'Fulano',
+    acessos: [{ papel, unidadeId: null, expiraEm: null }],
+  })
+
+  it('o balcão NÃO passa do teto da empresa', () => {
+    // Ele desconta até o limite que a dona configurou. Acima disso, chama
+    // alguém — que é exatamente como funciona na loja de verdade.
+    expect(pode(com('BALCAO'), 'venda.desconto')).toBe(false)
+  })
+
+  it('o gerente passa', () => {
+    expect(pode(com('GERENTE'), 'venda.desconto')).toBe(true)
+  })
+
+  it('a dona passa', () => {
+    expect(pode(com('DONO'), 'venda.desconto')).toBe(true)
+  })
+
+  it('quem não vende também não desconta', () => {
+    expect(pode(com('CONTADOR'), 'venda.desconto')).toBe(false)
+    expect(pode(com('FINANCEIRO'), 'venda.desconto')).toBe(false)
+    expect(pode(com('SUPORTE'), 'venda.desconto')).toBe(false)
+  })
+
+  it('gerente de uma loja não desconta na loja do outro', () => {
+    const preso: Sessao = {
+      orgId: 'org-a',
+      usuarioId: 'u2',
+      nome: 'Gerente da 2',
+      acessos: [{ papel: 'GERENTE', unidadeId: 'uni-a2', expiraEm: null }],
+    }
+    expect(pode(preso, 'venda.desconto', 'uni-a2')).toBe(true)
+    expect(pode(preso, 'venda.desconto', 'uni-a1')).toBe(false)
   })
 })

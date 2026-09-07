@@ -62,6 +62,7 @@ CREATE TABLE "orgs" (
     "suspensa_em" TIMESTAMP(3),
     "logo_url" TEXT,
     "cor_marca" TEXT,
+    "desconto_maximo" DECIMAL(5,2) NOT NULL DEFAULT 10,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizada_em" TIMESTAMP(3) NOT NULL,
 
@@ -104,6 +105,7 @@ CREATE TABLE "usuarios" (
     "foto_url" TEXT,
     "ativo" BOOLEAN NOT NULL DEFAULT true,
     "ultimo_login" TIMESTAMP(3),
+    "sessoes_desde" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizado_em" TIMESTAMP(3) NOT NULL,
 
@@ -476,6 +478,18 @@ CREATE TABLE "recorrentes" (
     CONSTRAINT "recorrentes_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "tentativas_login" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "ip" TEXT,
+    "sucesso" BOOLEAN NOT NULL DEFAULT false,
+    "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "tentativas_login_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "orgs_slug_key" ON "orgs"("slug");
 
@@ -616,6 +630,12 @@ CREATE INDEX "lancamentos_org_id_categoria_id_idx" ON "lancamentos"("org_id", "c
 
 -- CreateIndex
 CREATE INDEX "recorrentes_org_id_ativo_idx" ON "recorrentes"("org_id", "ativo");
+
+-- CreateIndex
+CREATE INDEX "tentativas_login_org_id_email_criada_em_idx" ON "tentativas_login"("org_id", "email", "criada_em");
+
+-- CreateIndex
+CREATE INDEX "tentativas_login_org_id_ip_criada_em_idx" ON "tentativas_login"("org_id", "ip", "criada_em");
 
 -- AddForeignKey
 ALTER TABLE "unidades" ADD CONSTRAINT "unidades_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -778,4 +798,7 @@ ALTER TABLE "recorrentes" ADD CONSTRAINT "recorrentes_org_id_fkey" FOREIGN KEY (
 
 -- AddForeignKey
 ALTER TABLE "recorrentes" ADD CONSTRAINT "recorrentes_categoria_id_fkey" FOREIGN KEY ("categoria_id") REFERENCES "categorias_financeiras"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "tentativas_login" ADD CONSTRAINT "tentativas_login_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

@@ -18,6 +18,7 @@ export const CAPACIDADES = [
   'venda.ver',
   'venda.criar',
   'venda.cancelar',
+  'venda.desconto', // separado: dar desconto ACIMA do teto da empresa
   'caixa.ver',
   'caixa.operar', // abrir, sangrar, suprir, fechar
   // catálogo e estoque
@@ -66,7 +67,7 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
   // Gerente: toca a operação da unidade dele. Não configura a empresa nem o
   // agente, e não lança no financeiro — vê, mas não escreve.
   GERENTE: [
-    'venda.ver', 'venda.criar', 'venda.cancelar',
+    'venda.ver', 'venda.criar', 'venda.cancelar', 'venda.desconto',
     'caixa.ver', 'caixa.operar',
     'produto.ver', 'produto.editar', 'produto.preco',
     'estoque.ver', 'estoque.ajustar',
@@ -152,6 +153,26 @@ export type Sessao = {
   nome: string
   acessos: Acesso[]
 }
+
+/**
+ * O cookie de sessão ainda vale?
+ *
+ * O cookie é assinado, então não dá para forjar — mas ele é uma FOTOGRAFIA:
+ * carrega os papéis que a pessoa tinha na hora em que entrou. Sozinho, ele
+ * significa que desativar um funcionário só faz efeito quando o cookie dele
+ * expira, até 12 horas depois. Demitiu de manhã, continua vendendo à tarde.
+ *
+ * Por isso cada requisição confronta o cookie com o banco (ver `pagina.ts`),
+ * e a decisão é esta função — pura, para poder ser testada exaustivamente.
+ *
+ * `<=` e não `<`: cortar as sessões e emitir uma nova no mesmo milissegundo é
+ * o que acontece quando alguém troca a própria senha. Se o corte matasse a
+ * sessão do mesmo instante, trocar a senha deslogaria quem trocou.
+ */
+export const sessaoAindaVale = (
+  usuario: { ativo: boolean; sessoesDesde: Date } | null,
+  nasceu: Date,
+): boolean => !!usuario && usuario.ativo && usuario.sessoesDesde <= nasceu
 
 const valeAgora = (a: Acesso, agora: Date) => !a.expiraEm || a.expiraEm > agora
 

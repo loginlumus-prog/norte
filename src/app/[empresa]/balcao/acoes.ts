@@ -1,17 +1,21 @@
 'use server'
 
+// SERVER ACTION É ENDEREÇO PÚBLICO.
+//
+// Não é "a função que o meu botão chama": é um POST que qualquer pessoa
+// autenticada consegue montar na mão, com os argumentos que ela quiser. Então
+// cada uma destas funções repete a checagem inteira — sessão viva E capacidade
+// E unidade — mesmo quando a tela que a chama já escondeu o botão.
+//
+// Esconder o botão é conforto. A trava é aqui.
+
 import { revalidatePath } from 'next/cache'
-import { lerSessao } from '@/servidor/sessao'
+import { exigirSessao } from '@/servidor/pagina'
+import { exigir } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { registrarVenda, type PagamentoDaVenda } from '@/servidor/venda'
 import { abrirCaixa, fecharCaixa, movimentarCaixa } from '@/servidor/caixa'
 import type { FormaPagamento } from '@prisma/client'
-
-async function sessaoDe(slug: string) {
-  const s = await lerSessao(slug)
-  if (!s) throw new Error('Sua sessão expirou. Entre de novo.')
-  return s
-}
 
 export type Achado = {
   id: string
@@ -33,7 +37,15 @@ export async function procurar(
   unidadeId: string,
   termo: string,
 ): Promise<Achado[]> {
-  const s = await sessaoDe(slug)
+  const s = await exigirSessao(slug)
+
+  // A unidade vem do navegador, e o navegador é do usuário. Sem estas duas
+  // linhas, o contador (que só deveria ver o financeiro) lê o catálogo inteiro
+  // com preço e custo, e o balconista da loja A lê o estoque da loja B — basta
+  // trocar o `unidadeId` na chamada.
+  exigir(s, 'produto.ver', unidadeId)
+  exigir(s, 'estoque.ver', unidadeId)
+
   const t = termo.trim()
   if (t.length < 2) return []
 
@@ -91,7 +103,7 @@ export async function fecharVenda(
     desconto: number
   },
 ) {
-  const s = await sessaoDe(slug)
+  const s = await exigirSessao(slug)
 
   const r = await registrarVenda(s, {
     unidadeId: dados.unidadeId,
@@ -109,14 +121,14 @@ export async function fecharVenda(
 }
 
 export async function abrir(slug: string, unidadeId: string, saldo: number) {
-  const s = await sessaoDe(slug)
+  const s = await exigirSessao(slug)
   const r = await abrirCaixa(s, unidadeId, saldo)
   revalidatePath(`/${slug}/balcao`)
   return r
 }
 
 export async function fechar(slug: string, caixaId: string, contado: number, obs?: string) {
-  const s = await sessaoDe(slug)
+  const s = await exigirSessao(slug)
   const r = await fecharCaixa(s, caixaId, contado, obs)
   revalidatePath(`/${slug}/balcao`)
   return r
@@ -129,7 +141,7 @@ export async function movimentar(
   valor: number,
   motivo: string,
 ) {
-  const s = await sessaoDe(slug)
+  const s = await exigirSessao(slug)
   await movimentarCaixa(s, caixaId, tipo, valor, motivo)
   revalidatePath(`/${slug}/balcao`)
 }

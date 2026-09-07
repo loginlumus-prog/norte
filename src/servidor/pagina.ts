@@ -1,14 +1,64 @@
 // Cola entre a página e o servidor.
 //
-// Toda página de dentro do sistema começa por `exigirEntrada`. Assim não existe
-// tela que "quase" checa sessão: ou a página chamou isto, ou ela não renderiza.
+// Toda página de dentro do sistema começa por `exigirEntrada`, e toda Server
+// Action começa por `exigirSessao`. Assim não existe tela nem ação que "quase"
+// confere sessão: ou passou por aqui, ou não roda.
+//
+// ── por que a sessão é conferida no banco toda vez ───────────
+// O cookie é assinado, então não dá para forjar. Mas ele é uma FOTOGRAFIA:
+// carrega os papéis que a pessoa tinha na hora em que entrou. Sozinho, ele
+// significa que desativar um funcionário só faz efeito quando o cookie dele
+// expira — até 12 horas depois. Demitiu de manhã, continua vendendo à tarde.
+//
+// Por isso cada requisição pergunta ao banco duas coisas baratas (uma busca
+// por chave primária): a conta ainda está ativa? E a sessão nasceu depois do
+// último corte? Trocar senha, desativar conta ou mexer no papel empurram o
+// corte para agora, e o cookie antigo morre na próxima tela que abrir.
 
 import { redirect, notFound } from 'next/navigation'
-import { acharOrgPorSlug } from './banco'
+import { acharOrgPorSlug, comoOrg } from './banco'
 import { lerSessao } from './sessao'
-import type { Sessao } from './permissao'
+import { sessaoAindaVale, type Sessao } from './permissao'
 
 export type Empresa = NonNullable<Awaited<ReturnType<typeof acharOrgPorSlug>>>
+
+/** Erro de sessão morta. As Server Actions transformam isto em recado na tela. */
+export class SessaoExpirada extends Error {
+  constructor() {
+    super('Sua sessão expirou. Entre de novo.')
+    this.name = 'SessaoExpirada'
+  }
+}
+
+/**
+ * A sessão do cookie, já confrontada com o banco.
+ * Devolve null quando não há cookie, quando a conta foi desativada ou quando
+ * a sessão é anterior ao último corte.
+ */
+export async function sessaoViva(slugEmpresa: string): Promise<Sessao | null> {
+  const doCookie = await lerSessao(slugEmpresa)
+  if (!doCookie) return null
+
+  const usuario = await comoOrg(doCookie.orgId, (db) =>
+    db.usuario.findUnique({
+      where: { id: doCookie.usuarioId },
+      select: { ativo: true, sessoesDesde: true },
+    }),
+  )
+
+  // Usuário apagado, desativado, ou sessão emitida antes do corte.
+  if (!sessaoAindaVale(usuario, doCookie.nasceu)) return null
+
+  const { nasceu: _nasceu, ...sessao } = doCookie
+  return sessao
+}
+
+/** Para Server Action: ou tem sessão viva, ou levanta. */
+export async function exigirSessao(slugEmpresa: string): Promise<Sessao> {
+  const s = await sessaoViva(slugEmpresa)
+  if (!s) throw new SessaoExpirada()
+  return s
+}
 
 export async function exigirEntrada(
   slugEmpresa: string,
@@ -18,7 +68,7 @@ export async function exigirEntrada(
   const empresa = await acharOrgPorSlug(slugEmpresa)
   if (!empresa) notFound()
 
-  const sessao = await lerSessao(slugEmpresa)
+  const sessao = await sessaoViva(slugEmpresa)
   if (!sessao) redirect(`/${slugEmpresa}/entrar`)
 
   // O cookie diz de quem é a sessão; o endereço diz qual empresa foi aberta.
@@ -38,4 +88,17 @@ export async function exigirEntrada(
   }
 
   return { empresa, sessao }
+}
+
+/**
+ * Corta todas as sessões abertas de uma pessoa, agora.
+ *
+ * Chamar sempre que o acesso dela mudar: desativou, trocou papel, trocou
+ * senha, tirou de uma unidade. O custo é a pessoa entrar de novo; o custo de
+ * NÃO chamar é ela continuar dentro com o poder que acabou de perder.
+ */
+export async function cortarSessoes(orgId: string, usuarioId: string) {
+  await comoOrg(orgId, (db) =>
+    db.usuario.update({ where: { id: usuarioId }, data: { sessoesDesde: new Date() } }),
+  )
 }

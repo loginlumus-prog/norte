@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { comoOrg } from '@/servidor/banco'
-import { lerSessao } from '@/servidor/sessao'
+import { sessaoViva } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
 import { TODOS, RAMOS, type Modulo, type Ramo } from '@/servidor/modulos'
 import type { Regime } from '@prisma/client'
@@ -19,7 +19,7 @@ export async function terminarCadastro(
   form: FormData,
 ): Promise<EstadoComeco> {
   const slug = String(form.get('empresa') ?? '')
-  const sessao = await lerSessao(slug)
+  const sessao = await sessaoViva(slug)
   if (!sessao) redirect(`/${slug}/entrar`)
 
   // Só quem manda na empresa configura a empresa.
@@ -122,7 +122,7 @@ export async function terminarCadastro(
 /** Ligar e desligar módulo depois, em Configurações. */
 export async function salvarModulos(_anterior: EstadoComeco, form: FormData): Promise<EstadoComeco> {
   const slug = String(form.get('empresa') ?? '')
-  const sessao = await lerSessao(slug)
+  const sessao = await sessaoViva(slug)
   if (!sessao) redirect(`/${slug}/entrar`)
   exigir(sessao, 'empresa.configurar')
 

@@ -22,9 +22,23 @@
 //
 // 3. Falta de estoque é conferida ANTES de qualquer escrita. Assim a recusa
 //    é uma saída limpa, não uma transação abortada no meio.
+//
+// ── e uma que é de segurança, não de contabilidade ───────────
+//
+// 4. O PREÇO DE TABELA VEM DO BANCO, SEMPRE. O `precoUnit` que chega do
+//    navegador é PEDIDO, não ordem. Esta função é uma Server Action disfarçada
+//    de função: qualquer pessoa com login monta a chamada na mão. Sem teto,
+//    quem opera o balcão vende a peça de R$ 500 por um centavo, o pagamento
+//    "fecha" (porque bate com o total que ela mesma inventou), o estoque baixa
+//    certinho e o relatório do mês nunca acusa nada — só a margem despenca e
+//    ninguém sabe por quê.
+//
+//    A diferença entre a tabela e o cobrado é DESCONTO, e desconto tem teto:
+//    o da empresa (`descontoMaximo`) para quem opera, e `venda.desconto` para
+//    quem passa dele.
 
 import { comoOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, pode, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, reais, multiplicar } from './dinheiro'
 import type { FormaPagamento } from '@prisma/client'
@@ -61,6 +75,7 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'sem_estoque'; faltando: { descricao: string; pedido: number; tem: number }[] }
   | { ok: false; motivo: 'pagamento_nao_fecha'; total: number; pago: number }
   | { ok: false; motivo: 'caixa_fechado' }
+  | { ok: false; motivo: 'desconto_acima_do_teto'; percentual: number; teto: number }
 
 
 export async function registrarVenda(
@@ -72,6 +87,12 @@ export async function registrarVenda(
   if (v.itens.length === 0) return { ok: false, motivo: 'sem_itens' }
 
   return comoOrg(sessao.orgId, async (db) => {
+    const empresa = await db.org.findUnique({
+      where: { id: sessao.orgId },
+      select: { descontoMaximo: true },
+    })
+    const teto = Number(empresa?.descontoMaximo ?? 0)
+
     // ── 1. o que está sendo vendido, com preço e custo de agora ──
     const variacoes = await db.variacao.findMany({
       where: { id: { in: v.itens.map((i) => i.variacaoId) } },
@@ -104,10 +125,12 @@ export async function registrarVenda(
     // número) evita o erro de ponto flutuante antes que ele exista.
     const itens = v.itens.map((i) => {
       const va = porId.get(i.variacaoId)
-      const precoCent =
-        i.precoUnit != null
-          ? centavos(i.precoUnit)
-          : centavos(va?.produto.precoVista ?? 0) + centavos(va?.ajustePreco ?? 0)
+      // O preço de tabela é do banco. O do navegador só é aceito para BAIXO —
+      // vender por mais caro do que a etiqueta é sempre erro de sincronia, e
+      // erro de sincronia não pode virar cobrança a mais no cliente.
+      const tabelaCent = centavos(va?.produto.precoVista ?? 0) + centavos(va?.ajustePreco ?? 0)
+      const pedidoCent = i.precoUnit != null ? centavos(i.precoUnit) : tabelaCent
+      const precoCent = Math.max(0, Math.min(pedidoCent, tabelaCent))
       const descontoCent = centavos(i.desconto ?? 0)
       const totalCent = multiplicar(precoCent, i.quantidade) - descontoCent
       return {
@@ -121,6 +144,7 @@ export async function registrarVenda(
         total: reais(totalCent),
         custoUnit: va?.produto.custo != null ? reais(centavos(va.produto.custo)) : null,
         _cent: totalCent,
+        _tabelaCent: multiplicar(tabelaCent, i.quantidade),
       }
     })
 
@@ -128,6 +152,25 @@ export async function registrarVenda(
     const descontoCent = centavos(v.desconto ?? 0)
     const totalCent = subtotalCent - descontoCent
     const pagoCent = v.pagamentos.reduce((s, p) => s + centavos(p.valor), 0)
+
+    // ── 3.1 o desconto, medido contra a TABELA ──
+    // Não contra o subtotal: o subtotal já embute o desconto dado no item, e
+    // medir contra ele daria sempre zero — que é exatamente o buraco.
+    const tabelaCent = itens.reduce((s, i) => s + i._tabelaCent, 0)
+    const abatidoCent = tabelaCent - totalCent
+    const percentual = tabelaCent > 0 ? (abatidoCent / tabelaCent) * 100 : 0
+
+    if (totalCent < 0) {
+      return { ok: false as const, motivo: 'desconto_acima_do_teto' as const, percentual, teto }
+    }
+    if (percentual > teto + 0.001 && !pode(sessao, 'venda.desconto', v.unidadeId)) {
+      return {
+        ok: false as const,
+        motivo: 'desconto_acima_do_teto' as const,
+        percentual: Math.round(percentual * 10) / 10,
+        teto,
+      }
+    }
 
     const subtotal = reais(subtotalCent)
     const desconto = reais(descontoCent)
@@ -183,7 +226,7 @@ export async function registrarVenda(
         observacoes: v.observacoes,
         concluidaEm: new Date(),
         itens: {
-          create: itens.map(({ _cent, ...i }) => ({ orgId: sessao.orgId, ...i })),
+          create: itens.map(({ _cent, _tabelaCent, ...i }) => ({ orgId: sessao.orgId, ...i })),
         },
         pagamentos: {
           create: v.pagamentos.map((p) => ({
@@ -224,6 +267,9 @@ export async function registrarVenda(
         alvoId: venda.id,
         alvoNome: `Venda ${numero}`,
         valor: total,
+        // Desconto entra no livro com o número. É o que permite ao dono
+        // perguntar depois "quem andou dando 40%?" e ter resposta.
+        motivo: abatidoCent > 0 ? `desconto ${(Math.round(percentual * 10) / 10).toFixed(1)}%` : null,
       },
     })
 

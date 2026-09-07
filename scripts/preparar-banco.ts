@@ -39,14 +39,44 @@ console.log(`\n  Preparando ${url.replace(/:[^:@]*@/, ':***@')}\n`)
 // O DDL gerado pelo Prisma não é idempotente (CREATE TYPE sem IF NOT EXISTS),
 // então rodar duas vezes explodiria. Criar só quando ainda não existe deixa
 // este script seguro de repetir — e repetir é o que a gente mais faz.
+const ddl = ler('prisma/sql/tabelas.sql')
+
 const { rows: existe } = await cliente.query<{ tem: boolean }>(
   "select to_regclass('public.orgs') is not null as tem",
 )
-if (existe[0]!.tem) {
-  passo('tabelas já existem — pulando')
-} else {
+
+if (!existe[0]!.tem) {
   passo('tabelas...')
-  await cliente.query(ler('prisma/sql/tabelas.sql'))
+  await cliente.query(ddl)
+} else {
+  // Banco já montado. Aqui mora uma armadilha: pular o DDL inteiro faz este
+  // script mentir quando o schema ANDOU — tabela nova simplesmente não nasce,
+  // e o erro só aparece muito depois, como "relation does not exist" no meio
+  // de uma tela. Então em vez de pular calado, ele compara e reclama.
+  const esperadas = [...ddl.matchAll(/create table "([^"]+)"/gi)].map((m) => m[1]!)
+  const { rows: temAgora } = await cliente.query<{ tablename: string }>(
+    "select tablename from pg_tables where schemaname = 'public'",
+  )
+  const presentes = new Set(temAgora.map((t) => t.tablename))
+  const faltando = esperadas.filter((t) => !presentes.has(t))
+
+  if (faltando.length === 0) {
+    passo('tabelas já existem — pulando')
+  } else {
+    console.error(
+      `
+  O banco está ATRASADO em relação ao schema.
+` +
+        `  Falta(m): ${faltando.join(', ')}
+
+` +
+        `  No desenvolvimento: pare o 'npm run banco', apague a pasta .banco/ e suba de novo.
+` +
+        `  Em produção: 'prisma migrate deploy' — este script não migra banco com dado dentro.
+`,
+    )
+    process.exit(1)
+  }
 }
 
 // ── 2. o papel da aplicação ──────────────────────────────────

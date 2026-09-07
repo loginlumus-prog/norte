@@ -26,6 +26,9 @@ import { pode } from '../src/servidor/permissao'
 import { convidar, aceitarConvite, listarConvites, revogarConvite } from '../src/servidor/convite'
 import { mexerEstoque, saldo, conferirSaldos } from '../src/servidor/estoque'
 import { registrarVenda } from '../src/servidor/venda'
+import { MAX_POR_EMAIL } from '../src/servidor/limite'
+import { sessaoAindaVale } from '../src/servidor/permissao'
+import { cortarSessoes } from '../src/servidor/pagina'
 import { escolherUnidade } from '../src/servidor/unidade'
 import { resumoDoPainel } from '../src/servidor/painel'
 import { SemPermissao } from '../src/servidor/permissao'
@@ -434,6 +437,118 @@ if (dona.ok) {
        painelDele.mes.total > 0 && painelDele.mes.total < painelDaDona.mes.total,
        `gerente R$ ${painelDele.mes.total.toFixed(2)} de R$ ${painelDaDona.mes.total.toFixed(2)}`)
   }
+}
+
+// ── segurança ────────────────────────────────────────────────
+// Fica no FIM de propósito: o freio de login bloqueia um e-mail por 15
+// minutos, e bloquear no meio faria as checagens seguintes falharem pelo
+// motivo errado.
+console.log('\n  Segurança\n')
+
+{
+  const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
+  const balconista = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+
+  if (dona.ok && balconista.ok) {
+    // Uma peça qualquer com preço e estoque, na loja do balconista.
+    const peca = await comoOrg(A, (db) =>
+      db.variacao.findFirst({
+        where: { estoques: { some: { unidadeId: 'uni-a1', quantidade: { gt: 5 } } } },
+        select: { id: true, ajustePreco: true, produto: { select: { nome: true, precoVista: true } } },
+      }),
+    )
+    const tabela = Number(peca?.produto.precoVista ?? 0) + Number(peca?.ajustePreco ?? 0)
+
+    if (peca && tabela > 0) {
+      // 1. O preço que chega do navegador não pode ser inventado.
+      const roubo = await registrarVenda(balconista.sessao, {
+        unidadeId: 'uni-a1',
+        itens: [{ variacaoId: peca.id, quantidade: 1, precoUnit: 0.01 }],
+        pagamentos: [{ forma: 'DINHEIRO', valor: 0.01 }],
+      })
+      ok('balcao NAO vende a R$ 0,01 uma peca de tabela',
+         !roubo.ok && roubo.motivo === 'desconto_acima_do_teto',
+         roubo.ok ? 'PASSOU!' : `recusado: ${roubo.motivo}`)
+
+      // 2. Mas desconto pequeno, dentro do teto da empresa, passa.
+      const dentro = Math.round(tabela * 0.95 * 100) / 100
+      const legitimo = await registrarVenda(balconista.sessao, {
+        unidadeId: 'uni-a1',
+        itens: [{ variacaoId: peca.id, quantidade: 1, precoUnit: dentro }],
+        pagamentos: [{ forma: 'DINHEIRO', valor: dentro }],
+      })
+      ok('mas 5% de desconto passa (teto da empresa e 10%)', legitimo.ok,
+         legitimo.ok ? `R$ ${legitimo.total.toFixed(2)}` : legitimo.motivo)
+
+      // 3. Quem tem a capacidade passa do teto.
+      const metade = Math.round(tabela * 0.5 * 100) / 100
+      const daDonaComDesconto = await registrarVenda(dona.sessao, {
+        unidadeId: 'uni-a1',
+        itens: [{ variacaoId: peca.id, quantidade: 1, precoUnit: metade }],
+        pagamentos: [{ forma: 'DINHEIRO', valor: metade }],
+      })
+      ok('a dona da 50% porque tem venda.desconto', daDonaComDesconto.ok,
+         daDonaComDesconto.ok ? `R$ ${daDonaComDesconto.total.toFixed(2)}` : daDonaComDesconto.motivo)
+
+      // 4. E o desconto fica escrito no livro, com o número.
+      const noLivro = await comoOrg(A, (db) =>
+        db.auditoria.findFirst({
+          where: { acao: 'venda.registrou', motivo: { not: null } },
+          orderBy: { criadoEm: 'desc' },
+          select: { motivo: true },
+        }),
+      )
+      ok('e o desconto entra no livro de auditoria',
+         !!noLivro?.motivo?.startsWith('desconto'), noLivro?.motivo ?? 'nada')
+
+      // 5. Preço acima da tabela não vira cobrança a mais no cliente.
+      const dobro = Math.round(tabela * 2 * 100) / 100
+      const caro = await registrarVenda(balconista.sessao, {
+        unidadeId: 'uni-a1',
+        itens: [{ variacaoId: peca.id, quantidade: 1, precoUnit: dobro }],
+        pagamentos: [{ forma: 'DINHEIRO', valor: tabela }],
+      })
+      ok('preco acima da tabela nao cobra a mais — vale a etiqueta', caro.ok,
+         caro.ok ? `cobrou R$ ${caro.total.toFixed(2)} (tabela R$ ${tabela.toFixed(2)})` : caro.motivo)
+    }
+
+    // 6. Corte de sessão: o cookie de antes do corte deixa de valer.
+    const nasceu = new Date()
+    await new Promise((r) => setTimeout(r, 5))
+    await cortarSessoes(A, balconista.sessao.usuarioId)
+    const depois = await comoOrg(A, (db) =>
+      db.usuario.findUnique({
+        where: { id: balconista.sessao.usuarioId },
+        select: { ativo: true, sessoesDesde: true },
+      }),
+    )
+    ok('cortar sessoes derruba o cookie que ja estava aberto',
+       !sessaoAindaVale(depois, nasceu), `corte ${depois?.sessoesDesde.toISOString()}`)
+  }
+
+  // 7. O freio: erro seguido bloqueia, e a senha CERTA continua recusada.
+  for (let i = 0; i < MAX_POR_EMAIL; i++) {
+    await entrar('exemplo', 'carlos@exemplo.com', 'senha-errada')
+  }
+  const travado = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+  ok(`${MAX_POR_EMAIL} erros seguidos travam a conta`,
+     !travado.ok && travado.motivo === 'muitas_tentativas',
+     travado.ok ? 'ENTROU!' : RECADO[travado.motivo])
+
+  // 8. E o freio não conta só quem existe — senão ele mesmo entregaria a
+  //    lista de e-mails da empresa.
+  for (let i = 0; i < MAX_POR_EMAIL; i++) {
+    await entrar('exemplo', 'ninguem@exemplo.com', 'chute')
+  }
+  const inexistente = await entrar('exemplo', 'ninguem@exemplo.com', 'chute')
+  ok('e-mail que NAO existe trava igual (nao entrega quem tem conta)',
+     !inexistente.ok && inexistente.motivo === 'muitas_tentativas',
+     inexistente.ok ? 'ENTROU!' : inexistente.motivo)
+
+  // 9. Travar uma conta não trava a empresa inteira.
+  const outra = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
+  ok('mas a dona continua entrando normalmente', outra.ok,
+     outra.ok ? outra.sessao.nome : RECADO[outra.motivo])
 }
 
 await fechar()

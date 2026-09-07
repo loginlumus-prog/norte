@@ -35,7 +35,10 @@ function segredo(): string {
   return s
 }
 
-type Conteudo = Sessao & { exp: number }
+// `nasceu` é o instante em que a sessão foi emitida. É o que permite matar
+// sessão antiga sem trocar o segredo do sistema inteiro: basta o usuário ter
+// um corte (`sessoes_desde`) mais recente que isto — ver `pagina.ts`.
+type Conteudo = Sessao & { exp: number; nasceu: number }
 
 // A assinatura inclui o slug da empresa. Sem isso, alguém poderia pegar o
 // cookie válido da empresa A, renomear para o da empresa B e a assinatura
@@ -46,12 +49,16 @@ const assinar = (slug: string, corpo: string) =>
   createHmac('sha256', segredo()).update(`${slug}.${corpo}`).digest('base64url')
 
 function empacotar(slug: string, sessao: Sessao): string {
-  const conteudo: Conteudo = { ...sessao, exp: Date.now() + DURACAO_HORAS * 36e5 }
+  const agora = Date.now()
+  const conteudo: Conteudo = { ...sessao, nasceu: agora, exp: agora + DURACAO_HORAS * 36e5 }
   const corpo = Buffer.from(JSON.stringify(conteudo)).toString('base64url')
   return `${corpo}.${assinar(slug, corpo)}`
 }
 
-function desempacotar(slug: string, valor: string): Sessao | null {
+/** O que o cookie devolve: a sessão mais o instante em que ela foi emitida. */
+export type SessaoNoCookie = Sessao & { nasceu: Date }
+
+function desempacotar(slug: string, valor: string): SessaoNoCookie | null {
   const [corpo, assinatura] = valor.split('.')
   if (!corpo || !assinatura) return null
 
@@ -71,6 +78,10 @@ function desempacotar(slug: string, valor: string): Sessao | null {
       orgId: c.orgId,
       usuarioId: c.usuarioId,
       nome: c.nome,
+      // Cookie antigo, de antes deste campo existir, vale como "nasceu no
+      // começo dos tempos" — ou seja, o primeiro corte o derruba. É o que a
+      // gente quer: na dúvida, manda entrar de novo.
+      nasceu: new Date(c.nasceu ?? 0),
       acessos: c.acessos.map((a) => ({
         papel: a.papel,
         unidadeId: a.unidadeId,
@@ -93,7 +104,7 @@ export async function abrirSessao(slugEmpresa: string, sessao: Sessao) {
   })
 }
 
-export async function lerSessao(slugEmpresa: string): Promise<Sessao | null> {
+export async function lerSessao(slugEmpresa: string): Promise<SessaoNoCookie | null> {
   const cookieStore = await cookies()
   const bruto = cookieStore.get(PREFIXO + slugEmpresa)?.value
   if (!bruto) return null
