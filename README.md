@@ -59,7 +59,10 @@ originou o arquivo.
 **Fase 2 fechada.** Balcão e caixa no ar: bipa a etiqueta, Enter lança,
 pagamento dividido, troco calculado e o caixa fecha conferindo a gaveta.
 
-Próximo: Fase 3 — despesas, contas a pagar e DRE.
+**Fase 3 fechada.** Contas a pagar com aviso de vencida, lançamento de
+despesa e DRE mensal no formato da contabilidade.
+
+Próximo: Fase 4 — o agente no WhatsApp.
 
 **Fase 1 — Fundação: fechada.** Modelo de dados, isolamento entre empresas,
 acesso da aplicação, senhas, login, papéis, convite de equipe, biblioteca de
@@ -113,6 +116,7 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
 | `src/servidor/dinheiro.ts` | Centavos inteiros. Nenhuma conta de dinheiro sai daqui |
 | `src/servidor/venda.ts` | Registrar venda: estoque + venda + pagamento, ou nada |
 | `src/servidor/caixa.ts` | Abrir, movimentar e fechar o caixa do turno |
+| `src/servidor/financeiro.ts` | Contas a pagar, lançamentos e o DRE |
 | `src/servidor/unidade.ts` | Qual loja a pessoa está olhando, e quais ela alcança |
 | `src/servidor/painel.ts` | Os números do painel, uma consulta por assunto |
 | `src/servidor/planos.ts` | Cotas por plano e o que custa a loja extra |

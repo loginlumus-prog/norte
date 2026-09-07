@@ -31,6 +31,15 @@ CREATE TYPE "TipoCaixa" AS ENUM ('SANGRIA', 'SUPRIMENTO');
 -- CreateEnum
 CREATE TYPE "FormaPagamento" AS ENUM ('DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'CREDIARIO', 'VALE', 'TRANSFERENCIA');
 
+-- CreateEnum
+CREATE TYPE "TipoLancamento" AS ENUM ('RECEITA', 'DESPESA');
+
+-- CreateEnum
+CREATE TYPE "TipoConta" AS ENUM ('CAIXA', 'BANCO', 'MAQUININHA', 'OUTRA');
+
+-- CreateEnum
+CREATE TYPE "GrupoDRE" AS ENUM ('RECEITA_OUTRA', 'IMPOSTO', 'MERCADORIA', 'PESSOAL', 'OCUPACAO', 'COMERCIAL', 'ADMINISTRATIVA', 'FINANCEIRA', 'OUTRA');
+
 -- CreateTable
 CREATE TABLE "orgs" (
     "id" TEXT NOT NULL,
@@ -401,6 +410,72 @@ CREATE TABLE "pagamentos" (
     CONSTRAINT "pagamentos_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "categorias_financeiras" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "nome" TEXT NOT NULL,
+    "tipo" "TipoLancamento" NOT NULL,
+    "grupo" "GrupoDRE" NOT NULL,
+    "ordem" INTEGER NOT NULL DEFAULT 0,
+    "ativa" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "categorias_financeiras_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "contas_financeiras" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "nome" TEXT NOT NULL,
+    "tipo" "TipoConta" NOT NULL,
+    "saldo_inicial" DECIMAL(14,2) NOT NULL DEFAULT 0,
+    "ativa" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "contas_financeiras_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "lancamentos" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "unidade_id" TEXT,
+    "categoria_id" TEXT NOT NULL,
+    "conta_id" TEXT,
+    "tipo" "TipoLancamento" NOT NULL,
+    "descricao" TEXT NOT NULL,
+    "valor" DECIMAL(14,2) NOT NULL,
+    "vencimento" DATE NOT NULL,
+    "pago_em" DATE,
+    "fornecedor" TEXT,
+    "observacoes" TEXT,
+    "documento" TEXT,
+    "recorrente_id" TEXT,
+    "quem" TEXT NOT NULL,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizado_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "lancamentos_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "recorrentes" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "categoria_id" TEXT NOT NULL,
+    "unidade_id" TEXT,
+    "tipo" "TipoLancamento" NOT NULL,
+    "descricao" TEXT NOT NULL,
+    "valor" DECIMAL(14,2) NOT NULL,
+    "dia_vencimento" INTEGER NOT NULL,
+    "fornecedor" TEXT,
+    "ativo" BOOLEAN NOT NULL DEFAULT true,
+    "ate_em" DATE,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "recorrentes_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "orgs_slug_key" ON "orgs"("slug");
 
@@ -517,6 +592,30 @@ CREATE INDEX "venda_itens_org_id_variacao_id_idx" ON "venda_itens"("org_id", "va
 
 -- CreateIndex
 CREATE INDEX "pagamentos_org_id_venda_id_idx" ON "pagamentos"("org_id", "venda_id");
+
+-- CreateIndex
+CREATE INDEX "categorias_financeiras_org_id_tipo_idx" ON "categorias_financeiras"("org_id", "tipo");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "categorias_financeiras_org_id_nome_key" ON "categorias_financeiras"("org_id", "nome");
+
+-- CreateIndex
+CREATE INDEX "contas_financeiras_org_id_idx" ON "contas_financeiras"("org_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "contas_financeiras_org_id_nome_key" ON "contas_financeiras"("org_id", "nome");
+
+-- CreateIndex
+CREATE INDEX "lancamentos_org_id_vencimento_idx" ON "lancamentos"("org_id", "vencimento");
+
+-- CreateIndex
+CREATE INDEX "lancamentos_org_id_pago_em_idx" ON "lancamentos"("org_id", "pago_em");
+
+-- CreateIndex
+CREATE INDEX "lancamentos_org_id_categoria_id_idx" ON "lancamentos"("org_id", "categoria_id");
+
+-- CreateIndex
+CREATE INDEX "recorrentes_org_id_ativo_idx" ON "recorrentes"("org_id", "ativo");
 
 -- AddForeignKey
 ALTER TABLE "unidades" ADD CONSTRAINT "unidades_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -652,4 +751,31 @@ ALTER TABLE "pagamentos" ADD CONSTRAINT "pagamentos_org_id_fkey" FOREIGN KEY ("o
 
 -- AddForeignKey
 ALTER TABLE "pagamentos" ADD CONSTRAINT "pagamentos_venda_id_fkey" FOREIGN KEY ("venda_id") REFERENCES "vendas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "categorias_financeiras" ADD CONSTRAINT "categorias_financeiras_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "contas_financeiras" ADD CONSTRAINT "contas_financeiras_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "lancamentos" ADD CONSTRAINT "lancamentos_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "lancamentos" ADD CONSTRAINT "lancamentos_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "lancamentos" ADD CONSTRAINT "lancamentos_categoria_id_fkey" FOREIGN KEY ("categoria_id") REFERENCES "categorias_financeiras"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "lancamentos" ADD CONSTRAINT "lancamentos_conta_id_fkey" FOREIGN KEY ("conta_id") REFERENCES "contas_financeiras"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "lancamentos" ADD CONSTRAINT "lancamentos_recorrente_id_fkey" FOREIGN KEY ("recorrente_id") REFERENCES "recorrentes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recorrentes" ADD CONSTRAINT "recorrentes_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recorrentes" ADD CONSTRAINT "recorrentes_categoria_id_fkey" FOREIGN KEY ("categoria_id") REFERENCES "categorias_financeiras"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

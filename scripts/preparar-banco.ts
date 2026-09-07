@@ -15,6 +15,8 @@ import { join } from 'node:path'
 import { guardarSenha } from '../src/servidor/senha'
 import { semearCatalogo } from './exemplo-catalogo'
 import { semearVendas } from './exemplo-vendas'
+import { semearFinanceiro } from './exemplo-financeiro'
+import { CATEGORIAS_PADRAO } from '../src/servidor/financeiro'
 
 const raiz = join(import.meta.dirname, '..')
 const ler = (p: string) => readFileSync(join(raiz, p), 'utf8')
@@ -34,8 +36,18 @@ const passo = (t: string) => console.log(`  ${t}`)
 console.log(`\n  Preparando ${url.replace(/:[^:@]*@/, ':***@')}\n`)
 
 // ── 1. tabelas ───────────────────────────────────────────────
-passo('tabelas...')
-await cliente.query(ler('prisma/sql/tabelas.sql'))
+// O DDL gerado pelo Prisma não é idempotente (CREATE TYPE sem IF NOT EXISTS),
+// então rodar duas vezes explodiria. Criar só quando ainda não existe deixa
+// este script seguro de repetir — e repetir é o que a gente mais faz.
+const { rows: existe } = await cliente.query<{ tem: boolean }>(
+  "select to_regclass('public.orgs') is not null as tem",
+)
+if (existe[0]!.tem) {
+  passo('tabelas já existem — pulando')
+} else {
+  passo('tabelas...')
+  await cliente.query(ler('prisma/sql/tabelas.sql'))
+}
 
 // ── 2. o papel da aplicação ──────────────────────────────────
 // Sem privilégio de sistema. Se a aplicação rodasse como dono ou superusuário,
@@ -124,6 +136,30 @@ const nVendas = await semearVendas(cliente, 'org-exemplo-a', [
   { id: 'uni-a2', nome: 'Loja Shopping', fatia: 2 },
 ])
 if (nVendas) passo(`${nVendas} vendas de exemplo nos últimos 30 dias...`)
+
+// Categorias e contas do financeiro. Toda empresa começa com estas — o dono
+// renomeia e acrescenta, mas ninguém deveria ter que montar do zero.
+const { rows: temCat } = await cliente.query<{ n: string }>(
+  "select count(*)::int as n from categorias_financeiras where org_id = 'org-exemplo-a'",
+)
+if (Number(temCat[0]!.n) === 0) {
+  for (const [i, c] of CATEGORIAS_PADRAO.entries()) {
+    await cliente.query(
+      `insert into categorias_financeiras (id, org_id, nome, tipo, grupo, ordem, ativa)
+       values ($1,'org-exemplo-a',$2,$3,$4,$5,true)`,
+      [`cat-fin-${i}`, c.nome, c.tipo, c.grupo, i],
+    )
+  }
+  await cliente.query(`
+    insert into contas_financeiras (id, org_id, nome, tipo, saldo_inicial, ativa) values
+      ('conta-caixa', 'org-exemplo-a', 'Caixa da loja',  'CAIXA', 0, true),
+      ('conta-banco', 'org-exemplo-a', 'Conta do banco', 'BANCO', 0, true);
+  `)
+  passo('categorias e contas do financeiro...')
+}
+
+const nLanc = await semearFinanceiro(cliente, 'org-exemplo-a', 'uni-a1')
+if (nLanc) passo(`${nLanc} lançamentos de exemplo (2 meses + contas a pagar)...`)
 
 await cliente.end()
 

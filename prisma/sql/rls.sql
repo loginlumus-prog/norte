@@ -56,9 +56,13 @@ create policy org_propria on public.orgs
 -- ── auditoria é livro: só entra, nunca muda nem sai ──────────
 drop policy if exists org_isolada on public.auditoria;
 
+-- drop antes de criar: este arquivo precisa poder rodar de novo, e roda toda
+-- vez que nasce tabela nova (é assim que ela entra na proteção sozinha).
+drop policy if exists auditoria_le on public.auditoria;
 create policy auditoria_le on public.auditoria
   for select using (org_id = app_org_id());
 
+drop policy if exists auditoria_grava on public.auditoria;
 create policy auditoria_grava on public.auditoria
   for insert with check (org_id = app_org_id());
 

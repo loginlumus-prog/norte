@@ -92,6 +92,10 @@ model Org {
   vendas         Venda[]
   vendaItens     VendaItem[]
   pagamentos     Pagamento[]
+  categoriasFin  CategoriaFinanceira[]
+  contasFin      ContaFinanceira[]
+  lancamentos    Lancamento[]
+  recorrentes    Recorrente[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -135,8 +139,9 @@ model Unidade {
   auditoria  Auditoria[]
   estoques   Estoque[]
   movimentos MovimentoEstoque[]
-  caixas     Caixa[]
-  vendas     Venda[]
+  caixas      Caixa[]
+  vendas      Venda[]
+  lancamentos Lancamento[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -783,4 +788,169 @@ enum FormaPagamento {
   CREDIARIO
   VALE
   TRANSFERENCIA
+}
+
+// ═════════════════════════════════════════════════════════════
+// FASE 3 — FINANCEIRO
+// ═════════════════════════════════════════════════════════════
+//
+// O DRE precisa sair no formato que o contador já usa, senão ele não bate com
+// o que a contabilidade manda e o dono fica com dois números diferentes para
+// o mesmo mês — que é pior do que não ter número nenhum.
+//
+// Por isso a categoria carrega um GRUPO: é ele que decide em que linha do DRE
+// o lançamento cai. O nome da categoria é da empresa ("aluguel da loja 2");
+// o grupo é da contabilidade.
+
+model CategoriaFinanceira {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome  String
+  tipo  TipoLancamento
+  grupo GrupoDRE
+  ordem Int            @default(0)
+  ativa Boolean        @default(true)
+
+  lancamentos Lancamento[]
+  recorrentes Recorrente[]
+
+  @@unique([orgId, nome])
+  @@index([orgId, tipo])
+  @@map("categorias_financeiras")
+}
+
+/// De onde saiu ou para onde foi o dinheiro. Sem isto, "paguei o aluguel" não
+/// diz se saiu do caixa da loja ou da conta do banco — e a conciliação do fim
+/// do mês não fecha.
+model ContaFinanceira {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome         String
+  tipo         TipoConta
+  saldoInicial Decimal   @default(0) @map("saldo_inicial") @db.Decimal(14, 2)
+  ativa        Boolean   @default(true)
+
+  lancamentos Lancamento[]
+
+  @@unique([orgId, nome])
+  @@index([orgId])
+  @@map("contas_financeiras")
+}
+
+/// Uma linha do financeiro: conta a pagar, conta a receber, despesa paga.
+///
+/// Receita de VENDA não entra aqui — ela já mora em `vendas`, e duplicar
+/// faria o DRE contar o mesmo dinheiro duas vezes. Aqui entra o resto:
+/// aluguel, luz, salário, fornecedor, e receita que não é venda de balcão.
+model Lancamento {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// Nulo = despesa da empresa inteira (contador, sistema, contabilidade).
+  unidadeId String?  @map("unidade_id")
+  unidade   Unidade? @relation(fields: [unidadeId], references: [id])
+
+  categoriaId String              @map("categoria_id")
+  categoria   CategoriaFinanceira @relation(fields: [categoriaId], references: [id])
+
+  contaId String?          @map("conta_id")
+  conta   ContaFinanceira? @relation(fields: [contaId], references: [id])
+
+  tipo      TipoLancamento
+  descricao String
+  /// Sempre positivo. O sinal vem do tipo, como no estoque.
+  valor     Decimal        @db.Decimal(14, 2)
+
+  vencimento DateTime  @db.Date
+  /// Nulo = ainda não pagou. É o que separa "a pagar" de "pago".
+  pagoEm     DateTime? @map("pago_em") @db.Date
+
+  fornecedor  String?
+  observacoes String?
+  documento   String? // número da nota, do boleto
+
+  /// De onde veio, quando nasceu de uma conta que se repete todo mês.
+  recorrenteId String?     @map("recorrente_id")
+  recorrente   Recorrente? @relation(fields: [recorrenteId], references: [id])
+
+  quem      String
+  criadoEm  DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, vencimento])
+  @@index([orgId, pagoEm])
+  @@index([orgId, categoriaId])
+  @@map("lancamentos")
+}
+
+/// Conta que se repete todo mês: aluguel, internet, contabilidade.
+///
+/// Não gera doze lançamentos de uma vez: gera o do mês quando o mês chega.
+/// Assim mudar o valor do aluguel não obriga a corrigir onze linhas futuras.
+model Recorrente {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  categoriaId String              @map("categoria_id")
+  categoria   CategoriaFinanceira @relation(fields: [categoriaId], references: [id])
+
+  unidadeId String? @map("unidade_id")
+
+  tipo       TipoLancamento
+  descricao  String
+  valor      Decimal        @db.Decimal(14, 2)
+  /// Dia do mês. 31 em fevereiro cai no último dia — quem trata isso é o código.
+  diaVencimento Int         @map("dia_vencimento")
+  fornecedor String?
+
+  ativo    Boolean   @default(true)
+  /// Até quando gerar. Nulo = para sempre.
+  ateEm    DateTime? @map("ate_em") @db.Date
+
+  lancamentos Lancamento[]
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, ativo])
+  @@map("recorrentes")
+}
+
+enum TipoLancamento {
+  RECEITA
+  DESPESA
+}
+
+enum TipoConta {
+  CAIXA
+  BANCO
+  MAQUININHA
+  OUTRA
+}
+
+/// Em que linha do DRE o lançamento cai. A ordem aqui é a ordem do relatório.
+enum GrupoDRE {
+  /// Receita que não é venda de balcão (aluguel de espaço, serviço avulso).
+  RECEITA_OUTRA
+  /// Imposto sobre a venda — sai antes de tudo.
+  IMPOSTO
+  /// Compra de mercadoria para revender.
+  MERCADORIA
+  /// Gente: salário, pró-labore, encargo, comissão.
+  PESSOAL
+  /// O ponto: aluguel, condomínio, luz, água, internet.
+  OCUPACAO
+  /// Vender: anúncio, embalagem, entrega, brinde.
+  COMERCIAL
+  /// Tocar: contabilidade, sistema, material de escritório.
+  ADMINISTRATIVA
+  /// Taxa de maquininha, juro, tarifa de banco.
+  FINANCEIRA
+  /// O que não cabe em nenhuma acima.
+  OUTRA
 }

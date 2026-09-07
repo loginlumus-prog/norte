@@ -1,0 +1,238 @@
+import { cookies } from 'next/headers'
+import { exigirEntrada } from '@/servidor/pagina'
+import { escolherUnidade } from '@/servidor/unidade'
+import { aVencer, montarDRE } from '@/servidor/financeiro'
+import { comoOrg } from '@/servidor/banco'
+import { pode } from '@/servidor/permissao'
+import { Estrutura } from '@/ui/Estrutura'
+import { MENU } from '@/ui/menu'
+import { Cartao, Situacao, Aviso, Ponto, cx } from '@/ui/base'
+import { SeletorUnidade } from '@/ui/SeletorUnidade'
+import { Numero, Secao, Tira, brl } from '@/ui/painel'
+import type { Tema } from '@/ui/TrocaTema'
+import { Lancar, Pagar } from './Lancar'
+
+const dia = (d: Date) =>
+  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(d)
+
+const MES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+]
+
+export default async function Financeiro({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ empresa: string }>
+  searchParams: Promise<{ unidade?: string; mes?: string }>
+}) {
+  const { empresa: slug } = await params
+  const { unidade: pedida, mes } = await searchParams
+  const { empresa, sessao } = await exigirEntrada(slug)
+  const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
+
+  const onde = await escolherUnidade(sessao, empresa, pedida, 'financeiro.ver')
+
+  // Mês do relatório: o corrente, ou o que veio no endereço (YYYY-MM).
+  const agora = new Date()
+  const [ano, mesNum] = (mes ?? `${agora.getFullYear()}-${agora.getMonth() + 1}`)
+    .split('-')
+    .map(Number)
+  const de = new Date(ano!, mesNum! - 1, 1)
+  const ate = new Date(ano!, mesNum!, 0, 23, 59, 59)
+
+  const [contas, dre, categorias, unidades] = await Promise.all([
+    aVencer(sessao, onde.ids),
+    montarDRE(sessao, onde.ids, de, ate),
+    comoOrg(sessao.orgId, (db) =>
+      db.categoriaFinanceira.findMany({
+        where: { ativa: true },
+        orderBy: [{ tipo: 'asc' }, { ordem: 'asc' }],
+        select: { id: true, nome: true, tipo: true },
+      }),
+    ),
+    comoOrg(sessao.orgId, (db) =>
+      db.contaFinanceira.findMany({
+        where: { ativa: true },
+        orderBy: { nome: 'asc' },
+        select: { id: true, nome: true },
+      }),
+    ),
+  ])
+
+  const podeLancar = pode(sessao, 'financeiro.lancar')
+  const menu = MENU(slug).map((i) =>
+    i.href === `/${slug}/financeiro` && contas.vencidas.length > 0
+      ? {
+          ...i,
+          aviso: { quantos: contas.vencidas.length, nivel: 'critico' as const, titulo: 'vencida(s)' },
+        }
+      : i,
+  )
+
+  const mesAnterior = new Date(ano!, mesNum! - 2, 1)
+  const mesSeguinte = new Date(ano!, mesNum!, 1)
+  const link = (d: Date) =>
+    `/${slug}/financeiro?mes=${d.getFullYear()}-${d.getMonth() + 1}` +
+    (onde.unidadeId ? `&unidade=${onde.unidadeId}` : '')
+
+  return (
+    <Estrutura
+      empresa={empresa}
+      sessao={sessao}
+      itens={menu}
+      ativo={`/${slug}/financeiro`}
+      tema={tema}
+      titulo="Financeiro"
+      acao={onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} /> : undefined}
+    >
+      {/* ── A PAGAR ── */}
+      <Secao titulo="Contas a pagar">
+        <Tira
+          itens={[
+            { rotulo: 'vencidas', quantos: contas.vencidas.length, nivel: 'critico' },
+            { rotulo: 'vencem hoje', quantos: contas.hoje.length, nivel: 'atencao' },
+            { rotulo: 'próximos 15 dias', quantos: contas.proximas.length, nivel: 'neutro' },
+          ]}
+        />
+
+        {contas.vencidas.length > 0 && (
+          <Aviso nivel="critico">
+            {contas.vencidas.length} conta{contas.vencidas.length === 1 ? '' : 's'} vencida
+            {contas.vencidas.length === 1 ? '' : 's'}, somando {brl(contas.totalVencido)}. Juro e
+            multa correm enquanto ficam aqui.
+          </Aviso>
+        )}
+
+        <Cartao
+          titulo="A vencer"
+          acao={
+            contas.vencidas.length > 0 ? (
+              <Ponto nivel="critico" quantos={contas.vencidas.length} titulo="vencidas" />
+            ) : undefined
+          }
+        >
+          {contas.vencidas.length + contas.hoje.length + contas.proximas.length === 0 ? (
+            <p className="flex items-center justify-center gap-2 py-8 text-sm font-medium text-bom">
+              <span aria-hidden className="size-2 rounded-full bg-bom-vivo" />
+              Nada vencendo nos próximos 15 dias.
+            </p>
+          ) : (
+            <ul className="flex flex-col">
+              {[
+                ...contas.vencidas.map((c) => ({ ...c, nivel: 'critico' as const, quando: `${c.dias}d atrás` })),
+                ...contas.hoje.map((c) => ({ ...c, nivel: 'atencao' as const, quando: 'hoje' })),
+                ...contas.proximas.map((c) => ({ ...c, nivel: 'neutro' as const, quando: `em ${c.dias}d` })),
+              ].map((c) => (
+                <li
+                  key={c.id}
+                  className="flex items-center justify-between gap-3 border-b border-borda-suave py-2 last:border-0"
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm text-tinta">{c.descricao}</span>
+                    <span className="text-xs text-tinta-3">{dia(c.vencimento)}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <Situacao nivel={c.nivel}>{c.quando}</Situacao>
+                    <span className="numero w-24 text-sm font-semibold text-tinta">
+                      {brl(c.valor)}
+                    </span>
+                    {podeLancar && <Pagar slug={slug} id={c.id} />}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Cartao>
+
+        {podeLancar && (
+          <Lancar
+            slug={slug}
+            categorias={categorias}
+            contas={unidades}
+            unidadeId={onde.unidadeId}
+          />
+        )}
+      </Secao>
+
+      {/* ── DRE ── */}
+      <Secao titulo="Resultado do mês">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm">
+            <a href={link(mesAnterior)} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
+              ←
+            </a>
+            <span className="font-semibold text-tinta">
+              {MES[de.getMonth()]} de {de.getFullYear()}
+            </span>
+            <a href={link(mesSeguinte)} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
+              →
+            </a>
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Numero
+            rotulo="Resultado do mês"
+            valor={brl(dre.resultado)}
+            detalhe={dre.resultado >= 0 ? 'sobrou' : 'faltou'}
+            nivel={dre.resultado >= 0 ? 'bom' : 'critico'}
+          />
+          <Numero
+            rotulo="Margem"
+            valor={`${dre.margem.toFixed(1)}%`}
+            detalhe="do que entrou, quanto ficou"
+            nivel={dre.margem >= 15 ? 'bom' : dre.margem >= 5 ? 'atencao' : 'critico'}
+          />
+        </div>
+
+        <Cartao titulo="Demonstrativo">
+          <div className="flex flex-col">
+            {dre.linhas.map((l) => (
+              <div key={l.chave}>
+                <div
+                  className={cx(
+                    'flex items-baseline justify-between gap-4 py-2',
+                    l.fora
+                      ? 'mt-3 rounded-norte bg-superficie-2 px-2 text-tinta-2'
+                      : l.total
+                        ? 'border-t border-borda font-bold text-tinta'
+                        : 'border-b border-borda-suave text-tinta-2',
+                  )}
+                >
+                  <span className="text-sm">{l.rotulo}</span>
+                  <span
+                    className={cx(
+                      'numero text-sm',
+                      l.total && l.valor < 0 && 'text-critico',
+                      l.total && l.valor > 0 && l.chave === 'resultado' && 'text-bom',
+                    )}
+                  >
+                    {brl(l.valor)}
+                  </span>
+                </div>
+                {l.itens && l.itens.length > 1 && (
+                  <ul className="mb-1 flex flex-col gap-0.5 pl-4">
+                    {l.itens.map((i) => (
+                      <li key={i.nome} className="flex justify-between gap-4 text-xs text-tinta-3">
+                        <span>{i.nome}</span>
+                        <span className="numero">{brl(i.valor)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-tinta-3">
+            As despesas contam pelo que foi <b>pago</b> no mês, não pelo que venceu — é o que
+            bate com o extrato. A mercadoria é a exceção: comprar não é despesa, vira custo
+            quando a peça vende (a linha do CMV). Por isso a compra aparece separada, fora
+            da conta do resultado.
+          </p>
+        </Cartao>
+      </Secao>
+    </Estrutura>
+  )
+}
