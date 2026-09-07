@@ -13,6 +13,7 @@ import { Client } from 'pg'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { guardarSenha } from '../src/servidor/senha'
+import { semearCatalogo } from './exemplo-catalogo'
 
 const raiz = join(import.meta.dirname, '..')
 const ler = (p: string) => readFileSync(join(raiz, p), 'utf8')
@@ -95,6 +96,10 @@ if (Number(rows[0]!.n) === 0) {
   // mas nao tem papel em lugar nenhum".
 } else {
   passo('já tem empresa cadastrada — exemplo não foi tocado')
+}
+
+if (await semearCatalogo(cliente, 'org-exemplo-a', 'uni-a1')) {
+  passo('catálogo de exemplo (camiseta com grade + sorvete por quilo)...')
 }
 
 await cliente.end()

@@ -2,22 +2,12 @@ import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
 import { pode, PODERES } from '@/servidor/permissao'
-import { Estrutura, type ItemMenu } from '@/ui/Estrutura'
+import { Estrutura } from '@/ui/Estrutura'
+import { MENU } from '@/ui/menu'
 import { Cartao, Situacao } from '@/ui/base'
 import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 
-const MENU = (slug: string): ItemMenu[] => [
-  { href: `/${slug}`, titulo: 'Painel', exige: 'venda.ver' },
-  { href: `/${slug}/balcao`, titulo: 'Balcão', exige: 'venda.criar' },
-  { href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver' },
-  { href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },
-  { href: `/${slug}/clientes`, titulo: 'Clientes', exige: 'cliente.ver' },
-  { href: `/${slug}/crediario`, titulo: 'Crediário', exige: 'crediario.ver' },
-  { href: `/${slug}/financeiro`, titulo: 'Financeiro', exige: 'financeiro.ver' },
-  { href: `/${slug}/equipe`, titulo: 'Equipe', exige: 'equipe.ver' },
-  { href: `/${slug}/agente`, titulo: 'Agente', exige: 'agente.configurar' },
-]
 
 export default async function Painel({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params

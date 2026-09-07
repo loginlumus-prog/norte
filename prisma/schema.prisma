@@ -47,6 +47,16 @@ model Org {
   auditoria Auditoria[]
   cobranca  Cobranca?
 
+  categorias     Categoria[]
+  eixos          Eixo[]
+  opcoes         Opcao[]
+  produtos       Produto[]
+  produtoEixos   ProdutoEixo[]
+  variacoes      Variacao[]
+  variacaoOpcoes VariacaoOpcao[]
+  estoques       Estoque[]
+  movimentos     MovimentoEstoque[]
+
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
 
@@ -73,8 +83,10 @@ model Unidade {
   ehDeposito Boolean @default(false) @map("eh_deposito")
   ativa      Boolean @default(true)
 
-  acessos   Acesso[]
-  auditoria Auditoria[]
+  acessos    Acesso[]
+  auditoria  Auditoria[]
+  estoques   Estoque[]
+  movimentos MovimentoEstoque[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -255,4 +267,252 @@ enum Autor {
   PESSOA
   AGENTE
   SISTEMA
+}
+
+// ═════════════════════════════════════════════════════════════
+// FASE 2 — CATÁLOGO E ESTOQUE
+// ═════════════════════════════════════════════════════════════
+//
+// A decisão que sustenta tudo aqui: NADA de "cor" e "tamanho" escritos no
+// código. A empresa nomeia os próprios eixos de variação — a loja de roupa
+// cria Cor e Tamanho, a sapataria cria Numeração, a sorveteria cria Sabor.
+// Com colunas fixas, a sapataria já entraria torta.
+//
+// E TODO produto tem pelo menos uma variação, mesmo quando não varia. Sem
+// isso, estoque e venda teriam dois caminhos ("às vezes é no produto, às
+// vezes na variação") — que é exatamente onde bug de estoque nasce.
+
+model Categoria {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome  String
+  ordem Int    @default(0)
+
+  /// Subcategoria: "Feminino > Blusas". Um nível já resolve quase todo varejo.
+  paiId  String?     @map("pai_id")
+  pai    Categoria?  @relation("Subcategorias", fields: [paiId], references: [id])
+  filhas Categoria[] @relation("Subcategorias")
+
+  produtos Produto[]
+
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@index([orgId])
+  @@map("categorias")
+}
+
+/// Um eixo de variação da empresa: "Cor", "Tamanho", "Numeração", "Sabor".
+model Eixo {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome  String
+  ordem Int     @default(0)
+  /// Mostra bolinha colorida na tela em vez de texto (útil para "Cor").
+  ehCor Boolean @default(false) @map("eh_cor")
+
+  opcoes   Opcao[]
+  produtos ProdutoEixo[]
+
+  @@unique([orgId, nome])
+  @@index([orgId])
+  @@map("eixos")
+}
+
+/// Um valor possível do eixo: "Azul", "M", "38", "Napolitano".
+model Opcao {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  eixoId String @map("eixo_id")
+  eixo   Eixo   @relation(fields: [eixoId], references: [id], onDelete: Cascade)
+
+  valor String
+  ordem Int     @default(0)
+  /// Hex, quando o eixo é de cor. A tela mostra a bolinha.
+  hex   String?
+
+  variacoes VariacaoOpcao[]
+
+  @@unique([eixoId, valor])
+  @@index([orgId])
+  @@map("opcoes")
+}
+
+model Produto {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome      String
+  descricao String?
+  marca     String?
+
+  categoriaId String?    @map("categoria_id")
+  categoria   Categoria? @relation(fields: [categoriaId], references: [id])
+
+  /// Como este produto é contado. Vender 0,340 kg de sorvete e vender 1 blusa
+  /// precisam caber na mesma venda.
+  medida Medida @default(UN)
+
+  /// Três preços, porque no balcão o mesmo produto custa diferente conforme a
+  /// forma de pagamento. Nada impede que sejam iguais.
+  precoVista     Decimal? @map("preco_vista") @db.Decimal(12, 2)
+  precoCartao    Decimal? @map("preco_cartao") @db.Decimal(12, 2)
+  precoCrediario Decimal? @map("preco_crediario") @db.Decimal(12, 2)
+  custo          Decimal? @db.Decimal(12, 2)
+
+  ativo Boolean @default(true)
+
+  eixos     ProdutoEixo[]
+  variacoes Variacao[]
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, ativo])
+  @@index([orgId, categoriaId])
+  @@map("produtos")
+}
+
+/// Quais eixos este produto usa, e em que ordem aparecem.
+model ProdutoEixo {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  produtoId String  @map("produto_id")
+  produto   Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  eixoId    String  @map("eixo_id")
+  eixo      Eixo    @relation(fields: [eixoId], references: [id], onDelete: Cascade)
+  ordem     Int     @default(0)
+
+  @@unique([produtoId, eixoId])
+  @@index([orgId])
+  @@map("produto_eixos")
+}
+
+/// O item que de fato existe na prateleira e é vendido.
+/// Produto sem variação nenhuma tem UMA variação, com `padrao = true`.
+model Variacao {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  produtoId String  @map("produto_id")
+  produto   Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  /// Código interno da etiqueta. É por aqui que o balcão acha no teclado.
+  codigo       String?
+  /// EAN-13 de verdade, para leitor comum.
+  codigoBarras String? @map("codigo_barras")
+
+  /// Diferença de preço desta variação (tamanho especial custa mais).
+  ajustePreco Decimal? @map("ajuste_preco") @db.Decimal(12, 2)
+
+  padrao Boolean @default(false)
+  ativa  Boolean @default(true)
+
+  opcoes     VariacaoOpcao[]
+  estoques   Estoque[]
+  movimentos MovimentoEstoque[]
+
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@unique([orgId, codigo])
+  @@unique([orgId, codigoBarras])
+  @@index([orgId, produtoId])
+  @@map("variacoes")
+}
+
+model VariacaoOpcao {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  variacaoId String   @map("variacao_id")
+  variacao   Variacao @relation(fields: [variacaoId], references: [id], onDelete: Cascade)
+  opcaoId    String   @map("opcao_id")
+  opcao      Opcao    @relation(fields: [opcaoId], references: [id], onDelete: Cascade)
+
+  @@unique([variacaoId, opcaoId])
+  @@index([orgId])
+  @@map("variacao_opcoes")
+}
+
+/// Saldo por variação POR UNIDADE. A loja 3 e a loja 5 contam separado.
+model Estoque {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  variacaoId String   @map("variacao_id")
+  variacao   Variacao @relation(fields: [variacaoId], references: [id], onDelete: Cascade)
+  unidadeId  String   @map("unidade_id")
+  unidade    Unidade  @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  /// Decimal porque sorveteria vende 0,340 kg.
+  quantidade Decimal  @default(0) @db.Decimal(14, 3)
+  minimo     Decimal? @db.Decimal(14, 3)
+
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@unique([variacaoId, unidadeId])
+  @@index([orgId, unidadeId])
+  @@map("estoque")
+}
+
+/// Todo movimento fica registrado. O saldo é conferível somando isto.
+model MovimentoEstoque {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  variacaoId String   @map("variacao_id")
+  variacao   Variacao @relation(fields: [variacaoId], references: [id], onDelete: Cascade)
+  unidadeId  String   @map("unidade_id")
+  unidade    Unidade  @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  tipo TipoMovimento
+  /// Positiva para entrada, negativa para saída. Sempre o delta, nunca o saldo.
+  quantidade Decimal @db.Decimal(14, 3)
+  /// Saldo logo depois deste movimento — para conferir sem refazer a soma toda.
+  saldoDepois Decimal @map("saldo_depois") @db.Decimal(14, 3)
+
+  motivo String?
+  /// Id da venda, da entrada de mercadoria, do que originou.
+  referencia String?
+  usuarioId  String? @map("usuario_id")
+  quem       String
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, variacaoId, criadoEm])
+  @@index([orgId, unidadeId, criadoEm])
+  @@map("movimentos_estoque")
+}
+
+enum Medida {
+  UN
+  KG
+  G
+  L
+  ML
+  M
+  PAR
+  CX
+}
+
+enum TipoMovimento {
+  ENTRADA
+  VENDA
+  DEVOLUCAO
+  AJUSTE
+  PERDA
+  TRANSFERENCIA
+  BALANCO
 }

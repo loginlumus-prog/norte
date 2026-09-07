@@ -24,6 +24,8 @@ import { comoOrg, acharOrgPorSlug, fechar } from '../src/servidor/banco'
 import { entrar, RECADO } from '../src/servidor/autenticacao'
 import { pode } from '../src/servidor/permissao'
 import { convidar, aceitarConvite, listarConvites, revogarConvite } from '../src/servidor/convite'
+import { mexerEstoque, saldo, conferirSaldos } from '../src/servidor/estoque'
+import { SemPermissao } from '../src/servidor/permissao'
 
 const A = 'org-exemplo-a'
 const B = 'org-exemplo-b'
@@ -199,6 +201,76 @@ if (dona.ok) {
     ok('revogar tira o convite da lista', !depois.some((x) => x.id === paraRevogar.id))
   }
 }
+
+// ── estoque ──────────────────────────────────────────────────
+console.log('\n  Estoque\n')
+
+if (dona.ok) {
+  const s = dona.sessao
+  const CAM = 'var-cam-azul-m'   // comeca com 12
+  const SORVETE = 'var-sorvete'  // comeca com 12,500 kg
+  const UNI = 'uni-a1'
+
+  const v1 = await mexerEstoque(s, { variacaoId: CAM, unidadeId: UNI, tipo: 'VENDA', quantidade: 2 })
+  ok('venda baixa o estoque', v1.ok && v1.saldo === 10, `saldo ${v1.saldo}`)
+
+  const dev = await mexerEstoque(s, { variacaoId: CAM, unidadeId: UNI, tipo: 'DEVOLUCAO', quantidade: 1 })
+  ok('devolucao devolve', dev.ok && dev.saldo === 11, `saldo ${dev.saldo}`)
+
+  // O caso que protege o dono: nao vender o que nao existe.
+  const demais = await mexerEstoque(s, { variacaoId: CAM, unidadeId: UNI, tipo: 'VENDA', quantidade: 999 })
+  ok('nao vende mais do que tem', !demais.ok && demais.motivo === 'sem_saldo')
+  ok('e o saldo fica intacto depois da recusa', (await saldo(s, CAM, UNI)) === 11)
+
+  // Peso: a sorveteria vende 340 g, nao "1 unidade".
+  const kg = await mexerEstoque(s, { variacaoId: SORVETE, unidadeId: UNI, tipo: 'VENDA', quantidade: 0.34 })
+  ok('vende por peso, com casas decimais', kg.ok && Math.abs(kg.saldo - 12.16) < 0.001, `${kg.saldo} kg`)
+
+  // Balanco: informa o CONTADO, o sistema calcula a diferenca.
+  const bal = await mexerEstoque(s, { variacaoId: CAM, unidadeId: UNI, tipo: 'BALANCO', quantidade: 9,
+                                      motivo: 'contagem do dia 30' })
+  ok('balanco ajusta para o que foi contado', bal.ok && bal.saldo === 9, `saldo ${bal.saldo}`)
+
+  // A prova da atomicidade: 8 baixas disparadas juntas, nenhuma pode se perder.
+  // (Num Postgres de verdade elas correm em paralelo; aqui o PGlite serializa,
+  //  entao isto prova a aritmetica, nao a corrida. A corrida so se verifica
+  //  no banco hospedado.)
+  const antes = await saldo(s, CAM, UNI)
+  const juntas = await Promise.all(
+    Array.from({ length: 8 }, () =>
+      mexerEstoque(s, { variacaoId: CAM, unidadeId: UNI, tipo: 'VENDA', quantidade: 1 })),
+  )
+  const passaram = juntas.filter((r) => r.ok).length
+  const depois = await saldo(s, CAM, UNI)
+  ok('8 baixas ao mesmo tempo: nenhuma se perde nem duplica',
+     depois === antes - passaram && depois >= 0,
+     `${antes} -> ${depois}, ${passaram} passaram`)
+
+  // O historico e a verdade; o saldo e atalho. Os dois tem que bater.
+  const divergentes = await conferirSaldos(s)
+  ok('saldo bate com a soma do historico', divergentes.length === 0,
+     divergentes.length ? `${divergentes.length} divergente(s)` : 'tudo conferido')
+}
+
+// Permissao no movimento: o balcao vende, mas nao ajusta estoque.
+const balcao2 = await entrar('exemplo', 'carlos@exemplo.com', SENHA)
+if (balcao2.ok) {
+  const s = balcao2.sessao
+  const v = await mexerEstoque(s, { variacaoId: 'var-cam-preto-p', unidadeId: 'uni-a1',
+                                    tipo: 'VENDA', quantidade: 1 })
+  ok('balcao consegue dar baixa de venda', v.ok)
+
+  let barrou = false
+  try {
+    await mexerEstoque(s, { variacaoId: 'var-cam-preto-p', unidadeId: 'uni-a1',
+                            tipo: 'AJUSTE', quantidade: 50 })
+  } catch (e) { barrou = e instanceof SemPermissao }
+  ok('mas NAO consegue ajustar estoque', barrou)
+}
+
+// A vizinha nao enxerga estoque nenhum desta empresa.
+const daVizinha = await comoOrg(B, (db) => db.estoque.count())
+ok('a empresa vizinha nao ve este estoque', daVizinha === 0, `${daVizinha} linha(s)`)
 
 await fechar()
 

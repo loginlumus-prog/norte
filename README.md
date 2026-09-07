@@ -44,6 +44,12 @@ Os dados ficam em `.banco/`. Apagar a pasta = banco novo.
 
 ## Estado
 
+**Fase 2 — em andamento.** Catálogo (produto com eixos de variação da própria
+empresa + unidade de medida) e estoque com movimento atômico prontos e
+conferidos. Tela de produtos no ar.
+
+Falta na Fase 2: entrada de mercadoria, balcão e caixa.
+
 **Fase 1 — Fundação: fechada.** Modelo de dados, isolamento entre empresas,
 acesso da aplicação, senhas, login, papéis, convite de equipe, biblioteca de
 componentes e os dois temas. Entrar em `/exemplo` já funciona de verdade.
@@ -65,7 +71,11 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
    (`prisma/sql/rls.sql`). A segunda existe para quando a primeira falhar.
 6. **`npm test` verde é condição para subir.** Vazamento entre empresas mata o
    negócio no primeiro dia.
-7. **O livro de auditoria só recebe.** Sem UPDATE, sem DELETE, e a tentativa
+7. **Estoque se mexe só por `mexerEstoque()`.** A conta (`quantidade + delta`)
+   acontece dentro do banco, nunca na memória — senão duas vendas ao mesmo
+   tempo perdem uma baixa. E o histórico é a verdade: `conferirSaldos()`
+   acusa se o saldo divergir da soma.
+8. **O livro de auditoria só recebe.** Sem UPDATE, sem DELETE, e a tentativa
    levanta erro em vez de falhar em silêncio.
 
 ### Onde ficam as coisas
@@ -79,6 +89,7 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
 | `src/servidor/convite.ts` | Convidar gente para a equipe |
 | `src/servidor/sessao.ts` | Cookie de sessão, com escopo por empresa |
 | `src/servidor/pagina.ts` | `exigirEntrada()` — toda tela de dentro começa por ela |
+| `src/servidor/estoque.ts` | Movimento de estoque, atômico. A conta acontece no banco |
 | `src/ui/` | Componentes: Botão, Campo, Aviso, Situação, Cartão, Tabela, Estrutura |
 | `src/app/globals.css` | As fichas de cor e os dois temas |
 

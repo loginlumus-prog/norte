@@ -116,6 +116,26 @@ armadilhas do PDV offline; a chave da parcela.
 
 ---
 
+## 8.1 Catálogo: o que o modelo assume (decidido 07/09)
+
+O produto NAO tem "cor" e "tamanho" no codigo. A empresa nomeia os proprios
+eixos: a loja de roupa cria Cor e Tamanho, a sapataria cria Numeracao, a
+sorveteria cria Sabor. Com colunas fixas, a sapataria ja entraria torta.
+
+Todo produto tem pelo menos UMA variacao, mesmo quando nao varia. Sem isso,
+estoque e venda teriam dois caminhos ("as vezes e no produto, as vezes na
+variacao") — que e onde bug de estoque nasce.
+
+Unidade de medida no produto (un, kg, L, par...), porque vender 0,340 kg de
+sorvete e vender 1 blusa precisam caber na mesma venda.
+
+**Fora da v1, e nao se promete:** ficha tecnica (um sundae consome 100 g de
+sorvete + 30 g de calda, e o insumo precisa baixar junto) e validade/lote.
+Sao modulo proprio, nao nucleo. Entram com nome e fase se food service virar
+alvo de verdade.
+
+---
+
 ## 9. Pendências de decisão (bloqueiam a venda, não o código)
 
 - [ ] **Quem é o cliente?** Uma frase, com nome. Sem isso não se vende.
