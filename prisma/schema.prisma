@@ -28,11 +28,41 @@ datasource db {
 model Org {
   id        String   @id @default(cuid())
   nome      String
-  slug      String   @unique // subdomínio / URL
-  documento String? // CNPJ do grupo, quando existe
+  slug      String  @unique // subdomínio / URL
+  documento String? // CNPJ
+  ramo      String? // atalho que semeia o cadastro; não muda caminho de código
+
+  /// Dados que o sistema inteiro reaproveita: comprovante, nota, cobrança,
+  /// e o que o agente responde quando perguntam "onde fica?" ou "que horas
+  /// abre?". Preenchidos uma vez, no cadastro inicial.
+  razaoSocial       String? @map("razao_social")
+  inscricaoEstadual String? @map("inscricao_estadual")
+  regime            Regime? // define imposto na nota; o contador informa
+
+  email    String?
+  telefone String?
+  whatsapp String?
+
+  /// O nome que a empresa deu ao assistente dela. É o agente DELA — cada uma
+  /// batiza o seu. A configuração completa (personalidade, poderes, gatilhos)
+  /// vem junto com o módulo do agente.
+  agenteNome String? @map("agente_nome")
+
+  /// Marca o fim do cadastro inicial. Enquanto for nulo, toda tela leva a
+  /// pessoa de volta para terminar — sistema meio configurado confunde mais
+  /// que sistema vazio.
+  configuradaEm DateTime? @map("configurada_em")
 
   plano       Plano     @default(BALCAO)
   situacao    Situacao  @default(TESTE)
+
+  /// O que ESTA empresa usa. Quem não vende fiado não vê Crediário em lugar
+  /// nenhum — nem no menu, nem em relatório, nem no agente. A chave para
+  /// ligar depois mora em Configurações, não no menu.
+  ///
+  /// Módulo é grosso de propósito: cada chave dobra as combinações a testar.
+  /// Com trinta chaves ninguém garante mais que o sistema funciona.
+  modulos     String[]  @default([])
   testeAte    DateTime? @map("teste_ate")
   suspensaEm  DateTime? @map("suspensa_em")
 
@@ -74,11 +104,17 @@ model Unidade {
   documento String? // CNPJ desta unidade
   apelido   String? // como aparece no comprovante
 
-  endereco String?
-  cidade   String?
-  estado   String?
-  cep      String?
-  telefone String?
+  endereco    String?
+  numero      String?
+  complemento String?
+  bairro      String?
+  cidade      String?
+  estado      String?
+  cep         String?
+  telefone    String?
+
+  /// Texto livre: "Seg a sex 9h-18h, sáb 9h-13h". O agente responde com isto.
+  horario String?
 
   ehDeposito Boolean @default(false) @map("eh_deposito")
   ativa      Boolean @default(true)
@@ -238,6 +274,13 @@ model Cobranca {
 // ─────────────────────────────────────────────────────────────
 // ENUMS
 // ─────────────────────────────────────────────────────────────
+
+enum Regime {
+  MEI
+  SIMPLES
+  PRESUMIDO
+  REAL
+}
 
 enum Plano {
   BALCAO

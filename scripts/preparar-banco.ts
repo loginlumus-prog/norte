@@ -62,9 +62,13 @@ const { rows } = await cliente.query<{ n: string }>('select count(*)::int as n f
 if (Number(rows[0]!.n) === 0) {
   passo('duas empresas de exemplo...')
   await cliente.query(`
-    insert into orgs (id, nome, slug, plano, situacao, cor_marca, criada_em, atualizada_em) values
-      ('org-exemplo-a', 'Comércio Exemplo',     'exemplo', 'BALCAO_AGENTE', 'ATIVA', '#0D4A57', now(), now()),
-      ('org-exemplo-b', 'Empresa Vizinha', 'vizinha',      'REDE',          'ATIVA', '#7A4B12', now(), now());
+    insert into orgs (id, nome, slug, plano, situacao, cor_marca, ramo, modulos,
+                      configurada_em, telefone, criada_em, atualizada_em) values
+      -- A NAO usa crediario de proposito: e assim que se ve o menu encolher.
+      ('org-exemplo-a', 'Comércio Exemplo', 'exemplo', 'BALCAO_AGENTE', 'ATIVA', '#0D4A57',
+       'roupa', ARRAY['agente','metas'], now(), '(71) 99999-0000', now(), now()),
+      ('org-exemplo-b', 'Empresa Vizinha', 'vizinha', 'REDE', 'ATIVA', '#7A4B12',
+       'alimentacao', ARRAY['crediario','notaFiscal','multiUnidade'], now(), null, now(), now());
 
     insert into unidades (id, org_id, nome, ativa, eh_deposito, criada_em, atualizada_em) values
       ('uni-a1', 'org-exemplo-a', 'Loja Centro',   true, false, now(), now()),

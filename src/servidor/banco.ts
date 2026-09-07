@@ -80,7 +80,18 @@ export async function acharOrgPorSlug(slug: string) {
   })
   return admin.org.findUnique({
     where: { slug },
-    select: { id: true, nome: true, slug: true, situacao: true, logoUrl: true, corMarca: true },
+    select: {
+      id: true,
+      nome: true,
+      slug: true,
+      situacao: true,
+      logoUrl: true,
+      corMarca: true,
+      // decidem o que aparece na tela antes de existir sessão
+      modulos: true,
+      configuradaEm: true,
+      agenteNome: true,
+    },
   })
 }
 

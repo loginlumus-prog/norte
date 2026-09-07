@@ -2,6 +2,9 @@
 CREATE SCHEMA IF NOT EXISTS "public";
 
 -- CreateEnum
+CREATE TYPE "Regime" AS ENUM ('MEI', 'SIMPLES', 'PRESUMIDO', 'REAL');
+
+-- CreateEnum
 CREATE TYPE "Plano" AS ENUM ('BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO');
 
 -- CreateEnum
@@ -25,8 +28,18 @@ CREATE TABLE "orgs" (
     "nome" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "documento" TEXT,
+    "ramo" TEXT,
+    "razao_social" TEXT,
+    "inscricao_estadual" TEXT,
+    "regime" "Regime",
+    "email" TEXT,
+    "telefone" TEXT,
+    "whatsapp" TEXT,
+    "agente_nome" TEXT,
+    "configurada_em" TIMESTAMP(3),
     "plano" "Plano" NOT NULL DEFAULT 'BALCAO',
     "situacao" "Situacao" NOT NULL DEFAULT 'TESTE',
+    "modulos" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "teste_ate" TIMESTAMP(3),
     "suspensa_em" TIMESTAMP(3),
     "logo_url" TEXT,
@@ -45,10 +58,14 @@ CREATE TABLE "unidades" (
     "documento" TEXT,
     "apelido" TEXT,
     "endereco" TEXT,
+    "numero" TEXT,
+    "complemento" TEXT,
+    "bairro" TEXT,
     "cidade" TEXT,
     "estado" TEXT,
     "cep" TEXT,
     "telefone" TEXT,
+    "horario" TEXT,
     "eh_deposito" BOOLEAN NOT NULL DEFAULT false,
     "ativa" BOOLEAN NOT NULL DEFAULT true,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

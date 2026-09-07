@@ -11,6 +11,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { pode, type Capacidade, type Sessao } from '@/servidor/permissao'
+import { moduloLigado, type Modulo } from '@/servidor/modulos'
 import { sairAcao } from '@/app/[empresa]/acoes'
 import { TrocaTema, type Tema } from './TrocaTema'
 import { cx } from './base'
@@ -19,6 +20,9 @@ export type ItemMenu = {
   href: string
   titulo: string
   exige: Capacidade
+  /// Só aparece se a empresa usa este módulo. Sem isto, quem não vende fiado
+  /// veria Crediário parado no menu para sempre.
+  modulo?: Modulo
   contagem?: number
   /** true quando algo ali precisa de atenção — pinta a contagem */
   alerta?: boolean
@@ -34,7 +38,7 @@ export function Estrutura({
   acao,
   children,
 }: {
-  empresa: { nome: string; slug: string; corMarca?: string | null }
+  empresa: { nome: string; slug: string; corMarca?: string | null; modulos: string[] }
   sessao: Sessao
   itens: ItemMenu[]
   ativo: string
@@ -43,7 +47,10 @@ export function Estrutura({
   acao?: ReactNode
   children: ReactNode
 }) {
-  const visiveis = itens.filter((i) => pode(sessao, i.exige))
+  // Duas perguntas, não uma: "esta pessoa pode?" E "esta empresa usa?".
+  const visiveis = itens.filter(
+    (i) => pode(sessao, i.exige) && (!i.modulo || moduloLigado(empresa, i.modulo)),
+  )
 
   return (
     <div className="flex min-h-dvh">
@@ -89,6 +96,12 @@ export function Estrutura({
         </nav>
 
         <div className="mt-auto flex flex-col gap-2 px-2 pt-3">
+          <Link
+            href={`/${empresa.slug}/configuracoes`}
+            className="text-xs font-medium text-tinta-3 underline-offset-2 hover:text-tinta hover:underline"
+          >
+            Configurações
+          </Link>
           <TrocaTema inicial={tema} />
           <p className="truncate text-xs text-tinta-3" title={sessao.nome}>
             {sessao.nome}

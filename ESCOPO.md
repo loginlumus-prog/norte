@@ -136,6 +136,33 @@ alvo de verdade.
 
 ---
 
+## 8.2 Modulos: a empresa so ve o que usa (decidido 07/09)
+
+Quem nao vende fiado NAO ve Crediario. Nao e menu escondido nem item cinza
+"sem acesso" — o modulo esta desligado e some do menu, dos relatorios e do
+que o agente sabe fazer. A chave para ligar depois mora em Configuracoes.
+
+O menu passa a fazer DUAS perguntas: "esta pessoa pode?" e "esta empresa usa?".
+
+Sao seis modulos, e sao grossos de proposito: crediario, nota fiscal,
+multi-unidade, agente, metas, encomenda. Cada chave dobra as combinacoes a
+testar — com seis sao 64, com trinta seria mais de um bilhao, e ai ninguem
+consegue afirmar que o sistema funciona.
+
+**O ramo escolhe o que e SEMEADO, nunca o caminho do codigo.** Nao existe
+"tela de estoque de sorveteria": existe uma tela que mostra quilo porque o
+produto esta em quilo, e mostra Sabor porque a empresa criou o eixo Sabor.
+Se o ramo virasse `if` no codigo, o primeiro cliente misto (loja de roupa com
+cafeteria dentro) quebraria o sistema.
+
+O cadastro inicial (`/empresa/comecar`) recolhe: identidade (nome, razao
+social, CNPJ, inscricao, regime), contato, endereco e horario da unidade, o
+ramo, os modulos e o nome do assistente. **Nao recolhe conta bancaria,
+maquininha nem certificado digital** — esses tem tela propria e so o dono
+digita.
+
+---
+
 ## 9. Pendências de decisão (bloqueiam a venda, não o código)
 
 - [ ] **Quem é o cliente?** Uma frase, com nome. Sem isso não se vende.

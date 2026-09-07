@@ -4,7 +4,12 @@
 // tela escreve cor, borda ou espaçamento na mão. Se falta um jeito de um
 // componente, ele ganha uma variante aqui — não uma classe solta lá.
 
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+} from 'react'
 
 export const cx = (...p: (string | false | null | undefined)[]) => p.filter(Boolean).join(' ')
 
@@ -190,5 +195,85 @@ export function Vazio({ children, acao }: { children: ReactNode; acao?: ReactNod
       <p className="max-w-sm text-sm text-tinta-2">{children}</p>
       {acao}
     </div>
+  )
+}
+
+/* ── Seleção ──────────────────────────────────────────────── */
+
+export function Selecao({
+  rotulo,
+  dica,
+  opcoes,
+  id,
+  className,
+  ...resto
+}: SelectHTMLAttributes<HTMLSelectElement> & {
+  rotulo: string
+  dica?: string
+  opcoes: { valor: string; titulo: string }[]
+}) {
+  const meuId = id ?? `sel-${resto.name ?? rotulo.toLowerCase().replace(/\W+/g, '-')}`
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={meuId} className="text-sm font-medium text-tinta">
+        {rotulo}
+      </label>
+      <select
+        {...resto}
+        id={meuId}
+        className={cx(
+          'rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta',
+          className,
+        )}
+      >
+        {opcoes.map((o) => (
+          <option key={o.valor} value={o.valor}>
+            {o.titulo}
+          </option>
+        ))}
+      </select>
+      {dica && <p className="text-xs text-tinta-3">{dica}</p>}
+    </div>
+  )
+}
+
+/* ── Caixa de marcar ──────────────────────────────────────── */
+
+/**
+ * Rótulo grande e clicável inteiro. No balcão se usa com o dedo, e alvo
+ * pequeno de 16px erra mais do que acerta.
+ */
+export function Marcar({
+  titulo,
+  resumo,
+  id,
+  className,
+  ...resto
+}: InputHTMLAttributes<HTMLInputElement> & {
+  titulo: string
+  resumo?: string
+}) {
+  const meuId = id ?? `mar-${resto.name}`
+  return (
+    <label
+      htmlFor={meuId}
+      className={cx(
+        'flex cursor-pointer items-start gap-3 rounded-norte border border-borda',
+        'bg-superficie p-3 transition-colors hover:bg-superficie-2',
+        'has-checked:border-marca has-checked:bg-marca-suave',
+        className,
+      )}
+    >
+      <input
+        {...resto}
+        id={meuId}
+        type="checkbox"
+        className="mt-0.5 size-4 shrink-0 accent-[var(--marca)]"
+      />
+      <span className="flex flex-col gap-0.5">
+        <span className="text-sm font-semibold text-tinta">{titulo}</span>
+        {resumo && <span className="text-xs text-tinta-2">{resumo}</span>}
+      </span>
+    </label>
   )
 }

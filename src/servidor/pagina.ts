@@ -12,6 +12,8 @@ export type Empresa = NonNullable<Awaited<ReturnType<typeof acharOrgPorSlug>>>
 
 export async function exigirEntrada(
   slugEmpresa: string,
+  /** A própria tela de cadastro passa `false`, senão entraria em laço. */
+  exigirConfigurada = true,
 ): Promise<{ empresa: Empresa; sessao: Sessao }> {
   const empresa = await acharOrgPorSlug(slugEmpresa)
   if (!empresa) notFound()
@@ -27,6 +29,12 @@ export async function exigirEntrada(
   // não na próxima vez que ela tentar entrar.
   if (empresa.situacao === 'SUSPENSA' || empresa.situacao === 'CANCELADA') {
     redirect(`/${slugEmpresa}/entrar`)
+  }
+
+  // Sistema meio configurado confunde mais que sistema vazio: enquanto o
+  // cadastro inicial não terminou, toda tela leva de volta para ele.
+  if (exigirConfigurada && !empresa.configuradaEm) {
+    redirect(`/${slugEmpresa}/comecar`)
   }
 
   return { empresa, sessao }

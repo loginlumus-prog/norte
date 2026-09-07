@@ -44,6 +44,10 @@ Os dados ficam em `.banco/`. Apagar a pasta = banco novo.
 
 ## Estado
 
+**Cadastro inicial e módulos.** A empresa responde o que usa e o sistema
+esconde o resto: quem não vende fiado não vê Crediário em lugar nenhum.
+Ligar de volta é em Configurações.
+
 **Fase 2 — em andamento.** Catálogo (produto com eixos de variação da própria
 empresa + unidade de medida) e estoque com movimento atômico prontos e
 conferidos. Tela de produtos no ar.
@@ -90,6 +94,7 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
 | `src/servidor/sessao.ts` | Cookie de sessão, com escopo por empresa |
 | `src/servidor/pagina.ts` | `exigirEntrada()` — toda tela de dentro começa por ela |
 | `src/servidor/estoque.ts` | Movimento de estoque, atômico. A conta acontece no banco |
+| `src/servidor/modulos.ts` | O que cada empresa usa, e o que cada ramo já deixa pronto |
 | `src/ui/` | Componentes: Botão, Campo, Aviso, Situação, Cartão, Tabela, Estrutura |
 | `src/app/globals.css` | As fichas de cor e os dois temas |
 
