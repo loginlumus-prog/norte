@@ -48,19 +48,25 @@ Os dados ficam em `.banco/`. Apagar a pasta = banco novo.
 esconde o resto: quem não vende fiado não vê Crediário em lugar nenhum.
 Ligar de volta é em Configurações.
 
-**Fase 2 — em andamento.** Catálogo (produto com eixos de variação da própria
-empresa + unidade de medida) e estoque com movimento atômico prontos e
-conferidos. Tela de produtos no ar.
+**Fase 2 — motor pronto, telas pela metade.** Catálogo (a empresa nomeia os
+eixos de variação), estoque com movimento atômico, venda numa transação só
+(estoque + venda + pagamento) e caixa que fecha conferindo a gaveta. Dinheiro
+em **centavos inteiros** — ver `src/servidor/dinheiro.ts` e o bug que originou
+o arquivo.
 
-Venda registrada: estoque, venda e pagamento numa transação só. Dinheiro é
-contado em **centavos inteiros** — ver `src/servidor/dinheiro.ts` e o bug que
-originou o arquivo.
+O critério da fase era "passar um dia inteiro de vendas reais sem abrir o
+sistema antigo", e ele **não está cumprido**: não dá para cadastrar produto
+pela tela, nem dar entrada de mercadoria, nem cadastrar cliente. Faltam
+também etiqueta, troca, parcela com juro e o modo sem internet.
 
-**Fase 2 fechada.** Balcão e caixa no ar: bipa a etiqueta, Enter lança,
-pagamento dividido, troco calculado e o caixa fecha conferindo a gaveta.
+**Fase 3 — o DRE fecha, o resto não.** Contas a pagar com aviso de vencida,
+lançamento de despesa, 18 categorias já amarradas à linha do DRE, e o
+demonstrativo mensal conferido linha a linha. Faltam recorrentes (a tabela
+existe, o motor não), contas a receber, DRE em PDF e conciliação de maquininha.
 
-**Fase 3 fechada.** Contas a pagar com aviso de vencida, lançamento de
-despesa e DRE mensal no formato da contabilidade.
+> Chamar fase de "fechada" quando o critério dela não foi cumprido esconde
+> exatamente o trabalho que separa a demonstração do primeiro cliente pagando.
+> O estado por item está em `docs/` e no relatório de situação.
 
 **Marca e porta de entrada.** O símbolo (`src/ui/Marca.tsx`), a paleta sem
 viés de cor, a barra lateral azul-noite e a página de venda em `/` — com os
