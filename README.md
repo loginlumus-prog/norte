@@ -56,7 +56,10 @@ Venda registrada: estoque, venda e pagamento numa transação só. Dinheiro é
 contado em **centavos inteiros** — ver `src/servidor/dinheiro.ts` e o bug que
 originou o arquivo.
 
-Falta na Fase 2: telas do balcão e do caixa, seletor de unidade, painel.
+**Fase 2 fechada.** Balcão e caixa no ar: bipa a etiqueta, Enter lança,
+pagamento dividido, troco calculado e o caixa fecha conferindo a gaveta.
+
+Próximo: Fase 3 — despesas, contas a pagar e DRE.
 
 **Fase 1 — Fundação: fechada.** Modelo de dados, isolamento entre empresas,
 acesso da aplicação, senhas, login, papéis, convite de equipe, biblioteca de
@@ -109,6 +112,7 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
 | `src/servidor/modulos.ts` | O que cada empresa usa, e o que cada ramo já deixa pronto |
 | `src/servidor/dinheiro.ts` | Centavos inteiros. Nenhuma conta de dinheiro sai daqui |
 | `src/servidor/venda.ts` | Registrar venda: estoque + venda + pagamento, ou nada |
+| `src/servidor/caixa.ts` | Abrir, movimentar e fechar o caixa do turno |
 | `src/servidor/unidade.ts` | Qual loja a pessoa está olhando, e quais ela alcança |
 | `src/servidor/painel.ts` | Os números do painel, uma consulta por assunto |
 | `src/servidor/planos.ts` | Cotas por plano e o que custa a loja extra |
