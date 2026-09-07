@@ -8,6 +8,7 @@ import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
+  Ref,
   SelectHTMLAttributes,
 } from 'react'
 
@@ -77,11 +78,19 @@ export function Campo({
   dica,
   id,
   className,
+  campoRef,
   ...resto
 }: InputHTMLAttributes<HTMLInputElement> & {
   rotulo: string
   erro?: string
   dica?: string
+  /**
+   * Para quem precisa devolver o foco ao campo depois de uma ação — o balcão
+   * e a entrada de mercadoria fazem isso a cada item lançado. Sem ele, a tela
+   * ou usa um <input> solto (e perde rótulo, dica e erro) ou obriga a pessoa
+   * a clicar entre um bipe e outro.
+   */
+  campoRef?: Ref<HTMLInputElement>
 }) {
   const meuId = id ?? `campo-${resto.name ?? rotulo.toLowerCase().replace(/\W+/g, '-')}`
   const idDica = dica ? `${meuId}-dica` : undefined
@@ -94,6 +103,7 @@ export function Campo({
       </label>
       <input
         {...resto}
+        ref={campoRef}
         id={meuId}
         aria-invalid={erro ? true : undefined}
         aria-describedby={cx(idDica, idErro) || undefined}
@@ -205,9 +215,13 @@ export function Cartao({
   children: ReactNode
 }) {
   return (
-    <section className="overflow-hidden rounded-norte border border-borda bg-superficie">
+    // Sem `overflow-hidden`: ele cortava qualquer coisa que precise sair do
+    // cartão — e o primeiro caso foi a lista de resultados da busca de
+    // entrada de mercadoria, que sumia atrás da borda. O canto arredondado
+    // vem do próprio cabeçalho agora.
+    <section className="rounded-norte border border-borda bg-superficie">
       {titulo && (
-        <header className="flex items-center justify-between gap-3 border-b border-borda bg-superficie-2 px-4 py-2.5">
+        <header className="flex items-center justify-between gap-3 rounded-t-norte border-b border-borda bg-superficie-2 px-4 py-2.5">
           <h2 className="text-sm font-semibold text-tinta">{titulo}</h2>
           {acao}
         </header>

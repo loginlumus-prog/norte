@@ -16,7 +16,7 @@ export const MENU = (slug: string): ItemMenu[] => [
   { href: `/${slug}`, titulo: 'Painel', exige: 'venda.ver' },
   { href: `/${slug}/balcao`, titulo: 'Balcão', exige: 'venda.criar' },
   { href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver' },
-  { href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver', emBreve: true },
+  { href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },
   { href: `/${slug}/clientes`, titulo: 'Clientes', exige: 'cliente.ver', emBreve: true },
   { href: `/${slug}/crediario`, titulo: 'Crediário', exige: 'crediario.ver', modulo: 'crediario', emBreve: true },
   { href: `/${slug}/financeiro`, titulo: 'Financeiro', exige: 'financeiro.ver' },

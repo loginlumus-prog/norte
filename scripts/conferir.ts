@@ -31,6 +31,7 @@ import { sessaoAindaVale } from '../src/servidor/permissao'
 import { cortarSessoes } from '../src/servidor/pagina'
 import { acharAgente, propor, responderProposta, paraConfig } from '../src/servidor/agente'
 import { criarProduto, ajustarGrade, eixosDaEmpresa } from '../src/servidor/produto'
+import { registrarEntrada, definirMinimo } from '../src/servidor/entrada'
 import { ferramentasDe, AcimaDoTeto } from '../src/servidor/poderes'
 import { escolherUnidade } from '../src/servidor/unidade'
 import { resumoDoPainel } from '../src/servidor/painel'
@@ -549,6 +550,101 @@ console.log('\n  Cadastro de produto\n')
       db.vendaItem.count({ where: { variacaoId: antesG!.id } }),
     )
     ok('a venda antiga da combinacao continua no historico', vendeuG > 0, `${vendeuG} item(ns)`)
+  }
+}
+
+
+// ── entrada de mercadoria ────────────────────────────────────
+console.log('\n  Entrada de mercadoria\n')
+
+{
+  const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
+  const balconista = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+
+  if (dona.ok && balconista.ok) {
+    const peca = await comoOrg(A, (db) =>
+      db.variacao.findFirst({
+        where: { produto: { nome: 'Camiseta canelada' } },
+        orderBy: { codigo: 'asc' },
+        select: { id: true, produtoId: true },
+      }),
+    )
+    const cat = await comoOrg(A, (db) =>
+      db.categoriaFinanceira.findFirst({ where: { nome: 'Compra de mercadoria' }, select: { id: true } }),
+    )
+
+    const antes = await saldo(dona.sessao, peca!.id, 'uni-a1')
+    const contasAntes = await comoOrg(A, (db) => db.lancamento.count())
+
+    const r = await registrarEntrada(dona.sessao, {
+      unidadeId: 'uni-a1',
+      fornecedor: 'Fornecedor da conferencia',
+      documento: 'NF-CONF-1',
+      itens: [{ variacaoId: peca!.id, quantidade: 12, custoUnit: 27.4 }],
+      conta: { categoriaId: cat!.id, vencimento: new Date(Date.now() + 30 * 864e5), jaPago: false },
+    })
+
+    ok('entrada registrada', r.ok, r.ok ? `${r.itens} item(ns), R$ ${r.total.toFixed(2)}` : r.motivo)
+
+    const depois = await saldo(dona.sessao, peca!.id, 'uni-a1')
+    ok('o saldo sobe exatamente o que entrou', depois === antes + 12, `${antes} -> ${depois}`)
+
+    const custo = await comoOrg(A, (db) =>
+      db.produto.findUnique({ where: { id: peca!.produtoId }, select: { custo: true } }),
+    )
+    ok('o custo passa a ser o DESTA compra', Number(custo?.custo) === 27.4, `R$ ${custo?.custo}`)
+
+    const contasDepois = await comoOrg(A, (db) => db.lancamento.count())
+    const conta = await comoOrg(A, (db) =>
+      db.lancamento.findFirst({ where: { documento: 'NF-CONF-1' }, select: { valor: true, fornecedor: true } }),
+    )
+    ok('e a conta do fornecedor nasce com 12 x 27,40',
+       contasDepois === contasAntes + 1 && Number(conta?.valor) === 328.8,
+       `R$ ${conta?.valor} para ${conta?.fornecedor}`)
+
+    // O saldo continua batendo com a soma do histórico. É a checagem que
+    // impede o estoque de virar um número em que ninguém confia.
+    const divergentes = await conferirSaldos(dona.sessao, 'uni-a1')
+    ok('e o saldo continua batendo com o historico', divergentes.length === 0,
+       `${divergentes.length} divergencia(s)`)
+
+    // Quem vende não dá entrada: seria o caminho para "aparecer" mercadoria.
+    let recusado = false
+    try {
+      await registrarEntrada(balconista.sessao, {
+        unidadeId: 'uni-a1',
+        itens: [{ variacaoId: peca!.id, quantidade: 999 }],
+      })
+    } catch (e) {
+      recusado = e instanceof SemPermissao
+    }
+    ok('o balcao NAO da entrada de mercadoria', recusado)
+
+    // Balanço: a pessoa digita o que CONTOU, e o sistema calcula o ajuste.
+    const contado = 7
+    const b = await mexerEstoque(dona.sessao, {
+      variacaoId: peca!.id,
+      unidadeId: 'uni-a1',
+      tipo: 'BALANCO',
+      quantidade: contado,
+      motivo: 'Contagem da conferencia',
+    })
+    ok('balanco grava o que foi CONTADO, nao a diferenca',
+       b.ok && b.saldo === contado, b.ok ? `saldo ${b.saldo}` : b.motivo)
+
+    const aindaBate = await conferirSaldos(dona.sessao, 'uni-a1')
+    ok('e o balanco tambem entra no historico', aindaBate.length === 0,
+       `${aindaBate.length} divergencia(s)`)
+
+    // O mínimo é o que transforma "acabou" em "está acabando".
+    await definirMinimo(dona.sessao, peca!.id, 'uni-a1', 4)
+    const comMinimo = await comoOrg(A, (db) =>
+      db.estoque.findUnique({
+        where: { variacaoId_unidadeId: { variacaoId: peca!.id, unidadeId: 'uni-a1' } },
+        select: { minimo: true },
+      }),
+    )
+    ok('o minimo de reposicao e gravado', Number(comMinimo?.minimo) === 4, `minimo ${comMinimo?.minimo}`)
   }
 }
 
