@@ -286,7 +286,48 @@ restauração. Entram na Fase 6, junto com contrato e cobrança.
 
 ---
 
-## 12. O que continua em aberto
+## 12. Arquitetura do agente (fechado 07/09)
+
+A decisão central é a mesma do ESCOPO §6, mas agora ela tem forma no código,
+e o desenho tem quatro camadas — nenhuma delas suficiente sozinha.
+
+| Camada | O que ela impede |
+|---|---|
+| **Lista fechada de poderes** | O que não está ligado nem vira ferramenta oferecida ao modelo. Ele não tem como pedir o que não recebeu |
+| **Tetos em número, no banco** | Conferidos no servidor DEPOIS de o modelo responder. "Me dê 90% de desconto" morre aqui, sem consultar texto nenhum |
+| **Propor, nunca escrever** | Mexeu em dinheiro, preço ou estoque: proposta em português, com o número, esperando um sim |
+| **Nunca mais que quem confirma** | Cada poder declara a capacidade humana equivalente, exigida na hora do sim |
+
+**A quarta é a que quase passou despercebida.** Sem ela, confirmar seria o
+caminho para o balconista fazer *pelo agente* o que ele não faz pela tela — e
+o agente viraria escalada de privilégio com cara de conveniência. O `conferir`
+prova que o balcão é recusado e que a proposta continua esperando quem pode.
+
+**Duas decisões de detalhe que valem registro:**
+
+*O agente chama os MESMOS serviços que a tela chama.* Se tivesse um caminho
+paralelo para escrever no banco, a regra de negócio existiria em dois lugares
+e um dos dois ficaria para trás — normalmente o que ninguém olha.
+
+*Proposta vale 24 horas.* Depois disso o estoque e o preço já são outros, e
+confirmar uma proposta velha grava uma decisão tomada sobre dados que não
+existem mais.
+
+**Modelo padrão: `claude-sonnet-5`.** O custo por conversa fica em
+`custo-ia.ts`, visível e testado, não escondido no adaptador — porque é ele
+que decide se a mensalidade fecha. Um cliente que conversa muito pode consumir
+mais do que paga, e sem medir ninguém percebe até o fim do trimestre. O teto
+diário existe pelo mesmo motivo, e por um segundo: um defeito que faça o
+agente responder a si mesmo em laço queima a conta numa madrugada.
+
+**Descartado:** dar ao agente um usuário próprio com papel de sistema. Seria
+mais simples de programar e teria criado exatamente o problema que a camada
+quatro resolve — um ator dentro do sistema que ninguém consegue explicar quem
+autorizou.
+
+---
+
+## 13. O que continua em aberto
 
 - [ ] Confirmar domínio (`usenorte.com.br`) e registrar marca MISTA no INPI —
       "Norte" isolado é fraco, ver §1
