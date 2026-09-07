@@ -33,7 +33,7 @@ export function TrocaTema({ inicial }: { inicial: Tema }) {
     <div
       role="group"
       aria-label="Tema da tela"
-      className="flex items-center gap-0.5 rounded-norte border border-nav-borda bg-nav-2 p-0.5"
+      className="inline-flex w-fit items-center gap-0.5 rounded-norte border border-nav-borda bg-nav-2 p-0.5"
     >
       {OPCOES.map((o) => (
         <button
