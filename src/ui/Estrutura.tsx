@@ -33,6 +33,8 @@ export type ItemMenu = {
   contagem?: number
   /** Bolinha de aviso: quantos precisam de olhada, e com que urgência. */
   aviso?: { quantos: number; nivel: 'critico' | 'atencao' | 'bom'; titulo: string }
+  /** Está no plano, ainda não foi construído. Aparece, mas não é clicável. */
+  emBreve?: boolean
 }
 
 export function Estrutura({
@@ -84,6 +86,25 @@ export function Estrutura({
         <nav className="flex flex-col gap-0.5">
           {visiveis.map((i) => {
             const aqui = i.href === ativo
+
+            // Ainda não construído: entra como texto, não como link. Item que
+            // leva a 404 faz o sistema parecer quebrado, e quem clicou não tem
+            // como saber que o problema não é ele.
+            if (i.emBreve) {
+              return (
+                <span
+                  key={i.href}
+                  className="flex cursor-default items-center justify-between gap-2 rounded-norte px-2.5 py-2 text-sm font-medium text-nav-tinta-2/55"
+                  title="Está no plano, ainda não foi construída"
+                >
+                  <span className="truncate">{i.titulo}</span>
+                  <span className="shrink-0 rounded border border-nav-borda px-1 py-px text-[9px] font-bold tracking-wide text-nav-tinta-2/70 uppercase">
+                    em breve
+                  </span>
+                </span>
+              )
+            }
+
             return (
               <Link
                 key={i.href}
