@@ -1,0 +1,114 @@
+# Norte
+
+Sistema de gestão empresarial operado por um agente de IA no WhatsApp.
+Atende do balcão de bairro à rede com dezenas de unidades.
+
+## Documentos
+
+| Arquivo | O que é |
+|---|---|
+| `ESCOPO.md` | O que o produto é e o que não é |
+| `DECISOES.md` | Toda decisão fechada, com motivo e alternativas descartadas |
+| `docs/plano-completo.html` | Os 13 módulos e as 6 fases de construção |
+| `docs/decisoes.html` | As decisões em página navegável |
+| `docs/clickup-traduzido.html` | Pesquisa do ClickUp traduzida para o nosso produto |
+
+## Começar a trabalhar
+
+Não precisa de Docker, de banco na nuvem, nem de conta em lugar nenhum.
+
+```bash
+npm install
+npm run banco      # sobe o Postgres local — deixe esta janela aberta
+npm run preparar   # tabelas, travas, duas empresas e gente para entrar
+npm run dev        # o sistema, em http://localhost:3000/exemplo
+npm run conferir   # prova isolamento e login no banco de verdade
+npm test           # checa tipos + 65 testes
+```
+
+Contas de exemplo (só no banco local), senha `exemplo-2026`:
+
+| E-mail | Papel |
+|---|---|
+| `ana@exemplo.com` | Dona — tudo, em todas as unidades |
+| `carlos@exemplo.com` | Balcão — vende, presa a uma unidade |
+| `contador@exemplo.com` | Contador — só olha o financeiro |
+| `antiga@exemplo.com` | Desativada, para testar recusa |
+
+O `npm run banco` sobe um Postgres de verdade (PGlite, compilado para WASM)
+falando o protocolo do Postgres na porta 5433. A aplicação conecta com uma
+connection string normal, então **não existe uma linha de código diferente
+entre desenvolvimento e produção**.
+
+Os dados ficam em `.banco/`. Apagar a pasta = banco novo.
+
+## Estado
+
+**Fase 1 — Fundação: fechada.** Modelo de dados, isolamento entre empresas,
+acesso da aplicação, senhas, login, papéis, convite de equipe, biblioteca de
+componentes e os dois temas. Entrar em `/exemplo` já funciona de verdade.
+
+Próximo: Fase 2 — produto, estoque, balcão e caixa.
+
+## As regras que não se quebram
+
+1. **Toda tabela de dado de cliente carrega `org_id`.** Sem exceção.
+2. **Ninguém fala com o banco direto.** Tudo passa por `comoOrg()` em
+   `src/servidor/banco.ts`. Se você escreveu `prisma.` fora daquele arquivo,
+   está errado.
+3. **O código pergunta pela capacidade, nunca pelo papel.** `pode(sessao,
+   'caixa.operar', unidadeId)` — nunca `if (papel === 'GERENTE')`. Assim criar
+   um papel novo não obriga a caçar condição espalhada pelo sistema.
+4. **Ninguém concede papel que não tem.** Gerente contrata balconista; só dono
+   cria dono. Sem isso, "gerir equipe" viraria caminho para virar dono.
+5. **Isolamento tem duas paredes:** a aplicação (`comoOrg`) e o RLS do Postgres
+   (`prisma/sql/rls.sql`). A segunda existe para quando a primeira falhar.
+6. **`npm test` verde é condição para subir.** Vazamento entre empresas mata o
+   negócio no primeiro dia.
+7. **O livro de auditoria só recebe.** Sem UPDATE, sem DELETE, e a tentativa
+   levanta erro em vez de falhar em silêncio.
+
+### Onde ficam as coisas
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `src/servidor/banco.ts` | A parede 1: `comoOrg()`. Único lugar que fala com o banco |
+| `src/servidor/permissao.ts` | Quem pode o quê. Puro, sem I/O |
+| `src/servidor/senha.ts` | Guardar e conferir senha (scrypt) |
+| `src/servidor/autenticacao.ts` | Entrar no sistema |
+| `src/servidor/convite.ts` | Convidar gente para a equipe |
+| `src/servidor/sessao.ts` | Cookie de sessão, com escopo por empresa |
+| `src/servidor/pagina.ts` | `exigirEntrada()` — toda tela de dentro começa por ela |
+| `src/ui/` | Componentes: Botão, Campo, Aviso, Situação, Cartão, Tabela, Estrutura |
+| `src/app/globals.css` | As fichas de cor e os dois temas |
+
+### Ao criar tabela nova
+
+Ela precisa de `org_id`, e o `rls.sql` precisa rodar de novo — ele liga a
+proteção por varredura, então tabela nova entra sozinha. O terceiro teste
+(`RLS está ligado e forçado em toda tabela com org_id`) reprova se esquecerem.
+
+## Limitações conhecidas do banco local
+
+O PGlite é um Postgres de **um backend só**. Duas consequências, ambas só no
+desenvolvimento:
+
+- **Sem concorrência real.** Várias conexões são multiplexadas por cima de um
+  backend, então transações simultâneas não se comportam como num Postgres de
+  verdade. Por isso `POOL_MAX=1` no `.env`. Qualquer coisa sensível a
+  concorrência precisa ser validada no banco hospedado.
+- **Conexão não sobrevive a transação abortada.** Postgres de verdade recupera;
+  este não. Por isso o `npm run conferir` só faz leitura — checagem do tipo
+  "esta escrita tem que dar erro" envenenaria a conexão e as seguintes
+  passariam pelo motivo errado. Essas ficam no `npm test`, que fala com o
+  PGlite direto e não sofre disso.
+
+Quando houver banco hospedado (Neon é o plano — ver `DECISOES.md`), as
+checagens de escrita voltam para o `conferir`.
+
+## Pilha
+
+Next.js · TypeScript · PostgreSQL · Prisma 7 · Vitest · PGlite (dev e testes)
+
+> Prisma 7 tirou a `url` do `schema.prisma`. Ela vive em `prisma.config.ts`
+> para migração, e o cliente da aplicação usa adapter.

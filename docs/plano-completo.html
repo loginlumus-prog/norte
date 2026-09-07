@@ -1,0 +1,635 @@
+<title>Do Zero ao Primeiro Cliente</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --bg:#F6F7F9;
+  --surface:#FFFFFF;
+  --surface-2:#EEF0F4;
+  --surface-3:#E4E7ED;
+  --ink:#111722;
+  --ink-2:#4B5563;
+  --ink-3:#7A8494;
+  --rule:#DCE0E7;
+  --rule-soft:#E9ECF1;
+
+  --accent:#4F46C7;
+  --accent-bg:#E9E8F8;
+
+  --ok:#1E7A4B;        /* portar - ja existe */
+  --ok-bg:#DFF1E7;
+  --build:#3B5BC4;     /* construir */
+  --build-bg:#E2E8F9;
+  --int:#96601A;       /* integrar - terceiro */
+  --int-bg:#F7E9D0;
+  --out:#6B7280;       /* fora da v1 */
+  --out-bg:#E7E9ED;
+  --risk:#A33A32;
+  --risk-bg:#F7E0DD;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1117;
+    --surface:#151A21;
+    --surface-2:#1C222B;
+    --surface-3:#252D37;
+    --ink:#E9EDF2;
+    --ink-2:#A3ADBA;
+    --ink-3:#6F7A88;
+    --rule:#28303A;
+    --rule-soft:#1F262F;
+    --accent:#9B95F2;
+    --accent-bg:#1F1D3A;
+    --ok:#5FCB92;
+    --ok-bg:#12291D;
+    --build:#8AA6F0;
+    --build-bg:#151F36;
+    --int:#E0B063;
+    --int-bg:#2B2213;
+    --out:#8B95A2;
+    --out-bg:#212831;
+    --risk:#E08D84;
+    --risk-bg:#2E1A18;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1117; --surface:#151A21; --surface-2:#1C222B; --surface-3:#252D37;
+  --ink:#E9EDF2; --ink-2:#A3ADBA; --ink-3:#6F7A88; --rule:#28303A; --rule-soft:#1F262F;
+  --accent:#9B95F2; --accent-bg:#1F1D3A;
+  --ok:#5FCB92; --ok-bg:#12291D; --build:#8AA6F0; --build-bg:#151F36;
+  --int:#E0B063; --int-bg:#2B2213; --out:#8B95A2; --out-bg:#212831;
+  --risk:#E08D84; --risk-bg:#2E1A18;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:Figtree,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+.wrap{width:min(100% - 2.25rem, 1120px);margin-inline:auto}
+.prose{max-width:70ch}
+
+h1,h2,h3,h4{margin:0;text-wrap:balance}
+h1{font-size:clamp(1.9rem,1.2rem + 2.5vw,2.9rem);font-weight:800;letter-spacing:-.03em;line-height:1.05}
+h2{font-size:clamp(1.25rem,1.05rem + .8vw,1.65rem);font-weight:700;letter-spacing:-.022em;line-height:1.15}
+h3{font-size:1rem;font-weight:700;letter-spacing:-.012em}
+h4{font-size:.9rem;font-weight:600;letter-spacing:-.006em}
+p{margin:0}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.68rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-3);margin:0}
+.lede{font-size:1.08rem;color:var(--ink-2)}
+.small{font-size:.855rem;line-height:1.5;color:var(--ink-2)}
+.mono{font-family:"IBM Plex Mono",monospace;font-size:.85em}
+b,strong{font-weight:600;color:var(--ink)}
+a{color:var(--accent);text-underline-offset:2px}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+
+main{display:flex;flex-direction:column;gap:4rem;padding:0 0 5rem}
+section{display:flex;flex-direction:column;gap:1.25rem}
+.head{display:flex;flex-direction:column;gap:.4rem}
+.stack{display:flex;flex-direction:column;gap:.8rem}
+
+/* masthead */
+.masthead{background:var(--surface);border-bottom:1px solid var(--rule);padding:3rem 0 2rem}
+.masthead .wrap{display:flex;flex-direction:column;gap:1rem}
+.meta{display:flex;flex-wrap:wrap;gap:.3rem 1.5rem;border-top:1px solid var(--rule-soft);padding-top:.85rem;margin-top:.35rem}
+.meta span{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3)}
+.meta b{color:var(--ink-2);font-weight:500}
+
+/* chips */
+.chip{display:inline-flex;align-items:center;font-family:"IBM Plex Mono",monospace;
+  font-size:.64rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  padding:.16rem .42rem;border-radius:3px;white-space:nowrap}
+.c-ok{background:var(--ok-bg);color:var(--ok)}
+.c-build{background:var(--build-bg);color:var(--build)}
+.c-int{background:var(--int-bg);color:var(--int)}
+.c-out{background:var(--out-bg);color:var(--out)}
+.c-risk{background:var(--risk-bg);color:var(--risk)}
+
+.legend{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+@media(min-width:800px){.legend{grid-template-columns:repeat(4,1fr)}}
+.legend div{background:var(--surface);padding:.75rem .85rem;display:flex;flex-direction:column;gap:.35rem}
+
+/* module table */
+.mod{border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--surface)}
+.mod-h{display:flex;align-items:center;justify-content:space-between;gap:.75rem;
+  padding:.7rem .95rem;background:var(--surface-2);border-bottom:1px solid var(--rule)}
+.mod-h .n{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3);font-weight:600}
+.mod-h .t{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
+.row{display:grid;gap:.2rem .75rem;padding:.62rem .95rem;border-bottom:1px solid var(--rule-soft);
+  grid-template-columns:6.2rem 1fr}
+.row:last-child{border-bottom:0}
+.row .st{padding-top:.1rem}
+.row .nm{font-weight:600;font-size:.9rem}
+.row .ds{grid-column:2;font-size:.845rem;color:var(--ink-2);line-height:1.45}
+@media(max-width:620px){
+  .row{grid-template-columns:1fr}
+  .row .ds,.row .nm{grid-column:1}
+}
+
+/* generic table */
+.scroll{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:680px}
+th,td{text-align:left;padding:.6rem .85rem;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+th{font-size:.66rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  background:var(--surface-2);border-bottom:1px solid var(--rule)}
+tbody tr:last-child td{border-bottom:0}
+td{font-size:.86rem;line-height:1.45}
+td.k{font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-weight:500;white-space:nowrap}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* phases */
+.phase{border:1px solid var(--rule);border-radius:6px;background:var(--surface);overflow:hidden}
+.phase-h{display:grid;grid-template-columns:2.4rem 1fr;gap:.15rem .8rem;padding:.85rem .95rem;
+  background:var(--surface-2);border-bottom:1px solid var(--rule)}
+.phase-h .pn{font-family:"IBM Plex Mono",monospace;font-weight:700;font-size:.95rem;color:var(--accent);
+  font-variant-numeric:tabular-nums}
+.phase-h .pt{font-weight:700;font-size:1rem;letter-spacing:-.015em}
+.phase-h .pd{grid-column:2;font-size:.85rem;color:var(--ink-2)}
+.phase-b{padding:.85rem .95rem;display:flex;flex-direction:column;gap:.7rem}
+.phase-b ul{margin:0;padding:0 0 0 1.05rem;display:flex;flex-direction:column;gap:.25rem}
+.phase-b li{font-size:.87rem;color:var(--ink-2);line-height:1.45}
+.phase-b li b{color:var(--ink)}
+.done{border-top:1px solid var(--rule-soft);padding-top:.65rem;display:flex;gap:.5rem;align-items:baseline}
+.done .lbl{font-family:"IBM Plex Mono",monospace;font-size:.66rem;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+.done .txt{font-size:.87rem;color:var(--ink);font-weight:500}
+
+/* callout */
+.callout{background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--accent);
+  border-radius:0 6px 6px 0;padding:.95rem 1.05rem;display:flex;flex-direction:column;gap:.45rem}
+.callout.warn{border-left-color:var(--risk)}
+.callout.money{border-left-color:var(--int)}
+
+/* ui sketch */
+.sketch{border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--surface);
+  display:grid;grid-template-columns:132px 1fr;min-height:200px}
+.sk-side{background:var(--surface-2);border-right:1px solid var(--rule);padding:.6rem .55rem;
+  display:flex;flex-direction:column;gap:.28rem}
+.sk-brand{display:flex;align-items:center;gap:.35rem;padding:.15rem .3rem .5rem}
+.sk-dot{width:15px;height:15px;border-radius:4px;background:var(--accent);flex:none}
+.sk-brand span{font-size:.72rem;font-weight:700;letter-spacing:-.01em}
+.sk-item{font-size:.7rem;color:var(--ink-2);padding:.24rem .35rem;border-radius:4px;
+  font-weight:500;display:flex;justify-content:space-between;gap:.4rem}
+.sk-item.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:inset 0 0 0 1px var(--rule)}
+.sk-item .b{font-family:"IBM Plex Mono",monospace;font-size:.6rem;color:var(--ink-3)}
+.sk-main{display:flex;flex-direction:column}
+.sk-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem;
+  padding:.5rem .75rem;border-bottom:1px solid var(--rule)}
+.sk-tabs{display:flex;gap:.9rem}
+.sk-tab{font-size:.72rem;color:var(--ink-3);font-weight:500;padding-bottom:.28rem}
+.sk-tab.on{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+.sk-btn{font-size:.68rem;font-weight:600;background:var(--accent);color:#fff;
+  padding:.24rem .55rem;border-radius:4px}
+:root[data-theme="dark"] .sk-btn,:root:not([data-theme="light"]) .sk-btn{color:#12111F}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .sk-btn{color:#fff}}
+.sk-grid{padding:.6rem .75rem;display:flex;flex-direction:column;gap:.32rem}
+.sk-r{display:grid;grid-template-columns:1fr 4.5rem 3.6rem 3.2rem;gap:.5rem;align-items:center;
+  font-size:.71rem;padding:.3rem .35rem;border-radius:4px;color:var(--ink-2)}
+.sk-r.h{color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:.62rem;
+  letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--rule-soft);border-radius:0}
+.sk-r .nm{color:var(--ink);font-weight:500}
+.sk-r .n{font-variant-numeric:tabular-nums;text-align:right}
+.sk-pill{font-size:.6rem;font-weight:600;padding:.1rem .35rem;border-radius:3px;justify-self:start}
+@media(max-width:620px){.sketch{grid-template-columns:1fr}.sk-side{display:none}}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Plano de produto</p>
+    <h1>Do zero ao primeiro cliente</h1>
+    <p class="lede prose">Tudo o que o sistema vai oferecer, e o que cada item exige para existir de verdade — construção nossa, código já validado, ou dependência de terceiro com conta, custo e prazo que não são nossos.</p>
+    <div class="meta">
+      <span>Projeto <b>C:\dev\gestor</b></span>
+      <span>Base <b>ESCOPO.md + ClickUp Traduzido</b></span>
+      <span>Origem do código <b>sistema da Moda Ativa / Inove</b></span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ COMO LER ============ -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">Como ler</p>
+      <h2>Quatro situações, e nenhuma promessa fora delas</h2>
+      <p class="small prose">Todo item do plano carrega um destes selos. É o que impede a gente de vender o que não tem: se está escrito <b>Integrar</b>, existe um terceiro no caminho — e a conta, o custo e o prazo dele entram no nosso prazo.</p>
+    </div>
+
+    <div class="legend">
+      <div><span class="chip c-ok">Portar</span><p class="small">Já existe e roda em produção hoje. Vem com adaptação para multi-loja, não do zero.</p></div>
+      <div><span class="chip c-build">Construir</span><p class="small">Código novo, só nosso. Prazo depende só da gente.</p></div>
+      <div><span class="chip c-int">Integrar</span><p class="small">Depende de fornecedor. Tem conta pra abrir, aprovação, custo mensal e prazo alheio.</p></div>
+      <div><span class="chip c-out">Fora da v1</span><p class="small">Não entra e <b>não se promete</b>. Fica escrito para ninguém vender por engano.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ A OFERTA ============ -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">A oferta</p>
+      <h2>Treze módulos</h2>
+      <p class="small prose">Os nove primeiros são o núcleo que todo cliente leva. Do dez ao doze são módulos que ligam e desligam por loja. O treze é o que transforma o sistema em empresa — e é o que hoje não existe em lugar nenhum.</p>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">01</span><h3>Catálogo e cadastro de produto</h3></div><span class="chip c-ok">Quase tudo pronto</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Ficha do produto</span><span class="ds">Nome, código, marca, categoria, descrição, caimento e tecido. Três preços: à vista, cartão e crediário.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Grade cor × tamanho</span><span class="ds">Cada combinação com sua própria contagem. Validado em 870 produtos.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Etiqueta 33×22</span><span class="ds"><span class="mono">etiqueta.ts</span>, 25 KB, testado na Elgin L42 Pro.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Entrada de mercadoria</span><span class="ds">Compra chega, custo entra, estoque sobe.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Código de barras real (EAN)</span><span class="ds">Hoje o código é interno. Para ler com leitor de mercado precisa de EAN-13 de verdade, com dígito verificador.</span></div>
+      <div class="row"><span class="st"><span class="chip c-int">Integrar</span></span><span class="nm">Outras impressoras de etiqueta</span><span class="ds">Só a Elgin L42 Pro está validada. Cada modelo novo é teste real com papel — não dá pra prometer “funciona com qualquer impressora”.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">02</span><h3>Estoque</h3></div><span class="chip c-ok">Quase tudo pronto</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Contagem por combinação</span><span class="ds">Por cor e tamanho, com baixa atômica (linha travada). Já resolvemos a versão errada disso uma vez.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Folha de balanço</span><span class="ds">Contagem cega em papel para conferir o estoque físico.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Vários locais de estoque</span><span class="ds">Loja 1, loja 2, depósito. Hoje é um campo fixo de empresa — vira local de verdade, com transferência entre eles.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Mínimo e aviso de ruptura</span><span class="ds">Alimenta o agente: “o M dessa peça vendeu 8 em 10 dias, restam 2”.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">03</span><h3>Balcão (PDV)</h3></div><span class="chip c-ok">Quase tudo pronto</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Venda com pagamento dividido</span><span class="ds">Várias formas na mesma venda, parcelas com juros, vendedor atribuído.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Vender sem internet</span><span class="ds">Balcão continua vendendo com a rede caída e sobe depois. Cinco armadilhas já mapeadas e resolvidas.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Troca e vale-troca</span><span class="ds">Regras hoje provisórias — precisam virar configuração por loja, não texto fixo.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Comprovante</span><span class="ds"><span class="mono">comprovante.ts</span>, 36 KB.</span></div>
+      <div class="row"><span class="st"><span class="chip c-int">Integrar</span></span><span class="nm">Impressora de cupom</span><span class="ds">ESC-POS. Navegador não fala com impressora USB sozinho — precisa de um pequeno agente instalado no computador do balcão. É trabalho real, não configuração.</span></div>
+      <div class="row"><span class="st"><span class="chip c-out">Fora da v1</span></span><span class="nm">Maquininha integrada (TEF)</span><span class="ds">Na v1 a venda registra <b>o que foi pago</b> e a conciliação confere depois. Dizer que “integra com a maquininha” hoje seria mentira.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">04</span><h3>Caixa</h3></div><span class="chip c-ok">Pronto</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Abertura, sangria, suprimento, fechamento</span><span class="ds"><span class="mono">caixa.ts</span> + <span class="mono">fechamento.ts</span>. Diferença de caixa fica registrada com quem estava.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Aviso de divergência para o agente</span><span class="ds">Caixa fechou com diferença → o dono sabe no WhatsApp, não no fim do mês.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">05</span><h3>Financeiro e DRE</h3></div><span class="chip c-ok">Quase tudo pronto</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">DRE mensal</span><span class="ds">No formato que a contabilidade deles já usa. <span class="mono">dre-blocos.ts</span> + <span class="mono">dre-pdf.ts</span>, 42 KB juntos.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Despesas, recorrentes, categorias e contas</span><span class="ds">De qual conta saiu o dinheiro, em que dia, em que categoria.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Conciliação de maquininha</span><span class="ds">Quanto caiu de verdade na conta; a diferença vira taxa e entra no DRE.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Contas a pagar e a receber</span><span class="ds">Existe despesa, não existe vencimento com agenda. É o que alimenta “amanhã vence o aluguel e tem X em caixa”.</span></div>
+      <div class="row"><span class="st"><span class="chip c-out">Fora da v1</span></span><span class="nm">Extrato bancário automático</span><span class="ds">Open Finance exige habilitação regulatória. Na v1: importar arquivo OFX/CSV do banco.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">06</span><h3>Clientes</h3></div><span class="chip c-build">Metade</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Ficha e histórico de compra</span><span class="ds">1.696 cadastros hoje, com o que cada um levou.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Cliente sumido</span><span class="ds">Quem comprou N vezes e parou há X dias. É a segunda ação mais valiosa do agente, e o dado já existe.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">LGPD de verdade</span><span class="ds">Consentimento para receber mensagem, sair da lista, e apagar o cadastro quando pedirem. Vendendo para várias empresas, isso deixa de ser opcional.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">07</span><h3>Equipe</h3></div><span class="chip c-ok">Quase tudo pronto</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Login por pessoa e papéis</span><span class="ds">Hoje: dono, gerente, balcão. Cada ação fica assinada.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Livro de auditoria</span><span class="ds">Antes, depois, valor, quem fez, de onde. Imutável. Vale para pessoa <b>e para o agente</b>.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Vendedor, meta, comissão e ranking</span><span class="ds">Venda atribuída, pódio com filtro por período.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Papel de convidado</span><span class="ds">O contador entra só no financeiro. Vale sozinho o esforço — é ele que renova o contrato do cliente.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Escala de turno</span><span class="ds">Quem trabalha quando. Simples, e conecta com o ranking.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">08</span><h3>Painel e relatórios</h3></div><span class="chip c-build">Refazer</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Painel do dia e do mês</span><span class="ds">Vendeu quanto, recebeu quanto, quem vendeu, o que saiu. O painel atual existe mas nasce de novo no visual novo.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Relatórios com filtro</span><span class="ds">Por período, vendedor, categoria, forma de pagamento. Exportar em planilha.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Alertas na tela</span><span class="ds">O que precisa de atenção hoje, no topo — não escondido em menu.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">09</span><h3>O agente de WhatsApp</h3></div><span class="chip c-int">O produto</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">O motor</span><span class="ds"><span class="mono">donna-whatsapp.ts</span>, 75 KB, 22 ferramentas, 982 conversas rodadas. Fila, pausa para o humano assumir, retomada em 10 min.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Criar o agente</span><span class="ds">Nome, foto, personalidade. Cinco seções no modelo do ClickUp: instruções, gatilhos, ferramentas, conhecimento, memória.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Poderes com teto</span><span class="ds">Caixinha com limite numérico: link até R$ ___, desconto até ___%, alterar preço não. <b>Nunca por texto de instrução.</b></span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Manual da loja</span><span class="ds">Política de troca, horário, formas de pagamento, o que nunca prometer. O dono escreve uma vez; o agente obedece.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Recibos</span><span class="ds">Quanto o agente devolveu em dinheiro no mês. É o que segura a renovação.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Consumo de IA na tela</span><span class="ds">O cliente vê o que gastou; a gente segura o custo por token.</span></div>
+      <div class="row"><span class="st"><span class="chip c-int">Integrar</span></span><span class="nm">Um WhatsApp por cliente</span><span class="ds">O item mais subestimado do plano inteiro. Detalhado na próxima seção.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Áudio</span><span class="ds">Lojista fala melhor do que digita. Transcrever o áudio que chega no WhatsApp.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">10</span><h3>Crediário</h3></div><span class="chip c-ok">Módulo pago · pronto</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Dívida, parcela, juros, acordo</span><span class="ds"><span class="mono">crediario.ts</span> + <span class="mono">juros.ts</span>. Validado em 1.714 fichas e R$ 402 mil em aberto.</span></div>
+      <div class="row"><span class="st"><span class="chip c-ok">Portar</span></span><span class="nm">Cobrança automática pelo agente</span><span class="ds">Fila, acordo, link de pagamento, opt-out, retorno agendado. Inclui a regra de nunca pôr número da equipe na fila.</span></div>
+      <div class="row"><span class="st"><span class="chip c-out">Fora da v1</span></span><span class="nm">Consulta a SPC/Serasa</span><span class="ds">Custa por consulta e exige contrato do lojista com o birô. Fica para depois, e não se promete antes.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">11</span><h3>Tarefas da loja</h3></div><span class="chip c-build">Novo, pequeno</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Tarefa com responsável, prazo e recorrência</span><span class="ds">“Conferir vitrine toda segunda”, “contar estoque dia 30”. Sem sprint, sem gantt, sem quadro branco — isso é de agência, não de loja.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">12</span><h3>Nota fiscal</h3></div><span class="chip c-int">Módulo pago · terceiro</span></div>
+      <div class="row"><span class="st"><span class="chip c-int">Integrar</span></span><span class="nm">NFC-e no balcão e NF-e</span><span class="ds">Via emissor de terceiro (Focus NFe, Nuvem Fiscal ou NFE.io). Não construir integração com a SEFAZ.</span></div>
+      <div class="row"><span class="st"><span class="chip c-risk">Atenção</span></span><span class="nm">O que o cliente precisa entregar</span><span class="ds">Certificado digital A1, CSC/token da SEFAZ, regime tributário, e NCM/CFOP/CST em cada produto. <b>Isso é trabalho do contador dele</b> — e é o que mais atrasa a entrada de um cliente novo. Precisa estar no contrato.</span></div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-h"><div class="t"><span class="n">13</span><h3>A plataforma</h3></div><span class="chip c-build">Não existe nada</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Multi-loja de verdade</span><span class="ds"><span class="mono">tenant_id</span> em toda tabela, isolamento no banco, e teste automatizado provando que a loja A não enxerga a loja B.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Cadastro e convite de equipe</span><span class="ds">A loja se cria sozinha e convida a própria gente.</span></div>
+      <div class="row"><span class="st"><span class="chip c-int">Integrar</span></span><span class="nm">Nossa cobrança recorrente</span><span class="ds">Assinatura, cartão e Pix, retentativa, aviso e <b>suspensão automática</b> de quem não pagou.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Marca por cliente</span><span class="ds">Nome, logo, cor. É onde o white-label mora.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Backup, log e monitoramento</span><span class="ds">Quando 30 lojas dependem disso, descobrir o problema pelo WhatsApp do cliente não é aceitável.</span></div>
+      <div class="row"><span class="st"><span class="chip c-build">Construir</span></span><span class="nm">Contrato, termos e política</span><span class="ds">Inclui o aviso honesto sobre o risco do WhatsApp não oficial, se for essa a rota.</span></div>
+    </div>
+  </section>
+
+  <!-- ============ INTEGRAÇÕES ============ -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">A parte que não depende de nós</p>
+      <h2>As integrações, sem maquiagem</h2>
+      <p class="small prose">Cada linha aqui tem conta para abrir, aprovação para esperar e custo que entra na conta do cliente ou na nossa. É o que separa um plano honesto de uma apresentação bonita.</p>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Integração</th><th>Fornecedor</th><th>O que exige</th><th>Custo</th><th>Quem resolve</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="k">WhatsApp<br><span class="chip c-risk">crítico</span></td>
+            <td>Z-API (não oficial)<br><i>ou</i> Meta Cloud API</td>
+            <td>Z-API: cliente lê um QR code, 5 minutos.<br>Meta: conta Meta Business verificada, número dedicado, modelos de mensagem aprovados.</td>
+            <td class="num">Z-API R$ 55–100<br>por loja/mês<br><br>Meta: por conversa</td>
+            <td>Nós, com o cliente na hora</td>
+          </tr>
+          <tr>
+            <td class="k">Pagamento do<br>cliente final</td>
+            <td>Mercado Pago<br>(já integrado)</td>
+            <td>Cada loja com sua conta, conectada por autorização — não colando token na mão.</td>
+            <td class="num">Taxa do lojista</td>
+            <td>Cliente autoriza, nós conectamos</td>
+          </tr>
+          <tr>
+            <td class="k">Nossa<br>mensalidade</td>
+            <td>Asaas, Iugu, Vindi<br>ou Mercado Pago</td>
+            <td>Recorrência, cartão e Pix, retentativa e webhook de cancelamento.</td>
+            <td class="num">~1–3% + fixo</td>
+            <td>Nós</td>
+          </tr>
+          <tr>
+            <td class="k">Nota fiscal</td>
+            <td>Focus NFe, Nuvem Fiscal<br>ou NFE.io</td>
+            <td>Certificado A1, CSC da SEFAZ, regime tributário e classificação fiscal de cada produto.</td>
+            <td class="num">R$ 50–150<br>por CNPJ/mês</td>
+            <td><b>Contador do cliente</b></td>
+          </tr>
+          <tr>
+            <td class="k">Impressora<br>de etiqueta</td>
+            <td>Elgin L42 Pro<br>(validada)</td>
+            <td>Cada modelo novo é teste com papel de verdade.</td>
+            <td class="num">Equipamento do cliente</td>
+            <td>Nós, um modelo por vez</td>
+          </tr>
+          <tr>
+            <td class="k">Impressora<br>de cupom</td>
+            <td>ESC-POS genérica</td>
+            <td>Agente instalado no computador do balcão — navegador não fala com USB sozinho.</td>
+            <td class="num">Equipamento do cliente</td>
+            <td>Nós</td>
+          </tr>
+          <tr>
+            <td class="k">Inteligência<br>do agente</td>
+            <td>Anthropic / Groq / Google</td>
+            <td>Roteamento por custo e teto de gasto por loja.</td>
+            <td class="num">R$ 40–150<br>por loja/mês</td>
+            <td>Nós</td>
+          </tr>
+          <tr>
+            <td class="k">E-mail e aviso<br>no celular</td>
+            <td>Resend + Web Push</td>
+            <td>Domínio verificado. Push já funciona.</td>
+            <td class="num">Baixo</td>
+            <td>Nós</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warn prose">
+      <h4>O WhatsApp é a decisão mais pesada do plano</h4>
+      <p class="small"><b>Z-API</b> é rápido de ligar e o cliente entra no mesmo dia, mas é conexão não oficial: uma onda de bloqueio do WhatsApp derruba todos os clientes de uma vez e não há a quem recorrer. <b>Meta oficial</b> não tem esse risco, mas exige que cada cliente tenha Meta Business verificado e modelos de mensagem aprovados — o que transforma a entrada de um cliente de cinco minutos em alguns dias.</p>
+      <p class="small"><b>Recomendação:</b> começar com Z-API pela velocidade, mas escrever a camada de WhatsApp como adaptador desde o primeiro dia, de modo que trocar o fornecedor seja configuração e não reescrita. E o risco entra no contrato, escrito — porque quando acontecer, vai ter acontecido avisado.</p>
+    </div>
+  </section>
+
+  <!-- ============ NÃO PROMETEMOS ============ -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">A lista que protege a gente</p>
+      <h2>O que a v1 não faz</h2>
+      <p class="small prose">Escrito para que ninguém — nem eu, nem você, nem quem for vender — prometa por engano. Cada item aqui é um “ainda não”, e alguns viram sim depois.</p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Não faz</th><th>Por quê</th><th>Volta quando</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Maquininha integrada (TEF)</td><td>Integração com adquirente é projeto próprio, com homologação.</td><td>Depois de uns 20 clientes pedirem</td></tr>
+          <tr><td class="k">Extrato bancário automático</td><td>Open Finance exige habilitação regulatória.</td><td>Fase 2 — antes disso, importa arquivo</td></tr>
+          <tr><td class="k">Loja online / e-commerce</td><td>Foi cortado de propósito. É metade do custo e do suporte.</td><td>Nunca, neste produto</td></tr>
+          <tr><td class="k">Aplicativo nativo</td><td>Vira app instalável (PWA), que já funciona.</td><td>Só se o mercado exigir</td></tr>
+          <tr><td class="k">Marketplace (Shopee, ML)</td><td>Terreno do Bling e do Tiny. Não é a nossa briga.</td><td>Nunca, neste produto</td></tr>
+          <tr><td class="k">Folha de pagamento e SPED</td><td>É contabilidade, não gestão de loja.</td><td>Nunca — o contador faz</td></tr>
+          <tr><td class="k">Consulta SPC/Serasa</td><td>Contrato do lojista com o birô, custo por consulta.</td><td>Quando o crediário tiver escala</td></tr>
+          <tr><td class="k">Agente com memória própria</td><td>Agente que decide sozinho o que guardar sobre preço e dívida é risco sem contrapartida.</td><td>Quando a auditoria estiver madura</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ DESIGN ============ -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">A cara do produto</p>
+      <h2>Um visual global, não personalizado</h2>
+      <p class="small prose">Você tem razão no raciocínio: vendendo para muitas empresas, o layout precisa ser o que qualquer uma reconhece. ClickUp, Monday, Linear e Notion convergiram para a mesma gramática — e ela é a certa aqui porque prioriza <b>densidade e leitura rápida</b>, não personalidade.</p>
+    </div>
+
+    <div class="sketch">
+      <div class="sk-side">
+        <div class="sk-brand"><span class="sk-dot"></span><span>Moda Ativa</span></div>
+        <div class="sk-item">Painel</div>
+        <div class="sk-item">Balcão</div>
+        <div class="sk-item on">Produtos <span class="b">870</span></div>
+        <div class="sk-item">Estoque</div>
+        <div class="sk-item">Clientes</div>
+        <div class="sk-item">Crediário <span class="b">1714</span></div>
+        <div class="sk-item">Financeiro</div>
+        <div class="sk-item">Equipe</div>
+        <div class="sk-item">Agente</div>
+      </div>
+      <div class="sk-main">
+        <div class="sk-top">
+          <div class="sk-tabs">
+            <span class="sk-tab on">Lista</span><span class="sk-tab">Tabela</span><span class="sk-tab">Grade</span>
+          </div>
+          <span class="sk-btn">Novo produto</span>
+        </div>
+        <div class="sk-grid">
+          <div class="sk-r h"><span>Produto</span><span>Situação</span><span class="n">Estoque</span><span class="n">Preço</span></div>
+          <div class="sk-r"><span class="nm">Blusa canelada manga longa</span><span class="sk-pill c-ok">No ar</span><span class="n">14</span><span class="n">89,90</span></div>
+          <div class="sk-r"><span class="nm">Calça wide leg alfaiataria</span><span class="sk-pill c-ok">No ar</span><span class="n">7</span><span class="n">179,90</span></div>
+          <div class="sk-r"><span class="nm">Vestido midi gola alta</span><span class="sk-pill c-int">Sem foto</span><span class="n">3</span><span class="n">159,90</span></div>
+          <div class="sk-r"><span class="nm">Conjunto tricô canelado</span><span class="sk-pill c-risk">Acabando</span><span class="n">1</span><span class="n">199,90</span></div>
+          <div class="sk-r"><span class="nm">Saia jeans midi</span><span class="sk-pill c-out">Parado 94d</span><span class="n">22</span><span class="n">129,90</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="small" style="color:var(--ink-3)">Esboço da gramática visual — barra lateral fixa, abas de visualização, tabela densa com situação em cor. Dados de exemplo.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Peça</th><th>Como é</th><th>Por quê</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Barra lateral</td><td>Fixa, com a loja no topo e contagem ao lado de cada seção</td><td>O número ao lado do item já é informação — o dono vê pendência sem clicar</td></tr>
+          <tr><td class="k">Abas de visualização</td><td>Lista, tabela e calendário sobre o mesmo dado</td><td>Convenção do ClickUp e do Monday. Ninguém precisa aprender</td></tr>
+          <tr><td class="k">Tabela</td><td>Densa, linha fina, edição na própria célula</td><td>Lojista trabalha em lote. Abrir uma tela por produto mata a produtividade</td></tr>
+          <tr><td class="k">Situação em cor</td><td>Verde, âmbar, vermelho, cinza — separado da cor da marca</td><td>O que precisa de atenção se lê de longe, sem ler texto</td></tr>
+          <tr><td class="k">Painel lateral</td><td>Detalhe abre ao lado, sem trocar de página</td><td>Não perde o contexto da lista</td></tr>
+          <tr><td class="k">Cor da marca</td><td>Uma cor por loja, aplicada em poucos lugares</td><td>White-label sem virar tema personalizado — o resto fica neutro</td></tr>
+          <tr><td class="k">Tema claro e escuro</td><td>Os dois, desde o começo</td><td>Balcão com sol batendo e escritório à noite são o mesmo cliente</td></tr>
+          <tr><td class="k">Celular</td><td>Painel, agente e consulta funcionam; balcão é de computador</td><td>O dono olha do celular; a venda acontece no balcão</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout prose">
+      <h4>A escolha técnica que isso implica</h4>
+      <p class="small">Esse visual pede <b>uma biblioteca de componentes própria construída cedo</b> — tabela, painel lateral, aba, campo, aviso — e não telas montadas uma a uma. É a diferença entre 30 telas parecidas e 30 telas quase parecidas. Vale gastar a primeira semana nisso.</p>
+      <p class="small">Base: <b>Next.js + TypeScript + Postgres</b> (o que você já domina, para não trocar de mundo no meio), <b>Tailwind</b> para a densidade, e componentes acessíveis prontos por baixo — ninguém deveria escrever um menu suspenso na mão em 2026.</p>
+    </div>
+  </section>
+
+  <!-- ============ FASES ============ -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">A ordem de construção</p>
+      <h2>Seis fases, cada uma com um “pronto quando”</h2>
+      <p class="small prose">A ordem não é por facilidade nem por empolgação. É por dependência: o que não dá pra fazer depois vem primeiro, e o que vende vem antes do que só arruma.</p>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pn">01</span><span class="pt">Fundação</span><span class="pd">O que é caríssimo consertar depois. Nada aqui aparece na tela, e tudo aqui é irreversível.</span></div>
+      <div class="phase-b">
+        <ul>
+          <li><b>Multi-loja no banco:</b> <span class="mono">tenant_id</span> em toda tabela, sem exceção, e isolamento escrito junto com a tabela — nunca depois.</li>
+          <li><b>Teste de isolamento automatizado.</b> O projeto atual tem zero testes; aqui esse teste é a primeira coisa que existe.</li>
+          <li><b>Login, papéis e convite</b> de equipe.</li>
+          <li><b>Biblioteca de componentes</b> e os dois temas.</li>
+        </ul>
+        <div class="done"><span class="lbl">Pronto quando</span><span class="txt">Duas lojas vazias existem, duas pessoas entram, e o teste prova que nenhuma enxerga a outra.</span></div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pn">02</span><span class="pt">O balcão funciona</span><span class="pd">O mínimo para uma loja de verdade parar de usar o sistema antigo.</span></div>
+      <div class="phase-b">
+        <ul>
+          <li>Produto, grade cor × tamanho, etiqueta, entrada de mercadoria.</li>
+          <li>Estoque com locais e baixa atômica.</li>
+          <li>Cliente e histórico.</li>
+          <li>PDV com pagamento dividido, parcelas, troca, e o modo sem internet.</li>
+          <li>Caixa: abertura, sangria, fechamento.</li>
+        </ul>
+        <div class="done"><span class="lbl">Pronto quando</span><span class="txt">Dá pra passar um dia inteiro de vendas reais sem abrir o sistema antigo.</span></div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pn">03</span><span class="pt">O dinheiro fecha</span><span class="pd">A fase que faz o contador virar aliado — e é o contador que segura a renovação.</span></div>
+      <div class="phase-b">
+        <ul>
+          <li>Despesas, recorrentes, categorias e contas.</li>
+          <li>Contas a pagar e a receber com vencimento.</li>
+          <li>DRE mensal e PDF.</li>
+          <li>Conciliação de maquininha.</li>
+          <li>Papel de convidado para o contador.</li>
+        </ul>
+        <div class="done"><span class="lbl">Pronto quando</span><span class="txt">O DRE de um mês fecha igual ao da contabilidade, conferido linha a linha.</span></div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pn">04</span><span class="pt">O agente</span><span class="pd">O que a gente realmente vende. Só faz sentido depois das fases 2 e 3, porque agente sem dado é conversa fiada.</span></div>
+      <div class="phase-b">
+        <ul>
+          <li>Motor portado e ligado ao WhatsApp, uma instância por loja.</li>
+          <li>Tela de criar o agente: nome, personalidade, poderes com teto, gatilhos, manual da loja.</li>
+          <li>As quatro rotinas que geram recibo: relatório 8h e 20h, cliente sumido, estoque parado, aviso de ruptura.</li>
+          <li>Painel de recibos e de consumo de IA.</li>
+          <li>Áudio transcrito.</li>
+        </ul>
+        <div class="done"><span class="lbl">Pronto quando</span><span class="txt">Um dono que não é você pergunta “como foi hoje?” no WhatsApp e recebe o número certo — e o agente traz de volta o primeiro cliente sumido sozinho.</span></div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pn">05</span><span class="pt">Os módulos pagos</span><span class="pd">O que dobra o preço da assinatura.</span></div>
+      <div class="phase-b">
+        <ul>
+          <li>Crediário completo, com cobrança pelo agente.</li>
+          <li>Nota fiscal via emissor de terceiro, com a lista do que o contador precisa entregar.</li>
+          <li>Tarefas da loja e escala de turno.</li>
+        </ul>
+        <div class="done"><span class="lbl">Pronto quando</span><span class="txt">Uma loja emite nota no balcão e outra cobra crediário pelo agente, no mesmo dia.</span></div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-h"><span class="pn">06</span><span class="pt">Virar empresa</span><span class="pd">Deixa de ser sistema instalado por você e passa a ser produto que se vende sozinho.</span></div>
+      <div class="phase-b">
+        <ul>
+          <li>Cadastro sozinho, com importação de produto e cliente por planilha.</li>
+          <li>Cobrança recorrente, aviso e suspensão automática.</li>
+          <li>Marca por cliente: nome, logo, cor.</li>
+          <li>Backup, log, monitoramento e canal de suporte.</li>
+          <li>Contrato, termos de uso e política de privacidade.</li>
+        </ul>
+        <div class="done"><span class="lbl">Pronto quando</span><span class="txt">Um cliente novo entra, configura e começa a usar <b>sem você tocar em nada</b>.</span></div>
+      </div>
+    </div>
+
+    <div class="callout money prose">
+      <h4>Sobre prazo</h4>
+      <p class="small">Não vou dar data para as seis fases porque seria chute, e chute em plano vira dívida. O que dá pra afirmar com honestidade: as fases <b>1 a 4</b> são o produto vendável, e é nelas que a conversa de prazo faz sentido. As fases 5 e 6 só ganham urgência quando existir cliente pagando pedindo por elas.</p>
+      <p class="small">Depois da Fase 1 pronta, aí sim a estimativa das seguintes fica confiável — porque a Fase 1 é justamente a que revela o ritmo real.</p>
+    </div>
+  </section>
+
+  <!-- ============ COMEÇAR ============ -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">Começar</p>
+      <h2>O primeiro passo é um só</h2>
+    </div>
+    <div class="stack prose">
+      <p class="small">Antes de qualquer tela: <b>o modelo de dados com <span class="mono">tenant_id</span> e o teste que prova o isolamento.</b> É a única parte do plano que, se ficar para depois, custa as tais seis a dez semanas — que é exatamente o tamanho do problema no sistema atual hoje.</p>
+      <p class="small">Concretamente, na ordem: escolher a base técnica → modelar as tabelas do núcleo já com dono → ligar o isolamento no banco → escrever o teste que tenta vazar e falha → só então a primeira tela.</p>
+      <p class="small">Nada disso depende do nome do produto nem de decisão comercial. Dá pra começar hoje.</p>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Falta decidir</th><th>Trava o quê</th><th>Minha recomendação</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Quem é o cliente</td><td>A venda e o discurso. Não trava o código.</td><td>Comércio de bairro, 1 a 3 lojas, 2 a 10 funcionários, vende no balcão e no WhatsApp, vende fiado</td></tr>
+          <tr><td class="k">Nome do produto</td><td>Nada por enquanto</td><td>Decidir até a Fase 4, quando a marca aparece na tela</td></tr>
+          <tr><td class="k">NF-e na v1</td><td>Fase 5, e o discurso de venda</td><td>Sim, mas como módulo pago, e com a lista do contador escrita no contrato</td></tr>
+          <tr><td class="k">Z-API ou Meta oficial</td><td>Fase 4</td><td>Z-API para começar, com adaptador desde o dia um para poder trocar</td></tr>
+          <tr><td class="k">Preço</td><td>A venda</td><td>Dois degraus: núcleo e núcleo + agente. Teste com prazo, nunca grátis pra sempre</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>

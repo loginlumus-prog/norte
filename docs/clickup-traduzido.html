@@ -1,0 +1,468 @@
+<title>ClickUp Traduzido</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+:root{
+  --bg:#F1F2F4;
+  --surface:#FFFFFF;
+  --surface-2:#E6E9ED;
+  --ink:#15191E;
+  --ink-2:#4A525C;
+  --ink-3:#79828E;
+  --rule:#D2D7DE;
+  --rule-soft:#E2E6EB;
+  --brass:#8E6210;
+  --brass-bg:#F2E7CE;
+  --steel:#43648A;
+  --steel-bg:#DDE7F1;
+  --clay:#93443A;
+  --clay-bg:#F1DDD9;
+  --shadow:0 1px 2px rgba(20,26,33,.06), 0 6px 18px -10px rgba(20,26,33,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1216;
+    --surface:#161B21;
+    --surface-2:#1E252C;
+    --ink:#E8EBEE;
+    --ink-2:#A6B0BB;
+    --ink-3:#727C87;
+    --rule:#2B333B;
+    --rule-soft:#222A31;
+    --brass:#DCA648;
+    --brass-bg:#2C2312;
+    --steel:#84A8CF;
+    --steel-bg:#16222F;
+    --clay:#D28A7E;
+    --clay-bg:#2C1C19;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 22px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1216;
+  --surface:#161B21;
+  --surface-2:#1E252C;
+  --ink:#E8EBEE;
+  --ink-2:#A6B0BB;
+  --ink-3:#727C87;
+  --rule:#2B333B;
+  --rule-soft:#222A31;
+  --brass:#DCA648;
+  --brass-bg:#2C2312;
+  --steel:#84A8CF;
+  --steel-bg:#16222F;
+  --clay:#D28A7E;
+  --clay-bg:#2C1C19;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 22px -12px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
+  font-size:17px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{width:min(100% - 2.5rem, 1060px);margin-inline:auto}
+.prose{max-width:66ch}
+
+/* ---- type ---- */
+h1,h2,h3,.eyebrow,.chip,.mono,th,.num{font-family:Archivo,"Helvetica Neue",Arial,sans-serif}
+h1{font-size:clamp(2rem,1.3rem + 2.6vw,3.1rem);line-height:1.06;font-weight:700;letter-spacing:-.022em;text-wrap:balance;margin:0}
+h2{font-size:clamp(1.35rem,1.1rem + .9vw,1.85rem);line-height:1.16;font-weight:700;letter-spacing:-.016em;text-wrap:balance;margin:0}
+h3{font-size:1.02rem;line-height:1.3;font-weight:600;letter-spacing:-.006em;margin:0}
+p{margin:0}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.7rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);margin:0;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.lede{font-size:1.13rem;color:var(--ink-2);line-height:1.55}
+small,.small{font-size:.86rem;line-height:1.5;color:var(--ink-2)}
+b,strong{font-weight:600;color:var(--ink)}
+a{color:var(--brass);text-underline-offset:2px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--brass);outline-offset:3px;border-radius:2px}
+
+/* ---- rhythm ---- */
+main{display:flex;flex-direction:column;gap:4.5rem;padding:0 0 6rem}
+section{display:flex;flex-direction:column;gap:1.5rem}
+.stack{display:flex;flex-direction:column;gap:.85rem}
+.head{display:flex;flex-direction:column;gap:.5rem}
+
+/* ---- masthead ---- */
+.masthead{
+  border-bottom:1px solid var(--rule);
+  background:var(--surface);
+  padding:3.4rem 0 2.4rem;
+}
+.masthead .wrap{display:flex;flex-direction:column;gap:1.1rem}
+.kicker{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.meta{
+  display:flex;flex-wrap:wrap;gap:.35rem 1.4rem;
+  border-top:1px solid var(--rule-soft);padding-top:.9rem;margin-top:.3rem;
+}
+.meta span{font-family:"IBM Plex Mono",monospace;font-size:.74rem;letter-spacing:.04em;color:var(--ink-3)}
+.meta b{color:var(--ink-2);font-weight:500}
+
+/* ---- chips ---- */
+.chip{
+  display:inline-flex;align-items:center;gap:.35rem;
+  font-size:.68rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  padding:.22rem .5rem;border-radius:3px;white-space:nowrap;
+}
+.chip.copiar{background:var(--brass-bg);color:var(--brass)}
+.chip.adaptar{background:var(--steel-bg);color:var(--steel)}
+.chip.ignorar{background:var(--clay-bg);color:var(--clay)}
+.chip.deles{background:var(--surface-2);color:var(--ink-3)}
+
+/* ---- feature map ---- */
+.map{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+@media(min-width:760px){.map{grid-template-columns:1fr 1fr}}
+.cat{background:var(--surface);padding:1.1rem 1.15rem;display:flex;flex-direction:column;gap:.55rem}
+.cat-top{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem}
+.cat ul{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:.3rem .45rem}
+.cat li{
+  font-family:"IBM Plex Mono",monospace;font-size:.735rem;color:var(--ink-2);
+  line-height:1.45;
+}
+.cat li::after{content:"·";color:var(--ink-3);margin-left:.45rem}
+.cat li:last-child::after{content:""}
+.cat .note{font-size:.85rem;color:var(--ink-2);line-height:1.45}
+
+/* ---- tables ---- */
+.scroll{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{text-align:left;padding:.72rem .9rem;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+th{
+  font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);background:var(--surface-2);border-bottom:1px solid var(--rule);
+  position:sticky;top:0;
+}
+tbody tr:last-child td{border-bottom:0}
+td{font-size:.92rem;line-height:1.5}
+td.k{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--ink);font-weight:500;white-space:nowrap}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---- pricing ladder ---- */
+.ladder{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+@media(min-width:720px){.ladder{grid-template-columns:repeat(4,1fr)}}
+.rung{background:var(--surface);padding:1rem 1.05rem;display:flex;flex-direction:column;gap:.3rem}
+.rung .price{font-family:Archivo,sans-serif;font-size:1.45rem;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.rung .plan{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.rung.ai{background:var(--brass-bg)}
+.rung.ai .price,.rung.ai .plan{color:var(--brass)}
+
+/* ---- callout ---- */
+.callout{
+  background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--brass);
+  border-radius:0 4px 4px 0;padding:1.05rem 1.15rem;display:flex;flex-direction:column;gap:.5rem;
+}
+.callout.warn{border-left-color:var(--clay)}
+.callout h3{font-size:.95rem}
+
+/* ---- numbered sequence (landing) ---- */
+ol.seq{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:1px;
+  background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+ol.seq li{background:var(--surface);padding:.95rem 1.1rem;display:grid;gap:.15rem .9rem;
+  grid-template-columns:2.1rem 1fr}
+ol.seq .n{font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-weight:600;color:var(--brass);
+  padding-top:.12rem;font-variant-numeric:tabular-nums}
+ol.seq .t{font-family:Archivo,sans-serif;font-weight:600;font-size:.97rem;letter-spacing:-.005em}
+ol.seq .d{grid-column:2;font-size:.9rem;color:var(--ink-2);line-height:1.5}
+ol.seq .src{grid-column:2;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3);margin-top:.15rem}
+
+/* ---- agent spec ---- */
+.spec{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.spec-row{background:var(--surface);padding:1rem 1.1rem;display:grid;gap:.45rem}
+@media(min-width:820px){.spec-row{grid-template-columns:11rem 1fr 1fr;gap:1.2rem;align-items:start}}
+.spec-row .lbl{font-family:"IBM Plex Mono",monospace;font-size:.8rem;font-weight:600;color:var(--ink)}
+.spec-row .lbl em{display:block;font-style:normal;font-size:.7rem;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin-top:.15rem}
+.spec-row .col{font-size:.9rem;line-height:1.5;color:var(--ink-2)}
+.spec-row .col b{color:var(--ink)}
+.spec-head{background:var(--surface-2);padding:.55rem 1.1rem;display:none}
+@media(min-width:820px){
+  .spec-head{display:grid;grid-template-columns:11rem 1fr 1fr;gap:1.2rem}
+  .spec-head span{font-family:Archivo,sans-serif;font-size:.68rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+}
+
+/* ---- footer ---- */
+.foot{border-top:1px solid var(--rule);padding-top:1.4rem;display:flex;flex-direction:column;gap:.55rem}
+.foot .srcs{display:flex;flex-wrap:wrap;gap:.3rem .9rem;font-size:.8rem}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="kicker">
+      <span class="eyebrow">Pesquisa de concorrente</span>
+      <span class="chip deles">setembro 2026</span>
+    </div>
+    <h1>ClickUp, traduzido</h1>
+    <p class="lede prose">Tudo o que o ClickUp oferece, como eles empacotam e cobram, e — linha por linha — o que disso serve para um sistema de gestão de comércio pequeno operado por WhatsApp.</p>
+    <div class="meta">
+      <span>Fonte <b>clickup.com + help.clickup.com</b></span>
+      <span>Para <b>C:\dev\gestor</b></span>
+      <span>Complementa <b>ESCOPO.md</b></span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= 1. O ACHADO ================= -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">O achado principal</p>
+      <h2>Eles pararam de vender o software. Vendem o agente.</h2>
+    </div>
+    <div class="stack prose">
+      <p>A home do ClickUp não fala mais de tarefa, kanban ou gantt. O headline hoje é <b>“The best AI is your AI”</b>, e a página inteira é sobre o agente — o produto de gestão virou o que alimenta o agente de contexto.</p>
+      <p>Isso não é detalhe de marketing. É a confirmação da tese: <b>o ERP é o que dá dado ao agente, e o agente é o que se vende.</b> Você chegou nessa conclusão pelo outro lado — pela Donna respondendo no WhatsApp — mas é a mesma leitura.</p>
+      <p>E a estrutura de preço deles fecha o argumento.</p>
+    </div>
+
+    <div class="ladder">
+      <div class="rung"><span class="plan">Free</span><span class="price">US$&nbsp;0</span><span class="small">Para sempre. Sem cartão.</span></div>
+      <div class="rung"><span class="plan">Unlimited</span><span class="price">US$&nbsp;10</span><span class="small">Por usuário/mês. Gantt, tempo, metas.</span></div>
+      <div class="rung"><span class="plan">Business</span><span class="price">US$&nbsp;19</span><span class="small">Por usuário/mês. Dashboards, 5.000 automações.</span></div>
+      <div class="rung ai"><span class="plan">Everything AI</span><span class="price">US$&nbsp;28</span><span class="small">Por usuário/mês — <b>somado</b> ao plano acima.</span></div>
+    </div>
+
+    <div class="callout prose">
+      <h3>A IA custa mais caro que o software inteiro</h3>
+      <p class="small">US$ 19 pelo sistema completo. US$ 28 <b>a mais</b> pela IA. Um cliente Business + Everything AI paga US$ 47/usuário/mês, e mais da metade disso é o agente.</p>
+      <p class="small">Tradução direta pro nosso: o núcleo (produto, estoque, caixa, DRE, funcionário) é a base. <b>O agente é o degrau pago</b> — exatamente a estrutura núcleo ≈ R$&nbsp;349 / com agente ≈ R$&nbsp;697 que já está no ESCOPO. Isso agora tem precedente de mercado, não é chute.</p>
+    </div>
+
+    <div class="callout warn prose">
+      <h3>Uma coisa deles que não dá pra copiar</h3>
+      <p class="small">O plano grátis pra sempre. O ClickUp roda em infra própria com custo marginal quase zero por usuário parado. Você tem <b>Z-API a R$ 55–100/mês por instância</b> desde o primeiro dia, mesmo que a loja não mande uma mensagem. Grátis pra sempre te sangraria.</p>
+      <p class="small">Substituto: <b>teste com prazo</b> (14 ou 21 dias, com a instância de WhatsApp ligada de verdade), porque o valor do produto só aparece quando o agente fala.</p>
+    </div>
+  </section>
+
+  <!-- ================= 2. MAPA DE FUNÇÕES ================= -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">Tudo o que eles oferecem</p>
+      <h2>As 10 famílias de função do ClickUp</h2>
+      <p class="small prose">Lista completa do que está anunciado no site deles, agrupada como eles agrupam. O selo em cada família é julgamento meu sobre o nosso produto, não classificação deles.</p>
+    </div>
+
+    <div class="kicker">
+      <span class="chip copiar">Copiar</span><span class="small">serve quase inteiro</span>
+      <span class="chip adaptar">Adaptar</span><span class="small">a ideia serve, a forma não</span>
+      <span class="chip ignorar">Ignorar</span><span class="small">não é o nosso cliente</span>
+    </div>
+
+    <div class="map">
+      <div class="cat">
+        <div class="cat-top"><h3>IA &amp; Automação</h3><span class="chip copiar">Copiar</span></div>
+        <ul><li>Brain</li><li>Super Agents</li><li>Brain MAX</li><li>modelos premium</li><li>AI Notetaker</li><li>Talk to Text</li><li>geração de imagem</li><li>busca corporativa</li><li>Automations</li><li>AI Fields</li><li>AI Cards</li></ul>
+        <p class="note">É o coração do produto deles e do nosso. <b>Talk to Text</b> merece atenção: lojista digita mal e fala bem — áudio no WhatsApp já é o comportamento natural dele.</p>
+      </div>
+
+      <div class="cat">
+        <div class="cat-top"><h3>Relatórios &amp; Análise</h3><span class="chip copiar">Copiar</span></div>
+        <ul><li>Dashboards</li><li>campos customizados</li><li>Cards</li><li>AI Cards</li><li>painel de uso de IA</li></ul>
+        <p class="note">É o “ver tudo da empresa numa tela” que você quer. <b>AI Usage Dashboard</b> resolve um problema real nosso: mostrar pro cliente quanto de agente ele consumiu, e segurar o custo de token.</p>
+      </div>
+
+      <div class="cat">
+        <div class="cat-top"><h3>Customização</h3><span class="chip copiar">Copiar</span></div>
+        <ul><li>temas de cor</li><li>modo escuro</li><li>localização</li><li>notificações</li></ul>
+        <p class="note">Barato e é onde o white-label mora. Cada loja com sua cor, seu nome, seu agente.</p>
+      </div>
+
+      <div class="cat">
+        <div class="cat-top"><h3>Permissões &amp; Segurança</h3><span class="chip copiar">Copiar</span></div>
+        <ul><li>permissões</li><li>papéis customizados</li><li>convidados</li><li>SSO (enterprise)</li></ul>
+        <p class="note">Você já tem DEV/ADMIN/PDV. Falta <b>convidado</b> — que no nosso caso é o contador, entrando só no financeiro. Vale por si só.</p>
+      </div>
+
+      <div class="cat">
+        <div class="cat-top"><h3>Visualizações</h3><span class="chip adaptar">Adaptar</span></div>
+        <ul><li>Lista</li><li>Tabela</li><li>Calendário</li><li>Kanban</li><li>Gantt</li><li>Whiteboard</li><li>Mind Map</li><li>Mapa</li><li>Portfolios</li><li>Workload</li></ul>
+        <p class="note">Ficam <b>lista, tabela e calendário</b>. Kanban só se virar fluxo de pedido/conserto. Gantt, whiteboard e mind map são de agência — lojista não usa uma vez sequer.</p>
+      </div>
+
+      <div class="cat">
+        <div class="cat-top"><h3>Colaboração</h3><span class="chip adaptar">Adaptar</span></div>
+        <ul><li>Chat</li><li>Inbox</li><li>comentário atribuído</li><li>Clips</li><li>lembretes</li><li>Forms</li><li>perfis</li><li>menção</li></ul>
+        <p class="note">O nosso Chat <b>é o WhatsApp</b> — não construir chat interno. <b>Forms</b> é útil de verdade: ficha de cliente novo, pedido de troca, requisição de compra.</p>
+      </div>
+
+      <div class="cat">
+        <div class="cat-top"><h3>Tarefas</h3><span class="chip adaptar">Adaptar</span></div>
+        <ul><li>Tasks</li><li>subtarefas</li><li>responsáveis</li><li>status customizado</li><li>prioridade</li><li>checklist</li><li>recorrente</li><li>templates</li><li>Sprints</li><li>Epics</li><li>story points</li></ul>
+        <p class="note">Versão mínima: <b>tarefa com responsável, prazo e recorrência</b> — “conferir vitrine segunda”, “contar estoque dia 30”. Sprint, epic e story point não existem no varejo.</p>
+      </div>
+
+      <div class="cat">
+        <div class="cat-top"><h3>Tempo &amp; Pessoas</h3><span class="chip adaptar">Adaptar</span></div>
+        <ul><li>Teams Hub</li><li>controle de tempo</li><li>timesheets</li><li>aprovações</li><li>Planner</li><li>escala</li><li>carga de trabalho</li></ul>
+        <p class="note">Timesheet de agência não serve. O que serve: <b>escala de turno, meta por vendedor, comissão e aprovação</b> (desconto acima do teto, sangria de caixa). Você já tem vendedoras e o livro de assinaturas.</p>
+      </div>
+
+      <div class="cat">
+        <div class="cat-top"><h3>Conhecimento</h3><span class="chip adaptar">Adaptar</span></div>
+        <ul><li>Docs</li><li>Wikis</li><li>Notepad</li></ul>
+        <p class="note">Não como editor de documento — como <b>“manual da loja”</b>: política de troca, horário, formas de pagamento, o que falar e o que não falar. O dono escreve uma vez e vira conhecimento do agente. Peça pequena, valor alto.</p>
+      </div>
+
+      <div class="cat">
+        <div class="cat-top"><h3>Integrações</h3><span class="chip ignorar">Ignorar</span></div>
+        <ul><li>1.000+ integrações</li><li>API</li><li>Webhooks</li><li>MCP</li></ul>
+        <p class="note">“1.000 integrações” é argumento de empresa grande. Pro nosso cliente só quatro importam: <b>WhatsApp, maquininha, nota fiscal e banco/Pix</b>. Ter as quatro bem vale mais que ter mil.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 3. AGENTE ================= -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">A parte que você quer copiar</p>
+      <h2>Como o cliente cria o agente dele</h2>
+      <p class="small prose">O ClickUp organiza todo agente em <b>cinco seções de perfil</b>. O usuário pode montar conversando com um builder em linguagem natural, ou configurar na mão. Estrutura boa — mas ela assume que o agente mexe em tarefa. O nosso mexe em dinheiro, e isso muda uma coisa.</p>
+    </div>
+
+    <div class="spec">
+      <div class="spec-head">
+        <span>Seção</span><span>Como é no ClickUp</span><span>Como fica no nosso</span>
+      </div>
+
+      <div class="spec-row">
+        <div class="lbl">Instructions<em>Instruções</em></div>
+        <div class="col">Texto livre em linguagem natural dizendo papel, objetivo e passos. Obrigatório. Dá pra mencionar itens e locais, que entram automaticamente no conhecimento. Aqui também se escolhe o modelo de IA.</div>
+        <div class="col"><b>Personalidade e política de conversa.</b> Tom, como chamar o cliente, o que sempre oferecer, o que nunca prometer. O modelo quem escolhe somos nós — lojista não sabe e não deve pagar por escolher errado.</div>
+      </div>
+
+      <div class="spec-row">
+        <div class="lbl">Triggers<em>Gatilhos</em></div>
+        <div class="col">Quando o agente age. Três tipos: <b>Manual</b> (menção, mensagem direta, ser atribuído numa tarefa), <b>Agendado</b> (de hora em hora, diário, semanal, mensal ou custom, com fuso e data de fim) e <b>Automação</b>. Cada gatilho aceita instrução própria, somada à principal.</div>
+        <div class="col">Mesma ideia, três tipos nossos: <b>Manual</b> (cliente manda mensagem; dono pergunta algo), <b>Agendado</b> (relatório 8h e 20h, cobrança dos vencidos, aviso de estoque parado) e <b>Evento do sistema</b> (venda registrada, parcela venceu, caixa fechou com diferença, estoque no mínimo). Instrução por gatilho é ótima ideia — copiar.</div>
+      </div>
+
+      <div class="spec-row">
+        <div class="lbl">Skills<em>Ferramentas</em></div>
+        <div class="col">Caixa de ferramentas do agente. O usuário adiciona e remove livremente, de conexões da conta ou pessoais. É capacidade pura — sem teto.</div>
+        <div class="col"><b>Aqui a gente diverge, e de propósito.</b> Nossa ferramenta vem com limite numérico colado: <span class="mono">gerar link de pagamento — até R$ ___</span>, <span class="mono">dar desconto — até ___%</span>, <span class="mono">alterar preço — não</span>. Capacidade e teto são a mesma caixinha.</div>
+      </div>
+
+      <div class="spec-row">
+        <div class="lbl">Knowledge<em>Conhecimento</em></div>
+        <div class="col">Os dados que o agente alcança: dados do workspace, apps conectados, artigos de ajuda e a web.</div>
+        <div class="col">Catálogo, clientes, vendas, estoque, financeiro — <b>tudo já filtrado pelo tenant</b> — mais o “manual da loja” que o dono escreve. Web desligada por padrão: agente de loja não precisa da internet, e ela só traz risco.</div>
+      </div>
+
+      <div class="spec-row">
+        <div class="lbl">Memory<em>Memória</em></div>
+        <div class="col">Três tipos: <b>Recent</b> (curto prazo, só o que o usuário já podia ver), <b>Preferences</b> (aprende com feedback e <b>pede aprovação</b> antes de guardar) e <b>Intelligence</b> (guarda o que achar útil, por conta própria).</div>
+        <div class="col">Recent e Preferences: sim, e o “pede aprovação antes de guardar” é acerto deles — copiar igual. <b>Intelligence fica de fora da v1.</b> Agente que forma memória sozinho sobre preço, dívida e cliente é risco que não compensa enquanto não houver auditoria madura.</div>
+      </div>
+    </div>
+
+    <div class="callout warn prose">
+      <h3>A linha que não pode ser cruzada</h3>
+      <p class="small">No ClickUp, instrução em texto livre pode praticamente tudo — porque o pior caso é uma tarefa mal criada. No nosso, o pior caso é <b>um link de pagamento errado ou um desconto que não devia existir</b>.</p>
+      <p class="small">Então a regra vale mesmo quando copiamos a estrutura deles: <b>instrução define personalidade e política; permissão é caixinha com teto no banco.</b> Motivo técnico, não jurídico — texto de instrução pode ser sobrescrito por quem manda mensagem no WhatsApp. Caixinha no banco, não.</p>
+      <p class="small">E vira argumento de venda: <i>“o agente não faz nada que você não autorizou na tela, e tudo que ele faz fica assinado no livro.”</i></p>
+    </div>
+  </section>
+
+  <!-- ================= 4. LANDING ================= -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">A página que você quer fazer</p>
+      <h2>A estrutura deles, traduzida</h2>
+      <p class="small prose">Ordem exata das seções da home do ClickUp, com o equivalente nosso em cada uma. É sequência de verdade — a ordem carrega o argumento, do problema até o preço.</p>
+    </div>
+
+    <ol class="seq">
+      <li><span class="n">01</span><span class="t">Headline: o agente, não o sistema</span>
+        <span class="d">Uma frase sobre o que o dono ganha, três promessas curtas embaixo, um botão. Sem falar “ERP”, sem falar “gestão”.</span>
+        <span class="src">deles: “The best AI is your AI” + 3 props + “Get started. It's FREE”</span></li>
+
+      <li><span class="n">02</span><span class="t">A conversa rodando</span>
+        <span class="d">Aqui é o nosso trunfo. Eles mostram carrossel de telas; a gente mostra <b>uma conversa de WhatsApp de verdade acontecendo</b> — o dono pergunta “como foi hoje?” e o relatório chega. Essa é a seção que vende sozinha.</span>
+        <span class="src">deles: carrossel de 12 produtos (Projects, Chat, Brain MAX, Agents…)</span></li>
+
+      <li><span class="n">03</span><span class="t">O problema, com número</span>
+        <span class="d">O dono só descobre como foi o mês quando o contador manda o relatório — 20 dias depois, quando não dá mais pra fazer nada. E o estoque parado ninguém vê nunca.</span>
+        <span class="src">deles: “60% of work is lost in context – and AI is lost without it”</span></li>
+
+      <li><span class="n">04</span><span class="t">A parede de funções</span>
+        <span class="d">Grade densa mostrando tamanho: produto, estoque, balcão, caixa, DRE, despesa, crediário, funcionário, comissão, etiqueta, troca, conciliação, auditoria. Serve pra responder “é completo mesmo?”.</span>
+        <span class="src">deles: “100+ produtos integrados” em grade</span></li>
+
+      <li><span class="n">05</span><span class="t">Crie a sua funcionária</span>
+        <span class="d">A tela de criar o agente, com o nome sendo digitado. É a seção que o cliente vai lembrar — e a que justifica o degrau de preço.</span>
+        <span class="src">deles: “A new era of humans, with Super Agents”</span></li>
+
+      <li><span class="n">06</span><span class="t">Os recibos</span>
+        <span class="d">Seção que eles <b>não têm</b> e a gente precisa: quanto o agente devolveu em dinheiro. “Recuperou R$ X”, “destravou R$ Y em estoque parado”, “trouxe N clientes de volta”. É o que separa ferramenta de investimento.</span>
+        <span class="src">nossa — sem equivalente na home deles</span></li>
+
+      <li><span class="n">07</span><span class="t">Uma seção por pessoa da loja</span>
+        <span class="d">Dono, gerente, vendedor, caixa, contador. Cada um vê a sua rotina resolvida. Faz o visitante se reconhecer.</span>
+        <span class="src">deles: 6 seções por área (Marketing, Product &amp; Eng, IT, HR, Leadership…)</span></li>
+
+      <li><span class="n">08</span><span class="t">Prova social — e a nossa é real</span>
+        <span class="d">Eles usam Forrester e G2. A gente tem coisa melhor: <b>duas lojas rodando de verdade, 1.714 fichas de crediário, R$ 402 mil administrados, 870 produtos, 982 conversas.</b> Número de operação vale mais que selo comprado.</span>
+        <span class="src">deles: ROI Forrester + depoimentos + badges G2</span></li>
+
+      <li><span class="n">09</span><span class="t">Preço e chamada final</span>
+        <span class="d">Dois degraus (núcleo / com agente), teste com prazo — não grátis pra sempre, pelo motivo do quadro lá em cima.</span>
+        <span class="src">deles: “All your work, all your people, all powered by AI”</span></li>
+    </ol>
+  </section>
+
+  <!-- ================= 5. O QUE MUDA ================= -->
+  <section class="wrap">
+    <div class="head">
+      <p class="eyebrow">Consequência</p>
+      <h2>O que essa pesquisa muda no escopo</h2>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Item</th><th>Estava assim</th><th>Vira</th></tr></thead>
+        <tbody>
+          <tr><td class="k">preço</td><td>dois degraus, a validar</td><td>Confirmado pelo precedente: a IA é o degrau caro, não um extra barato</td></tr>
+          <tr><td class="k">teste</td><td>não decidido</td><td>Prazo fixo com WhatsApp ligado. Grátis pra sempre é inviável com Z-API</td></tr>
+          <tr><td class="k">agente</td><td>identidade, personalidade, poderes, rotina, limites</td><td>Vira o modelo de 5 seções deles, com <b>teto colado na ferramenta</b> e sem memória autônoma na v1</td></tr>
+          <tr><td class="k">conhecimento</td><td>não estava no escopo</td><td><b>Novo:</b> “manual da loja” — texto que o dono escreve e o agente obedece</td></tr>
+          <tr><td class="k">tarefas</td><td>fora</td><td><b>Entra pequeno:</b> tarefa com responsável, prazo e recorrência. Sem sprint, sem gantt</td></tr>
+          <tr><td class="k">papéis</td><td>DEV / ADMIN / PDV</td><td><b>Falta convidado</b> — o contador, com acesso só ao financeiro</td></tr>
+          <tr><td class="k">consumo de IA</td><td>teto por dia</td><td>Vira <b>tela</b> que o cliente vê, não só limite escondido no .env</td></tr>
+          <tr><td class="k">áudio</td><td>não previsto</td><td><b>Novo:</b> lojista fala melhor do que digita. Áudio no WhatsApp é entrada natural</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout prose">
+      <h3>E o que continua valendo</h3>
+      <p class="small">A pesquisa não mudou nada nas decisões de fundo: sem site, crediário como módulo, <span class="mono">tenant_id</span> desde a primeira tabela, toda ação do agente emitindo recibo, portar o <span class="mono">src/lib/</span> em vez de reescrever. Ela confirmou a direção e ajustou o acabamento.</p>
+      <p class="small">As pendências que travam a venda também continuam de pé, e são as mesmas: <b>quem é o cliente, o nome, NF-e na v1, Z-API ou API oficial, e o preço.</b></p>
+    </div>
+
+    <div class="foot">
+      <p class="eyebrow">Fontes consultadas</p>
+      <div class="srcs">
+        <a href="https://clickup.com/">home</a>
+        <a href="https://clickup.com/features">features</a>
+        <a href="https://clickup.com/pricing">pricing</a>
+        <a href="https://help.clickup.com/hc/en-us/articles/37092796379927-Super-Agent-instructions-triggers-skills-knowledge-and-memory">super agents: instructions, triggers, skills, knowledge, memory</a>
+        <a href="https://clickup.com/brain/agents">brain / agents</a>
+      </div>
+      <p class="small">Preços em dólar, como publicados por eles. Os selos Copiar / Adaptar / Ignorar e as colunas “como fica no nosso” são julgamento, não informação do ClickUp.</p>
+    </div>
+  </section>
+
+</main>

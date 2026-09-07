@@ -1,0 +1,186 @@
+@import 'tailwindcss';
+
+/* ═══════════════════════════════════════════════════════════
+   Norte — fichas de cor
+   ═══════════════════════════════════════════════════════════
+
+   Três famílias, e a separação entre elas é regra, não estilo:
+
+   • MARCA (petróleo) — identidade e ação. Escolhida porque o mercado de
+     software de gestão é um mar de roxo e índigo; sair dele custa zero.
+   • NEUTRO — fundo, borda, texto. Puxado levemente para o azul-esverdeado,
+     para conversar com a marca em vez de brigar.
+   • SITUAÇÃO (verde / âmbar / vermelho) — bom, atenção, crítico.
+     NUNCA usada como cor de marca. Se a marca fosse verde, "no prazo" e
+     "logo da empresa" competiriam pelo olho, e o que precisa de atenção
+     deixaria de saltar. É o erro mais comum em painel denso.
+
+   Tema: `data-tema` no <html> — "claro" ou "escuro". Sem atributo, segue o
+   sistema. Toda cor nasce no :root; os blocos de tema só REDEFINEM ficha.
+   Nenhuma cor pode existir só dentro de um bloco de tema, senão ela some no
+   estado "sistema" e a tela sai com texto de um tema no fundo do outro.
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* neutros — fundo ao texto */
+  --fundo: #f2f5f6;
+  --superficie: #ffffff;
+  --superficie-2: #e9eff0;
+  --superficie-3: #dde5e7;
+  --tinta: #0e1a1d;
+  --tinta-2: #46595e;
+  --tinta-3: #78898e;
+  --borda: #d3dedf;
+  --borda-suave: #e5ecec;
+
+  /* marca */
+  --marca: #0d4a57;
+  --marca-forte: #093843;
+  --marca-suave: #dceaec;
+  --marca-tinta: #ffffff; /* texto SOBRE a marca */
+
+  /* situação */
+  --bom: #1c7549;
+  --bom-fundo: #dcf0e5;
+  --atencao: #8c5a12;
+  --atencao-fundo: #f7e8d2;
+  --critico: #9b3f36;
+  --critico-fundo: #f6dfdc;
+
+  /* elevação e foco */
+  --sombra: 0 1px 2px rgb(14 26 29 / 0.06), 0 8px 20px -12px rgb(14 26 29 / 0.22);
+  --anel: #2b8ea3;
+
+  --raio: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema='claro']) {
+    --fundo: #0a1114;
+    --superficie: #111a1e;
+    --superficie-2: #182328;
+    --superficie-3: #223035;
+    --tinta: #e6edee;
+    --tinta-2: #9eb0b4;
+    --tinta-3: #6b7c81;
+    --borda: #243338;
+    --borda-suave: #1b272b;
+
+    --marca: #4fb3c9;
+    --marca-forte: #6ecadd;
+    --marca-suave: #0f2a31;
+    --marca-tinta: #04191f;
+
+    --bom: #5dc894;
+    --bom-fundo: #0f2a1d;
+    --atencao: #dfae5e;
+    --atencao-fundo: #2b2113;
+    --critico: #de8b80;
+    --critico-fundo: #2d1b18;
+
+    --sombra: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -14px rgb(0 0 0 / 0.7);
+    --anel: #4fb3c9;
+  }
+}
+
+:root[data-tema='escuro'] {
+  --fundo: #0a1114;
+  --superficie: #111a1e;
+  --superficie-2: #182328;
+  --superficie-3: #223035;
+  --tinta: #e6edee;
+  --tinta-2: #9eb0b4;
+  --tinta-3: #6b7c81;
+  --borda: #243338;
+  --borda-suave: #1b272b;
+
+  --marca: #4fb3c9;
+  --marca-forte: #6ecadd;
+  --marca-suave: #0f2a31;
+  --marca-tinta: #04191f;
+
+  --bom: #5dc894;
+  --bom-fundo: #0f2a1d;
+  --atencao: #dfae5e;
+  --atencao-fundo: #2b2113;
+  --critico: #de8b80;
+  --critico-fundo: #2d1b18;
+
+  --sombra: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -14px rgb(0 0 0 / 0.7);
+  --anel: #4fb3c9;
+}
+
+/* Deixa as fichas virarem utilitário do Tailwind: bg-superficie, text-tinta-2… */
+@theme inline {
+  --color-fundo: var(--fundo);
+  --color-superficie: var(--superficie);
+  --color-superficie-2: var(--superficie-2);
+  --color-superficie-3: var(--superficie-3);
+  --color-tinta: var(--tinta);
+  --color-tinta-2: var(--tinta-2);
+  --color-tinta-3: var(--tinta-3);
+  --color-borda: var(--borda);
+  --color-borda-suave: var(--borda-suave);
+  --color-marca: var(--marca);
+  --color-marca-forte: var(--marca-forte);
+  --color-marca-suave: var(--marca-suave);
+  --color-marca-tinta: var(--marca-tinta);
+  --color-bom: var(--bom);
+  --color-bom-fundo: var(--bom-fundo);
+  --color-atencao: var(--atencao);
+  --color-atencao-fundo: var(--atencao-fundo);
+  --color-critico: var(--critico);
+  --color-critico-fundo: var(--critico-fundo);
+  --color-anel: var(--anel);
+
+  --radius-norte: var(--raio);
+  --shadow-norte: var(--sombra);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, monospace;
+}
+
+/* ── base ────────────────────────────────────────────────── */
+
+html {
+  color-scheme: light dark;
+}
+:root[data-tema='claro'] { color-scheme: light; }
+:root[data-tema='escuro'] { color-scheme: dark; }
+
+body {
+  background: var(--fundo);
+  color: var(--tinta);
+  font-family: var(--font-sans);
+  /* Painel é para trabalhar, não para ler artigo: 14px cabe mais linha na
+     tela sem apertar, que é o padrão de ferramenta de gestão. */
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Números em coluna precisam alinhar. Vale para tabela, total, dinheiro. */
+.numero,
+td.numero,
+th.numero {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Foco visível sempre — teclado é como o balcão trabalha rápido. */
+:focus-visible {
+  outline: 2px solid var(--anel);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

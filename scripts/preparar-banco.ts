@@ -1,0 +1,116 @@
+// Deixa o banco pronto para trabalhar: tabelas, papel da aplicação, travas de
+// isolamento e duas empresas de exemplo.
+//
+// Roda contra QUALQUER Postgres — o local do `npm run banco`, ou um hospedado
+// (Neon, Supabase) quando existir. É o mesmo caminho, de propósito.
+//
+//   npm run preparar
+//
+// Usa DATABASE_URL_ADMIN (dono das tabelas). A aplicação nunca usa essa URL.
+
+import 'dotenv/config'
+import { Client } from 'pg'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { guardarSenha } from '../src/servidor/senha'
+
+const raiz = join(import.meta.dirname, '..')
+const ler = (p: string) => readFileSync(join(raiz, p), 'utf8')
+
+const url =
+  process.env.DATABASE_URL_ADMIN ??
+  `postgresql://postgres:postgres@127.0.0.1:${process.env.PORTA_BANCO ?? 5433}/postgres`
+
+const SENHA_APP = process.env.SENHA_APP ?? 'norte_dev'
+const SENHA_EXEMPLO = 'exemplo-2026'
+
+const cliente = new Client({ connectionString: url })
+await cliente.connect()
+
+const passo = (t: string) => console.log(`  ${t}`)
+
+console.log(`\n  Preparando ${url.replace(/:[^:@]*@/, ':***@')}\n`)
+
+// ── 1. tabelas ───────────────────────────────────────────────
+passo('tabelas...')
+await cliente.query(ler('prisma/sql/tabelas.sql'))
+
+// ── 2. o papel da aplicação ──────────────────────────────────
+// Sem privilégio de sistema. Se a aplicação rodasse como dono ou superusuário,
+// o RLS seria ignorado em silêncio e a segunda parede não existiria.
+passo('papel da aplicação...')
+await cliente.query(`
+  do $$
+  begin
+    if not exists (select 1 from pg_roles where rolname = 'app_norte') then
+      create role app_norte login password ${quote(SENHA_APP)};
+    end if;
+  end $$;
+
+  grant usage on schema public to app_norte;
+  grant select, insert, update, delete on all tables in schema public to app_norte;
+  grant usage, select on all sequences in schema public to app_norte;
+`)
+
+// ── 3. as travas ─────────────────────────────────────────────
+passo('travas de isolamento (RLS)...')
+await cliente.query(ler('prisma/sql/rls.sql'))
+
+// ── 4. exemplo ───────────────────────────────────────────────
+const { rows } = await cliente.query<{ n: string }>('select count(*)::int as n from orgs')
+if (Number(rows[0]!.n) === 0) {
+  passo('duas empresas de exemplo...')
+  await cliente.query(`
+    insert into orgs (id, nome, slug, plano, situacao, cor_marca, criada_em, atualizada_em) values
+      ('org-exemplo-a', 'Comércio Exemplo',     'exemplo', 'BALCAO_AGENTE', 'ATIVA', '#0D4A57', now(), now()),
+      ('org-exemplo-b', 'Empresa Vizinha', 'vizinha',      'REDE',          'ATIVA', '#7A4B12', now(), now());
+
+    insert into unidades (id, org_id, nome, ativa, eh_deposito, criada_em, atualizada_em) values
+      ('uni-a1', 'org-exemplo-a', 'Loja Centro',   true, false, now(), now()),
+      ('uni-b1', 'org-exemplo-b', 'Loja Sul', true, false, now(), now()),
+      ('uni-b2', 'org-exemplo-b', 'Deposito',      true, true,  now(), now());
+
+  `)
+
+  // Senha de exemplo, igual para todo mundo. Só existe em banco local.
+  const hash = await guardarSenha(SENHA_EXEMPLO)
+  await cliente.query(
+    `insert into usuarios (id, org_id, nome, email, senha_hash, ativo, criado_em, atualizado_em) values
+      ('usr-a1', 'org-exemplo-a', 'Ana',   'ana@exemplo.com',   $1, true, now(), now()),
+      ('usr-a2', 'org-exemplo-a', 'Carlos',   'carlos@exemplo.com',   $1, true, now(), now()),
+      ('usr-a3', 'org-exemplo-a', 'Contador','contador@exemplo.com',$1, true, now(), now()),
+      ('usr-a4', 'org-exemplo-a', 'Antiga',  'antiga@exemplo.com',  $1, false, now(), now()),
+      ('usr-b1', 'org-exemplo-b', 'Vizinho', 'vizinho@exemplo.com', $1, true, now(), now())`,
+    [hash],
+  )
+
+  await cliente.query(`
+    insert into acessos (id, org_id, usuario_id, unidade_id, papel, criado_em) values
+      ('acs-a1', 'org-exemplo-a', 'usr-a1', null,     'DONO',     now()),
+      ('acs-a2', 'org-exemplo-a', 'usr-a2', 'uni-a1', 'BALCAO',   now()),
+      ('acs-a3', 'org-exemplo-a', 'usr-a3', null,     'CONTADOR', now()),
+      ('acs-b1', 'org-exemplo-b', 'usr-b1', null,     'DONO',     now());
+  `)
+  // 'usr-a4' fica de proposito SEM acesso: e o caso "conta existe, senha bate,
+  // mas nao tem papel em lugar nenhum".
+} else {
+  passo('já tem empresa cadastrada — exemplo não foi tocado')
+}
+
+await cliente.end()
+
+console.log(`
+  Pronto.
+
+  Entrar como:  ana@exemplo.com (dona) / carlos@exemplo.com (balcao)
+                contador@exemplo.com (contador)   —   senha: ${SENHA_EXEMPLO}
+
+  Ponha no .env:
+    DATABASE_URL="postgresql://app_norte:${SENHA_APP}@127.0.0.1:${process.env.PORTA_BANCO ?? 5433}/postgres"
+    DATABASE_URL_ADMIN="${url}"
+`)
+
+/** Escapa senha para dentro do SQL. */
+function quote(s: string) {
+  return `'${s.replace(/'/g, "''")}'`
+}

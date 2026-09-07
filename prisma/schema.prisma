@@ -1,0 +1,258 @@
+// Norte — fundação (Fase 1)
+//
+// REGRA INEGOCIÁVEL: toda tabela de dado de cliente carrega orgId.
+// Sem exceção, nem "essa é pequena", nem "essa eu arrumo depois".
+// Enfiar tenant depois foi o problema de 6 a 10 semanas no sistema anterior.
+//
+// Isolamento tem DUAS paredes:
+//   1. aplicação — todo acesso passa por um cliente já preso a uma Org
+//   2. banco — RLS por app.org_id (ver prisma/migrations/rls.sql)
+// A parede 2 existe para o dia em que a 1 falhar.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Prisma 7: a URL nao mora mais aqui. Vai em prisma.config.ts (migracao)
+  // e o PrismaClient recebe um adapter. Ver DECISOES.md.
+}
+
+// ─────────────────────────────────────────────────────────────
+// TENANT
+// ─────────────────────────────────────────────────────────────
+
+/// A empresa cliente. É o tenant: tudo pendura aqui.
+/// Loja de bairro = 1 Org com 1 Unidade. Rede de 40 = 1 Org com 40 Unidades.
+model Org {
+  id        String   @id @default(cuid())
+  nome      String
+  slug      String   @unique // subdomínio / URL
+  documento String? // CNPJ do grupo, quando existe
+
+  plano       Plano     @default(BALCAO)
+  situacao    Situacao  @default(TESTE)
+  testeAte    DateTime? @map("teste_ate")
+  suspensaEm  DateTime? @map("suspensa_em")
+
+  // marca (white-label)
+  logoUrl   String? @map("logo_url")
+  corMarca  String? @map("cor_marca")
+
+  unidades  Unidade[]
+  usuarios  Usuario[]
+  acessos   Acesso[]
+  convites  Convite[]
+  auditoria Auditoria[]
+  cobranca  Cobranca?
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@map("orgs")
+}
+
+/// Loja, filial ou depósito. Cada uma com seu CNPJ — é o que faz
+/// multi-CNPJ funcionar sem caso especial.
+model Unidade {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome      String
+  documento String? // CNPJ desta unidade
+  apelido   String? // como aparece no comprovante
+
+  endereco String?
+  cidade   String?
+  estado   String?
+  cep      String?
+  telefone String?
+
+  ehDeposito Boolean @default(false) @map("eh_deposito")
+  ativa      Boolean @default(true)
+
+  acessos   Acesso[]
+  auditoria Auditoria[]
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@index([orgId])
+  @@map("unidades")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PESSOAS E PERMISSÃO
+// ─────────────────────────────────────────────────────────────
+
+/// Quem entra no sistema. Pertence a uma Org.
+/// A mesma pessoa em duas empresas são dois usuários — de propósito:
+/// nunca deve existir um caminho que atravesse duas Orgs.
+model Usuario {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome      String
+  email     String
+  senhaHash String? @map("senha_hash")
+  telefone  String?
+  fotoUrl   String? @map("foto_url")
+
+  ativo       Boolean   @default(true)
+  ultimoLogin DateTime? @map("ultimo_login")
+
+  acessos   Acesso[]
+  auditoria Auditoria[]
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@map("usuarios")
+}
+
+/// Permissão é POR UNIDADE, não global.
+/// O gerente da loja 3 não enxerga o caixa da loja 5.
+model Acesso {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  usuarioId String  @map("usuario_id")
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  /// null = vale para todas as unidades da Org (caso do Dono)
+  unidadeId String?  @map("unidade_id")
+  unidade   Unidade? @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  papel Papel
+
+  /// Acesso de suporte (nosso) é temporário e precisa de motivo.
+  expiraEm DateTime? @map("expira_em")
+  motivo   String?
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@unique([usuarioId, unidadeId, papel])
+  @@index([orgId])
+  @@map("acessos")
+}
+
+model Convite {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  email     String
+  papel     Papel
+  unidadeId String? @map("unidade_id")
+
+  token    String    @unique
+  expiraEm DateTime  @map("expira_em")
+  aceitoEm DateTime? @map("aceito_em")
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId])
+  @@map("convites")
+}
+
+// ─────────────────────────────────────────────────────────────
+// LIVRO DE AUDITORIA
+// ─────────────────────────────────────────────────────────────
+
+/// Imutável: só INSERT. Nada de UPDATE nem DELETE (garantido por RLS).
+/// Vale para pessoa E para agente — inclusive para o nosso acesso de suporte.
+model Auditoria {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  unidadeId String?  @map("unidade_id")
+  unidade   Unidade? @relation(fields: [unidadeId], references: [id])
+
+  usuarioId String?  @map("usuario_id")
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  /// quem fez, guardado como texto também — o nome sobrevive se o usuário sumir
+  quem  String
+  autor Autor  @default(PESSOA)
+
+  acao      String // "produto.preco.alterou", "caixa.fechou"
+  alvoTipo  String? @map("alvo_tipo")
+  alvoId    String? @map("alvo_id")
+  alvoNome  String? @map("alvo_nome")
+
+  antes  Json?
+  depois Json?
+  valor  Decimal? @db.Decimal(14, 2)
+  motivo String?
+
+  ip        String?
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, criadoEm])
+  @@index([orgId, alvoTipo, alvoId])
+  @@map("auditoria")
+}
+
+// ─────────────────────────────────────────────────────────────
+// NOSSA COBRANÇA
+// ─────────────────────────────────────────────────────────────
+
+model Cobranca {
+  id    String @id @default(cuid())
+  orgId String @unique @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  provedor       String? // asaas | iugu | vindi
+  assinaturaId   String? @map("assinatura_id")
+  valorMensal    Decimal @default(0) @db.Decimal(10, 2) @map("valor_mensal")
+  unidadesExtras Int     @default(0) @map("unidades_extras")
+
+  proximaCobranca DateTime? @map("proxima_cobranca")
+  pagoAte         DateTime? @map("pago_ate")
+  tentativas      Int       @default(0)
+
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@map("cobranca")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum Plano {
+  BALCAO
+  BALCAO_AGENTE
+  REDE
+  CORPORATIVO
+}
+
+enum Situacao {
+  TESTE
+  ATIVA
+  INADIMPLENTE
+  SUSPENSA
+  CANCELADA
+}
+
+enum Papel {
+  DONO
+  GERENTE
+  BALCAO
+  FINANCEIRO
+  CONTADOR // convidado, só leitura do financeiro
+  SUPORTE // nós, com prazo e motivo
+}
+
+enum Autor {
+  PESSOA
+  AGENTE
+  SISTEMA
+}
