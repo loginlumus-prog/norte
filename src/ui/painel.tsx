@@ -10,9 +10,11 @@
 //             com barra lê melhor que gráfico: dá o valor exato E a proporção
 //             na mesma linha, sem o olho ter que ir até um eixo.
 //
-// A cor não carrega identidade em lugar nenhum aqui — ela é sempre a mesma, e
-// quem separa os itens é o texto. Verde/âmbar/vermelho ficam reservados para
-// situação (bom, atenção, crítico), nunca para "série 2".
+// Sobre a cor: o gráfico de vendas é VERDE porque dinheiro entrando é bom, e
+// isso é significado, não decoração — não é "a série 1". Continua valendo que
+// nenhuma cor separa itens de uma lista: quem separa é o texto. E toda cor vem
+// acompanhada de sinal ou palavra, para quem não distingue verde de vermelho
+// ler exatamente a mesma coisa.
 
 import type { ReactNode } from 'react'
 import { cx } from './base'
@@ -30,17 +32,26 @@ export function Numero({
   valor,
   detalhe,
   comparacao,
+  nivel,
 }: {
   rotulo: string
   valor: string
   detalhe?: string
   /** Diferença em relação ao período anterior, já calculada. */
   comparacao?: { pct: number; contra: string }
+  /** Pinta a faixa da esquerda. Sem isto, o tile é neutro. */
+  nivel?: 'bom' | 'atencao' | 'critico'
 }) {
   const c = comparacao
   const subiu = c ? c.pct >= 0 : false
+  const tom = nivel ?? (c && Number.isFinite(c.pct) ? (subiu ? 'bom' : 'critico') : undefined)
+  const faixa =
+    tom === 'bom' ? 'border-l-[3px] border-l-bom-vivo'
+    : tom === 'atencao' ? 'border-l-[3px] border-l-atencao-vivo'
+    : tom === 'critico' ? 'border-l-[3px] border-l-critico-vivo'
+    : ''
   return (
-    <div className="flex flex-col gap-0.5 rounded-norte border border-borda bg-superficie p-3.5">
+    <div className={cx('flex flex-col gap-0.5 rounded-norte border border-borda bg-superficie p-3.5', faixa)}>
       <span className="text-xs font-medium text-tinta-3">{rotulo}</span>
       <span className="numero text-2xl font-bold tracking-tight text-tinta">{valor}</span>
       <span className="flex flex-wrap items-baseline gap-x-2 text-xs">
@@ -99,8 +110,8 @@ export function Barras({
               width={L}
               height={h}
               rx={1.5}
-              fill="var(--marca)"
-              opacity={d.total > 0 ? 0.9 : 0.25}
+              fill="var(--bom-vivo)"
+              opacity={d.total > 0 ? 1 : 0.2}
             >
               {/* tooltip nativo: acessível, sem uma linha de JavaScript */}
               <title>{`${dia(d.dia)} — ${brl(d.total)}`}</title>
@@ -144,7 +155,7 @@ export function Ranque({
           <div className="flex items-center gap-2">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-superficie-2">
               <div
-                className="h-full rounded-full bg-marca"
+                className="h-full rounded-full bg-bom-vivo"
                 style={{ width: `${Math.max((i.valor / maior) * 100, 2)}%` }}
               />
             </div>

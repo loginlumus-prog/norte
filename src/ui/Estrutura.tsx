@@ -14,7 +14,7 @@ import { pode, type Capacidade, type Sessao } from '@/servidor/permissao'
 import { moduloLigado, type Modulo } from '@/servidor/modulos'
 import { sairAcao } from '@/app/[empresa]/acoes'
 import { TrocaTema, type Tema } from './TrocaTema'
-import { cx } from './base'
+import { cx, Ponto } from './base'
 
 export type ItemMenu = {
   href: string
@@ -24,8 +24,8 @@ export type ItemMenu = {
   /// veria Crediário parado no menu para sempre.
   modulo?: Modulo
   contagem?: number
-  /** true quando algo ali precisa de atenção — pinta a contagem */
-  alerta?: boolean
+  /** Bolinha de aviso: quantos precisam de olhada, e com que urgência. */
+  aviso?: { quantos: number; nivel: 'critico' | 'atencao' | 'bom'; titulo: string }
 }
 
 export function Estrutura({
@@ -75,21 +75,19 @@ export function Estrutura({
                 className={cx(
                   'flex items-center justify-between gap-2 rounded-norte px-2 py-1.5 text-sm',
                   aqui
-                    ? 'bg-superficie font-semibold text-tinta shadow-[inset_0_0_0_1px_var(--borda)]'
+                    ? 'bg-superficie font-semibold text-tinta shadow-[inset_0_0_0_1px_var(--borda),inset_3px_0_0_var(--marca)]'
                     : 'font-medium text-tinta-2 hover:bg-superficie hover:text-tinta',
                 )}
               >
                 <span className="truncate">{i.titulo}</span>
-                {i.contagem !== undefined && (
-                  <span
-                    className={cx(
-                      'numero shrink-0 rounded px-1 text-xs font-semibold',
-                      i.alerta ? 'bg-atencao-fundo text-atencao' : 'text-tinta-3',
-                    )}
-                  >
+                {/* O aviso ganha da contagem: o que pede ação vem primeiro. */}
+                {i.aviso ? (
+                  <Ponto nivel={i.aviso.nivel} quantos={i.aviso.quantos} titulo={i.aviso.titulo} />
+                ) : i.contagem !== undefined ? (
+                  <span className="numero shrink-0 text-xs font-semibold text-tinta-3">
                     {i.contagem}
                   </span>
-                )}
+                ) : null}
               </Link>
             )
           })}

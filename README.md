@@ -86,7 +86,12 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
    acontece dentro do banco, nunca na memória — senão duas vendas ao mesmo
    tempo perdem uma baixa. E o histórico é a verdade: `conferirSaldos()`
    acusa se o saldo divergir da soma.
-9. **O livro de auditoria só recebe.** Sem UPDATE, sem DELETE, e a tentativa
+9. **Cor sempre com palavra ou sinal junto.** Etiqueta tem bolinha E texto;
+   comparação tem seta E percentual. Quem não distingue verde de vermelho
+   (8% dos homens) precisa ler exatamente a mesma coisa.
+10. **Situação (verde/âmbar/vermelho) nunca vira cor de marca.** Se a marca
+   fosse verde, "no prazo" e "logo da empresa" competiriam pelo olho.
+11. **O livro de auditoria só recebe.** Sem UPDATE, sem DELETE, e a tentativa
    levanta erro em vez de falhar em silêncio.
 
 ### Onde ficam as coisas
@@ -109,6 +114,7 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
 | `src/servidor/planos.ts` | Cotas por plano e o que custa a loja extra |
 | `src/ui/` | Componentes: Botão, Campo, Aviso, Situação, Cartão, Tabela, Estrutura |
 | `src/app/globals.css` | As fichas de cor e os dois temas |
+| `src/ui/painel.tsx` | Número, gráfico e ranque do painel |
 
 ### Ao criar tabela nova
 

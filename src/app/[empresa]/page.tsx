@@ -6,7 +6,7 @@ import { resumoDoPainel } from '@/servidor/painel'
 import { moduloLigado } from '@/servidor/modulos'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Cartao, Situacao, Aviso } from '@/ui/base'
+import { Cartao, Situacao, Aviso, Ponto } from '@/ui/base'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Numero, Barras, Ranque, Secao, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
@@ -35,6 +35,29 @@ export default async function Painel({
   const verEstoque = pode(sessao, 'estoque.ver')
   const verEquipe = moduloLigado(empresa, 'metas') && pode(sessao, 'equipe.ver')
 
+  // O menu avisa ANTES de a pessoa clicar. É a diferença entre descobrir que
+  // acabou o estoque porque foi olhar, e ser avisado assim que entra.
+  const acabou = r.acabando.filter((a) => a.saldo <= 0).length
+  const menu = MENU(slug).map((i) => {
+    if (i.href === `/${slug}/estoque` && r.acabando.length > 0) {
+      return {
+        ...i,
+        aviso: {
+          quantos: r.acabando.length,
+          nivel: acabou > 0 ? ('critico' as const) : ('atencao' as const),
+          titulo: acabou > 0 ? 'item(ns) acabado(s)' : 'abaixo do mínimo',
+        },
+      }
+    }
+    if (i.href === `/${slug}/produtos` && r.parados.length > 0) {
+      return {
+        ...i,
+        aviso: { quantos: r.parados.length, nivel: 'atencao' as const, titulo: 'parado(s)' },
+      }
+    }
+    return i
+  })
+
   // Comparação com ontem, que é a pergunta que o dono faz de manhã.
   const pct = r.ontem.total > 0 ? ((r.hoje.total - r.ontem.total) / r.ontem.total) * 100 : NaN
   const margem = r.mes.total > 0 ? ((r.mes.total - r.mes.custo) / r.mes.total) * 100 : 0
@@ -43,7 +66,7 @@ export default async function Painel({
     <Estrutura
       empresa={empresa}
       sessao={sessao}
-      itens={MENU(slug)}
+      itens={menu}
       ativo={`/${slug}`}
       tema={tema}
       titulo="Painel"
@@ -73,6 +96,7 @@ export default async function Painel({
             rotulo="Este mês"
             valor={brl(r.mes.total)}
             detalhe={`${r.mes.vendas} vendas`}
+            nivel="bom"
           />
           <Numero
             rotulo="Ticket médio do mês"
@@ -84,6 +108,7 @@ export default async function Painel({
               rotulo="Margem do mês"
               valor={`${margem.toFixed(0)}%`}
               detalhe={`${brl(r.mes.total - r.mes.custo)} sobre o custo`}
+              nivel={margem >= 40 ? 'bom' : margem >= 20 ? 'atencao' : 'critico'}
             />
           )}
         </div>
@@ -118,9 +143,13 @@ export default async function Painel({
             />
           </Cartao>
 
-          <Cartao titulo="Parados há mais de 30 dias">
+          <Cartao
+            titulo="Parados há mais de 30 dias"
+            acao={r.parados.length > 0 ? <Ponto nivel="atencao" quantos={r.parados.length} titulo="parados" /> : undefined}
+          >
             {r.parados.length === 0 ? (
-              <p className="py-6 text-center text-sm text-tinta-3">
+              <p className="flex items-center justify-center gap-2 py-6 text-center text-sm font-medium text-bom">
+                <span aria-hidden className="size-2 rounded-full bg-bom-vivo" />
                 Tudo girou no último mês.
               </p>
             ) : (
@@ -156,13 +185,22 @@ export default async function Painel({
                 rotulo="Dinheiro parado"
                 valor={brl(r.estoque.valorCusto)}
                 detalhe="a preço de custo"
+                nivel="atencao"
               />
             )}
           </div>
 
-          <Cartao titulo="Acabando">
+          <Cartao
+            titulo="Acabando"
+            acao={
+              r.acabando.length > 0 ? (
+                <Ponto nivel={acabou > 0 ? 'critico' : 'atencao'} quantos={r.acabando.length} titulo="itens" />
+              ) : undefined
+            }
+          >
             {r.acabando.length === 0 ? (
-              <p className="py-6 text-center text-sm text-tinta-3">
+              <p className="flex items-center justify-center gap-2 py-6 text-center text-sm font-medium text-bom">
+                <span aria-hidden className="size-2 rounded-full bg-bom-vivo" />
                 Nada abaixo do mínimo.
               </p>
             ) : (

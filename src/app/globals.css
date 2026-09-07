@@ -6,14 +6,17 @@
 
    Três famílias, e a separação entre elas é regra, não estilo:
 
-   • MARCA (petróleo) — identidade e ação. Escolhida porque o mercado de
-     software de gestão é um mar de roxo e índigo; sair dele custa zero.
-   • NEUTRO — fundo, borda, texto. Puxado levemente para o azul-esverdeado,
-     para conversar com a marca em vez de brigar.
-   • SITUAÇÃO (verde / âmbar / vermelho) — bom, atenção, crítico.
-     NUNCA usada como cor de marca. Se a marca fosse verde, "no prazo" e
-     "logo da empresa" competiriam pelo olho, e o que precisa de atenção
-     deixaria de saltar. É o erro mais comum em painel denso.
+   • NEUTRO — fundo, borda, texto. BRANCO de verdade, com um toque de azul
+     no cinza. Antes puxava para o verde e deixava a tela lavada: o verde do
+     fundo roubava a força do verde que SIGNIFICA alguma coisa.
+   • SITUAÇÃO (verde / âmbar / vermelho / azul) — é o que carrega o recado.
+     Aparece muito, de propósito: quem opera a loja tem que entender a tela
+     de longe, pela cor, antes de ler qualquer palavra.
+   • MARCA (petróleo) — identidade. Aparece POUCO. Quanto menos azul-petróleo
+     na tela, mais o verde e o vermelho saltam.
+
+   Cor nunca vem sozinha: toda etiqueta tem texto, toda seta tem sinal. Quem
+   não distingue verde de vermelho (8% dos homens) lê a mesma coisa.
 
    Tema: `data-tema` no <html> — "claro" ou "escuro". Sem atributo, segue o
    sistema. Toda cor nasce no :root; os blocos de tema só REDEFINEM ficha.
@@ -22,92 +25,126 @@
    ═══════════════════════════════════════════════════════════ */
 
 :root {
-  /* neutros — fundo ao texto */
-  --fundo: #f2f5f6;
+  /* NEUTROS — branco de verdade.
+     O cinza leva um toque mínimo de azul, não de verde: verde no neutro faz
+     a tela inteira parecer lavada e rouba força do verde que SIGNIFICA algo. */
+  --fundo: #f6f8fa;
   --superficie: #ffffff;
-  --superficie-2: #e9eff0;
-  --superficie-3: #dde5e7;
-  --tinta: #0e1a1d;
-  --tinta-2: #46595e;
-  --tinta-3: #78898e;
-  --borda: #d3dedf;
-  --borda-suave: #e5ecec;
+  --superficie-2: #f0f3f7;
+  --superficie-3: #e3e8ef;
+  --tinta: #0f1419;
+  --tinta-2: #4a5560;
+  --tinta-3: #7c8894;
+  --borda: #e2e7ee;
+  --borda-suave: #eef1f5;
 
-  /* marca */
-  --marca: #0d4a57;
-  --marca-forte: #093843;
-  --marca-suave: #dceaec;
-  --marca-tinta: #ffffff; /* texto SOBRE a marca */
+  /* MARCA — identidade e ação. Aparece pouco, de propósito: quanto menos
+     azul-petróleo na tela, mais o verde e o vermelho saltam. */
+  --marca: #0d5c6e;
+  --marca-forte: #083f4d;
+  --marca-suave: #ddeef2;
+  --marca-tinta: #ffffff;
 
-  /* situação */
-  --bom: #1c7549;
-  --bom-fundo: #dcf0e5;
-  --atencao: #8c5a12;
-  --atencao-fundo: #f7e8d2;
-  --critico: #9b3f36;
-  --critico-fundo: #f6dfdc;
+  /* SITUAÇÃO — dois níveis por cor, e isso não é capricho:
+     • o tom ESCURO é o único que passa em contraste sobre branco (texto)
+     • o tom VIVO é forte demais para texto e certo para barra e gráfico
+     Usar um só obrigaria a escolher entre ilegível e sem graça. */
+  --bom: #0a7c42;
+  --bom-vivo: #18b364;
+  --bom-fundo: #e2f7ec;
 
-  /* elevação e foco */
-  --sombra: 0 1px 2px rgb(14 26 29 / 0.06), 0 8px 20px -12px rgb(14 26 29 / 0.22);
-  --anel: #2b8ea3;
+  --atencao: #8a5a06;
+  --atencao-vivo: #f5a623;
+  --atencao-fundo: #fdf1d8;
+
+  --critico: #bf2d21;
+  --critico-vivo: #ef4335;
+  --critico-fundo: #fde6e4;
+
+  --info: #0a63b0;
+  --info-vivo: #2b8ae5;
+  --info-fundo: #e4f0fd;
+
+  --sombra: 0 1px 2px rgb(15 20 25 / 0.05), 0 8px 20px -12px rgb(15 20 25 / 0.2);
+  --anel: #2b8ae5;
 
   --raio: 6px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema='claro']) {
-    --fundo: #0a1114;
-    --superficie: #111a1e;
-    --superficie-2: #182328;
-    --superficie-3: #223035;
-    --tinta: #e6edee;
-    --tinta-2: #9eb0b4;
-    --tinta-3: #6b7c81;
-    --borda: #243338;
-    --borda-suave: #1b272b;
+    --fundo: #0b1016;
+    --superficie: #141a22;
+    --superficie-2: #1c242e;
+    --superficie-3: #26303c;
+    --tinta: #e9eef4;
+    --tinta-2: #a3b0be;
+    --tinta-3: #6f7d8c;
+    --borda: #26303c;
+    --borda-suave: #1b232c;
 
     --marca: #4fb3c9;
     --marca-forte: #6ecadd;
-    --marca-suave: #0f2a31;
+    --marca-suave: #10333d;
     --marca-tinta: #04191f;
 
-    --bom: #5dc894;
-    --bom-fundo: #0f2a1d;
-    --atencao: #dfae5e;
-    --atencao-fundo: #2b2113;
-    --critico: #de8b80;
-    --critico-fundo: #2d1b18;
+    /* No escuro inverte: o VIVO é que lê bem, e o escuro viraria borrão. */
+    --bom: #3ddc8a;
+    --bom-vivo: #2bc97a;
+    --bom-fundo: #0d2a1c;
 
-    --sombra: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -14px rgb(0 0 0 / 0.7);
-    --anel: #4fb3c9;
+    --atencao: #fbc45c;
+    --atencao-vivo: #f5a623;
+    --atencao-fundo: #2e2210;
+
+    --critico: #ff8578;
+    --critico-vivo: #ef4335;
+    --critico-fundo: #2f1614;
+
+    --info: #6bb6f5;
+    --info-vivo: #2b8ae5;
+    --info-fundo: #10243a;
+
+    --sombra: 0 1px 2px rgb(0 0 0 / 0.5), 0 10px 24px -14px rgb(0 0 0 / 0.8);
+    --anel: #6bb6f5;
   }
 }
 
 :root[data-tema='escuro'] {
-  --fundo: #0a1114;
-  --superficie: #111a1e;
-  --superficie-2: #182328;
-  --superficie-3: #223035;
-  --tinta: #e6edee;
-  --tinta-2: #9eb0b4;
-  --tinta-3: #6b7c81;
-  --borda: #243338;
-  --borda-suave: #1b272b;
+  --fundo: #0b1016;
+  --superficie: #141a22;
+  --superficie-2: #1c242e;
+  --superficie-3: #26303c;
+  --tinta: #e9eef4;
+  --tinta-2: #a3b0be;
+  --tinta-3: #6f7d8c;
+  --borda: #26303c;
+  --borda-suave: #1b232c;
 
   --marca: #4fb3c9;
   --marca-forte: #6ecadd;
-  --marca-suave: #0f2a31;
+  --marca-suave: #10333d;
   --marca-tinta: #04191f;
 
-  --bom: #5dc894;
-  --bom-fundo: #0f2a1d;
-  --atencao: #dfae5e;
-  --atencao-fundo: #2b2113;
-  --critico: #de8b80;
-  --critico-fundo: #2d1b18;
+  /* No escuro inverte: o VIVO é que lê bem, e o escuro viraria borrão. */
+  --bom: #3ddc8a;
+  --bom-vivo: #2bc97a;
+  --bom-fundo: #0d2a1c;
 
-  --sombra: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -14px rgb(0 0 0 / 0.7);
-  --anel: #4fb3c9;
+  --atencao: #fbc45c;
+  --atencao-vivo: #f5a623;
+  --atencao-fundo: #2e2210;
+
+  --critico: #ff8578;
+  --critico-vivo: #ef4335;
+  --critico-fundo: #2f1614;
+
+  --info: #6bb6f5;
+  --info-vivo: #2b8ae5;
+  --info-fundo: #10243a;
+
+  --sombra: 0 1px 2px rgb(0 0 0 / 0.5), 0 10px 24px -14px rgb(0 0 0 / 0.8);
+  --anel: #6bb6f5;
 }
 
 /* Deixa as fichas virarem utilitário do Tailwind: bg-superficie, text-tinta-2… */
@@ -126,11 +163,17 @@
   --color-marca-suave: var(--marca-suave);
   --color-marca-tinta: var(--marca-tinta);
   --color-bom: var(--bom);
+  --color-bom-vivo: var(--bom-vivo);
   --color-bom-fundo: var(--bom-fundo);
   --color-atencao: var(--atencao);
+  --color-atencao-vivo: var(--atencao-vivo);
   --color-atencao-fundo: var(--atencao-fundo);
   --color-critico: var(--critico);
+  --color-critico-vivo: var(--critico-vivo);
   --color-critico-fundo: var(--critico-fundo);
+  --color-info: var(--info);
+  --color-info-vivo: var(--info-vivo);
+  --color-info-fundo: var(--info-fundo);
   --color-anel: var(--anel);
 
   --radius-norte: var(--raio);

@@ -150,13 +150,21 @@ export function Aviso({
  * de vermelho (8% dos homens) precisa ler o mesmo que os outros enxergam.
  */
 export function Situacao({ nivel = 'neutro', children }: { nivel?: Nivel; children: ReactNode }) {
+  const bolinha: Record<Nivel, string> = {
+    bom: 'bg-bom-vivo',
+    atencao: 'bg-atencao-vivo',
+    critico: 'bg-critico-vivo',
+    neutro: 'bg-tinta-3',
+  }
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold',
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold',
         AVISO[nivel],
       )}
     >
+      {/* a bolinha dá o recado de longe; o texto dá para quem não vê a cor */}
+      <span aria-hidden className={cx('size-1.5 rounded-full', bolinha[nivel])} />
       {children}
     </span>
   )
@@ -277,3 +285,67 @@ export function Marcar({
     </label>
   )
 }
+
+/* ── Bolinha de aviso ─────────────────────────────────────── */
+
+/**
+ * O ponto que diz "tem coisa aqui". Aparece no menu e em aba.
+ *
+ * Sem número quando é só "tem novidade"; com número quando a quantidade
+ * importa ("3 acabando" pede ação diferente de "30 acabando").
+ */
+export function Ponto({
+  nivel = 'critico',
+  quantos,
+  titulo,
+}: {
+  nivel?: Nivel
+  quantos?: number
+  titulo?: string
+}) {
+  const cor: Record<Nivel, string> = {
+    bom: 'bg-bom-vivo',
+    atencao: 'bg-atencao-vivo',
+    critico: 'bg-critico-vivo',
+    neutro: 'bg-tinta-3',
+  }
+
+  if (quantos === undefined) {
+    return (
+      <span
+        title={titulo}
+        aria-label={titulo}
+        className={cx('inline-block size-2 shrink-0 rounded-full', cor[nivel])}
+      />
+    )
+  }
+
+  return (
+    <span
+      title={titulo}
+      aria-label={titulo ? `${quantos} ${titulo}` : String(quantos)}
+      className={cx(
+        'numero inline-flex min-w-5 shrink-0 items-center justify-center rounded-full',
+        'px-1.5 py-0.5 text-[11px] leading-none font-bold text-white',
+        cor[nivel],
+      )}
+    >
+      {quantos > 99 ? '99+' : quantos}
+    </span>
+  )
+}
+
+/* ── Faixa de destaque ────────────────────────────────────── */
+
+/**
+ * Barra de cor na borda de um cartão ou tile. É o jeito mais barato de dar
+ * situação a um bloco inteiro sem pintar o fundo e cansar a vista.
+ */
+export const FAIXA: Record<Nivel, string> = {
+  bom: 'border-l-[3px] border-l-bom-vivo',
+  atencao: 'border-l-[3px] border-l-atencao-vivo',
+  critico: 'border-l-[3px] border-l-critico-vivo',
+  neutro: 'border-l-[3px] border-l-borda',
+}
+
+export type { Nivel }
