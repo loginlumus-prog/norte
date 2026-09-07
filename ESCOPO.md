@@ -1,7 +1,9 @@
-# Sistema de gestão + agente de WhatsApp (white-label)
+# Norte — sistema de gestão + agente de WhatsApp (white-label)
 
-> Nome de trabalho: **gestor**. Trocar quando o nome comercial for definido
-> (renomear a pasta basta — nada depende do nome ainda).
+> Nome comercial fechado em 07/09/2026: **Norte**. O motivo, os nomes
+> descartados e a fraqueza conhecida da marca estão em `DECISOES.md` §1.
+> A pasta continua `C:\dev\gestor` — renomear repositório quebra remoto e
+> atalho de todo mundo, e o nome da pasta não aparece para cliente nenhum.
 
 Fora do OneDrive de propósito: o watcher do dev se perde com a sincronização
 e o CSS para de recarregar (aconteceu no projeto da loja).
@@ -163,14 +165,28 @@ digita.
 
 ---
 
-## 9. Pendências de decisão (bloqueiam a venda, não o código)
+## 9. Pendências de decisão
 
-- [ ] **Quem é o cliente?** Uma frase, com nome. Sem isso não se vende.
-      ("comércio de bairro, 1 a 3 lojas, 2 a 10 funcionários, vende no balcão e
-      no WhatsApp, vende fiado" — confirmar ou trocar)
-- [ ] **Nome comercial** do produto.
-- [ ] **NF-e entra na v1?** Cortar o nicho aumenta a cobrança por NF, não diminui.
+Esta lista tinha cinco itens e agora tem um. As outras quatro foram fechadas em
+`DECISOES.md`, e ficam registradas aqui com o destino para ninguém reabrir por
+achar que continuam em aberto.
+
+**Fechadas:**
+
+| Era | Ficou | Onde |
+|---|---|---|
+| Quem é o cliente? | Comércio de bairro, 1 a 3 lojas, 2 a 10 pessoas, vende no balcão e no WhatsApp, às vezes vende fiado — e a arquitetura serve a rede de 40 sem caso especial | `DECISOES.md` §2 |
+| Nome comercial | **Norte** | `DECISOES.md` §1 |
+| NF-e entra na v1? | Sim, como módulo: opcional no Balcão, incluída em Rede e Corporativo | `DECISOES.md` §7 |
+| Preço | Balcão R$ 349 · Balcão + Agente R$ 697 · Rede R$ 1.497 (+ R$ 249/loja) · Corporativo sob consulta | `DECISOES.md` §8 |
+
+**Ainda em aberto (bloqueia a venda, não o código):**
+
 - [ ] **WhatsApp:** Z-API (R$55-100/mês por loja, não oficial, risco de banimento
       em escala) ou API oficial da Meta (cobra por conversa, exige verificação do
-      Meta Business de cada cliente). Decidir antes de passar de ~15 clientes.
-- [ ] **Preço** dos dois degraus.
+      Meta Business de cada cliente). Já está resolvido como DEGRAU DE PLANO
+      (`DECISOES.md` §6) — falta contratar. Decidir antes de passar de ~15 clientes.
+- [ ] **Emissor de NF-e:** Focus NFe ou Nuvem Fiscal.
+- [ ] **Gateway da nossa mensalidade:** Asaas, Iugu ou Vindi.
+- [ ] **Domínio e marca:** confirmar `usenorte.com.br` e registrar como marca
+      mista no INPI (nome isolado é fraco — ver `DECISOES.md` §1).

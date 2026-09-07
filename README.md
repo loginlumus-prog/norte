@@ -62,13 +62,16 @@ pagamento dividido, troco calculado e o caixa fecha conferindo a gaveta.
 **Fase 3 fechada.** Contas a pagar com aviso de vencida, lançamento de
 despesa e DRE mensal no formato da contabilidade.
 
+**Marca e porta de entrada.** O símbolo (`src/ui/Marca.tsx`), a paleta sem
+viés de cor, a barra lateral azul-noite e a página de venda em `/` — com os
+quatro planos, a seção de segurança e as perguntas que travam assinatura.
+
+**Auditoria de segurança.** Cinco furos fechados: preço vindo do navegador,
+Server Action sem capacidade, login sem freio, sessão que sobrevivia à
+demissão e ausência total de cabeçalho de segurança. Detalhe em
+`DECISOES.md` §11.
+
 Próximo: Fase 4 — o agente no WhatsApp.
-
-**Fase 1 — Fundação: fechada.** Modelo de dados, isolamento entre empresas,
-acesso da aplicação, senhas, login, papéis, convite de equipe, biblioteca de
-componentes e os dois temas. Entrar em `/exemplo` já funciona de verdade.
-
-Próximo: Fase 2 — produto, estoque, balcão e caixa.
 
 ## As regras que não se quebram
 
@@ -99,6 +102,17 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
    fosse verde, "no prazo" e "logo da empresa" competiriam pelo olho.
 11. **O livro de auditoria só recebe.** Sem UPDATE, sem DELETE, e a tentativa
    levanta erro em vez de falhar em silêncio.
+12. **Server Action é endereço público.** Não é "a função que o meu botão
+   chama": é um POST que qualquer pessoa autenticada monta na mão, com os
+   argumentos que quiser. Toda uma delas começa por `exigirSessao()` e repete
+   a checagem de capacidade E de unidade, mesmo quando a tela já escondeu o
+   botão. Esconder o botão é conforto; a trava é no servidor.
+13. **Preço e valor nunca vêm do navegador.** O que chega do cliente é PEDIDO.
+   O preço de tabela sai do banco, e a diferença entre os dois é desconto —
+   que tem teto por empresa e capacidade própria (`venda.desconto`).
+14. **`lerSessao()` só é chamado dentro de `pagina.ts`.** O resto do sistema
+   usa `exigirEntrada()` ou `exigirSessao()`, que confrontam o cookie com o
+   banco. Ler o cookie direto pula a checagem de conta desativada.
 
 ### Onde ficam as coisas
 
@@ -120,6 +134,10 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
 | `src/servidor/unidade.ts` | Qual loja a pessoa está olhando, e quais ela alcança |
 | `src/servidor/painel.ts` | Os números do painel, uma consulta por assunto |
 | `src/servidor/planos.ts` | Cotas por plano e o que custa a loja extra |
+| `src/servidor/limite.ts` | O freio do login: quantas tentativas, por e-mail e por IP |
+| `src/proxy.ts` | Os cabeçalhos de segurança de toda página (CSP com nonce, HSTS…) |
+| `src/ui/Marca.tsx` | O símbolo e o nome. `src/app/icon.svg` é o mesmo desenho |
+| `src/app/page.tsx` | A página de venda (a raiz do site) |
 | `src/ui/` | Componentes: Botão, Campo, Aviso, Situação, Cartão, Tabela, Estrutura |
 | `src/app/globals.css` | As fichas de cor e os dois temas |
 | `src/ui/painel.tsx` | Número, gráfico, ranque e a tira de contagens coloridas |

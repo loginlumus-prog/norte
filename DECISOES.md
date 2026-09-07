@@ -208,9 +208,89 @@ são o mesmo cliente.
 
 ---
 
-## 10. O que continua em aberto
+## 10. Símbolo e aplicação da marca (fechado 07/09)
 
-- [ ] Confirmar domínio e viabilidade de marca do nome **Norte**
+Completa a decisão 9, que definiu a gramática mas não a marca.
+
+**O símbolo:** agulha de bússola apontando para o norte, dentro de um azulejo
+azul-noite. A metade de cima é o sol nascendo (âmbar fundo → dourado na
+ponta); a de baixo é o contrapeso, branco.
+
+**O teste que decidiu foi o de 16 pixels.** Foram desenhadas dez variações;
+seis morreram aí. Aba do navegador, favorito e atalho na tela do celular são
+onde a marca é vista mais vezes, e é onde anel fino, raio de sol e degradê
+viram borrão cinza. Sobrou o que tem duas formas e duas cores.
+
+**Descartados:**
+
+| Desenho | Por que caiu |
+|---|---|
+| Agulha de quatro facetas | Bonita em 48px, virava "estrelinha de IA" — clichê do setor — e mingau em 16px |
+| Sol nascendo no horizonte com seta | Três elementos; em 16px vira um monte marrom |
+| Bússola com anel completo | O melhor dos redondos, mas o anel precisa ser fino e some no tamanho pequeno |
+| Só a seta, sem azulejo | Limpa, mas sem presença: some em qualquer fundo claro |
+
+**O azulejo não é enfeite.** Ele resolve presença em fundo claro e vira ícone
+de aplicativo sem trabalho extra. A versão `nu` (sem azulejo) existe para
+quando o fundo JÁ é o azul-noite — barra lateral e topo da tela de entrar.
+
+**Cor de marca: mudou de petróleo para azul.** O petróleo (#0d5c6e) tinha o
+argumento certo (fugir do roxo/índigo de SaaS) e o resultado errado: ele é
+vizinho do verde de "bom" e do azul de "informação", e o conjunto ficou
+lavado. O azul (#2050d8) tem chroma para segurar botão e link, e a família
+`info` foi aposentada — era usada em um lugar só e passou a brigar com ele.
+
+**O dourado do sol é a exceção que confirma a regra 9:** ele NÃO é ficha de
+interface. É vizinho do âmbar de "atenção", e usá-lo em botão faria a pessoa
+ler alerta onde só tem marca. Vive no símbolo e no material de venda.
+
+**Barra lateral azul-noite.** É o maior bloco de cor da tela. Cinza claro
+fazia o sistema parecer formulário de banco; escura, ela separa o que é o
+SISTEMA (navegação, sempre igual) do que é o TRABALHO (área branca, muda o
+tempo todo) — e dá ao verde e ao vermelho um lado quieto para contrastar.
+
+---
+
+## 11. Postura de segurança (fechado 07/09)
+
+Cinco travas, decididas de uma vez porque juntas elas cobrem o caminho inteiro
+de um ataque real. Cada uma nasceu de um furo encontrado auditando o que já
+estava pronto — nenhuma é precaução teórica.
+
+| Trava | O furo que ela fecha |
+|---|---|
+| Preço vem do banco; desconto tem teto | Server Action aceitava `precoUnit` do navegador. Vender a peça de R$ 500 por um centavo, com o pagamento "fechando" e o estoque baixando certinho |
+| Capacidade exigida em toda Server Action | A busca do balcão só conferia se havia sessão: o contador lia catálogo com custo, o balconista lia o estoque da outra loja |
+| Freio no login | Única porta que aceita chute, e aceitava infinitos |
+| Sessão confrontada com o banco a cada requisição | Cookie é fotografia: desativar alguém só valia quando o cookie expirasse, até 12h depois |
+| CSP com nonce + HSTS + nosniff + frame-ancestors | Nenhum cabeçalho de segurança existia |
+
+**Duas escolhas dentro dessas travas que valem registro:**
+
+*O freio conta o e-mail digitado, exista ele ou não.* Contar só o que existe
+faria o próprio freio entregar quais e-mails têm cadastro na empresa — o
+comportamento diferente é o vazamento.
+
+*O bloqueio expira sozinho, não trava até alguém destravar.* Bloqueio
+permanente transforma o ataque em outra coisa: dá para trancar a dona do lado
+de fora da própria loja errando a senha dela cinco vezes.
+
+**O que a CSP com nonce custa:** toda página passa a ser renderizada por
+requisição, porque o bilhete muda a cada carregamento. Para este sistema não
+muda nada — toda tela já lê cookie de sessão, e página que lê cookie já era
+dinâmica. Numa página estática de marketing seria caro; aqui não existe uma.
+
+**O que NÃO está fechado ainda:** 2FA para o dono, política de senha forte,
+sessão listável ("estes são os aparelhos conectados"), e backup com teste de
+restauração. Entram na Fase 6, junto com contrato e cobrança.
+
+---
+
+## 12. O que continua em aberto
+
+- [ ] Confirmar domínio (`usenorte.com.br`) e registrar marca MISTA no INPI —
+      "Norte" isolado é fraco, ver §1
 - [ ] Regras de troca por loja (hoje são provisórias, do varejo genérico)
 - [ ] Qual emissor de nota fiscal: Focus NFe ou Nuvem Fiscal
 - [ ] Qual gateway da nossa mensalidade: Asaas, Iugu ou Vindi
+- [ ] Z-API ou Meta oficial — já resolvido como degrau de plano (§6), falta contratar
