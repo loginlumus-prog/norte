@@ -17,6 +17,7 @@ import { semearCatalogo } from './exemplo-catalogo'
 import { semearVendas } from './exemplo-vendas'
 import { semearFinanceiro } from './exemplo-financeiro'
 import { semearAgente } from './exemplo-agente'
+import { semearClientes } from './exemplo-clientes'
 import { CATEGORIAS_PADRAO } from '../src/servidor/financeiro'
 
 const raiz = join(import.meta.dirname, '..')
@@ -191,6 +192,10 @@ if (Number(temCat[0]!.n) === 0) {
 
 const nLanc = await semearFinanceiro(cliente, 'org-exemplo-a', 'uni-a1')
 if (nLanc) passo(`${nLanc} lançamentos de exemplo (2 meses + contas a pagar)...`)
+
+// Depois das vendas: os clientes de exemplo se ligam a vendas que já existem.
+const nCli = await semearClientes(cliente, 'org-exemplo-a')
+if (nCli) passo(`${nCli} clientes de exemplo, com as compras deles...`)
 
 // Depois do financeiro de propósito: a proposta de compra do agente aponta
 // para uma categoria financeira, e ela precisa existir antes.

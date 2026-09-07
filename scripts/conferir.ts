@@ -33,6 +33,7 @@ import { acharAgente, propor, responderProposta, paraConfig } from '../src/servi
 import { criarProduto, ajustarGrade, eixosDaEmpresa } from '../src/servidor/produto'
 import { registrarEntrada, definirMinimo } from '../src/servidor/entrada'
 import { listarEquipe, mudarAcesso, mudarSituacao } from '../src/servidor/equipe'
+import { criarCliente, listarClientes } from '../src/servidor/cliente'
 import { ferramentasDe, AcimaDoTeto } from '../src/servidor/poderes'
 import { escolherUnidade } from '../src/servidor/unidade'
 import { resumoDoPainel } from '../src/servidor/painel'
@@ -745,6 +746,50 @@ console.log('\n  Agente\n')
   }
 }
 
+
+
+// ── clientes ─────────────────────────────────────────────────
+console.log('\n  Clientes\n')
+
+{
+  const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
+  const balconista = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+
+  if (dona.ok && balconista.ok) {
+    // Só o nome é obrigatório: exigir CPF faria a vendedora desistir e vender
+    // sem cliente — e aí nao existe historico nem "cliente sumido".
+    const so = await criarCliente(dona.sessao, { nome: 'Cliente so com nome' })
+    ok('cliente nasce so com o nome', so.ok, so.ok ? so.clienteId.slice(0, 8) : so.motivo)
+
+    // CPF errado é recusado ANTES de virar nota fiscal recusada pela SEFAZ.
+    const cpfRuim = await criarCliente(dona.sessao, { nome: 'CPF errado', documento: '529.982.247-26' })
+    ok('CPF com digito errado e recusado', !cpfRuim.ok, cpfRuim.ok ? 'PASSOU!' : cpfRuim.motivo)
+
+    // Telefone digitado de outro jeito é a MESMA pessoa.
+    const p1 = await criarCliente(dona.sessao, { nome: 'Fulana', telefone: '(71) 98888-7777' })
+    const p2 = await criarCliente(dona.sessao, { nome: 'Fulana de novo', telefone: '71988887777' })
+    ok('o mesmo telefone escrito diferente NAO vira segundo cadastro',
+       p1.ok && !p2.ok && !!p2.jaExiste,
+       p2.ok ? 'DUPLICOU!' : `aponta para ${p2.jaExiste?.nome}`)
+
+    // O balcão cadastra cliente (é ele que atende), mas não é livre geral.
+    const doBalcao = await criarCliente(balconista.sessao, { nome: 'Cliente do balcao' })
+    ok('o balcao PODE cadastrar cliente', doBalcao.ok, doBalcao.ok ? 'ok' : doBalcao.motivo)
+
+    // A busca acha por nome e por telefone, com ou sem formatação.
+    const porNome = await listarClientes(dona.sessao, 'Marta')
+    const porFone = await listarClientes(dona.sessao, '(71) 98881-0001')
+    ok('a busca acha por nome', porNome.length > 0, porNome[0]?.nome ?? 'nada')
+    ok('e por telefone formatado', porFone.length > 0 && porFone[0]?.nome === porNome[0]?.nome,
+       porFone[0]?.nome ?? 'nada')
+
+    // O histórico é o que transforma a lista em ferramenta de venda.
+    const comHistorico = porNome[0]
+    ok('e a lista ja traz quanto a pessoa gastou',
+       !!comHistorico && comHistorico.compras > 0 && comHistorico.gastou > 0,
+       comHistorico ? `${comHistorico.compras} compras, R$ ${comHistorico.gastou.toFixed(2)}` : 'sem')
+  }
+}
 
 // ── equipe ───────────────────────────────────────────────────
 console.log('\n  Equipe\n')

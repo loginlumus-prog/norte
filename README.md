@@ -57,9 +57,13 @@ Agora com as telas: cadastrar produto com grade, dar entrada de mercadoria
 (saldo + custo + conta do fornecedor numa transação só), corrigir estoque por
 contagem, e a equipe com convite por link.
 
+E clientes, com o histórico de compra de cada um — que é o que transforma a
+lista numa ferramenta de venda, e de onde sai o "cliente sumido" que o
+assistente vai buscar.
+
 O critério da fase era "passar um dia inteiro de vendas reais sem abrir o
-sistema antigo". Falta para cumprir: **cliente**, etiqueta, troca, parcela
-com juro e o modo sem internet.
+sistema antigo". Falta para cumprir: **escolher o cliente na venda**,
+etiqueta, troca, parcela com juro e o modo sem internet.
 
 **Fase 3 — o DRE fecha, o resto não.** Contas a pagar com aviso de vencida,
 lançamento de despesa, 18 categorias já amarradas à linha do DRE, e o
@@ -161,6 +165,7 @@ gatilhos que fazem ele agir sozinho.
 | `src/servidor/produto.ts` | Cadastrar produto e mexer na grade sem apagar história |
 | `src/servidor/entrada.ts` | Entrada de mercadoria: saldo, custo e conta do fornecedor |
 | `src/servidor/equipe.ts` | Papel, acesso e as três travas que impedem a empresa de ficar sem dono |
+| `src/servidor/cliente.ts` | Cliente, com telefone como chave e CPF conferido de verdade |
 | `src/servidor/poderes.ts` | O catálogo de poderes do agente e as travas. **Puro** |
 | `src/servidor/agente.ts` | Configuração, propor/confirmar, recibo e consumo |
 | `src/servidor/custo-ia.ts` | Quanto custa cada conversa. **Puro** |
