@@ -63,7 +63,11 @@ export function Estrutura({
 
   return (
     <div className="flex min-h-dvh">
-      <aside className="hidden w-60 shrink-0 flex-col gap-0.5 bg-nav p-2.5 md:flex">
+      {/* `sticky` + `h-dvh`: sem isso a barra tem a altura da PÁGINA, não a da
+          tela — e numa tela longa ela acaba no meio, deixando um pedaço branco
+          embaixo do azul. Grudada, ela também continua à mão depois de rolar,
+          que é o que se espera de navegação de sistema. */}
+      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-0.5 overflow-y-auto bg-nav p-2.5 md:flex">
         {/* A marca do produto em cima, o nome da empresa embaixo. Nessa ordem:
             quem paga a mensalidade é a empresa, mas quem responde pelo sistema
             somos nós — e no dia do suporte a pessoa precisa saber o nome do

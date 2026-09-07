@@ -77,7 +77,13 @@ Server Action sem capacidade, login sem freio, sessão que sobrevivia à
 demissão e ausência total de cabeçalho de segurança. Detalhe em
 `DECISOES.md` §11.
 
-Próximo: Fase 4 — o agente no WhatsApp.
+**Fase 4 — o assistente, primeira metade.** Ele existe, tem nome, poderes com
+teto e a mecânica de propor/confirmar funcionando de ponta a ponta: ele monta
+a proposta, quem não tem a capacidade não confirma, quem tem confirma e a
+ação acontece de verdade — pelo mesmo serviço que a tela usa.
+
+Falta o que o liga ao mundo: o canal de WhatsApp, o motor de conversa e os
+gatilhos que fazem ele agir sozinho.
 
 ## As regras que não se quebram
 
@@ -116,7 +122,16 @@ Próximo: Fase 4 — o agente no WhatsApp.
 13. **Preço e valor nunca vêm do navegador.** O que chega do cliente é PEDIDO.
    O preço de tabela sai do banco, e a diferença entre os dois é desconto —
    que tem teto por empresa e capacidade própria (`venda.desconto`).
-14. **`lerSessao()` só é chamado dentro de `pagina.ts`.** O resto do sistema
+14. **O agente propõe, uma pessoa confirma.** Nada que mexa em dinheiro, preço
+   ou estoque acontece direto. E ele nunca pode mais do que quem confirma:
+   cada poder declara a capacidade humana equivalente, conferida na hora do
+   sim. Sem isso, confirmar viraria o caminho para o balconista fazer, pelo
+   agente, o que ele não faz pela tela.
+15. **Instrução não é permissão.** A personalidade do agente é texto e decide
+   só COMO ele fala. O que ele pode é lista fechada mais números no banco,
+   conferidos no servidor DEPOIS de o modelo responder. Quem manda mensagem
+   no WhatsApp consegue tentar sobrescrever texto — número, não.
+16. **`lerSessao()` só é chamado dentro de `pagina.ts`.** O resto do sistema
    usa `exigirEntrada()` ou `exigirSessao()`, que confrontam o cookie com o
    banco. Ler o cookie direto pula a checagem de conta desativada.
 
@@ -141,6 +156,9 @@ Próximo: Fase 4 — o agente no WhatsApp.
 | `src/servidor/painel.ts` | Os números do painel, uma consulta por assunto |
 | `src/servidor/planos.ts` | Cotas por plano e o que custa a loja extra |
 | `src/servidor/limite.ts` | O freio do login: quantas tentativas, por e-mail e por IP |
+| `src/servidor/poderes.ts` | O catálogo de poderes do agente e as travas. **Puro** |
+| `src/servidor/agente.ts` | Configuração, propor/confirmar, recibo e consumo |
+| `src/servidor/custo-ia.ts` | Quanto custa cada conversa. **Puro** |
 | `src/proxy.ts` | Os cabeçalhos de segurança de toda página (CSP com nonce, HSTS…) |
 | `src/ui/Marca.tsx` | O símbolo e o nome. `src/app/icon.svg` é o mesmo desenho |
 | `src/app/page.tsx` | A página de venda (a raiz do site) |

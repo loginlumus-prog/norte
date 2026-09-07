@@ -16,6 +16,7 @@ import { guardarSenha } from '../src/servidor/senha'
 import { semearCatalogo } from './exemplo-catalogo'
 import { semearVendas } from './exemplo-vendas'
 import { semearFinanceiro } from './exemplo-financeiro'
+import { semearAgente } from './exemplo-agente'
 import { CATEGORIAS_PADRAO } from '../src/servidor/financeiro'
 
 const raiz = join(import.meta.dirname, '..')
@@ -190,6 +191,11 @@ if (Number(temCat[0]!.n) === 0) {
 
 const nLanc = await semearFinanceiro(cliente, 'org-exemplo-a', 'uni-a1')
 if (nLanc) passo(`${nLanc} lançamentos de exemplo (2 meses + contas a pagar)...`)
+
+// Depois do financeiro de propósito: a proposta de compra do agente aponta
+// para uma categoria financeira, e ela precisa existir antes.
+const nRec = await semearAgente(cliente, 'org-exemplo-a')
+if (nRec) passo(`assistente "Aurora" com ${nRec} recibos e uma proposta esperando...`)
 
 await cliente.end()
 

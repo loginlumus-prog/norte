@@ -40,6 +40,18 @@ CREATE TYPE "TipoConta" AS ENUM ('CAIXA', 'BANCO', 'MAQUININHA', 'OUTRA');
 -- CreateEnum
 CREATE TYPE "GrupoDRE" AS ENUM ('RECEITA_OUTRA', 'IMPOSTO', 'MERCADORIA', 'PESSOAL', 'OCUPACAO', 'COMERCIAL', 'ADMINISTRATIVA', 'FINANCEIRA', 'OUTRA');
 
+-- CreateEnum
+CREATE TYPE "CanalAgente" AS ENUM ('NENHUM', 'ZAPI', 'META');
+
+-- CreateEnum
+CREATE TYPE "TipoGatilho" AS ENUM ('RELATORIO', 'RUPTURA', 'ESTOQUE_PARADO', 'CLIENTE_SUMIDO', 'COBRANCA', 'CONTA_A_VENCER', 'CAIXA_DIVERGENTE');
+
+-- CreateEnum
+CREATE TYPE "SituacaoProposta" AS ENUM ('AGUARDANDO', 'CONFIRMADA', 'RECUSADA', 'EXPIRADA', 'FALHOU');
+
+-- CreateEnum
+CREATE TYPE "TipoRecibo" AS ENUM ('COBRANCA_RECUPERADA', 'CLIENTE_VOLTOU', 'ESTOQUE_DESTRAVADO', 'RUPTURA_EVITADA', 'DIVERGENCIA_ACHADA');
+
 -- CreateTable
 CREATE TABLE "orgs" (
     "id" TEXT NOT NULL,
@@ -490,6 +502,121 @@ CREATE TABLE "tentativas_login" (
     CONSTRAINT "tentativas_login_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "agentes" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "nome" TEXT NOT NULL,
+    "personalidade" TEXT,
+    "saudacao" TEXT,
+    "manual" TEXT,
+    "ativo" BOOLEAN NOT NULL DEFAULT false,
+    "canal" "CanalAgente" NOT NULL DEFAULT 'NENHUM',
+    "numero" TEXT,
+    "modelo" TEXT NOT NULL DEFAULT 'claude-sonnet-5',
+    "poderes" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "desconto_max_pct" DECIMAL(5,2) NOT NULL DEFAULT 5,
+    "valor_max_cent" INTEGER NOT NULL DEFAULT 50000,
+    "gasto_dia_cent" INTEGER NOT NULL DEFAULT 1000,
+    "mensagens_dia" INTEGER NOT NULL DEFAULT 300,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizado_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "agentes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "gatilhos_agente" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "agente_id" TEXT NOT NULL,
+    "tipo" "TipoGatilho" NOT NULL,
+    "ativo" BOOLEAN NOT NULL DEFAULT true,
+    "horario" TEXT,
+    "dias" INTEGER,
+    "ultimo_disparo" TIMESTAMP(3),
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "gatilhos_agente_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "propostas_agente" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "agente_id" TEXT NOT NULL,
+    "poder" TEXT NOT NULL,
+    "resumo" TEXT NOT NULL,
+    "dados" JSONB NOT NULL,
+    "valor" DECIMAL(14,2),
+    "situacao" "SituacaoProposta" NOT NULL DEFAULT 'AGUARDANDO',
+    "expira_em" TIMESTAMP(3) NOT NULL,
+    "respondida_em" TIMESTAMP(3),
+    "quem_respondeu" TEXT,
+    "erro" TEXT,
+    "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "propostas_agente_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "recibos_agente" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "agente_id" TEXT NOT NULL,
+    "tipo" "TipoRecibo" NOT NULL,
+    "valor" DECIMAL(14,2) NOT NULL,
+    "descricao" TEXT NOT NULL,
+    "alvo_tipo" TEXT,
+    "alvo_id" TEXT,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "recibos_agente_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "consumo_ia" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "agente_id" TEXT NOT NULL,
+    "modelo" TEXT NOT NULL,
+    "entrada_tokens" INTEGER NOT NULL DEFAULT 0,
+    "saida_tokens" INTEGER NOT NULL DEFAULT 0,
+    "custo_cent" INTEGER NOT NULL DEFAULT 0,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "consumo_ia_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "conversas_agente" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "agente_id" TEXT NOT NULL,
+    "telefone" TEXT NOT NULL,
+    "nome" TEXT,
+    "cliente_id" TEXT,
+    "da_equipe" BOOLEAN NOT NULL DEFAULT false,
+    "humano_ate" TIMESTAMP(3),
+    "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "ultima_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "conversas_agente_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "mensagens_agente" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "conversa_id" TEXT NOT NULL,
+    "de" "Autor" NOT NULL,
+    "texto" TEXT NOT NULL,
+    "midia" TEXT,
+    "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "mensagens_agente_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "orgs_slug_key" ON "orgs"("slug");
 
@@ -636,6 +763,33 @@ CREATE INDEX "tentativas_login_org_id_email_criada_em_idx" ON "tentativas_login"
 
 -- CreateIndex
 CREATE INDEX "tentativas_login_org_id_ip_criada_em_idx" ON "tentativas_login"("org_id", "ip", "criada_em");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "agentes_org_id_key" ON "agentes"("org_id");
+
+-- CreateIndex
+CREATE INDEX "gatilhos_agente_org_id_idx" ON "gatilhos_agente"("org_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "gatilhos_agente_agente_id_tipo_key" ON "gatilhos_agente"("agente_id", "tipo");
+
+-- CreateIndex
+CREATE INDEX "propostas_agente_org_id_situacao_expira_em_idx" ON "propostas_agente"("org_id", "situacao", "expira_em");
+
+-- CreateIndex
+CREATE INDEX "recibos_agente_org_id_criado_em_idx" ON "recibos_agente"("org_id", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "consumo_ia_org_id_criado_em_idx" ON "consumo_ia"("org_id", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "conversas_agente_org_id_ultima_em_idx" ON "conversas_agente"("org_id", "ultima_em");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "conversas_agente_agente_id_telefone_key" ON "conversas_agente"("agente_id", "telefone");
+
+-- CreateIndex
+CREATE INDEX "mensagens_agente_org_id_conversa_id_criada_em_idx" ON "mensagens_agente"("org_id", "conversa_id", "criada_em");
 
 -- AddForeignKey
 ALTER TABLE "unidades" ADD CONSTRAINT "unidades_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -801,4 +955,46 @@ ALTER TABLE "recorrentes" ADD CONSTRAINT "recorrentes_categoria_id_fkey" FOREIGN
 
 -- AddForeignKey
 ALTER TABLE "tentativas_login" ADD CONSTRAINT "tentativas_login_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "agentes" ADD CONSTRAINT "agentes_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "gatilhos_agente" ADD CONSTRAINT "gatilhos_agente_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "gatilhos_agente" ADD CONSTRAINT "gatilhos_agente_agente_id_fkey" FOREIGN KEY ("agente_id") REFERENCES "agentes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "propostas_agente" ADD CONSTRAINT "propostas_agente_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "propostas_agente" ADD CONSTRAINT "propostas_agente_agente_id_fkey" FOREIGN KEY ("agente_id") REFERENCES "agentes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recibos_agente" ADD CONSTRAINT "recibos_agente_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recibos_agente" ADD CONSTRAINT "recibos_agente_agente_id_fkey" FOREIGN KEY ("agente_id") REFERENCES "agentes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "consumo_ia" ADD CONSTRAINT "consumo_ia_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "consumo_ia" ADD CONSTRAINT "consumo_ia_agente_id_fkey" FOREIGN KEY ("agente_id") REFERENCES "agentes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "conversas_agente" ADD CONSTRAINT "conversas_agente_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "conversas_agente" ADD CONSTRAINT "conversas_agente_agente_id_fkey" FOREIGN KEY ("agente_id") REFERENCES "agentes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "conversas_agente" ADD CONSTRAINT "conversas_agente_cliente_id_fkey" FOREIGN KEY ("cliente_id") REFERENCES "clientes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "mensagens_agente" ADD CONSTRAINT "mensagens_agente_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "mensagens_agente" ADD CONSTRAINT "mensagens_agente_conversa_id_fkey" FOREIGN KEY ("conversa_id") REFERENCES "conversas_agente"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

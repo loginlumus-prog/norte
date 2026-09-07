@@ -1,0 +1,439 @@
+// O agente da empresa — a parte que fala com o banco.
+//
+// As TRAVAS (o catálogo de poderes, o filtro de ferramentas, a conferência
+// dos tetos) moram em `poderes.ts`, que é puro. A separação não é organização:
+// é o que permite testar a trava sem subir banco, e testar exaustivamente é
+// o único jeito de confiar numa trava.
+
+import { comoOrg } from './banco'
+import { exigir, pode, type Sessao } from './permissao'
+import { type ComModulos } from './modulos'
+import { centavos, reais } from './dinheiro'
+import { lancar } from './financeiro'
+import { mexerEstoqueEm } from './estoque'
+import type { TipoRecibo } from '@prisma/client'
+import { custoEmCentavos } from './custo-ia'
+import {
+  PODERES,
+  conferirPoder,
+  PoderNegado,
+  type AgenteConfig,
+  type ChavePoder,
+  type Poder,
+} from './poderes'
+
+export * from './poderes'
+export * from './custo-ia'
+
+// ─────────────────────────────────────────────────────────────
+// CONFIGURAÇÃO
+// ─────────────────────────────────────────────────────────────
+
+export type ConfigAgente = {
+  nome: string
+  personalidade?: string | null
+  saudacao?: string | null
+  manual?: string | null
+  poderes: string[]
+  descontoMaxPct: number
+  valorMaxCent: number
+  gastoDiaCent: number
+  mensagensDia: number
+  ativo: boolean
+}
+
+export async function acharAgente(orgId: string) {
+  return comoOrg(orgId, (db) => db.agente.findUnique({ where: { orgId } }))
+}
+
+/**
+ * Cria ou atualiza o agente da empresa.
+ *
+ * Filtra os poderes contra a lista fechada antes de gravar: o que chega do
+ * formulário vem do navegador, e o navegador é do usuário.
+ */
+export async function salvarAgente(sessao: Sessao, cfg: ConfigAgente) {
+  exigir(sessao, 'agente.configurar')
+
+  const poderes = cfg.poderes.filter(
+    (p): p is ChavePoder => (PODERES as Record<string, Poder>)[p]?.disponivel === true,
+  )
+
+  const dados = {
+    nome: cfg.nome.trim(),
+    personalidade: cfg.personalidade?.trim() || null,
+    saudacao: cfg.saudacao?.trim() || null,
+    manual: cfg.manual?.trim() || null,
+    poderes,
+    descontoMaxPct: cfg.descontoMaxPct,
+    valorMaxCent: cfg.valorMaxCent,
+    gastoDiaCent: cfg.gastoDiaCent,
+    mensagensDia: cfg.mensagensDia,
+    ativo: cfg.ativo,
+  }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const antes = await db.agente.findUnique({ where: { orgId: sessao.orgId } })
+
+    const agente = await db.agente.upsert({
+      where: { orgId: sessao.orgId },
+      create: { orgId: sessao.orgId, ...dados },
+      update: dados,
+    })
+
+    // Mexer no que o agente pode é evento de segurança, não preferência de
+    // tela: o livro guarda o antes e o depois para responder "quem soltou a
+    // rédea dele?" seis meses depois.
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: antes ? 'agente.alterou' : 'agente.criou',
+        alvoTipo: 'agente',
+        alvoId: agente.id,
+        alvoNome: agente.nome,
+        antes: antes
+          ? { poderes: antes.poderes, teto: Number(antes.descontoMaxPct), valorMax: antes.valorMaxCent, ativo: antes.ativo }
+          : undefined,
+        depois: { poderes, teto: cfg.descontoMaxPct, valorMax: cfg.valorMaxCent, ativo: cfg.ativo },
+      },
+    })
+
+    return agente
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
+// PROPOR E CONFIRMAR
+// ─────────────────────────────────────────────────────────────
+
+/** Proposta vale por 24h. Depois disso o estoque e o preço já são outros. */
+const HORAS_DE_VALIDADE = 24
+
+export type NovaProposta = {
+  poder: ChavePoder
+  /** Escrito para uma pessoa ler no WhatsApp, com o número dentro. */
+  resumo: string
+  dados: Record<string, unknown>
+  valor?: number
+  descontoPct?: number
+}
+
+/**
+ * O agente pede. Ninguém executa nada aqui.
+ *
+ * O teto é conferido ANTES de gravar: proposta acima do teto nem chega a
+ * existir, então o dono nunca vê no WhatsApp uma oferta que ele não poderia
+ * aceitar. Ver algo e não poder confirmar ensina a pessoa a duvidar da tela.
+ */
+export async function propor(orgId: string, empresa: ComModulos, p: NovaProposta) {
+  const agente = await acharAgente(orgId)
+  if (!agente) throw new PoderNegado(p.poder, 'esta empresa não tem agente')
+  if (!agente.ativo) throw new PoderNegado(p.poder, 'o agente está desligado')
+
+  const cfg = paraConfig(agente)
+  const valorCent = p.valor != null ? centavos(p.valor) : undefined
+  conferirPoder(cfg, empresa, p.poder, valorCent, p.descontoPct)
+
+  return comoOrg(orgId, (db) =>
+    db.propostaAgente.create({
+      data: {
+        orgId,
+        agenteId: agente.id,
+        poder: p.poder,
+        resumo: p.resumo,
+        dados: p.dados as object,
+        valor: p.valor ?? null,
+        expiraEm: new Date(Date.now() + HORAS_DE_VALIDADE * 3600_000),
+      },
+    }),
+  )
+}
+
+export type Resposta =
+  | { ok: true; recibo?: { tipo: TipoRecibo; valor: number } }
+  | { ok: false; motivo: 'nao_existe' | 'ja_respondida' | 'expirada' | 'sem_permissao' | 'falhou'; detalhe?: string }
+
+/**
+ * A pessoa responde. É o único caminho por onde a ação do agente acontece.
+ *
+ * Três conferências que parecem redundantes e não são:
+ *
+ * 1. A PESSOA precisa ter a capacidade do poder. O agente nunca pode mais do
+ *    que quem confirma — senão confirmar viraria o jeito de o balconista
+ *    fazer, pelo agente, o que ele não pode fazer pela tela.
+ * 2. O TETO é conferido DE NOVO. O dono pode ter baixado o teto entre a
+ *    proposta e o sim, e o que vale é o teto de agora.
+ * 3. A VALIDADE. Proposta de ontem fala de um estoque que não existe mais.
+ */
+export async function responderProposta(
+  sessao: Sessao,
+  empresa: ComModulos,
+  propostaId: string,
+  aceita: boolean,
+): Promise<Resposta> {
+  const proposta = await comoOrg(sessao.orgId, (db) =>
+    db.propostaAgente.findUnique({ where: { id: propostaId } }),
+  )
+  if (!proposta) return { ok: false, motivo: 'nao_existe' }
+  if (proposta.situacao !== 'AGUARDANDO') return { ok: false, motivo: 'ja_respondida' }
+
+  const p = PODERES[proposta.poder as ChavePoder] as Poder | undefined
+  if (!p) return { ok: false, motivo: 'falhou', detalhe: 'poder desconhecido' }
+
+  // 1. quem confirma precisa poder fazer sozinho
+  if (!pode(sessao, p.exige)) return { ok: false, motivo: 'sem_permissao' }
+
+  if (proposta.expiraEm < new Date()) {
+    await marcar(sessao.orgId, propostaId, 'EXPIRADA', sessao.nome)
+    return { ok: false, motivo: 'expirada' }
+  }
+
+  if (!aceita) {
+    await marcar(sessao.orgId, propostaId, 'RECUSADA', sessao.nome)
+    return { ok: true }
+  }
+
+  // 2. o teto de AGORA
+  const agente = await acharAgente(sessao.orgId)
+  if (!agente) return { ok: false, motivo: 'falhou', detalhe: 'agente sumiu' }
+  try {
+    conferirPoder(
+      paraConfig(agente),
+      empresa,
+      proposta.poder,
+      proposta.valor != null ? centavos(proposta.valor) : undefined,
+    )
+  } catch (e) {
+    await marcar(sessao.orgId, propostaId, 'FALHOU', sessao.nome, msg(e))
+    return { ok: false, motivo: 'falhou', detalhe: msg(e) }
+  }
+
+  // 3. executa
+  try {
+    const recibo = await executar(sessao, proposta.poder as ChavePoder, proposta.dados as Record<string, unknown>)
+    await marcar(sessao.orgId, propostaId, 'CONFIRMADA', sessao.nome)
+
+    // Duas linhas no livro, e as duas são verdade: o serviço já gravou a
+    // ação em nome de quem confirmou (foi ela que decidiu), e esta aqui
+    // guarda que a ideia foi do agente. Sem a segunda, seis meses depois
+    // ninguém consegue responder "o assistente serviu para alguma coisa?".
+    await comoOrg(sessao.orgId, (db) =>
+      db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          autor: 'AGENTE',
+          acao: 'agente.proposta.confirmou',
+          alvoTipo: 'proposta',
+          alvoId: propostaId,
+          alvoNome: proposta.resumo.slice(0, 120),
+          valor: proposta.valor,
+          motivo: proposta.poder,
+        },
+      }),
+    )
+
+    if (recibo) {
+      await emitirRecibo(sessao.orgId, agente.id, recibo.tipo, recibo.valor, proposta.resumo)
+    }
+    return { ok: true, recibo }
+  } catch (e) {
+    await marcar(sessao.orgId, propostaId, 'FALHOU', sessao.nome, msg(e))
+    return { ok: false, motivo: 'falhou', detalhe: msg(e) }
+  }
+}
+
+const msg = (e: unknown) => (e instanceof Error ? e.message : 'erro desconhecido')
+
+async function marcar(
+  orgId: string,
+  id: string,
+  situacao: 'CONFIRMADA' | 'RECUSADA' | 'EXPIRADA' | 'FALHOU',
+  quem: string,
+  erro?: string,
+) {
+  await comoOrg(orgId, (db) =>
+    db.propostaAgente.update({
+      where: { id },
+      data: { situacao, respondidaEm: new Date(), quemRespondeu: quem, erro: erro ?? null },
+    }),
+  )
+}
+
+/**
+ * O que cada poder faz de verdade.
+ *
+ * Repare que ele chama os MESMOS serviços que a tela chama. O agente não tem
+ * um caminho paralelo para escrever no banco — se tivesse, a regra de negócio
+ * existiria em dois lugares e um dos dois ficaria para trás.
+ */
+async function executar(
+  sessao: Sessao,
+  poder: ChavePoder,
+  dados: Record<string, unknown>,
+): Promise<{ tipo: TipoRecibo; valor: number } | undefined> {
+  switch (poder) {
+    case 'lancar.despesa':
+    case 'pedir.compra': {
+      await lancar(sessao, {
+        categoriaId: String(dados.categoriaId ?? ''),
+        unidadeId: (dados.unidadeId as string) ?? null,
+        tipo: 'DESPESA',
+        descricao: String(dados.descricao ?? 'Lançado pelo assistente'),
+        valor: Number(dados.valor ?? 0),
+        vencimento: new Date(String(dados.vencimento)),
+        fornecedor: String(dados.fornecedor ?? ''),
+      })
+      // Compra feita antes de acabar é ruptura evitada — e o valor do recibo
+      // não é o da compra: gastar não é ganhar. Quem emite recibo de ruptura
+      // é o gatilho, quando a peça volta a vender.
+      return undefined
+    }
+
+    case 'ajustar.estoque': {
+      const quantidade = Number(dados.quantidade ?? 0)
+      await comoOrg(sessao.orgId, (db) =>
+        mexerEstoqueEm(db, sessao, {
+          variacaoId: String(dados.variacaoId ?? ''),
+          unidadeId: String(dados.unidadeId ?? ''),
+          tipo: 'AJUSTE',
+          quantidade,
+          motivo: String(dados.motivo ?? 'Ajuste proposto pelo assistente'),
+        }),
+      )
+      return undefined
+    }
+
+    default:
+      throw new Error(`"${poder}" ainda não sabe executar.`)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// RECIBO — o número que segura a renovação
+// ─────────────────────────────────────────────────────────────
+
+export async function emitirRecibo(
+  orgId: string,
+  agenteId: string,
+  tipo: TipoRecibo,
+  valor: number,
+  descricao: string,
+  alvo?: { tipo: string; id: string },
+) {
+  return comoOrg(orgId, (db) =>
+    db.reciboAgente.create({
+      data: {
+        orgId,
+        agenteId,
+        tipo,
+        valor,
+        descricao,
+        alvoTipo: alvo?.tipo ?? null,
+        alvoId: alvo?.id ?? null,
+      },
+    }),
+  )
+}
+
+export type Balanco = {
+  trouxe: number
+  custou: number
+  porTipo: { tipo: TipoRecibo; valor: number; quantos: number }[]
+  mensalidade: number
+}
+
+/**
+ * O que ele trouxe contra o que ele custou, no período.
+ *
+ * O custo aqui é o de IA, não a mensalidade — a mensalidade paga o sistema
+ * inteiro. Misturar os dois faria o agente parecer caro num mês fraco e
+ * barato num mês forte, sem que nada dele tivesse mudado.
+ */
+export async function balanco(orgId: string, de: Date, ate: Date): Promise<Balanco> {
+  return comoOrg(orgId, async (db) => {
+    const recibos = await db.reciboAgente.groupBy({
+      by: ['tipo'],
+      where: { criadoEm: { gte: de, lte: ate } },
+      _sum: { valor: true },
+      _count: true,
+    })
+
+    const gasto = await db.consumoIA.aggregate({
+      where: { criadoEm: { gte: de, lte: ate } },
+      _sum: { custoCent: true },
+    })
+
+    const porTipo = recibos.map((r) => ({
+      tipo: r.tipo,
+      valor: Number(r._sum.valor ?? 0),
+      quantos: r._count,
+    }))
+
+    return {
+      trouxe: porTipo.reduce((s, r) => s + r.valor, 0),
+      custou: reais(gasto._sum.custoCent ?? 0),
+      porTipo: porTipo.sort((a, b) => b.valor - a.valor),
+      mensalidade: 0,
+    }
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONSUMO DE IA — o custo variável de cada cliente
+// ─────────────────────────────────────────────────────────────
+
+export async function registrarConsumo(
+  orgId: string,
+  agenteId: string,
+  modelo: string,
+  entradaTokens: number,
+  saidaTokens: number,
+) {
+  const custoCent = custoEmCentavos(modelo, entradaTokens, saidaTokens)
+  await comoOrg(orgId, (db) =>
+    db.consumoIA.create({
+      data: { orgId, agenteId, modelo, entradaTokens, saidaTokens, custoCent },
+    }),
+  )
+  return custoCent
+}
+
+/**
+ * Já pode gastar mais hoje?
+ *
+ * O teto diário existe por dois motivos, e o segundo é o que importa: um
+ * defeito que faça o agente responder a si mesmo em laço queima a conta do
+ * mês numa madrugada, e ninguém está olhando às três da manhã.
+ */
+export async function podeGastarHoje(orgId: string): Promise<{ pode: boolean; gastoCent: number; tetoCent: number }> {
+  const agente = await acharAgente(orgId)
+  if (!agente) return { pode: false, gastoCent: 0, tetoCent: 0 }
+
+  const inicio = new Date()
+  inicio.setHours(0, 0, 0, 0)
+
+  const hoje = await comoOrg(orgId, (db) =>
+    db.consumoIA.aggregate({ where: { criadoEm: { gte: inicio } }, _sum: { custoCent: true } }),
+  )
+  const gastoCent = hoje._sum.custoCent ?? 0
+  return { pode: gastoCent < agente.gastoDiaCent, gastoCent, tetoCent: agente.gastoDiaCent }
+}
+
+// ─────────────────────────────────────────────────────────────
+
+type LinhaAgente = {
+  poderes: string[]
+  descontoMaxPct: unknown
+  valorMaxCent: number
+}
+
+/** O agente do banco, reduzido ao que decide permissão. */
+export const paraConfig = (a: LinhaAgente): AgenteConfig => ({
+  poderes: a.poderes,
+  descontoMaxPct: Number(a.descontoMaxPct),
+  valorMaxCent: a.valorMaxCent,
+})

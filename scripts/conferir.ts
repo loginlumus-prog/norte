@@ -29,6 +29,8 @@ import { registrarVenda } from '../src/servidor/venda'
 import { MAX_POR_EMAIL } from '../src/servidor/limite'
 import { sessaoAindaVale } from '../src/servidor/permissao'
 import { cortarSessoes } from '../src/servidor/pagina'
+import { acharAgente, propor, responderProposta, paraConfig } from '../src/servidor/agente'
+import { ferramentasDe, AcimaDoTeto } from '../src/servidor/poderes'
 import { escolherUnidade } from '../src/servidor/unidade'
 import { resumoDoPainel } from '../src/servidor/painel'
 import { SemPermissao } from '../src/servidor/permissao'
@@ -439,6 +441,102 @@ if (dona.ok) {
   }
 }
 
+// ── o agente ─────────────────────────────────────────────────
+// Prova o caminho inteiro: ele propõe, quem não pode não confirma, quem pode
+// confirma, e a ação acontece de verdade no financeiro.
+console.log('\n  Agente\n')
+
+{
+  const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
+  const balconista = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+  const empresa = { modulos: ['agente', 'multiUnidade', 'metas'] }
+
+  const agente = await acharAgente(A)
+  ok('a empresa tem assistente', !!agente, agente?.nome ?? 'nenhum')
+
+  if (agente && dona.ok && balconista.ok) {
+    // 1. O que vai para o modelo depende de quem está falando.
+    const cfg = paraConfig(agente)
+    const paraEquipe = ferramentasDe(cfg, empresa, true)
+    const paraCliente = ferramentasDe(cfg, empresa, false)
+    ok('a equipe recebe mais ferramentas que o cliente',
+       paraEquipe.length > paraCliente.length,
+       `equipe ${paraEquipe.length}, cliente ${paraCliente.length}`)
+    ok('o cliente NAO recebe a ferramenta do faturamento',
+       !paraCliente.includes('ver.resumo'), paraCliente.join(', '))
+
+    // 2. O teto recusa antes de a proposta existir.
+    const teto = agente.valorMaxCent / 100
+    let recusou = false
+    try {
+      await propor(A, empresa, {
+        poder: 'lancar.despesa',
+        resumo: 'Teste acima do teto',
+        dados: {},
+        valor: teto * 3,
+      })
+    } catch (e) {
+      recusou = e instanceof AcimaDoTeto
+    }
+    ok('proposta acima do teto nem chega a existir', recusou, `teto R$ ${teto}`)
+
+    // 3. Dentro do teto, ela nasce esperando.
+    const cat = await comoOrg(A, (db) =>
+      db.categoriaFinanceira.findFirst({ where: { nome: 'Sistema e software' }, select: { id: true } }),
+    )
+    const p = await propor(A, empresa, {
+      poder: 'lancar.despesa',
+      resumo: 'Assinatura do sistema de etiqueta, R$ 89,00/mes. Lancar?',
+      dados: {
+        categoriaId: cat?.id ?? '',
+        descricao: 'Sistema de etiqueta',
+        valor: 89,
+        vencimento: new Date(Date.now() + 10 * 864e5).toISOString(),
+        fornecedor: 'Etiquetas SA',
+      },
+      valor: 89,
+    })
+    ok('dentro do teto, a proposta nasce esperando', p.situacao === 'AGUARDANDO', p.resumo.slice(0, 40))
+
+    // 4. Quem não tem a capacidade NÃO confirma — nem pelo agente.
+    const doBalcao = await responderProposta(balconista.sessao, empresa, p.id, true)
+    ok('o balcao NAO confirma proposta de financeiro',
+       !doBalcao.ok && doBalcao.motivo === 'sem_permissao',
+       doBalcao.ok ? 'CONFIRMOU!' : doBalcao.motivo)
+
+    // 5. E a proposta continua de pé, esperando quem pode.
+    const aindaLa = await comoOrg(A, (db) =>
+      db.propostaAgente.findUnique({ where: { id: p.id }, select: { situacao: true } }),
+    )
+    ok('e a proposta continua esperando', aindaLa?.situacao === 'AGUARDANDO', aindaLa?.situacao)
+
+    // 6. A dona confirma, e a conta nasce de verdade.
+    const antes = await comoOrg(A, (db) => db.lancamento.count())
+    const r = await responderProposta(dona.sessao, empresa, p.id, true)
+    const depois = await comoOrg(A, (db) => db.lancamento.count())
+    ok('a dona confirma e a conta entra no financeiro',
+       r.ok && depois === antes + 1, r.ok ? `${antes} -> ${depois}` : r.motivo)
+
+    // 7. O livro guarda que a ideia foi do agente.
+    const noLivro = await comoOrg(A, (db) =>
+      db.auditoria.findFirst({
+        where: { acao: 'agente.proposta.confirmou', alvoId: p.id },
+        select: { autor: true, quem: true },
+      }),
+    )
+    ok('e o livro registra que quem propos foi o agente',
+       noLivro?.autor === 'AGENTE' && noLivro?.quem === 'Ana',
+       `${noLivro?.autor} / confirmado por ${noLivro?.quem}`)
+
+    // 8. Duas confirmações não viram duas contas.
+    const deNovo = await responderProposta(dona.sessao, empresa, p.id, true)
+    const final = await comoOrg(A, (db) => db.lancamento.count())
+    ok('confirmar duas vezes NAO lanca duas vezes',
+       !deNovo.ok && deNovo.motivo === 'ja_respondida' && final === depois,
+       deNovo.ok ? 'LANCOU DE NOVO!' : `${final} lancamentos`)
+  }
+}
+
 // ── segurança ────────────────────────────────────────────────
 // Fica no FIM de propósito: o freio de login bloqueia um e-mail por 15
 // minutos, e bloquear no meio faria as checagens seguintes falharem pelo
@@ -550,6 +648,7 @@ console.log('\n  Segurança\n')
   ok('mas a dona continua entrando normalmente', outra.ok,
      outra.ok ? outra.sessao.nome : RECADO[outra.motivo])
 }
+
 
 await fechar()
 
