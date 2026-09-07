@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
 import { pode } from '@/servidor/permissao'
@@ -67,6 +68,7 @@ export default async function Produtos({
   )
 
   const podeVerPreco = pode(sessao, 'produto.ver')
+  const podeEditar = pode(sessao, 'produto.editar')
 
   // Conta a situação de cada variação uma vez, para a tira de cima e para o
   // cabeçalho de cada produto falarem a mesma coisa.
@@ -93,9 +95,17 @@ export default async function Produtos({
       tema={tema}
       titulo="Produtos"
       acao={
-        onde.mostrarSeletor ? (
-          <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />
-        ) : undefined
+        <span className="flex items-center gap-2">
+          {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+          {podeEditar && (
+            <Link
+              href={`/${slug}/produtos/novo`}
+              className="rounded-norte bg-marca px-3 py-1.5 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+            >
+              + Novo produto
+            </Link>
+          )}
+        </span>
       }
     >
       {produtos.length > 0 && (
@@ -110,7 +120,20 @@ export default async function Produtos({
 
       {produtos.length === 0 && (
         <Cartao>
-          <Vazio>Nenhum produto cadastrado ainda.</Vazio>
+          <Vazio
+            acao={
+              podeEditar ? (
+                <Link
+                  href={`/${slug}/produtos/novo`}
+                  className="rounded-norte bg-marca px-4 py-2 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+                >
+                  Cadastrar o primeiro
+                </Link>
+              ) : undefined
+            }
+          >
+            Nenhum produto cadastrado ainda.
+          </Vazio>
         </Cartao>
       )}
 
@@ -128,6 +151,14 @@ export default async function Produtos({
             titulo={p.nome}
             acao={
               <span className="flex items-center gap-2 text-xs text-tinta-3">
+                {podeEditar && (
+                  <Link
+                    href={`/${slug}/produtos/${p.id}`}
+                    className="font-semibold text-marca underline-offset-2 hover:underline"
+                  >
+                    editar
+                  </Link>
+                )}
                 {p.marca && <span>{p.marca}</span>}
                 {podeVerPreco && <span className="numero">{dinheiro(p.precoVista)} à vista</span>}
                 {acabaram > 0 && <Ponto nivel="critico" quantos={acabaram} titulo="acabaram" />}

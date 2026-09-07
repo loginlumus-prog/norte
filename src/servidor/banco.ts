@@ -25,21 +25,31 @@ function url(nome: 'DATABASE_URL' | 'DATABASE_URL_ADMIN') {
  */
 const POOL_MAX = Number(process.env.POOL_MAX ?? 10)
 
-const criar = () =>
-  new PrismaClient({
-    adapter: new PrismaPg({ connectionString: url('DATABASE_URL'), max: POOL_MAX }),
-  })
-
-// UM cliente por processo, guardado no objeto global.
+// UM cliente por processo, guardado no objeto global, e criado só no
+// primeiro uso.
 //
-// Sem isto, o recarregamento do `next dev` recria o módulo a cada arquivo
-// salvo, e cada cópia abre o próprio pool — que nunca é fechado. Depois de
-// algumas edições o banco recusa conexão e a tela morre com "Connection
-// terminated unexpectedly", que parece bug de código e é só pool vazado.
-// Em produção o módulo carrega uma vez e o global não muda nada.
+// O global existe porque o recarregamento do `next dev` recria o módulo a
+// cada arquivo salvo, e cada cópia abriria o próprio pool — que nunca é
+// fechado. Depois de algumas edições o banco recusa conexão e a tela morre
+// com "Connection terminated unexpectedly", que parece bug de código e é só
+// pool vazado. Em produção o módulo carrega uma vez e o global não muda nada.
+//
+// PREGUIÇOSO porque importar este arquivo não deveria exigir banco. Criar o
+// cliente na hora do import fazia `import { criarProduto }` num teste de
+// função pura estourar por falta de DATABASE_URL — e a alternativa virava
+// espalhar as regras puras por arquivos separados só para fugir do import.
+// Na aplicação não muda nada: a primeira consulta continua sendo a primeira
+// oportunidade de descobrir que a variável falta.
 const guardado = globalThis as unknown as { __prismaNorte?: PrismaClient }
-const prisma = guardado.__prismaNorte ?? criar()
-if (process.env.NODE_ENV !== 'production') guardado.__prismaNorte = prisma
+
+function cliente(): PrismaClient {
+  if (!guardado.__prismaNorte) {
+    guardado.__prismaNorte = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: url('DATABASE_URL'), max: POOL_MAX }),
+    })
+  }
+  return guardado.__prismaNorte
+}
 
 /** O que `comoOrg` entrega: um Prisma já preso a uma empresa. */
 export type BancoDaOrg = Omit<
@@ -61,7 +71,7 @@ export async function comoOrg<T>(
 ): Promise<T> {
   if (!orgId) throw new Error('comoOrg exige uma empresa. Sem empresa, sem acesso.')
 
-  return prisma.$transaction(async (tx) => {
+  return cliente().$transaction(async (tx) => {
     // papel sem privilégio: sem isso o RLS é ignorado
     await tx.$executeRawUnsafe(`set local role ${PAPEL_APP}`)
     // 'true' = vale só nesta transação, não vaza para a próxima requisição
@@ -108,6 +118,6 @@ export async function acharOrgPorSlug(slug: string) {
 }
 
 export async function fechar() {
-  await prisma.$disconnect()
+  await guardado.__prismaNorte?.$disconnect()
   await admin?.$disconnect()
 }

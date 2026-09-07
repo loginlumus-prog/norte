@@ -30,6 +30,7 @@ import { MAX_POR_EMAIL } from '../src/servidor/limite'
 import { sessaoAindaVale } from '../src/servidor/permissao'
 import { cortarSessoes } from '../src/servidor/pagina'
 import { acharAgente, propor, responderProposta, paraConfig } from '../src/servidor/agente'
+import { criarProduto, ajustarGrade, eixosDaEmpresa } from '../src/servidor/produto'
 import { ferramentasDe, AcimaDoTeto } from '../src/servidor/poderes'
 import { escolherUnidade } from '../src/servidor/unidade'
 import { resumoDoPainel } from '../src/servidor/painel'
@@ -438,6 +439,116 @@ if (dona.ok) {
     ok('o total do gerente e menor que o da empresa',
        painelDele.mes.total > 0 && painelDele.mes.total < painelDaDona.mes.total,
        `gerente R$ ${painelDele.mes.total.toFixed(2)} de R$ ${painelDaDona.mes.total.toFixed(2)}`)
+  }
+}
+
+
+// ── cadastro de produto ──────────────────────────────────────
+console.log('\n  Cadastro de produto\n')
+
+{
+  const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
+  const balconista = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+
+  if (dona.ok && balconista.ok) {
+    const eixos = await eixosDaEmpresa(dona.sessao)
+    const cor = eixos.find((e) => e.nome === 'Cor')
+    const tam = eixos.find((e) => e.nome === 'Tamanho')
+
+    // 1. Sem eixo: uma variação só, marcada como padrão. É o sorvete a granel.
+    const semGrade = await criarProduto(dona.sessao, {
+      nome: 'Agua mineral', medida: 'UN', precoVista: 3.5, custo: 1.2,
+    })
+    ok('produto sem variacao nasce com UMA variacao padrao',
+       semGrade.ok && semGrade.variacoes === 1,
+       semGrade.ok ? `${semGrade.variacoes} variacao` : semGrade.motivo)
+
+    // 2. Com dois eixos: o produto cartesiano, com código para cada um.
+    const comGrade = await criarProduto(
+      dona.sessao,
+      { nome: 'Bermuda tactel', medida: 'UN', precoVista: 79.9, custo: 31 },
+      [
+        { eixoId: cor!.id, opcaoIds: cor!.opcoes.slice(0, 2).map((o) => o.id) },
+        { eixoId: tam!.id, opcaoIds: tam!.opcoes.map((o) => o.id) },
+      ],
+    )
+    ok('2 cores x 3 tamanhos = 6 variacoes',
+       comGrade.ok && comGrade.variacoes === 6,
+       comGrade.ok ? `${comGrade.variacoes}` : comGrade.motivo)
+
+    const produtoId = comGrade.ok ? comGrade.produtoId : ''
+
+    // 3. Cada uma com código próprio, e nenhum repetido na empresa inteira.
+    const codigos = await comoOrg(A, (db) =>
+      db.variacao.findMany({ select: { codigo: true } }),
+    )
+    const lista = codigos.map((c) => c.codigo).filter(Boolean)
+    ok('nenhum codigo de etiqueta se repete na empresa',
+       new Set(lista).size === lista.length, `${lista.length} codigos`)
+
+    // 4. Quem não pode cadastrar, não cadastra — nem pelo endereço direto.
+    let recusado = false
+    try {
+      await criarProduto(balconista.sessao, { nome: 'Nao deveria existir', medida: 'UN', precoVista: 10 })
+    } catch (e) {
+      recusado = e instanceof SemPermissao
+    }
+    ok('o balcao NAO cadastra produto', recusado)
+
+    // 5. Preço zero não passa.
+    const semPreco = await criarProduto(dona.sessao, { nome: 'Sem preco', medida: 'UN', precoVista: 0 })
+    ok('produto sem preco a vista e recusado', !semPreco.ok, semPreco.ok ? 'PASSOU!' : semPreco.motivo)
+
+    // ── o cuidado que importa: o que SAI da grade ──
+    if (produtoId) {
+      // 6. Combinação virgem some de vez — é lixo de digitação.
+      const virgem = await ajustarGrade(dona.sessao, produtoId, [
+        { eixoId: cor!.id, opcaoIds: [cor!.opcoes[0]!.id] },
+        { eixoId: tam!.id, opcaoIds: tam!.opcoes.map((o) => o.id) },
+      ])
+      ok('combinacao sem historico e APAGADA', virgem.apagadas === 3 && virgem.desativadas === 0,
+         `${virgem.apagadas} apagadas, ${virgem.desativadas} desativadas`)
+    }
+
+    // 7. Combinação COM histórico é desativada, nunca apagada — e volta com o
+    //    MESMO código, senão a etiqueta já colada na peça deixa de achar.
+    const antesG = await comoOrg(A, (db) =>
+      db.variacao.findFirst({
+        where: { produtoId: 'prod-camiseta', opcoes: { some: { opcao: { valor: 'G' } } } },
+        select: { id: true, codigo: true },
+      }),
+    )
+
+    const tirandoG = await ajustarGrade(dona.sessao, 'prod-camiseta', [
+      { eixoId: cor!.id, opcaoIds: cor!.opcoes.map((o) => o.id) },
+      { eixoId: tam!.id, opcaoIds: tam!.opcoes.filter((o) => o.valor !== 'G').map((o) => o.id) },
+    ])
+    ok('combinacao COM historico e DESATIVADA, nao apagada',
+       tirandoG.desativadas === 2 && tirandoG.apagadas === 0,
+       `${tirandoG.desativadas} desativadas, ${tirandoG.apagadas} apagadas`)
+
+    const aindaLa = await comoOrg(A, (db) =>
+      db.variacao.findUnique({ where: { id: antesG!.id }, select: { ativa: true, codigo: true } }),
+    )
+    ok('e ela continua existindo, so que fora do balcao',
+       !!aindaLa && aindaLa.ativa === false, aindaLa ? `ativa=${aindaLa.ativa}` : 'SUMIU!')
+
+    const voltandoG = await ajustarGrade(dona.sessao, 'prod-camiseta', [
+      { eixoId: cor!.id, opcaoIds: cor!.opcoes.map((o) => o.id) },
+      { eixoId: tam!.id, opcaoIds: tam!.opcoes.map((o) => o.id) },
+    ])
+    const depoisG = await comoOrg(A, (db) =>
+      db.variacao.findUnique({ where: { id: antesG!.id }, select: { ativa: true, codigo: true } }),
+    )
+    ok('e volta com o MESMO codigo de etiqueta',
+       voltandoG.reativadas === 2 && depoisG?.ativa === true && depoisG?.codigo === antesG!.codigo,
+       `${antesG!.codigo} -> ${depoisG?.codigo}`)
+
+    // 8. E a venda antiga daquela combinação continua de pé.
+    const vendeuG = await comoOrg(A, (db) =>
+      db.vendaItem.count({ where: { variacaoId: antesG!.id } }),
+    )
+    ok('a venda antiga da combinacao continua no historico', vendeuG > 0, `${vendeuG} item(ns)`)
   }
 }
 
