@@ -33,7 +33,7 @@ export function TrocaTema({ inicial }: { inicial: Tema }) {
     <div
       role="group"
       aria-label="Tema da tela"
-      className="flex items-center gap-0.5 rounded-norte border border-borda bg-superficie p-0.5"
+      className="flex items-center gap-0.5 rounded-norte border border-nav-borda bg-nav-2 p-0.5"
     >
       {OPCOES.map((o) => (
         <button
@@ -46,8 +46,8 @@ export function TrocaTema({ inicial }: { inicial: Tema }) {
           className={cx(
             'rounded px-1.5 py-0.5 text-xs transition-colors',
             tema === o.valor
-              ? 'bg-marca text-marca-tinta'
-              : 'text-tinta-3 hover:bg-superficie-2 hover:text-tinta',
+              ? 'bg-nav-tinta text-nav'
+              : 'text-nav-tinta-2 hover:bg-nav-3 hover:text-nav-tinta',
           )}
         >
           {o.icone}

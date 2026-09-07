@@ -25,9 +25,21 @@ function url(nome: 'DATABASE_URL' | 'DATABASE_URL_ADMIN') {
  */
 const POOL_MAX = Number(process.env.POOL_MAX ?? 10)
 
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: url('DATABASE_URL'), max: POOL_MAX }),
-})
+const criar = () =>
+  new PrismaClient({
+    adapter: new PrismaPg({ connectionString: url('DATABASE_URL'), max: POOL_MAX }),
+  })
+
+// UM cliente por processo, guardado no objeto global.
+//
+// Sem isto, o recarregamento do `next dev` recria o módulo a cada arquivo
+// salvo, e cada cópia abre o próprio pool — que nunca é fechado. Depois de
+// algumas edições o banco recusa conexão e a tela morre com "Connection
+// terminated unexpectedly", que parece bug de código e é só pool vazado.
+// Em produção o módulo carrega uma vez e o global não muda nada.
+const guardado = globalThis as unknown as { __prismaNorte?: PrismaClient }
+const prisma = guardado.__prismaNorte ?? criar()
+if (process.env.NODE_ENV !== 'production') guardado.__prismaNorte = prisma
 
 /** O que `comoOrg` entrega: um Prisma já preso a uma empresa. */
 export type BancoDaOrg = Omit<

@@ -138,7 +138,7 @@ export function Formulario({ empresa, nomeAtual }: { empresa: string; nomeAtual:
 
       <div className="flex items-center justify-between gap-3">
         <p className="flex items-center gap-2 text-xs text-tinta-3">
-          <span aria-hidden className="size-2 shrink-0 rounded-full bg-info-vivo" />
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-marca" />
           Dados de pagamento e certificado digital não entram aqui — eles têm tela própria,
           e só você digita.
         </p>

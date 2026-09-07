@@ -32,7 +32,10 @@ const servidor = new PGLiteSocketServer({
   db,
   port: PORTA,
   host: '127.0.0.1',
-  maxConnections: 5,
+  // Folgado de propósito: o `next dev` deixa conexão para trás a cada
+  // recarregamento, e um limite apertado transforma isso em "Connection
+  // terminated unexpectedly" no meio do trabalho.
+  maxConnections: 30,
 })
 
 servidor.addEventListener('connection', () => console.log('  → conexão recebida'))
