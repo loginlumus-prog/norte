@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { guardarSenha } from '../src/servidor/senha'
 import { semearCatalogo } from './exemplo-catalogo'
+import { semearVendas } from './exemplo-vendas'
 
 const raiz = join(import.meta.dirname, '..')
 const ler = (p: string) => readFileSync(join(raiz, p), 'utf8')
@@ -66,12 +67,13 @@ if (Number(rows[0]!.n) === 0) {
                       configurada_em, telefone, criada_em, atualizada_em) values
       -- A NAO usa crediario de proposito: e assim que se ve o menu encolher.
       ('org-exemplo-a', 'Comércio Exemplo', 'exemplo', 'BALCAO_AGENTE', 'ATIVA', '#0D4A57',
-       'roupa', ARRAY['agente','metas'], now(), '(71) 99999-0000', now(), now()),
+       'roupa', ARRAY['agente','metas','multiUnidade'], now(), '(71) 99999-0000', now(), now()),
       ('org-exemplo-b', 'Empresa Vizinha', 'vizinha', 'REDE', 'ATIVA', '#7A4B12',
        'alimentacao', ARRAY['crediario','notaFiscal','multiUnidade'], now(), null, now(), now());
 
     insert into unidades (id, org_id, nome, ativa, eh_deposito, criada_em, atualizada_em) values
       ('uni-a1', 'org-exemplo-a', 'Loja Centro',   true, false, now(), now()),
+      ('uni-a2', 'org-exemplo-a', 'Loja Shopping', true, false, now(), now()),
       ('uni-b1', 'org-exemplo-b', 'Loja Sul', true, false, now(), now()),
       ('uni-b2', 'org-exemplo-b', 'Deposito',      true, true,  now(), now());
 
@@ -104,7 +106,24 @@ if (Number(rows[0]!.n) === 0) {
 
 if (await semearCatalogo(cliente, 'org-exemplo-a', 'uni-a1')) {
   passo('catálogo de exemplo (camiseta com grade + sorvete por quilo)...')
+  // A segunda loja começa com a mesma carga, para o filtro ter os dois lados.
+  await cliente.query(`
+    insert into estoque (id, org_id, variacao_id, unidade_id, quantidade, minimo, atualizado_em)
+    select 'est2-' || v.id, v.org_id, v.id, 'uni-a2', 40, 3, now()
+      from variacoes v where v.org_id = 'org-exemplo-a';
+    insert into movimentos_estoque
+      (id, org_id, variacao_id, unidade_id, tipo, quantidade, saldo_depois, motivo, quem, criado_em)
+    select 'mov2-' || v.id, v.org_id, v.id, 'uni-a2', 'ENTRADA', 40, 40,
+           'Carga inicial do exemplo', 'sistema', now()
+      from variacoes v where v.org_id = 'org-exemplo-a';
+  `)
 }
+
+const nVendas = await semearVendas(cliente, 'org-exemplo-a', [
+  { id: 'uni-a1', nome: 'Loja Centro', fatia: 3 },
+  { id: 'uni-a2', nome: 'Loja Shopping', fatia: 2 },
+])
+if (nVendas) passo(`${nVendas} vendas de exemplo nos últimos 30 dias...`)
 
 await cliente.end()
 

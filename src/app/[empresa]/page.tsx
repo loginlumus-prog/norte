@@ -1,158 +1,225 @@
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
-import { comoOrg } from '@/servidor/banco'
-import { pode, PODERES } from '@/servidor/permissao'
+import { pode } from '@/servidor/permissao'
+import { escolherUnidade } from '@/servidor/unidade'
+import { resumoDoPainel } from '@/servidor/painel'
+import { moduloLigado } from '@/servidor/modulos'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Cartao, Situacao } from '@/ui/base'
-import { Tabela } from '@/ui/Tabela'
+import { Cartao, Situacao, Aviso } from '@/ui/base'
+import { SeletorUnidade } from '@/ui/SeletorUnidade'
+import { Numero, Barras, Ranque, Secao, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 
+const FORMA: Record<string, string> = {
+  DINHEIRO: 'Dinheiro', PIX: 'Pix', DEBITO: 'Débito', CREDITO: 'Crédito',
+  CREDIARIO: 'Crediário', VALE: 'Vale', TRANSFERENCIA: 'Transferência',
+}
 
-export default async function Painel({ params }: { params: Promise<{ empresa: string }> }) {
+export default async function Painel({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ empresa: string }>
+  searchParams: Promise<{ unidade?: string }>
+}) {
   const { empresa: slug } = await params
+  const { unidade: pedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug)
-
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
-  // Tudo daqui para baixo passa por comoOrg: mesmo sem filtro escrito, o banco
-  // só devolve o que é desta empresa.
-  const { unidades, equipe, livro } = await comoOrg(sessao.orgId, async (db) => ({
-    unidades: await db.unidade.findMany({
-      where: { ativa: true },
-      orderBy: { nome: 'asc' },
-      select: { id: true, nome: true, ehDeposito: true, documento: true },
-    }),
-    equipe: pode(sessao, 'equipe.ver')
-      ? await db.usuario.findMany({
-          where: { ativo: true },
-          orderBy: { nome: 'asc' },
-          select: { id: true, nome: true, email: true, acessos: { select: { papel: true } } },
-        })
-      : [],
-    livro: pode(sessao, 'auditoria.ver')
-      ? await db.auditoria.findMany({
-          orderBy: { criadoEm: 'desc' },
-          take: 8,
-          select: { id: true, quem: true, acao: true, criadoEm: true, autor: true },
-        })
-      : [],
-  }))
+  const onde = await escolherUnidade(sessao, empresa, pedida)
+  const r = await resumoDoPainel(sessao, onde.ids)
 
-  const menu = MENU(slug).map((i) =>
-    i.href === `/${slug}/equipe` ? { ...i, contagem: equipe.length } : i,
-  )
+  const verDinheiro = pode(sessao, 'financeiro.ver')
+  const verEstoque = pode(sessao, 'estoque.ver')
+  const verEquipe = moduloLigado(empresa, 'metas') && pode(sessao, 'equipe.ver')
 
-  const hora = (d: Date) =>
-    new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d)
+  // Comparação com ontem, que é a pergunta que o dono faz de manhã.
+  const pct = r.ontem.total > 0 ? ((r.hoje.total - r.ontem.total) / r.ontem.total) * 100 : NaN
+  const margem = r.mes.total > 0 ? ((r.mes.total - r.mes.custo) / r.mes.total) * 100 : 0
 
   return (
     <Estrutura
       empresa={empresa}
       sessao={sessao}
-      itens={menu}
+      itens={MENU(slug)}
       ativo={`/${slug}`}
       tema={tema}
       titulo="Painel"
+      acao={
+        onde.mostrarSeletor ? (
+          <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />
+        ) : undefined
+      }
     >
-      <Cartao titulo="Unidades">
-        <Tabela
-          colunas={[
-            { chave: 'nome', titulo: 'Unidade', celula: (u) => u.nome },
-            {
-              chave: 'tipo',
-              titulo: 'Tipo',
-              celula: (u) =>
-                u.ehDeposito ? (
-                  <Situacao nivel="neutro">Depósito</Situacao>
-                ) : (
-                  <Situacao nivel="bom">Loja</Situacao>
-                ),
-            },
-            {
-              chave: 'doc',
-              titulo: 'CNPJ',
-              celula: (u) => u.documento ?? <span className="text-tinta-3">não informado</span>,
-            },
-          ]}
-          linhas={unidades}
-          chave={(u) => u.id}
-          vazio="Nenhuma unidade cadastrada ainda."
-        />
-      </Cartao>
-
-      {pode(sessao, 'equipe.ver') && (
-        <Cartao titulo="Equipe">
-          <Tabela
-            colunas={[
-              { chave: 'nome', titulo: 'Pessoa', celula: (p) => p.nome },
-              { chave: 'email', titulo: 'E-mail', celula: (p) => p.email },
-              {
-                chave: 'papeis',
-                titulo: 'Papéis',
-                celula: (p) => (
-                  <span className="flex flex-wrap gap-1">
-                    {p.acessos.map((a, i) => (
-                      <Situacao key={i} nivel="neutro">
-                        {a.papel}
-                      </Situacao>
-                    ))}
-                  </span>
-                ),
-              },
-            ]}
-            linhas={equipe}
-            chave={(p) => p.id}
-            vazio="Ninguém cadastrado ainda."
-          />
-        </Cartao>
+      {onde.opcoes.length === 0 && (
+        <Aviso nivel="atencao">
+          Você ainda não tem acesso a nenhuma unidade. Peça para quem responde pela empresa
+          liberar o seu acesso.
+        </Aviso>
       )}
 
-      {pode(sessao, 'auditoria.ver') && (
-        <Cartao titulo="Últimos registros do livro">
-          <Tabela
-            colunas={[
-              { chave: 'quando', titulo: 'Quando', largura: '7rem', celula: (l) => hora(l.criadoEm) },
-              { chave: 'quem', titulo: 'Quem', celula: (l) => l.quem },
-              {
-                chave: 'acao',
-                titulo: 'O que fez',
-                celula: (l) => <span className="font-mono text-xs">{l.acao}</span>,
-              },
-              {
-                chave: 'autor',
-                titulo: 'Origem',
-                celula: (l) => (
-                  <Situacao nivel={l.autor === 'AGENTE' ? 'atencao' : 'neutro'}>
-                    {l.autor === 'AGENTE' ? 'Agente' : l.autor === 'SISTEMA' ? 'Sistema' : 'Pessoa'}
-                  </Situacao>
-                ),
-              },
-            ]}
-            linhas={livro}
-            chave={(l) => l.id}
-            vazio="O livro está vazio."
+      {/* ── VENDAS ── */}
+      <Secao titulo={`Vendas · ${onde.titulo}`}>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <Numero
+            rotulo="Hoje"
+            valor={brl(r.hoje.total)}
+            detalhe={`${r.hoje.vendas} venda${r.hoje.vendas === 1 ? '' : 's'}`}
+            comparacao={{ pct, contra: 'vs ontem' }}
           />
-        </Cartao>
-      )}
-
-      <Cartao titulo="O que você pode fazer aqui">
-        <div className="flex flex-wrap gap-1.5">
-          {sessao.acessos.flatMap((a) =>
-            PODERES[a.papel].map((c) => (
-              <span
-                key={`${a.papel}-${c}`}
-                className="rounded bg-superficie-2 px-1.5 py-0.5 font-mono text-xs text-tinta-2"
-              >
-                {c}
-              </span>
-            )),
+          <Numero
+            rotulo="Este mês"
+            valor={brl(r.mes.total)}
+            detalhe={`${r.mes.vendas} vendas`}
+          />
+          <Numero
+            rotulo="Ticket médio do mês"
+            valor={brl(r.mes.ticket)}
+            detalhe="por venda"
+          />
+          {verDinheiro && (
+            <Numero
+              rotulo="Margem do mês"
+              valor={`${margem.toFixed(0)}%`}
+              detalhe={`${brl(r.mes.total - r.mes.custo)} sobre o custo`}
+            />
           )}
         </div>
-        <p className="mt-3 text-xs text-tinta-3">
-          O menu à esquerda nasce desta lista: quem não pode, não vê o item.
-        </p>
-      </Cartao>
+
+        <Cartao titulo="Últimos 30 dias">
+          <Barras dados={r.porDia} titulo="Vendas por dia" />
+        </Cartao>
+
+        {onde.mostrarSeletor && onde.unidadeId === null && (
+          <Cartao titulo="Por unidade, no mês">
+            <Ranque
+              itens={r.porUnidade.map((u) => ({
+                rotulo: u.nome,
+                valor: u.total,
+                detalhe: `${u.vendas} vendas`,
+              }))}
+            />
+          </Cartao>
+        )}
+      </Secao>
+
+      {/* ── PRODUTOS ── */}
+      <Secao titulo="Produtos">
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Cartao titulo="Mais vendidos no mês">
+            <Ranque
+              itens={r.maisVendidos.map((i) => ({
+                rotulo: i.descricao,
+                valor: i.total,
+                detalhe: `${i.quantidade.toLocaleString('pt-BR')} un`,
+              }))}
+            />
+          </Cartao>
+
+          <Cartao titulo="Parados há mais de 30 dias">
+            {r.parados.length === 0 ? (
+              <p className="py-6 text-center text-sm text-tinta-3">
+                Tudo girou no último mês.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {r.parados.map((p) => (
+                  <li key={p.descricao} className="flex items-baseline justify-between gap-3">
+                    <span className="truncate text-sm text-tinta">{p.descricao}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span className="numero text-sm text-tinta-2">{p.saldo} un</span>
+                      <Situacao nivel="atencao">
+                        {p.desde == null ? 'nunca vendeu' : `${p.desde}d`}
+                      </Situacao>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Cartao>
+        </div>
+      </Secao>
+
+      {/* ── ESTOQUE ── */}
+      {verEstoque && (
+        <Secao titulo="Estoque">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Numero rotulo="Itens diferentes" valor={String(r.estoque.itens)} detalhe="com saldo" />
+            <Numero
+              rotulo="Peças em estoque"
+              valor={r.estoque.unidades.toLocaleString('pt-BR')}
+            />
+            {verDinheiro && (
+              <Numero
+                rotulo="Dinheiro parado"
+                valor={brl(r.estoque.valorCusto)}
+                detalhe="a preço de custo"
+              />
+            )}
+          </div>
+
+          <Cartao titulo="Acabando">
+            {r.acabando.length === 0 ? (
+              <p className="py-6 text-center text-sm text-tinta-3">
+                Nada abaixo do mínimo.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {r.acabando.map((a) => (
+                  <li key={a.descricao} className="flex items-baseline justify-between gap-3">
+                    <span className="truncate text-sm text-tinta">{a.descricao}</span>
+                    <Situacao nivel={a.saldo <= 0 ? 'critico' : 'atencao'}>
+                      {a.saldo <= 0 ? 'acabou' : `${a.saldo} de ${a.minimo}`}
+                    </Situacao>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Cartao>
+        </Secao>
+      )}
+
+      {/* ── FINANCEIRO ── */}
+      {verDinheiro && (
+        <Secao titulo="Financeiro">
+          <Cartao titulo="Como receberam, no mês">
+            <Ranque
+              itens={r.porForma.map((f) => ({
+                rotulo: FORMA[f.forma] ?? f.forma,
+                valor: f.total,
+                detalhe: `${f.vendas}×`,
+              }))}
+            />
+          </Cartao>
+        </Secao>
+      )}
+
+      {/* ── EQUIPE ── */}
+      {verEquipe && (
+        <Secao titulo="Equipe">
+          <Cartao titulo="Quem mais vendeu no mês">
+            <Ranque
+              itens={r.porVendedor.map((v) => ({
+                rotulo: v.nome,
+                valor: v.total,
+                detalhe: `${v.vendas} vendas`,
+              }))}
+            />
+          </Cartao>
+        </Secao>
+      )}
+
+      {/* ── CLIENTES ── */}
+      {pode(sessao, 'cliente.ver') && (
+        <Secao titulo="Clientes">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Numero rotulo="Cadastrados" valor={String(r.clientes.total)} />
+            <Numero rotulo="Novos este mês" valor={String(r.clientes.novosNoMes)} />
+          </div>
+        </Secao>
+      )}
     </Estrutura>
   )
 }

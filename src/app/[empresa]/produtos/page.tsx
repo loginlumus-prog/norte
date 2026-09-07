@@ -6,6 +6,8 @@ import { Estrutura } from '@/ui/Estrutura'
 import { Cartao, Situacao, Vazio } from '@/ui/base'
 import { Tabela } from '@/ui/Tabela'
 import { MENU } from '@/ui/menu'
+import { escolherUnidade } from '@/servidor/unidade'
+import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import type { Tema } from '@/ui/TrocaTema'
 
 const MEDIDA: Record<string, string> = {
@@ -22,10 +24,21 @@ const quantidade = (v: unknown, medida: string) => {
   return `${texto} ${MEDIDA[medida] ?? ''}`
 }
 
-export default async function Produtos({ params }: { params: Promise<{ empresa: string }> }) {
+export default async function Produtos({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ empresa: string }>
+  searchParams: Promise<{ unidade?: string }>
+}) {
   const { empresa: slug } = await params
+  const { unidade: pedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
+
+  // O estoque é por loja. Sem este filtro, a tela somaria o saldo das duas e
+  // o balconista da Loja Centro veria peça que está no Shopping.
+  const onde = await escolherUnidade(sessao, empresa, pedida, 'produto.ver')
 
   const produtos = await comoOrg(sessao.orgId, (db) =>
     db.produto.findMany({
@@ -42,7 +55,10 @@ export default async function Produtos({ params }: { params: Promise<{ empresa: 
             opcoes: {
               select: { opcao: { select: { valor: true, hex: true, eixo: { select: { nome: true, ordem: true } } } } },
             },
-            estoques: { select: { quantidade: true, minimo: true, unidadeId: true } },
+            estoques: {
+              where: { unidadeId: { in: onde.ids } },
+              select: { quantidade: true, minimo: true, unidadeId: true },
+            },
           },
         },
       },
@@ -59,6 +75,11 @@ export default async function Produtos({ params }: { params: Promise<{ empresa: 
       ativo={`/${slug}/produtos`}
       tema={tema}
       titulo="Produtos"
+      acao={
+        onde.mostrarSeletor ? (
+          <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />
+        ) : undefined
+      }
     >
       {produtos.length === 0 && (
         <Cartao>
@@ -81,7 +102,7 @@ export default async function Produtos({ params }: { params: Promise<{ empresa: 
                 {p.marca && <span>{p.marca}</span>}
                 {podeVerPreco && <span className="numero">{dinheiro(p.precoVista)} à vista</span>}
                 <Situacao nivel={total > 0 ? 'neutro' : 'critico'}>
-                  {quantidade(total, p.medida)} no total
+                  {quantidade(total, p.medida)} {onde.unidadeId ? 'aqui' : 'no total'}
                 </Situacao>
               </span>
             }

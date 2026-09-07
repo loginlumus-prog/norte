@@ -26,6 +26,8 @@ import { pode } from '../src/servidor/permissao'
 import { convidar, aceitarConvite, listarConvites, revogarConvite } from '../src/servidor/convite'
 import { mexerEstoque, saldo, conferirSaldos } from '../src/servidor/estoque'
 import { registrarVenda } from '../src/servidor/venda'
+import { escolherUnidade } from '../src/servidor/unidade'
+import { resumoDoPainel } from '../src/servidor/painel'
 import { SemPermissao } from '../src/servidor/permissao'
 
 const A = 'org-exemplo-a'
@@ -44,11 +46,19 @@ const org = await acharOrgPorSlug('exemplo')
 ok('acha a empresa pelo endereço', org?.id === A, org?.nome ?? 'não achou')
 
 // Cada uma enxerga só o que é seu.
-const uniA = await comoOrg(A, (db) => db.unidade.findMany())
-ok('Comércio Exemplo vê só as unidades dela', uniA.length === 1, uniA.map((u) => u.nome).join(', '))
+// Sem número escrito na mão: compara com a verdade do banco. Número fixo em
+// checagem envelhece junto com o exemplo e passa a reprovar coisa certa.
+const uniA = await comoOrg(A, (db) => db.unidade.findMany({ select: { id: true, nome: true, orgId: true } }))
+const uniB = await comoOrg(B, (db) => db.unidade.findMany({ select: { id: true, nome: true, orgId: true } }))
 
-const uniB = await comoOrg(B, (db) => db.unidade.findMany())
-ok('Vizinha vê só as unidades dela', uniB.length === 2, uniB.map((u) => u.nome).join(', '))
+ok('Comércio Exemplo vê só as unidades dela',
+   uniA.length > 0 && uniA.every((u) => u.orgId === A),
+   uniA.map((u) => u.nome).join(', '))
+ok('Vizinha vê só as unidades dela',
+   uniB.length > 0 && uniB.every((u) => u.orgId === B),
+   uniB.map((u) => u.nome).join(', '))
+ok('e nenhuma unidade aparece nas duas',
+   !uniA.some((a) => uniB.some((b) => b.id === a.id)))
 
 // O caso que mais importa: consulta escrita SEM filtro de empresa.
 // É o esquecimento que todo mundo comete, e ele precisa ser inofensivo.
@@ -73,7 +83,9 @@ ok('não alcança linha da outra pelo id', alheia === null)
 // Contagem também respeita a parede — inclusive agregação.
 const totalA = await comoOrg(A, (db) => db.unidade.count())
 const totalB = await comoOrg(B, (db) => db.unidade.count())
-ok('count() não soma o das outras', totalA === 1 && totalB === 2, `A=${totalA} B=${totalB}`)
+ok('count() não soma o das outras',
+   totalA === uniA.length && totalB === uniB.length && totalA !== totalA + totalB,
+   `A=${totalA} B=${totalB}`)
 
 // Escrita normal, dentro da própria empresa, continua funcionando.
 const marca = `conferencia-${Date.now()}`
@@ -208,24 +220,31 @@ console.log('\n  Estoque\n')
 
 if (dona.ok) {
   const s = dona.sessao
-  const CAM = 'var-cam-azul-m'   // comeca com 12
-  const SORVETE = 'var-sorvete'  // comeca com 12,500 kg
+  const CAM = 'var-cam-azul-m'
+  const SORVETE = 'var-sorvete'
   const UNI = 'uni-a1'
 
+  // Tudo daqui para baixo compara com o saldo do momento, nunca com numero
+  // escrito na mao: o exemplo muda, e checagem com numero fixo passa a
+  // reprovar codigo que esta certo.
+  const camAntes = await saldo(s, CAM, UNI)
+
   const v1 = await mexerEstoque(s, { variacaoId: CAM, unidadeId: UNI, tipo: 'VENDA', quantidade: 2 })
-  ok('venda baixa o estoque', v1.ok && v1.saldo === 10, `saldo ${v1.saldo}`)
+  ok('venda baixa o estoque', v1.ok && v1.saldo === camAntes - 2, `${camAntes} -> ${v1.saldo}`)
 
   const dev = await mexerEstoque(s, { variacaoId: CAM, unidadeId: UNI, tipo: 'DEVOLUCAO', quantidade: 1 })
-  ok('devolucao devolve', dev.ok && dev.saldo === 11, `saldo ${dev.saldo}`)
+  ok('devolucao devolve', dev.ok && dev.saldo === camAntes - 1, `saldo ${dev.saldo}`)
 
   // O caso que protege o dono: nao vender o que nao existe.
   const demais = await mexerEstoque(s, { variacaoId: CAM, unidadeId: UNI, tipo: 'VENDA', quantidade: 999 })
   ok('nao vende mais do que tem', !demais.ok && demais.motivo === 'sem_saldo')
-  ok('e o saldo fica intacto depois da recusa', (await saldo(s, CAM, UNI)) === 11)
+  ok('e o saldo fica intacto depois da recusa', (await saldo(s, CAM, UNI)) === camAntes - 1)
 
   // Peso: a sorveteria vende 340 g, nao "1 unidade".
+  const sorveteAntes = await saldo(s, SORVETE, UNI)
   const kg = await mexerEstoque(s, { variacaoId: SORVETE, unidadeId: UNI, tipo: 'VENDA', quantidade: 0.34 })
-  ok('vende por peso, com casas decimais', kg.ok && Math.abs(kg.saldo - 12.16) < 0.001, `${kg.saldo} kg`)
+  ok('vende por peso, com casas decimais',
+     kg.ok && Math.abs(kg.saldo - (sorveteAntes - 0.34)) < 0.001, `${kg.saldo} kg`)
 
   // Balanco: informa o CONTADO, o sistema calcula a diferenca.
   const bal = await mexerEstoque(s, { variacaoId: CAM, unidadeId: UNI, tipo: 'BALANCO', quantidade: 9,
@@ -331,10 +350,16 @@ if (dona.ok) {
      !semEstoque.ok && semEstoque.motivo === 'sem_estoque' ? semEstoque.faltando[0]?.descricao : '')
 
   // E a recusa nao pode ter deixado rastro.
-  const numeros = await comoOrg(A, (db) =>
-    db.venda.findMany({ select: { numero: true }, orderBy: { numero: 'asc' } }))
-  ok('venda recusada nao gera numero nem registro',
-     numeros.length === 3, `${numeros.length} venda(s): ${numeros.map((x) => x.numero).join(', ')}`)
+  // A recusa nao pode ter gasto numero: o proximo numero da unidade tem que
+  // ser exatamente um a mais que a ultima venda feita.
+  const [ultima, proximo] = await comoOrg(A, async (db) => [
+    await db.venda.findFirst({ where: { unidadeId: UNI }, orderBy: { numero: 'desc' },
+                               select: { numero: true } }),
+    await db.unidade.findUnique({ where: { id: UNI }, select: { proximaVenda: true } }),
+  ])
+  ok('venda recusada nao gasta numero',
+     (ultima?.numero ?? 0) + 1 === proximo?.proximaVenda,
+     `ultima ${ultima?.numero}, proxima ${proximo?.proximaVenda}`)
 
   // A fotografia: mudar o preco do produto nao mexe na venda ja feita.
   const itemAntes = await comoOrg(A, (db) =>
@@ -362,10 +387,53 @@ if (dona.ok) {
   ok('5 vendas simultaneas, 5 numeros diferentes',
      new Set(ns).size === ns.length && ns.length === 5, ns.join(', '))
 
-  // O livro registra cada venda.
+  // O livro registra cada venda. Conta o que ESTA passagem gerou, para a
+  // checagem continuar valendo quando o script rodar duas vezes seguidas.
   const noLivro = await comoOrg(A, (db) =>
     db.auditoria.count({ where: { acao: 'venda.registrou' } }))
-  ok('cada venda entra no livro', noLivro === 8, `${noLivro} registro(s)`)
+  const vendasReais = await comoOrg(A, (db) =>
+    db.venda.count({ where: { id: { not: { startsWith: 'venda-org-' } } } }))
+  ok('cada venda entra no livro', noLivro === vendasReais,
+     `${noLivro} registro(s) para ${vendasReais} venda(s)`)
+}
+
+// -- separacao por loja --------------------------------------
+console.log('\n  Separação por loja\n')
+
+if (dona.ok) {
+  const s = dona.sessao
+
+  // A dona ve as duas lojas.
+  const daDona = await escolherUnidade(s, { modulos: ['multiUnidade'] }, undefined)
+  ok('a dona ve todas as lojas', daDona.opcoes.length === 2,
+     daDona.opcoes.map((u) => u.nome).join(', '))
+  ok('e o consolidado soma as duas', daDona.ids.length === 2)
+
+  // Cria um gerente preso a UMA loja.
+  const c = await convidar(s, { email: 'gerente2@exemplo.com', papel: 'GERENTE', unidadeId: 'uni-a2' },
+                           'https://norte.app/exemplo')
+  await aceitarConvite('exemplo', c.link.split('/convite/')[1]!,
+                       { nome: 'Gerente do Shopping', senha: 'senha-boa-2026' })
+  const g = await entrar('exemplo', 'gerente2@exemplo.com', 'senha-boa-2026')
+  ok('o gerente da loja entra', g.ok)
+
+  if (g.ok) {
+    const dele = await escolherUnidade(g.sessao, { modulos: ['multiUnidade'] }, undefined)
+    ok('o gerente ve SO a loja dele', dele.opcoes.length === 1 && dele.opcoes[0]?.id === 'uni-a2',
+       dele.opcoes.map((u) => u.nome).join(', '))
+
+    // E se ele COLAR na barra de endereco o id da outra loja?
+    const tentando = await escolherUnidade(g.sessao, { modulos: ['multiUnidade'] }, 'uni-a1')
+    ok('pedir a outra loja pelo endereco NAO abre',
+       !tentando.ids.includes('uni-a1'), `viu: ${tentando.ids.join(', ')}`)
+
+    // O numero que ele ve e o da loja dele, nao o da empresa.
+    const painelDele = await resumoDoPainel(g.sessao, dele.ids)
+    const painelDaDona = await resumoDoPainel(s, daDona.ids)
+    ok('o total do gerente e menor que o da empresa',
+       painelDele.mes.total > 0 && painelDele.mes.total < painelDaDona.mes.total,
+       `gerente R$ ${painelDele.mes.total.toFixed(2)} de R$ ${painelDaDona.mes.total.toFixed(2)}`)
+  }
 }
 
 await fechar()

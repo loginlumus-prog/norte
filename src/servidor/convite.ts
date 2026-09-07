@@ -47,16 +47,22 @@ export async function convidar(
     throw new Error(`Você não pode conceder o papel ${dados.papel}.`)
   }
 
+  // A conferência de e-mail repetido acontece FORA da transação de escrita.
+  // Lançar de dentro dela aborta a transação, e transação abortada deixa a
+  // conexão inutilizável em alguns servidores — inclusive no banco local de
+  // desenvolvimento. Ler antes, escrever depois: mais simples e mais seguro.
+  const jaTem = await comoOrg(sessao.orgId, (db) =>
+    db.usuario.findUnique({
+      where: { orgId_email: { orgId: sessao.orgId, email } },
+      select: { id: true },
+    }),
+  )
+  if (jaTem) throw new EmailJaUsado(email)
+
   const token = randomBytes(32).toString('base64url')
   const expiraEm = new Date(Date.now() + VALE_DIAS * 864e5)
 
   const convite = await comoOrg(sessao.orgId, async (db) => {
-    const jaTem = await db.usuario.findUnique({
-      where: { orgId_email: { orgId: sessao.orgId, email } },
-      select: { id: true },
-    })
-    if (jaTem) throw new Error('Já existe alguém com esse e-mail na empresa.')
-
     // Convite anterior ainda aberto para o mesmo e-mail perde a validade:
     // um e-mail, um link vivo por vez.
     await db.convite.deleteMany({ where: { email, aceitoEm: null } })
@@ -206,6 +212,14 @@ export async function revogarConvite(sessao: Sessao, conviteId: string) {
       },
     })
   })
+}
+
+/** Já existe gente com esse e-mail na empresa. */
+export class EmailJaUsado extends Error {
+  constructor(readonly email: string) {
+    super(`Já existe alguém com o e-mail ${email} nesta empresa.`)
+    this.name = 'EmailJaUsado'
+  }
 }
 
 /** Convites vencidos não servem para nada; some com eles de tempos em tempos. */

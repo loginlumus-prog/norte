@@ -104,6 +104,9 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
 | `src/servidor/modulos.ts` | O que cada empresa usa, e o que cada ramo já deixa pronto |
 | `src/servidor/dinheiro.ts` | Centavos inteiros. Nenhuma conta de dinheiro sai daqui |
 | `src/servidor/venda.ts` | Registrar venda: estoque + venda + pagamento, ou nada |
+| `src/servidor/unidade.ts` | Qual loja a pessoa está olhando, e quais ela alcança |
+| `src/servidor/painel.ts` | Os números do painel, uma consulta por assunto |
+| `src/servidor/planos.ts` | Cotas por plano e o que custa a loja extra |
 | `src/ui/` | Componentes: Botão, Campo, Aviso, Situação, Cartão, Tabela, Estrutura |
 | `src/app/globals.css` | As fichas de cor e os dois temas |
 
@@ -122,6 +125,9 @@ desenvolvimento:
   backend, então transações simultâneas não se comportam como num Postgres de
   verdade. Por isso `POOL_MAX=1` no `.env`. Qualquer coisa sensível a
   concorrência precisa ser validada no banco hospedado.
+- **`npm run conferir` quer banco novo.** Ele cria convite, venda e gente; na
+  segunda rodada seguida sobra estado do anterior. Rode `npm run banco` de
+  novo (a pasta `.banco/` some) antes de conferir outra vez.
 - **Conexão não sobrevive a transação abortada.** Postgres de verdade recupera;
   este não. Por isso o `npm run conferir` só faz leitura — checagem do tipo
   "esta escrita tem que dar erro" envenenaria a conexão e as seguintes

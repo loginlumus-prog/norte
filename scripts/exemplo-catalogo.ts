@@ -76,7 +76,7 @@ export async function semearCatalogo(cliente: Client, orgId: string, unidadeId: 
       // movimento faria a conferência histórico-vs-saldo acusar divergência
       // no primeiro uso — e uma conferência que grita à toa vira ruído que
       // todo mundo aprende a ignorar.
-      const q = [7, 12, 4, 9, 2, 6][n - 1]!
+      const q = [70, 120, 40, 90, 25, 60][n - 1]!
       await cliente.query(
         `insert into estoque (id, org_id, variacao_id, unidade_id, quantidade, minimo, atualizado_em)
          values ($1, $2, $3, $4, $5, 3, now())`,
@@ -109,13 +109,13 @@ export async function semearCatalogo(cliente: Client, orgId: string, unidadeId: 
   )
   await cliente.query(
     `insert into estoque (id, org_id, variacao_id, unidade_id, quantidade, minimo, atualizado_em)
-     values ('est-sorvete', $1, 'var-sorvete', $2, 12.500, 5, now())`,
+     values ('est-sorvete', $1, 'var-sorvete', $2, 180.000, 5, now())`,
     [orgId, unidadeId],
   )
   await cliente.query(
     `insert into movimentos_estoque
        (id, org_id, variacao_id, unidade_id, tipo, quantidade, saldo_depois, motivo, quem, criado_em)
-     values ('mov-sorvete', $1, 'var-sorvete', $2, 'ENTRADA', 12.500, 12.500,
+     values ('mov-sorvete', $1, 'var-sorvete', $2, 'ENTRADA', 180.000, 180.000,
              'Carga inicial do exemplo', 'sistema', now())`,
     [orgId, unidadeId],
   )
