@@ -48,16 +48,18 @@ Os dados ficam em `.banco/`. Apagar a pasta = banco novo.
 esconde o resto: quem não vende fiado não vê Crediário em lugar nenhum.
 Ligar de volta é em Configurações.
 
-**Fase 2 — motor pronto, telas pela metade.** Catálogo (a empresa nomeia os
-eixos de variação), estoque com movimento atômico, venda numa transação só
-(estoque + venda + pagamento) e caixa que fecha conferindo a gaveta. Dinheiro
-em **centavos inteiros** — ver `src/servidor/dinheiro.ts` e o bug que originou
-o arquivo.
+**Fase 2 — quase lá.** Catálogo (a empresa nomeia os eixos de variação),
+estoque com movimento atômico, venda numa transação só (estoque + venda +
+pagamento) e caixa que fecha conferindo a gaveta. Dinheiro em **centavos
+inteiros** — ver `src/servidor/dinheiro.ts` e o bug que originou o arquivo.
+
+Agora com as telas: cadastrar produto com grade, dar entrada de mercadoria
+(saldo + custo + conta do fornecedor numa transação só), corrigir estoque por
+contagem, e a equipe com convite por link.
 
 O critério da fase era "passar um dia inteiro de vendas reais sem abrir o
-sistema antigo", e ele **não está cumprido**: não dá para cadastrar produto
-pela tela, nem dar entrada de mercadoria, nem cadastrar cliente. Faltam
-também etiqueta, troca, parcela com juro e o modo sem internet.
+sistema antigo". Falta para cumprir: **cliente**, etiqueta, troca, parcela
+com juro e o modo sem internet.
 
 **Fase 3 — o DRE fecha, o resto não.** Contas a pagar com aviso de vencida,
 lançamento de despesa, 18 categorias já amarradas à linha do DRE, e o
@@ -156,6 +158,9 @@ gatilhos que fazem ele agir sozinho.
 | `src/servidor/painel.ts` | Os números do painel, uma consulta por assunto |
 | `src/servidor/planos.ts` | Cotas por plano e o que custa a loja extra |
 | `src/servidor/limite.ts` | O freio do login: quantas tentativas, por e-mail e por IP |
+| `src/servidor/produto.ts` | Cadastrar produto e mexer na grade sem apagar história |
+| `src/servidor/entrada.ts` | Entrada de mercadoria: saldo, custo e conta do fornecedor |
+| `src/servidor/equipe.ts` | Papel, acesso e as três travas que impedem a empresa de ficar sem dono |
 | `src/servidor/poderes.ts` | O catálogo de poderes do agente e as travas. **Puro** |
 | `src/servidor/agente.ts` | Configuração, propor/confirmar, recibo e consumo |
 | `src/servidor/custo-ia.ts` | Quanto custa cada conversa. **Puro** |

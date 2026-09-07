@@ -116,10 +116,21 @@ export async function entrar(
   }
 }
 
-/** Quem entrou e quando — o cliente enxerga isso no livro dele. */
+/**
+ * Quem entrou e quando — o cliente enxerga isso no livro dele.
+ *
+ * E marca o último acesso na própria conta. O livro guarda a história
+ * completa; o campo guarda a resposta da pergunta que a tela de equipe faz
+ * o tempo todo: "essa pessoa ainda usa o sistema?". Quem nunca entrou é
+ * conta esquecida, e conta esquecida é porta aberta.
+ */
 async function registrarEntrada(sessao: Sessao) {
-  await comoOrg(sessao.orgId, (db) =>
-    db.auditoria.create({
+  await comoOrg(sessao.orgId, async (db) => {
+    await db.usuario.update({
+      where: { id: sessao.usuarioId },
+      data: { ultimoLogin: new Date() },
+    })
+    await db.auditoria.create({
       data: {
         orgId: sessao.orgId,
         usuarioId: sessao.usuarioId,
@@ -128,8 +139,8 @@ async function registrarEntrada(sessao: Sessao) {
         alvoTipo: 'usuario',
         alvoId: sessao.usuarioId,
       },
-    }),
-  )
+    })
+  })
 }
 
 // Tentativa que falha NÃO vai para o livro de auditoria de propósito: quem

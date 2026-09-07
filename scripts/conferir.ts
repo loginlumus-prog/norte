@@ -32,6 +32,7 @@ import { cortarSessoes } from '../src/servidor/pagina'
 import { acharAgente, propor, responderProposta, paraConfig } from '../src/servidor/agente'
 import { criarProduto, ajustarGrade, eixosDaEmpresa } from '../src/servidor/produto'
 import { registrarEntrada, definirMinimo } from '../src/servidor/entrada'
+import { listarEquipe, mudarAcesso, mudarSituacao } from '../src/servidor/equipe'
 import { ferramentasDe, AcimaDoTeto } from '../src/servidor/poderes'
 import { escolherUnidade } from '../src/servidor/unidade'
 import { resumoDoPainel } from '../src/servidor/painel'
@@ -741,6 +742,96 @@ console.log('\n  Agente\n')
     ok('confirmar duas vezes NAO lanca duas vezes',
        !deNovo.ok && deNovo.motivo === 'ja_respondida' && final === depois,
        deNovo.ok ? 'LANCOU DE NOVO!' : `${final} lancamentos`)
+  }
+}
+
+
+// ── equipe ───────────────────────────────────────────────────
+console.log('\n  Equipe\n')
+
+{
+  const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
+
+  if (dona.ok) {
+    const time = await listarEquipe(dona.sessao)
+    ok('a lista traz a equipe inteira', time.length > 1, `${time.length} pessoa(s)`)
+
+    const carlos = time.find((p) => p.email === 'carlos@exemplo.com')
+
+    // 1. Ninguém mexe no próprio acesso. Sem isso, a única dona se rebaixa
+    //    sem querer e ninguém mais consegue desfazer.
+    const emMim = await mudarAcesso(dona.sessao, dona.sessao.usuarioId, {
+      papel: 'BALCAO',
+      unidadeId: null,
+    })
+    ok('ninguem muda o proprio acesso', !emMim.ok, emMim.ok ? 'MUDOU!' : emMim.motivo)
+
+    const euMesma = await mudarSituacao(dona.sessao, dona.sessao.usuarioId, false)
+    ok('nem se desativa', !euMesma.ok, euMesma.ok ? 'DESATIVOU!' : euMesma.motivo)
+
+    // 2. Mudar papel corta a sessão de quem foi mudado.
+    const nasceu = new Date()
+    await new Promise((r) => setTimeout(r, 5))
+    const promovido = await mudarAcesso(dona.sessao, carlos!.id, {
+      papel: 'GERENTE',
+      unidadeId: 'uni-a1',
+    })
+    ok('a dona promove o balconista a gerente', promovido.ok,
+       promovido.ok ? 'GERENTE em uni-a1' : promovido.motivo)
+
+    const dele = await comoOrg(A, (db) =>
+      db.usuario.findUnique({
+        where: { id: carlos!.id },
+        select: { ativo: true, sessoesDesde: true },
+      }),
+    )
+    ok('e o cookie antigo dele deixa de valer na hora',
+       !sessaoAindaVale(dele, nasceu), `corte ${dele?.sessoesDesde.toISOString()}`)
+
+    // 3. O gerente NÃO promove ninguém a dono — nem a gerente.
+    const gerente = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+    if (gerente.ok) {
+      const tentando = await mudarAcesso(gerente.sessao, 'usr-a3', { papel: 'DONO', unidadeId: null })
+      ok('o gerente NAO cria dono', !tentando.ok, tentando.ok ? 'CRIOU!' : tentando.motivo)
+
+      const aindaMenos = await mudarAcesso(gerente.sessao, 'usr-a3', { papel: 'GERENTE', unidadeId: 'uni-a1' })
+      ok('nem outro gerente', !aindaMenos.ok, aindaMenos.ok ? 'CRIOU!' : aindaMenos.motivo)
+    }
+
+    // 4. A empresa nunca fica sem dono.
+    const donos = await comoOrg(A, (db) =>
+      db.acesso.findMany({ where: { papel: 'DONO' }, select: { usuarioId: true } }),
+    )
+    if (donos.length === 1) {
+      // A única dona é a própria Ana, e ela não mexe em si — então o teste
+      // do "último dono" precisa de outra pessoa promovida e rebaixada.
+      const outra = await mudarAcesso(dona.sessao, 'usr-a3', { papel: 'DONO', unidadeId: null })
+      if (outra.ok) {
+        const rebaixando = await mudarAcesso(dona.sessao, 'usr-a3', { papel: 'CONTADOR', unidadeId: null })
+        ok('rebaixar um dono quando existe outro E PERMITIDO', rebaixando.ok,
+           rebaixando.ok ? 'ok' : rebaixando.motivo)
+      }
+    }
+
+    // 5. Tirar o acesso não apaga a pessoa nem o que ela fez.
+    const vendasDele = await comoOrg(A, (db) =>
+      db.venda.count({ where: { vendedorId: carlos!.id } }),
+    )
+    await mudarSituacao(dona.sessao, carlos!.id, false)
+    const depois = await comoOrg(A, (db) =>
+      db.usuario.findUnique({ where: { id: carlos!.id }, select: { ativo: true, nome: true } }),
+    )
+    const vendasDepois = await comoOrg(A, (db) =>
+      db.venda.count({ where: { vendedorId: carlos!.id } }),
+    )
+    ok('tirar o acesso nao apaga a pessoa nem as vendas dela',
+       depois?.ativo === false && vendasDepois === vendasDele,
+       `${depois?.nome} inativo, ${vendasDepois} venda(s) intactas`)
+
+    // e ele nao entra mais
+    const tentandoEntrar = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+    ok('e ele nao entra mais', !tentandoEntrar.ok,
+       tentandoEntrar.ok ? 'ENTROU!' : tentandoEntrar.motivo)
   }
 }
 
