@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Image from 'next/image'
 import { Marca, Simbolo } from '@/ui/Marca'
 
 // A página de venda.
@@ -253,6 +254,55 @@ export default function Inicio() {
               <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── para quem é ── */}
+      <section className="bg-superficie">
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 md:grid-cols-2">
+          <div className="overflow-hidden rounded-xl">
+            {/* Foto gerada por IA, não é cliente nosso. Está escrito aqui para
+                ninguém, daqui a seis meses, achar que é caso real e sair
+                contando isso numa reunião de venda. */}
+            <Image
+              src="/img/balcao.jpg"
+              alt="Dona de uma loja de roupas de bairro, atrás do balcão, olhando o celular"
+              width={928}
+              height={1160}
+              priority
+              className="h-full w-full object-cover"
+            />
+          </div>
+          <div className="flex flex-col gap-5">
+            <span className="text-xs font-bold tracking-[0.14em] text-marca uppercase">
+              Para quem é
+            </span>
+            <h2 className="text-3xl leading-tight font-extrabold tracking-[-0.02em] text-tinta">
+              Feito para quem atende no balcão e no WhatsApp — e cresce a partir daí.
+            </h2>
+            <p className="leading-relaxed text-tinta-2">
+              Comércio de bairro com 1 a 3 lojas e 2 a 10 pessoas, que vende no balcão, vende
+              pelo WhatsApp e às vezes vende fiado. Loja de roupa, sapataria, sorveteria,
+              papelaria, distribuidora.
+            </p>
+            <p className="leading-relaxed text-tinta-2">
+              A arquitetura não tem teto: a mesma tabela que guarda a loja única guarda a rede
+              de quarenta. Quem começa com uma loja não descobre nem que existe o conceito de
+              unidade — o seletor só aparece quando existe a segunda.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {['Loja de roupa', 'Sapataria', 'Sorveteria', 'Papelaria', 'Distribuidora', 'Rede de lojas'].map(
+                (r) => (
+                  <span
+                    key={r}
+                    className="rounded-full border border-borda bg-fundo px-3 py-1 text-xs font-semibold text-tinta-2"
+                  >
+                    {r}
+                  </span>
+                ),
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
