@@ -23,7 +23,7 @@ npm run banco      # sobe o Postgres local — deixe esta janela aberta
 npm run preparar   # tabelas, travas, duas empresas e gente para entrar
 npm run dev        # o sistema, em http://localhost:3000/exemplo
 npm run conferir   # prova isolamento e login no banco de verdade
-npm test           # checa tipos + 65 testes
+npm test           # checa tipos + 99 testes
 ```
 
 Contas de exemplo (só no banco local), senha `exemplo-2026`:
@@ -52,7 +52,11 @@ Ligar de volta é em Configurações.
 empresa + unidade de medida) e estoque com movimento atômico prontos e
 conferidos. Tela de produtos no ar.
 
-Falta na Fase 2: entrada de mercadoria, balcão e caixa.
+Venda registrada: estoque, venda e pagamento numa transação só. Dinheiro é
+contado em **centavos inteiros** — ver `src/servidor/dinheiro.ts` e o bug que
+originou o arquivo.
+
+Falta na Fase 2: telas do balcão e do caixa, seletor de unidade, painel.
 
 **Fase 1 — Fundação: fechada.** Modelo de dados, isolamento entre empresas,
 acesso da aplicação, senhas, login, papéis, convite de equipe, biblioteca de
@@ -75,11 +79,14 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
    (`prisma/sql/rls.sql`). A segunda existe para quando a primeira falhar.
 6. **`npm test` verde é condição para subir.** Vazamento entre empresas mata o
    negócio no primeiro dia.
-7. **Estoque se mexe só por `mexerEstoque()`.** A conta (`quantidade + delta`)
+7. **Dinheiro se conta em centavos inteiros**, nunca com número quebrado.
+   `44,90 × 0,750` dá 33,68 — a conta ingênua dá 33,67, e o centavo some
+   toda vez que cai na metade. Reais quebrados só nas beiradas: tela e banco.
+8. **Estoque se mexe só por `mexerEstoque()`.** A conta (`quantidade + delta`)
    acontece dentro do banco, nunca na memória — senão duas vendas ao mesmo
    tempo perdem uma baixa. E o histórico é a verdade: `conferirSaldos()`
    acusa se o saldo divergir da soma.
-8. **O livro de auditoria só recebe.** Sem UPDATE, sem DELETE, e a tentativa
+9. **O livro de auditoria só recebe.** Sem UPDATE, sem DELETE, e a tentativa
    levanta erro em vez de falhar em silêncio.
 
 ### Onde ficam as coisas
@@ -95,6 +102,8 @@ Próximo: Fase 2 — produto, estoque, balcão e caixa.
 | `src/servidor/pagina.ts` | `exigirEntrada()` — toda tela de dentro começa por ela |
 | `src/servidor/estoque.ts` | Movimento de estoque, atômico. A conta acontece no banco |
 | `src/servidor/modulos.ts` | O que cada empresa usa, e o que cada ramo já deixa pronto |
+| `src/servidor/dinheiro.ts` | Centavos inteiros. Nenhuma conta de dinheiro sai daqui |
+| `src/servidor/venda.ts` | Registrar venda: estoque + venda + pagamento, ou nada |
 | `src/ui/` | Componentes: Botão, Campo, Aviso, Situação, Cartão, Tabela, Estrutura |
 | `src/app/globals.css` | As fichas de cor e os dois temas |
 

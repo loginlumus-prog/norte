@@ -86,6 +86,12 @@ model Org {
   variacaoOpcoes VariacaoOpcao[]
   estoques       Estoque[]
   movimentos     MovimentoEstoque[]
+  clientes       Cliente[]
+  caixas         Caixa[]
+  caixaMovimentos CaixaMovimento[]
+  vendas         Venda[]
+  vendaItens     VendaItem[]
+  pagamentos     Pagamento[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -119,10 +125,18 @@ model Unidade {
   ehDeposito Boolean @default(false) @map("eh_deposito")
   ativa      Boolean @default(true)
 
+  /// Contador do número da venda desta unidade.
+  /// Não se calcula "max(numero)+1": duas vendas ao mesmo tempo leriam o mesmo
+  /// máximo e pediriam o mesmo número. Aqui o banco incrementa e devolve, numa
+  /// operação só, e cada venda leva um número que é só dela.
+  proximaVenda Int @default(1) @map("proxima_venda")
+
   acessos    Acesso[]
   auditoria  Auditoria[]
   estoques   Estoque[]
   movimentos MovimentoEstoque[]
+  caixas     Caixa[]
+  vendas     Venda[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -463,6 +477,7 @@ model Variacao {
   opcoes     VariacaoOpcao[]
   estoques   Estoque[]
   movimentos MovimentoEstoque[]
+  vendaItens VendaItem[]
 
   criadaEm DateTime @default(now()) @map("criada_em")
 
@@ -558,4 +573,214 @@ enum TipoMovimento {
   PERDA
   TRANSFERENCIA
   BALANCO
+}
+
+// ═════════════════════════════════════════════════════════════
+// FASE 2 — CLIENTE, VENDA E CAIXA
+// ═════════════════════════════════════════════════════════════
+
+model Cliente {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome      String
+  documento String? // CPF
+  telefone  String?
+  email     String?
+  nascimento DateTime? @db.Date
+
+  endereco String?
+  numero   String?
+  bairro   String?
+  cidade   String?
+  estado   String?
+  cep      String?
+
+  observacoes String?
+  ativo       Boolean @default(true)
+
+  vendas Venda[]
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, nome])
+  @@index([orgId, documento])
+  @@map("clientes")
+}
+
+/// Um turno de caixa: abre, movimenta, fecha.
+/// Venda sempre pertence a um caixa aberto — é assim que o dinheiro do dia
+/// tem dono e hora.
+model Caixa {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  aberto Boolean @default(true)
+
+  abertoPorId String?  @map("aberto_por_id")
+  abertoPor   String   @map("aberto_por")
+  abertoEm    DateTime @default(now()) @map("aberto_em")
+  saldoAbertura Decimal @default(0) @map("saldo_abertura") @db.Decimal(12, 2)
+
+  fechadoPor String?   @map("fechado_por")
+  fechadoEm  DateTime? @map("fechado_em")
+  /// O que o sistema diz que devia ter na gaveta.
+  saldoEsperado Decimal? @map("saldo_esperado") @db.Decimal(12, 2)
+  /// O que a pessoa contou. A diferença entre os dois é o que importa.
+  saldoContado  Decimal? @map("saldo_contado") @db.Decimal(12, 2)
+  observacoes   String?
+
+  vendas     Venda[]
+  movimentos CaixaMovimento[]
+
+  @@index([orgId, unidadeId, aberto])
+  @@map("caixas")
+}
+
+/// Sangria (tira dinheiro) e suprimento (põe dinheiro), fora de venda.
+model CaixaMovimento {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  caixaId String @map("caixa_id")
+  caixa   Caixa  @relation(fields: [caixaId], references: [id], onDelete: Cascade)
+
+  tipo   TipoCaixa
+  /// Sempre positiva; o sinal vem do tipo.
+  valor  Decimal @db.Decimal(12, 2)
+  motivo String
+  quem   String
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, caixaId])
+  @@map("caixa_movimentos")
+}
+
+model Venda {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id])
+
+  caixaId String? @map("caixa_id")
+  caixa   Caixa?  @relation(fields: [caixaId], references: [id])
+
+  /// Número que o cliente vê no comprovante. Sequencial POR UNIDADE — duas
+  /// lojas não compartilham numeração, senão o comprovante fica sem sentido.
+  numero Int
+
+  clienteId String?  @map("cliente_id")
+  cliente   Cliente? @relation(fields: [clienteId], references: [id])
+
+  /// Quem vendeu. Guardado como texto também: o nome sobrevive à saída da
+  /// pessoa da empresa, e a comissão do mês passado não pode mudar.
+  vendedorId   String? @map("vendedor_id")
+  vendedorNome String? @map("vendedor_nome")
+
+  situacao SituacaoVenda @default(ABERTA)
+
+  subtotal Decimal @default(0) @db.Decimal(12, 2)
+  desconto Decimal @default(0) @db.Decimal(12, 2)
+  total    Decimal @default(0) @db.Decimal(12, 2)
+
+  observacoes String?
+
+  itens      VendaItem[]
+  pagamentos Pagamento[]
+
+  criadaEm    DateTime  @default(now()) @map("criada_em")
+  concluidaEm DateTime? @map("concluida_em")
+  canceladaEm DateTime? @map("cancelada_em")
+  motivoCancelamento String? @map("motivo_cancelamento")
+
+  @@unique([unidadeId, numero])
+  @@index([orgId, unidadeId, criadaEm])
+  @@index([orgId, situacao])
+  @@map("vendas")
+}
+
+/// Item vendido. Guarda FOTOGRAFIA de nome e preço.
+///
+/// Sem isso, renomear um produto ou mudar o preço reescreveria o histórico:
+/// a venda de março passaria a mostrar o preço de hoje, e o relatório do mês
+/// fechado mudaria sozinho.
+model VendaItem {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  vendaId String @map("venda_id")
+  venda   Venda  @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+
+  variacaoId String   @map("variacao_id")
+  variacao   Variacao @relation(fields: [variacaoId], references: [id])
+
+  /// fotografia
+  descricao String
+  codigo    String?
+  medida    Medida  @default(UN)
+
+  quantidade  Decimal @db.Decimal(14, 3)
+  precoUnit   Decimal @map("preco_unit") @db.Decimal(12, 2)
+  desconto    Decimal @default(0) @db.Decimal(12, 2)
+  total       Decimal @db.Decimal(12, 2)
+  /// Custo do momento da venda — é o que permite calcular a margem depois.
+  custoUnit   Decimal? @map("custo_unit") @db.Decimal(12, 2)
+
+  @@index([orgId, vendaId])
+  @@index([orgId, variacaoId])
+  @@map("venda_itens")
+}
+
+/// Uma venda pode ter várias formas de pagamento: metade no cartão, metade
+/// em dinheiro. Por isso é lista, não campo.
+model Pagamento {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  vendaId String @map("venda_id")
+  venda   Venda  @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+
+  forma    FormaPagamento
+  valor    Decimal @db.Decimal(12, 2)
+  parcelas Int     @default(1)
+  /// Bandeira, autorização, chave do Pix — o que ajuda a conciliar depois.
+  referencia String?
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, vendaId])
+  @@map("pagamentos")
+}
+
+enum SituacaoVenda {
+  ABERTA
+  CONCLUIDA
+  CANCELADA
+}
+
+enum TipoCaixa {
+  SANGRIA
+  SUPRIMENTO
+}
+
+enum FormaPagamento {
+  DINHEIRO
+  PIX
+  DEBITO
+  CREDITO
+  CREDIARIO
+  VALE
+  TRANSFERENCIA
 }

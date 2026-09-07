@@ -22,6 +22,15 @@ CREATE TYPE "Medida" AS ENUM ('UN', 'KG', 'G', 'L', 'ML', 'M', 'PAR', 'CX');
 -- CreateEnum
 CREATE TYPE "TipoMovimento" AS ENUM ('ENTRADA', 'VENDA', 'DEVOLUCAO', 'AJUSTE', 'PERDA', 'TRANSFERENCIA', 'BALANCO');
 
+-- CreateEnum
+CREATE TYPE "SituacaoVenda" AS ENUM ('ABERTA', 'CONCLUIDA', 'CANCELADA');
+
+-- CreateEnum
+CREATE TYPE "TipoCaixa" AS ENUM ('SANGRIA', 'SUPRIMENTO');
+
+-- CreateEnum
+CREATE TYPE "FormaPagamento" AS ENUM ('DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'CREDIARIO', 'VALE', 'TRANSFERENCIA');
+
 -- CreateTable
 CREATE TABLE "orgs" (
     "id" TEXT NOT NULL,
@@ -68,6 +77,7 @@ CREATE TABLE "unidades" (
     "horario" TEXT,
     "eh_deposito" BOOLEAN NOT NULL DEFAULT false,
     "ativa" BOOLEAN NOT NULL DEFAULT true,
+    "proxima_venda" INTEGER NOT NULL DEFAULT 1,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizada_em" TIMESTAMP(3) NOT NULL,
 
@@ -280,6 +290,117 @@ CREATE TABLE "movimentos_estoque" (
     CONSTRAINT "movimentos_estoque_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "clientes" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "nome" TEXT NOT NULL,
+    "documento" TEXT,
+    "telefone" TEXT,
+    "email" TEXT,
+    "nascimento" DATE,
+    "endereco" TEXT,
+    "numero" TEXT,
+    "bairro" TEXT,
+    "cidade" TEXT,
+    "estado" TEXT,
+    "cep" TEXT,
+    "observacoes" TEXT,
+    "ativo" BOOLEAN NOT NULL DEFAULT true,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizado_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "clientes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "caixas" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "unidade_id" TEXT NOT NULL,
+    "aberto" BOOLEAN NOT NULL DEFAULT true,
+    "aberto_por_id" TEXT,
+    "aberto_por" TEXT NOT NULL,
+    "aberto_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "saldo_abertura" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "fechado_por" TEXT,
+    "fechado_em" TIMESTAMP(3),
+    "saldo_esperado" DECIMAL(12,2),
+    "saldo_contado" DECIMAL(12,2),
+    "observacoes" TEXT,
+
+    CONSTRAINT "caixas_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "caixa_movimentos" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "caixa_id" TEXT NOT NULL,
+    "tipo" "TipoCaixa" NOT NULL,
+    "valor" DECIMAL(12,2) NOT NULL,
+    "motivo" TEXT NOT NULL,
+    "quem" TEXT NOT NULL,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "caixa_movimentos_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "vendas" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "unidade_id" TEXT NOT NULL,
+    "caixa_id" TEXT,
+    "numero" INTEGER NOT NULL,
+    "cliente_id" TEXT,
+    "vendedor_id" TEXT,
+    "vendedor_nome" TEXT,
+    "situacao" "SituacaoVenda" NOT NULL DEFAULT 'ABERTA',
+    "subtotal" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "desconto" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "total" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "observacoes" TEXT,
+    "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "concluida_em" TIMESTAMP(3),
+    "cancelada_em" TIMESTAMP(3),
+    "motivo_cancelamento" TEXT,
+
+    CONSTRAINT "vendas_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "venda_itens" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "venda_id" TEXT NOT NULL,
+    "variacao_id" TEXT NOT NULL,
+    "descricao" TEXT NOT NULL,
+    "codigo" TEXT,
+    "medida" "Medida" NOT NULL DEFAULT 'UN',
+    "quantidade" DECIMAL(14,3) NOT NULL,
+    "preco_unit" DECIMAL(12,2) NOT NULL,
+    "desconto" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "total" DECIMAL(12,2) NOT NULL,
+    "custo_unit" DECIMAL(12,2),
+
+    CONSTRAINT "venda_itens_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "pagamentos" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "venda_id" TEXT NOT NULL,
+    "forma" "FormaPagamento" NOT NULL,
+    "valor" DECIMAL(12,2) NOT NULL,
+    "parcelas" INTEGER NOT NULL DEFAULT 1,
+    "referencia" TEXT,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "pagamentos_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "orgs_slug_key" ON "orgs"("slug");
 
@@ -366,6 +487,36 @@ CREATE INDEX "movimentos_estoque_org_id_variacao_id_criado_em_idx" ON "movimento
 
 -- CreateIndex
 CREATE INDEX "movimentos_estoque_org_id_unidade_id_criado_em_idx" ON "movimentos_estoque"("org_id", "unidade_id", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "clientes_org_id_nome_idx" ON "clientes"("org_id", "nome");
+
+-- CreateIndex
+CREATE INDEX "clientes_org_id_documento_idx" ON "clientes"("org_id", "documento");
+
+-- CreateIndex
+CREATE INDEX "caixas_org_id_unidade_id_aberto_idx" ON "caixas"("org_id", "unidade_id", "aberto");
+
+-- CreateIndex
+CREATE INDEX "caixa_movimentos_org_id_caixa_id_idx" ON "caixa_movimentos"("org_id", "caixa_id");
+
+-- CreateIndex
+CREATE INDEX "vendas_org_id_unidade_id_criada_em_idx" ON "vendas"("org_id", "unidade_id", "criada_em");
+
+-- CreateIndex
+CREATE INDEX "vendas_org_id_situacao_idx" ON "vendas"("org_id", "situacao");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "vendas_unidade_id_numero_key" ON "vendas"("unidade_id", "numero");
+
+-- CreateIndex
+CREATE INDEX "venda_itens_org_id_venda_id_idx" ON "venda_itens"("org_id", "venda_id");
+
+-- CreateIndex
+CREATE INDEX "venda_itens_org_id_variacao_id_idx" ON "venda_itens"("org_id", "variacao_id");
+
+-- CreateIndex
+CREATE INDEX "pagamentos_org_id_venda_id_idx" ON "pagamentos"("org_id", "venda_id");
 
 -- AddForeignKey
 ALTER TABLE "unidades" ADD CONSTRAINT "unidades_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -459,4 +610,46 @@ ALTER TABLE "movimentos_estoque" ADD CONSTRAINT "movimentos_estoque_variacao_id_
 
 -- AddForeignKey
 ALTER TABLE "movimentos_estoque" ADD CONSTRAINT "movimentos_estoque_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "clientes" ADD CONSTRAINT "clientes_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "caixas" ADD CONSTRAINT "caixas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "caixas" ADD CONSTRAINT "caixas_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "caixa_movimentos" ADD CONSTRAINT "caixa_movimentos_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "caixa_movimentos" ADD CONSTRAINT "caixa_movimentos_caixa_id_fkey" FOREIGN KEY ("caixa_id") REFERENCES "caixas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vendas" ADD CONSTRAINT "vendas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vendas" ADD CONSTRAINT "vendas_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vendas" ADD CONSTRAINT "vendas_caixa_id_fkey" FOREIGN KEY ("caixa_id") REFERENCES "caixas"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vendas" ADD CONSTRAINT "vendas_cliente_id_fkey" FOREIGN KEY ("cliente_id") REFERENCES "clientes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "venda_itens" ADD CONSTRAINT "venda_itens_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "venda_itens" ADD CONSTRAINT "venda_itens_venda_id_fkey" FOREIGN KEY ("venda_id") REFERENCES "vendas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "venda_itens" ADD CONSTRAINT "venda_itens_variacao_id_fkey" FOREIGN KEY ("variacao_id") REFERENCES "variacoes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pagamentos" ADD CONSTRAINT "pagamentos_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pagamentos" ADD CONSTRAINT "pagamentos_venda_id_fkey" FOREIGN KEY ("venda_id") REFERENCES "vendas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

@@ -70,12 +70,29 @@ export async function mexerEstoque(
   // já garante que todo tipo tem entrada. O aviso vem de noUncheckedIndexedAccess,
   // que trata toda indexação como possivelmente vazia.
   exigir(sessao, EXIGE[m.tipo]!, m.unidadeId)
+  return comoOrg(sessao.orgId, (db) => mexerEstoqueEm(db, sessao, m))
+}
 
+/**
+ * A mesma coisa, DENTRO de uma transação que já está aberta.
+ *
+ * A venda precisa disto: baixar o estoque e gravar a venda têm que acontecer
+ * juntos ou não acontecer — senão dá para o estoque baixar e a venda sumir.
+ * Como transação não aninha, quem já abriu uma passa o `db` para cá.
+ *
+ * A permissão é conferida por quem chama (a venda confere `venda.criar` uma
+ * vez, e não uma vez por item).
+ */
+export async function mexerEstoqueEm(
+  db: any,
+  sessao: Sessao,
+  m: Movimento,
+): Promise<Resultado> {
   if (m.quantidade < 0) {
     throw new Error('Quantidade é sempre positiva — o sinal vem do tipo do movimento.')
   }
 
-  return comoOrg(sessao.orgId, async (db) => {
+  return (async () => {
     // Garante que a linha de saldo existe, sem correr risco de duas criarem
     // ao mesmo tempo (o índice único resolve; `do nothing` engole o empate).
     await db.$executeRaw`
@@ -130,7 +147,7 @@ export async function mexerEstoque(
     })
 
     return { ok: true as const, saldo }
-  })
+  })()
 }
 
 async function saldoDe(db: any, variacaoId: string, unidadeId: string): Promise<number> {

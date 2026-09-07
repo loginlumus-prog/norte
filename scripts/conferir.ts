@@ -25,6 +25,7 @@ import { entrar, RECADO } from '../src/servidor/autenticacao'
 import { pode } from '../src/servidor/permissao'
 import { convidar, aceitarConvite, listarConvites, revogarConvite } from '../src/servidor/convite'
 import { mexerEstoque, saldo, conferirSaldos } from '../src/servidor/estoque'
+import { registrarVenda } from '../src/servidor/venda'
 import { SemPermissao } from '../src/servidor/permissao'
 
 const A = 'org-exemplo-a'
@@ -271,6 +272,101 @@ if (balcao2.ok) {
 // A vizinha nao enxerga estoque nenhum desta empresa.
 const daVizinha = await comoOrg(B, (db) => db.estoque.count())
 ok('a empresa vizinha nao ve este estoque', daVizinha === 0, `${daVizinha} linha(s)`)
+
+
+// -- venda --------------------------------------------------
+console.log('\n  Venda\n')
+
+if (dona.ok) {
+  const s = dona.sessao
+  const UNI = 'uni-a1'
+  const CAM = 'var-cam-preto-g'   // saldo 6
+  const SORVETE = 'var-sorvete'
+
+  const antesCam = await saldo(s, CAM, UNI)
+
+  const v1 = await registrarVenda(s, {
+    unidadeId: UNI,
+    itens: [{ variacaoId: CAM, quantidade: 2 }],
+    pagamentos: [{ forma: 'DINHEIRO', valor: 99.8 }],
+  })
+  ok('venda simples fecha', v1.ok, v1.ok ? `n. ${v1.numero}, R$ ${v1.total}` : v1.motivo)
+  ok('e o estoque baixou junto', (await saldo(s, CAM, UNI)) === antesCam - 2)
+
+  // Pagamento dividido: metade no cartao, metade em dinheiro.
+  const v2 = await registrarVenda(s, {
+    unidadeId: UNI,
+    itens: [{ variacaoId: CAM, quantidade: 1 }],
+    pagamentos: [
+      { forma: 'DEBITO', valor: 25 },
+      { forma: 'DINHEIRO', valor: 24.9 },
+    ],
+  })
+  ok('aceita pagamento dividido em duas formas', v2.ok, v2.ok ? `R$ ${v2.total}` : v2.motivo)
+
+  // Peso: 0,750 kg de sorvete.
+  const v3 = await registrarVenda(s, {
+    unidadeId: UNI,
+    itens: [{ variacaoId: SORVETE, quantidade: 0.75 }],
+    pagamentos: [{ forma: 'PIX', valor: 33.68 }],
+  })
+  ok('vende por peso', v3.ok, v3.ok ? `R$ ${v3.total}` : v3.motivo)
+
+  // Um centavo a menos trava de proposito.
+  const errado = await registrarVenda(s, {
+    unidadeId: UNI,
+    itens: [{ variacaoId: CAM, quantidade: 1 }],
+    pagamentos: [{ forma: 'DINHEIRO', valor: 49.89 }],
+  })
+  ok('um centavo faltando NAO passa', !errado.ok && errado.motivo === 'pagamento_nao_fecha')
+
+  // Sem estoque: recusa antes de escrever, e diz o que faltou.
+  const semEstoque = await registrarVenda(s, {
+    unidadeId: UNI,
+    itens: [{ variacaoId: CAM, quantidade: 9999 }],
+    pagamentos: [{ forma: 'DINHEIRO', valor: 1 }],
+  })
+  ok('recusa venda sem estoque e diz o que faltou',
+     !semEstoque.ok && semEstoque.motivo === 'sem_estoque',
+     !semEstoque.ok && semEstoque.motivo === 'sem_estoque' ? semEstoque.faltando[0]?.descricao : '')
+
+  // E a recusa nao pode ter deixado rastro.
+  const numeros = await comoOrg(A, (db) =>
+    db.venda.findMany({ select: { numero: true }, orderBy: { numero: 'asc' } }))
+  ok('venda recusada nao gera numero nem registro',
+     numeros.length === 3, `${numeros.length} venda(s): ${numeros.map((x) => x.numero).join(', ')}`)
+
+  // A fotografia: mudar o preco do produto nao mexe na venda ja feita.
+  const itemAntes = await comoOrg(A, (db) =>
+    db.vendaItem.findFirst({ where: { variacaoId: CAM }, select: { precoUnit: true, descricao: true } }))
+  await comoOrg(A, (db) =>
+    db.produto.update({ where: { id: 'prod-camiseta' }, data: { precoVista: 999 } }))
+  const itemDepois = await comoOrg(A, (db) =>
+    db.vendaItem.findFirst({ where: { variacaoId: CAM }, select: { precoUnit: true } }))
+  ok('mudar o preco do produto NAO reescreve a venda antiga',
+     Number(itemAntes?.precoUnit) === Number(itemDepois?.precoUnit),
+     `${itemAntes?.descricao} continua R$ ${itemAntes?.precoUnit}`)
+  await comoOrg(A, (db) =>
+    db.produto.update({ where: { id: 'prod-camiseta' }, data: { precoVista: 49.9 } }))
+
+  // Numeracao: sequencial e sem buraco, mesmo com vendas simultaneas.
+  const emParalelo = await Promise.all(
+    Array.from({ length: 5 }, () =>
+      registrarVenda(s, {
+        unidadeId: UNI,
+        itens: [{ variacaoId: 'var-cam-azul-p', quantidade: 1 }],
+        pagamentos: [{ forma: 'PIX', valor: 49.9 }],
+      })),
+  )
+  const ns = emParalelo.filter((r) => r.ok).map((r) => (r as { numero: number }).numero)
+  ok('5 vendas simultaneas, 5 numeros diferentes',
+     new Set(ns).size === ns.length && ns.length === 5, ns.join(', '))
+
+  // O livro registra cada venda.
+  const noLivro = await comoOrg(A, (db) =>
+    db.auditoria.count({ where: { acao: 'venda.registrou' } }))
+  ok('cada venda entra no livro', noLivro === 8, `${noLivro} registro(s)`)
+}
 
 await fechar()
 

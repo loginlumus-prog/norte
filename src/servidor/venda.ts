@@ -1,0 +1,249 @@
+// Registrar uma venda.
+//
+// É a operação mais delicada do sistema, porque toca três coisas ao mesmo
+// tempo: o estoque baixa, a venda nasce, o dinheiro entra. Ou os três
+// acontecem, ou nenhum acontece. Meio-termo aqui significa estoque baixado
+// sem venda registrada — mercadoria que sumiu do sistema e continua na
+// prateleira, ou o contrário.
+//
+// Por isso tudo mora numa transação só, e por isso o estoque é movido por
+// `mexerEstoqueEm` (que entra na transação de quem chama) em vez de
+// `mexerEstoque` (que abriria a sua própria).
+//
+// ── três decisões que parecem detalhe ────────────────────────
+//
+// 1. O item guarda FOTOGRAFIA de nome, preço e custo. Renomear um produto ou
+//    mudar o preço não pode reescrever a venda de março, senão o relatório de
+//    um mês fechado muda sozinho.
+//
+// 2. O número da venda vem de um contador no banco, não de `max(numero)+1`.
+//    Duas vendas simultâneas leriam o mesmo máximo e brigariam pelo mesmo
+//    número.
+//
+// 3. Falta de estoque é conferida ANTES de qualquer escrita. Assim a recusa
+//    é uma saída limpa, não uma transação abortada no meio.
+
+import { comoOrg } from './banco'
+import { exigir, type Sessao } from './permissao'
+import { mexerEstoqueEm } from './estoque'
+import { centavos, reais, multiplicar } from './dinheiro'
+import type { FormaPagamento } from '@prisma/client'
+
+export type ItemDaVenda = {
+  variacaoId: string
+  quantidade: number
+  /** Se não vier, usa o preço do produto conforme a forma de pagamento. */
+  precoUnit?: number
+  desconto?: number
+}
+
+export type PagamentoDaVenda = {
+  forma: FormaPagamento
+  valor: number
+  parcelas?: number
+  referencia?: string
+}
+
+export type NovaVenda = {
+  unidadeId: string
+  caixaId?: string | null
+  clienteId?: string | null
+  itens: ItemDaVenda[]
+  pagamentos: PagamentoDaVenda[]
+  /** Desconto sobre o total da venda, além dos descontos por item. */
+  desconto?: number
+  observacoes?: string
+}
+
+export type ResultadoVenda =
+  | { ok: true; vendaId: string; numero: number; total: number }
+  | { ok: false; motivo: 'sem_itens' }
+  | { ok: false; motivo: 'sem_estoque'; faltando: { descricao: string; pedido: number; tem: number }[] }
+  | { ok: false; motivo: 'pagamento_nao_fecha'; total: number; pago: number }
+  | { ok: false; motivo: 'caixa_fechado' }
+
+
+export async function registrarVenda(
+  sessao: Sessao,
+  v: NovaVenda,
+): Promise<ResultadoVenda> {
+  exigir(sessao, 'venda.criar', v.unidadeId)
+
+  if (v.itens.length === 0) return { ok: false, motivo: 'sem_itens' }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    // ── 1. o que está sendo vendido, com preço e custo de agora ──
+    const variacoes = await db.variacao.findMany({
+      where: { id: { in: v.itens.map((i) => i.variacaoId) } },
+      select: {
+        id: true, codigo: true, ajustePreco: true,
+        produto: { select: { nome: true, medida: true, precoVista: true, custo: true } },
+        opcoes: { select: { opcao: { select: { valor: true } } } },
+      },
+    })
+    const porId = new Map(variacoes.map((x) => [x.id, x]))
+
+    // ── 2. estoque: confere TUDO antes de escrever qualquer coisa ──
+    const saldos = await db.estoque.findMany({
+      where: { unidadeId: v.unidadeId, variacaoId: { in: v.itens.map((i) => i.variacaoId) } },
+      select: { variacaoId: true, quantidade: true },
+    })
+    const saldoDe = new Map(saldos.map((e) => [e.variacaoId, Number(e.quantidade)]))
+
+    const faltando = v.itens
+      .filter((i) => (saldoDe.get(i.variacaoId) ?? 0) < i.quantidade)
+      .map((i) => ({
+        descricao: descrever(porId.get(i.variacaoId)),
+        pedido: i.quantidade,
+        tem: saldoDe.get(i.variacaoId) ?? 0,
+      }))
+    if (faltando.length > 0) return { ok: false as const, motivo: 'sem_estoque' as const, faltando }
+
+    // ── 3. as contas, em centavos inteiros ──
+    // O preço vem do banco como decimal exato; ler o TEXTO dele (e não o
+    // número) evita o erro de ponto flutuante antes que ele exista.
+    const itens = v.itens.map((i) => {
+      const va = porId.get(i.variacaoId)
+      const precoCent =
+        i.precoUnit != null
+          ? centavos(i.precoUnit)
+          : centavos(va?.produto.precoVista ?? 0) + centavos(va?.ajustePreco ?? 0)
+      const descontoCent = centavos(i.desconto ?? 0)
+      const totalCent = multiplicar(precoCent, i.quantidade) - descontoCent
+      return {
+        variacaoId: i.variacaoId,
+        descricao: descrever(va),
+        codigo: va?.codigo ?? null,
+        medida: va?.produto.medida ?? 'UN',
+        quantidade: i.quantidade,
+        precoUnit: reais(precoCent),
+        desconto: reais(descontoCent),
+        total: reais(totalCent),
+        custoUnit: va?.produto.custo != null ? reais(centavos(va.produto.custo)) : null,
+        _cent: totalCent,
+      }
+    })
+
+    const subtotalCent = itens.reduce((s, i) => s + i._cent, 0)
+    const descontoCent = centavos(v.desconto ?? 0)
+    const totalCent = subtotalCent - descontoCent
+    const pagoCent = v.pagamentos.reduce((s, p) => s + centavos(p.valor), 0)
+
+    const subtotal = reais(subtotalCent)
+    const desconto = reais(descontoCent)
+    const total = reais(totalCent)
+
+    // Comparação entre inteiros: ou bate, ou não bate. Sem "quase".
+    // E um centavo de diferença trava a venda de propósito — caixa que fecha
+    // "quase certo" todo dia é caixa que ninguém confere mais.
+    if (pagoCent !== totalCent) {
+      return {
+        ok: false as const,
+        motivo: 'pagamento_nao_fecha' as const,
+        total,
+        pago: reais(pagoCent),
+      }
+    }
+
+    if (v.caixaId) {
+      const caixa = await db.caixa.findUnique({
+        where: { id: v.caixaId },
+        select: { aberto: true },
+      })
+      if (!caixa?.aberto) return { ok: false as const, motivo: 'caixa_fechado' as const }
+    }
+
+    // ── 4. o número, sem corrida ──
+    // O banco incrementa e devolve numa operação só.
+    const linhas = await db.$queryRaw<{ numero: number }[]>`
+      update unidades
+         set proxima_venda = proxima_venda + 1
+       where id = ${v.unidadeId}
+      returning proxima_venda - 1 as numero
+    `
+    // Nenhuma linha = a unidade não existe nesta empresa (o RLS não a enxerga).
+    // Melhor parar aqui do que gravar venda órfã.
+    if (linhas.length === 0) throw new Error('Unidade não encontrada nesta empresa.')
+    const numero = linhas[0]!.numero
+
+    // ── 5. grava ──
+    const venda = await db.venda.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: v.unidadeId,
+        caixaId: v.caixaId ?? null,
+        clienteId: v.clienteId ?? null,
+        numero,
+        vendedorId: sessao.usuarioId,
+        vendedorNome: sessao.nome,
+        situacao: 'CONCLUIDA',
+        subtotal,
+        desconto,
+        total,
+        observacoes: v.observacoes,
+        concluidaEm: new Date(),
+        itens: {
+          create: itens.map(({ _cent, ...i }) => ({ orgId: sessao.orgId, ...i })),
+        },
+        pagamentos: {
+          create: v.pagamentos.map((p) => ({
+            orgId: sessao.orgId,
+            forma: p.forma,
+            valor: reais(centavos(p.valor)),
+            parcelas: p.parcelas ?? 1,
+            referencia: p.referencia,
+          })),
+        },
+      },
+      select: { id: true, numero: true },
+    })
+
+    // ── 6. baixa o estoque, na MESMA transação ──
+    for (const i of v.itens) {
+      const r = await mexerEstoqueEm(db, sessao, {
+        variacaoId: i.variacaoId,
+        unidadeId: v.unidadeId,
+        tipo: 'VENDA',
+        quantidade: i.quantidade,
+        referencia: venda.id,
+        motivo: `Venda ${numero}`,
+      })
+      // Só chega aqui se alguém levou o estoque entre a conferência e agora.
+      // Lançar desfaz a venda inteira — é rollback limpo, não erro de banco.
+      if (!r.ok) throw new EstoqueSumiu(i.variacaoId)
+    }
+
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: v.unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'venda.registrou',
+        alvoTipo: 'venda',
+        alvoId: venda.id,
+        alvoNome: `Venda ${numero}`,
+        valor: total,
+      },
+    })
+
+    return { ok: true as const, vendaId: venda.id, numero, total }
+  })
+}
+
+/** Alguém levou a última peça entre a conferência e a baixa. Raro, e correto. */
+export class EstoqueSumiu extends Error {
+  constructor(readonly variacaoId: string) {
+    super('O estoque acabou enquanto a venda era registrada. Nada foi gravado.')
+    this.name = 'EstoqueSumiu'
+  }
+}
+
+function descrever(v: {
+  produto: { nome: string }
+  opcoes: { opcao: { valor: string } }[]
+} | undefined): string {
+  if (!v) return 'item removido'
+  const partes = v.opcoes.map((o) => o.opcao.valor)
+  return partes.length ? `${v.produto.nome} — ${partes.join(' · ')}` : v.produto.nome
+}
