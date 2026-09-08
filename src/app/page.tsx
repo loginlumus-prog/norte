@@ -4,6 +4,7 @@ import { Marca, Simbolo } from '@/ui/Marca'
 import { Traco } from '@/ui/Traco'
 import { HeroRolante } from '@/ui/HeroRolante'
 import { ConversaFlutuante } from '@/ui/ConversaFlutuante'
+import { CompararPlanos } from '@/ui/CompararPlanos'
 
 // A página de venda.
 //
@@ -250,7 +251,10 @@ export default function Inicio() {
           Nenhum texto vai dentro da imagem gerada — modelo de imagem escreve
           letra embaralhada, e a primeira tentativa voltou com duas linhas de
           garrancho. A imagem é fundo; a palavra é HTML. */}
-      <section className="relative isolate overflow-hidden bg-nav">
+      <section
+        className="emenda-base relative isolate overflow-hidden bg-nav"
+        style={{ '--emenda-base': 'var(--superficie)' } as React.CSSProperties}
+      >
         <Image
           src="/img/loja-a.png"
           alt=""
@@ -269,7 +273,7 @@ export default function Inicio() {
           }}
         />
 
-        <div className="relative mx-auto max-w-6xl px-5 py-24 md:py-32">
+        <div className="relative z-10 mx-auto max-w-6xl px-5 py-24 md:py-32">
           <div className="flex max-w-2xl flex-col items-start gap-6">
             <span className="rounded-full border border-white/20 bg-white/[0.07] px-3 py-1 text-xs font-semibold text-sol-claro backdrop-blur-sm">
               Gestão + assistente de IA no WhatsApp
@@ -307,7 +311,7 @@ export default function Inicio() {
       </section>
 
       {/* ── a dor ── */}
-      <section className="border-b border-borda bg-superficie">
+      <section className="bg-superficie">
         <div className="mx-auto grid max-w-6xl gap-6 px-5 py-14 sm:grid-cols-3">
           {DOR.map(([t, d]) => (
             <div key={t} className="flex flex-col gap-2">
@@ -344,7 +348,7 @@ export default function Inicio() {
                 foto sangrando pela direita e por baixo. */}
             <article className="relative isolate col-span-full grid overflow-hidden rounded-norte bg-superficie-2 lg:grid-cols-[1fr_1.15fr]">
               <div className="flex flex-col justify-center gap-3 p-6 sm:p-8">
-                <h3 className="text-2xl leading-tight text-balance sm:text-3xl">
+                <h3 className="text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.05] text-balance">
                   A mesma tela serve a uma loja e a quarenta
                 </h3>
                 <p className="max-w-[48ch] text-sm leading-relaxed text-tinta-2">
@@ -370,7 +374,7 @@ export default function Inicio() {
             </article>
 
             {/* O MOSAICO — vários comércios numa peça só. */}
-            <article className="relative isolate flex flex-col overflow-hidden rounded-norte border border-borda bg-superficie">
+            <article className="relative isolate flex flex-col overflow-hidden rounded-norte bg-superficie-2">
               <div className="flex flex-col gap-2.5 p-6">
                 <h3 className="text-xl leading-tight">Não é só loja de roupa</h3>
                 <p className="max-w-[42ch] text-sm leading-relaxed text-tinta-2">
@@ -380,24 +384,37 @@ export default function Inicio() {
                   sorveteria. Vende por unidade, por quilo, por litro ou por par.
                 </p>
               </div>
-              {/* As três fotos sangram por baixo, sobrepostas e desalinhadas —
-                  é o desalinho que faz ler como coleção e não como tabela. */}
-              <div className="relative mt-auto flex h-40 items-end gap-2 px-6 sm:h-44">
+              {/* As três fotos SE SOBREPÕEM, em alturas e profundidades
+                  diferentes. A versão anterior era uma fila com espaços iguais
+                  — e fila com espaço igual lê como contact sheet, não como
+                  cena. O que dá o ar caro é a sobreposição: uma na frente da
+                  outra, com sombra e um giro de meio grau, e a última saindo
+                  pela borda direita. */}
+              <div className="relative mt-auto h-44 px-6 sm:h-52">
                 {[
-                  { src: '/img/sapataria.jpg', h: 'h-[86%]' },
-                  { src: '/img/sorveteria.jpg', h: 'h-full' },
-                  { src: '/img/balcao-pagto.jpg', h: 'h-[72%]' },
+                  {
+                    src: '/img/sapataria.jpg',
+                    cls: 'left-6 bottom-0 h-[78%] w-[42%] z-10 -rotate-[1.2deg]',
+                  },
+                  {
+                    src: '/img/sorveteria.jpg',
+                    cls: 'left-[32%] bottom-0 h-full w-[40%] z-20 rotate-[0.8deg]',
+                  },
+                  {
+                    src: '/img/balcao-pagto.jpg',
+                    cls: 'right-[-1.5rem] bottom-0 h-[64%] w-[38%] z-10 rotate-[1.6deg]',
+                  },
                 ].map((f) => (
                   <span
                     key={f.src}
-                    className={`relative flex-1 overflow-hidden rounded-t-norte ${f.h}`}
+                    className={`absolute overflow-hidden rounded-t-norte shadow-[0_-8px_30px_-10px_rgb(20_18_12/0.45)] ${f.cls}`}
                   >
                     <Image
                       src={f.src}
                       alt=""
                       aria-hidden
                       fill
-                      sizes="18vw"
+                      sizes="20vw"
                       className="object-cover"
                     />
                   </span>
@@ -462,9 +479,18 @@ export default function Inicio() {
           As bolhas agora pousam direto no fundo, com vidro fosco, indentação
           desigual e a última sangrando pela borda direita. É o que faz a cena
           parecer conversa acontecendo, e não captura de tela. */}
-      <section id="agente" className="aurora relative isolate scroll-mt-16 overflow-hidden">
+      <section
+        id="agente"
+        className="aurora emenda-topo emenda-base relative isolate scroll-mt-16 overflow-hidden"
+        style={
+          {
+            '--emenda': 'var(--fundo)',
+            '--emenda-base': 'var(--fundo)',
+          } as React.CSSProperties
+        }
+      >
 
-        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 md:grid-cols-[1fr_1.05fr] md:py-28">
+        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 md:grid-cols-[1fr_1.05fr] md:py-28">
           <div className="flex flex-col gap-5">
             <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
               O que só o Norte faz
@@ -607,11 +633,29 @@ export default function Inicio() {
             Valores mensais, por empresa. Nota fiscal e conciliação de maquininha entram como
             opcional no plano Balcão.
           </p>
+
+          {/* A tabela item por item. Cartão vende, tabela decide: quem está
+              com o cartão do meio quase escolhido tem UMA pergunta específica
+              ("o crediário está no Rede ou não?"), e procurar isso em quatro
+              listas de bala é onde a pessoa desiste e vai perguntar no
+              WhatsApp. Ela responde sem ninguém do outro lado.
+
+              O dado vem de `servidor/planos.ts`, a MESMA lista que a tela de
+              assinatura usa por dentro — duas listas separadas divergem, e
+              divergir aqui é prometer na venda o que o sistema não entrega. */}
+          <div className="mt-14">
+            <h3 className="mb-1 text-2xl leading-tight">Item por item</h3>
+            <p className="mb-6 max-w-[56ch] text-sm text-tinta-2">
+              Tudo que muda de um plano para o outro, sem asterisco. O que não está aqui está
+              em todos.
+            </p>
+            <CompararPlanos />
+          </div>
         </div>
       </section>
 
       {/* ── segurança ── */}
-      <section className="border-y border-borda bg-superficie">
+      <section className="bg-superficie">
         <div className="mx-auto max-w-6xl px-5 py-16">
           <Titulo
             olho="Segurança"
@@ -658,7 +702,11 @@ export default function Inicio() {
       </section>
 
       {/* ── fechamento ── */}
-      <section id="falar" className="scroll-mt-16 bg-nav">
+      <section
+        id="falar"
+        className="emenda-topo relative scroll-mt-16 overflow-hidden bg-nav"
+        style={{ '--emenda': 'var(--fundo)' } as React.CSSProperties}
+      >
         <div className="mx-auto flex max-w-3xl flex-col items-center gap-5 px-5 py-16 text-center">
           <Simbolo tamanho={44} nu id="fim" />
           <h2 className="text-3xl font-extrabold tracking-[-0.02em] text-nav-tinta md:text-4xl">

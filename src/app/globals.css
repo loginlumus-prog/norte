@@ -346,6 +346,37 @@ th.numero {
   background: var(--nav-fundo);
 }
 
+/* ── a emenda entre seções ────────────────────────────────
+   O corte entre uma seção clara e uma escura era um FIO: a cor trocava numa
+   linha de um pixel, e o olho lê isso como duas páginas coladas em vez de uma
+   página só. Numa rolagem, cada emenda dessas é um solavanco.
+
+   A costura é uma faixa de degradê nas beiradas do bloco escuro, indo da cor
+   do vizinho até transparente. Não é sombra nem borda: é a cor de um
+   dissolvendo na do outro, ao longo de cinco centímetros de tela. O resultado
+   é que a pessoa desce a página sem perceber onde uma seção acaba.
+
+   Fica ATRÁS do conteúdo (`z-0` com o conteúdo em `relative`) e nunca pega
+   clique. */
+.emenda-topo::before,
+.emenda-base::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 5.5rem;
+  pointer-events: none;
+  z-index: 0;
+}
+.emenda-topo::before {
+  top: 0;
+  background: linear-gradient(to bottom, var(--emenda, var(--fundo)) 0%, transparent 100%);
+}
+.emenda-base::after {
+  bottom: 0;
+  background: linear-gradient(to top, var(--emenda-base, var(--fundo)) 0%, transparent 100%);
+}
+
 /* A aurora do bloco do assistente.
    ── por que CSS e não imagem ──
    A primeira versão era um JPEG gerado, e ficou sujo: degradê suave é o PIOR
