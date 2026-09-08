@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import { Marca, Simbolo } from '@/ui/Marca'
+import { Traco } from '@/ui/Traco'
+import { HeroRolante } from '@/ui/HeroRolante'
 
 // A página de venda.
 //
@@ -29,6 +31,10 @@ const PLANOS = [
     nome: 'Balcão',
     preco: '349',
     para: 'Uma loja, até 5 pessoas',
+    // O bloco do meio: o que este plano dá de IA, e a tradução para a unidade
+    // que a pessoa entende. "R$ 0 de crédito" não diz nada; "o WhatsApp
+    // continua sendo você" diz.
+    credito: { valor: 'Sem assistente', nota: 'o WhatsApp continua sendo você', conta: null },
     itens: [
       'Produtos com as variações da sua loja',
       'Estoque com histórico de cada movimento',
@@ -36,12 +42,18 @@ const PLANOS = [
       'Financeiro e o DRE do mês',
       'Equipe com permissão por pessoa',
     ],
+    fora: ['Assistente no WhatsApp', 'Mais de uma loja', 'Crediário próprio'],
   },
   {
-    nome: 'Balcão + Agente',
+    nome: 'Balcão + Assistente',
     preco: '697',
     para: 'Uma loja, com o assistente no WhatsApp',
     destaque: 'O mais pedido',
+    credito: {
+      valor: 'R$ 120 de crédito de IA',
+      nota: 'renovado todo mês · compra mais quando quiser',
+      conta: '~2.000 conversas no WhatsApp',
+    },
     itens: [
       'Tudo do Balcão',
       'Assistente no WhatsApp, com o nome que você der',
@@ -49,29 +61,43 @@ const PLANOS = [
       'Teto de valor e de desconto que você define',
       'Toda ação do assistente assinada no livro',
     ],
+    fora: ['Mais de uma loja', 'Crediário próprio'],
   },
   {
     nome: 'Rede',
     preco: '1.497',
     para: 'Até 5 lojas · R$ 249 por loja extra',
+    credito: {
+      valor: 'R$ 350 de crédito de IA',
+      nota: 'renovado todo mês · compra mais quando quiser',
+      conta: '~5.800 conversas no WhatsApp',
+    },
     itens: [
-      'Tudo do Balcão + Agente',
+      'Tudo do Balcão + Assistente',
       'Estoque separado por loja, consolidado num clique',
       'Cada gerente vê só a loja dele',
+      'Crediário próprio, com juros e cobrança',
       'Metas e ranking de vendedor',
-      'Nota fiscal e WhatsApp oficial da Meta',
     ],
+    fora: [],
   },
   {
     nome: 'Corporativo',
     preco: null,
     para: 'Sem limite de lojas',
+    credito: {
+      valor: 'R$ 800 de crédito de IA',
+      nota: 'e o resto combinado no contrato',
+      conta: '~13.000 conversas no WhatsApp',
+    },
     itens: [
       'Tudo da Rede',
+      'Site, tráfego e a condução do negócio com a gente',
       'Login único da empresa (SSO)',
       'Ambiente dedicado e acordo de nível de serviço',
       'Gerente de conta',
     ],
+    fora: [],
   },
 ]
 
@@ -196,44 +222,70 @@ export default function Inicio() {
               Planos
             </a>
           </nav>
-          <a
-            href="#planos"
-            className="botao-marca rounded-norte px-3.5 py-2 text-sm font-semibold text-marca-tinta"
-          >
-            Começar
-          </a>
+          {/* Entrar e Comecar sao coisas diferentes e nao podem ter o mesmo
+              peso: quem ja e cliente procura "entrar" e nao pode competir com
+              a chamada de venda. Texto simples para um, botao solido escuro
+              para o outro. */}
+          <div className="flex items-center gap-4">
+            <a href="/exemplo/entrar" className="text-sm font-medium text-tinta-2 hover:text-tinta">
+              Entrar
+            </a>
+            <a
+              href="#planos"
+              className="rounded-norte bg-tinta px-4 py-2 text-sm font-semibold text-superficie hover:opacity-90"
+            >
+              Começar
+            </a>
+          </div>
         </div>
       </header>
 
-      {/* ── topo ── */}
-      <section className="bg-nav">
-        <div className="mx-auto grid max-w-6xl gap-10 px-5 py-16 md:grid-cols-[1.05fr_1fr] md:items-center md:py-24">
-          <div className="flex flex-col items-start gap-5">
-            <span className="rounded-full border border-nav-borda bg-nav-2 px-3 py-1 text-xs font-semibold text-sol-claro">
+      {/* ── topo ──
+          Seção sangrada: o azul vai de borda a borda e a bússola é cortada
+          pelas duas laterais. A primeira versão era uma grade de duas colunas
+          com um retângulo do painel de um lado — parecia print colado num
+          slide. Aqui o desenho é o fundo, e o texto mora em cima dele. */}
+      <section className="nav-fundo relative overflow-hidden">
+        <Traco
+          arte="bussola"
+          sobre="escuro"
+          opacidade={0.13}
+          className="pointer-events-none absolute -top-24 -right-40 w-[52rem] max-w-none md:-right-24"
+        />
+        <Traco
+          arte="relevo"
+          sobre="escuro"
+          opacidade={0.14}
+          className="pointer-events-none absolute inset-x-0 -bottom-8 w-full max-w-none"
+        />
+
+        <div className="relative mx-auto grid max-w-6xl gap-12 px-5 py-20 md:grid-cols-[1.1fr_1fr] md:items-center md:py-28">
+          <div className="flex flex-col items-start gap-6">
+            <span className="rounded-full border border-nav-borda bg-nav-2/70 px-3 py-1 text-xs font-semibold text-sol-claro">
               Gestão + assistente de IA no WhatsApp
             </span>
-            <h1 className="text-4xl leading-[1.08] font-extrabold tracking-[-0.03em] text-nav-tinta md:text-[52px]">
-              A empresa inteira numa tela só.
+            <h1 className="text-[clamp(2.5rem,7vw,4.25rem)] leading-[0.98] font-extrabold tracking-[-0.04em] !text-nav-tinta text-balance">
+              A empresa inteira
               <br />
-              <span className="text-sol-claro">E no WhatsApp.</span>
+              numa tela só.
             </h1>
             <p className="max-w-lg text-base leading-relaxed text-nav-tinta-2 md:text-lg">
               Produto, estoque, balcão, caixa e o resultado do mês. E um assistente que você
-              batiza, que conhece o seu estoque de verdade e cobra, avisa e responde por você
-              — dentro dos limites que você define.
+              batiza, que conhece o seu estoque de verdade e responde por você — dentro dos
+              limites que você define.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <a
                 href="#planos"
-                className="botao-marca rounded-norte px-5 py-3 text-sm font-semibold text-marca-tinta"
+                className="botao-marca rounded-norte px-6 py-3 text-sm font-semibold text-marca-tinta"
               >
                 Ver os planos
               </a>
               <a
-                href="#agente"
-                className="rounded-norte border border-nav-borda px-5 py-3 text-sm font-semibold text-nav-tinta hover:bg-nav-2"
+                href="#faz"
+                className="rounded-norte border border-nav-borda px-6 py-3 text-sm font-semibold text-nav-tinta hover:bg-nav-2"
               >
-                Como o assistente funciona
+                Ver o sistema por dentro
               </a>
             </div>
             <p className="text-xs text-nav-tinta-2">
@@ -241,7 +293,12 @@ export default function Inicio() {
             </p>
           </div>
 
-          <MockPainel />
+          {/* A lista rolante ocupa o lugar onde estava o retângulo do painel.
+              Ela responde "isso serve pra mim?" em oito segundos, que é a
+              única pergunta de quem acabou de chegar. */}
+          <div className="md:pl-4">
+            <HeroRolante />
+          </div>
         </div>
       </section>
 
@@ -370,57 +427,98 @@ export default function Inicio() {
             resumo="Sem taxa de implantação escondida. Loja extra tem preço de tabela, não “fale com o comercial”."
           />
           <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {PLANOS.map((p) => (
+            {PLANOS.map((p, i) => (
+              /* A ordem dentro do cartao e a mesma da referencia, e ela nao e
+                 arbitraria: nome → para quem e → preco → O QUE VOCE GANHA DE
+                 IA → botao → lista. O bloco do credito vem ANTES do botao
+                 porque e ele que diferencia os pacotes na pratica; a lista de
+                 recursos vem depois porque e quase igual nos quatro. */
               <div
                 key={p.nome}
                 className={
-                  p.destaque
-                    ? 'relative flex flex-col gap-4 rounded-norte border-2 border-marca bg-superficie p-5 shadow-norte'
-                    : 'flex flex-col gap-4 rounded-norte border border-borda bg-superficie p-5'
+                  'relative flex flex-col gap-4 rounded-norte bg-superficie p-5 ' +
+                  (p.destaque
+                    ? 'border border-tinta/25 shadow-norte lg:-my-2 lg:pt-7'
+                    : 'border border-borda')
                 }
               >
                 {p.destaque && (
-                  <span className="absolute -top-2.5 left-5 rounded-full bg-marca px-2.5 py-0.5 text-[11px] font-bold text-marca-tinta">
+                  <span className="absolute top-4 right-4 rounded-full border border-sol px-2 py-0.5 text-[10px] font-semibold tracking-wide text-sol">
                     {p.destaque}
                   </span>
                 )}
-                <div className="flex flex-col gap-1">
-                  <h3 className="text-lg font-bold text-tinta">{p.nome}</h3>
+
+                <div className="flex flex-col gap-1 pr-24">
+                  <h3 className="text-lg font-bold tracking-tight">{p.nome}</h3>
                   <p className="text-xs text-tinta-3">{p.para}</p>
                 </div>
+
                 <p className="flex items-baseline gap-1">
                   {p.preco ? (
                     <>
-                      <span className="text-sm font-semibold text-tinta-2">R$</span>
-                      <span className="numero text-3xl font-extrabold tracking-tight text-tinta">
-                        {p.preco}
+                      <span className="numero text-[30px] leading-none font-extrabold tracking-tight text-tinta">
+                        R$ {p.preco}
                       </span>
-                      <span className="text-sm text-tinta-3">/mês</span>
+                      <span className="ml-0.5 text-xs text-tinta-3">/mês</span>
                     </>
                   ) : (
-                    <span className="text-xl font-extrabold tracking-tight text-tinta">
+                    <span className="text-2xl leading-none font-extrabold tracking-tight text-tinta">
                       Sob consulta
                     </span>
                   )}
                 </p>
-                <ul className="flex flex-1 flex-col gap-2">
-                  {p.itens.map((i) => (
-                    <li key={i} className="flex gap-2 text-sm text-tinta-2">
-                      <span aria-hidden className="mt-1 size-1.5 shrink-0 rounded-full bg-bom-vivo" />
-                      {i}
-                    </li>
-                  ))}
-                </ul>
+
+                {/* O bloco do credito. Fundo mais claro, sem borda — bloco
+                    aninhado com borda seria caixa dentro de caixa. */}
+                <div className="rounded-norte bg-superficie-2 px-3 py-2.5">
+                  <p className="text-sm font-bold text-tinta">{p.credito.valor}</p>
+                  {p.credito.conta && (
+                    /* A traducao para a unidade do cliente. "R$ 120 de credito"
+                       nao diz nada para quem nunca comprou token; "2.000
+                       conversas" diz. */
+                    <p className="numero pt-1 text-xs font-semibold text-bom">
+                      {p.credito.conta}
+                    </p>
+                  )}
+                  <p className="pt-0.5 text-[11px] leading-snug text-tinta-3">{p.credito.nota}</p>
+                </div>
+
                 <a
                   href="#falar"
                   className={
-                    p.destaque
-                      ? 'botao-marca rounded-norte px-4 py-2.5 text-center text-sm font-semibold text-marca-tinta'
-                      : 'rounded-norte border border-borda px-4 py-2.5 text-center text-sm font-semibold text-tinta hover:bg-superficie-2'
+                    'rounded-norte px-4 py-2.5 text-center text-sm font-semibold ' +
+                    (p.destaque
+                      ? 'botao-marca text-marca-tinta'
+                      : i === PLANOS.length - 1
+                        ? 'bg-tinta text-superficie hover:opacity-90'
+                        : 'border border-borda text-tinta hover:bg-superficie-2')
                   }
                 >
                   {p.preco ? 'Começar o teste' : 'Falar com a gente'}
                 </a>
+
+                <ul className="flex flex-1 flex-col gap-1.5 border-t border-borda-suave pt-3.5">
+                  {p.itens.map((x) => (
+                    <li key={x} className="flex gap-2 text-[13px] leading-snug text-tinta-2">
+                      <span aria-hidden className="mt-px shrink-0 text-[11px] text-bom">✓</span>
+                      {x}
+                    </li>
+                  ))}
+                  {/* O que NAO tem, agrupado no fim. Esconder o que falta e o
+                      que faz o cliente descobrir depois de assinar — e mostrar
+                      aumenta a confianca na lista inteira. */}
+                  {p.fora.map((x) => (
+                    <li
+                      key={x}
+                      className="flex gap-2 text-[13px] leading-snug text-tinta-3 line-through decoration-tinta-3/40"
+                    >
+                      <span aria-hidden className="mt-px shrink-0 text-[11px] no-underline opacity-50">
+                        ✕
+                      </span>
+                      {x}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>

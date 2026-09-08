@@ -51,6 +51,12 @@
   --superficie-2: #f1eee8;
   --superficie-3: #e5e1d8;
   --tinta: #191713;
+  /* O TÍTULO NÃO É A COR DO TEXTO.
+     Descoberta que rende mais por menos: título em quase-preto neutro parece
+     renderizado; título numa cor escura ESCOLHIDA parece impresso. Aqui é o
+     azul-noite da barra, escurecido o bastante para passar em contraste sobre
+     papel. Custa uma ficha e muda a tela inteira. */
+  --titulo: #14265c;
   --tinta-2: #55514a;
   --tinta-3: #8a857c;
   --borda: #e4e0d7;
@@ -121,6 +127,9 @@
     --superficie-2: #182032;
     --superficie-3: #232c42;
     --tinta: #edeef2;
+    /* No escuro inverte: o azul CLAREIA em vez de escurecer, senão o título
+       some no fundo. */
+    --titulo: #d6e2ff;
     --tinta-2: #a7aebe;
     --tinta-3: #737b8d;
     --borda: #222b40;
@@ -175,6 +184,7 @@
   --superficie-2: #182032;
   --superficie-3: #232c42;
   --tinta: #edeef2;
+  --titulo: #d6e2ff;
   --tinta-2: #a7aebe;
   --tinta-3: #737b8d;
   --borda: #222b40;
@@ -228,6 +238,7 @@
   --color-superficie-2: var(--superficie-2);
   --color-superficie-3: var(--superficie-3);
   --color-tinta: var(--tinta);
+  --color-titulo: var(--titulo);
   --color-tinta-2: var(--tinta-2);
   --color-tinta-3: var(--tinta-3);
   --color-borda: var(--borda);
@@ -298,6 +309,7 @@ h3,
 .display {
   font-family: var(--font-display);
   letter-spacing: -0.02em;
+  color: var(--titulo);
 }
 
 /* Números em coluna precisam alinhar. Vale para tabela, total, dinheiro. */
@@ -374,6 +386,67 @@ th.numero {
 
 :root[data-tema='escuro'] .so-claro { display: none; }
 :root[data-tema='escuro'] .so-escuro { display: block; }
+
+/* ── o movimento dos banners ─────────────────────────────── */
+/*
+   Toda animação daqui pende de `[data-entrou]`, que o observador põe quando o
+   bloco aparece na tela. Antes e depois de rodar, o elemento está no estado
+   FINAL — um @keyframes só existe enquanto roda. É isso que garante a regra:
+   nada nasce invisível, e a página inteira continua certa sem JavaScript.
+
+   Os tempos ficam entre 300 e 600ms de propósito. Acima de 800ms a pessoa já
+   leu o texto e fica esperando o desenho terminar, o que é o oposto do efeito.
+*/
+
+@keyframes surgir {
+  from { opacity: 0; transform: translateY(10px); }
+}
+@keyframes surgir-lado {
+  from { opacity: 0; transform: translateX(-12px); }
+}
+@keyframes encaixar {
+  0%   { opacity: 0; transform: translateY(-14px) scale(0.96); }
+  60%  { opacity: 1; transform: translateY(2px) scale(1.01); }
+}
+@keyframes crescer-barra {
+  from { transform: scaleX(0); }
+}
+@keyframes riscar {
+  from { background-size: 0% 1px; }
+}
+@keyframes acender {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  40%      { box-shadow: 0 0 0 4px color-mix(in srgb, var(--bom-vivo) 35%, transparent); }
+}
+
+[data-entrou] .surge      { animation: surgir .5s cubic-bezier(.2,.7,.3,1) both; }
+[data-entrou] .surge-lado { animation: surgir-lado .5s cubic-bezier(.2,.7,.3,1) both; }
+[data-entrou] .encaixa    { animation: encaixar .55s cubic-bezier(.2,.8,.3,1) both; }
+[data-entrou] .acende     { animation: acender .7s ease-out both; }
+
+/* A barra cresce da esquerda: `scaleX` não repinta layout, então roda liso
+   até em máquina fraca — que é a máquina que a loja tem. */
+[data-entrou] .cresce {
+  transform-origin: left center;
+  animation: crescer-barra .6s cubic-bezier(.2,.7,.3,1) both;
+}
+
+/* O atraso vem do componente, para escalonar peças vizinhas sem uma classe
+   nova para cada uma. */
+[data-entrou] [style*='--atraso'] .surge,
+[data-entrou] .surge { animation-delay: var(--atraso, 0s); }
+
+/* Cascata: cada filho entra um pouquinho depois do anterior. 60ms é o passo
+   que lê como sequência sem virar espera. */
+[data-entrou] .cascata > * { animation: surgir .45s cubic-bezier(.2,.7,.3,1) both; }
+[data-entrou] .cascata > *:nth-child(1) { animation-delay: .00s }
+[data-entrou] .cascata > *:nth-child(2) { animation-delay: .06s }
+[data-entrou] .cascata > *:nth-child(3) { animation-delay: .12s }
+[data-entrou] .cascata > *:nth-child(4) { animation-delay: .18s }
+[data-entrou] .cascata > *:nth-child(5) { animation-delay: .24s }
+[data-entrou] .cascata > *:nth-child(6) { animation-delay: .30s }
+[data-entrou] .cascata > *:nth-child(7) { animation-delay: .36s }
+[data-entrou] .cascata > *:nth-child(8) { animation-delay: .42s }
 
 /* ── o que pede atenção pulsa ────────────────────────────── */
 /*
