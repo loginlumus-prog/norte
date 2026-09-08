@@ -503,13 +503,24 @@ export default function Inicio() {
 
             Só a partir de 1280px: em tela menor não existe essa margem, e ela
             passaria por cima da conversa. */}
+        {/* O halo atrás dela. Sem ele, o recorte encosta no fundo escuro e
+            some pelas bordas — com ele, a silhueta se destaca e o olho lê
+            "está na frente", que é a sensação de profundidade. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute right-0 bottom-0 z-0 hidden h-[46rem] w-[34rem] translate-x-[14%] xl:block 2xl:h-[52rem]"
+          style={{
+            background:
+              'radial-gradient(22rem 26rem at 52% 62%, color-mix(in srgb, var(--marca) 34%, transparent) 0%, transparent 72%)',
+          }}
+        />
         <Image
           src="/img/lojista-recorte.png"
           alt=""
           aria-hidden
           width={620}
           height={827}
-          className="pointer-events-none absolute right-0 bottom-0 z-0 hidden h-[38rem] w-auto max-w-none translate-x-[12%] object-contain object-bottom drop-shadow-[0_30px_70px_rgb(0_0_0/0.6)] xl:block 2xl:right-[4%] 2xl:h-[42rem]"
+          className="pointer-events-none absolute right-0 bottom-0 z-0 hidden h-[46rem] w-auto max-w-none translate-x-[26%] object-contain object-bottom drop-shadow-[0_40px_90px_rgb(0_0_0/0.75)] xl:block 2xl:h-[52rem] 2xl:translate-x-[20%]"
         />
 
         <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 md:grid-cols-[1fr_1.05fr] md:py-28">
