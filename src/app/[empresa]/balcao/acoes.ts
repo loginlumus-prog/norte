@@ -15,6 +15,7 @@ import { exigir } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { registrarVenda, type PagamentoDaVenda } from '@/servidor/venda'
 import { abrirCaixa, fecharCaixa, movimentarCaixa } from '@/servidor/caixa'
+import { listarClientes, criarCliente } from '@/servidor/cliente'
 import type { FormaPagamento } from '@prisma/client'
 
 export type Achado = {
@@ -101,6 +102,7 @@ export async function fecharVenda(
     itens: ItemEnviado[]
     pagamentos: { forma: string; valor: number }[]
     desconto: number
+    clienteId?: string | null
   },
 ) {
   const s = await exigirSessao(slug)
@@ -110,6 +112,7 @@ export async function fecharVenda(
     caixaId: dados.caixaId,
     itens: dados.itens,
     desconto: dados.desconto,
+    clienteId: dados.clienteId ?? null,
     pagamentos: dados.pagamentos.map((p) => ({
       forma: p.forma as FormaPagamento,
       valor: p.valor,
@@ -144,4 +147,83 @@ export async function movimentar(
   const s = await exigirSessao(slug)
   await movimentarCaixa(s, caixaId, tipo, valor, motivo)
   revalidatePath(`/${slug}/balcao`)
+}
+
+// ── o cliente da venda ───────────────────────────────────────
+// Sem isto, o histórico do cliente é uma promessa que o balcão não cumpre: a
+// ficha diz "escolha ela no balcão na próxima venda" e não existia onde
+// escolher. Toda venda saía anônima, e a lista de clientes ficava sendo uma
+// agenda de telefones.
+
+export type ClienteNoBalcao = {
+  id: string
+  nome: string
+  telefone: string | null
+  compras: number
+  gastou: number
+  diasSemVir: number | null
+}
+
+export async function procurarClientes(
+  slug: string,
+  termo: string,
+): Promise<ClienteNoBalcao[]> {
+  const s = await exigirSessao(slug)
+  const t = termo.trim()
+  if (t.length < 2) return []
+
+  const achados = await listarClientes(s, t)
+  return achados
+    .filter((c) => c.ativo)
+    .slice(0, 8)
+    .map((c) => ({
+      id: c.id,
+      nome: c.nome,
+      telefone: c.telefone,
+      compras: c.compras,
+      gastou: c.gastou,
+      diasSemVir: c.ultimaCompra
+        ? Math.floor((Date.now() - c.ultimaCompra.getTime()) / 864e5)
+        : null,
+    }))
+}
+
+/**
+ * Cadastro de uma linha só, feito com a pessoa na frente.
+ *
+ * Mandar a vendedora abrir outra tela para cadastrar, com a fila esperando, é
+ * o mesmo que não ter cadastro: ela fecha a venda anônima e segue. Por isso
+ * aqui só cabe nome e telefone — o resto se completa depois, na ficha.
+ */
+export async function cadastrarNoBalcao(
+  slug: string,
+  nome: string,
+  telefone: string,
+): Promise<{ ok: true; cliente: ClienteNoBalcao } | { ok: false; erro: string; jaExisteId?: string }> {
+  const s = await exigirSessao(slug)
+
+  const r = await criarCliente(s, { nome, telefone })
+  if (!r.ok) {
+    return {
+      ok: false,
+      erro: r.jaExiste
+        ? `${r.jaExiste.nome} já usa esse telefone.`
+        : r.motivo === 'documento_invalido'
+          ? 'Esse CPF não confere.'
+          : 'Falta o nome.',
+      jaExisteId: r.jaExiste?.id,
+    }
+  }
+
+  return {
+    ok: true,
+    cliente: {
+      id: r.clienteId,
+      nome: nome.trim(),
+      telefone: telefone.trim() || null,
+      compras: 0,
+      gastou: 0,
+      diasSemVir: null,
+    },
+  }
 }

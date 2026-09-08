@@ -13,7 +13,12 @@
 import type { ItemMenu } from './Estrutura'
 
 export const MENU = (slug: string): ItemMenu[] => [
-  { href: `/${slug}`, titulo: 'Painel', exige: 'venda.ver' },
+  // O Painel mostra faturamento do dia, margem e ticket medio. Isso NAO e
+  // coisa de quem opera o caixa: o dono nao quer que a balconista leia quanto
+  // a loja fez hoje, e ate hoje ela lia. Exigia 'venda.ver', que o balcao tem
+  // porque precisa ver a propria venda que acabou de fechar — uma capacidade
+  // fazendo dois trabalhos. Agora exige 'relatorio.ver', que e o numero.
+  { href: `/${slug}`, titulo: 'Painel', exige: 'relatorio.ver' },
   { href: `/${slug}/balcao`, titulo: 'Balcão', exige: 'venda.criar' },
   { href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver' },
   { href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },

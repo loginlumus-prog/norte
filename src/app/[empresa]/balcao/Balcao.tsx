@@ -14,6 +14,8 @@
 //    conferir na gaveta.
 
 import { useEffect, useRef, useState, useTransition } from 'react'
+import { EscolherCliente } from './Cliente'
+import type { ClienteNoBalcao } from './acoes'
 import { Botao, Campo, Aviso, Situacao, cx } from '@/ui/base'
 import { procurar, fecharVenda, type Achado } from './acoes'
 
@@ -45,6 +47,7 @@ export function Balcao({
   const [carrinho, setCarrinho] = useState<Linha[]>([])
   const [pagos, setPagos] = useState<{ forma: string; valor: number }[]>([])
   const [desconto, setDesconto] = useState(0)
+  const [cliente, setCliente] = useState<ClienteNoBalcao | null>(null)
   const [recado, setRecado] = useState<{ nivel: 'bom' | 'critico'; texto: string } | null>(null)
   const [indo, comecar] = useTransition()
 
@@ -114,6 +117,7 @@ export function Balcao({
     setCarrinho([])
     setPagos([])
     setDesconto(0)
+    setCliente(null)
     setTermo('')
     setAchados([])
     focarBusca()
@@ -126,6 +130,7 @@ export function Balcao({
         unidadeId,
         caixaId,
         desconto,
+        clienteId: cliente?.id ?? null,
         itens: carrinho.map((l) => ({
           variacaoId: l.id,
           quantidade: l.quantidade,
@@ -288,6 +293,8 @@ export function Balcao({
           <span className="text-xs font-medium text-tinta-3">{unidadeNome}</span>
           {!caixaId && <Situacao nivel="critico">caixa fechado</Situacao>}
         </div>
+
+        <EscolherCliente slug={slug} escolhido={cliente} aoEscolher={setCliente} />
 
         <div className="flex flex-col gap-1 border-b border-borda-suave pb-3">
           <div className="flex items-baseline justify-between text-sm text-tinta-2">

@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { redirect, notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { pode } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -27,6 +28,14 @@ export default async function Painel({
   const { unidade: pedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
+
+  // Quem nao pode ler o resultado do mes nao para nesta tela: vai para onde
+  // trabalha. Sem isto, o balconista entra e cai num 'nao encontrado' logo
+  // depois do login, que parece defeito e nao regra.
+  if (!pode(sessao, 'relatorio.ver')) {
+    if (pode(sessao, 'venda.criar')) redirect(`/${slug}/balcao`)
+    notFound()
+  }
 
   const onde = await escolherUnidade(sessao, empresa, pedida)
   const r = await resumoDoPainel(sessao, onde.ids)
