@@ -1,8 +1,6 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import { Marca, Simbolo } from '@/ui/Marca'
-import { Traco } from '@/ui/Traco'
-import { HeroRolante } from '@/ui/HeroRolante'
 import { ConversaFlutuante } from '@/ui/ConversaFlutuante'
 import { CompararPlanos } from '@/ui/CompararPlanos'
 
@@ -157,6 +155,55 @@ const PERGUNTAS = [
   },
 ]
 
+// A régua de fatos do topo. Cada um destes é provado mais embaixo na própria
+// página — preço de tabela na seção de planos, "de 1 a 40 lojas" em para quem
+// é, e o teto do assistente na seção dele. Nenhum número de mercado: a gente
+// não mediu, e promessa que não se cumpre vira pedido de reembolso no segundo
+// mês.
+const PROVAS: [string, string][] = [
+  [
+    'A partir de R$ 349 por mês',
+    'Sem taxa de implantação escondida, e loja extra tem preço de tabela.',
+  ],
+  [
+    'De uma loja a quarenta',
+    'A mesma tela cresce junto. Não existe migrar, nem “versão para redes”, nem contratar de novo.',
+  ],
+  [
+    'O assistente é seu',
+    'Você dá o nome e a personalidade. O teto do que ele faz sozinho é número no banco.',
+  ],
+]
+
+// A faixa de ramos que sangra a tela. Quatro cenas de comércios diferentes,
+// porque "serve para o seu ramo também" é mais rápido de mostrar do que de
+// explicar. O rótulo é HTML por cima — modelo de imagem escreve garrancho.
+const RAMOS = [
+  // 'pos' é o object-position de cada uma. A foto é panorâmica e o quadro da
+  // faixa é quase quadrado: cortar no centro deixava metade de rua vazia e a
+  // dona da loja espremida na borda.
+  { src: '/img/dona-b.jpg', rotulo: 'Moda', pos: '62% center' },
+  { src: '/img/sapataria.jpg', rotulo: 'Calçados', pos: 'center' },
+  { src: '/img/sorveteria.jpg', rotulo: 'Alimentação', pos: 'center' },
+  { src: '/img/distribuidora.jpg', rotulo: 'Distribuição', pos: '50% 62%' },
+]
+
+const QUEM: [string, string][] = [
+  [
+    'A mesma tela serve a uma loja e a quarenta',
+    'Quem começa com uma loja não descobre nem que existe o conceito de unidade: o seletor de loja só aparece quando nasce a segunda. E a arquitetura não tem teto — a mesma tabela que guarda a loja única guarda a rede inteira.',
+  ],
+  [
+    'Você nomeia os eixos do seu ramo',
+    'Cor e Tamanho na roupa, Numeração na sapataria, Sabor na sorveteria. Vende por unidade, por quilo, por litro ou por par.',
+  ],
+  [
+    'Depósito conta como loja',
+    'Cada unidade tem estoque e caixa próprios, e o painel soma tudo num clique. O gerente da loja 3 não vê o caixa da 5.',
+  ],
+]
+
+
 const DOR: [string, string][] = [
   [
     'Você sabe quanto vendeu.',
@@ -250,7 +297,20 @@ export default function Inicio() {
 
           Nenhum texto vai dentro da imagem gerada — modelo de imagem escreve
           letra embaralhada, e a primeira tentativa voltou com duas linhas de
-          garrancho. A imagem é fundo; a palavra é HTML. */}
+          garrancho. A imagem é fundo; a palavra é HTML.
+
+          ── o que saiu daqui, e por quê ──
+          Tinha uma etiqueta em pílula em cima do título e, embaixo dos botões,
+          uma frase que trocava sozinha atrás de uma setinha. As duas eram
+          enfeite de anúncio, e o resto da página não fala essa língua: da
+          metade para baixo tudo é olho em versalete, título, resumo e uma
+          grade de itens abertos separados por fio.
+
+          Agora o topo fala a mesma língua. A pílula virou o mesmo olho das
+          outras seções, e no lugar do rodízio entrou a régua de fatos — três
+          coisas verificáveis, no mesmo desenho da grade lá de baixo. Fato
+          parado diz mais do que promessa que passa correndo: quem chega lê os
+          três de uma vez, em vez de esperar o carrossel dar a volta. */}
       <section
         className="emenda-base relative isolate overflow-hidden bg-nav"
         style={{ '--emenda-base': 'var(--superficie)' } as React.CSSProperties}
@@ -262,6 +322,7 @@ export default function Inicio() {
           fill
           priority
           sizes="100vw"
+          quality={90}
           className="object-cover object-[70%_center]"
         />
         <span
@@ -273,9 +334,9 @@ export default function Inicio() {
           }}
         />
 
-        <div className="relative z-10 mx-auto max-w-6xl px-5 py-24 md:py-32">
+        <div className="relative z-10 mx-auto max-w-6xl px-5 py-20 md:py-28">
           <div className="flex max-w-2xl flex-col items-start gap-6">
-            <span className="rounded-full border border-white/20 bg-white/[0.07] px-3 py-1 text-xs font-semibold text-sol-claro backdrop-blur-sm">
+            <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
               Gestão + assistente de IA no WhatsApp
             </span>
             <h1 className="text-[clamp(2.75rem,7.5vw,4.75rem)] leading-[0.95] !text-nav-tinta text-balance">
@@ -302,147 +363,114 @@ export default function Inicio() {
                 Ver o sistema por dentro
               </a>
             </div>
+          </div>
 
-            <div className="w-full max-w-xl pt-2">
-              <HeroRolante />
-            </div>
+          {/* A RÉGUA DE FATOS.
+              Mesma anatomia da grade de "o que todo cliente tem": fio em cima,
+              uma linha forte, uma linha explicando. Aqui ela é sobre azul, e
+              por isso o fio é branco a 20% em vez da borda do tema.
+
+              Os três são coisas que a própria página prova mais embaixo —
+              preço de tabela, a mesma tela de 1 a 40 lojas, e o teto do
+              assistente sendo número no banco. Nenhum número de mercado. */}
+          <div className="mt-16 grid gap-x-10 gap-y-7 sm:grid-cols-3 md:mt-24">
+            {PROVAS.map(([t, d]) => (
+              <div key={t} className="flex flex-col gap-1.5 border-t border-white/20 pt-4">
+                <p className="text-[15px] leading-snug font-bold text-nav-tinta">{t}</p>
+                <p className="text-sm leading-relaxed text-nav-tinta-2">{d}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ── a dor ── */}
+      {/* ── a dor ──
+          Ganhou olho, título e resumo como todas as outras: solta embaixo do
+          topo, sem cabeçalho, a grade parecia legenda da foto de cima. */}
       <section className="bg-superficie">
-        <div className="mx-auto grid max-w-6xl gap-6 px-5 py-14 sm:grid-cols-3">
-          {DOR.map(([t, d]) => (
-            <div key={t} className="flex flex-col gap-2">
-              <h3 className="text-lg font-bold tracking-tight">{t}</h3>
-              <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
-            </div>
-          ))}
+        <div className="mx-auto max-w-6xl px-5 py-16">
+          <Titulo
+            olho="O problema"
+            titulo="Sistema quase todo mundo tem. Resposta é que é raro."
+            resumo="São três perguntas simples — e hoje as três só têm resposta no fim do mês, no susto, com o caderno do lado."
+          />
+          <div className="mt-9 grid gap-x-8 gap-y-7 sm:grid-cols-3">
+            {DOR.map(([t, d]) => (
+              <div key={t} className="flex flex-col gap-2 border-t border-borda pt-4">
+                <h3 className="text-base font-bold text-tinta">{t}</h3>
+                <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* ── para quem é ──
-          Bento no formato da referência, e a diferença que importa está na
-          ORDEM DENTRO DO CARTÃO: título e parágrafo em cima, como texto normal
-          e legível; a imagem embaixo, sangrando pela borda.
+          ── o que estava aqui antes ──
+          Um bento de três cartões com fundo, canto arredondado e a foto presa
+          dentro de cada um. Era caixote — a coisa que a página inteira passou
+          a evitar — e ainda empilhava caixote dentro de caixote: um mosaico de
+          três fotos dentro de um cartão dentro da grade.
 
-          A versão anterior jogava o texto POR CIMA da foto, com véu. Isso
-          funciona para uma etiqueta de duas palavras e falha para explicar:
-          texto sobre foto é sempre mais difícil de ler, e explicação precisa
-          de contraste, não de atmosfera. A foto passou a ser o rodapé do
-          cartão, e o texto voltou para o papel.
+          ── o que ficou ──
+          A mesma ideia em três tempos, no desenho do resto da página:
 
-          Uma ideia completa em cima, dois blocos embaixo para completar — e um
-          deles mistura vários comércios num mosaico só. */}
+            1. Olho, título e resumo, como em toda seção daqui para baixo.
+            2. UMA faixa de fotos de ponta a ponta da tela. Ela sai da coluna
+               de conteúdo de propósito: é a única peça da página que encosta
+               nas duas bordas, e é isso que faz "não é só loja de roupa" ser
+               entendido antes de qualquer texto ser lido.
+            3. A explicação embaixo, em três itens abertos separados por fio —
+               exatamente a grade que a pessoa reencontra em "o que todo
+               cliente tem".
+
+          O rótulo do ramo é HTML sobre a foto, nunca dentro dela, e vai sobre
+          um degradê escuro para o contraste não depender do que a foto tem
+          naquele canto. */}
       <section className="bg-superficie">
-        <div className="mx-auto max-w-6xl px-5 py-16">
+        <div className="mx-auto max-w-6xl px-5">
           <Titulo
             olho="Para quem é"
             titulo="Comércio que vende no balcão e no WhatsApp"
-            resumo="De uma loja de bairro à rede com dezenas de unidades."
+            resumo="De uma loja de bairro à rede com dezenas de unidades — e não só loja de roupa."
           />
+        </div>
 
-          <div className="mt-9 grid gap-3 lg:grid-cols-2">
-            {/* A IDEIA COMPLETA — ocupa a largura toda, texto à esquerda e a
-                foto sangrando pela direita e por baixo. */}
-            <article className="relative isolate col-span-full grid overflow-hidden rounded-norte bg-superficie-2 lg:grid-cols-[1fr_1.15fr]">
-              <div className="flex flex-col justify-center gap-3 p-6 sm:p-8">
-                <h3 className="text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.05] text-balance">
-                  A mesma tela serve a uma loja e a quarenta
-                </h3>
-                <p className="max-w-[48ch] text-sm leading-relaxed text-tinta-2">
-                  Quem começa com uma loja <strong className="font-semibold text-tinta">não
-                  descobre nem que existe o conceito de unidade</strong> — o seletor de loja
-                  só aparece quando nasce a segunda. E a arquitetura não tem teto: a mesma
-                  tabela que guarda a loja única guarda a rede inteira.
-                </p>
-                <p className="max-w-[48ch] text-sm leading-relaxed text-tinta-2">
-                  Não existe migração, nem “versão para redes”, nem contratar de novo.
-                </p>
-              </div>
-              <div className="relative min-h-[16rem] lg:min-h-[20rem]">
-                <Image
-                  src="/img/dona-b.jpg"
-                  alt=""
-                  aria-hidden
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 55vw"
-                  className="object-cover"
-                />
-              </div>
-            </article>
+        <div className="mt-9 grid grid-cols-2 lg:grid-cols-4">
+          {RAMOS.map((r) => (
+            <div key={r.rotulo} className="relative h-44 sm:h-64 lg:h-[21rem]">
+              <Image
+                src={r.src}
+                alt=""
+                aria-hidden
+                fill
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 60vw, 45vw"
+                quality={90}
+                className="object-cover"
+                style={{ objectPosition: r.pos }}
+              />
+              <span
+                aria-hidden
+                className="absolute inset-x-0 bottom-0 h-2/5"
+                style={{
+                  background: 'linear-gradient(to top, rgb(8 10 18 / 0.82) 0%, transparent 100%)',
+                }}
+              />
+              <span className="absolute bottom-3.5 left-4 text-[11px] font-bold tracking-[0.16em] text-white uppercase">
+                {r.rotulo}
+              </span>
+            </div>
+          ))}
+        </div>
 
-            {/* O MOSAICO — vários comércios numa peça só. */}
-            <article className="relative isolate flex flex-col overflow-hidden rounded-norte bg-superficie-2">
-              <div className="flex flex-col gap-2.5 p-6">
-                <h3 className="text-xl leading-tight">Não é só loja de roupa</h3>
-                <p className="max-w-[42ch] text-sm leading-relaxed text-tinta-2">
-                  Você nomeia os eixos do seu ramo. <strong className="font-semibold text-tinta">Cor
-                  e Tamanho</strong> na roupa, <strong className="font-semibold text-tinta">Numeração</strong> na
-                  sapataria, <strong className="font-semibold text-tinta">Sabor</strong> na
-                  sorveteria. Vende por unidade, por quilo, por litro ou por par.
-                </p>
+        <div className="mx-auto max-w-6xl px-5 pt-10 pb-16">
+          <div className="grid gap-x-8 gap-y-7 sm:grid-cols-3">
+            {QUEM.map(([t, d]) => (
+              <div key={t} className="flex flex-col gap-2 border-t border-borda pt-4">
+                <h3 className="text-base font-bold text-tinta">{t}</h3>
+                <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
               </div>
-              {/* As três fotos SE SOBREPÕEM, em alturas e profundidades
-                  diferentes. A versão anterior era uma fila com espaços iguais
-                  — e fila com espaço igual lê como contact sheet, não como
-                  cena. O que dá o ar caro é a sobreposição: uma na frente da
-                  outra, com sombra e um giro de meio grau, e a última saindo
-                  pela borda direita. */}
-              <div className="relative mt-auto h-44 px-6 sm:h-52">
-                {[
-                  {
-                    src: '/img/sapataria.jpg',
-                    cls: 'left-6 bottom-0 h-[78%] w-[42%] z-10 -rotate-[1.2deg]',
-                  },
-                  {
-                    src: '/img/sorveteria.jpg',
-                    cls: 'left-[32%] bottom-0 h-full w-[40%] z-20 rotate-[0.8deg]',
-                  },
-                  {
-                    src: '/img/balcao-pagto.jpg',
-                    cls: 'right-[-1.5rem] bottom-0 h-[64%] w-[38%] z-10 rotate-[1.6deg]',
-                  },
-                ].map((f) => (
-                  <span
-                    key={f.src}
-                    className={`absolute overflow-hidden rounded-t-norte shadow-[0_-8px_30px_-10px_rgb(20_18_12/0.45)] ${f.cls}`}
-                  >
-                    <Image
-                      src={f.src}
-                      alt=""
-                      aria-hidden
-                      fill
-                      sizes="20vw"
-                      className="object-cover"
-                    />
-                  </span>
-                ))}
-              </div>
-            </article>
-
-            {/* O REGULAR — depósito e rede. */}
-            <article className="relative isolate flex flex-col overflow-hidden rounded-norte bg-nav">
-              <div className="flex flex-col gap-2.5 p-6">
-                <h3 className="text-xl leading-tight !text-white">Depósito conta como loja</h3>
-                <p className="max-w-[42ch] text-sm leading-relaxed text-white/65">
-                  Cada unidade tem <strong className="font-semibold text-white">estoque e caixa
-                  próprios</strong>, e o painel soma tudo num clique. O gerente da loja 3 não vê
-                  o caixa da 5 — e ninguém concede um cargo que ele mesmo não tem.
-                </p>
-              </div>
-              <div className="relative mt-auto h-40 sm:h-44">
-                <Image
-                  src="/img/distribuidora.jpg"
-                  alt=""
-                  aria-hidden
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 45vw"
-                  className="object-cover object-center"
-                />
-              </div>
-            </article>
+            ))}
           </div>
         </div>
       </section>
@@ -528,8 +556,10 @@ export default function Inicio() {
           src="/img/lojista-recorte.png"
           alt=""
           aria-hidden
-          width={620}
-          height={827}
+          width={1328}
+          height={1760}
+          sizes="(max-width: 1536px) 50vw, 45vw"
+          quality={90}
           className="pointer-events-none absolute top-6 right-0 z-0 hidden h-[54rem] w-auto max-w-none translate-x-[40%] object-contain object-top drop-shadow-[0_40px_90px_rgb(0_0_0/0.75)] xl:block 2xl:h-[58rem] 2xl:translate-x-[34%]"
         />
 
@@ -785,7 +815,7 @@ function Titulo({ olho, titulo, resumo }: { olho: string; titulo: string; resumo
   return (
     <div className="flex max-w-2xl flex-col gap-2.5">
       <span className="text-xs font-bold tracking-[0.14em] text-marca uppercase">{olho}</span>
-      <h2 className="text-3xl leading-tight font-extrabold tracking-[-0.02em] text-tinta">
+      <h2 className="text-3xl leading-tight font-extrabold tracking-[-0.02em] text-balance text-tinta">
         {titulo}
       </h2>
       {resumo && <p className="leading-relaxed text-tinta-2">{resumo}</p>}
