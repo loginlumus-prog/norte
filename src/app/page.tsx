@@ -172,6 +172,22 @@ const PERGUNTAS = [
   },
 ]
 
+// Os cinco ramos que se revezam no topo.
+//
+// A ordem importa: o CSS acende o nome pelo nth-child, com o mesmo atraso
+// negativo da cena correspondente. Mexeu aqui, mexe lá.
+//
+// Todas as artes estão no mesmo quadro de 1284×768 com a cena ancorada
+// embaixo e à direita — é isso que faz a troca ser uma dissolvência limpa,
+// e não um pulo de tamanho a cada volta.
+const CENAS = [
+  { src: '/img/cena-moda.png', rotulo: 'Moda' },
+  { src: '/img/cena-calcados.png', rotulo: 'Calçados' },
+  { src: '/img/cena-sorveteria.png', rotulo: 'Sorveteria' },
+  { src: '/img/cena-lanchonete.png', rotulo: 'Lanchonete' },
+  { src: '/img/cena-deposito.png', rotulo: 'Distribuição' },
+]
+
 // A régua de fatos do topo. Cada um destes é provado mais embaixo na própria
 // página — preço de tabela na seção de planos, "de 1 a 40 lojas" em para quem
 // é, e o teto do assistente na seção dele. Nenhum número de mercado: a gente
@@ -328,78 +344,95 @@ export default function Inicio() {
       </header>
 
       {/* ── topo ──
-          A foto sangra a tela inteira e o texto mora EM CIMA dela. O véu é um
-          degradê de azul-noite que vai de opaco na esquerda a quase nada na
-          direita: assim a rua escura da foto some atrás do texto e a loja
-          acesa continua visível do outro lado.
+          ── por que desenho, e não foto ──
+          Foto de loja é sempre a loja de ALGUÉM: quem vende sapato olha uma
+          arara de roupa e entende "não é para mim". Desenho vetorial plano é
+          universal — a pessoa vê o balcão, a prateleira e a maquininha, e
+          preenche o resto com o próprio negócio. E aqui ele não fica parado:
+          cinco ramos se revezam no mesmo lugar, e a lista de nomes embaixo do
+          botão acende junto com a cena. Quem vende sorvete se reconhece na
+          terceira volta, sem a página precisar dizer.
 
-          Nenhum texto vai dentro da imagem gerada — modelo de imagem escreve
-          letra embaralhada, e a primeira tentativa voltou com duas linhas de
-          garrancho. A imagem é fundo; a palavra é HTML.
+          A foto continua existindo — em "para quem é", onde o assunto é
+          exatamente que são comércios REAIS e diferentes. Desenho conta como
+          funciona; foto conta para quem é.
 
-          ── o que saiu daqui, e por quê ──
-          Tinha uma etiqueta em pílula em cima do título e, embaixo dos botões,
-          uma frase que trocava sozinha atrás de uma setinha. As duas eram
-          enfeite de anúncio, e o resto da página não fala essa língua: da
-          metade para baixo tudo é olho em versalete, título, resumo e uma
-          grade de itens abertos separados por fio.
+          ── o fundo ──
+          A mesma aurora da seção do assistente, agora com dois brilhos que
+          derivam por cima. O recorte das cenas é transparente de propósito:
+          é o que deixa a luz do fundo passar por baixo do desenho, em vez de
+          o desenho tapar a luz com um retângulo de tinta.
 
-          Agora o topo fala a mesma língua. A pílula virou o mesmo olho das
-          outras seções, e no lugar do rodízio entrou a régua de fatos — três
-          coisas verificáveis, no mesmo desenho da grade lá de baixo. Fato
-          parado diz mais do que promessa que passa correndo: quem chega lê os
-          três de uma vez, em vez de esperar o carrossel dar a volta. */}
-      <section
-        className="emenda-base relative isolate overflow-hidden bg-nav"
-        style={{ '--emenda-base': 'var(--superficie)' } as React.CSSProperties}
-      >
-        <Image
-          src="/img/loja-a.png"
-          alt=""
-          aria-hidden
-          fill
-          priority
-          sizes="100vw"
-          quality={90}
-          className="object-cover object-[70%_center]"
-        />
-        <span
-          aria-hidden
-          className="absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(100deg, var(--nav) 0%, color-mix(in srgb, var(--nav) 92%, transparent) 34%, color-mix(in srgb, var(--nav) 55%, transparent) 62%, color-mix(in srgb, var(--nav) 18%, transparent) 100%)',
-          }}
-        />
+          ── e nenhum texto dentro da arte ──
+          Modelo de imagem escreve garrancho, e a primeira tentativa do
+          projeto voltou com duas linhas de letra embaralhada. A imagem é
+          cena; a palavra é HTML. */}
+      <section className="aurora emenda-base relative isolate overflow-hidden">
+        <span aria-hidden className="brilhos pointer-events-none absolute inset-0 z-0" />
 
-        <div className="relative z-10 mx-auto max-w-6xl px-5 py-20 md:py-28">
-          <div className="flex max-w-2xl flex-col items-start gap-6">
-            <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
-              Gestão + assistente de IA no WhatsApp
-            </span>
-            <h1 className="text-[clamp(2.75rem,7.5vw,4.75rem)] leading-[0.95] !text-nav-tinta text-balance">
-              A empresa inteira
-              <br />
-              numa tela só.
-            </h1>
-            <p className="max-w-xl text-base leading-relaxed text-nav-tinta-2 md:text-lg">
-              Produto, estoque, balcão, caixa e o resultado do mês. E um assistente que você
-              batiza, que conhece o seu estoque de verdade e responde por você — dentro dos
-              limites que você define.
-            </p>
-            <div className="flex flex-wrap items-center gap-3 pt-1">
-              <a
-                href="#planos"
-                className="botao-marca rounded-norte px-6 py-3 text-sm font-semibold text-marca-tinta"
-              >
-                Ver os planos
-              </a>
-              <a
-                href="#faz"
-                className="rounded-norte border border-white/25 px-6 py-3 text-sm font-semibold text-nav-tinta backdrop-blur-sm hover:bg-white/10"
-              >
-                Ver o sistema por dentro
-              </a>
+        <div className="relative z-10 mx-auto max-w-6xl px-5 py-16 md:py-20">
+          <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.12fr] lg:gap-6">
+            <div className="flex max-w-2xl flex-col items-start gap-6">
+              <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
+                Gestão + assistente de IA no WhatsApp
+              </span>
+              <h1 className="text-[clamp(2.5rem,6vw,4.25rem)] leading-[0.96] !text-nav-tinta text-balance">
+                A empresa inteira
+                <br />
+                numa tela só.
+              </h1>
+              <p className="max-w-xl leading-relaxed text-nav-tinta-2 md:text-lg">
+                Produto, estoque, balcão, caixa e o resultado do mês. E um assistente que você
+                batiza, que conhece o seu estoque de verdade e responde por você — dentro dos
+                limites que você define.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <a
+                  href="#planos"
+                  className="botao-marca rounded-norte px-6 py-3 text-sm font-semibold text-marca-tinta"
+                >
+                  Ver os planos
+                </a>
+                <a
+                  href="#faz"
+                  className="rounded-norte border border-white/25 px-6 py-3 text-sm font-semibold text-nav-tinta backdrop-blur-sm hover:bg-white/10"
+                >
+                  Ver o sistema por dentro
+                </a>
+              </div>
+
+              {/* A LISTA DE RAMOS. Cada nome acende quando a cena dele está na
+                  tela — mesmo relógio, mesmos atrasos, no globals. Parada ela
+                  já é informação: são os cinco ramos, escritos. */}
+              <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-bold tracking-[0.14em] uppercase">
+                {CENAS.map((c) => (
+                  <li key={c.rotulo} className="ramo">
+                    {c.rotulo}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* AS CENAS. Todas no mesmo quadro de 1284×768 e ancoradas embaixo
+                e à direita no arquivo, então trocam sem pular de lugar. Sangra
+                um pouco para fora da coluna à direita — a mesma sangria que a
+                conversa do assistente usa. */}
+            <div
+              aria-hidden
+              className="cenas relative aspect-[1284/768] w-full lg:-mr-[16%] lg:w-[124%]"
+            >
+              {CENAS.map((c, i) => (
+                <Image
+                  key={c.src}
+                  src={c.src}
+                  alt=""
+                  fill
+                  priority={i === 0}
+                  sizes="(max-width: 1024px) 100vw, 55vw"
+                  quality={90}
+                  className="cena object-contain object-bottom"
+                />
+              ))}
             </div>
           </div>
 
@@ -411,7 +444,7 @@ export default function Inicio() {
               Os três são coisas que a própria página prova mais embaixo —
               preço de tabela, a mesma tela de 1 a 40 lojas, e o teto do
               assistente sendo número no banco. Nenhum número de mercado. */}
-          <div className="mt-16 grid gap-x-10 gap-y-7 sm:grid-cols-3 md:mt-24">
+          <div className="mt-14 grid gap-x-10 gap-y-7 sm:grid-cols-3 md:mt-16">
             {PROVAS.map(([t, d]) => (
               <div key={t} className="flex flex-col gap-1.5 border-t border-white/20 pt-4">
                 <p className="text-[15px] leading-snug font-bold text-nav-tinta">{t}</p>

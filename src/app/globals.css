@@ -591,6 +591,94 @@ th.numero {
 
 /* Movimento é ajuda, nunca requisito: quem pediu menos movimento no sistema
    continua vendo a cor, a borda e o texto — que é onde o recado mora. */
+/* ── O RODÍZIO DE RAMOS DO TOPO ─────────────────────────────
+   Cinco cenas desenhadas, empilhadas no mesmo lugar; uma por vez, e a troca é
+   travessia de opacidade. Ele existe para dizer sem texto o que a página leva
+   um parágrafo para dizer: isto aqui não é sistema de loja de roupa. Quem
+   vende sorvete se reconhece na terceira volta.
+
+   ── por que CSS puro, e não JavaScript ──
+   Quem escalona é o ATRASO NEGATIVO: as cinco usam o MESMO @keyframes, e cada
+   uma entra com o relógio já adiantado um quinto de volta. Uma regra para as
+   cinco, zero estado, zero hidratação — o rodízio já está girando antes de o
+   JavaScript da página carregar, e continua girando se ele nunca carregar.
+
+   ── a conta dos tempos ──
+   30s de volta, 6s por ramo, 1,2s de dissolvência (os 4% entre 16% e 20%).
+   A janela de cada cena fecha EXATAMENTE em 20% da própria linha do tempo, que
+   é o instante em que a seguinte chega em 100% — por isso as duas se cruzam
+   somadas em 1 e nunca aparece o fundo no meio da troca. E a primeira nasce
+   VISÍVEL (0% = opacidade 1): parada, a página mostra uma cena inteira. */
+@keyframes cena-passa {
+  0%, 16%  { opacity: 1; }
+  20%, 96% { opacity: 0; }
+  100%     { opacity: 1; }
+}
+.cena { animation: cena-passa 30s linear infinite both; }
+.cena:nth-child(2) { animation-delay: -24s; }
+.cena:nth-child(3) { animation-delay: -18s; }
+.cena:nth-child(4) { animation-delay: -12s; }
+.cena:nth-child(5) { animation-delay: -6s; }
+
+/* O nome do ramo acende junto com a cena — mesmo relógio, mesmos atrasos.
+   É o que faz o rodízio ser informação e não enfeite: sem ele a pessoa vê
+   desenho trocando; com ele ela lê a lista de quem o sistema atende. */
+@keyframes ramo-aceso {
+  0%, 16%  { color: var(--sol-claro); opacity: 1; }
+  20%, 96% { color: var(--nav-tinta-2); opacity: 0.5; }
+  100%     { color: var(--sol-claro); opacity: 1; }
+}
+.ramo { animation: ramo-aceso 30s linear infinite both; }
+.ramo:nth-child(2) { animation-delay: -24s; }
+.ramo:nth-child(3) { animation-delay: -18s; }
+.ramo:nth-child(4) { animation-delay: -12s; }
+.ramo:nth-child(5) { animation-delay: -6s; }
+
+/* A cena inteira respira devagar. Sem isto o bloco fica parado 6s entre uma
+   troca e outra, e parado ele volta a parecer figura colada. Escala e
+   deslocamento só — nada que force recálculo de layout. */
+@keyframes respiro-cena {
+  from { transform: scale(1) translateY(0); }
+  to   { transform: scale(1.035) translateY(-10px); }
+}
+.cenas { animation: respiro-cena 19s ease-in-out infinite alternate; }
+
+/* Os brilhos que derivam atrás de tudo. A aurora do globals é gradiente
+   parado; estes dois borrões andam por cima dela em ritmos diferentes e
+   nunca coincidem, que é o que faz o fundo parecer luz e não papel pintado.
+   Transform só, e por isso roda na placa de vídeo. */
+@keyframes deriva-um {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-7%, 5%, 0) scale(1.12); }
+}
+@keyframes deriva-dois {
+  from { transform: translate3d(0, 0, 0) scale(1.08); }
+  to   { transform: translate3d(6%, -4%, 0) scale(1); }
+}
+.brilhos::before,
+.brilhos::after {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+}
+.brilhos::before {
+  background: radial-gradient(
+    38rem 26rem at 74% 26%,
+    color-mix(in srgb, var(--marca) 34%, transparent) 0%,
+    transparent 68%
+  );
+  animation: deriva-um 27s ease-in-out infinite alternate;
+}
+.brilhos::after {
+  background: radial-gradient(
+    32rem 24rem at 88% 78%,
+    color-mix(in srgb, var(--sol) 20%, transparent) 0%,
+    transparent 66%
+  );
+  animation: deriva-dois 34s ease-in-out infinite alternate;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -604,4 +692,11 @@ th.numero {
     animation-delay: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+
+  /* O rodízio precisa de uma mão aqui. Com duração quase zero as cinco cenas
+     param no ÚLTIMO quadro — que é opacidade 1 — e ficariam as cinco
+     empilhadas. Quem pediu menos movimento vê a primeira, parada, inteira. */
+  .cena:not(:first-child) { opacity: 0 !important; }
+  .ramo:not(:first-child) { color: var(--nav-tinta-2) !important; opacity: 0.5 !important; }
+  .ramo:first-child { color: var(--sol-claro) !important; opacity: 1 !important; }
 }
