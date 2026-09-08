@@ -10,6 +10,7 @@ import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Planos } from './Planos'
 import { Credito } from './Credito'
+import { Comparar } from './Comparar'
 
 // A tela da assinatura.
 //
@@ -204,6 +205,13 @@ export default async function AssinaturaPagina({
           podeTrocar={podeMexer}
           whatsapp="5571999990000"
         />
+
+        {/* Cartao vende, tabela decide. Quem esta quase trocando quer a
+            pergunta especifica respondida, e procurar isso em quatro cartoes
+            de bala e onde a pessoa desiste e vai perguntar no WhatsApp. */}
+        <Cartao titulo="Item por item">
+          <Comparar atual={a.plano} />
+        </Cartao>
       </Secao>
     </Estrutura>
   )

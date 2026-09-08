@@ -222,27 +222,58 @@ export function Situacao({ nivel = 'neutro', children }: { nivel?: Nivel; childr
 export function Cartao({
   titulo,
   acao,
+  caixa = false,
   children,
 }: {
   titulo?: string
   acao?: ReactNode
+  /**
+   * Fecha em caixa: borda, fundo e sombra.
+   *
+   * NÃO é o padrão, e a mudança foi essa. Quando tudo é caixa, caixa deixa de
+   * significar alguma coisa: a tela vira uma pilha de retângulos cinzentos e o
+   * olho não distingue o que é um objeto de verdade do que é só um assunto.
+   *
+   * Sem caixa, o que separa é o ESPAÇO e a régua fina embaixo do título — que
+   * é como página impressa boa faz há quinhentos anos. Sobra ar, o texto ganha
+   * peso, e a caixa passa a ser exceção com sentido.
+   *
+   * Ligue quando o conteúdo é uma PEÇA e não um trecho: um formulário que se
+   * preenche e envia, um pacote que se compra, um painel que se opera. Se você
+   * não consegue dizer por que aquilo é um objeto, não é.
+   */
+  caixa?: boolean
   children: ReactNode
 }) {
+  if (caixa) {
+    // Sem `overflow-hidden`: ele cortava qualquer coisa que precise sair da
+    // caixa — o primeiro caso foi a lista de resultados da busca de entrada de
+    // mercadoria, que sumia atrás da borda. O canto arredondado vem do próprio
+    // cabeçalho.
+    return (
+      <section className="realce rounded-norte border border-borda bg-superficie">
+        {titulo && (
+          <header className="flex items-center justify-between gap-3 rounded-t-norte border-b border-borda bg-superficie-2 px-4 py-2.5">
+            <h2 className="text-sm font-semibold text-tinta">{titulo}</h2>
+            {acao}
+          </header>
+        )}
+        <div className="p-4">{children}</div>
+      </section>
+    )
+  }
+
   return (
-    // Sem `overflow-hidden`: ele cortava qualquer coisa que precise sair do
-    // cartão — e o primeiro caso foi a lista de resultados da busca de
-    // entrada de mercadoria, que sumia atrás da borda. O canto arredondado
-    // vem do próprio cabeçalho agora.
-    // `realce` = fio de luz na borda de cima + sombra. E o que separa
-    // "retangulo com borda" de objeto com espessura.
-    <section className="realce rounded-norte border border-borda bg-superficie">
+    <section className="flex flex-col gap-3">
       {titulo && (
-        <header className="flex items-center justify-between gap-3 rounded-t-norte border-b border-borda bg-superficie-2 px-4 py-2.5">
-          <h2 className="text-sm font-semibold text-tinta">{titulo}</h2>
+        <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-borda pb-2">
+          {/* Sem a caixa em volta, é o TÍTULO que segura a seção — então ele
+              cresce e ganha peso. Título fraco sem caixa vira texto solto. */}
+          <h2 className="text-[15px] font-bold tracking-tight text-tinta">{titulo}</h2>
           {acao}
         </header>
       )}
-      <div className="p-4">{children}</div>
+      {children}
     </section>
   )
 }

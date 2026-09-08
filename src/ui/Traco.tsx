@@ -33,7 +33,7 @@
 // 2. Opacidade baixa e SEMPRE `pointer-events-none`: é papel de parede, não
 //    pode roubar clique de nada.
 
-type Arte = 'bussola' | 'relevo'
+type Arte = 'bussola' | 'relevo' | 'estrelas'
 
 // Duas versões de cada arte, como a marca tem: POSITIVA (traço escuro sobre
 // branco) e NEGATIVA (traço claro sobre preto). A negativa não foi gerada de
@@ -44,6 +44,9 @@ type Arte = 'bussola' | 'relevo'
 const ARQUIVO: Record<Arte, string> = {
   bussola: '/norte-bussola',
   relevo: '/norte-relevo',
+  // Carta celeste: pontos ligados por linha. E a mesma ideia de "rede" que o
+  // plano vende, em linguagem de mapa antigo.
+  estrelas: '/norte-estrelas',
 }
 
 export function Traco({

@@ -263,7 +263,10 @@
   --shadow-norte-alta: var(--sombra-alta);
 
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    var(--fonte-texto), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-display:
+    var(--fonte-display), var(--fonte-texto), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, monospace;
 }
 
@@ -284,6 +287,17 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Título é display; texto é texto.
+   Aplicado no elemento, e não classe por classe, porque assim vale para todo
+   h1..h3 que já existe e para os que vierem — e ninguém precisa lembrar. */
+h1,
+h2,
+h3,
+.display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
 }
 
 /* Números em coluna precisam alinhar. Vale para tabela, total, dinheiro. */

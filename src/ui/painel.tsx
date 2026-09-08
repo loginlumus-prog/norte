@@ -93,15 +93,34 @@ export function Numero({
     )
   }
 
+  // As fichas de apoio saíram da caixa. Antes eram quatro retângulos com
+  // borda, fundo e sombra, um do lado do outro — e quatro caixas iguais na
+  // horizontal é o desenho mais comum de painel e o mais sem graça: o olho lê
+  // "formulário".
+  //
+  // Aqui elas são NÚMEROS SOLTOS separados por um fio. O que dá estrutura é o
+  // espaço e o alinhamento, não a moldura. E o único bloco fechado da faixa
+  // passa a ser o principal, que é justamente o que a gente quer que se veja.
+  //
+  // A cor de situação, que era uma faixa na borda esquerda da caixa, virou um
+  // ponto ao lado do rótulo: sem caixa não há borda onde pintar, e o ponto lê
+  // melhor de longe do que um fio de 3px.
+  const ponto =
+    tom === 'bom' ? 'bg-bom-vivo'
+    : tom === 'atencao' ? 'bg-atencao-vivo'
+    : tom === 'critico' ? 'bg-critico-vivo'
+    : ''
+  void faixa
+
   return (
-    <div
-      className={cx(
-        'realce flex flex-col gap-0.5 rounded-norte border border-borda bg-superficie p-3.5',
-        faixa,
-      )}
-    >
-      <span className="text-xs font-medium text-tinta-3">{rotulo}</span>
-      <span className="numero text-2xl font-bold tracking-tight text-tinta">{valor}</span>
+    <div className="flex flex-col gap-0.5 border-borda px-4 py-1 sm:border-l">
+      <span className="flex items-center gap-1.5 text-xs font-medium text-tinta-3">
+        {ponto && <span aria-hidden className={cx('size-1.5 shrink-0 rounded-full', ponto)} />}
+        {rotulo}
+      </span>
+      <span className="numero text-[26px] leading-tight font-bold tracking-tight text-tinta">
+        {valor}
+      </span>
       <span className="flex flex-wrap items-baseline gap-x-2 text-xs">
         {detalhe && <span className="text-tinta-2">{detalhe}</span>}
         {c && Number.isFinite(c.pct) && (
@@ -174,12 +193,36 @@ export function Ranque({
 /* ── Seção ────────────────────────────────────────────────── */
 
 /** Agrupa o painel por assunto, que é como o dono pensa. */
-export function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
+export function Secao({
+  titulo,
+  resumo,
+  acao,
+  children,
+}: {
+  titulo: string
+  /** Uma linha explicando a seção. Só onde ela não é óbvia pelo título. */
+  resumo?: string
+  acao?: ReactNode
+  children: ReactNode
+}) {
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="font-mono text-xs font-semibold tracking-widest text-tinta-3 uppercase">
-        {titulo}
-      </h2>
+    <section className="flex flex-col gap-4">
+      {/* O título da seção era uma etiquetinha em versalete de 12px, cinza.
+          Isso funcionava porque cada bloco vinha dentro de uma caixa, e a
+          caixa fazia a separação. Tirando as caixas, quem tem que segurar a
+          página é a TIPOGRAFIA — então ele cresce e ganha peso.
+
+          É a diferença entre uma tela que parece um formulário e uma que
+          parece uma publicação. */}
+      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h2 className="text-[22px] leading-tight font-bold tracking-[-0.02em] text-balance text-tinta">
+            {titulo}
+          </h2>
+          {resumo && <p className="text-sm text-tinta-2">{resumo}</p>}
+        </div>
+        {acao}
+      </header>
       {children}
     </section>
   )

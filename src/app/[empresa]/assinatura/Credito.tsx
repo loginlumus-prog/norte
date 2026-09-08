@@ -46,6 +46,16 @@ export function Credito({
   const acabou = saldoCent <= 0
   const tom = acabou ? 'text-critico' : saldoCent <= 1000 ? 'text-atencao' : 'text-tinta'
 
+  // A barra mede o saldo contra a COTA DO MÊS, não contra um teto inventado.
+  // É a régua que a pessoa já tem na cabeça: "o plano me dá R$ 120, e eu
+  // estou com quanto disso?". Passar da cota (recarregou a mais) enche a
+  // barra e continua legível, em vez de estourar para fora.
+  const cotaCent = Math.max(inclusoMensal * 100, 1)
+  const cheio = Math.max(0, Math.min(100, (saldoCent / cotaCent) * 100))
+  const consumoDiaCent = Math.round(gasto30Cent / 30)
+  // Onde o consumo de UM dia cai dentro da barra: dá escala ao que se gasta.
+  const fatiaDoDia = Math.min(100, (consumoDiaCent / cotaCent) * 100)
+
   return (
     <div className="flex flex-col gap-4">
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
@@ -88,6 +98,43 @@ export function Credito({
           </span>
         </div>
       </div>
+
+      {inclusoMensal > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <div
+            className="relative h-3 overflow-hidden rounded-full bg-superficie-3"
+            role="img"
+            aria-label={`Saldo de ${brl(saldoCent)} de uma cota mensal de ${brl(cotaCent)}.`}
+          >
+            <div
+              className={
+                'h-full rounded-full transition-[width] ' +
+                (acabou ? 'bg-critico-vivo' : cheio < 20 ? 'bg-atencao-vivo' : 'bg-bom-vivo')
+              }
+              style={{ width: `${Math.max(cheio, saldoCent > 0 ? 2 : 0)}%` }}
+            />
+            {/* O risco do consumo de um dia. Sem ele a barra diz "quanto
+                resta" e não diz "resta por quanto tempo", que é a pergunta. */}
+            {consumoDiaCent > 0 && fatiaDoDia < 100 && (
+              <span
+                aria-hidden
+                className="absolute inset-y-0 w-px bg-tinta opacity-40"
+                style={{ left: `${fatiaDoDia}%` }}
+              />
+            )}
+          </div>
+          <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-tinta-3">
+            <span>
+              {acabou
+                ? 'sem saldo'
+                : `${Math.round(cheio)}% da cota do mês (${brl(cotaCent)})`}
+            </span>
+            {consumoDiaCent > 0 && (
+              <span>o risco marca o consumo de um dia · {brl(consumoDiaCent)}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {podeMexer && inclusoMensal > 0 && (
         <form action={agir} className="flex flex-col gap-2 border-t border-borda-suave pt-3">

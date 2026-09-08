@@ -267,3 +267,124 @@ export function menorQueCabe(uso: { unidades: number; usuarios: number }): Plano
     ) ?? 'CORPORATIVO'
   )
 }
+
+// ─────────────────────────────────────────────────────────────
+// O QUE CADA PLANO ENTREGA — a lista, e a tabela de comparacao
+// ─────────────────────────────────────────────────────────────
+//
+// Uma fonte so, usada em dois lugares: os pontos dentro do cartao e a tabela
+// de comparacao embaixo. Duas listas separadas divergem — e divergir aqui e
+// prometer na tabela o que o cartao nao dá.
+
+export type Recurso = {
+  titulo: string
+  grupo: 'Operação' | 'Dinheiro' | 'Assistente' | 'Estrutura'
+  /** Em quais planos ele existe. */
+  em: Plano[]
+  /** Quando o recurso e quantitativo, o numero de cada plano. */
+  detalhe?: Partial<Record<Plano, string>>
+  /** Aparece na lista curta do cartao. O resto so na tabela. */
+  destaque?: boolean
+}
+
+const TODOS_OS_PLANOS: Plano[] = ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
+const COM_AGENTE: Plano[] = ['BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
+const DE_REDE: Plano[] = ['REDE', 'CORPORATIVO']
+
+export const RECURSOS: Recurso[] = [
+  // ── Operação ──
+  {
+    titulo: 'Balcão, caixa e sangria',
+    grupo: 'Operação',
+    em: TODOS_OS_PLANOS,
+    destaque: true,
+  },
+  { titulo: 'Produto com grade de cor e tamanho', grupo: 'Operação', em: TODOS_OS_PLANOS },
+  { titulo: 'Estoque, entrada de mercadoria e balanço', grupo: 'Operação', em: TODOS_OS_PLANOS },
+  { titulo: 'Ficha do cliente com histórico', grupo: 'Operação', em: TODOS_OS_PLANOS },
+  { titulo: 'Programa de pontos', grupo: 'Operação', em: TODOS_OS_PLANOS },
+  { titulo: 'Nota fiscal (NFC-e e NF-e)', grupo: 'Operação', em: TODOS_OS_PLANOS },
+  { titulo: 'Encomenda e entrega', grupo: 'Operação', em: TODOS_OS_PLANOS },
+
+  // ── Dinheiro ──
+  { titulo: 'Financeiro com DRE do mês', grupo: 'Dinheiro', em: TODOS_OS_PLANOS, destaque: true },
+  { titulo: 'Contas a pagar e recorrentes', grupo: 'Dinheiro', em: TODOS_OS_PLANOS },
+  { titulo: 'Metas e comissão por vendedor', grupo: 'Dinheiro', em: COM_AGENTE },
+  { titulo: 'Crediário próprio, com juros e cobrança', grupo: 'Dinheiro', em: DE_REDE, destaque: true },
+
+  // ── Assistente ──
+  {
+    titulo: 'Assistente no WhatsApp',
+    grupo: 'Assistente',
+    em: COM_AGENTE,
+    destaque: true,
+  },
+  {
+    titulo: 'Crédito de IA incluso',
+    grupo: 'Assistente',
+    em: COM_AGENTE,
+    detalhe: {
+      BALCAO_AGENTE: 'R$ 120/mês',
+      REDE: 'R$ 350/mês',
+      CORPORATIVO: 'R$ 800/mês',
+    },
+    destaque: true,
+  },
+  { titulo: 'Relatório sozinho, de manhã e à noite', grupo: 'Assistente', em: COM_AGENTE },
+  { titulo: 'Ele avisa quando falta peça ou some cliente', grupo: 'Assistente', em: COM_AGENTE },
+  { titulo: 'Ele propõe reposição e você confirma', grupo: 'Assistente', em: COM_AGENTE },
+
+  // ── Estrutura ──
+  {
+    titulo: 'Unidades',
+    grupo: 'Estrutura',
+    em: TODOS_OS_PLANOS,
+    detalhe: {
+      BALCAO: '1',
+      BALCAO_AGENTE: '1',
+      REDE: '5 (+R$ 249 cada)',
+      CORPORATIVO: 'à vontade',
+    },
+    destaque: true,
+  },
+  {
+    titulo: 'Pessoas com acesso',
+    grupo: 'Estrutura',
+    em: TODOS_OS_PLANOS,
+    detalhe: {
+      BALCAO: '5',
+      BALCAO_AGENTE: '5',
+      REDE: '30',
+      CORPORATIVO: 'à vontade',
+    },
+    destaque: true,
+  },
+  { titulo: 'Estoque e caixa separados por loja', grupo: 'Estrutura', em: DE_REDE, destaque: true },
+  { titulo: 'Painel consolidado da rede', grupo: 'Estrutura', em: DE_REDE },
+  { titulo: 'Livro de auditoria de tudo que mexe', grupo: 'Estrutura', em: TODOS_OS_PLANOS },
+  {
+    titulo: 'Site, tráfego e condução do negócio',
+    grupo: 'Estrutura',
+    em: ['CORPORATIVO'],
+    destaque: true,
+  },
+  { titulo: 'Atendimento direto com a gente', grupo: 'Estrutura', em: ['CORPORATIVO'] },
+]
+
+/** Qual plano a gente RECOMENDA. É onde a conta fecha melhor dos dois lados. */
+export const RECOMENDADO: Plano = 'REDE'
+
+export function temRecurso(r: Recurso, p: Plano): boolean {
+  return r.em.includes(p)
+}
+
+/** Os pontos do cartão: os de destaque que o plano tem. */
+export function destaquesDe(p: Plano): { titulo: string; detalhe?: string }[] {
+  return RECURSOS.filter((r) => r.destaque && temRecurso(r, p)).map((r) => ({
+    titulo: r.titulo,
+    detalhe: r.detalhe?.[p],
+  }))
+}
+
+/** Os grupos, na ordem, para a tabela. */
+export const GRUPOS: Recurso['grupo'][] = ['Operação', 'Dinheiro', 'Assistente', 'Estrutura']
