@@ -490,25 +490,35 @@ export default function Inicio() {
         }
       >
 
-        {/* A LOJISTA RECORTADA, grande e encostada na borda direita.
+        {/* A LOJISTA RECORTADA, saindo pela borda direita.
             É o movimento que faltava: foto sem fundo pode sair da grade — ser
-            cortada pela borda da seção e ficar atrás de um elemento e na
+            cortada pela borda da tela e ficar atrás de um elemento e na
             frente de outro. Foto retangular nunca faz isso, porque retângulo
             obedece a grade.
 
-            No CANTO e não no meio: no meio ela ficava debaixo das bolhas e as
-            duas coisas se estragavam. Encostada na direita, ela ocupa a
-            margem que sobra fora da coluna de conteúdo (que para em 6xl), e a
-            conversa fica inteira do lado de cá.
+            ── os dois cortes, e por que só um deles serve ──
+            Ela é maior que a seção, então alguma coisa dela vai ser cortada.
+            Cortar em CIMA (ancorar embaixo) come a cabeça — e cabeça cortada
+            não parece profundidade, parece imagem mal encaixada. Ancorada no
+            TOPO, o rosto fica inteiro e quem sai do quadro é a perna, que é
+            como uma pessoa realmente sai de um enquadramento.
 
-            Só a partir de 1280px: em tela menor não existe essa margem, e ela
-            passaria por cima da conversa. */}
+            ── e por que boa parte dela fica FORA da tela ──
+            O translate-x empurra mais de um terço da largura dela para fora
+            da direita. Silhueta que cabe inteira no canto vira adesivo
+            colado; passando da borda, o olho completa o corpo que não vê e
+            entende que ela está NA FRENTE do plano da tela. Foi por isso que
+            a seção ganhou altura (py-40): é o que deixa ela grande e ainda
+            assim mostrar até a coxa antes do corte.
+
+            Só a partir de 1280px: em tela menor não existe a margem fora da
+            coluna de conteúdo, e ela passaria por cima da conversa. */}
         {/* O halo atrás dela. Sem ele, o recorte encosta no fundo escuro e
             some pelas bordas — com ele, a silhueta se destaca e o olho lê
             "está na frente", que é a sensação de profundidade. */}
         <span
           aria-hidden
-          className="pointer-events-none absolute right-0 bottom-0 z-0 hidden h-[46rem] w-[34rem] translate-x-[14%] xl:block 2xl:h-[52rem]"
+          className="pointer-events-none absolute top-0 right-0 z-0 hidden h-[46rem] w-[34rem] translate-x-[28%] xl:block 2xl:h-[52rem]"
           style={{
             background:
               'radial-gradient(22rem 26rem at 52% 62%, color-mix(in srgb, var(--marca) 34%, transparent) 0%, transparent 72%)',
@@ -520,10 +530,10 @@ export default function Inicio() {
           aria-hidden
           width={620}
           height={827}
-          className="pointer-events-none absolute right-0 bottom-0 z-0 hidden h-[46rem] w-auto max-w-none translate-x-[26%] object-contain object-bottom drop-shadow-[0_40px_90px_rgb(0_0_0/0.75)] xl:block 2xl:h-[52rem] 2xl:translate-x-[20%]"
+          className="pointer-events-none absolute top-6 right-0 z-0 hidden h-[54rem] w-auto max-w-none translate-x-[40%] object-contain object-top drop-shadow-[0_40px_90px_rgb(0_0_0/0.75)] xl:block 2xl:h-[58rem] 2xl:translate-x-[34%]"
         />
 
-        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 md:grid-cols-[1fr_1.05fr] md:py-28">
+        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 py-24 md:grid-cols-[1fr_1.05fr] md:py-40">
           <div className="flex flex-col gap-5">
             <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
               O que só o Norte faz

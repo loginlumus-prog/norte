@@ -79,13 +79,31 @@ export function ConversaFlutuante() {
             >
               <div
                 className={
-                  'max-w-[27rem] rounded-2xl px-4 py-2.5 backdrop-blur-md ' +
+                  'max-w-[27rem] rounded-2xl px-4 py-2.5 backdrop-blur-xl ' +
                   (dele
-                    ? 'rounded-br-md bg-bom-vivo/22 text-right shadow-[0_8px_32px_-12px_rgb(16_184_102/0.5)]'
-                    : 'rounded-bl-md bg-white/[0.07] shadow-[0_8px_32px_-14px_rgb(0_0_0/0.8)]')
+                    ? 'rounded-br-md text-right shadow-[0_10px_36px_-10px_rgb(0_0_0/0.6)]'
+                    : 'rounded-bl-md shadow-[0_10px_36px_-10px_rgb(0_0_0/0.7)]')
                 }
+                // O fundo precisa de CORPO, não só de desfoque.
+                //
+                // A versão anterior era branco a 7% com blur médio: sobre o
+                // azul liso funcionava, e sobre a FOTO da lojista parou de
+                // funcionar — a pele clara e a blusa branca subiam o fundo
+                // atrás do texto e o contraste caía para menos de 3:1.
+                //
+                // Desfoque não resolve contraste: ele borra a imagem, mas
+                // mantém a luminosidade média dela. Quem resolve é opacidade.
+                // Aqui o fundo é o próprio azul-noite a 78%, que garante um
+                // piso escuro em cima de qualquer coisa, e o blur continua
+                // para a bolha não virar retângulo chapado.
+                style={{
+                  background: dele
+                    ? 'color-mix(in srgb, var(--bom) 62%, rgb(6 12 26 / 0.86))'
+                    : 'color-mix(in srgb, var(--nav) 78%, rgb(0 0 0 / 0.5))',
+                  border: '1px solid rgb(255 255 255 / 0.09)',
+                }}
               >
-                <p className="text-[13px] leading-relaxed text-white/90">{f.texto}</p>
+                <p className="text-[13px] leading-relaxed text-white">{f.texto}</p>
                 {f.destaque && (
                   <p className="mt-1.5 border-t border-white/12 pt-1.5 text-[13px] leading-relaxed font-semibold text-sol-claro">
                     {f.destaque}
