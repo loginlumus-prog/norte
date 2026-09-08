@@ -34,32 +34,57 @@ const TROCA = 2600
 
 export function HeroRolante() {
   const [ativa, setAtiva] = useState(0)
+  // Enquanto for falso, TODAS as frases aparecem legíveis e nenhuma é apagada.
+  // É isso que cumpre a regra "nada nasce invisível": sem JavaScript, com o
+  // JavaScript ainda carregando, ou com movimento reduzido, a lista inteira se
+  // lê. O rodízio é um acréscimo, não a condição de existir.
+  const [rodando, setRodando] = useState(false)
 
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const menos = window.matchMedia('(prefers-reduced-motion: reduce)')
+    if (menos.matches) return
+
+    setRodando(true)
     const t = setInterval(() => setAtiva((i) => (i + 1) % FRASES.length), TROCA)
-    return () => clearInterval(t)
+
+    // Ouve a preferência DEPOIS de montar também: quem liga "menos movimento"
+    // com a página aberta tinha o carrossel continuando para sempre.
+    const parar = () => {
+      if (menos.matches) {
+        clearInterval(t)
+        setRodando(false)
+      }
+    }
+    menos.addEventListener('change', parar)
+
+    return () => {
+      clearInterval(t)
+      menos.removeEventListener('change', parar)
+    }
   }, [])
 
   return (
     <ul className="flex flex-col gap-1.5 sm:gap-2">
       {FRASES.map((f, i) => {
-        const acesa = i === ativa
+        // Só apaga as outras quando o rodízio está de fato rodando.
+        const acesa = !rodando || i === ativa
         return (
           <li
             key={f}
             className="flex items-center gap-2.5 transition-[opacity,transform] duration-500 sm:gap-3"
             style={{
-              opacity: acesa ? 1 : 0.28,
+              opacity: acesa ? 1 : 0.3,
               transform: acesa ? 'translateX(0)' : 'translateX(-4px)',
             }}
           >
-            {/* O marcador: só ele muda de cor. Triângulo, não bolinha —
-                bolinha lê como item de lista, seta lê como "é esta". */}
+            {/* O marcador existe sempre — o que muda é a cor, nunca a
+                presença. Transparente seria "nasce invisível" de novo, só que
+                num pedaço pequeno. Triângulo e não bolinha: bolinha lê como
+                item de lista, seta lê como "é esta". */}
             <span
               aria-hidden
               className="shrink-0 text-[10px] transition-colors duration-500"
-              style={{ color: acesa ? 'var(--sol-claro)' : 'transparent' }}
+              style={{ color: rodando && i !== ativa ? 'var(--nav-borda)' : 'var(--sol-claro)' }}
             >
               ▶
             </span>

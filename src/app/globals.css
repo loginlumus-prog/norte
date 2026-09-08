@@ -308,8 +308,18 @@ h2,
 h3,
 .display {
   font-family: var(--font-display);
-  letter-spacing: -0.02em;
+  /* Serifada não quer o tracking fechado que uma grotesca pede: as serifas já
+     costuram as letras, e apertar mais fecha as contraformas. */
+  letter-spacing: -0.01em;
+  font-weight: 400;
   color: var(--titulo);
+}
+
+/* O título gigante da capa é o único lugar do peso 200: em tamanho grande a
+   haste fina vira elegância, e em tamanho pequeno viraria borrão. */
+h1 {
+  font-weight: 300;
+  letter-spacing: -0.02em;
 }
 
 /* Números em coluna precisam alinhar. Vale para tabela, total, dinheiro. */

@@ -307,7 +307,7 @@ export default function Inicio() {
         <div className="mx-auto grid max-w-6xl gap-6 px-5 py-14 sm:grid-cols-3">
           {DOR.map(([t, d]) => (
             <div key={t} className="flex flex-col gap-2">
-              <h3 className="text-lg font-bold tracking-tight text-tinta">{t}</h3>
+              <h3 className="text-lg font-bold tracking-tight">{t}</h3>
               <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
             </div>
           ))}
@@ -352,7 +352,7 @@ export default function Inicio() {
                 (r) => (
                   <span
                     key={r}
-                    className="rounded-full border border-borda bg-fundo px-3 py-1 text-xs font-semibold text-tinta-2"
+                    className="rounded-full border border-borda px-3 py-1 text-xs font-semibold text-tinta-2"
                   >
                     {r}
                   </span>
@@ -375,7 +375,7 @@ export default function Inicio() {
             {FAZ.map((f) => (
               <div
                 key={f.t}
-                className="flex flex-col gap-2 rounded-norte border border-borda bg-superficie p-5"
+                className="flex flex-col gap-2 border-t border-borda pt-4"
               >
                 <h3 className="text-base font-bold text-tinta">{f.t}</h3>
                 <p className="text-sm leading-relaxed text-tinta-2">{f.d}</p>
@@ -556,7 +556,7 @@ export default function Inicio() {
             {PERGUNTAS.map((q) => (
               <details
                 key={q.p}
-                className="group rounded-norte border border-borda bg-superficie px-5 py-4"
+                className="group border-b border-borda py-4"
               >
                 <summary className="cursor-pointer list-none text-sm font-bold text-tinta">
                   <span className="flex items-center justify-between gap-4">
