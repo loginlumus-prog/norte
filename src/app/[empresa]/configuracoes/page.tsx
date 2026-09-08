@@ -8,6 +8,7 @@ import { Tira, Falta } from '@/ui/painel'
 import { MENU } from '@/ui/menu'
 import type { Tema } from '@/ui/TrocaTema'
 import { Modulos } from './Modulos'
+import { Pontos } from './Pontos'
 
 const REGIME: Record<string, string> = {
   MEI: 'MEI', SIMPLES: 'Simples Nacional',
@@ -25,7 +26,19 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
       select: {
         razaoSocial: true, documento: true, inscricaoEstadual: true, regime: true,
         email: true, telefone: true, whatsapp: true, agenteNome: true, ramo: true,
+        pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true,
       },
+    }),
+  )
+
+  // O faturamento dos ultimos 30 dias serve para uma coisa so: transformar
+  // "3%" em "R$ 1.240 por mes". Porcento e abstrato; o numero em reais e
+  // que faz a pessoa parar e pensar antes de ligar o programa.
+  const desde = new Date(Date.now() - 30 * 864e5)
+  const faturamento = await comoOrg(sessao.orgId, (db) =>
+    db.venda.aggregate({
+      where: { situacao: 'CONCLUIDA', criadaEm: { gte: desde } },
+      _sum: { total: true },
     }),
   )
 
@@ -65,6 +78,23 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
           <Modulos empresa={slug} ligados={empresa.modulos} />
         ) : (
           <Aviso nivel="neutro">Só quem responde pela empresa muda isto.</Aviso>
+        )}
+      </Cartao>
+
+      <Cartao titulo="Cliente junta pontos">
+        {pode(sessao, 'empresa.configurar') ? (
+          <Pontos
+            empresa={slug}
+            inicial={{
+              ativo: dados?.pontosAtivo ?? false,
+              porReal: Number(dados?.pontosPorReal ?? 1),
+              pontoVale: Number(dados?.pontoVale ?? 0),
+              minimo: dados?.pontosMinimo ?? 0,
+            }}
+            faturamentoMes={Number(faturamento._sum.total ?? 0)}
+          />
+        ) : (
+          <Aviso nivel="neutro">So quem responde pela empresa muda isto.</Aviso>
         )}
       </Cartao>
 

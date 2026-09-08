@@ -846,6 +846,122 @@ secao('Clientes')
   }
 }
 
+// ── pontos ───────────────────────────────────────────────────
+secao('Pontos')
+
+{
+  const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
+  const balconista = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+
+  if (!dona.ok || !balconista.ok) {
+    ok('login de quem esta conferindo', false, 'nao entrou')
+  } else {
+    const peca = await comoOrg(A, (db) =>
+      db.variacao.findFirst({
+        where: { produto: { nome: 'Camiseta canelada' } },
+        orderBy: { codigo: 'asc' },
+        select: { id: true },
+      }),
+    )
+    const cli = await criarCliente(dona.sessao, { nome: `Pontuda ${Date.now()}` })
+    const clienteId = cli.ok ? cli.clienteId : ''
+    ok('cliente novo comeca com zero ponto', cli.ok)
+
+    // Uma venda de R$ 49,90 a 1 ponto por real da 49 pontos — nao 50.
+    const v1 = await registrarVenda(balconista.sessao, {
+      unidadeId: 'uni-a1',
+      clienteId,
+      itens: [{ variacaoId: peca!.id, quantidade: 1 }],
+      pagamentos: [{ forma: 'DINHEIRO', valor: 49.9 }],
+    })
+    ok('a venda pontua o cliente', v1.ok && v1.pontosGanhos === 49,
+       v1.ok ? `${v1.pontosGanhos} pontos` : v1.motivo)
+
+    const saldo1 = await comoOrg(A, (db) =>
+      db.cliente.findUnique({ where: { id: clienteId }, select: { pontos: true } }))
+    ok('e o saldo do cliente sobe', saldo1?.pontos === 49, `${saldo1?.pontos}`)
+
+    // Venda SEM cliente nao pode pontuar ninguem.
+    const semDono = await registrarVenda(balconista.sessao, {
+      unidadeId: 'uni-a1',
+      itens: [{ variacaoId: peca!.id, quantidade: 1 }],
+      pagamentos: [{ forma: 'DINHEIRO', valor: 49.9 }],
+    })
+    ok('venda sem cliente nao gera ponto', semDono.ok && semDono.pontosGanhos === 0)
+
+    // O minimo do exemplo e 100: com 49 ainda nao da para usar.
+    const cedoDemais = await registrarVenda(balconista.sessao, {
+      unidadeId: 'uni-a1',
+      clienteId,
+      pontosUsar: 40,
+      itens: [{ variacaoId: peca!.id, quantidade: 1 }],
+      pagamentos: [{ forma: 'DINHEIRO', valor: 48.7 }],
+    })
+    ok('abaixo do minimo o balcao nao deixa usar',
+       !cedoDemais.ok && cedoDemais.motivo === 'pontos_recusados',
+       !cedoDemais.ok && cedoDemais.motivo === 'pontos_recusados' ? cedoDemais.recado : '')
+
+    // A TRAVA QUE IMPORTA: pedir mais pontos do que tem.
+    const chute = await registrarVenda(balconista.sessao, {
+      unidadeId: 'uni-a1',
+      clienteId,
+      pontosUsar: 99_999,
+      itens: [{ variacaoId: peca!.id, quantidade: 1 }],
+      pagamentos: [{ forma: 'DINHEIRO', valor: 0.01 }],
+    })
+    ok('pedir 99.999 pontos que nao existem e RECUSADO',
+       !chute.ok && chute.motivo === 'pontos_recusados')
+
+    const saldoIntacto = await comoOrg(A, (db) =>
+      db.cliente.findUnique({ where: { id: clienteId }, select: { pontos: true } }))
+    ok('e o saldo fica intacto depois da recusa', saldoIntacto?.pontos === 49)
+
+    // Junta ate passar do minimo e usa de verdade.
+    for (let i = 0; i < 2; i++) {
+      await registrarVenda(balconista.sessao, {
+        unidadeId: 'uni-a1',
+        clienteId,
+        itens: [{ variacaoId: peca!.id, quantidade: 1 }],
+        pagamentos: [{ forma: 'DINHEIRO', valor: 49.9 }],
+      })
+    }
+    const antes = await comoOrg(A, (db) =>
+      db.cliente.findUnique({ where: { id: clienteId }, select: { pontos: true } }))
+    ok('juntou passando do minimo', (antes?.pontos ?? 0) >= 100, `${antes?.pontos} pontos`)
+
+    // 100 pontos a R$ 0,03 = R$ 3,00 de abatimento.
+    const usando = await registrarVenda(balconista.sessao, {
+      unidadeId: 'uni-a1',
+      clienteId,
+      pontosUsar: 100,
+      itens: [{ variacaoId: peca!.id, quantidade: 1 }],
+      pagamentos: [{ forma: 'DINHEIRO', valor: 46.9 }],
+    })
+    ok('100 pontos abatem R$ 3,00 e a venda fecha', usando.ok && usando.total === 46.9,
+       usando.ok ? `R$ ${usando.total}` : usando.motivo)
+    ok('e os 100 pontos saem do saldo', usando.ok && usando.pontosUsados === 100)
+
+    // Pontua em cima do que PAGOU, nao do preco cheio.
+    ok('a mesma venda pontua sobre o que sobrou, nao sobre o cheio',
+       usando.ok && usando.pontosGanhos === 46, usando.ok ? `${usando.pontosGanhos}` : '')
+
+    // O extrato bate com o saldo — e essa e a conferencia que vale.
+    const conta = await comoOrg(A, (db) =>
+      db.movimentoPontos.aggregate({ where: { clienteId }, _sum: { pontos: true } }))
+    const agora = await comoOrg(A, (db) =>
+      db.cliente.findUnique({ where: { id: clienteId }, select: { pontos: true } }))
+    ok('o saldo bate com a soma do extrato',
+       (conta._sum.pontos ?? 0) === agora?.pontos,
+       `extrato ${conta._sum.pontos} x saldo ${agora?.pontos}`)
+
+    // A empresa vizinha nao ve movimento de ponto desta.
+    const vizinha = await comoOrg(B, (db) =>
+      db.movimentoPontos.count({ where: { clienteId } }))
+    ok('a vizinha nao ve o extrato de pontos desta empresa', vizinha === 0)
+  }
+}
+
+
 // ── equipe ───────────────────────────────────────────────────
 secao('Equipe')
 

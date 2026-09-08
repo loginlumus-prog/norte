@@ -40,6 +40,12 @@ export async function semearExemplo(cliente: Client, passo: (t: string) => void)
         ('org-exemplo-b', 'Empresa Vizinha', 'vizinha', 'REDE', 'ATIVA', '#7A4B12',
          'alimentacao', ARRAY['crediario','notaFiscal','multiUnidade'], now(), null, now(), now());
 
+      -- A de exemplo tem programa de pontos ligado; a Vizinha nao. E assim que
+      -- se ve, lado a lado, o balcao com e sem a oferta de pontos na tela.
+      update orgs set pontos_ativo = true, pontos_por_real = 1, ponto_vale = 0.03,
+                      pontos_minimo = 100
+                where id = 'org-exemplo-a';
+
       insert into unidades (id, org_id, nome, ativa, eh_deposito, criada_em, atualizada_em) values
         ('uni-a1', 'org-exemplo-a', 'Loja Centro',   true, false, now(), now()),
         ('uni-a2', 'org-exemplo-a', 'Loja Shopping', true, false, now(), now()),

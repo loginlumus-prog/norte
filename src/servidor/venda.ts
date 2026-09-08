@@ -41,6 +41,13 @@ import { comoOrg } from './banco'
 import { exigir, pode, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, reais, multiplicar } from './dinheiro'
+import {
+  programaDe,
+  conferirUso,
+  pontosGanhos as calcularGanho,
+  RECADO_PONTOS,
+  DESLIGADO,
+} from './pontos'
 import type { FormaPagamento } from '@prisma/client'
 
 export type ItemDaVenda = {
@@ -62,6 +69,8 @@ export type NovaVenda = {
   unidadeId: string
   caixaId?: string | null
   clienteId?: string | null
+  /** Pontos que o cliente quer gastar nesta venda. Confere no servidor. */
+  pontosUsar?: number
   itens: ItemDaVenda[]
   pagamentos: PagamentoDaVenda[]
   /** Desconto sobre o total da venda, além dos descontos por item. */
@@ -70,12 +79,20 @@ export type NovaVenda = {
 }
 
 export type ResultadoVenda =
-  | { ok: true; vendaId: string; numero: number; total: number }
+  | {
+      ok: true
+      vendaId: string
+      numero: number
+      total: number
+      pontosUsados: number
+      pontosGanhos: number
+    }
   | { ok: false; motivo: 'sem_itens' }
   | { ok: false; motivo: 'sem_estoque'; faltando: { descricao: string; pedido: number; tem: number }[] }
   | { ok: false; motivo: 'pagamento_nao_fecha'; total: number; pago: number }
   | { ok: false; motivo: 'caixa_fechado' }
   | { ok: false; motivo: 'desconto_acima_do_teto'; percentual: number; teto: number }
+  | { ok: false; motivo: 'pontos_recusados'; recado: string }
 
 
 export async function registrarVenda(
@@ -89,9 +106,13 @@ export async function registrarVenda(
   return comoOrg(sessao.orgId, async (db) => {
     const empresa = await db.org.findUnique({
       where: { id: sessao.orgId },
-      select: { descontoMaximo: true },
+      select: {
+        descontoMaximo: true,
+        pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true,
+      },
     })
     const teto = Number(empresa?.descontoMaximo ?? 0)
+    const programa = empresa ? programaDe(empresa) : DESLIGADO
 
     // ── 1. o que está sendo vendido, com preço e custo de agora ──
     const variacoes = await db.variacao.findMany({
@@ -172,14 +193,61 @@ export async function registrarVenda(
       }
     }
 
+    // ── 3.2 os pontos que o cliente resolveu gastar ──
+    // Entram AQUI, depois da trava de desconto, e isso é a decisão que
+    // importa: se entrassem antes, o cliente gastando os pontos DELE derrubaria
+    // o total abaixo do teto e a venda seria recusada por "desconto acima do
+    // teto". O teto existe para o julgamento de quem vende — quanto a pessoa
+    // pode abrir mão por conta própria. Ponto não é julgamento de ninguém: é
+    // saldo, e quem confere o saldo é o banco, logo abaixo.
+    let pontosUsados = 0
+    let pontosCent = 0
+
+    if ((v.pontosUsar ?? 0) > 0) {
+      if (!v.clienteId) {
+        return {
+          ok: false as const,
+          motivo: 'pontos_recusados' as const,
+          recado: RECADO_PONTOS.sem_cliente,
+        }
+      }
+      // O saldo vem do banco, agora, dentro da transação. O número que a tela
+      // mandou é pedido: quem monta o POST na mão pede 90.000 pontos.
+      const dono = await db.cliente.findUnique({
+        where: { id: v.clienteId },
+        select: { pontos: true },
+      })
+      const r = conferirUso(
+        Math.floor(v.pontosUsar ?? 0),
+        dono?.pontos ?? 0,
+        totalCent,
+        programa,
+      )
+      if (!r.ok) {
+        return {
+          ok: false as const,
+          motivo: 'pontos_recusados' as const,
+          recado: RECADO_PONTOS[r.motivo],
+        }
+      }
+      pontosUsados = r.pontos
+      pontosCent = r.centavos
+    }
+
+    const aPagarCent = totalCent - pontosCent
+
     const subtotal = reais(subtotalCent)
     const desconto = reais(descontoCent)
-    const total = reais(totalCent)
+    const total = reais(aPagarCent)
+
+    // O que a venda gera de pontos sai do que foi REALMENTE pago. Pontuar em
+    // cima do preço cheio faria a loja pagar duas vezes pelo mesmo desconto.
+    const ganhos = v.clienteId ? calcularGanho(aPagarCent, programa) : 0
 
     // Comparação entre inteiros: ou bate, ou não bate. Sem "quase".
     // E um centavo de diferença trava a venda de propósito — caixa que fecha
     // "quase certo" todo dia é caixa que ninguém confere mais.
-    if (pagoCent !== totalCent) {
+    if (pagoCent !== aPagarCent) {
       return {
         ok: false as const,
         motivo: 'pagamento_nao_fecha' as const,
@@ -222,6 +290,9 @@ export async function registrarVenda(
         situacao: 'CONCLUIDA',
         subtotal,
         desconto,
+        descontoPontos: reais(pontosCent),
+        pontosUsados,
+        pontosGanhos: ganhos,
         total,
         observacoes: v.observacoes,
         concluidaEm: new Date(),
@@ -256,6 +327,47 @@ export async function registrarVenda(
       if (!r.ok) throw new EstoqueSumiu(i.variacaoId)
     }
 
+    // ── 6.1 os pontos ──
+    // Duas escritas: o extrato (que é a verdade) e o saldo do cliente (que é
+    // a conta rápida que o balcão lê). Dentro da MESMA transação da venda: se
+    // qualquer coisa aqui falhar, a venda não aconteceu — o contrário criaria
+    // venda com pontos cobrados e não creditados, ou pior, o inverso.
+    if (v.clienteId && (pontosUsados > 0 || ganhos > 0)) {
+      // Uma escrita só para o saldo, com o delta. Ler-somar-gravar abriria
+      // corrida entre duas vendas do mesmo cliente em caixas diferentes.
+      const depois = await db.cliente.update({
+        where: { id: v.clienteId },
+        data: { pontos: { increment: ganhos - pontosUsados } },
+        select: { pontos: true },
+      })
+
+      // O extrato é reconstruído de trás para frente: o saldo final é o que o
+      // banco acabou de devolver, e cada linha guarda onde ela parou.
+      const linhas: { tipo: 'USOU' | 'GANHOU'; pontos: number }[] = []
+      if (pontosUsados > 0) linhas.push({ tipo: 'USOU', pontos: -pontosUsados })
+      if (ganhos > 0) linhas.push({ tipo: 'GANHOU', pontos: ganhos })
+
+      let saldo = depois.pontos
+      const paraGravar = [...linhas].reverse().map((l) => {
+        const registro = { ...l, saldoDepois: saldo }
+        saldo -= l.pontos
+        return registro
+      })
+
+      await db.movimentoPontos.createMany({
+        data: paraGravar.map((l) => ({
+          orgId: sessao.orgId,
+          clienteId: v.clienteId!,
+          tipo: l.tipo,
+          pontos: l.pontos,
+          saldoDepois: l.saldoDepois,
+          vendaId: venda.id,
+          motivo: `Venda ${numero}`,
+          quem: sessao.nome,
+        })),
+      })
+    }
+
     await db.auditoria.create({
       data: {
         orgId: sessao.orgId,
@@ -273,7 +385,14 @@ export async function registrarVenda(
       },
     })
 
-    return { ok: true as const, vendaId: venda.id, numero, total }
+    return {
+      ok: true as const,
+      vendaId: venda.id,
+      numero,
+      total,
+      pontosUsados,
+      pontosGanhos: ganhos,
+    }
   })
 }
 

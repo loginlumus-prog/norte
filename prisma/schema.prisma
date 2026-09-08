@@ -76,6 +76,24 @@ model Org {
   /// relatorio nunca acusa. Zero = balcao nao da desconto nenhum.
   descontoMaximo Decimal @default(10) @map("desconto_maximo") @db.Decimal(5, 2)
 
+  // ── programa de pontos ───────────────────────────────────
+  /// Desligado ate a loja decidir. Programa de fidelidade e divida: cada ponto
+  /// entregue e desconto que a loja vai pagar depois. Ligar por engano seria
+  /// comecar a dever sem querer.
+  pontosAtivo Boolean @default(false) @map("pontos_ativo")
+
+  /// Quantos pontos cada R$ 1 gasto gera. 1 e o normal.
+  pontosPorReal Decimal @default(1) @map("pontos_por_real") @db.Decimal(8, 2)
+
+  /// Quanto UM ponto vale de desconto, em reais. E aqui que a loja decide o
+  /// tamanho da conta: a 0,03 (R$ 3 a cada 100 pontos) o programa devolve 3%;
+  /// a 0,10, devolve 10% e come a margem inteira de muita peca.
+  pontoVale Decimal @default(0) @map("ponto_vale") @db.Decimal(8, 4)
+
+  /// Quanto a pessoa precisa juntar antes de poder usar. Sem um minimo, o
+  /// programa vira 3% de desconto em toda venda e deixa de ser fidelidade.
+  pontosMinimo Int @default(0) @map("pontos_minimo")
+
   unidades  Unidade[]
   usuarios  Usuario[]
   acessos   Acesso[]
@@ -84,6 +102,7 @@ model Org {
   cobranca  Cobranca?
 
   categorias     Categoria[]
+  movimentosPontos MovimentoPontos[]
   eixos          Eixo[]
   opcoes         Opcao[]
   produtos       Produto[]
@@ -626,7 +645,17 @@ model Cliente {
   observacoes String?
   ativo       Boolean @default(true)
 
+  /// Saldo de pontos. Numero inteiro de proposito: meio ponto nao existe para
+  /// quem esta no balcao, e arredondar na hora de mostrar produz aquele
+  /// "eu tinha 100" que ninguem consegue explicar depois.
+  ///
+  /// O saldo e uma CONTA, nao a verdade: a verdade e a soma dos movimentos.
+  /// Ele existe porque o balcao precisa da resposta em um golpe, com a pessoa
+  /// esperando — mas quem discorda dele ganha, e a conferencia bate os dois.
+  pontos Int @default(0)
+
   vendas Venda[]
+  movimentosPontos MovimentoPontos[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   conversas ConversaAgente[]
@@ -719,6 +748,17 @@ model Venda {
 
   subtotal Decimal @default(0) @db.Decimal(12, 2)
   desconto Decimal @default(0) @db.Decimal(12, 2)
+
+  /// Desconto pago com pontos. SEPARADO do desconto acima de proposito: aquele
+  /// e julgamento de quem vende (e por isso tem teto e exige permissao), este
+  /// e o cliente gastando o que ja e dele. Somados num campo so, o relatorio
+  /// diria que a equipe deu desconto demais quando na verdade o programa de
+  /// pontos e que estava caro.
+  descontoPontos Decimal @default(0) @map("desconto_pontos") @db.Decimal(12, 2)
+
+  pontosUsados  Int @default(0) @map("pontos_usados")
+  pontosGanhos  Int @default(0) @map("pontos_ganhos")
+
   total    Decimal @default(0) @db.Decimal(12, 2)
 
   observacoes String?
@@ -1279,4 +1319,43 @@ model MensagemAgente {
 
   @@index([orgId, conversaId, criadaEm])
   @@map("mensagens_agente")
+}
+
+/// O extrato de pontos.
+///
+/// O saldo em `clientes.pontos` e uma conta rapida; a verdade e a soma daqui.
+/// Sem extrato, "eu tinha 400 pontos" nao tem resposta — e ponto e dinheiro
+/// para quem juntou, com a diferenca de que quem juntou nao tem comprovante
+/// nenhum em casa. Aqui so entra linha; nada e reescrito.
+model MovimentoPontos {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  clienteId String  @map("cliente_id")
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  tipo TipoPontos
+
+  /// Positivo quando ganha, negativo quando usa. Sempre o delta.
+  pontos      Int
+  saldoDepois Int @map("saldo_depois")
+
+  /// A venda que gerou ou gastou. Nulo em ajuste feito na mao.
+  vendaId String? @map("venda_id")
+
+  motivo String?
+  quem   String
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, clienteId, criadoEm])
+  @@map("movimentos_pontos")
+}
+
+enum TipoPontos {
+  GANHOU
+  USOU
+  /// Correcao na mao, feita por gente. Sempre com motivo escrito.
+  AJUSTE
 }

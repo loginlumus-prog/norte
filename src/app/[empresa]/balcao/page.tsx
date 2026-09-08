@@ -9,6 +9,8 @@ import { Aviso, Situacao } from '@/ui/base'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import type { Tema } from '@/ui/TrocaTema'
 import { Balcao } from './Balcao'
+import { comoOrg } from '@/servidor/banco'
+import { programaDe, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
 
 export default async function BalcaoPagina({
@@ -28,6 +30,18 @@ export default async function BalcaoPagina({
   const onde = await escolherUnidade(sessao, empresa, pedida, 'venda.criar')
   const unidadeId = onde.unidadeId ?? onde.opcoes[0]?.id ?? null
   const unidadeNome = onde.opcoes.find((u) => u.id === unidadeId)?.nome ?? ''
+
+  // O programa de pontos vem do servidor junto com a tela. A conta de quanto
+  // a pessoa pode abater roda no navegador, para responder no ato — mas ela é
+  // refeita no servidor na hora de fechar, porque o que vem do navegador é
+  // pedido, nunca ordem.
+  const conf = await comoOrg(sessao.orgId, (db) =>
+    db.org.findUnique({
+      where: { id: sessao.orgId },
+      select: { pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true },
+    }),
+  )
+  const programa = conf ? programaDe(conf) : DESLIGADO
 
   const caixa = unidadeId ? await caixaAberto(sessao, unidadeId) : null
   const conferencia = caixa ? await conferirCaixa(sessao, caixa.id) : null
@@ -84,6 +98,7 @@ export default async function BalcaoPagina({
             unidadeId={unidadeId}
             caixaId={caixa.id}
             unidadeNome={unidadeNome}
+            programa={programa}
           />
           <p className="text-xs text-tinta-3">
             <a

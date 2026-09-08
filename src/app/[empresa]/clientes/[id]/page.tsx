@@ -94,6 +94,47 @@ export default async function FichaCliente({
           />
         </div>
 
+        {cliente.pontos > 0 || cliente.movimentosPontos.length > 0 ? (
+          <Cartao titulo="Pontos">
+            <div className="flex flex-wrap items-baseline justify-between gap-3 pb-2">
+              <span className="text-sm text-tinta-2">Saldo agora</span>
+              <span className="numero text-2xl font-bold text-tinta">{cliente.pontos}</span>
+            </div>
+            {/* O extrato, e nao so o saldo: numero sozinho nao responde
+                "por que caiu", e quem juntou ponto nao tem comprovante em casa. */}
+            <ul className="flex flex-col">
+              {cliente.movimentosPontos.map((m) => (
+                <li
+                  key={m.id}
+                  className="flex items-center justify-between gap-3 border-b border-borda-suave py-2 last:border-0"
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm text-tinta">
+                      {m.tipo === 'GANHOU' ? 'Ganhou' : m.tipo === 'USOU' ? 'Usou' : 'Ajuste'}
+                      {m.motivo ? ` — ${m.motivo}` : ''}
+                    </span>
+                    <span className="text-xs text-tinta-3">{data(m.criadoEm)}</span>
+                  </span>
+                  <span className="flex shrink-0 items-baseline gap-3">
+                    <span
+                      className={
+                        m.pontos >= 0
+                          ? 'numero text-sm font-semibold text-bom'
+                          : 'numero text-sm font-semibold text-tinta-2'
+                      }
+                    >
+                      {m.pontos > 0 ? `+${m.pontos}` : m.pontos}
+                    </span>
+                    <span className="numero w-12 text-right text-xs text-tinta-3">
+                      {m.saldoDepois}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Cartao>
+        ) : null}
+
         <Cartao titulo="Compras">
           {cliente.vendas.length === 0 ? (
             <Vazio>

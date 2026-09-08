@@ -62,5 +62,37 @@ export async function semearClientes(cliente: Client, orgId: string) {
     n++
   }
 
+  // ── os pontos das compras que acabaram de ser ligadas ──────
+  // Nasce do historico de verdade, uma linha por venda, com o saldo andando.
+  // Semear so o saldo final deixaria a ficha com um numero que a propria tela
+  // nao consegue explicar — e explicar o saldo e metade do que o extrato faz.
+  const { rows: prog } = await cliente.query<{ ativo: boolean; por_real: string }>(
+    'select pontos_ativo as ativo, pontos_por_real as por_real from orgs where id = $1',
+    [orgId],
+  )
+  if (prog[0]?.ativo) {
+    const porReal = Number(prog[0].por_real)
+    for (const { id } of ids) {
+      const { rows: compras } = await cliente.query<{ id: string; total: string; criada_em: Date }>(
+        `select id, total, criada_em from vendas
+          where cliente_id = $1 and situacao = 'CONCLUIDA' order by criada_em asc`,
+        [id],
+      )
+      let saldo = 0
+      for (const v of compras) {
+        const ganhou = Math.floor((Math.round(Number(v.total) * 100) * porReal) / 100)
+        if (ganhou <= 0) continue
+        saldo += ganhou
+        await cliente.query(
+          `insert into movimentos_pontos
+             (id, org_id, cliente_id, tipo, pontos, saldo_depois, venda_id, motivo, quem, criado_em)
+           values ($1, $2, $3, 'GANHOU', $4, $5, $6, 'Compra no balcão', 'sistema', $7)`,
+          [`mp-${v.id}`, orgId, id, ganhou, saldo, v.id, v.criada_em],
+        )
+      }
+      if (saldo > 0) await cliente.query('update clientes set pontos = $1 where id = $2', [saldo, id])
+    }
+  }
+
   return ids.length
 }

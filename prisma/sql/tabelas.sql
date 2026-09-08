@@ -52,6 +52,9 @@ CREATE TYPE "SituacaoProposta" AS ENUM ('AGUARDANDO', 'CONFIRMADA', 'RECUSADA', 
 -- CreateEnum
 CREATE TYPE "TipoRecibo" AS ENUM ('COBRANCA_RECUPERADA', 'CLIENTE_VOLTOU', 'ESTOQUE_DESTRAVADO', 'RUPTURA_EVITADA', 'DIVERGENCIA_ACHADA');
 
+-- CreateEnum
+CREATE TYPE "TipoPontos" AS ENUM ('GANHOU', 'USOU', 'AJUSTE');
+
 -- CreateTable
 CREATE TABLE "orgs" (
     "id" TEXT NOT NULL,
@@ -75,6 +78,10 @@ CREATE TABLE "orgs" (
     "logo_url" TEXT,
     "cor_marca" TEXT,
     "desconto_maximo" DECIMAL(5,2) NOT NULL DEFAULT 10,
+    "pontos_ativo" BOOLEAN NOT NULL DEFAULT false,
+    "pontos_por_real" DECIMAL(8,2) NOT NULL DEFAULT 1,
+    "ponto_vale" DECIMAL(8,4) NOT NULL DEFAULT 0,
+    "pontos_minimo" INTEGER NOT NULL DEFAULT 0,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizada_em" TIMESTAMP(3) NOT NULL,
 
@@ -330,6 +337,7 @@ CREATE TABLE "clientes" (
     "cep" TEXT,
     "observacoes" TEXT,
     "ativo" BOOLEAN NOT NULL DEFAULT true,
+    "pontos" INTEGER NOT NULL DEFAULT 0,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizado_em" TIMESTAMP(3) NOT NULL,
 
@@ -382,6 +390,9 @@ CREATE TABLE "vendas" (
     "situacao" "SituacaoVenda" NOT NULL DEFAULT 'ABERTA',
     "subtotal" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "desconto" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "desconto_pontos" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "pontos_usados" INTEGER NOT NULL DEFAULT 0,
+    "pontos_ganhos" INTEGER NOT NULL DEFAULT 0,
     "total" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "observacoes" TEXT,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -617,6 +628,22 @@ CREATE TABLE "mensagens_agente" (
     CONSTRAINT "mensagens_agente_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "movimentos_pontos" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "cliente_id" TEXT NOT NULL,
+    "tipo" "TipoPontos" NOT NULL,
+    "pontos" INTEGER NOT NULL,
+    "saldo_depois" INTEGER NOT NULL,
+    "venda_id" TEXT,
+    "motivo" TEXT,
+    "quem" TEXT NOT NULL,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "movimentos_pontos_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "orgs_slug_key" ON "orgs"("slug");
 
@@ -790,6 +817,9 @@ CREATE UNIQUE INDEX "conversas_agente_agente_id_telefone_key" ON "conversas_agen
 
 -- CreateIndex
 CREATE INDEX "mensagens_agente_org_id_conversa_id_criada_em_idx" ON "mensagens_agente"("org_id", "conversa_id", "criada_em");
+
+-- CreateIndex
+CREATE INDEX "movimentos_pontos_org_id_cliente_id_criado_em_idx" ON "movimentos_pontos"("org_id", "cliente_id", "criado_em");
 
 -- AddForeignKey
 ALTER TABLE "unidades" ADD CONSTRAINT "unidades_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -997,4 +1027,10 @@ ALTER TABLE "mensagens_agente" ADD CONSTRAINT "mensagens_agente_org_id_fkey" FOR
 
 -- AddForeignKey
 ALTER TABLE "mensagens_agente" ADD CONSTRAINT "mensagens_agente_conversa_id_fkey" FOREIGN KEY ("conversa_id") REFERENCES "conversas_agente"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "movimentos_pontos" ADD CONSTRAINT "movimentos_pontos_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "movimentos_pontos" ADD CONSTRAINT "movimentos_pontos_cliente_id_fkey" FOREIGN KEY ("cliente_id") REFERENCES "clientes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

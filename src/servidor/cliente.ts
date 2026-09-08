@@ -195,6 +195,7 @@ export type ClienteNaLista = {
   compras: number
   gastou: number
   ultimaCompra: Date | null
+  pontos: number
 }
 
 /**
@@ -229,7 +230,7 @@ export async function listarClientes(
       orderBy: { nome: 'asc' },
       take: 200,
       select: {
-        id: true, nome: true, telefone: true, ativo: true,
+        id: true, nome: true, telefone: true, ativo: true, pontos: true,
         vendas: {
           where: { situacao: 'CONCLUIDA' },
           select: { total: true, criadaEm: true },
@@ -242,6 +243,7 @@ export async function listarClientes(
       nome: c.nome,
       telefone: c.telefone,
       ativo: c.ativo,
+      pontos: c.pontos,
       compras: c.vendas.length,
       gastou: c.vendas.reduce((s, v) => s + Number(v.total), 0),
       ultimaCompra: c.vendas.reduce<Date | null>(
@@ -263,6 +265,17 @@ export async function acharCliente(sessao: Sessao, clienteId: string) {
         id: true, nome: true, telefone: true, documento: true, email: true,
         nascimento: true, endereco: true, numero: true, bairro: true,
         cidade: true, estado: true, cep: true, observacoes: true, ativo: true,
+        pontos: true,
+        // O extrato de pontos. Sem ele, "eu tinha 400" nao tem resposta — e
+        // quem juntou nao tem comprovante nenhum em casa.
+        movimentosPontos: {
+          orderBy: { criadoEm: 'desc' },
+          take: 20,
+          select: {
+            id: true, tipo: true, pontos: true, saldoDepois: true,
+            motivo: true, criadoEm: true,
+          },
+        },
         vendas: {
           where: { situacao: 'CONCLUIDA' },
           orderBy: { criadaEm: 'desc' },

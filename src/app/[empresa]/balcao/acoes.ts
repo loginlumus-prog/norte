@@ -103,6 +103,7 @@ export async function fecharVenda(
     pagamentos: { forma: string; valor: number }[]
     desconto: number
     clienteId?: string | null
+    pontosUsar?: number
   },
 ) {
   const s = await exigirSessao(slug)
@@ -113,6 +114,7 @@ export async function fecharVenda(
     itens: dados.itens,
     desconto: dados.desconto,
     clienteId: dados.clienteId ?? null,
+    pontosUsar: dados.pontosUsar ?? 0,
     pagamentos: dados.pagamentos.map((p) => ({
       forma: p.forma as FormaPagamento,
       valor: p.valor,
@@ -162,6 +164,7 @@ export type ClienteNoBalcao = {
   compras: number
   gastou: number
   diasSemVir: number | null
+  pontos: number
 }
 
 export async function procurarClientes(
@@ -182,6 +185,7 @@ export async function procurarClientes(
       telefone: c.telefone,
       compras: c.compras,
       gastou: c.gastou,
+      pontos: c.pontos,
       diasSemVir: c.ultimaCompra
         ? Math.floor((Date.now() - c.ultimaCompra.getTime()) / 864e5)
         : null,
@@ -223,6 +227,7 @@ export async function cadastrarNoBalcao(
       telefone: telefone.trim() || null,
       compras: 0,
       gastou: 0,
+      pontos: 0,
       diasSemVir: null,
     },
   }

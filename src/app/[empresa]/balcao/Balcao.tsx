@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { EscolherCliente } from './Cliente'
 import type { ClienteNoBalcao } from './acoes'
+import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
 import { Botao, Campo, Aviso, Situacao, cx } from '@/ui/base'
 import { procurar, fecharVenda, type Achado } from './acoes'
 
@@ -36,11 +37,13 @@ export function Balcao({
   unidadeId,
   caixaId,
   unidadeNome,
+  programa,
 }: {
   slug: string
   unidadeId: string
   caixaId: string | null
   unidadeNome: string
+  programa: Programa
 }) {
   const [termo, setTermo] = useState('')
   const [achados, setAchados] = useState<Achado[]>([])
@@ -48,6 +51,7 @@ export function Balcao({
   const [pagos, setPagos] = useState<{ forma: string; valor: number }[]>([])
   const [desconto, setDesconto] = useState(0)
   const [cliente, setCliente] = useState<ClienteNoBalcao | null>(null)
+  const [pontosUsar, setPontosUsar] = useState(0)
   const [recado, setRecado] = useState<{ nivel: 'bom' | 'critico'; texto: string } | null>(null)
   const [indo, comecar] = useTransition()
 
@@ -68,7 +72,14 @@ export function Balcao({
 
   const totalCent = carrinho.reduce((s, l) => s + Math.round(cent(l.preco) * l.quantidade), 0)
   const descontoCent = cent(desconto)
-  const aPagarCent = Math.max(totalCent - descontoCent, 0)
+  const comDescontoCent = Math.max(totalCent - descontoCent, 0)
+
+  // A oferta de pontos é calculada em cima do valor JÁ com desconto, e sobre o
+  // saldo menos o que já foi marcado — senão, ao aplicar, a tela ofereceria os
+  // mesmos pontos de novo.
+  const oferta = cliente ? oferecer(cliente.pontos, comDescontoCent, programa) : null
+  const pontosCent = valorEmCentavos(pontosUsar, programa)
+  const aPagarCent = Math.max(comDescontoCent - pontosCent, 0)
   const pagoCent = pagos.reduce((s, p) => s + cent(p.valor), 0)
   const faltaCent = aPagarCent - pagoCent
   // Troco só existe em dinheiro. Cartão e Pix não devolvem diferença — se
@@ -118,6 +129,7 @@ export function Balcao({
     setPagos([])
     setDesconto(0)
     setCliente(null)
+    setPontosUsar(0)
     setTermo('')
     setAchados([])
     focarBusca()
@@ -131,6 +143,7 @@ export function Balcao({
         caixaId,
         desconto,
         clienteId: cliente?.id ?? null,
+        pontosUsar,
         itens: carrinho.map((l) => ({
           variacaoId: l.id,
           quantidade: l.quantidade,
@@ -148,8 +161,18 @@ export function Balcao({
       })
 
       if (r.ok) {
-        setRecado({ nivel: 'bom', texto: `Venda ${r.numero} fechada — ${brl(r.total)}` })
+        // O ganho aparece no recado porque e a hora de falar: "voce ja tem
+        // 1.240 pontos" dito no balcao e o que faz a pessoa voltar. Guardado
+        // so no banco, o programa nao existe para quem compra.
+        const ganhou = r.pontosGanhos > 0 ? ` · ganhou ${r.pontosGanhos} pontos` : ''
+        setRecado({
+          nivel: 'bom',
+          texto: `Venda ${r.numero} fechada — ${brl(r.total)}${ganhou}`,
+        })
         limpar()
+      } else if (r.motivo === 'pontos_recusados') {
+        setRecado({ nivel: 'critico', texto: r.recado })
+        setPontosUsar(0)
       } else if (r.motivo === 'sem_estoque') {
         setRecado({
           nivel: 'critico',
@@ -313,6 +336,52 @@ export function Balcao({
               className="numero w-24 rounded border border-borda bg-superficie px-2 py-1 text-sm"
             />
           </label>
+
+          {/* A oferta. Aparece sozinha, com o numero pronto: ninguem no balcao
+              vai abrir outra tela para descobrir quantos pontos a pessoa tem,
+              nem fazer a conta de quanto isso vale. Se nao aparecer aqui,
+              o programa de pontos nao existe na pratica. */}
+          {oferta?.pode && pontosUsar === 0 && (
+            <button
+              type="button"
+              onClick={() => setPontosUsar(oferta.pontos)}
+              className={
+                'flex items-center justify-between gap-2 rounded-norte border ' +
+                'border-bom-vivo bg-bom-fundo px-2.5 py-2 text-left'
+              }
+            >
+              <span className="flex flex-col">
+                <span className="text-xs font-semibold text-tinta">
+                  Tem {oferta.saldo} pontos
+                </span>
+                <span className="text-xs text-tinta-2">
+                  da {brl(oferta.centavos / 100)} de desconto
+                </span>
+              </span>
+              <span className="shrink-0 text-xs font-bold text-bom">usar</span>
+            </button>
+          )}
+
+          {pontosUsar > 0 && (
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="text-tinta-2">{pontosUsar} pontos</span>
+              <span className="flex items-baseline gap-2">
+                <span className="numero text-bom">- {brl(pontosCent / 100)}</span>
+                <button
+                  type="button"
+                  onClick={() => setPontosUsar(0)}
+                  className="text-xs text-tinta-3 hover:text-tinta"
+                  aria-label="Nao usar os pontos"
+                >
+                  x
+                </button>
+              </span>
+            </div>
+          )}
+
+          {oferta && !oferta.pode && oferta.recado && (
+            <span className="text-xs text-tinta-3">{oferta.recado}</span>
+          )}
         </div>
 
         <div className="flex items-baseline justify-between">

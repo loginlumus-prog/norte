@@ -1,0 +1,74 @@
+'use server'
+
+// SERVER ACTION É ENDEREÇO PÚBLICO — vale a mesma regra do resto: a checagem
+// inteira acontece aqui, mesmo que a tela já tenha escondido o formulário.
+
+import { revalidatePath } from 'next/cache'
+import { exigirSessao } from '@/servidor/pagina'
+import { exigir } from '@/servidor/permissao'
+import { comoOrg } from '@/servidor/banco'
+
+export type EstadoPontos = { erro?: string; ok?: string }
+
+const numero = (v: FormDataEntryValue | null): number => {
+  const n = Number(String(v ?? '').replace(',', '.'))
+  return Number.isFinite(n) ? n : 0
+}
+
+export async function salvarPontos(
+  _antes: EstadoPontos,
+  form: FormData,
+): Promise<EstadoPontos> {
+  const slug = String(form.get('empresa') ?? '')
+  const s = await exigirSessao(slug)
+
+  // Programa de fidelidade é compromisso financeiro da empresa. Quem mexe é
+  // quem responde pelo dinheiro, não quem opera o caixa.
+  exigir(s, 'empresa.configurar')
+
+  const ativo = form.get('ativo') != null
+  const porReal = numero(form.get('porReal'))
+  const pontoVale = numero(form.get('pontoVale'))
+  const minimo = Math.max(0, Math.floor(numero(form.get('minimo'))))
+
+  // Só reclama quando o programa está ligado: desligar com os campos zerados
+  // tem que funcionar, senão a pessoa fica presa dentro do que ligou.
+  if (ativo) {
+    if (porReal <= 0) return { erro: 'Quantos pontos cada real gera? Precisa ser maior que zero.' }
+    if (pontoVale <= 0) return { erro: 'Quanto vale um ponto? Precisa ser maior que zero.' }
+
+    // Teto duro. Não é preciosismo: a 1 ponto por real, R$ 1,00 o ponto
+    // devolveria 100% da venda — a loja daria a mercadoria e ainda ficaria
+    // devendo. Um zero a mais digitado sem querer faz exatamente isso.
+    if (porReal * pontoVale > 0.5) {
+      return {
+        erro: `Isso devolveria ${(porReal * pontoVale * 100).toFixed(0)}% de cada venda. Confira os dois números.`,
+      }
+    }
+  }
+
+  await comoOrg(s.orgId, async (db) => {
+    await db.org.update({
+      where: { id: s.orgId },
+      data: { pontosAtivo: ativo, pontosPorReal: porReal, pontoVale, pontosMinimo: minimo },
+    })
+    await db.auditoria.create({
+      data: {
+        orgId: s.orgId,
+        usuarioId: s.usuarioId,
+        quem: s.nome,
+        acao: 'pontos.configurou',
+        alvoTipo: 'empresa',
+        alvoId: s.orgId,
+        // O livro guarda o desenho do programa, não só "mexeu": é o que
+        // permite responder depois por que o saldo de alguém rendeu diferente.
+        motivo: ativo
+          ? `${porReal} ponto(s)/R$, ponto vale R$ ${pontoVale}, mínimo ${minimo}`
+          : 'desligou',
+      },
+    })
+  })
+
+  revalidatePath(`/${slug}/configuracoes`)
+  return { ok: ativo ? 'Programa de pontos salvo.' : 'Programa de pontos desligado.' }
+}
