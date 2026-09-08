@@ -172,22 +172,6 @@ const PERGUNTAS = [
   },
 ]
 
-// Os cinco ramos que se revezam no topo.
-//
-// A ordem importa: o CSS acende o nome pelo nth-child, com o mesmo atraso
-// negativo da cena correspondente. Mexeu aqui, mexe lá.
-//
-// Todas as artes estão no mesmo quadro de 1284×768 com a cena ancorada
-// embaixo e à direita — é isso que faz a troca ser uma dissolvência limpa,
-// e não um pulo de tamanho a cada volta.
-const CENAS = [
-  { src: '/img/cena-moda.png', rotulo: 'Moda' },
-  { src: '/img/cena-calcados.png', rotulo: 'Calçados' },
-  { src: '/img/cena-sorveteria.png', rotulo: 'Sorveteria' },
-  { src: '/img/cena-lanchonete.png', rotulo: 'Lanchonete' },
-  { src: '/img/cena-deposito.png', rotulo: 'Distribuição' },
-]
-
 // A régua de fatos do topo. Cada um destes é provado mais embaixo na própria
 // página — preço de tabela na seção de planos, "de 1 a 40 lojas" em para quem
 // é, e o teto do assistente na seção dele. Nenhum número de mercado: a gente
@@ -208,17 +192,20 @@ const PROVAS: [string, string][] = [
   ],
 ]
 
-// A faixa de ramos que sangra a tela. Quatro cenas de comércios diferentes,
-// porque "serve para o seu ramo também" é mais rápido de mostrar do que de
-// explicar. O rótulo é HTML por cima — modelo de imagem escreve garrancho.
+// Os cinco ramos da fileira, no mesmo traço do topo. "Serve para o seu ramo
+// também" é mais rápido de mostrar do que de explicar — e desenho mostra
+// isso melhor que foto, porque foto de loja é sempre a loja de alguém.
+//
+// Os cinco arquivos foram levados à MESMA proporção (1,24:1) na origem: sem
+// isso, dentro de caixas iguais, uma cena apareceria grande e a vizinha
+// minúscula. O rótulo é HTML embaixo da arte — modelo de imagem escreve
+// garrancho.
 const RAMOS = [
-  // 'pos' é o object-position de cada uma. A foto é panorâmica e o quadro da
-  // faixa é quase quadrado: cortar no centro deixava metade de rua vazia e a
-  // dona da loja espremida na borda.
-  { src: '/img/dona-b.jpg', rotulo: 'Moda', pos: '62% center' },
-  { src: '/img/sapataria.jpg', rotulo: 'Calçados', pos: 'center' },
-  { src: '/img/sorveteria.jpg', rotulo: 'Alimentação', pos: 'center' },
-  { src: '/img/distribuidora.jpg', rotulo: 'Distribuição', pos: '50% 62%' },
+  { src: '/img/cena-moda.png', rotulo: 'Moda' },
+  { src: '/img/cena-calcados.png', rotulo: 'Calçados' },
+  { src: '/img/cena-sorveteria.png', rotulo: 'Sorveteria' },
+  { src: '/img/cena-lanchonete.png', rotulo: 'Lanchonete' },
+  { src: '/img/cena-deposito.png', rotulo: 'Distribuição' },
 ]
 
 const QUEM: [string, string][] = [
@@ -348,30 +335,31 @@ export default function Inicio() {
           Foto de loja é sempre a loja de ALGUÉM: quem vende sapato olha uma
           arara de roupa e entende "não é para mim". Desenho vetorial plano é
           universal — a pessoa vê o balcão, a prateleira e a maquininha, e
-          preenche o resto com o próprio negócio. E aqui ele não fica parado:
-          cinco ramos se revezam no mesmo lugar, e a lista de nomes embaixo do
-          botão acende junto com a cena. Quem vende sorvete se reconhece na
-          terceira volta, sem a página precisar dizer.
+          preenche o resto com o próprio negócio.
 
-          A foto continua existindo — em "para quem é", onde o assunto é
-          exatamente que são comércios REAIS e diferentes. Desenho conta como
-          funciona; foto conta para quem é.
+          ── e por que UMA cena, e não o ramo dela ──
+          O topo não responde "para quem é" — isso é a seção seguinte, e lá os
+          ramos aparecem um a um. Aqui a pergunta é "o que é isto", e a
+          resposta é o universo inteiro numa imagem: a dona no balcão e, em
+          volta dela, os cartões do que o sistema faz — venda, estoque,
+          conversa no WhatsApp, resultado, dinheiro girando.
 
           ── o fundo ──
-          A mesma aurora da seção do assistente, agora com dois brilhos que
-          derivam por cima. O recorte das cenas é transparente de propósito:
-          é o que deixa a luz do fundo passar por baixo do desenho, em vez de
-          o desenho tapar a luz com um retângulo de tinta.
+          A mesma aurora da seção do assistente, com dois brilhos que derivam
+          por cima. O recorte da cena é transparente de propósito: é o que
+          deixa a luz do fundo passar por baixo do desenho, em vez de o desenho
+          tapar a luz com um retângulo de tinta.
 
           ── e nenhum texto dentro da arte ──
-          Modelo de imagem escreve garrancho, e a primeira tentativa do
-          projeto voltou com duas linhas de letra embaralhada. A imagem é
+          Modelo de imagem escreve garrancho, e a primeira tentativa do projeto
+          voltou com duas linhas de letra embaralhada. Por isso os cartões
+          flutuantes têm só forma: barra, bolha, caixa, etiqueta. A imagem é
           cena; a palavra é HTML. */}
       <section className="aurora emenda-base relative isolate overflow-hidden">
         <span aria-hidden className="brilhos pointer-events-none absolute inset-0 z-0" />
 
         <div className="relative z-10 mx-auto max-w-6xl px-5 py-16 md:py-20">
-          <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.12fr] lg:gap-6">
+          <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.05fr] lg:gap-8">
             <div className="flex max-w-2xl flex-col items-start gap-6">
               <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
                 Gestão + assistente de IA no WhatsApp
@@ -400,39 +388,23 @@ export default function Inicio() {
                   Ver o sistema por dentro
                 </a>
               </div>
-
-              {/* A LISTA DE RAMOS. Cada nome acende quando a cena dele está na
-                  tela — mesmo relógio, mesmos atrasos, no globals. Parada ela
-                  já é informação: são os cinco ramos, escritos. */}
-              <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-bold tracking-[0.14em] uppercase">
-                {CENAS.map((c) => (
-                  <li key={c.rotulo} className="ramo">
-                    {c.rotulo}
-                  </li>
-                ))}
-              </ul>
             </div>
 
-            {/* AS CENAS. Todas no mesmo quadro de 1284×768 e ancoradas embaixo
-                e à direita no arquivo, então trocam sem pular de lugar. Sangra
-                um pouco para fora da coluna à direita — a mesma sangria que a
-                conversa do assistente usa. */}
+            {/* A cena sangra um pouco para fora da coluna à direita — a mesma
+                sangria que a conversa do assistente usa. */}
             <div
               aria-hidden
-              className="cenas relative aspect-[1284/768] w-full lg:-mr-[16%] lg:w-[124%]"
+              className="respira relative aspect-[927/609] w-full lg:-mr-[12%] lg:w-[118%]"
             >
-              {CENAS.map((c, i) => (
-                <Image
-                  key={c.src}
-                  src={c.src}
-                  alt=""
-                  fill
-                  priority={i === 0}
-                  sizes="(max-width: 1024px) 100vw, 55vw"
-                  quality={90}
-                  className="cena object-contain object-bottom"
-                />
-              ))}
+              <Image
+                src="/img/cena-sistema.png"
+                alt=""
+                fill
+                priority
+                sizes="(max-width: 1024px) 100vw, 55vw"
+                quality={90}
+                className="object-contain object-bottom"
+              />
             </div>
           </div>
 
@@ -487,55 +459,69 @@ export default function Inicio() {
           A mesma ideia em três tempos, no desenho do resto da página:
 
             1. Olho, título e resumo, como em toda seção daqui para baixo.
-            2. UMA faixa de fotos de ponta a ponta da tela. Ela sai da coluna
-               de conteúdo de propósito: é a única peça da página que encosta
-               nas duas bordas, e é isso que faz "não é só loja de roupa" ser
-               entendido antes de qualquer texto ser lido.
+            2. UMA fileira de cinco ramos desenhados, que faz "não é só loja
+               de roupa" ser entendido antes de qualquer texto ser lido.
             3. A explicação embaixo, em três itens abertos separados por fio —
                exatamente a grade que a pessoa reencontra em "o que todo
                cliente tem".
 
-          O rótulo do ramo é HTML sobre a foto, nunca dentro dela, e vai sobre
-          um degradê escuro para o contraste não depender do que a foto tem
-          naquele canto. */}
+          A arte deixou de ser foto e passou a ser o mesmo desenho do topo:
+          quem vende sapato olha uma fotografia de arara de roupa e entende
+          "não é para mim". Desenho é universal — a pessoa vê o balcão e a
+          prateleira, e preenche o resto com o próprio negócio. */}
       <section className="bg-superficie">
-        <div className="mx-auto max-w-6xl px-5">
+        <div className="mx-auto max-w-6xl px-5 py-16">
           <Titulo
             olho="Para quem é"
             titulo="Comércio que vende no balcão e no WhatsApp"
             resumo="De uma loja de bairro à rede com dezenas de unidades — e não só loja de roupa."
           />
-        </div>
 
-        <div className="mt-9 grid grid-cols-2 lg:grid-cols-4">
+        {/* A FILEIRA DE RAMOS.
+            Cinco cenas no mesmo traço do topo — moda, calçados, sorveteria,
+            lanchonete e depósito. É a resposta visual para "não é só loja de
+            roupa", e ela chega antes de qualquer texto ser lido.
+
+            ── caixinhas, e não uma faixa só ──
+            Emendadas, as cinco viravam um mural: o olho lia uma cena comprida
+            e confusa em vez de cinco negócios diferentes. Separadas por 6px
+            elas continuam lendo como conjunto — perto o bastante para ser uma
+            fileira, longe o bastante para cada uma ser um lugar.
+
+            ── e por que todas as artes têm a MESMA proporção ──
+            Caixa igual com arte de proporção diferente dá uma cena grande e
+            outra minúscula do lado. Os cinco arquivos foram levados a 1,24:1
+            na origem (a lanchonete cortada, as outras com margem transparente)
+            — então dentro da caixa as cinco ocupam exatamente o mesmo lugar.
+
+            A sobra em cima é de propósito: a caixa é um pouco mais alta do que
+            a arte precisa, e a arte encosta embaixo. Sem isso o abajur fica
+            colado na borda de cima e parece cortado. */}
+        <div className="mt-9 grid grid-cols-2 gap-1.5 lg:grid-cols-5">
           {RAMOS.map((r) => (
-            <div key={r.rotulo} className="relative h-44 sm:h-64 lg:h-[21rem]">
-              <Image
-                src={r.src}
-                alt=""
-                aria-hidden
-                fill
-                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 60vw, 45vw"
-                quality={90}
-                className="object-cover"
-                style={{ objectPosition: r.pos }}
-              />
-              <span
-                aria-hidden
-                className="absolute inset-x-0 bottom-0 h-2/5"
-                style={{
-                  background: 'linear-gradient(to top, rgb(8 10 18 / 0.82) 0%, transparent 100%)',
-                }}
-              />
-              <span className="absolute bottom-3.5 left-4 text-[11px] font-bold tracking-[0.16em] text-white uppercase">
+            <div
+              key={r.rotulo}
+              className="aurora flex flex-col justify-end overflow-hidden rounded-norte last:col-span-2 lg:last:col-span-1"
+            >
+              <div className="relative aspect-[276/252] w-full">
+                <Image
+                  src={r.src}
+                  alt=""
+                  aria-hidden
+                  fill
+                  sizes="(max-width: 1024px) 50vw, 20vw"
+                  quality={90}
+                  className="object-contain object-bottom"
+                />
+              </div>
+              <span className="px-3.5 pt-2 pb-3 text-[11px] font-bold tracking-[0.16em] text-nav-tinta-2 uppercase">
                 {r.rotulo}
               </span>
             </div>
           ))}
         </div>
 
-        <div className="mx-auto max-w-6xl px-5 pt-10 pb-16">
-          <div className="grid gap-x-8 gap-y-7 sm:grid-cols-3">
+          <div className="mt-10 grid gap-x-8 gap-y-7 sm:grid-cols-3">
             {QUEM.map(([t, d]) => (
               <div key={t} className="flex flex-col gap-2 border-t border-borda pt-4">
                 <h3 className="text-base font-bold text-tinta">{t}</h3>
