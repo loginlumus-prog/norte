@@ -18,6 +18,7 @@
 
 import type { ReactNode } from 'react'
 import { Traco } from './Traco'
+import { GraficoDias } from './Grafico'
 import { cx } from './base'
 
 const brl = (v: number) =>
@@ -67,13 +68,14 @@ export function Numero({
   if (principal) {
     return (
       <div className="nav-fundo realce-alto relative flex flex-col gap-0.5 overflow-hidden rounded-norte p-3.5">
-        {/* Um pedaco da bussola no canto. Pequeno e cortado: aqui ela e
-            textura da ficha, nao figura — o numero e que tem que ser lido. */}
+        {/* O relevo na beira de baixo. Ele e uma linha de horizonte, e
+            horizonte embaixo de um numero le como base — a bussola, que e
+            redonda e centrada, competia com o valor pelo meio da ficha. */}
         <Traco
-          arte="bussola"
+          arte="relevo"
           sobre="escuro"
-          opacidade={0.18}
-          className="pointer-events-none absolute -top-14 -right-12 w-44 max-w-none"
+          opacidade={0.22}
+          className="pointer-events-none absolute inset-x-0 -bottom-2 w-full max-w-none"
         />
         <span className="relative text-xs font-medium text-nav-tinta-2">{rotulo}</span>
         <span className="numero relative text-3xl font-bold tracking-tight text-nav-tinta">
@@ -119,59 +121,13 @@ export function Barras({
   dados,
   titulo,
 }: {
-  dados: { dia: string; total: number }[]
+  dados: { dia: string; total: number; vendas: number }[]
   titulo: string
 }) {
-  if (dados.length === 0) {
-    return <p className="py-6 text-center text-sm text-tinta-3">Sem venda no período.</p>
-  }
-
-  const maior = Math.max(...dados.map((d) => d.total), 1)
-  const L = 4 // largura da barra
-  const G = 2 // respiro entre barras: sem ele viram um bloco só
-  const A = 56 // altura da área de desenho
-  const largura = dados.length * (L + G)
-
-  const dia = (iso: string) => {
-    const [, m, d] = iso.split('-')
-    return `${d}/${m}`
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <svg
-        viewBox={`0 0 ${largura} ${A}`}
-        preserveAspectRatio="none"
-        className="h-20 w-full"
-        role="img"
-        aria-label={`${titulo}. Maior dia: ${brl(maior)}.`}
-      >
-        {dados.map((d, i) => {
-          const h = Math.max((d.total / maior) * A, d.total > 0 ? 2 : 0)
-          return (
-            <rect
-              key={d.dia}
-              x={i * (L + G)}
-              y={A - h}
-              width={L}
-              height={h}
-              rx={1.5}
-              fill="var(--bom-vivo)"
-              opacity={d.total > 0 ? 1 : 0.2}
-            >
-              {/* tooltip nativo: acessível, sem uma linha de JavaScript */}
-              <title>{`${dia(d.dia)} — ${brl(d.total)}`}</title>
-            </rect>
-          )
-        })}
-      </svg>
-      <div className="flex justify-between text-xs text-tinta-3">
-        <span>{dia(dados[0]!.dia)}</span>
-        <span className="text-tinta-2">maior dia {brlCurto(maior)}</span>
-        <span>{dia(dados[dados.length - 1]!.dia)}</span>
-      </div>
-    </div>
-  )
+  // O desenho e a interacao moram no cliente (`GraficoDias`); esta funcao so
+  // guarda o lugar dele no painel, que continua sendo servidor.
+  void titulo
+  return <GraficoDias dados={dados} />
 }
 
 /* ── Ranque ───────────────────────────────────────────────── */

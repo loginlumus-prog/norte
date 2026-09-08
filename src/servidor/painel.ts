@@ -17,7 +17,7 @@ export type Resumo = {
   hoje: { vendas: number; total: number; ticket: number }
   mes: { vendas: number; total: number; ticket: number; custo: number }
   ontem: { total: number }
-  porDia: { dia: string; total: number }[]
+  porDia: { dia: string; total: number; vendas: number }[]
   porForma: { forma: string; total: number; vendas: number }[]
   porUnidade: { unidadeId: string; nome: string; total: number; vendas: number }[]
   porVendedor: { nome: string; total: number; vendas: number }[]
@@ -76,8 +76,14 @@ export async function resumoDoPainel(
         _sum: { total: true }, _count: true,
       }),
 
-      db.$queryRaw<{ dia: string; total: string }[]>`
-        select to_char(v.criada_em::date, 'YYYY-MM-DD') as dia, sum(v.total) as total
+      // Com a contagem junto: sem ela o grafico responde "quanto" e nao
+      // responde "de quantas vendas" — e dia de R$ 900 em uma venda e dia de
+      // R$ 900 em vinte sao dois dias completamente diferentes para quem
+      // decide o que fazer amanha.
+      db.$queryRaw<{ dia: string; total: string; vendas: number }[]>`
+        select to_char(v.criada_em::date, 'YYYY-MM-DD') as dia,
+               sum(v.total) as total,
+               count(*)::int as vendas
           from vendas v
          where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
            and v.criada_em >= ${trintaDias}
@@ -197,7 +203,7 @@ export async function resumoDoPainel(
         ticket: totaisMes._count ? totalMes / totaisMes._count : 0,
         custo: n(custoMes[0]?.custo),
       },
-      porDia: porDia.map((d) => ({ dia: d.dia, total: n(d.total) })),
+      porDia: porDia.map((d) => ({ dia: d.dia, total: n(d.total), vendas: n(d.vendas) })),
       porForma: porForma.map((f) => ({ forma: f.forma, total: n(f.total), vendas: n(f.vendas) })),
       porUnidade: porUnidade.map((u) => ({
         unidadeId: u.unidadeId, nome: u.nome, total: n(u.total), vendas: n(u.vendas),
