@@ -3,6 +3,7 @@ import Image from 'next/image'
 import { Marca, Simbolo } from '@/ui/Marca'
 import { Traco } from '@/ui/Traco'
 import { HeroRolante } from '@/ui/HeroRolante'
+import { ConversaFlutuante } from '@/ui/ConversaFlutuante'
 
 // A página de venda.
 //
@@ -420,26 +421,56 @@ export default function Inicio() {
         </div>
       </section>
 
-      {/* ── o agente ── */}
-      <section id="agente" className="scroll-mt-16 bg-nav">
-        <div className="mx-auto grid max-w-6xl gap-12 px-5 py-16 md:grid-cols-2 md:items-center md:py-20">
+      {/* ── o agente ──
+          Fundo de aurora sangrando a seção, texto à esquerda no lado escuro e
+          a conversa FLUTUANDO à direita — sem painel, sem moldura de celular,
+          sem borda. A versão anterior era uma janelinha branca dentro de uma
+          moldura escura dentro da seção: três degraus de caixa, e parecia
+          print colado num slide.
+
+          As bolhas agora pousam direto no fundo, com vidro fosco, indentação
+          desigual e a última sangrando pela borda direita. É o que faz a cena
+          parecer conversa acontecendo, e não captura de tela. */}
+      <section id="agente" className="relative isolate scroll-mt-16 overflow-hidden bg-nav">
+        <Image
+          src="/img/aurora-a.jpg"
+          alt=""
+          aria-hidden
+          fill
+          sizes="100vw"
+          className="object-cover opacity-90"
+        />
+        <span
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(95deg, var(--nav) 6%, color-mix(in srgb, var(--nav) 78%, transparent) 40%, transparent 78%)',
+          }}
+        />
+
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 md:grid-cols-[1fr_1.05fr] md:py-28">
           <div className="flex flex-col gap-5">
             <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
               O que só o Norte faz
             </span>
-            <h2 className="text-3xl leading-tight font-extrabold tracking-[-0.02em] text-nav-tinta md:text-4xl">
-              Um assistente que <span className="text-sol-claro">age</span>, não um robô que
-              responde.
+            <h2 className="text-[clamp(2rem,4.4vw,3rem)] leading-[1.02] !text-nav-tinta text-balance">
+              Um assistente que <em className="text-sol-claro not-italic">age</em>, não um robô
+              que responde.
             </h2>
-            <p className="leading-relaxed text-nav-tinta-2">
+            <p className="max-w-lg leading-relaxed text-nav-tinta-2">
               Ele não é um chat com respostas prontas: ele lê o seu estoque, o seu caixa e as
               suas contas, e faz coisa que dá dinheiro. Você dá o nome, a personalidade e o
-              que ele pode fazer. Ele é da sua loja, não da nossa.
+              que ele pode fazer.
             </p>
             <ul className="flex flex-col gap-3 pt-1">
-              {REGRAS_AGENTE.map(([t, d]) => (
-                <li key={t} className="flex gap-3">
-                  <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-sol-claro" />
+              {[
+                ['Mexeu em dinheiro, preço ou estoque: ele propõe, você confirma.', 'Nada de descobrir depois que o robô resolveu dar 40%.'],
+                ['Teto em tudo, e o teto é número no banco.', 'Desconto máximo, valor de proposta, gasto de IA por dia.'],
+                ['Toda ação vai para o livro, com antes e depois.', 'Inclusive as nossas, quando entramos para dar suporte.'],
+              ].map(([t, d]) => (
+                <li key={t} className="flex gap-2.5">
+                  <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-sol-claro" />
                   <span className="flex flex-col gap-0.5">
                     <span className="text-sm font-semibold text-nav-tinta">{t}</span>
                     <span className="text-sm text-nav-tinta-2">{d}</span>
@@ -449,7 +480,7 @@ export default function Inicio() {
             </ul>
           </div>
 
-          <MockConversa />
+          <ConversaFlutuante />
         </div>
       </section>
 
@@ -664,105 +695,5 @@ function Titulo({ olho, titulo, resumo }: { olho: string; titulo: string; resumo
  * em qualquer densidade. Os números são os do ambiente de exemplo — não são de
  * cliente nenhum.
  */
-function MockPainel() {
-  const barras = [38, 52, 30, 61, 44, 72, 49, 88, 35, 57, 66, 41, 79, 54, 93, 47, 62, 36, 70, 58]
-  const numeros: [string, string, string, string][] = [
-    ['Hoje', 'R$ 774,71', '▲ 14,5% vs ontem', 'text-bom'],
-    ['Este mês', 'R$ 9.009,74', '112 vendas', 'text-tinta-3'],
-  ]
-  return (
-    <div className="rounded-xl bg-nav-2 p-2.5 shadow-[0_30px_60px_-25px_rgb(0_0_0/0.7)]">
-      <div className="overflow-hidden rounded-lg bg-superficie">
-        <div className="flex items-center justify-between border-b border-borda px-3.5 py-2.5">
-          <span className="text-xs font-bold text-tinta">Painel</span>
-          <span className="rounded border border-borda px-2 py-0.5 text-[10px] text-tinta-3">
-            Todas as unidades ▾
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-2 p-3">
-          {numeros.map(([r, v, d, cor]) => (
-            <div key={r} className="rounded-norte border border-borda p-3">
-              <p className="text-[10px] text-tinta-3">{r}</p>
-              <p className="numero text-lg font-extrabold text-tinta">{v}</p>
-              <p className={`text-[10px] font-semibold ${cor}`}>{d}</p>
-            </div>
-          ))}
-        </div>
-        <div className="px-3 pb-3">
-          <div className="rounded-norte border border-borda p-3">
-            <p className="mb-2 text-[10px] font-semibold text-tinta-2">Últimos 30 dias</p>
-            <div className="flex h-16 items-end gap-[3px]">
-              {barras.map((h, i) => (
-                <span
-                  key={i}
-                  className="flex-1 rounded-t-[2px] bg-bom-vivo"
-                  style={{ height: `${h}%` }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-2 border-t border-borda px-3.5 py-2.5">
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-critico">
-            <span aria-hidden className="size-2 rounded-full bg-critico-vivo" />2 contas vencidas
-          </span>
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-atencao">
-            <span aria-hidden className="size-2 rounded-full bg-atencao-vivo" />3 itens acabando
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 /** Uma conversa de exemplo — o assistente propondo, e a dona confirmando. */
-function MockConversa() {
-  const linhas: { de: 'agente' | 'pessoa'; texto: string }[] = [
-    {
-      de: 'agente',
-      texto:
-        'Bom dia! A Camiseta canelada Preto · G tem 2 peças e vende 9 por semana. Acaba quinta.',
-    },
-    { de: 'pessoa', texto: 'pede 20 pro fornecedor' },
-    {
-      de: 'agente',
-      texto: 'Anotei a compra: 20 un × R$ 22,40 = R$ 448,00, vencimento em 30 dias. Confirma?',
-    },
-    { de: 'pessoa', texto: 'confirmo' },
-    {
-      de: 'agente',
-      texto:
-        'Pronto. Entrou em contas a pagar e avisei o Carlos no balcão. Esse mês eu já recuperei R$ 1.240 de crediário atrasado.',
-    },
-  ]
-  return (
-    <div className="rounded-xl bg-nav-2 p-2.5 shadow-[0_30px_60px_-25px_rgb(0_0_0/0.7)]">
-      <div className="flex flex-col gap-2.5 rounded-lg bg-superficie p-4">
-        <div className="flex items-center gap-2 border-b border-borda pb-2.5">
-          <span className="flex size-7 items-center justify-center rounded-full bg-bom-vivo text-xs font-bold text-white">
-            A
-          </span>
-          <span className="flex flex-col">
-            <span className="text-xs font-bold text-tinta">Aurora</span>
-            <span className="text-[10px] text-tinta-3">assistente da sua loja</span>
-          </span>
-        </div>
-        {linhas.map((l, i) => (
-          <p
-            key={i}
-            className={
-              l.de === 'agente'
-                ? 'max-w-[85%] self-start rounded-lg rounded-bl-sm bg-superficie-2 px-3 py-2 text-[12px] leading-relaxed text-tinta'
-                : 'max-w-[85%] self-end rounded-lg rounded-br-sm bg-bom-fundo px-3 py-2 text-[12px] leading-relaxed text-tinta'
-            }
-          >
-            {l.texto}
-          </p>
-        ))}
-        <p className="pt-1 text-[10px] text-tinta-3">
-          “Aurora” é só um exemplo — quem dá o nome é você.
-        </p>
-      </div>
-    </div>
-  )
-}
