@@ -15,6 +15,7 @@
 //    Sem isso, ter "gerir equipe" viraria caminho para virar dono.
 
 import { createHash, randomBytes } from 'node:crypto'
+import { exigirCotaDeUsuario } from './assinatura'
 import { comoOrg, acharOrgPorSlug } from './banco'
 import { guardarSenha } from './senha'
 import { normalizar } from './autenticacao'
@@ -58,6 +59,12 @@ export async function convidar(
     }),
   )
   if (jaTem) throw new EmailJaUsado(email)
+
+  // A cota do plano, conferida ANTES de mandar o convite. Conferir só na hora
+  // de aceitar seria pior de todas as formas: a pessoa recebe o link, escolhe
+  // a senha, e leva um "não cabe" que não é problema dela — e quem convidou
+  // só descobre depois, pelo telefone.
+  await exigirCotaDeUsuario(sessao)
 
   const token = randomBytes(32).toString('base64url')
   const expiraEm = new Date(Date.now() + VALE_DIAS * 864e5)

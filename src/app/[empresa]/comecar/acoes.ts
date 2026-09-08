@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { exigirCotaDeUnidade } from '@/servidor/assinatura'
 import { comoOrg } from '@/servidor/banco'
 import { sessaoViva } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
@@ -82,6 +83,10 @@ export async function terminarCadastro(
     if (primeira) {
       await db.unidade.update({ where: { id: primeira.id }, data: dadosUnidade })
     } else {
+      // Unidade NOVA gasta cota do plano. A primeira nunca gasta: ela e o
+      // proprio cadastro da empresa, e recusar ali seria travar quem esta
+      // entrando no sistema pela primeira vez.
+      await exigirCotaDeUnidade(sessao)
       await db.unidade.create({ data: { orgId: sessao.orgId, ...dadosUnidade } })
     }
 

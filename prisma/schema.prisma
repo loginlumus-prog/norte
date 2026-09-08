@@ -94,6 +94,23 @@ model Org {
   /// programa vira 3% de desconto em toda venda e deixa de ser fidelidade.
   pontosMinimo Int @default(0) @map("pontos_minimo")
 
+  // ── credito de IA ────────────────────────────────────────
+  /// Saldo de credito de IA, em centavos.
+  ///
+  /// Separado da mensalidade porque e o UNICO custo que varia com o uso de
+  /// cada cliente: uma loja que conversa o dia inteiro no WhatsApp gasta dez
+  /// vezes o de outra do mesmo tamanho. Embutido no plano, o cliente pequeno
+  /// pagaria o risco do grande.
+  ///
+  /// Como o saldo de pontos, este numero e a CONTA RAPIDA: a verdade e a soma
+  /// das recargas menos a soma dos consumos, e a conferencia bate os dois.
+  creditoIaCent Int @default(0) @map("credito_ia_cent")
+
+  /// Avisar quando o saldo cair disto. Zero desliga o aviso.
+  creditoAvisoCent Int @default(1000) @map("credito_aviso_cent")
+
+  recargas RecargaIA[]
+
   unidades  Unidade[]
   usuarios  Usuario[]
   acessos   Acesso[]
@@ -1261,8 +1278,16 @@ model ConsumoIA {
   modelo        String
   entradaTokens Int    @default(0) @map("entrada_tokens")
   saidaTokens   Int    @default(0) @map("saida_tokens")
-  /// Em centavos, inteiro. Dinheiro nunca é número quebrado aqui.
+  /// O que o FORNECEDOR cobrou da gente, em centavos inteiros.
   custoCent     Int    @default(0) @map("custo_cent")
+  /// O que a LOJA pagou, em centavos. Custo x margem.
+  ///
+  /// As duas linhas ficam guardadas porque sao perguntas diferentes: o custo
+  /// responde "quanto essa loja nos custa", o cobrado responde "quanto ela
+  /// nos paga". Guardar so uma delas torna impossivel saber se o produto se
+  /// sustenta — e a margem muda com o tempo, entao recalcular depois a partir
+  /// do custo daria o numero errado para o passado.
+  cobradoCent   Int    @default(0) @map("cobrado_cent")
 
   criadoEm DateTime @default(now()) @map("criado_em")
 
@@ -1358,4 +1383,46 @@ enum TipoPontos {
   USOU
   /// Correcao na mao, feita por gente. Sempre com motivo escrito.
   AJUSTE
+}
+
+/// As recargas de credito de IA. So entra linha; nada e reescrito.
+///
+/// O consumo ja tem tabela propria (`ConsumoIA`, com modelo e tokens). Esta
+/// aqui e o outro lado da conta — e e ela que o gateway de pagamento vai
+/// escrever quando existir. Ate la, quem recarrega e o dono do sistema, na
+/// mao, e a linha registra quem foi.
+model RecargaIA {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// Positivo em recarga, negativo em estorno. Sempre o delta.
+  centavos    Int
+  saldoDepois Int @map("saldo_depois")
+
+  tipo TipoRecarga
+
+  /// De onde veio: 'manual', 'plano' (o incluso do mes), ou o gateway.
+  origem String @default("manual")
+  /// Id da cobranca no gateway, quando houver.
+  referencia String?
+
+  motivo String?
+  quem   String
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, criadoEm])
+  @@map("recargas_ia")
+}
+
+enum TipoRecarga {
+  /// Comprada pelo cliente.
+  COMPRA
+  /// A cota que o plano ja inclui, creditada no comeco do ciclo.
+  PLANO
+  /// Cortesia, migracao, correcao.
+  AJUSTE
+  /// Devolucao de valor cobrado errado.
+  ESTORNO
 }

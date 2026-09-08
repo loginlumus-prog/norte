@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { podeCriarUnidade, podeAdicionarUsuario, mensalidade, PLANOS } from '../src/servidor/planos'
+import { podeCriarUnidade, podeAdicionarUsuario, mensalidade, PLANOS, mudanca, menorQueCabe, planoLibera } from '../src/servidor/planos'
+import { TODOS } from '../src/servidor/modulos'
 
 describe('quem tem uma loja', () => {
   it('cria a primeira sem custo nenhum', () => {
@@ -100,6 +101,104 @@ describe('coerência da tabela', () => {
       if (p.porUnidadeExtra !== null) {
         expect(p.unidades, `${nome} vende extra sem ter cota`).not.toBeNull()
       }
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+// TROCAR DE PLANO
+// ─────────────────────────────────────────────────────────────
+
+describe('o que muda ao trocar de plano', () => {
+  const pequeno = { unidades: 1, usuarios: 3 }
+
+  it('subir mostra o que ganha, e a diferenca de preco', () => {
+    const m = mudanca('BALCAO', 'BALCAO_AGENTE', pequeno)
+    expect(m.sentido).toBe('subir')
+    expect(m.diferenca).toBe(697 - 349)
+    expect(m.ganha).toContain('agente')
+    expect(m.perde).toEqual([])
+  })
+
+  // O caso que faz o cliente cancelar quando ninguem avisa.
+  it('descer mostra o que PERDE, e nao so o desconto', () => {
+    const m = mudanca('REDE', 'BALCAO', pequeno)
+    expect(m.sentido).toBe('descer')
+    expect(m.diferenca).toBe(349 - 1497)
+    expect(m.perde).toContain('crediario')
+    expect(m.perde).toContain('agente')
+    expect(m.perde).toContain('multiUnidade')
+  })
+
+  it('trocar para o mesmo plano nao muda nada', () => {
+    const m = mudanca('REDE', 'REDE', pequeno)
+    expect(m.sentido).toBe('igual')
+    expect(m.diferenca).toBe(0)
+    expect(m.ganha).toEqual([])
+    expect(m.perde).toEqual([])
+  })
+
+  it('para o Corporativo nao existe diferenca de preco: e sob consulta', () => {
+    const m = mudanca('REDE', 'CORPORATIVO', pequeno)
+    expect(m.novoMensal).toBeNull()
+    expect(m.diferenca).toBeNull()
+  })
+})
+
+describe('descer de plano com mais uso do que cabe e RECUSADO', () => {
+  it('oito lojas nao cabem no plano de cinco, e a mensagem diz quantas tirar', () => {
+    const m = mudanca('CORPORATIVO', 'REDE', { unidades: 8, usuarios: 10 })
+    expect(m.impedimentos.length).toBe(1)
+    expect(m.impedimentos[0]).toContain('8')
+    expect(m.impedimentos[0]).toContain('Desative 3')
+  })
+
+  it('e gente demais tambem impede, separadamente', () => {
+    const m = mudanca('REDE', 'BALCAO', { unidades: 1, usuarios: 12 })
+    expect(m.impedimentos.length).toBe(1)
+    expect(m.impedimentos[0]).toContain('Tire o acesso de 7')
+  })
+
+  it('os dois ao mesmo tempo geram os dois impedimentos', () => {
+    const m = mudanca('REDE', 'BALCAO', { unidades: 4, usuarios: 12 })
+    expect(m.impedimentos.length).toBe(2)
+  })
+
+  it('subir nunca impede', () => {
+    for (const uso of [{ unidades: 1, usuarios: 3 }, { unidades: 40, usuarios: 90 }]) {
+      expect(mudanca('BALCAO', 'CORPORATIVO', uso).impedimentos).toEqual([])
+    }
+  })
+})
+
+describe('o menor plano que cabe', () => {
+  it('uma loja e tres pessoas cabem no Balcao', () =>
+    expect(menorQueCabe({ unidades: 1, usuarios: 3 })).toBe('BALCAO'))
+  it('duas lojas ja pedem Rede', () =>
+    expect(menorQueCabe({ unidades: 2, usuarios: 3 })).toBe('REDE'))
+  it('seis pessoas numa loja tambem pedem Rede', () =>
+    expect(menorQueCabe({ unidades: 1, usuarios: 6 })).toBe('REDE'))
+  it('trinta lojas so cabem no Corporativo', () =>
+    expect(menorQueCabe({ unidades: 30, usuarios: 200 })).toBe('CORPORATIVO'))
+})
+
+describe('o plano decide quais modulos existem', () => {
+  it('o Balcao nao tem agente nem crediario', () => {
+    expect(planoLibera('BALCAO', 'agente')).toBe(false)
+    expect(planoLibera('BALCAO', 'crediario')).toBe(false)
+  })
+  it('o Balcao + Assistente tem agente mas nao crediario', () => {
+    expect(planoLibera('BALCAO_AGENTE', 'agente')).toBe(true)
+    expect(planoLibera('BALCAO_AGENTE', 'crediario')).toBe(false)
+  })
+  it('todo plano com agente tem credito de IA incluso, e sem agente nao tem', () => {
+    for (const p of ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO'] as const) {
+      expect(PLANOS[p].creditoMensal > 0).toBe(planoLibera(p, 'agente'))
+    }
+  })
+  it('nenhum plano libera modulo que nao existe', () => {
+    for (const p of ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO'] as const) {
+      for (const m of PLANOS[p].modulos) expect(TODOS).toContain(m)
     }
   })
 })

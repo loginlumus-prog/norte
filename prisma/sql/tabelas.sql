@@ -55,6 +55,9 @@ CREATE TYPE "TipoRecibo" AS ENUM ('COBRANCA_RECUPERADA', 'CLIENTE_VOLTOU', 'ESTO
 -- CreateEnum
 CREATE TYPE "TipoPontos" AS ENUM ('GANHOU', 'USOU', 'AJUSTE');
 
+-- CreateEnum
+CREATE TYPE "TipoRecarga" AS ENUM ('COMPRA', 'PLANO', 'AJUSTE', 'ESTORNO');
+
 -- CreateTable
 CREATE TABLE "orgs" (
     "id" TEXT NOT NULL,
@@ -82,6 +85,8 @@ CREATE TABLE "orgs" (
     "pontos_por_real" DECIMAL(8,2) NOT NULL DEFAULT 1,
     "ponto_vale" DECIMAL(8,4) NOT NULL DEFAULT 0,
     "pontos_minimo" INTEGER NOT NULL DEFAULT 0,
+    "credito_ia_cent" INTEGER NOT NULL DEFAULT 0,
+    "credito_aviso_cent" INTEGER NOT NULL DEFAULT 1000,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizada_em" TIMESTAMP(3) NOT NULL,
 
@@ -594,6 +599,7 @@ CREATE TABLE "consumo_ia" (
     "entrada_tokens" INTEGER NOT NULL DEFAULT 0,
     "saida_tokens" INTEGER NOT NULL DEFAULT 0,
     "custo_cent" INTEGER NOT NULL DEFAULT 0,
+    "cobrado_cent" INTEGER NOT NULL DEFAULT 0,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "consumo_ia_pkey" PRIMARY KEY ("id")
@@ -642,6 +648,22 @@ CREATE TABLE "movimentos_pontos" (
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "movimentos_pontos_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "recargas_ia" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "centavos" INTEGER NOT NULL,
+    "saldo_depois" INTEGER NOT NULL,
+    "tipo" "TipoRecarga" NOT NULL,
+    "origem" TEXT NOT NULL DEFAULT 'manual',
+    "referencia" TEXT,
+    "motivo" TEXT,
+    "quem" TEXT NOT NULL,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "recargas_ia_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -820,6 +842,9 @@ CREATE INDEX "mensagens_agente_org_id_conversa_id_criada_em_idx" ON "mensagens_a
 
 -- CreateIndex
 CREATE INDEX "movimentos_pontos_org_id_cliente_id_criado_em_idx" ON "movimentos_pontos"("org_id", "cliente_id", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "recargas_ia_org_id_criado_em_idx" ON "recargas_ia"("org_id", "criado_em");
 
 -- AddForeignKey
 ALTER TABLE "unidades" ADD CONSTRAINT "unidades_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1033,4 +1058,7 @@ ALTER TABLE "movimentos_pontos" ADD CONSTRAINT "movimentos_pontos_org_id_fkey" F
 
 -- AddForeignKey
 ALTER TABLE "movimentos_pontos" ADD CONSTRAINT "movimentos_pontos_cliente_id_fkey" FOREIGN KEY ("cliente_id") REFERENCES "clientes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recargas_ia" ADD CONSTRAINT "recargas_ia_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

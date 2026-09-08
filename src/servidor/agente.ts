@@ -12,7 +12,7 @@ import { centavos, reais } from './dinheiro'
 import { lancar } from './financeiro'
 import { mexerEstoqueEm } from './estoque'
 import type { TipoRecibo } from '@prisma/client'
-import { custoEmCentavos } from './custo-ia'
+import { custoEmCentavos, cobrancaEmCentavos } from './custo-ia'
 import {
   PODERES,
   conferirPoder,
@@ -393,13 +393,33 @@ export async function registrarConsumo(
   entradaTokens: number,
   saidaTokens: number,
 ) {
+  // Dois numeros, e eles sao diferentes de proposito: `custoCent` e o que o
+  // fornecedor cobra da gente, `cobradoCent` e o que sai da carteira da loja.
+  // Debitar o custo bruto — que era o que acontecia aqui — da margem ZERO, e
+  // zero de margem e prejuizo: em cima dele ainda correm a taxa do meio de
+  // pagamento, a chamada repetida que se paga duas vezes e cobra uma, e o
+  // imposto sobre a receita.
   const custoCent = custoEmCentavos(modelo, entradaTokens, saidaTokens)
-  await comoOrg(orgId, (db) =>
-    db.consumoIA.create({
-      data: { orgId, agenteId, modelo, entradaTokens, saidaTokens, custoCent },
-    }),
-  )
-  return custoCent
+  const cobradoCent = cobrancaEmCentavos(modelo, entradaTokens, saidaTokens)
+
+  await comoOrg(orgId, async (db) => {
+    await db.consumoIA.create({
+      data: { orgId, agenteId, modelo, entradaTokens, saidaTokens, custoCent, cobradoCent },
+    })
+    // E DESCONTA da carteira, na mesma transação. Registrar o gasto sem
+    // descontar deixaria o saldo mentindo para sempre — e o saldo é o que
+    // decide se o assistente responde.
+    //
+    // O saldo PODE ficar negativo, de propósito: a chamada já aconteceu e o
+    // custo é real. Fingir que parou em zero seria a gente pagando a
+    // diferença calada. A trava fica na porta de entrada, não aqui.
+    await db.org.update({
+      where: { id: orgId },
+      data: { creditoIaCent: { decrement: cobradoCent } },
+    })
+  })
+
+  return { custoCent, cobradoCent }
 }
 
 /**
@@ -409,18 +429,62 @@ export async function registrarConsumo(
  * defeito que faça o agente responder a si mesmo em laço queima a conta do
  * mês numa madrugada, e ninguém está olhando às três da manhã.
  */
-export async function podeGastarHoje(orgId: string): Promise<{ pode: boolean; gastoCent: number; tetoCent: number }> {
+export type VeredictoIA = {
+  pode: boolean
+  motivo: 'ok' | 'sem_agente' | 'teto_do_dia' | 'sem_credito'
+  gastoCent: number
+  tetoCent: number
+  saldoCent: number
+  /** Frase pronta para a tela e para o log. */
+  recado: string
+}
+
+export async function podeGastarHoje(orgId: string): Promise<VeredictoIA> {
   const agente = await acharAgente(orgId)
-  if (!agente) return { pode: false, gastoCent: 0, tetoCent: 0 }
+  if (!agente) {
+    return {
+      pode: false, motivo: 'sem_agente', gastoCent: 0, tetoCent: 0, saldoCent: 0,
+      recado: 'Esta empresa não tem assistente configurado.',
+    }
+  }
 
   const inicio = new Date()
   inicio.setHours(0, 0, 0, 0)
 
-  const hoje = await comoOrg(orgId, (db) =>
-    db.consumoIA.aggregate({ where: { criadoEm: { gte: inicio } }, _sum: { custoCent: true } }),
+  const [hoje, org] = await comoOrg(orgId, (db) =>
+    Promise.all([
+      db.consumoIA.aggregate({ where: { criadoEm: { gte: inicio } }, _sum: { cobradoCent: true } }),
+      db.org.findUniqueOrThrow({ where: { id: orgId }, select: { creditoIaCent: true } }),
+    ]),
   )
-  const gastoCent = hoje._sum.custoCent ?? 0
-  return { pode: gastoCent < agente.gastoDiaCent, gastoCent, tetoCent: agente.gastoDiaCent }
+  const gastoCent = hoje._sum.cobradoCent ?? 0
+  const saldoCent = org.creditoIaCent
+
+  // Duas travas, e elas respondem perguntas diferentes.
+  //
+  // O SALDO é comercial: acabou o crédito, o assistente para até recarregar.
+  // Ele vem primeiro porque é o que o cliente resolve sozinho.
+  if (saldoCent <= 0) {
+    return {
+      pode: false, motivo: 'sem_credito', gastoCent, tetoCent: agente.gastoDiaCent, saldoCent,
+      recado: 'O crédito de IA acabou. Recarregue para o assistente voltar a responder.',
+    }
+  }
+
+  // O TETO DIÁRIO é segurança, e é o que importa de madrugada: um defeito que
+  // faça o agente responder a si mesmo em laço queima o crédito do mês numa
+  // noite, e ninguém está olhando às três da manhã.
+  if (gastoCent >= agente.gastoDiaCent) {
+    return {
+      pode: false, motivo: 'teto_do_dia', gastoCent, tetoCent: agente.gastoDiaCent, saldoCent,
+      recado: 'O assistente já usou o teto de hoje. Ele volta amanhã.',
+    }
+  }
+
+  return {
+    pode: true, motivo: 'ok', gastoCent, tetoCent: agente.gastoDiaCent, saldoCent,
+    recado: 'ok',
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@
 //    porque agora eles têm um lado quieto para contrastar.
 
 import Link from 'next/link'
+import { resumoDaBarra } from '@/servidor/assinatura'
 import type { ReactNode } from 'react'
 import { pode, type Capacidade, type Sessao } from '@/servidor/permissao'
 import { moduloLigado, type Modulo } from '@/servidor/modulos'
@@ -37,7 +38,7 @@ export type ItemMenu = {
   emBreve?: boolean
 }
 
-export function Estrutura({
+export async function Estrutura({
   empresa,
   sessao,
   itens,
@@ -56,6 +57,12 @@ export function Estrutura({
   acao?: ReactNode
   children: ReactNode
 }) {
+  // A moldura busca o proprio resumo do plano: assim as doze telas nao
+  // precisam passar isso adiante uma por uma, e nenhuma esquece.
+  const assinatura = pode(sessao, 'empresa.configurar')
+    ? await resumoDaBarra(sessao.orgId)
+    : null
+
   // Duas perguntas, não uma: "esta pessoa pode?" E "esta empresa usa?".
   const visiveis = itens.filter(
     (i) => pode(sessao, i.exige) && (!i.modulo || moduloLigado(empresa, i.modulo)),
@@ -136,6 +143,42 @@ export function Estrutura({
         </nav>
 
         <div className="mt-auto flex flex-col gap-2 border-t border-nav-borda px-1.5 pt-3">
+          {/* O plano fica a vista, no rodape da barra, em toda tela.
+              Escondido dentro de Configuracoes, ninguem lembra do que
+              contratou — e quando o limite bate, a mensagem chega como
+              surpresa. Aqui ele e informacao de fundo, e vira alerta sozinho
+              quando ha algo a resolver. */}
+          {assinatura && (
+            <Link
+              href={`/${empresa.slug}/assinatura`}
+              className={cx(
+                'flex items-center justify-between gap-2 rounded-norte border px-2 py-1.5',
+                assinatura.alerta
+                  ? 'border-atencao-vivo/50 bg-atencao-vivo/10'
+                  : 'border-nav-borda hover:bg-nav-2',
+              )}
+            >
+              <span className="flex min-w-0 flex-col">
+                <span className="text-[10px] font-medium tracking-wide text-nav-tinta-2 uppercase">
+                  plano
+                </span>
+                <span className="truncate text-xs font-bold text-nav-tinta">
+                  {assinatura.titulo}
+                </span>
+              </span>
+              {assinatura.alerta ? (
+                <span
+                  aria-label="há algo para resolver na assinatura"
+                  className="respira size-2 shrink-0 rounded-full bg-atencao-vivo"
+                />
+              ) : (
+                <span aria-hidden className="shrink-0 text-xs text-nav-tinta-2">
+                  ›
+                </span>
+              )}
+            </Link>
+          )}
+
           <Link
             href={`/${empresa.slug}/configuracoes`}
             className="text-xs font-medium text-nav-tinta-2 underline-offset-2 hover:text-nav-tinta hover:underline"

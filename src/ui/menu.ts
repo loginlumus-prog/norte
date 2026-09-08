@@ -27,4 +27,5 @@ export const MENU = (slug: string): ItemMenu[] => [
   { href: `/${slug}/financeiro`, titulo: 'Financeiro', exige: 'financeiro.ver' },
   { href: `/${slug}/equipe`, titulo: 'Equipe', exige: 'equipe.ver' },
   { href: `/${slug}/agente`, titulo: 'Assistente', exige: 'agente.configurar', modulo: 'agente' },
+  { href: `/${slug}/assinatura`, titulo: 'Assinatura', exige: 'empresa.configurar' },
 ]

@@ -36,6 +36,8 @@ import { listarEquipe, mudarAcesso, mudarSituacao } from '../src/servidor/equipe
 import { criarCliente, listarClientes } from '../src/servidor/cliente'
 import { ferramentasDe, AcimaDoTeto } from '../src/servidor/poderes'
 import { escolherUnidade } from '../src/servidor/unidade'
+import { assinaturaDe, trocarPlano, recarregarCredito, SemCota } from '../src/servidor/assinatura'
+import { podeGastarHoje, registrarConsumo } from '../src/servidor/agente'
 import { resumoDoPainel } from '../src/servidor/painel'
 import { janela } from '../src/servidor/periodo'
 import { SemPermissao } from '../src/servidor/permissao'
@@ -1066,6 +1068,136 @@ secao('Equipe')
 // ── segurança ────────────────────────────────────────────────
 // Fica no FIM de propósito: o freio de login bloqueia um e-mail por 15
 // minutos, e bloquear no meio faria as checagens seguintes falharem pelo
+// ── assinatura ───────────────────────────────────────────────
+secao('Assinatura')
+
+{
+  // Esta secao roda DEPOIS da Equipe, que desativa o Carlos de proposito para
+  // provar que tirar acesso corta a sessao. Sem devolver ele aqui, o
+  // `entrar()` abaixo falha e a secao inteira nao roda — foi exatamente o que
+  // aconteceu na primeira vez, e a trava de "secao vazia reprova" pegou.
+  await comoOrg(A, async (db) => {
+    await db.usuario.update({ where: { id: 'usr-a2' }, data: { ativo: true } })
+    // APAGA todos e recria um. `upsert` no id do exemplo nao serve: a secao de
+    // Equipe troca papel apagando a linha e criando outra com id NOVO, entao o
+    // upsert criava uma SEGUNDA linha e o Carlos ficava com dois papeis ao
+    // mesmo tempo — inclusive com `venda.desconto`, que fez ele passar na
+    // checagem de "balcao nao vende a R$ 0,01".
+    await db.acesso.deleteMany({ where: { usuarioId: 'usr-a2' } })
+    await db.acesso.create({
+      data: { id: 'acs-a2', orgId: A, usuarioId: 'usr-a2', unidadeId: 'uni-a1', papel: 'BALCAO' },
+    })
+  })
+
+  const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
+  const balconista = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
+
+  if (!dona.ok || !balconista.ok) {
+    ok('login de quem esta conferindo', false, 'nao entrou')
+  } else {
+    const a = await assinaturaDe(dona.sessao)
+    ok('a empresa tem plano e uso', a.plano.length > 0 && a.uso.unidades > 0,
+       `${a.titulo}: ${a.uso.unidades} unidade(s), ${a.uso.usuarios} pessoa(s)`)
+
+    // A TRAVA QUE FALTAVA: a regra existia em planos.ts desde a Fase 1 e
+    // ninguem chamava. Prova pelos dois lados, com o MESMO convite.
+    const convidar1 = () =>
+      convidar(dona.sessao, { email: 'cota@exemplo.com', papel: 'BALCAO', unidadeId: 'uni-a1' },
+               'https://norte.app/exemplo')
+
+    // Num plano folgado, passa.
+    await comoOrg(A, (db) => db.org.update({ where: { id: A }, data: { plano: 'REDE' } }))
+    let erroFolgado: unknown = null
+    try { await convidar1() } catch (e) { erroFolgado = e }
+    ok('com cota sobrando, o convite passa', erroFolgado === null,
+       erroFolgado instanceof Error ? erroFolgado.message : '')
+
+    // No plano apertado, o MESMO convite e recusado — e a mensagem diz o teto.
+    await comoOrg(A, (db) => db.org.update({ where: { id: A }, data: { plano: 'BALCAO' } }))
+    let bloqueou: string | null = null
+    try { await convidar1() } catch (e) { if (e instanceof SemCota) bloqueou = e.motivo }
+    ok('e no plano apertado o MESMO convite e recusado', bloqueou !== null, bloqueou ?? 'passou!')
+
+    // Descer de plano com mais loja do que cabe e RECUSADO.
+    await comoOrg(A, (db) => db.org.update({ where: { id: A }, data: { plano: 'REDE' } }))
+    let desceu = true
+    let motivo = ''
+    try {
+      await trocarPlano(dona.sessao, 'BALCAO')
+    } catch (e) {
+      desceu = false
+      motivo = e instanceof SemCota ? e.motivo : String(e)
+    }
+    ok('descer de plano com 2 lojas para o de 1 e RECUSADO', !desceu, motivo.slice(0, 60))
+
+    // Subir libera modulo; descer DESLIGA o que o plano nao cobre.
+    await comoOrg(A, (db) => db.org.update({ where: { id: A }, data: { plano: 'REDE' } }))
+    await trocarPlano(dona.sessao, 'CORPORATIVO')
+    const depois = await comoOrg(A, (db) =>
+      db.org.findUniqueOrThrow({ where: { id: A }, select: { plano: true, modulos: true } }))
+    ok('subir de plano grava e mantem os modulos', depois.plano === 'CORPORATIVO')
+
+    // O balconista NAO troca plano.
+    let barrou = false
+    try {
+      await trocarPlano(balconista.sessao, 'BALCAO')
+    } catch {
+      barrou = true
+    }
+    ok('o balcao NAO troca o plano da empresa', barrou)
+
+    // ── credito de IA ──
+    // Zera o saldo PELO EXTRATO, com um ajuste — nao escrevendo na coluna.
+    // Escrever direto e o que quebra a identidade "saldo = recargas - consumos",
+    // e a checagem la embaixo existe justamente para pegar isso. Na primeira
+    // versao desta lista eu escrevi direto, e ela me pegou.
+    const antesDeZerar = await comoOrg(A, (db) =>
+      db.org.findUniqueOrThrow({ where: { id: A }, select: { creditoIaCent: true } }))
+    if (antesDeZerar.creditoIaCent !== 0) {
+      await recarregarCredito(A, -antesDeZerar.creditoIaCent, {
+        tipo: 'AJUSTE', quem: 'conferencia', motivo: 'zerar para testar',
+      })
+    }
+    const semSaldo = await podeGastarHoje(A)
+    ok('sem credito, o assistente PARA', !semSaldo.pode && semSaldo.motivo === 'sem_credito',
+       semSaldo.recado)
+
+    const saldo1 = await recarregarCredito(A, 5000, { tipo: 'COMPRA', quem: 'conferencia' })
+    ok('recarga entra no saldo', saldo1 === 5000, `R$ ${(saldo1 / 100).toFixed(2)}`)
+    ok('e a recarga fica no extrato, com o saldo depois',
+       (await comoOrg(A, (db) =>
+         db.recargaIA.findFirst({ orderBy: { criadoEm: 'desc' }, select: { saldoDepois: true } })
+       ))?.saldoDepois === 5000)
+
+    const comSaldo = await podeGastarHoje(A)
+    ok('e o assistente volta a responder', comSaldo.pode)
+
+    // Gastar DESCONTA.
+    const agente = await acharAgente(A)
+    if (agente) {
+      await registrarConsumo(A, agente.id, 'claude-sonnet-5', 10_000, 2_000)
+      const org = await comoOrg(A, (db) =>
+        db.org.findUniqueOrThrow({ where: { id: A }, select: { creditoIaCent: true } }))
+      ok('gastar desconta da carteira', org.creditoIaCent < 5000,
+         `sobrou R$ ${(org.creditoIaCent / 100).toFixed(2)}`)
+
+      // O extrato bate: saldo = recargas - consumos.
+      const recargas = await comoOrg(A, (db) =>
+        db.recargaIA.aggregate({ _sum: { centavos: true } }))
+      const consumos = await comoOrg(A, (db) =>
+        db.consumoIA.aggregate({ _sum: { cobradoCent: true } }))
+      const esperado = (recargas._sum.centavos ?? 0) - (consumos._sum.cobradoCent ?? 0)
+      ok('o saldo bate com recargas menos consumos',
+         org.creditoIaCent === esperado, `saldo ${org.creditoIaCent} x conta ${esperado}`)
+    }
+
+    // A vizinha nao ve a carteira desta.
+    const vizinha = await comoOrg(B, (db) => db.recargaIA.count())
+    ok('a vizinha nao ve as recargas desta empresa', vizinha === 0)
+  }
+}
+
+
 // motivo errado.
 secao('Segurança')
 

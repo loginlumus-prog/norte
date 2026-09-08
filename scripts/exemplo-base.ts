@@ -46,6 +46,11 @@ export async function semearExemplo(cliente: Client, passo: (t: string) => void)
                       pontos_minimo = 100
                 where id = 'org-exemplo-a';
 
+      -- Duas recargas, com o saldo andando de verdade.
+      insert into recargas_ia (id, org_id, centavos, saldo_depois, tipo, origem, motivo, quem, criado_em) values
+        ('rec-a1', 'org-exemplo-a', 4000, 4000, 'PLANO',  'plano',  'Credito do mes',    'sistema', now() - interval '26 days'),
+        ('rec-a2', 'org-exemplo-a', 5000, 9000, 'COMPRA', 'manual', 'Recarga pela tela', 'Ana',     now() - interval '9 days');
+
       insert into unidades (id, org_id, nome, ativa, eh_deposito, criada_em, atualizada_em) values
         ('uni-a1', 'org-exemplo-a', 'Loja Centro',   true, false, now(), now()),
         ('uni-a2', 'org-exemplo-a', 'Loja Shopping', true, false, now(), now()),
@@ -132,4 +137,15 @@ export async function semearExemplo(cliente: Client, passo: (t: string) => void)
   // para uma categoria financeira, e ela precisa existir antes.
   const nRec = await semearAgente(cliente, 'org-exemplo-a')
   if (nRec) passo(`assistente "Aurora" com ${nRec} recibos e uma proposta esperando...`)
+
+  // O saldo de credito nasce da CONTA, nao de um numero escrito na mao.
+  // Escrever "1240" aqui e depois semear consumo por fora quebra a identidade
+  // "saldo = recargas - consumos" — e a conferencia pega isso na hora, que foi
+  // o que aconteceu na primeira versao deste seed.
+  await cliente.query(`
+    update orgs o set credito_ia_cent =
+      coalesce((select sum(r.centavos) from recargas_ia r where r.org_id = o.id), 0)
+      - coalesce((select sum(c.cobrado_cent) from consumo_ia c where c.org_id = o.id), 0)
+     where o.id = 'org-exemplo-a';
+  `)
 }
