@@ -1,21 +1,25 @@
 'use client'
 
-// A lista de capacidades que passa sozinha no topo da página.
+// A frase que troca sozinha no topo da página.
 //
-// ── por que uma lista que se move, e não um parágrafo ────────
-// Quem chega na página tem uma pergunta só: "isso serve pra mim?". Parágrafo
-// exige leitura; a lista rolando entrega oito respostas em oito segundos, e a
-// pessoa só precisa reconhecer UMA para continuar descendo.
+// ── por que virou UMA linha, e não oito ──────────────────────
+// A primeira versão empilhava as oito frases e acendia uma por vez. Duas
+// coisas davam errado: sete oitavos da coluna ficavam apagados (o que é feio e
+// desperdiça o lugar mais nobre da página), e a pilha competia com o título —
+// dois blocos de texto grande lado a lado, e o olho não sabe qual ler.
 //
-// ── e por que são frases do dono, não recursos ───────────────
-// "Controle de estoque" é o que o vendedor de software diz. "Saber o que não
-// está vendendo" é o que o dono da loja pensa às onze da noite. A lista fala a
-// segunda língua — cada linha é uma frase que ele já disse em voz alta.
+// Uma linha só resolve os dois: o título manda, e embaixo dele passa a
+// promessa, uma de cada vez, no lugar onde a pessoa já está olhando.
 //
-// ── acessibilidade ──────────────────────────────────────────
-// Todas as frases existem no HTML o tempo todo, empilhadas. O que muda é o
-// destaque visual, não a presença: leitor de tela lê a lista inteira de uma
-// vez, e quem pediu menos movimento vê todas paradas.
+// ── por que a fonte aqui é a de TEXTO, não a de título ───────
+// São frases curtas de interface, não manchete. Em serifada leve elas ficavam
+// finas e ornamentadas — bonito no título, errado numa lista de promessas. Em
+// Manrope, peso médio, elas soam como afirmação.
+//
+// ── nada nasce invisível ─────────────────────────────────────
+// As oito frases existem no HTML o tempo todo; só uma fica visível por vez, e
+// as outras saem por `hidden`, não por opacidade. Leitor de tela lê a lista
+// inteira; sem JavaScript, aparece a primeira — que já é uma frase completa.
 
 import { useEffect, useState } from 'react'
 
@@ -30,31 +34,20 @@ const FRASES = [
   'Dar acesso sem dar a sua senha',
 ]
 
-const TROCA = 2600
+const TROCA = 2800
 
 export function HeroRolante() {
   const [ativa, setAtiva] = useState(0)
-  // Enquanto for falso, TODAS as frases aparecem legíveis e nenhuma é apagada.
-  // É isso que cumpre a regra "nada nasce invisível": sem JavaScript, com o
-  // JavaScript ainda carregando, ou com movimento reduzido, a lista inteira se
-  // lê. O rodízio é um acréscimo, não a condição de existir.
-  const [rodando, setRodando] = useState(false)
 
   useEffect(() => {
     const menos = window.matchMedia('(prefers-reduced-motion: reduce)')
     if (menos.matches) return
 
-    setRodando(true)
     const t = setInterval(() => setAtiva((i) => (i + 1) % FRASES.length), TROCA)
 
-    // Ouve a preferência DEPOIS de montar também: quem liga "menos movimento"
-    // com a página aberta tinha o carrossel continuando para sempre.
-    const parar = () => {
-      if (menos.matches) {
-        clearInterval(t)
-        setRodando(false)
-      }
-    }
+    // Ouve a preferência depois de montar também: quem liga "menos movimento"
+    // com a página aberta ficava com o rodízio girando para sempre.
+    const parar = () => menos.matches && clearInterval(t)
     menos.addEventListener('change', parar)
 
     return () => {
@@ -64,39 +57,27 @@ export function HeroRolante() {
   }, [])
 
   return (
-    <ul className="flex flex-col gap-1.5 sm:gap-2">
-      {FRASES.map((f, i) => {
-        // Só apaga as outras quando o rodízio está de fato rodando.
-        const acesa = !rodando || i === ativa
-        return (
-          <li
+    <div className="flex items-center gap-3 border-t border-white/15 pt-5">
+      <span
+        aria-hidden
+        className="shrink-0 text-[11px] text-sol-claro"
+        style={{ transform: 'translateY(-1px)' }}
+      >
+        ▶
+      </span>
+      {/* Altura fixa: sem ela a página inteira pula quando entra uma frase de
+          duas linhas. */}
+      <span className="relative flex min-h-[3.25rem] flex-1 items-center sm:min-h-[2.5rem]">
+        {FRASES.map((f, i) => (
+          <span
             key={f}
-            className="flex items-center gap-2.5 transition-[opacity,transform] duration-500 sm:gap-3"
-            style={{
-              opacity: acesa ? 1 : 0.3,
-              transform: acesa ? 'translateX(0)' : 'translateX(-4px)',
-            }}
+            hidden={i !== ativa}
+            className="font-[family-name:var(--font-sans)] text-lg leading-snug font-semibold tracking-tight text-nav-tinta text-balance sm:text-xl"
           >
-            {/* O marcador existe sempre — o que muda é a cor, nunca a
-                presença. Transparente seria "nasce invisível" de novo, só que
-                num pedaço pequeno. Triângulo e não bolinha: bolinha lê como
-                item de lista, seta lê como "é esta". */}
-            <span
-              aria-hidden
-              className="shrink-0 text-[10px] transition-colors duration-500"
-              style={{ color: rodando && i !== ativa ? 'var(--nav-borda)' : 'var(--sol-claro)' }}
-            >
-              ▶
-            </span>
-            <span
-              className="text-lg leading-tight font-semibold tracking-tight text-nav-tinta text-balance sm:text-xl md:text-2xl"
-              style={{ color: acesa ? undefined : 'var(--nav-tinta-2)' }}
-            >
-              {f}
-            </span>
-          </li>
-        )
-      })}
-    </ul>
+            {f}
+          </span>
+        ))}
+      </span>
+    </div>
   )
 }

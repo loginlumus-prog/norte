@@ -241,35 +241,44 @@ export default function Inicio() {
       </header>
 
       {/* ── topo ──
-          Seção sangrada: o azul vai de borda a borda e a bússola é cortada
-          pelas duas laterais. A primeira versão era uma grade de duas colunas
-          com um retângulo do painel de um lado — parecia print colado num
-          slide. Aqui o desenho é o fundo, e o texto mora em cima dele. */}
-      <section className="nav-fundo relative overflow-hidden">
-        <Traco
-          arte="bussola"
-          sobre="escuro"
-          opacidade={0.13}
-          className="pointer-events-none absolute -top-24 -right-40 w-[52rem] max-w-none md:-right-24"
+          A foto sangra a tela inteira e o texto mora EM CIMA dela. O véu é um
+          degradê de azul-noite que vai de opaco na esquerda a quase nada na
+          direita: assim a rua escura da foto some atrás do texto e a loja
+          acesa continua visível do outro lado.
+
+          Nenhum texto vai dentro da imagem gerada — modelo de imagem escreve
+          letra embaralhada, e a primeira tentativa voltou com duas linhas de
+          garrancho. A imagem é fundo; a palavra é HTML. */}
+      <section className="relative isolate overflow-hidden bg-nav">
+        <Image
+          src="/img/loja-a.png"
+          alt=""
+          aria-hidden
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-[70%_center]"
         />
-        <Traco
-          arte="relevo"
-          sobre="escuro"
-          opacidade={0.14}
-          className="pointer-events-none absolute inset-x-0 -bottom-8 w-full max-w-none"
+        <span
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(100deg, var(--nav) 0%, color-mix(in srgb, var(--nav) 92%, transparent) 34%, color-mix(in srgb, var(--nav) 55%, transparent) 62%, color-mix(in srgb, var(--nav) 18%, transparent) 100%)',
+          }}
         />
 
-        <div className="relative mx-auto grid max-w-6xl gap-12 px-5 py-20 md:grid-cols-[1.1fr_1fr] md:items-center md:py-28">
-          <div className="flex flex-col items-start gap-6">
-            <span className="rounded-full border border-nav-borda bg-nav-2/70 px-3 py-1 text-xs font-semibold text-sol-claro">
+        <div className="relative mx-auto max-w-6xl px-5 py-24 md:py-32">
+          <div className="flex max-w-2xl flex-col items-start gap-6">
+            <span className="rounded-full border border-white/20 bg-white/[0.07] px-3 py-1 text-xs font-semibold text-sol-claro backdrop-blur-sm">
               Gestão + assistente de IA no WhatsApp
             </span>
-            <h1 className="text-[clamp(2.5rem,7vw,4.25rem)] leading-[0.98] font-extrabold tracking-[-0.04em] !text-nav-tinta text-balance">
+            <h1 className="text-[clamp(2.75rem,7.5vw,4.75rem)] leading-[0.95] !text-nav-tinta text-balance">
               A empresa inteira
               <br />
               numa tela só.
             </h1>
-            <p className="max-w-lg text-base leading-relaxed text-nav-tinta-2 md:text-lg">
+            <p className="max-w-xl text-base leading-relaxed text-nav-tinta-2 md:text-lg">
               Produto, estoque, balcão, caixa e o resultado do mês. E um assistente que você
               batiza, que conhece o seu estoque de verdade e responde por você — dentro dos
               limites que você define.
@@ -283,21 +292,15 @@ export default function Inicio() {
               </a>
               <a
                 href="#faz"
-                className="rounded-norte border border-nav-borda px-6 py-3 text-sm font-semibold text-nav-tinta hover:bg-nav-2"
+                className="rounded-norte border border-white/25 px-6 py-3 text-sm font-semibold text-nav-tinta backdrop-blur-sm hover:bg-white/10"
               >
                 Ver o sistema por dentro
               </a>
             </div>
-            <p className="text-xs text-nav-tinta-2">
-              14 dias para testar · do balcão de bairro à rede com dezenas de lojas
-            </p>
-          </div>
 
-          {/* A lista rolante ocupa o lugar onde estava o retângulo do painel.
-              Ela responde "isso serve pra mim?" em oito segundos, que é a
-              única pergunta de quem acabou de chegar. */}
-          <div className="md:pl-4">
-            <HeroRolante />
+            <div className="w-full max-w-xl pt-2">
+              <HeroRolante />
+            </div>
           </div>
         </div>
       </section>
@@ -314,51 +317,83 @@ export default function Inicio() {
         </div>
       </section>
 
-      {/* ── para quem é ── */}
+      {/* ── para quem é ──
+          Mosaico de formatos diferentes, e a IMAGEM É O CARD: ela preenche o
+          bloco inteiro e o texto mora em cima, com véu embaixo. Card com
+          fotinha dentro parece catálogo; foto que ocupa tudo parece revista.
+
+          Os tamanhos são desiguais de propósito. Seis retângulos iguais viram
+          grade de planilha — é a diferença de proporção que faz o olho passear
+          em vez de varrer. */}
       <section className="bg-superficie">
-        <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 md:grid-cols-2">
-          <div className="overflow-hidden rounded-xl">
-            {/* Foto gerada por IA, não é cliente nosso. Está escrito aqui para
-                ninguém, daqui a seis meses, achar que é caso real e sair
-                contando isso numa reunião de venda. */}
-            <Image
-              src="/img/balcao.jpg"
-              alt="Dona de uma loja de roupas de bairro, atrás do balcão, olhando o celular"
-              width={928}
-              height={1160}
-              priority
-              className="h-full w-full object-cover"
-            />
-          </div>
-          <div className="flex flex-col gap-5">
-            <span className="text-xs font-bold tracking-[0.14em] text-marca uppercase">
-              Para quem é
-            </span>
-            <h2 className="text-3xl leading-tight font-extrabold tracking-[-0.02em] text-tinta">
-              Feito para quem atende no balcão e no WhatsApp — e cresce a partir daí.
-            </h2>
-            <p className="leading-relaxed text-tinta-2">
-              Comércio de bairro com 1 a 3 lojas e 2 a 10 pessoas, que vende no balcão, vende
-              pelo WhatsApp e às vezes vende fiado. Loja de roupa, sapataria, sorveteria,
-              papelaria, distribuidora.
-            </p>
-            <p className="leading-relaxed text-tinta-2">
-              A arquitetura não tem teto: a mesma tabela que guarda a loja única guarda a rede
-              de quarenta. Quem começa com uma loja não descobre nem que existe o conceito de
-              unidade — o seletor só aparece quando existe a segunda.
-            </p>
-            <div className="flex flex-wrap gap-2 pt-1">
-              {['Loja de roupa', 'Sapataria', 'Sorveteria', 'Papelaria', 'Distribuidora', 'Rede de lojas'].map(
-                (r) => (
-                  <span
-                    key={r}
-                    className="rounded-full border border-borda px-3 py-1 text-xs font-semibold text-tinta-2"
-                  >
-                    {r}
-                  </span>
-                ),
-              )}
-            </div>
+        <div className="mx-auto max-w-6xl px-5 py-16">
+          <Titulo
+            olho="Para quem é"
+            titulo="Comércio que vende no balcão e no WhatsApp"
+            resumo="De uma loja de bairro à rede com dezenas de unidades. A mesma tabela que guarda a loja única guarda a rede de quarenta — quem começa com uma não descobre nem que existe o conceito de unidade."
+          />
+
+          <div className="mt-9 grid auto-rows-[13rem] grid-cols-2 gap-3 lg:grid-cols-4">
+            {[
+              {
+                img: '/img/dona-b.jpg',
+                t: 'Loja de roupa',
+                d: 'Grade de cor e tamanho, etiqueta e a peça que some do provador.',
+                span: 'col-span-2 row-span-2',
+              },
+              {
+                img: '/img/sapataria.jpg',
+                t: 'Sapataria',
+                d: 'Numeração como eixo. Um par por caixa, cada caixa com código.',
+                span: 'row-span-2',
+              },
+              {
+                img: '/img/sorveteria.jpg',
+                t: 'Sorveteria',
+                d: 'Venda por peso, com casa decimal — e o caixa fechando certo.',
+                span: '',
+              },
+              {
+                img: '/img/balcao-pagto.jpg',
+                t: 'Papelaria e conveniência',
+                d: 'Pagamento dividido, troco calculado, gaveta conferida.',
+                span: '',
+              },
+              {
+                img: '/img/distribuidora.jpg',
+                t: 'Distribuidora e rede',
+                d: 'Depósito e lojas com estoque próprio, consolidado num clique.',
+                span: 'col-span-2 lg:col-span-4',
+              },
+            ].map((c) => (
+              <article
+                key={c.t}
+                className={`group relative isolate flex flex-col justify-end overflow-hidden rounded-norte ${c.span}`}
+              >
+                <Image
+                  src={c.img}
+                  alt=""
+                  aria-hidden
+                  fill
+                  sizes="(max-width: 1024px) 50vw, 33vw"
+                  className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                />
+                {/* O véu só embaixo, onde o texto pousa: escurecer a foto
+                    inteira mata a imagem que a gente foi buscar. */}
+                <span
+                  aria-hidden
+                  className="absolute inset-0"
+                  style={{
+                    background:
+                      'linear-gradient(to top, rgb(9 14 28 / 0.92) 0%, rgb(9 14 28 / 0.55) 34%, rgb(9 14 28 / 0) 66%)',
+                  }}
+                />
+                <div className="relative flex flex-col gap-1 p-4">
+                  <h3 className="text-lg leading-tight !text-white">{c.t}</h3>
+                  <p className="max-w-[36ch] text-xs leading-snug text-white/70">{c.d}</p>
+                </div>
+              </article>
+            ))}
           </div>
         </div>
       </section>
