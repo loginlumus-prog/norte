@@ -4,11 +4,13 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { pode } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
 import { resumoDoPainel } from '@/servidor/painel'
+import { janela, lerPeriodo } from '@/servidor/periodo'
 import { moduloLigado } from '@/servidor/modulos'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, Aviso, Ponto } from '@/ui/base'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
+import { SeletorPeriodo } from '@/ui/Periodo'
 import { Numero, Barras, Ranque, Secao, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 
@@ -22,10 +24,10 @@ export default async function Painel({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string }>
+  searchParams: Promise<{ unidade?: string; periodo?: string }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida } = await searchParams
+  const { unidade: pedida, periodo: pedido } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -38,7 +40,8 @@ export default async function Painel({
   }
 
   const onde = await escolherUnidade(sessao, empresa, pedida)
-  const r = await resumoDoPainel(sessao, onde.ids)
+  const j = janela(lerPeriodo(pedido))
+  const r = await resumoDoPainel(sessao, onde.ids, j)
 
   const verDinheiro = pode(sessao, 'financeiro.ver')
   const verEstoque = pode(sessao, 'estoque.ver')
@@ -67,9 +70,13 @@ export default async function Painel({
     return i
   })
 
-  // Comparação com ontem, que é a pergunta que o dono faz de manhã.
-  const pct = r.ontem.total > 0 ? ((r.hoje.total - r.ontem.total) / r.ontem.total) * 100 : NaN
-  const margem = r.mes.total > 0 ? ((r.mes.total - r.mes.custo) / r.mes.total) * 100 : 0
+  // A comparação é sempre contra a janela do MESMO tamanho logo antes: é o
+  // que faz a seta querer dizer alguma coisa. Quando não houve movimento
+  // antes, não existe porcentagem — e mostrar "+∞%" seria pior que não
+  // mostrar nada.
+  const pct =
+    r.anterior.total > 0 ? ((r.atual.total - r.anterior.total) / r.anterior.total) * 100 : NaN
+  const margem = r.atual.total > 0 ? ((r.atual.total - r.atual.custo) / r.atual.total) * 100 : 0
 
   return (
     <Estrutura
@@ -80,9 +87,12 @@ export default async function Painel({
       tema={tema}
       titulo="Painel"
       acao={
-        onde.mostrarSeletor ? (
-          <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />
-        ) : undefined
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SeletorPeriodo atual={j.chave} />
+          {onde.mostrarSeletor && (
+            <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />
+          )}
+        </div>
       }
     >
       {onde.opcoes.length === 0 && (
@@ -93,44 +103,44 @@ export default async function Painel({
       )}
 
       {/* ── VENDAS ── */}
-      <Secao titulo={`Vendas · ${onde.titulo}`}>
+      <Secao titulo={`${j.rotulo} · ${onde.titulo}`}>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {/* "Hoje" e o numero que a pessoa abre o sistema para ver. Os
-              outros tres sao apoio — sem essa diferenca, a faixa vira fileira. */}
+          {/* O total do periodo e o numero que a pessoa abre o sistema para
+              ver. Os outros tres sao apoio — sem essa diferenca, a faixa de
+              fichas vira fileira e o olho nao sabe onde pousar. */}
           <Numero
             principal
-            rotulo="Hoje"
-            valor={brl(r.hoje.total)}
-            detalhe={`${r.hoje.vendas} venda${r.hoje.vendas === 1 ? '' : 's'}`}
-            comparacao={{ pct, contra: 'vs ontem' }}
+            rotulo={j.rotulo}
+            valor={brl(r.atual.total)}
+            detalhe={`${r.atual.vendas} venda${r.atual.vendas === 1 ? '' : 's'}`}
+            comparacao={{ pct, contra: j.comparacao }}
           />
           <Numero
-            rotulo="Este mês"
-            valor={brl(r.mes.total)}
-            detalhe={`${r.mes.vendas} vendas`}
+            rotulo="Média por dia"
+            valor={brl(r.atual.total / j.dias)}
+            detalhe={`em ${j.dias} dia${j.dias === 1 ? '' : 's'}`}
             nivel="bom"
           />
-          <Numero
-            rotulo="Ticket médio do mês"
-            valor={brl(r.mes.ticket)}
-            detalhe="por venda"
-          />
+          <Numero rotulo="Ticket médio" valor={brl(r.atual.ticket)} detalhe="por venda" />
           {verDinheiro && (
             <Numero
-              rotulo="Margem do mês"
+              rotulo="Margem"
               valor={`${margem.toFixed(0)}%`}
-              detalhe={`${brl(r.mes.total - r.mes.custo)} sobre o custo`}
+              detalhe={`${brl(r.atual.total - r.atual.custo)} sobre o custo`}
               nivel={margem >= 40 ? 'bom' : margem >= 20 ? 'atencao' : 'critico'}
             />
           )}
         </div>
 
-        <Cartao titulo="Últimos 30 dias">
-          <Barras dados={r.porDia} titulo="Vendas por dia" />
-        </Cartao>
+        {/* Um dia so nao vira grafico de dias: seria uma barra sozinha. */}
+        {j.temGrafico && (
+          <Cartao titulo={`Movimento · ${j.rotulo.toLowerCase()}`}>
+            <Barras dados={r.porDia} titulo="Vendas por dia" />
+          </Cartao>
+        )}
 
         {onde.mostrarSeletor && onde.unidadeId === null && (
-          <Cartao titulo="Por unidade, no mês">
+          <Cartao titulo={`Por unidade · ${j.rotulo.toLowerCase()}`}>
             <Ranque
               itens={r.porUnidade.map((u) => ({
                 rotulo: u.nome,
@@ -145,7 +155,7 @@ export default async function Painel({
       {/* ── PRODUTOS ── */}
       <Secao titulo="Produtos">
         <div className="grid gap-3 lg:grid-cols-2">
-          <Cartao titulo="Mais vendidos no mês">
+          <Cartao titulo={`Mais vendidos · ${j.rotulo.toLowerCase()}`}>
             <Ranque
               itens={r.maisVendidos.map((i) => ({
                 rotulo: i.descricao,
@@ -266,7 +276,7 @@ export default async function Painel({
         <Secao titulo="Clientes">
           <div className="grid gap-2 sm:grid-cols-2">
             <Numero rotulo="Cadastrados" valor={String(r.clientes.total)} />
-            <Numero rotulo="Novos este mês" valor={String(r.clientes.novosNoMes)} />
+            <Numero rotulo="Novos este mês" valor={String(r.clientes.novosNoPeriodo)} />
           </div>
         </Secao>
       )}

@@ -37,6 +37,7 @@ import { criarCliente, listarClientes } from '../src/servidor/cliente'
 import { ferramentasDe, AcimaDoTeto } from '../src/servidor/poderes'
 import { escolherUnidade } from '../src/servidor/unidade'
 import { resumoDoPainel } from '../src/servidor/painel'
+import { janela } from '../src/servidor/periodo'
 import { SemPermissao } from '../src/servidor/permissao'
 
 const A = 'org-exemplo-a'
@@ -492,11 +493,22 @@ if (dona.ok) {
        !tentando.ids.includes('uni-a1'), `viu: ${tentando.ids.join(', ')}`)
 
     // O numero que ele ve e o da loja dele, nao o da empresa.
-    const painelDele = await resumoDoPainel(g.sessao, dele.ids)
-    const painelDaDona = await resumoDoPainel(s, daDona.ids)
+    const trinta = janela('30d')
+    const painelDele = await resumoDoPainel(g.sessao, dele.ids, trinta)
+    const painelDaDona = await resumoDoPainel(s, daDona.ids, trinta)
     ok('o total do gerente e menor que o da empresa',
-       painelDele.mes.total > 0 && painelDele.mes.total < painelDaDona.mes.total,
-       `gerente R$ ${painelDele.mes.total.toFixed(2)} de R$ ${painelDaDona.mes.total.toFixed(2)}`)
+       painelDele.atual.total > 0 && painelDele.atual.total < painelDaDona.atual.total,
+       `gerente R$ ${painelDele.atual.total.toFixed(2)} de R$ ${painelDaDona.atual.total.toFixed(2)}`)
+
+    // E o filtro de periodo tem que MEXER no numero: 90 dias nao pode dar o
+    // mesmo que 1 dia, senao o seletor e enfeite.
+    const doDia = await resumoDoPainel(s, daDona.ids, janela('hoje'))
+    const noventa = await resumoDoPainel(s, daDona.ids, janela('90d'))
+    ok('o filtro de periodo muda o numero de verdade',
+       noventa.atual.total > doDia.atual.total,
+       `hoje R$ ${doDia.atual.total.toFixed(2)} x 90d R$ ${noventa.atual.total.toFixed(2)}`)
+    ok('e a janela de comparacao tem o mesmo tamanho da escolhida',
+       janela('30d').dias === 30 && janela('7d').dias === 7)
   }
 }
 

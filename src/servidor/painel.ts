@@ -10,13 +10,15 @@
 
 import { comoOrg } from './banco'
 import type { Sessao } from './permissao'
+import type { Janela } from './periodo'
 
 const DIA = 864e5
 
 export type Resumo = {
-  hoje: { vendas: number; total: number; ticket: number }
-  mes: { vendas: number; total: number; ticket: number; custo: number }
-  ontem: { total: number }
+  /** O periodo escolhido. Tudo abaixo e dele, menos o que diz o contrario. */
+  atual: { vendas: number; total: number; ticket: number; custo: number }
+  /** A janela do MESMO tamanho, imediatamente antes. */
+  anterior: { vendas: number; total: number }
   porDia: { dia: string; total: number; vendas: number }[]
   porForma: { forma: string; total: number; vendas: number }[]
   porUnidade: { unidadeId: string; nome: string; total: number; vendas: number }[]
@@ -25,7 +27,7 @@ export type Resumo = {
   parados: { descricao: string; codigo: string | null; saldo: number; desde: number | null }[]
   acabando: { descricao: string; codigo: string | null; saldo: number; minimo: number }[]
   estoque: { itens: number; unidades: number; valorCusto: number }
-  clientes: { total: number; novosNoMes: number }
+  clientes: { total: number; novosNoPeriodo: number }
 }
 
 const n = (v: unknown) => Number(v ?? 0)
@@ -33,22 +35,22 @@ const n = (v: unknown) => Number(v ?? 0)
 export async function resumoDoPainel(
   sessao: Sessao,
   unidadeIds: string[],
+  j: Janela,
 ): Promise<Resumo> {
   if (unidadeIds.length === 0) return vazio()
 
-  const inicioHoje = new Date()
-  inicioHoje.setHours(0, 0, 0, 0)
-  const inicioOntem = new Date(inicioHoje.getTime() - DIA)
-  const inicioMes = new Date(inicioHoje.getFullYear(), inicioHoje.getMonth(), 1)
-  const trintaDias = new Date(inicioHoje.getTime() - 29 * DIA)
+  // "Parado ha mais de 30 dias" NAO segue o filtro: e uma definicao do
+  // negocio, nao um recorte de leitura. Olhando 7 dias, tudo pareceria parado.
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+  const trintaDias = new Date(hoje.getTime() - 29 * DIA)
 
   return comoOrg(sessao.orgId, async (db) => {
     const uni = unidadeIds
 
     const [
-      totaisHoje,
-      totaisOntem,
-      totaisMes,
+      totaisAtual,
+      totaisAnterior,
       porDia,
       porForma,
       porUnidade,
@@ -61,18 +63,17 @@ export async function resumoDoPainel(
       clientesNovos,
     ] = await Promise.all([
       db.venda.aggregate({
-        where: { unidadeId: { in: uni }, situacao: 'CONCLUIDA', criadaEm: { gte: inicioHoje } },
+        where: {
+          unidadeId: { in: uni }, situacao: 'CONCLUIDA',
+          criadaEm: { gte: j.de, lt: j.ate },
+        },
         _sum: { total: true }, _count: true,
       }),
       db.venda.aggregate({
         where: {
           unidadeId: { in: uni }, situacao: 'CONCLUIDA',
-          criadaEm: { gte: inicioOntem, lt: inicioHoje },
+          criadaEm: { gte: j.deAnterior, lt: j.ateAnterior },
         },
-        _sum: { total: true },
-      }),
-      db.venda.aggregate({
-        where: { unidadeId: { in: uni }, situacao: 'CONCLUIDA', criadaEm: { gte: inicioMes } },
         _sum: { total: true }, _count: true,
       }),
 
@@ -86,7 +87,7 @@ export async function resumoDoPainel(
                count(*)::int as vendas
           from vendas v
          where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${trintaDias}
+           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
          group by 1 order by 1
       `,
 
@@ -95,7 +96,7 @@ export async function resumoDoPainel(
           from pagamentos p
           join vendas v on v.id = p.venda_id
          where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${inicioMes}
+           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
          group by 1 order by 2 desc
       `,
 
@@ -105,7 +106,7 @@ export async function resumoDoPainel(
                count(v.id)::int as vendas
           from unidades u
           left join vendas v on v.unidade_id = u.id
-               and v.situacao = 'CONCLUIDA' and v.criada_em >= ${inicioMes}
+               and v.situacao = 'CONCLUIDA' and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
          where u.id = any(${uni})
          group by u.id, u.nome order by 3 desc
       `,
@@ -115,7 +116,7 @@ export async function resumoDoPainel(
                sum(v.total) as total, count(*)::int as vendas
           from vendas v
          where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${inicioMes}
+           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
          group by 1 order by 2 desc limit 8
       `,
 
@@ -124,7 +125,7 @@ export async function resumoDoPainel(
           from venda_itens i
           join vendas v on v.id = i.venda_id
          where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${inicioMes}
+           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
          group by 1 order by 3 desc limit 8
       `,
 
@@ -177,31 +178,28 @@ export async function resumoDoPainel(
       `,
 
       db.cliente.count({ where: { ativo: true } }),
-      db.cliente.count({ where: { ativo: true, criadoEm: { gte: inicioMes } } }),
+      db.cliente.count({ where: { ativo: true, criadoEm: { gte: j.de, lt: j.ate } } }),
     ])
 
     const custoMes = await db.$queryRaw<{ custo: string }[]>`
       select coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as custo
         from venda_itens i join vendas v on v.id = i.venda_id
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-         and v.criada_em >= ${inicioMes}
+         and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
     `
 
-    const totalHoje = n(totaisHoje._sum.total)
-    const totalMes = n(totaisMes._sum.total)
+    const total = n(totaisAtual._sum.total)
 
     return {
-      hoje: {
-        vendas: totaisHoje._count,
-        total: totalHoje,
-        ticket: totaisHoje._count ? totalHoje / totaisHoje._count : 0,
-      },
-      ontem: { total: n(totaisOntem._sum.total) },
-      mes: {
-        vendas: totaisMes._count,
-        total: totalMes,
-        ticket: totaisMes._count ? totalMes / totaisMes._count : 0,
+      atual: {
+        vendas: totaisAtual._count,
+        total,
+        ticket: totaisAtual._count ? total / totaisAtual._count : 0,
         custo: n(custoMes[0]?.custo),
+      },
+      anterior: {
+        vendas: totaisAnterior._count,
+        total: n(totaisAnterior._sum.total),
       },
       porDia: porDia.map((d) => ({ dia: d.dia, total: n(d.total), vendas: n(d.vendas) })),
       porForma: porForma.map((f) => ({ forma: f.forma, total: n(f.total), vendas: n(f.vendas) })),
@@ -223,17 +221,16 @@ export async function resumoDoPainel(
         unidades: n(estoque[0]?.unidades),
         valorCusto: n(estoque[0]?.valor),
       },
-      clientes: { total: clientesTotal, novosNoMes: clientesNovos },
+      clientes: { total: clientesTotal, novosNoPeriodo: clientesNovos },
     }
   })
 }
 
 const vazio = (): Resumo => ({
-  hoje: { vendas: 0, total: 0, ticket: 0 },
-  ontem: { total: 0 },
-  mes: { vendas: 0, total: 0, ticket: 0, custo: 0 },
+  atual: { vendas: 0, total: 0, ticket: 0, custo: 0 },
+  anterior: { vendas: 0, total: 0 },
   porDia: [], porForma: [], porUnidade: [], porVendedor: [],
   maisVendidos: [], parados: [], acabando: [],
   estoque: { itens: 0, unidades: 0, valorCusto: 0 },
-  clientes: { total: 0, novosNoMes: 0 },
+  clientes: { total: 0, novosNoPeriodo: 0 },
 })
