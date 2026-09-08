@@ -308,18 +308,19 @@ h2,
 h3,
 .display {
   font-family: var(--font-display);
-  /* Serifada não quer o tracking fechado que uma grotesca pede: as serifas já
-     costuram as letras, e apertar mais fecha as contraformas. */
-  letter-spacing: -0.01em;
-  font-weight: 400;
+  /* Grotesca pesada PEDE tracking fechado: no peso alto as hastes engrossam e
+     o espaço entre letras cresce junto, então apertar devolve a densidade que
+     faz o título soar firme. É o contrário do que uma serifada quer. */
+  letter-spacing: -0.028em;
+  font-weight: 700;
   color: var(--titulo);
 }
 
-/* O título gigante da capa é o único lugar do peso 200: em tamanho grande a
-   haste fina vira elegância, e em tamanho pequeno viraria borrão. */
+/* A capa vai mais pesada e mais apertada ainda: em tamanho grande é onde o
+   desenho da fonte aparece, e é a única linha da página que pode gritar. */
 h1 {
-  font-weight: 300;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: -0.04em;
 }
 
 /* Números em coluna precisam alinhar. Vale para tabela, total, dinheiro. */

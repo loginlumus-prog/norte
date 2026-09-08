@@ -1,34 +1,34 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import { Newsreader, Manrope } from 'next/font/google'
+import localFont from 'next/font/local'
+import { Manrope } from 'next/font/google'
 import './globals.css'
 
 // ── as duas fontes, e por que estas ──────────────────────────
-// O par vem do BC Hub, e é o mais bonito dos três que testamos aqui.
+// A referência é a Klarheit Grotesk, do site que a gente estudou: grotesca com
+// desenho próprio, que aguenta peso alto sem virar bloco. Ela é PAGA.
 //
-// DISPLAY (Newsreader) — uma serifada de texto, usada LEVE e GRANDE. É a
-// escolha que mais diferencia: todo sistema de gestão do mercado usa a mesma
-// geométrica sem graça, e uma serifada editorial num painel de loja é
-// inesperada do jeito certo — lê como publicação, não como formulário.
+// DISPLAY (Cabinet Grotesk) — a parente livre mais próxima, do Fontshare.
+// Mesma família de desenho: grotesca geométrica com terminais retos, 'a' de
+// dois andares e 'g' de uma perna. É desenhada para o peso pesado — é lá que
+// ela tem caractere, e é exatamente onde a gente usa.
 //
-// Os pesos importam mais que a fonte: 200 só no título gigante da capa, 300 a
-// 400 nos títulos de seção. Serifada leve em tamanho pequeno vira borrão, e é
-// por isso que ela NÃO desce para rótulo nem para tabela.
+// Vem como fonte VARIÁVEL num arquivo só de 41 KB, cobrindo do 100 ao 900. Uma
+// fonte estática por peso custaria cinco arquivos e cinco downloads; a
+// variável interpola, então dá para usar 780 se 700 for leve e 800 for pesado.
 //
-// TEXTO (Manrope) — geométrica com contraforma aberta, feita para tela. Ela
-// segura tudo que se lê de verdade: rótulo, tabela, formulário e dinheiro. O
-// contraste entre a serifada e ela é o que faz a hierarquia funcionar sem
-// precisar de caixa nenhuma em volta — que é justamente o que a gente tirou.
+// TEXTO (Manrope) — geométrica de contraforma aberta, feita para tela. Segura
+// tudo que se lê de verdade: rótulo, tabela, formulário, dinheiro. Grotesca de
+// display não desce para 13px sem fechar as contraformas.
 //
-// `next/font` baixa e serve as duas do nosso próprio domínio: a política de
-// segurança não permite pedir arquivo a domínio de fora, e fonte externa deixa
-// o texto invisível enquanto carrega.
-const display = Newsreader({
-  subsets: ['latin'],
-  weight: ['200', '300', '400', '500'],
-  style: ['normal', 'italic'],
+// A licença (Fontshare Free License) está em `src/app/fontes/License/`, e ela
+// cobre uso comercial — o que importa aqui, porque isto é um produto vendido a
+// terceiros e não um site só.
+const display = localFont({
+  src: './fontes/CabinetGrotesk-Variable.woff2',
   variable: '--fonte-display',
   display: 'swap',
+  weight: '100 900',
 })
 
 const texto = Manrope({
