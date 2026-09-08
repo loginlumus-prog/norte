@@ -506,6 +506,45 @@ th.numero {
 [data-entrou] .cascata > *:nth-child(7) { animation-delay: .36s }
 [data-entrou] .cascata > *:nth-child(8) { animation-delay: .42s }
 
+/* A CONVERSA acontece, ela não aparece.
+   Quem escalona os balões agora é o JavaScript (ver ConversaFlutuante): ele
+   precisa pôr o "digitando" no meio e escrever o texto letra por letra, e
+   nada disso cabe em animation-delay. O que sobra para o CSS é a entrada de
+   cada balão, que roda uma vez quando o balão é montado. */
+.balao-entra { animation: surgir .34s cubic-bezier(.2,.7,.3,1) both; }
+
+/* Os três pontinhos do "digitando". Sobem e descem em onda — é o desenho
+   que todo mundo já leu mil vezes no WhatsApp, e reconhecer o gesto é o que
+   faz a cena parecer conversa. */
+@keyframes pontinho {
+  0%, 60%, 100% { transform: translateY(0); opacity: .45; }
+  30%           { transform: translateY(-3px); opacity: 1; }
+}
+.pensando { display: inline-flex; gap: 4px; align-items: center; }
+.pensando i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--nav-tinta);
+  animation: pontinho 1.15s ease-in-out infinite;
+}
+.pensando i:nth-child(2) { animation-delay: .16s }
+.pensando i:nth-child(3) { animation-delay: .32s }
+
+/* O cursor do texto que se digita sozinho. Pisca em passo de relógio, e para
+   junto com todo o resto quando a pessoa pede menos movimento — aí ele vira
+   um traço parado, que continua dizendo "aqui entra texto". */
+@keyframes piscar {
+  50% { opacity: 0; }
+}
+.cursor-digita {
+  display: inline-block;
+  margin-left: 0.12em;
+  font-weight: 400;
+  color: var(--sol-claro, currentColor);
+  animation: piscar 1.05s steps(1, end) infinite;
+}
+
 /* ── o que pede atenção pulsa ────────────────────────────── */
 /*
    Pulsar é caro: uma tela onde tudo pisca é uma tela onde nada chama. Então
@@ -558,6 +597,11 @@ th.numero {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    /* O ATRASO também some. Cortar a duração sem cortar o atraso é meio
+       conserto: como as entradas usam fill-mode both, a peça fica travada no
+       estado inicial (invisível) durante todo o atraso, e quem pediu MENOS
+       movimento acabava esperando MAIS que os outros. */
+    animation-delay: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
 }

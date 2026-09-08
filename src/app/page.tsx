@@ -1,7 +1,15 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
+import type { Plano } from '@prisma/client'
+import {
+  PLANOS as LIMITES,
+  PLANOS_COM_PRECO,
+  RECOMENDADO,
+  type Limite,
+} from '@/servidor/planos'
 import { Marca, Simbolo } from '@/ui/Marca'
 import { ConversaFlutuante } from '@/ui/ConversaFlutuante'
+import { Digitando } from '@/ui/Digitando'
 import { CompararPlanos } from '@/ui/CompararPlanos'
 
 // A página de venda.
@@ -26,15 +34,26 @@ export const metadata: Metadata = {
     'Sistema de gestão para comércio: produto, estoque, balcão, caixa e o resultado do mês. Com um assistente de IA no WhatsApp que você batiza e que conhece a sua operação.',
 }
 
-const PLANOS = [
+// O texto de venda de cada plano.
+//
+// Só o que é TEXTO mora aqui. Preço, cota de loja, cota de gente e crédito
+// mensal vêm de `servidor/planos.ts`, que é a mesma fonte que a tela de
+// assinatura consulta para barrar a criação da sexta loja. Número repetido à
+// mão é como a página passa a prometer o que o sistema não entrega.
+const CARTOES: Record<
+  Plano,
   {
-    nome: 'Balcão',
-    preco: '349',
-    para: 'Uma loja, até 5 pessoas',
-    // O bloco do meio: o que este plano dá de IA, e a tradução para a unidade
-    // que a pessoa entende. "R$ 0 de crédito" não diz nada; "o WhatsApp
-    // continua sendo você" diz.
-    credito: { valor: 'Sem assistente', nota: 'o WhatsApp continua sendo você', conta: null },
+    selo?: string
+    /** A tradução do crédito para a unidade que o cliente entende. */
+    conta: string | null
+    nota: string
+    itens: string[]
+    fora: string[]
+  }
+> = {
+  BALCAO: {
+    conta: null,
+    nota: 'o WhatsApp continua sendo você',
     itens: [
       'Produtos com as variações da sua loja',
       'Estoque com histórico de cada movimento',
@@ -44,16 +63,11 @@ const PLANOS = [
     ],
     fora: ['Assistente no WhatsApp', 'Mais de uma loja', 'Crediário próprio'],
   },
-  {
-    nome: 'Balcão + Assistente',
-    preco: '697',
-    para: 'Uma loja, com o assistente no WhatsApp',
-    destaque: 'O mais pedido',
-    credito: {
-      valor: 'R$ 120 de crédito de IA',
-      nota: 'renovado todo mês · compra mais quando quiser',
-      conta: '~2.000 conversas no WhatsApp',
-    },
+  BALCAO_AGENTE: {
+    // "R$ 120 de crédito" não diz nada para quem nunca comprou token. O número
+    // sai do custo medido por conversa, com cache e roteamento de modelo.
+    conta: '~2.000 conversas no WhatsApp',
+    nota: 'renovado todo mês · compra mais quando quiser',
     itens: [
       'Tudo do Balcão',
       'Assistente no WhatsApp, com o nome que você der',
@@ -63,15 +77,10 @@ const PLANOS = [
     ],
     fora: ['Mais de uma loja', 'Crediário próprio'],
   },
-  {
-    nome: 'Rede',
-    preco: '1.497',
-    para: 'Até 5 lojas · R$ 249 por loja extra',
-    credito: {
-      valor: 'R$ 350 de crédito de IA',
-      nota: 'renovado todo mês · compra mais quando quiser',
-      conta: '~5.800 conversas no WhatsApp',
-    },
+  REDE: {
+    selo: 'O mais pedido',
+    conta: '~5.800 conversas no WhatsApp',
+    nota: 'renovado todo mês · compra mais quando quiser',
     itens: [
       'Tudo do Balcão + Assistente',
       'Estoque separado por loja, consolidado num clique',
@@ -81,25 +90,33 @@ const PLANOS = [
     ],
     fora: [],
   },
-  {
-    nome: 'Corporativo',
-    preco: null,
-    para: 'Sem limite de lojas',
-    credito: {
-      valor: 'R$ 800 de crédito de IA',
-      nota: 'e o resto combinado no contrato',
-      conta: '~13.000 conversas no WhatsApp',
-    },
-    itens: [
-      'Tudo da Rede',
-      'Site, tráfego e a condução do negócio com a gente',
-      'Login único da empresa (SSO)',
-      'Ambiente dedicado e acordo de nível de serviço',
-      'Gerente de conta',
-    ],
+  CORPORATIVO: {
+    conta: '~13.000 conversas no WhatsApp',
+    nota: 'e o resto combinado no contrato',
+    itens: [],
     fora: [],
   },
+}
+
+const CORPORATIVO_EXTRAS: [string, string][] = [
+  ['Site, tráfego e condução', 'A gente entra junto na operação, não só entrega o sistema.'],
+  ['Login único da empresa', 'SSO, ambiente dedicado e acordo de nível de serviço.'],
+  ['Gerente de conta', 'Uma pessoa nossa que conhece a sua operação pelo nome.'],
 ]
+
+const reais = (v: number) =>
+  new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 0,
+  }).format(v)
+
+const cotaLojas = (l: Limite) =>
+  l.unidades === null ? 'Sem limite' : l.unidades === 1 ? '1 loja' : `Até ${l.unidades}`
+
+const cotaGente = (l: Limite) =>
+  l.usuarios === null ? 'Sem limite' : `${l.usuarios} pessoas`
+
 
 const FAZ = [
   {
@@ -217,6 +234,27 @@ const DOR: [string, string][] = [
     'Alguém está atrasado.',
     'Quem lembra de cobrar? A conversa que traz o dinheiro de volta é chata, é repetitiva, e é sempre a primeira a ficar para amanhã.',
   ],
+]
+
+// O rodízio da faixa do assistente.
+//
+// A primeira versão tinha o rótulo "Você define" e uma lista solta embaixo —
+// e metade da lista não era definição, era coisa que ELE faz. Frase pela
+// metade num rodízio vira promessa torta.
+//
+// Agora cada linha traz o próprio sujeito, e elas se alternam de propósito:
+// uma que você regula, uma que ele executa. É a divisão de trabalho do
+// produto inteiro dita em oito frases — e nenhuma delas é recurso inventado
+// para encher a lista.
+const NA_PRATICA = [
+  'Você dá o nome e a personalidade dele',
+  'Ele avisa qual peça vai faltar antes de faltar',
+  'Você define o teto de desconto que ele pode dar',
+  'Ele cobra quem atrasou, sem você precisar pedir',
+  'Você diz quanto ele pode gastar de IA por dia',
+  'Ele manda o relatório do dia na hora que você marcar',
+  'Você escolhe o que ele enxerga do seu estoque',
+  'Ele lança a compra no financeiro depois que você confirma',
 ]
 
 const REGRAS_AGENTE: [string, string][] = [
@@ -546,7 +584,7 @@ export default function Inicio() {
             "está na frente", que é a sensação de profundidade. */}
         <span
           aria-hidden
-          className="pointer-events-none absolute top-0 right-0 z-0 hidden h-[46rem] w-[34rem] translate-x-[28%] xl:block 2xl:h-[52rem]"
+          className="pointer-events-none absolute top-0 right-0 z-0 hidden h-[52rem] w-[38rem] translate-x-[28%] xl:block 2xl:h-[56rem]"
           style={{
             background:
               'radial-gradient(22rem 26rem at 52% 62%, color-mix(in srgb, var(--marca) 34%, transparent) 0%, transparent 72%)',
@@ -560,10 +598,10 @@ export default function Inicio() {
           height={1760}
           sizes="(max-width: 1536px) 50vw, 45vw"
           quality={90}
-          className="pointer-events-none absolute top-6 right-0 z-0 hidden h-[54rem] w-auto max-w-none translate-x-[40%] object-contain object-top drop-shadow-[0_40px_90px_rgb(0_0_0/0.75)] xl:block 2xl:h-[58rem] 2xl:translate-x-[34%]"
+          className="pointer-events-none absolute top-6 right-0 z-0 hidden h-[62rem] w-auto max-w-none translate-x-[40%] object-contain object-top drop-shadow-[0_40px_90px_rgb(0_0_0/0.75)] xl:block 2xl:h-[66rem] 2xl:translate-x-[34%]"
         />
 
-        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 py-24 md:grid-cols-[1fr_1.05fr] md:py-40">
+        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 pt-24 md:grid-cols-[1fr_1.05fr] md:pt-40">
           <div className="flex flex-col gap-5">
             <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
               O que só o Norte faz
@@ -596,9 +634,47 @@ export default function Inicio() {
 
           <ConversaFlutuante />
         </div>
+
+        {/* A FAIXA DO "NA PRÁTICA".
+            A lista do que o assistente faz e do que a loja regula nele é longa
+            demais para caber numa linha, e escolher três seria mentir por
+            omissão. Então a linha se reescreve: cada volta mostra outra, e o
+            que a peça diz é "tem mais coisa aqui do que cabe na tela".
+
+            As frases alternam sujeito — uma "você", uma "ele" — porque é
+            exatamente essa a divisão de trabalho que a seção inteira defende.
+
+            É o ÚNICO laço infinito da página, e é de propósito: aqui a
+            repetição é o conteúdo. Todo o resto se mexe uma vez só. */}
+        <div className="relative z-10 mx-auto max-w-6xl px-5 pt-14 pb-24 md:pb-40">
+          <div className="flex flex-col gap-2 border-t border-white/15 pt-6 sm:flex-row sm:items-baseline sm:gap-6">
+            <span className="shrink-0 text-[11px] font-bold tracking-[0.16em] text-sol-claro uppercase">
+              Na prática
+            </span>
+            <Digitando
+              itens={NA_PRATICA}
+              className="min-h-[1.6em] text-lg leading-snug font-semibold tracking-tight text-nav-tinta sm:text-xl"
+            />
+          </div>
+        </div>
       </section>
 
-      {/* ── planos ── */}
+      {/* ── planos ──
+          ── por que três cartões e não quatro ──
+          O Corporativo não é o irmão maior dos outros: não tem preço de
+          tabela, não se assina sozinho e o que se compra nele é trabalho
+          nosso, não assento no sistema. Enfiado como quarta coluna, ele
+          espremia os três que a pessoa realmente compara e ainda mentia sobre
+          o próprio formato. Fora da grade, cada cartão respira e ele fica com
+          a faixa larga que o tipo de contrato dele pede.
+
+          ── e por que o número vem do servidor ──
+          Preço, cota de loja, cota de gente e crédito mensal saem de
+          `servidor/planos.ts` — a MESMA fonte que a tela de assinatura lê para
+          barrar a criação da sexta loja. Repetir o número aqui à mão é como
+          divergência começa, e divergir aqui é prometer na venda o que o
+          sistema não entrega. Aqui em cima fica só o que é texto de venda: as
+          balas e a tradução de crédito em conversa. */}
       <section id="planos" className="scroll-mt-16 bg-fundo">
         <div className="mx-auto max-w-6xl px-5 py-16">
           <Titulo
@@ -606,102 +682,149 @@ export default function Inicio() {
             titulo="Preço por tamanho de operação"
             resumo="Sem taxa de implantação escondida. Loja extra tem preço de tabela, não “fale com o comercial”."
           />
-          <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {PLANOS.map((p, i) => (
-              /* A ordem dentro do cartao e a mesma da referencia, e ela nao e
-                 arbitraria: nome → para quem e → preco → O QUE VOCE GANHA DE
-                 IA → botao → lista. O bloco do credito vem ANTES do botao
-                 porque e ele que diferencia os pacotes na pratica; a lista de
-                 recursos vem depois porque e quase igual nos quatro. */
-              <div
-                key={p.nome}
-                className={
-                  'relative flex flex-col gap-4 rounded-norte bg-superficie p-5 ' +
-                  (p.destaque
-                    ? 'border border-tinta/25 shadow-norte lg:-my-2 lg:pt-7'
-                    : 'border border-borda')
-                }
-              >
-                {p.destaque && (
-                  <span className="absolute top-4 right-4 rounded-full border border-sol px-2 py-0.5 text-[10px] font-semibold tracking-wide text-sol">
-                    {p.destaque}
-                  </span>
-                )}
 
-                <div className="flex flex-col gap-1 pr-24">
-                  <h3 className="text-lg font-bold tracking-tight">{p.nome}</h3>
-                  <p className="text-xs text-tinta-3">{p.para}</p>
-                </div>
-
-                <p className="flex items-baseline gap-1">
-                  {p.preco ? (
-                    <>
-                      <span className="numero text-[30px] leading-none font-extrabold tracking-tight text-tinta">
-                        R$ {p.preco}
-                      </span>
-                      <span className="ml-0.5 text-xs text-tinta-3">/mês</span>
-                    </>
-                  ) : (
-                    <span className="text-2xl leading-none font-extrabold tracking-tight text-tinta">
-                      Sob consulta
-                    </span>
-                  )}
-                </p>
-
-                {/* O bloco do credito. Fundo mais claro, sem borda — bloco
-                    aninhado com borda seria caixa dentro de caixa. */}
-                <div className="rounded-norte bg-superficie-2 px-3 py-2.5">
-                  <p className="text-sm font-bold text-tinta">{p.credito.valor}</p>
-                  {p.credito.conta && (
-                    /* A traducao para a unidade do cliente. "R$ 120 de credito"
-                       nao diz nada para quem nunca comprou token; "2.000
-                       conversas" diz. */
-                    <p className="numero pt-1 text-xs font-semibold text-bom">
-                      {p.credito.conta}
-                    </p>
-                  )}
-                  <p className="pt-0.5 text-[11px] leading-snug text-tinta-3">{p.credito.nota}</p>
-                </div>
-
-                <a
-                  href="#falar"
+          <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {PLANOS_COM_PRECO.map((codigo) => {
+              const l = LIMITES[codigo]
+              const c = CARTOES[codigo]
+              const eleito = codigo === RECOMENDADO
+              return (
+                <div
+                  key={codigo}
                   className={
-                    'rounded-norte px-4 py-2.5 text-center text-sm font-semibold ' +
-                    (p.destaque
-                      ? 'botao-marca text-marca-tinta'
-                      : i === PLANOS.length - 1
-                        ? 'bg-tinta text-superficie hover:opacity-90'
-                        : 'border border-borda text-tinta hover:bg-superficie-2')
+                    'relative flex flex-col rounded-norte p-6 ' +
+                    (eleito
+                      ? 'bg-superficie-2 shadow-norte ring-1 ring-marca/35 lg:-my-3 lg:pt-9'
+                      : 'bg-superficie ring-1 ring-borda')
                   }
                 >
-                  {p.preco ? 'Começar o teste' : 'Falar com a gente'}
-                </a>
+                  {eleito && (
+                    <span className="absolute top-4 right-4 rounded-full bg-marca px-2.5 py-1 text-[10px] font-bold tracking-[0.1em] text-marca-tinta uppercase">
+                      {c.selo}
+                    </span>
+                  )}
 
-                <ul className="flex flex-1 flex-col gap-1.5 border-t border-borda-suave pt-3.5">
-                  {p.itens.map((x) => (
-                    <li key={x} className="flex gap-2 text-[13px] leading-snug text-tinta-2">
-                      <span aria-hidden className="mt-px shrink-0 text-[11px] text-bom">✓</span>
-                      {x}
-                    </li>
-                  ))}
-                  {/* O que NAO tem, agrupado no fim. Esconder o que falta e o
-                      que faz o cliente descobrir depois de assinar — e mostrar
-                      aumenta a confianca na lista inteira. */}
-                  {p.fora.map((x) => (
-                    <li
-                      key={x}
-                      className="flex gap-2 text-[13px] leading-snug text-tinta-3 line-through decoration-tinta-3/40"
-                    >
-                      <span aria-hidden className="mt-px shrink-0 text-[11px] no-underline opacity-50">
-                        ✕
-                      </span>
-                      {x}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+                  <h3 className="pr-24 text-xl font-bold tracking-tight">{l.titulo}</h3>
+                  <p className="mt-2 max-w-[34ch] text-sm leading-relaxed text-tinta-2">
+                    {l.resumo}
+                  </p>
+
+                  <p className="mt-7 flex items-baseline gap-1.5">
+                    <span className="numero text-[2.6rem] leading-none font-extrabold tracking-[-0.03em] text-tinta">
+                      {reais(l.mensal!)}
+                    </span>
+                    <span className="text-sm text-tinta-3">/mês</span>
+                  </p>
+                  <p className="mt-2 text-xs text-tinta-3">
+                    {l.porUnidadeExtra
+                      ? `+ ${reais(l.porUnidadeExtra)} por loja além da ${l.unidades}ª`
+                      : 'Sem taxa de implantação'}
+                  </p>
+
+                  <a
+                    href="#falar"
+                    className={
+                      'mt-5 rounded-norte px-4 py-2.5 text-center text-sm font-semibold ' +
+                      (eleito
+                        ? 'botao-marca text-marca-tinta'
+                        : 'border border-borda text-tinta hover:bg-superficie-2')
+                    }
+                  >
+                    Começar o teste
+                  </a>
+
+                  {/* A FICHA. Três linhas de rótulo à esquerda e número à
+                      direita — é o que a pessoa procura quando já entendeu o
+                      plano e quer saber se cabe na operação dela. Antes isso
+                      estava dissolvido no meio das balas, e cota de loja
+                      escondida numa lista de quinze linhas é a informação que
+                      ninguém acha. */}
+                  <dl className="mt-7">
+                    <Ficha rotulo="Lojas" valor={cotaLojas(l)} />
+                    <Ficha rotulo="Pessoas" valor={cotaGente(l)} />
+                    <Ficha
+                      rotulo="Crédito de IA"
+                      valor={l.creditoMensal ? `${reais(l.creditoMensal)}/mês` : 'Sem assistente'}
+                      nota={c.conta}
+                      rodape={c.nota}
+                    />
+                  </dl>
+
+                  <ul className="mt-6 flex flex-1 flex-col gap-2 border-t border-borda-suave pt-4">
+                    {c.itens.map((x) => (
+                      <li key={x} className="flex gap-2 text-[13px] leading-snug text-tinta-2">
+                        <span aria-hidden className="mt-px shrink-0 text-[11px] text-bom">
+                          ✓
+                        </span>
+                        {x}
+                      </li>
+                    ))}
+                    {/* O que NÃO tem, agrupado no fim. Esconder o que falta é o
+                        que faz o cliente descobrir depois de assinar — e
+                        mostrar aumenta a confiança na lista inteira. */}
+                    {c.fora.map((x) => (
+                      <li
+                        key={x}
+                        className="flex gap-2 text-[13px] leading-snug text-tinta-3 line-through decoration-tinta-3/40"
+                      >
+                        <span
+                          aria-hidden
+                          className="mt-px shrink-0 text-[11px] no-underline opacity-50"
+                        >
+                          ✕
+                        </span>
+                        {x}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
           </div>
+
+          {/* O CORPORATIVO, em faixa larga.
+              Aqui o que se contrata é a condução do negócio junto com o
+              sistema, e por isso o lado direito não tem preço: tem o crédito
+              que já vem e o convite para conversar. */}
+          <div className="mt-5 flex flex-col gap-8 overflow-hidden rounded-norte bg-nav p-7 md:flex-row md:items-center md:justify-between md:p-9">
+            <div className="max-w-2xl">
+              <span className="text-[11px] font-bold tracking-[0.16em] text-sol-claro uppercase">
+                Para rede grande
+              </span>
+              <h3 className="mt-2 text-2xl font-bold tracking-tight !text-white">Corporativo</h3>
+              <p className="mt-2 max-w-[58ch] text-sm leading-relaxed text-white/65">
+                {LIMITES.CORPORATIVO.resumo}
+              </p>
+              <div className="mt-6 grid gap-x-8 gap-y-4 sm:grid-cols-3">
+                {CORPORATIVO_EXTRAS.map(([t, d]) => (
+                  <div key={t} className="flex flex-col gap-1 border-t border-white/20 pt-3">
+                    <p className="text-[13px] font-bold text-white">{t}</p>
+                    <p className="text-xs leading-relaxed text-white/60">{d}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col gap-3 md:w-56 md:items-end md:text-right">
+              <p className="text-2xl leading-none font-extrabold tracking-tight !text-white">
+                Sob consulta
+              </p>
+              <p className="text-xs leading-relaxed text-white/60">
+                Sem limite de loja nem de gente, com{' '}
+                <span className="font-semibold text-sol-claro">
+                  {reais(LIMITES.CORPORATIVO.creditoMensal)} de crédito de IA por mês
+                </span>{' '}
+                e o resto combinado no contrato.
+              </p>
+              <a
+                href="#falar"
+                className="botao-marca mt-1 rounded-norte px-6 py-3 text-center text-sm font-semibold text-marca-tinta"
+              >
+                Falar com a gente
+              </a>
+            </div>
+          </div>
+
           <p className="mt-5 text-xs text-tinta-3">
             Valores mensais, por empresa. Nota fiscal e conciliação de maquininha entram como
             opcional no plano Balcão.
@@ -711,11 +834,7 @@ export default function Inicio() {
               com o cartão do meio quase escolhido tem UMA pergunta específica
               ("o crediário está no Rede ou não?"), e procurar isso em quatro
               listas de bala é onde a pessoa desiste e vai perguntar no
-              WhatsApp. Ela responde sem ninguém do outro lado.
-
-              O dado vem de `servidor/planos.ts`, a MESMA lista que a tela de
-              assinatura usa por dentro — duas listas separadas divergem, e
-              divergir aqui é prometer na venda o que o sistema não entrega. */}
+              WhatsApp. Ela responde sem ninguém do outro lado. */}
           <div className="mt-14">
             <h3 className="mb-1 text-2xl leading-tight">Item por item</h3>
             <p className="mb-6 max-w-[56ch] text-sm text-tinta-2">
@@ -822,6 +941,46 @@ function Titulo({ olho, titulo, resumo }: { olho: string; titulo: string; resumo
     </div>
   )
 }
+
+/**
+ * Uma linha da ficha do plano: rótulo à esquerda, número à direita.
+ *
+ * É `<dl>` de verdade porque é exatamente isso — termo e definição. Leitor de
+ * tela anuncia "Lojas, até 5"; num par de divs ele leria "até 5" solto. A
+ * tradução e a letra miúda entram como um SEGUNDO `<dd>` do mesmo termo, que
+ * é HTML válido e diz a coisa certa: são duas definições do mesmo item.
+ */
+function Ficha({
+  rotulo,
+  valor,
+  nota,
+  rodape,
+}: {
+  rotulo: string
+  valor: string
+  /** A tradução do número, quando ela existe. Ex.: "~5.800 conversas". */
+  nota?: string | null
+  /** A letra miúda de baixo. Ex.: "renovado todo mês". */
+  rodape?: string
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 border-t border-borda-suave py-2.5">
+      <dt className="text-[13px] text-tinta-2">{rotulo}</dt>
+      <dd className="numero ml-auto text-[13px] font-bold text-tinta">{valor}</dd>
+      {(nota || rodape) && (
+        <dd className="w-full">
+          {nota && <span className="numero block pt-1 text-[11px] font-semibold text-bom">{nota}</span>}
+          {rodape && (
+            <span className="block pt-0.5 text-right text-[11px] leading-snug text-tinta-3">
+              {rodape}
+            </span>
+          )}
+        </dd>
+      )}
+    </div>
+  )
+}
+
 
 /**
  * O painel, desenhado à mão em HTML.
