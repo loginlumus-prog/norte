@@ -345,6 +345,22 @@ th.numero {
   background: var(--nav-fundo);
 }
 
+/* A aurora do bloco do assistente.
+   ── por que CSS e não imagem ──
+   A primeira versão era um JPEG gerado, e ficou sujo: degradê suave é o PIOR
+   caso para compressão com perda — o JPEG divide a imagem em blocos de 8×8 e,
+   onde não há detalhe para esconder o erro, o bloco aparece. Numa faixa de cor
+   lisa isso vira faixa listrada, exatamente o que se via.
+   Em CSS o degradê é calculado pelo navegador na resolução da tela: sem
+   artefato, sem download de 300 KB, e muda de cor junto com o tema. */
+.aurora {
+  background:
+    radial-gradient(60rem 34rem at 92% 18%, color-mix(in srgb, var(--sol) 22%, transparent) 0%, transparent 62%),
+    radial-gradient(52rem 40rem at 74% 62%, color-mix(in srgb, var(--marca) 30%, transparent) 0%, transparent 66%),
+    radial-gradient(70rem 46rem at 30% 96%, color-mix(in srgb, var(--nav-3) 62%, transparent) 0%, transparent 70%),
+    var(--nav-fundo);
+}
+
 /* O botao principal.
    ── o erro que estava aqui ──
    Ele usava o mesmo `--realce` dos cartoes: um fio branco a 70% no topo. Em

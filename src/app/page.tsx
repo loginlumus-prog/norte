@@ -319,82 +319,113 @@ export default function Inicio() {
       </section>
 
       {/* ── para quem é ──
-          Mosaico de formatos diferentes, e a IMAGEM É O CARD: ela preenche o
-          bloco inteiro e o texto mora em cima, com véu embaixo. Card com
-          fotinha dentro parece catálogo; foto que ocupa tudo parece revista.
+          Bento no formato da referência, e a diferença que importa está na
+          ORDEM DENTRO DO CARTÃO: título e parágrafo em cima, como texto normal
+          e legível; a imagem embaixo, sangrando pela borda.
 
-          Os tamanhos são desiguais de propósito. Seis retângulos iguais viram
-          grade de planilha — é a diferença de proporção que faz o olho passear
-          em vez de varrer. */}
+          A versão anterior jogava o texto POR CIMA da foto, com véu. Isso
+          funciona para uma etiqueta de duas palavras e falha para explicar:
+          texto sobre foto é sempre mais difícil de ler, e explicação precisa
+          de contraste, não de atmosfera. A foto passou a ser o rodapé do
+          cartão, e o texto voltou para o papel.
+
+          Uma ideia completa em cima, dois blocos embaixo para completar — e um
+          deles mistura vários comércios num mosaico só. */}
       <section className="bg-superficie">
         <div className="mx-auto max-w-6xl px-5 py-16">
           <Titulo
             olho="Para quem é"
             titulo="Comércio que vende no balcão e no WhatsApp"
-            resumo="De uma loja de bairro à rede com dezenas de unidades. A mesma tabela que guarda a loja única guarda a rede de quarenta — quem começa com uma não descobre nem que existe o conceito de unidade."
+            resumo="De uma loja de bairro à rede com dezenas de unidades."
           />
 
-          <div className="mt-9 grid auto-rows-[13rem] grid-cols-2 gap-3 lg:grid-cols-4">
-            {[
-              {
-                img: '/img/dona-b.jpg',
-                t: 'Loja de roupa',
-                d: 'Grade de cor e tamanho, etiqueta e a peça que some do provador.',
-                span: 'col-span-2 row-span-2',
-              },
-              {
-                img: '/img/sapataria.jpg',
-                t: 'Sapataria',
-                d: 'Numeração como eixo. Um par por caixa, cada caixa com código.',
-                span: 'row-span-2',
-              },
-              {
-                img: '/img/sorveteria.jpg',
-                t: 'Sorveteria',
-                d: 'Venda por peso, com casa decimal — e o caixa fechando certo.',
-                span: '',
-              },
-              {
-                img: '/img/balcao-pagto.jpg',
-                t: 'Papelaria e conveniência',
-                d: 'Pagamento dividido, troco calculado, gaveta conferida.',
-                span: '',
-              },
-              {
-                img: '/img/distribuidora.jpg',
-                t: 'Distribuidora e rede',
-                d: 'Depósito e lojas com estoque próprio, consolidado num clique.',
-                span: 'col-span-2 lg:col-span-4',
-              },
-            ].map((c) => (
-              <article
-                key={c.t}
-                className={`group relative isolate flex flex-col justify-end overflow-hidden rounded-norte ${c.span}`}
-              >
+          <div className="mt-9 grid gap-3 lg:grid-cols-2">
+            {/* A IDEIA COMPLETA — ocupa a largura toda, texto à esquerda e a
+                foto sangrando pela direita e por baixo. */}
+            <article className="relative isolate col-span-full grid overflow-hidden rounded-norte bg-superficie-2 lg:grid-cols-[1fr_1.15fr]">
+              <div className="flex flex-col justify-center gap-3 p-6 sm:p-8">
+                <h3 className="text-2xl leading-tight text-balance sm:text-3xl">
+                  A mesma tela serve a uma loja e a quarenta
+                </h3>
+                <p className="max-w-[48ch] text-sm leading-relaxed text-tinta-2">
+                  Quem começa com uma loja <strong className="font-semibold text-tinta">não
+                  descobre nem que existe o conceito de unidade</strong> — o seletor de loja
+                  só aparece quando nasce a segunda. E a arquitetura não tem teto: a mesma
+                  tabela que guarda a loja única guarda a rede inteira.
+                </p>
+                <p className="max-w-[48ch] text-sm leading-relaxed text-tinta-2">
+                  Não existe migração, nem “versão para redes”, nem contratar de novo.
+                </p>
+              </div>
+              <div className="relative min-h-[16rem] lg:min-h-[20rem]">
                 <Image
-                  src={c.img}
+                  src="/img/dona-b.jpg"
                   alt=""
                   aria-hidden
                   fill
-                  sizes="(max-width: 1024px) 50vw, 33vw"
-                  className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                  sizes="(max-width: 1024px) 100vw, 55vw"
+                  className="object-cover"
                 />
-                {/* O véu só embaixo, onde o texto pousa: escurecer a foto
-                    inteira mata a imagem que a gente foi buscar. */}
-                <span
+              </div>
+            </article>
+
+            {/* O MOSAICO — vários comércios numa peça só. */}
+            <article className="relative isolate flex flex-col overflow-hidden rounded-norte border border-borda bg-superficie">
+              <div className="flex flex-col gap-2.5 p-6">
+                <h3 className="text-xl leading-tight">Não é só loja de roupa</h3>
+                <p className="max-w-[42ch] text-sm leading-relaxed text-tinta-2">
+                  Você nomeia os eixos do seu ramo. <strong className="font-semibold text-tinta">Cor
+                  e Tamanho</strong> na roupa, <strong className="font-semibold text-tinta">Numeração</strong> na
+                  sapataria, <strong className="font-semibold text-tinta">Sabor</strong> na
+                  sorveteria. Vende por unidade, por quilo, por litro ou por par.
+                </p>
+              </div>
+              {/* As três fotos sangram por baixo, sobrepostas e desalinhadas —
+                  é o desalinho que faz ler como coleção e não como tabela. */}
+              <div className="relative mt-auto flex h-40 items-end gap-2 px-6 sm:h-44">
+                {[
+                  { src: '/img/sapataria.jpg', h: 'h-[86%]' },
+                  { src: '/img/sorveteria.jpg', h: 'h-full' },
+                  { src: '/img/balcao-pagto.jpg', h: 'h-[72%]' },
+                ].map((f) => (
+                  <span
+                    key={f.src}
+                    className={`relative flex-1 overflow-hidden rounded-t-norte ${f.h}`}
+                  >
+                    <Image
+                      src={f.src}
+                      alt=""
+                      aria-hidden
+                      fill
+                      sizes="18vw"
+                      className="object-cover"
+                    />
+                  </span>
+                ))}
+              </div>
+            </article>
+
+            {/* O REGULAR — depósito e rede. */}
+            <article className="relative isolate flex flex-col overflow-hidden rounded-norte bg-nav">
+              <div className="flex flex-col gap-2.5 p-6">
+                <h3 className="text-xl leading-tight !text-white">Depósito conta como loja</h3>
+                <p className="max-w-[42ch] text-sm leading-relaxed text-white/65">
+                  Cada unidade tem <strong className="font-semibold text-white">estoque e caixa
+                  próprios</strong>, e o painel soma tudo num clique. O gerente da loja 3 não vê
+                  o caixa da 5 — e ninguém concede um cargo que ele mesmo não tem.
+                </p>
+              </div>
+              <div className="relative mt-auto h-40 sm:h-44">
+                <Image
+                  src="/img/distribuidora.jpg"
+                  alt=""
                   aria-hidden
-                  className="absolute inset-0"
-                  style={{
-                    background:
-                      'linear-gradient(to top, rgb(9 14 28 / 0.92) 0%, rgb(9 14 28 / 0.55) 34%, rgb(9 14 28 / 0) 66%)',
-                  }}
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 45vw"
+                  className="object-cover object-center"
                 />
-                <div className="relative flex flex-col gap-1 p-4">
-                  <h3 className="text-lg leading-tight !text-white">{c.t}</h3>
-                  <p className="max-w-[36ch] text-xs leading-snug text-white/70">{c.d}</p>
-                </div>
-              </article>
-            ))}
+              </div>
+            </article>
           </div>
         </div>
       </section>
@@ -431,23 +462,7 @@ export default function Inicio() {
           As bolhas agora pousam direto no fundo, com vidro fosco, indentação
           desigual e a última sangrando pela borda direita. É o que faz a cena
           parecer conversa acontecendo, e não captura de tela. */}
-      <section id="agente" className="relative isolate scroll-mt-16 overflow-hidden bg-nav">
-        <Image
-          src="/img/aurora-a.jpg"
-          alt=""
-          aria-hidden
-          fill
-          sizes="100vw"
-          className="object-cover opacity-90"
-        />
-        <span
-          aria-hidden
-          className="absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(95deg, var(--nav) 6%, color-mix(in srgb, var(--nav) 78%, transparent) 40%, transparent 78%)',
-          }}
-        />
+      <section id="agente" className="aurora relative isolate scroll-mt-16 overflow-hidden">
 
         <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 md:grid-cols-[1fr_1.05fr] md:py-28">
           <div className="flex flex-col gap-5">
