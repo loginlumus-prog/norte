@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Marca } from '@/ui/Marca'
-import { Bussola } from '@/ui/Traco'
+import { Traco } from '@/ui/Traco'
 
 // A tela de endereço que não existe.
 //
@@ -14,9 +14,11 @@ import { Bussola } from '@/ui/Traco'
 export default function NaoAchei() {
   return (
     <main className="nav-fundo relative flex min-h-dvh flex-col items-center justify-center gap-6 overflow-hidden p-6 text-center">
-      <Bussola
-        tamanho={760}
-        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-nav-tinta opacity-[0.06]"
+      <Traco
+        arte="bussola"
+        sobre="escuro"
+        opacidade={0.12}
+        className="pointer-events-none absolute top-1/2 left-1/2 w-[46rem] max-w-none -translate-x-1/2 -translate-y-1/2"
       />
       <div className="relative">
         <Marca tamanho={30} nu claro />

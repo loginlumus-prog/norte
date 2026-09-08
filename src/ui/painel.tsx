@@ -17,7 +17,7 @@
 // ler exatamente a mesma coisa.
 
 import type { ReactNode } from 'react'
-import { Raios } from './Traco'
+import { Traco } from './Traco'
 import { cx } from './base'
 
 const brl = (v: number) =>
@@ -67,7 +67,14 @@ export function Numero({
   if (principal) {
     return (
       <div className="nav-fundo realce-alto relative flex flex-col gap-0.5 overflow-hidden rounded-norte p-3.5">
-        <Raios className="pointer-events-none absolute -top-16 -right-10 h-44 w-52 text-sol-claro opacity-[0.16]" />
+        {/* Um pedaco da bussola no canto. Pequeno e cortado: aqui ela e
+            textura da ficha, nao figura — o numero e que tem que ser lido. */}
+        <Traco
+          arte="bussola"
+          sobre="escuro"
+          opacidade={0.18}
+          className="pointer-events-none absolute -top-14 -right-12 w-44 max-w-none"
+        />
         <span className="relative text-xs font-medium text-nav-tinta-2">{rotulo}</span>
         <span className="numero relative text-3xl font-bold tracking-tight text-nav-tinta">
           {valor}

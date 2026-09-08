@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import { Aviso } from '@/ui/base'
 import { Marca } from '@/ui/Marca'
-import { Bussola, Curvas } from '@/ui/Traco'
+import { Traco } from '@/ui/Traco'
 import { Formulario } from './Formulario'
 
 // A tela de entrar é a primeira coisa que o cliente vê todo dia de manhã, e
@@ -24,13 +24,26 @@ export default async function Entrar({ params }: { params: Promise<{ empresa: st
     <main className="flex min-h-dvh flex-col md:flex-row">
       {/* ── lado da marca ── */}
       <aside className="nav-fundo relative flex flex-col justify-between gap-8 overflow-hidden p-6 md:w-[42%] md:max-w-md md:p-10">
-        {/* A bussola: grande, cortada pela borda, quase invisivel. Ela nao e
-          para ser vista — e para a tela nao parecer um retangulo azul. */}
-        <Bussola
-          tamanho={620}
-          className="pointer-events-none absolute -right-56 -bottom-40 text-nav-tinta opacity-[0.07]"
+        {/* METADE da bussola, cortada exatamente no eixo.
+
+            O centro dela fica em cima da costura entre o azul e o papel
+            (`right-0` mais `translate-x-1/2`), e o `overflow-hidden` do
+            painel corta o resto. Meia bussola no fio da divisao le como
+            instrumento encostado na borda; a bussola inteira, centrada,
+            leria como um segundo logo competindo com o de cima.
+
+            Grande de proposito, ocupando o painel de cima a baixo. A
+            chamada passa por cima dela, e aqui isso pode: a 17% num
+            blend `screen`, o traco e mais claro que o degrade e mais
+            escuro que o texto branco. A regra de nao por desenho atras
+            de texto vale para DADO — numero e tabela, onde a pessoa le
+            digito por digito. Chamada de capa e outra coisa. */}
+        <Traco
+          arte="bussola"
+          sobre="escuro"
+          opacidade={0.17}
+          className="pointer-events-none absolute top-1/2 right-0 w-[46rem] max-w-none -translate-y-1/2 translate-x-1/2"
         />
-        <Curvas className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-nav-tinta opacity-[0.09]" />
 
         {/* `relative` em cada bloco: o desenho e absoluto, e sem isto ele
             passaria POR CIMA do texto — irmao posicionado pinta depois. */}
@@ -59,8 +72,17 @@ export default async function Entrar({ params }: { params: Promise<{ empresa: st
       {/* O formulario num cartao sobre o papel, e nao chapado no branco: sem
           a diferenca entre os dois, este lado da tela e uma folha em branco
           com campos soltos, que e exatamente a cara de formulario. */}
-      <div className="flex flex-1 items-center justify-center bg-fundo p-6">
-        <div className="realce-alto flex w-full max-w-sm flex-col gap-6 rounded-norte border border-borda bg-superficie p-7">
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-fundo p-6">
+        {/* A montanha, na POSITIVA. Uma arte de cada lado da costura: a
+            bussola diz onde voce esta, o relevo diz para onde sobe. E a
+            positiva prova o par funcionando — mesma arte, fundo claro. */}
+        <Traco
+          arte="relevo"
+          sobre="claro"
+          opacidade={0.07}
+          className="pointer-events-none absolute inset-x-0 -bottom-10 w-full max-w-none"
+        />
+        <div className="realce-alto relative flex w-full max-w-sm flex-col gap-6 rounded-norte border border-borda bg-superficie p-7">
           <header className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
               <span
