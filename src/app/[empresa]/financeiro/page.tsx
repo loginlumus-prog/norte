@@ -97,8 +97,10 @@ export default async function Financeiro({
           ]}
         />
 
+        {/* Pulsa: juro corre enquanto a conta fica aqui. E o unico aviso
+            desta tela que piora sozinho com o tempo. */}
         {contas.vencidas.length > 0 && (
-          <Aviso nivel="critico">
+          <Aviso nivel="critico" pulsa>
             {contas.vencidas.length} conta{contas.vencidas.length === 1 ? '' : 's'} vencida
             {contas.vencidas.length === 1 ? '' : 's'}, somando {brl(contas.totalVencido)}. Juro e
             multa correm enquanto ficam aqui.

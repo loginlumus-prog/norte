@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Marca } from '@/ui/Marca'
+import { Bussola } from '@/ui/Traco'
 
 // A tela de endereço que não existe.
 //
@@ -12,9 +13,15 @@ import { Marca } from '@/ui/Marca'
 // pessoa descobrir, testando endereços, quem é cliente da gente.
 export default function NaoAchei() {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-nav p-6 text-center">
-      <Marca tamanho={30} nu claro />
-      <div className="flex max-w-md flex-col gap-3">
+    <main className="nav-fundo relative flex min-h-dvh flex-col items-center justify-center gap-6 overflow-hidden p-6 text-center">
+      <Bussola
+        tamanho={760}
+        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-nav-tinta opacity-[0.06]"
+      />
+      <div className="relative">
+        <Marca tamanho={30} nu claro />
+      </div>
+      <div className="relative flex max-w-md flex-col gap-3">
         <h1 className="text-3xl font-extrabold tracking-tight text-nav-tinta">
           Este endereço não abre.
         </h1>
@@ -25,7 +32,7 @@ export default function NaoAchei() {
       </div>
       <Link
         href="/"
-        className="rounded-norte bg-marca px-5 py-2.5 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+        className="botao-marca relative rounded-norte px-5 py-2.5 text-sm font-semibold text-marca-tinta"
       >
         Voltar ao começo
       </Link>

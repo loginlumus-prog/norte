@@ -165,7 +165,9 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
 
       {propostas.length > 0 && (
         <Secao titulo="Esperando você">
-          <Aviso nivel="atencao">
+          {/* Pulsa: proposta parada e coisa que ESPERA resposta, e ela
+              expira em 24h. Some sozinho quando a pessoa responde. */}
+          <Aviso nivel="atencao" pulsa>
             {propostas.length} proposta{propostas.length === 1 ? '' : 's'} parada
             {propostas.length === 1 ? '' : 's'}. Elas valem por 24 horas — depois disso o
             estoque e o preço já são outros, e ele precisa propor de novo.

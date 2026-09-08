@@ -19,7 +19,7 @@ export const cx = (...p: (string | false | null | undefined)[]) => p.filter(Bool
 type Tom = 'principal' | 'confirmar' | 'secundario' | 'discreto' | 'perigo'
 
 const TOM: Record<Tom, string> = {
-  principal: 'bg-marca text-marca-tinta hover:bg-marca-forte border-transparent',
+  principal: 'botao-marca text-marca-tinta border-transparent',
   // Verde é para o que CONCLUI: fechar venda, receber, dar baixa. A ação
   // principal comum continua sendo a cor da marca, senão tudo vira verde e
   // o verde deixa de querer dizer alguma coisa.
@@ -155,9 +155,18 @@ const BOLA: Record<Nivel, string> = {
 
 export function Aviso({
   nivel = 'neutro',
+  pulsa = false,
   children,
 }: {
   nivel?: Nivel
+  /**
+   * Chama a atencao com um halo que abre e some.
+   *
+   * NAO e o padrao, e nao pode ser: tela onde tudo pisca e tela onde nada
+   * chama. Liga so no que a pessoa precisa RESOLVER agora — conta vencida,
+   * proposta esperando resposta — e some junto com o problema.
+   */
+  pulsa?: boolean
   children: ReactNode
 }) {
   return (
@@ -168,9 +177,14 @@ export function Aviso({
         'flex items-start gap-2.5 rounded-norte px-3 py-2.5 text-sm font-medium',
         BARRA[nivel],
         AVISO[nivel],
+        pulsa && 'pulsa',
+        pulsa && (nivel === 'critico' ? 'pulsa-critico' : 'pulsa-atencao'),
       )}
     >
-      <span aria-hidden className={cx('mt-1.5 size-2 shrink-0 rounded-full', BOLA[nivel])} />
+      <span
+        aria-hidden
+        className={cx('mt-1.5 size-2 shrink-0 rounded-full', BOLA[nivel], pulsa && 'respira')}
+      />
       <span>{children}</span>
     </div>
   )
@@ -219,7 +233,9 @@ export function Cartao({
     // cartão — e o primeiro caso foi a lista de resultados da busca de
     // entrada de mercadoria, que sumia atrás da borda. O canto arredondado
     // vem do próprio cabeçalho agora.
-    <section className="rounded-norte border border-borda bg-superficie">
+    // `realce` = fio de luz na borda de cima + sombra. E o que separa
+    // "retangulo com borda" de objeto com espessura.
+    <section className="realce rounded-norte border border-borda bg-superficie">
       {titulo && (
         <header className="flex items-center justify-between gap-3 rounded-t-norte border-b border-borda bg-superficie-2 px-4 py-2.5">
           <h2 className="text-sm font-semibold text-tinta">{titulo}</h2>

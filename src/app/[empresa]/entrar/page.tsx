@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import { Aviso } from '@/ui/base'
 import { Marca } from '@/ui/Marca'
+import { Bussola, Curvas } from '@/ui/Traco'
 import { Formulario } from './Formulario'
 
 // A tela de entrar é a primeira coisa que o cliente vê todo dia de manhã, e
@@ -22,10 +23,22 @@ export default async function Entrar({ params }: { params: Promise<{ empresa: st
   return (
     <main className="flex min-h-dvh flex-col md:flex-row">
       {/* ── lado da marca ── */}
-      <aside className="flex flex-col justify-between gap-8 bg-nav p-6 md:w-[42%] md:max-w-md md:p-10">
-        <Marca tamanho={30} nu claro />
+      <aside className="nav-fundo relative flex flex-col justify-between gap-8 overflow-hidden p-6 md:w-[42%] md:max-w-md md:p-10">
+        {/* A bussola: grande, cortada pela borda, quase invisivel. Ela nao e
+          para ser vista — e para a tela nao parecer um retangulo azul. */}
+        <Bussola
+          tamanho={620}
+          className="pointer-events-none absolute -right-56 -bottom-40 text-nav-tinta opacity-[0.07]"
+        />
+        <Curvas className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-nav-tinta opacity-[0.09]" />
 
-        <div className="hidden flex-col gap-3 md:flex">
+        {/* `relative` em cada bloco: o desenho e absoluto, e sem isto ele
+            passaria POR CIMA do texto — irmao posicionado pinta depois. */}
+        <div className="relative">
+          <Marca tamanho={30} nu claro />
+        </div>
+
+        <div className="relative hidden flex-col gap-3 md:flex">
           <h2 className="text-[26px] leading-tight font-extrabold tracking-tight text-nav-tinta">
             A empresa inteira
             <br />
@@ -37,14 +50,17 @@ export default async function Entrar({ params }: { params: Promise<{ empresa: st
           </p>
         </div>
 
-        <p className="hidden text-xs text-nav-tinta-2 md:block">
+        <p className="relative hidden text-xs text-nav-tinta-2 md:block">
           Cada empresa entra pelo próprio endereço.
         </p>
       </aside>
 
       {/* ── lado do trabalho ── */}
-      <div className="flex flex-1 items-center justify-center bg-superficie p-6">
-        <div className="flex w-full max-w-sm flex-col gap-6">
+      {/* O formulario num cartao sobre o papel, e nao chapado no branco: sem
+          a diferenca entre os dois, este lado da tela e uma folha em branco
+          com campos soltos, que e exatamente a cara de formulario. */}
+      <div className="flex flex-1 items-center justify-center bg-fundo p-6">
+        <div className="realce-alto flex w-full max-w-sm flex-col gap-6 rounded-norte border border-borda bg-superficie p-7">
           <header className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
               <span

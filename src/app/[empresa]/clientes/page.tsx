@@ -55,7 +55,7 @@ export default async function Clientes({
         podeEditar ? (
           <Link
             href={`/${slug}/clientes/novo`}
-            className="rounded-norte bg-marca px-3 py-1.5 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+            className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"
           >
             + Novo cliente
           </Link>
@@ -112,7 +112,7 @@ export default async function Clientes({
               podeEditar && !q ? (
                 <Link
                   href={`/${slug}/clientes/novo`}
-                  className="rounded-norte bg-marca px-4 py-2 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+                  className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
                 >
                   Cadastrar o primeiro
                 </Link>

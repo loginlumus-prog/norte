@@ -198,7 +198,7 @@ export default function Inicio() {
           </nav>
           <a
             href="#planos"
-            className="rounded-norte bg-marca px-3.5 py-2 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+            className="botao-marca rounded-norte px-3.5 py-2 text-sm font-semibold text-marca-tinta"
           >
             Começar
           </a>
@@ -225,7 +225,7 @@ export default function Inicio() {
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <a
                 href="#planos"
-                className="rounded-norte bg-marca px-5 py-3 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+                className="botao-marca rounded-norte px-5 py-3 text-sm font-semibold text-marca-tinta"
               >
                 Ver os planos
               </a>
@@ -415,7 +415,7 @@ export default function Inicio() {
                   href="#falar"
                   className={
                     p.destaque
-                      ? 'rounded-norte bg-marca px-4 py-2.5 text-center text-sm font-semibold text-marca-tinta hover:bg-marca-forte'
+                      ? 'botao-marca rounded-norte px-4 py-2.5 text-center text-sm font-semibold text-marca-tinta'
                       : 'rounded-norte border border-borda px-4 py-2.5 text-center text-sm font-semibold text-tinta hover:bg-superficie-2'
                   }
                 >
@@ -491,7 +491,7 @@ export default function Inicio() {
           </p>
           <a
             href="mailto:contato@usenorte.com.br?subject=Quero%20testar%20o%20Norte"
-            className="rounded-norte bg-marca px-6 py-3 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+            className="botao-marca rounded-norte px-6 py-3 text-sm font-semibold text-marca-tinta"
           >
             Falar com a gente
           </a>

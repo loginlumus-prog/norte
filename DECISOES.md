@@ -327,7 +327,49 @@ autorizou.
 
 ---
 
-## 13. O que continua em aberto
+## 13. Neutro quente, e por que o cinza exato foi desfeito (fechado 07/09)
+
+O neutro do sistema já foi puxado para o verde (tela lavada) e para o azul
+(tela de hospital). A correção foi ir para o **cinza exato, sem viés nenhum**,
+com o argumento de que o neutro é papel e papel não participa.
+
+Esse argumento estava errado pela metade. Papel de verdade **não é cinza** —
+livro, cartão de visita e nota fiscal puxam todos para o creme. Cinza exato
+resolveu os dois defeitos anteriores e criou um terceiro, que foi o que o dono
+apontou duas vezes: não parece escolhido, parece o que veio de fábrica.
+
+**Decisão:** o neutro é papel quente (`--fundo: #f6f4f0`), e o par disso é o
+azul-noite que já era da barra. Creme com azul-marinho é combinação de
+papelaria, e é ela que dá o ar caro sem gastar nenhuma das cores que
+significam alguma coisa. No escuro, a mesma ideia invertida: o fundo puxa para
+o azul da barra em vez de ser carvão neutro, senão vira cinza de terminal.
+
+Três coisas vieram junto, e nenhuma é cor:
+
+- **Profundidade em três degraus** — repouso, alta e o *realce*, que é o fio de
+  luz na borda de cima. É ele que separa "retângulo com sombra" de objeto com
+  espessura.
+- **Hierarquia na faixa de números** — quatro fichas do mesmo peso não são
+  hierarquia, são fileira: o olho não sabe onde pousar. Uma por faixa vem em
+  azul-noite com o desenho do sol atrás. Uma só; duas é a fileira de novo.
+- **Traço vetorial** (`src/ui/Traco.tsx`) — bússola, curva de nível e raios,
+  tirados do próprio símbolo. Nunca atrás de número ou texto que se lê: fundo
+  desenhado embaixo de tabela é a diferença entre tela cara e tela cansativa.
+
+### Pulsar é caro
+
+Movimento chama atenção **uma vez**. Tela onde tudo pisca é tela onde nada
+chama, e o pulso passa a ser ruído que a pessoa aprende a ignorar — junto com
+o alerta de verdade.
+
+Então pulsa só o que a pessoa precisa **resolver**, e só o que **piora sozinho
+com o tempo**: conta vencida (juro corre) e proposta do assistente esperando
+(expira em 24h). Para quando ela resolve. E o pulso é um halo que abre e some,
+nunca a peça mudando de tamanho — coisa que cresce empurra o vizinho e a tela
+inteira treme junto. Quem pediu menos movimento no sistema operacional
+continua vendo cor, borda e texto, que é onde o recado mora.
+
+## 14. O que continua em aberto
 
 - [ ] Confirmar domínio (`usenorte.com.br`) e registrar marca MISTA no INPI —
       "Norte" isolado é fraco, ver §1

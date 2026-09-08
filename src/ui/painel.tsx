@@ -17,6 +17,7 @@
 // ler exatamente a mesma coisa.
 
 import type { ReactNode } from 'react'
+import { Raios } from './Traco'
 import { cx } from './base'
 
 const brl = (v: number) =>
@@ -33,6 +34,7 @@ export function Numero({
   detalhe,
   comparacao,
   nivel,
+  principal = false,
 }: {
   rotulo: string
   valor: string
@@ -41,6 +43,17 @@ export function Numero({
   comparacao?: { pct: number; contra: string }
   /** Pinta a faixa da esquerda. Sem isto, o tile é neutro. */
   nivel?: 'bom' | 'atencao' | 'critico'
+  /**
+   * O número que a pessoa veio ver.
+   *
+   * Quatro fichas com o mesmo peso não são hierarquia, são uma fileira: o
+   * olho não sabe onde pousar e a tela inteira lê como formulário. UM por
+   * faixa vem no azul-noite, com o desenho do sol atrás — os outros ficam de
+   * apoio, e é o contraste entre eles que faz a tela ter cara de painel.
+   *
+   * Um por faixa. Dois destaques é a mesma fileira de novo, com mais tinta.
+   */
+  principal?: boolean
 }) {
   const c = comparacao
   const subiu = c ? c.pct >= 0 : false
@@ -50,8 +63,34 @@ export function Numero({
     : tom === 'atencao' ? 'border-l-[3px] border-l-atencao-vivo'
     : tom === 'critico' ? 'border-l-[3px] border-l-critico-vivo'
     : ''
+
+  if (principal) {
+    return (
+      <div className="nav-fundo realce-alto relative flex flex-col gap-0.5 overflow-hidden rounded-norte p-3.5">
+        <Raios className="pointer-events-none absolute -top-16 -right-10 h-44 w-52 text-sol-claro opacity-[0.16]" />
+        <span className="relative text-xs font-medium text-nav-tinta-2">{rotulo}</span>
+        <span className="numero relative text-3xl font-bold tracking-tight text-nav-tinta">
+          {valor}
+        </span>
+        <span className="relative flex flex-wrap items-baseline gap-x-2 text-xs">
+          {detalhe && <span className="text-nav-tinta-2">{detalhe}</span>}
+          {c && Number.isFinite(c.pct) && (
+            <span className={cx('font-semibold', subiu ? 'text-bom-vivo' : 'text-critico-vivo')}>
+              {subiu ? '▲' : '▼'} {Math.abs(c.pct).toFixed(0)}% {c.contra}
+            </span>
+          )}
+        </span>
+      </div>
+    )
+  }
+
   return (
-    <div className={cx('flex flex-col gap-0.5 rounded-norte border border-borda bg-superficie p-3.5', faixa)}>
+    <div
+      className={cx(
+        'realce flex flex-col gap-0.5 rounded-norte border border-borda bg-superficie p-3.5',
+        faixa,
+      )}
+    >
       <span className="text-xs font-medium text-tinta-3">{rotulo}</span>
       <span className="numero text-2xl font-bold tracking-tight text-tinta">{valor}</span>
       <span className="flex flex-wrap items-baseline gap-x-2 text-xs">

@@ -100,7 +100,7 @@ export default async function Produtos({
           {podeEditar && (
             <Link
               href={`/${slug}/produtos/novo`}
-              className="rounded-norte bg-marca px-3 py-1.5 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+              className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"
             >
               + Novo produto
             </Link>
@@ -125,7 +125,7 @@ export default async function Produtos({
               podeEditar ? (
                 <Link
                   href={`/${slug}/produtos/novo`}
-                  className="rounded-norte bg-marca px-4 py-2 text-sm font-semibold text-marca-tinta hover:bg-marca-forte"
+                  className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
                 >
                   Cadastrar o primeiro
                 </Link>
