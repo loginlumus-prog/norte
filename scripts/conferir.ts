@@ -43,12 +43,67 @@ const A = 'org-exemplo-a'
 const B = 'org-exemplo-b'
 
 let falhas = 0
+
+// ── seção vazia é reprovação ─────────────────────────────────
+// Toda seção daqui abre com `if (dona.ok && balconista.ok)`, e NENHUMA tinha
+// `else`. Quando o Carlos ficou desativado — coisa que a própria seção de
+// Equipe faz, de propósito — três seções inteiras (produto, entrada e
+// clientes) passaram a imprimir só o título e pular TODAS as checagens.
+// Sem falha, sem aviso, sem nada. Uma lista que confere zero coisa e responde
+// "tudo certo" é pior do que não ter lista, porque ela dá confiança.
+// Por isso a contagem: seção que não produziu nenhuma checagem reprova.
+const contadas = new Map<string, number>()
+let atual = ''
+
+const secao = (nome: string) => {
+  atual = nome
+  contadas.set(nome, 0)
+  console.log(`\n  ${nome}\n`)
+}
+
 const ok = (t: string, passou: boolean, detalhe = '') => {
+  contadas.set(atual, (contadas.get(atual) ?? 0) + 1)
   console.log(`  ${passou ? 'ok   ' : 'FALHA'} ${t}${detalhe ? ` — ${detalhe}` : ''}`)
   if (!passou) falhas++
 }
 
-console.log('\n  Conferindo o isolamento no banco em uso\n')
+// ── o chão de onde a conferência parte ───────────────────────
+// Esta lista ESCREVE: cria produto, dá entrada, vende, cadastra cliente,
+// promove e desativa gente. Então ela gasta o exemplo em que ela mesma se
+// apoia — e a segunda rodada reprovava sozinha, sem defeito nenhum no
+// sistema. Foram sete falhas assim: estoque que já tinha acabado, "Fulana"
+// que já existia, e o Carlos desativado pela própria seção de Equipe, o que
+// fazia três seções inteiras (produto, entrada, clientes) nem rodar.
+//
+// Defeito falso é pior que defeito nenhum: quem lê para de acreditar na
+// lista. Por isso a rodada não limpa remendo por remendo — ela apaga as duas
+// empresas de exemplo e recria do zero. Toda rodada parte do mesmo lugar.
+async function chao() {
+  const { Client } = await import('pg')
+  const { apagarExemplo, semearExemplo } = await import('./exemplo-base')
+  const c = new Client({ connectionString: process.env.DATABASE_URL_ADMIN })
+  await c.connect()
+
+  // Trava: apagar empresa é coisa séria. Se existir alguma que não seja uma
+  // das duas de exemplo, este banco é de alguém — e ninguém roda conferência
+  // em cima de loja funcionando.
+  const { rows: orgs } = await c.query<{ id: string }>('select id from orgs')
+  const estranha = orgs.find((o) => o.id !== A && o.id !== B)
+  if (estranha) {
+    console.error(`
+  RECUSADO: este banco tem empresa de verdade (${estranha.id}).`)
+    console.error(`  A conferência apaga e recria o exemplo. Aponte o .env para o banco local.
+`)
+    process.exit(1)
+  }
+
+  await apagarExemplo(c)
+  await semearExemplo(c, () => {})
+  await c.end()
+}
+await chao()
+
+secao('Conferindo o isolamento no banco em uso')
 
 // A empresa é descoberta pelo endereço, antes de existir sessão.
 const org = await acharOrgPorSlug('exemplo')
@@ -107,7 +162,7 @@ ok('e a vizinha não enxerga esse registro',
   (await comoOrg(B, (db) => db.auditoria.findFirst({ where: { acao: marca } }))) === null)
 
 // ── entrar no sistema ────────────────────────────────────────
-console.log('\n  Login\n')
+secao('Login')
 
 const SENHA = 'exemplo-2026'
 
@@ -161,7 +216,7 @@ const entradas = await comoOrg(A, (db) =>
 ok('cada entrada fica registrada no livro', entradas >= 3, `${entradas} registro(s)`)
 
 // ── convite de equipe ────────────────────────────────────────
-console.log('\n  Convite de equipe\n')
+secao('Convite de equipe')
 
 if (dona.ok) {
   const s = dona.sessao
@@ -225,7 +280,7 @@ if (dona.ok) {
 }
 
 // ── estoque ──────────────────────────────────────────────────
-console.log('\n  Estoque\n')
+secao('Estoque')
 
 if (dona.ok) {
   const s = dona.sessao
@@ -303,7 +358,7 @@ ok('a empresa vizinha nao ve este estoque', daVizinha === 0, `${daVizinha} linha
 
 
 // -- venda --------------------------------------------------
-console.log('\n  Venda\n')
+secao('Venda')
 
 if (dona.ok) {
   const s = dona.sessao
@@ -407,7 +462,7 @@ if (dona.ok) {
 }
 
 // -- separacao por loja --------------------------------------
-console.log('\n  Separação por loja\n')
+secao('Separação por loja')
 
 if (dona.ok) {
   const s = dona.sessao
@@ -447,7 +502,7 @@ if (dona.ok) {
 
 
 // ── cadastro de produto ──────────────────────────────────────
-console.log('\n  Cadastro de produto\n')
+secao('Cadastro de produto')
 
 {
   const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
@@ -557,7 +612,7 @@ console.log('\n  Cadastro de produto\n')
 
 
 // ── entrada de mercadoria ────────────────────────────────────
-console.log('\n  Entrada de mercadoria\n')
+secao('Entrada de mercadoria')
 
 {
   const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
@@ -653,7 +708,7 @@ console.log('\n  Entrada de mercadoria\n')
 // ── o agente ─────────────────────────────────────────────────
 // Prova o caminho inteiro: ele propõe, quem não pode não confirma, quem pode
 // confirma, e a ação acontece de verdade no financeiro.
-console.log('\n  Agente\n')
+secao('Agente')
 
 {
   const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
@@ -749,7 +804,7 @@ console.log('\n  Agente\n')
 
 
 // ── clientes ─────────────────────────────────────────────────
-console.log('\n  Clientes\n')
+secao('Clientes')
 
 {
   const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
@@ -792,7 +847,7 @@ console.log('\n  Clientes\n')
 }
 
 // ── equipe ───────────────────────────────────────────────────
-console.log('\n  Equipe\n')
+secao('Equipe')
 
 {
   const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
@@ -884,7 +939,7 @@ console.log('\n  Equipe\n')
 // Fica no FIM de propósito: o freio de login bloqueia um e-mail por 15
 // minutos, e bloquear no meio faria as checagens seguintes falharem pelo
 // motivo errado.
-console.log('\n  Segurança\n')
+secao('Segurança')
 
 {
   const dona = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
@@ -995,9 +1050,32 @@ console.log('\n  Segurança\n')
 
 await fechar()
 
+// Passou? Devolve o exemplo limpo. A rodada cria "Bermuda tactel", "Fulana" e
+// "Cliente do balcao" para provar coisas, e esse lixo ficava na tela de quem
+// abre o sistema depois. Só quando passa: se falhou, o estrago fica de pé para
+// ser olhado — apagar a cena do erro é a pior hora de arrumar a casa.
+if (falhas === 0) {
+  const { Client } = await import('pg')
+  const { apagarExemplo, semearExemplo } = await import('./exemplo-base')
+  const c = new Client({ connectionString: process.env.DATABASE_URL_ADMIN })
+  await c.connect()
+  await apagarExemplo(c)
+  await semearExemplo(c, () => {})
+  await c.end()
+}
+
+// Seção que não produziu checagem nenhuma não é "seção sem novidade": é
+// seção que não rodou. Reprova com nome e sobrenome.
+const vazias = [...contadas.entries()].filter(([, n]) => n === 0).map(([s]) => s)
+for (const s of vazias) {
+  console.log(`\n  SECAO VAZIA: "${s}" nao rodou nenhuma checagem.`)
+  console.log('  Quase sempre e o login de setup falhando dentro de um if sem else.')
+  falhas++
+}
+
 console.log(
   falhas === 0
-    ? '\n  Tudo isolado. (escritas bloqueadas: npm test)\n'
+    ? `\n  Tudo isolado. ${[...contadas.values()].reduce((a, b) => a + b, 0)} conferencias. (escritas bloqueadas: npm test)\n`
     : `\n  ${falhas} falha(s). NÃO subir nada assim.\n`,
 )
 process.exit(falhas === 0 ? 0 : 1)

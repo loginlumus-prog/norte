@@ -13,7 +13,8 @@
     "db:ddl": "prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script > prisma/sql/tabelas.sql",
     "db:studio": "prisma studio",
     "tipos": "tsc --noEmit",
-    "dev": "next dev",
+    "dev": "tsx scripts/tudo.ts",
+    "dev:so-web": "next dev",
     "build": "next build",
     "start": "next start"
   },
