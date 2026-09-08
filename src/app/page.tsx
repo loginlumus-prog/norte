@@ -490,6 +490,28 @@ export default function Inicio() {
         }
       >
 
+        {/* A LOJISTA RECORTADA, grande e encostada na borda direita.
+            É o movimento que faltava: foto sem fundo pode sair da grade — ser
+            cortada pela borda da seção e ficar atrás de um elemento e na
+            frente de outro. Foto retangular nunca faz isso, porque retângulo
+            obedece a grade.
+
+            No CANTO e não no meio: no meio ela ficava debaixo das bolhas e as
+            duas coisas se estragavam. Encostada na direita, ela ocupa a
+            margem que sobra fora da coluna de conteúdo (que para em 6xl), e a
+            conversa fica inteira do lado de cá.
+
+            Só a partir de 1280px: em tela menor não existe essa margem, e ela
+            passaria por cima da conversa. */}
+        <Image
+          src="/img/lojista-recorte.png"
+          alt=""
+          aria-hidden
+          width={620}
+          height={827}
+          className="pointer-events-none absolute right-0 bottom-0 z-0 hidden h-[38rem] w-auto max-w-none translate-x-[12%] object-contain object-bottom drop-shadow-[0_30px_70px_rgb(0_0_0/0.6)] xl:block 2xl:right-[4%] 2xl:h-[42rem]"
+        />
+
         <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 md:grid-cols-[1fr_1.05fr] md:py-28">
           <div className="flex flex-col gap-5">
             <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
