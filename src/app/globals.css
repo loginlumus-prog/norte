@@ -75,7 +75,9 @@
   --marca-tinta: #ffffff;
   /* Botão principal com inclinação: é o único elemento da tela que pode
      chamar atenção sozinho, e é onde o acabamento aparece. */
-  --marca-fundo: linear-gradient(180deg, #2a5ae6 0%, #1f4fd8 55%, #1b45bd 100%);
+  --marca-fundo: linear-gradient(180deg, #2653dc 0%, #1f4fd8 60%, #1c49cc 100%);
+  --marca-sombra: rgb(31 79 216 / 0.38);
+  --marca-sombra-perto: rgb(20 45 130 / 0.22);
 
   /* SOL — SÓ o símbolo, o traço de fundo e o material de venda. */
   --sol: #ef7208;
@@ -136,7 +138,9 @@
     --marca-forte: #93b2ff;
     --marca-suave: #16224a;
     --marca-tinta: #08101f;
-    --marca-fundo: linear-gradient(180deg, #6b95ff 0%, #5a86f7 55%, #4a76e8 100%);
+    --marca-fundo: linear-gradient(180deg, #6f98ff 0%, #6b95ff 60%, #6290fb 100%);
+    --marca-sombra: rgb(0 0 0 / 0.5);
+    --marca-sombra-perto: rgb(0 0 0 / 0.35);
 
     --sol: #ff9226;
     --sol-claro: #ffcd6b;
@@ -188,7 +192,9 @@
   --marca-forte: #93b2ff;
   --marca-suave: #16224a;
   --marca-tinta: #08101f;
-  --marca-fundo: linear-gradient(180deg, #6b95ff 0%, #5a86f7 55%, #4a76e8 100%);
+  --marca-fundo: linear-gradient(180deg, #6f98ff 0%, #6b95ff 60%, #6290fb 100%);
+  --marca-sombra: rgb(0 0 0 / 0.5);
+  --marca-sombra-perto: rgb(0 0 0 / 0.35);
 
   --sol: #ff9226;
   --sol-claro: #ffcd6b;
@@ -303,19 +309,30 @@ th.numero {
   background: var(--nav-fundo);
 }
 
-/* O botao principal e o unico elemento da tela que pode chamar atencao
-   sozinho, e e por isso que o acabamento aparece nele: inclinacao levissima
-   mais o fio de luz em cima. Chapado, ele lê como retangulo colorido. */
+/* O botao principal.
+   ── o erro que estava aqui ──
+   Ele usava o mesmo `--realce` dos cartoes: um fio branco a 70% no topo. Em
+   superficie clara isso e a luz batendo na beirada; em cima de AZUL FORTE
+   vira reflexo, e reflexo mais degrade largo e botao lustroso de 2008.
+   O acabamento de botao hoje nao vem do brilho — vem da SOMBRA COLORIDA:
+   ela e a cor do proprio botao diluida, entao ele parece pousado na pagina
+   em vez de colado nela. O degrade sobrou so como um sopro (4%), o bastante
+   para nao ser um retangulo chapado. */
 .botao-marca {
   background: var(--marca-fundo);
-  box-shadow: var(--realce), 0 1px 2px rgb(20 30 70 / 0.24);
+  box-shadow:
+    0 1px 1px var(--marca-sombra-perto),
+    0 4px 12px -4px var(--marca-sombra);
 }
 .botao-marca:hover {
-  filter: brightness(1.06);
+  filter: brightness(1.05);
+  box-shadow:
+    0 1px 1px var(--marca-sombra-perto),
+    0 6px 16px -4px var(--marca-sombra);
 }
 .botao-marca:active {
-  filter: brightness(0.96);
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.2);
+  filter: brightness(0.97);
+  box-shadow: 0 1px 1px var(--marca-sombra-perto);
 }
 
 /* O fio de luz na borda de cima. Sozinho não se vê; junto com a sombra é

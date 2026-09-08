@@ -30,46 +30,88 @@ export function Bussola({
   tamanho?: number
   className?: string
 }) {
+  const C = 100
+  // ── as medidas ──
+  // Não são chutadas: é a proporção de rosa dos ventos de carta náutica, onde
+  // a ponta menor tem ~62% da maior (o mesmo 0,618 que rege o resto). Foi o
+  // que faltava na primeira versão — pontas iguais viram estrela de adesivo.
+  const R_MAIOR = 74
+  const R_MENOR = 46
+  const R_MIOLO = 9
+  const ANEL_FORA = 92
+  const ANEL_DENTRO = 84
+
+  const ponto = (grau: number, raio: number) => {
+    const r = ((grau - 90) * Math.PI) / 180
+    return [C + raio * Math.cos(r), C + raio * Math.sin(r)] as const
+  }
+  const fmt = ([x, y]: readonly [number, number]) => `${x.toFixed(2)} ${y.toFixed(2)}`
+
+  // Uma ponta da rosa: contorno em losango mais a espinha que vai do centro à
+  // ponta. A espinha é o que dá a dobra de luz da rosa gravada — sem ela o
+  // desenho é um triângulo, com ela é um instrumento.
+  const pontas = Array.from({ length: 8 }, (_, i) => {
+    const grau = i * 45
+    const cardeal = i % 2 === 0
+    const raio = cardeal ? R_MAIOR : R_MENOR
+    const bico = ponto(grau, raio)
+    const esq = ponto(grau - 45, R_MIOLO)
+    const dir = ponto(grau + 45, R_MIOLO)
+    return {
+      contorno: `M ${fmt(esq)} L ${fmt(bico)} L ${fmt(dir)}`,
+      espinha: `M ${C} ${C} L ${fmt(bico)}`,
+      cardeal,
+    }
+  })
+
   return (
     <svg
       width={tamanho}
       height={tamanho}
       viewBox="0 0 200 200"
       fill="none"
+      stroke="currentColor"
+      strokeLinejoin="round"
       className={className}
       aria-hidden
       focusable="false"
     >
-      {/* Os dois anéis. O de fora fecha o instrumento; o de dentro dá a
-          espessura do aro sem precisar de sombra. */}
-      <circle cx="100" cy="100" r="88" stroke="currentColor" strokeWidth="0.75" opacity="0.5" />
-      <circle cx="100" cy="100" r="72" stroke="currentColor" strokeWidth="0.5" opacity="0.32" />
-      <circle cx="100" cy="100" r="34" stroke="currentColor" strokeWidth="0.5" opacity="0.32" />
-
-      {/* Os 32 riscos do aro. Os das quatro direções principais são maiores —
-          é assim que uma bússola de verdade se lê de relance. */}
-      {Array.from({ length: 32 }, (_, i) => {
-        const ang = (i * 360) / 32
-        const principal = i % 8 === 0
-        const r1 = principal ? 72 : 80
-        const rad = ((ang - 90) * Math.PI) / 180
+      {/* O anel graduado: risco de 5 em 5 graus, mais longo de 30 em 30. É a
+          graduação que faz o desenho ler como instrumento e não como enfeite. */}
+      <circle cx={C} cy={C} r={ANEL_FORA} strokeWidth="0.6" opacity="0.45" />
+      <circle cx={C} cy={C} r={ANEL_DENTRO} strokeWidth="0.6" opacity="0.45" />
+      {Array.from({ length: 72 }, (_, i) => {
+        const grau = i * 5
+        const cheio = grau % 30 === 0
+        const de = ponto(grau, cheio ? ANEL_DENTRO : ANEL_FORA - 3.5)
+        const ate = ponto(grau, ANEL_FORA)
         return (
           <line
             key={i}
-            x1={100 + r1 * Math.cos(rad)}
-            y1={100 + r1 * Math.sin(rad)}
-            x2={100 + 88 * Math.cos(rad)}
-            y2={100 + 88 * Math.sin(rad)}
-            stroke="currentColor"
-            strokeWidth={principal ? 1 : 0.5}
-            opacity={principal ? 0.55 : 0.25}
+            x1={de[0]}
+            y1={de[1]}
+            x2={ate[0]}
+            y2={ate[1]}
+            strokeWidth={cheio ? 0.9 : 0.5}
+            opacity={cheio ? 0.5 : 0.28}
           />
         )
       })}
 
-      {/* A agulha — a mesma forma do símbolo, em escala de instrumento. */}
-      <path d="M100 22 L124 96 L100 82 L76 96 Z" stroke="currentColor" strokeWidth="0.9" opacity="0.7" />
-      <path d="M100 82 L124 96 L100 170 L76 96 Z" stroke="currentColor" strokeWidth="0.6" opacity="0.35" />
+      {/* Os anéis internos, que dão a caixa do instrumento. */}
+      <circle cx={C} cy={C} r={R_MAIOR} strokeWidth="0.5" opacity="0.22" />
+      <circle cx={C} cy={C} r={R_MENOR} strokeWidth="0.5" opacity="0.22" />
+      <circle cx={C} cy={C} r={R_MIOLO} strokeWidth="0.7" opacity="0.5" />
+
+      {pontas.map((p, i) => (
+        <g key={i}>
+          <path d={p.contorno} strokeWidth={p.cardeal ? 0.9 : 0.7} opacity={p.cardeal ? 0.62 : 0.4} />
+          <path d={p.espinha} strokeWidth={p.cardeal ? 0.7 : 0.5} opacity={p.cardeal ? 0.42 : 0.26} />
+        </g>
+      ))}
+
+      {/* A ponta do norte, sozinha, um pouco mais viva: é o nome da empresa. */}
+      <path d={pontas[0]!.contorno} strokeWidth="1.1" opacity="0.85" />
     </svg>
   )
 }
