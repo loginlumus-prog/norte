@@ -42,7 +42,7 @@ export default async function Entrar({ params }: { params: Promise<{ empresa: st
           arte="bussola"
           sobre="escuro"
           opacidade={0.17}
-          className="pointer-events-none absolute top-1/2 right-0 w-[46rem] max-w-none -translate-y-1/2 translate-x-1/2"
+          className="pointer-events-none absolute top-1/2 right-0 w-[43rem] max-w-none -translate-y-1/2 translate-x-1/2"
         />
 
         {/* `relative` em cada bloco: o desenho e absoluto, e sem isto ele
@@ -73,13 +73,16 @@ export default async function Entrar({ params }: { params: Promise<{ empresa: st
           a diferenca entre os dois, este lado da tela e uma folha em branco
           com campos soltos, que e exatamente a cara de formulario. */}
       <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-fundo p-6">
-        {/* A montanha, na POSITIVA. Uma arte de cada lado da costura: a
-            bussola diz onde voce esta, o relevo diz para onde sobe. E a
-            positiva prova o par funcionando — mesma arte, fundo claro. */}
+        {/* A montanha. Uma arte de cada lado da costura: a bussola diz onde
+            voce esta, o relevo diz para onde sobe.
+
+            `sobre="tema"` porque ESTE lado troca de cor junto com a pessoa —
+            e creme no claro e quase preto no escuro. Com a positiva fixa, ela
+            multiplicava escuro sobre escuro e sumia no tema escuro. */}
         <Traco
           arte="relevo"
-          sobre="claro"
-          opacidade={0.07}
+          sobre="tema"
+          opacidade={0.09}
           className="pointer-events-none absolute inset-x-0 -bottom-10 w-full max-w-none"
         />
         <div className="realce-alto relative flex w-full max-w-sm flex-col gap-6 rounded-norte border border-borda bg-superficie p-7">

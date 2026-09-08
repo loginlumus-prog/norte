@@ -344,6 +344,23 @@ th.numero {
   box-shadow: var(--realce), var(--sombra-alta);
 }
 
+/* Peça que só existe em um dos temas.
+   Cobre os TRÊS estados, igual às fichas de cor: escolha explícita no claro,
+   escolha explícita no escuro, e o padrão "sistema", que não carimba atributo
+   nenhum e só se distingue pelo `prefers-color-scheme`. Feito em CSS, e não em
+   JavaScript, porque a troca precisa acontecer na primeira pintura — decidir
+   isso depois que a página carrega faz a arte errada piscar antes de sumir. */
+.so-claro { display: block; }
+.so-escuro { display: none; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema='claro']) .so-claro { display: none; }
+  :root:not([data-tema='claro']) .so-escuro { display: block; }
+}
+
+:root[data-tema='escuro'] .so-claro { display: none; }
+:root[data-tema='escuro'] .so-escuro { display: block; }
+
 /* ── o que pede atenção pulsa ────────────────────────────── */
 /*
    Pulsar é caro: uma tela onde tudo pisca é uma tela onde nada chama. Então

@@ -53,12 +53,46 @@ export function Traco({
   opacidade,
 }: {
   arte: Arte
-  /** A cor da superfície onde ele vai pousar — não o tema da pessoa. */
-  sobre: 'escuro' | 'claro'
+  /**
+   * Onde ele vai pousar.
+   *
+   * `escuro` e `claro` são para superfície de cor FIXA — a barra azul é azul
+   * nos dois temas, então ali a negativa vale sempre.
+   *
+   * `tema` é para superfície que muda junto com a pessoa: o papel do lado
+   * direito da entrada é creme no claro e quase preto no escuro. Ali uma
+   * versão só não serve — a positiva em `multiply` sobre fundo escuro
+   * multiplica escuro com escuro e simplesmente some. As duas são
+   * renderizadas e o CSS mostra a certa, na primeira pintura.
+   */
+  sobre: 'escuro' | 'claro' | 'tema'
   className?: string
   opacidade?: number
 }) {
-  const escuro = sobre === 'escuro'
+  if (sobre === 'tema') {
+    return (
+      <>
+        <Folha arte={arte} escuro={false} className={`${className ?? ''} so-claro`} opacidade={opacidade} />
+        <Folha arte={arte} escuro className={`${className ?? ''} so-escuro`} opacidade={opacidade} />
+      </>
+    )
+  }
+  return (
+    <Folha arte={arte} escuro={sobre === 'escuro'} className={className} opacidade={opacidade} />
+  )
+}
+
+function Folha({
+  arte,
+  escuro,
+  className,
+  opacidade,
+}: {
+  arte: Arte
+  escuro: boolean
+  className?: string
+  opacidade?: number
+}) {
   return (
     <img
       src={`${ARQUIVO[arte]}${escuro ? '-negativo' : ''}.svg`}
