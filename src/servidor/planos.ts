@@ -65,7 +65,11 @@ export const PLANOS: Record<Plano, Limite> = {
     mensal: 697,
     porUnidadeExtra: null,
     modulos: ['notaFiscal', 'encomenda', 'agente', 'metas'],
-    creditoMensal: 40,
+    // Calibrado em cima de consumo MEDIDO, nao estimado: uma loja de
+    // movimento normal gasta ~R$ 36/mes de custo bruto com cache e roteamento
+    // de modelo, o que da ~R$ 108 cobrados. R$ 120 cobre ela inteira e sobra.
+    // O numero anterior era R$ 40 — duraria um dia e meio numa loja cheia.
+    creditoMensal: 120,
     degrau: 2,
   },
   REDE: {
@@ -76,7 +80,8 @@ export const PLANOS: Record<Plano, Limite> = {
     mensal: 1497,
     porUnidadeExtra: 249,
     modulos: ['notaFiscal', 'encomenda', 'agente', 'metas', 'multiUnidade', 'crediario'],
-    creditoMensal: 120,
+    // Rede sao varias lojas conversando ao mesmo tempo.
+    creditoMensal: 350,
     degrau: 3,
   },
   CORPORATIVO: {
@@ -91,7 +96,7 @@ export const PLANOS: Record<Plano, Limite> = {
     // promessa que a gente não sabe se consegue cumprir antes de olhar.
     porUnidadeExtra: null,
     modulos: ['notaFiscal', 'encomenda', 'agente', 'metas', 'multiUnidade', 'crediario'],
-    creditoMensal: 300,
+    creditoMensal: 800,
     degrau: 4,
   },
 }

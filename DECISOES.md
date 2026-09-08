@@ -369,7 +369,54 @@ nunca a peça mudando de tamanho — coisa que cresce empurra o vizinho e a tela
 inteira treme junto. Quem pediu menos movimento no sistema operacional
 continua vendo cor, borda e texto, que é onde o recado mora.
 
-## 14. O que continua em aberto
+## 14. O custo do agente, e por que cache não é otimização (fechado 07/09)
+
+Número **medido em produção**, num assistente do mesmo tipo já no ar: R$ 120 a
+R$ 150 de crédito duravam de quatro a seis dias. R$ 25 a R$ 30 por dia, numa
+loja só. `scripts/custo-agente.ts` reproduz isso a partir das premissas e
+chega em R$ 31/dia para 50 turnos — bate com o medido.
+
+A conta desmonta assim:
+
+| | por turno | loja normal | loja movimentada |
+|---|---|---|---|
+| sem cache, modelo grande | R$ 0,62 | R$ 372/mês | R$ 930/mês |
+| com cache do contexto | R$ 0,13 | R$ 78 | R$ 195 |
+| cache + modelo barato na rotina | R$ 0,06 | R$ 36 | R$ 90 |
+
+**Dez vezes de diferença.** E a diferença não está na resposta — está na
+pergunta: cada mensagem reenvia a instrução do agente, o catálogo, as regras
+da loja e o histórico. São dezenas de milhares de tokens de entrada iguais aos
+do turno anterior, pagos de novo. A resposta tem duzentas palavras.
+
+**Decisão:** cache do contexto e roteamento de modelo não são melhorias para
+depois — são condição para o produto existir. Sem eles, uma loja movimentada
+custaria R$ 930/mês de custo bruto, e cobrar isso com margem daria R$ 2.790 em
+cima de uma mensalidade de R$ 697. Ninguém compra.
+
+Por isso `custo-ia.ts` conta as três entradas separadas — nova, gravada no
+cache e lida do cache. Somar tudo num número só esconderia o único item que dá
+para melhorar.
+
+### O crédito é do cliente, e tem que ser
+
+Consumo varia demais entre lojas: a mesma mensalidade, e uma gasta dez vezes a
+outra. Embutir tudo no plano obrigaria a precificar pelo pior caso, encarecendo
+para todo mundo — e ainda assim a loja mais pesada daria prejuízo.
+
+Então o plano inclui uma cota (R$ 120 no Balcão + Assistente, R$ 350 na Rede),
+calibrada para cobrir uma loja de movimento normal, e o que passa disso é
+recarga. A cota anterior era R$ 40, escolhida sem dado: duraria um dia e meio.
+
+### Margem
+
+`MARGEM` em `custo-ia.ts`, hoje 3×. Cobrar o custo bruto dá margem zero, e zero
+é prejuízo — por cima ainda correm a taxa do meio de pagamento, a chamada que
+falha e é repetida (paga duas, cobra uma) e o imposto. Cada chamada grava os
+dois números, `custoCent` e `cobradoCent`, porque a margem muda com o tempo e
+recalcular depois daria o número errado para o passado.
+
+## 15. O que continua em aberto
 
 - [ ] Confirmar domínio (`usenorte.com.br`) e registrar marca MISTA no INPI —
       "Norte" isolado é fraco, ver §1
