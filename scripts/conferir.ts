@@ -67,6 +67,17 @@ const secao = (nome: string) => {
   console.log(`\n  ${nome}\n`)
 }
 
+// O recado de uma recusa, seja ela qual for.
+//
+// 'sem_vaga' nao esta no RECADO de proposito: ele carrega a lista de quem esta
+// ocupando, e por isso e variante propria em vez de mais uma linha na tabela
+// de frases. Aqui a bancada so quer UMA frase para mostrar, entao ela cobre as
+// duas formas num lugar so.
+const recadoDe = (r: { motivo: string }) =>
+  r.motivo === 'sem_vaga'
+    ? 'sem vaga no plano agora'
+    : (RECADO as Record<string, string>)[r.motivo] ?? r.motivo
+
 const ok = (t: string, passou: boolean, detalhe = '') => {
   contadas.set(atual, (contadas.get(atual) ?? 0) + 1)
   console.log(`  ${passou ? 'ok   ' : 'FALHA'} ${t}${detalhe ? ` — ${detalhe}` : ''}`)
@@ -184,7 +195,7 @@ secao('Login')
 const SENHA = 'exemplo-2026'
 
 const dona = await entrar('exemplo', 'ana@exemplo.com', SENHA)
-ok('a dona entra', dona.ok, dona.ok ? dona.sessao.nome : RECADO[dona.motivo])
+ok('a dona entra', dona.ok, dona.ok ? dona.sessao.nome : recadoDe(dona))
 ok('e vem com o papel dela', dona.ok && dona.sessao.acessos[0]?.papel === 'DONO')
 
 // A prova que interessa: credencial de uma empresa não abre a porta da outra.
@@ -1313,7 +1324,7 @@ secao('Segurança')
   const travado = await entrar('exemplo', 'carlos@exemplo.com', 'exemplo-2026')
   ok(`${MAX_POR_EMAIL} erros seguidos travam a conta`,
      !travado.ok && travado.motivo === 'muitas_tentativas',
-     travado.ok ? 'ENTROU!' : RECADO[travado.motivo])
+     travado.ok ? 'ENTROU!' : recadoDe(travado))
 
   // 8. E o freio não conta só quem existe — senão ele mesmo entregaria a
   //    lista de e-mails da empresa.
@@ -1328,7 +1339,7 @@ secao('Segurança')
   // 9. Travar uma conta não trava a empresa inteira.
   const outra = await entrar('exemplo', 'ana@exemplo.com', 'exemplo-2026')
   ok('mas a dona continua entrando normalmente', outra.ok,
-     outra.ok ? outra.sessao.nome : RECADO[outra.motivo])
+     outra.ok ? outra.sessao.nome : recadoDe(outra))
 }
 
 

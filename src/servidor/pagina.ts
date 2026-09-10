@@ -18,6 +18,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { acharOrgPorSlug, comoOrg } from './banco'
 import { lerSessao } from './sessao'
+import { sinal } from './presenca'
 import { sessaoAindaVale, type Sessao } from './permissao'
 
 export type Empresa = NonNullable<Awaited<ReturnType<typeof acharOrgPorSlug>>>
@@ -50,6 +51,18 @@ export async function sessaoViva(slugEmpresa: string): Promise<Sessao | null> {
   if (!sessaoAindaVale(usuario, doCookie.nasceu)) return null
 
   const { nasceu: _nasceu, ...sessao } = doCookie
+
+  // ── "ainda estou aqui" ───────────────────────────────────
+  // É este toque que segura a vaga. Ele mora aqui porque aqui é o único lugar
+  // por onde TODA tela passa — pendurar num componente qualquer deixaria de
+  // fora justamente as telas que a pessoa fica olhando por mais tempo.
+  //
+  // A falha é engolida de propósito. Perder um sinal custa, no pior caso, a
+  // vaga ser tomada alguns minutos antes da hora; deixar o erro subir custaria
+  // a tela inteira. Nenhuma tela deve morrer por causa da contabilidade de
+  // vaga.
+  void sinal(sessao.orgId, sessao.usuarioId).catch(() => {})
+
   return sessao
 }
 

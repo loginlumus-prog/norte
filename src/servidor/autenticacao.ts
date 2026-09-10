@@ -18,13 +18,30 @@
 //    impedem. Quem tem tempo e uma lista de senhas comuns entra.
 
 import { comoOrg, acharOrgPorSlug } from './banco'
+import { ocuparVaga, type Ocupante } from './presenca'
 import { conferirSenha, precisaTrocar, HASH_ISCA } from './senha'
 import { conferirFreio, registrarTentativa } from './limite'
 import type { Sessao, Papel } from './permissao'
 
 export type Entrada =
-  | { ok: true; sessao: Sessao; senhaPrecisaTrocar: boolean }
+  | {
+      ok: true
+      sessao: Sessao
+      senhaPrecisaTrocar: boolean
+      /** Alguém saiu para esta pessoa entrar. A tela avisa quem. */
+      derrubou?: { nome: string; paradaMin: number }
+    }
   | { ok: false; motivo: MotivoRecusa; esperarMin?: number }
+  /**
+   * A senha estava CERTA e mesmo assim não entrou: o plano encheu.
+   *
+   * Vem separado dos outros motivos porque a tela precisa de mais que uma
+   * frase — precisa dizer quem está ocupando e há quanto tempo cada um parou.
+   * "Limite atingido" transforma isso em ligação para o suporte; a lista
+   * transforma em "a Bruna esqueceu aberto lá no fundo", que a loja resolve
+   * em cinco segundos sozinha.
+   */
+  | { ok: false; motivo: 'sem_vaga'; ocupantes: Ocupante[] }
 
 export type MotivoRecusa =
   | 'empresa_nao_existe' // seguro dizer: o endereço está na URL
@@ -32,6 +49,9 @@ export type MotivoRecusa =
   | 'credenciais' // genérico de propósito
   | 'sem_acesso' // existe e a senha bate, mas não tem papel em lugar nenhum
   | 'muitas_tentativas' // freio: erros demais na janela
+// 'sem_vaga' NÃO entra aqui: ele carrega a lista de ocupantes e por isso é uma
+// variante própria em `Entrada`. Misturado nesta lista, o TypeScript deixa de
+// separar as duas formas e a lista some do tipo.
 
 export const RECADO: Record<MotivoRecusa, string> = {
   empresa_nao_existe: 'Não encontramos essa empresa.',
@@ -106,6 +126,31 @@ export async function entrar(
     acessos,
   }
 
+  // ── a vaga ───────────────────────────────────────────────
+  // DEPOIS da senha, de propósito. Quem errou a senha não pode descobrir quem
+  // está dentro da empresa — a lista de ocupantes só sai para quem já provou
+  // que tem conta ali.
+  //
+  // O plano é lido aqui dentro, e não pela portaria: a portaria enxerga nove
+  // colunas da tabela de empresas e não precisa de uma décima. Aqui já existe
+  // empresa no contexto.
+  const plano = await comoOrg(org.id, (db) =>
+    db.org.findUniqueOrThrow({ where: { id: org.id }, select: { plano: true } }),
+  )
+
+  const vaga = await ocuparVaga(org.id, plano.plano, {
+    usuarioId: sessao.usuarioId,
+    ehDono: acessos.some((a) => a.papel === 'DONO'),
+  })
+
+  if (!vaga.pode) {
+    // Não é tentativa errada: a senha estava certa. Registrar como erro faria
+    // o freio de força bruta punir quem não fez nada de errado — e a loja
+    // cheia viraria loja travada.
+    await registrarTentativa(org.id, alvo, ip, true)
+    return { ok: false, motivo: 'sem_vaga', ocupantes: vaga.ocupantes }
+  }
+
   await registrarTentativa(org.id, alvo, ip, true)
   await registrarEntrada(sessao)
 
@@ -113,6 +158,9 @@ export async function entrar(
     ok: true,
     sessao,
     senhaPrecisaTrocar: precisaTrocar(achado.usuario.senhaHash!),
+    derrubou: vaga.derrubar
+      ? { nome: vaga.derrubar.nome, paradaMin: Math.round(vaga.derrubar.paradaMin) }
+      : undefined,
   }
 }
 

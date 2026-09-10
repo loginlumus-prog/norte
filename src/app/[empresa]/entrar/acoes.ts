@@ -19,7 +19,19 @@ async function deOndeVeio(): Promise<string | null> {
   return encadeado || h.get('x-real-ip') || null
 }
 
-export type EstadoEntrada = { erro?: string; email?: string }
+export type EstadoEntrada = {
+  erro?: string
+  email?: string
+  /**
+   * A senha estava certa e o plano encheu.
+   *
+   * Vai para a tela como LISTA, e não como frase. "Limite atingido" é o que
+   * transforma isto numa ligação para o suporte; dizer quem está ocupando e há
+   * quanto cada um parou transforma em "a Bruna esqueceu aberto lá no fundo",
+   * que a loja resolve sozinha em cinco segundos.
+   */
+  semVaga?: { nome: string; paradaMin: number }[]
+}
 
 export async function entrarAcao(
   _anterior: EstadoEntrada,
@@ -36,6 +48,13 @@ export async function entrarAcao(
   const r = await entrar(empresa, email, senha, await deOndeVeio())
 
   if (!r.ok) {
+    if (r.motivo === 'sem_vaga') {
+      return {
+        email,
+        semVaga: r.ocupantes.map((o) => ({ nome: o.nome, paradaMin: Math.round(o.paradaMin) })),
+      }
+    }
+
     // Devolve o e-mail para a pessoa não precisar digitar de novo — mas nunca
     // a senha, que não deve voltar do servidor por motivo nenhum.
     const recado =

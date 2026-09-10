@@ -20,7 +20,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
 import { spawn, spawnSync } from 'node:child_process'
 import { createConnection } from 'node:net'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, watch } from 'node:fs'
 import { join } from 'node:path'
 
 const PASTA = join(process.cwd(), '.banco')
@@ -92,7 +92,70 @@ if (!igual) {
 // Comando inteiro numa string só, e não `spawn(cmd, [args])`: com `shell: true`
 // o Node avisa (DEP0190) que argumentos separados não são escapados. Aqui são
 // constantes, mas o aviso aparecia toda vez que alguém subia o sistema.
-const web = spawn('npx next dev', { stdio: 'inherit', shell: true })
+//
+// Vem de uma função porque o site pode ser trocado por um novo em pé (ver o
+// vigia do schema, logo abaixo). E cada filho carrega o próprio `on('exit')`
+// comparando consigo mesmo: sem isso, matar o site para reiniciar dispararia
+// o encerramento geral e derrubaria o banco junto.
+const ligarSite = () => {
+  const p = spawn('npx next dev', { stdio: 'inherit', shell: true })
+  p.on('exit', (c) => {
+    if (p === web) void encerrar(c ?? 0)
+  })
+  return p
+}
+
+let web = ligarSite()
+
+// ── o schema mudou com o sistema NO AR ───────────────────────
+// A conferência lá em cima cobre subir com o schema já mudado. Falta o outro
+// caso, que é o que mais acontece: mexer no schema COM o sistema rodando.
+//
+// O cliente do Prisma já está carregado na memória do processo, e nada o
+// recarrega — nem o recarregamento do Next, que não olha para node_modules.
+// O que sai é um erro que não fala do assunto:
+//
+//   Value 'GRATIS' not found in enum 'Plano'
+//   Unknown argument `porte`. Did you mean `nome`?
+//
+// Que na tela vira "Deu problema aqui do nosso lado". Já custou caro três
+// vezes nesta mesma semana, e as três levaram um tempo até alguém desconfiar
+// de um comando que faltou rodar.
+//
+// Então o schema é vigiado: mudou, gera o cliente e sobe o Next de novo. São
+// uns segundos, e é o que a pessoa faria na mão de qualquer jeito — só que
+// sem passar pelo erro antes.
+let recriando = false
+
+watch(atual, { persistent: false }, () => {
+  if (recriando) return
+  recriando = true
+
+  // O editor grava em duas etapas (escreve e renomeia), então o evento vem
+  // mais de uma vez. Esperar um pouco junta tudo num reinício só.
+  setTimeout(() => {
+    try {
+      if (readFileSync(copiaGerada, 'utf8') === readFileSync(atual, 'utf8')) {
+        recriando = false
+        return
+      }
+    } catch {}
+
+    console.log('\n  schema mudou — gerando o cliente e subindo o site de novo...\n')
+    const r = spawnSync('npx prisma generate', { stdio: 'inherit', shell: true })
+    if (r.status === 0) {
+      // Troca a referência ANTES de matar: o `on('exit')` do antigo compara
+      // com `web` e, vendo que já não é ele, sai calado em vez de encerrar
+      // tudo e derrubar o banco junto.
+      const antigo = web
+      web = ligarSite()
+      antigo.kill()
+    } else {
+      console.error('\n  O `prisma generate` falhou. O site continua com o cliente velho.\n')
+    }
+    recriando = false
+  }, 400)
+})
 
 // Um encerramento só para os dois. Sem isto, Ctrl+C mata o Next e deixa o
 // banco segurando a porta — e a próxima subida falha com EADDRINUSE, que é
@@ -107,6 +170,5 @@ const encerrar = async (codigo = 0) => {
   process.exit(codigo)
 }
 
-web.on('exit', (c) => encerrar(c ?? 0))
 process.on('SIGINT', () => encerrar(0))
 process.on('SIGTERM', () => encerrar(0))
