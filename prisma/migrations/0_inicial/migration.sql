@@ -2,15 +2,6 @@
 CREATE SCHEMA IF NOT EXISTS "public";
 
 -- CreateEnum
-CREATE TYPE "Porte" AS ENUM ('SO_EU', 'ATE_5', 'ATE_20', 'MAIS_DE_20');
-
--- CreateEnum
-CREATE TYPE "Dor" AS ENUM ('ESTOQUE', 'LUCRO', 'COBRANCA', 'ATENDIMENTO');
-
--- CreateEnum
-CREATE TYPE "Catalogo" AS ENUM ('ATE_50', 'ATE_500', 'ATE_5000', 'MAIS_DE_5000');
-
--- CreateEnum
 CREATE TYPE "Regime" AS ENUM ('MEI', 'SIMPLES', 'PRESUMIDO', 'REAL');
 
 -- CreateEnum
@@ -82,10 +73,6 @@ CREATE TABLE "orgs" (
     "whatsapp" TEXT,
     "agente_nome" TEXT,
     "configurada_em" TIMESTAMP(3),
-    "porte" "Porte",
-    "como_vende" TEXT[] DEFAULT ARRAY[]::TEXT[],
-    "dor" "Dor",
-    "catalogo" "Catalogo",
     "plano" "Plano" NOT NULL DEFAULT 'BALCAO',
     "situacao" "Situacao" NOT NULL DEFAULT 'TESTE',
     "modulos" TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -1074,3 +1061,4 @@ ALTER TABLE "movimentos_pontos" ADD CONSTRAINT "movimentos_pontos_cliente_id_fke
 
 -- AddForeignKey
 ALTER TABLE "recargas_ia" ADD CONSTRAINT "recargas_ia_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

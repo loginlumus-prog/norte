@@ -10,7 +10,7 @@
     "test": "tsc --noEmit && vitest run",
     "test:watch": "vitest",
     "db:gerar": "prisma generate",
-    "db:ddl": "prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script > prisma/sql/tabelas.sql",
+    "db:ddl": "prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script --output prisma/sql/tabelas.sql",
     "db:studio": "prisma studio",
     "tipos": "tsc --noEmit",
     "dev": "tsx scripts/tudo.ts",
@@ -19,6 +19,7 @@
     "start": "next start",
     "conexao": "tsx scripts/conferir-conexao.ts",
     "empresa": "tsx scripts/criar-empresa.ts",
+    "migrar": "tsx scripts/migrar.ts",
     "video": "node scripts/recortar-video.mjs"
   },
   "dependencies": {

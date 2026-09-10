@@ -53,6 +53,33 @@ model Org {
   /// que sistema vazio.
   configuradaEm DateTime? @map("configurada_em")
 
+  // ── o que a empresa contou de si ─────────────────────────
+  /// Cinco respostas do cadastro inicial. Nenhuma é curiosidade: cada uma
+  /// alimenta ao mesmo tempo o que APARECE no sistema, o que o painel
+  /// DESTACA e o que o assistente já SABE da loja no primeiro dia.
+  ///
+  /// O que NÃO se pergunta aqui, e é decisão firme: nada de faturamento,
+  /// conta bancária ou cartão. Dado financeiro que não existe aqui não vaza
+  /// daqui, e quem precisa dele para cobrar é o meio de pagamento, na hora de
+  /// cobrar. Ver src/app/privacidade.
+
+  /// Quanta gente mexe no sistema. Decide cota de plano e o quanto a tela
+  /// pode assumir que existe divisão de papel — loja de uma pessoa só não
+  /// precisa ver permissão nenhuma.
+  porte Porte?
+
+  /// Por onde a venda acontece hoje. Lista, porque quase todo mundo faz mais
+  /// de uma: é o que decide o manual do assistente e se Encomenda faz sentido.
+  comoVende String[] @default([]) @map("como_vende")
+
+  /// A pergunta mais valiosa do cadastro: o que dói AGORA. É o que o painel
+  /// destaca no primeiro mês, e é o melhor dado de venda que existe.
+  dor Dor?
+
+  /// Tamanho do catálogo, por faixa. Decide se a gente oferece importar por
+  /// planilha ANTES de a pessoa desistir de digitar o milésimo produto.
+  catalogo Catalogo? 
+
   plano       Plano     @default(BALCAO)
   situacao    Situacao  @default(TESTE)
 
@@ -350,6 +377,31 @@ model Cobranca {
 // ─────────────────────────────────────────────────────────────
 // ENUMS
 // ─────────────────────────────────────────────────────────────
+
+/// Quanta gente mexe no sistema.
+enum Porte {
+  SO_EU
+  ATE_5
+  ATE_20
+  MAIS_DE_20
+}
+
+/// O que mais dói hoje. Quatro opções, e só uma escolha: pergunta com dez
+/// alternativas vira formulário, e formulário ninguém responde de verdade.
+enum Dor {
+  ESTOQUE /// o estoque nunca bate com a prateleira
+  LUCRO /// não sei quanto sobra no fim do mês
+  COBRANCA /// esqueço de cobrar quem está atrasado
+  ATENDIMENTO /// não dou conta de responder todo mundo
+}
+
+/// Tamanho do catálogo, por faixa — ninguém sabe o número exato.
+enum Catalogo {
+  ATE_50
+  ATE_500
+  ATE_5000
+  MAIS_DE_5000
+}
 
 enum Regime {
   MEI

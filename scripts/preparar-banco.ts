@@ -141,6 +141,18 @@ await cliente.query(`
   grant usage on schema public to app_norte;
   grant select, insert, update, delete on all tables in schema public to app_norte;
   grant usage, select on all sequences in schema public to app_norte;
+
+  -- O 'on all tables' acima é largo de propósito: tabela nova entra sozinha, e
+  -- é isso que evita o esquecimento. Mas ele pega tudo que estiver em public —
+  -- inclusive o que não é nosso. A tabela de controle das migrações guarda o
+  -- histórico do schema; a aplicação não tem o que fazer com ela, e não é ela
+  -- que deve poder reescrever esse histórico.
+  do $$
+  begin
+    if to_regclass('public._prisma_migrations') is not null then
+      revoke all on public._prisma_migrations from app_norte;
+    end if;
+  end $$;
 `)
 
 // ── 2.1 a portaria ───────────────────────────────────────────
