@@ -42,6 +42,7 @@ export function Balcao({
   slug,
   unidadeId,
   usuarioId,
+  grade: usaGrade,
   caixaId,
   unidadeNome,
   programa,
@@ -50,6 +51,12 @@ export function Balcao({
   unidadeId: string
   /** Quem está operando. Entra na chave do que fica guardado — ver guardar.ts. */
   usuarioId: string
+  /**
+   * Mostrar a grade de botões? Vem da empresa (padrão do ramo, trocável em
+   * Configurações). Loja que bipa etiqueta não precisa de sessenta botões de
+   * camiseta na frente do caixa.
+   */
+  grade: boolean
   caixaId: string | null
   unidadeNome: string
   programa: Programa
@@ -74,6 +81,7 @@ export function Balcao({
   const qtdRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    if (!usaGrade) return
     let vivo = true
     grade(slug, unidadeId, categoriaId)
       .then((g) => vivo && setBotoes(g))
@@ -81,7 +89,7 @@ export function Balcao({
     return () => {
       vivo = false
     }
-  }, [slug, unidadeId, categoriaId])
+  }, [slug, unidadeId, categoriaId, usaGrade])
 
   const busca = useRef<HTMLInputElement>(null)
   const focarBusca = () => busca.current?.focus()
@@ -368,7 +376,7 @@ export function Balcao({
             Aparece quando a busca está vazia — quem está digitando quer o
             dropdown, quem não está quer os botões. Some sozinha quando não há
             o que mostrar (loja sem produto ainda). */}
-        {termo.trim().length < 2 && botoes && botoes.itens.length > 0 && (
+        {usaGrade && termo.trim().length < 2 && botoes && botoes.itens.length > 0 && (
           <div className="flex flex-col gap-2">
             {botoes.categorias.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -431,7 +439,7 @@ export function Balcao({
         <div className="overflow-hidden rounded-norte border border-borda bg-superficie">
           {carrinho.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-tinta-3">
-              {botoes && botoes.itens.length > 0
+              {usaGrade && botoes && botoes.itens.length > 0
                 ? 'Toque num produto, ou bipe a etiqueta.'
                 : 'Bipe a primeira etiqueta para começar.'}
             </p>

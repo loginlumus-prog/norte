@@ -78,7 +78,13 @@ model Org {
 
   /// Tamanho do catálogo, por faixa. Decide se a gente oferece importar por
   /// planilha ANTES de a pessoa desistir de digitar o milésimo produto.
-  catalogo Catalogo? 
+  catalogo Catalogo?
+
+  /// O balcao mostra a GRADE DE BOTOES (toca no produto) ou so a BUSCA (bipa
+  /// a etiqueta)? Sorveteria nao etiqueta picole; loja de roupa nao vende por
+  /// botao com seis tamanhos de cada peca. O ramo escolhe o padrao no
+  /// cadastro inicial, e o dono troca em Configuracoes quando quiser.
+  balcaoGrade Boolean @default(false) @map("balcao_grade") 
 
   plano       Plano     @default(BALCAO)
   situacao    Situacao  @default(TESTE)

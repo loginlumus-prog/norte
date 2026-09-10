@@ -70,6 +70,9 @@ export async function terminarCadastro(
         telefone: texto(form, 'telefone'),
         whatsapp: texto(form, 'whatsapp'),
         corMarca: texto(form, 'corMarca'),
+        // O jeito de vender vem do ramo: sorveteria toca no botão, loja de
+        // roupa bipa a etiqueta. É padrão, e o dono troca em Configurações.
+        balcaoGrade: RAMOS[ramo].balcao === 'grade',
         porte,
         dor,
         catalogo,
@@ -189,21 +192,22 @@ export async function salvarModulos(_anterior: EstadoComeco, form: FormData): Pr
   exigir(sessao, 'empresa.configurar')
 
   const modulos = TODOS.filter((m) => form.get(`modulo_${m}`) === 'on') as Modulo[]
+  const balcaoGrade = form.get('balcaoGrade') === 'on'
 
   await comoOrg(sessao.orgId, async (db) => {
     const antes = await db.org.findUnique({
       where: { id: sessao.orgId },
-      select: { modulos: true },
+      select: { modulos: true, balcaoGrade: true },
     })
-    await db.org.update({ where: { id: sessao.orgId }, data: { modulos } })
+    await db.org.update({ where: { id: sessao.orgId }, data: { modulos, balcaoGrade } })
     await db.auditoria.create({
       data: {
         orgId: sessao.orgId,
         usuarioId: sessao.usuarioId,
         quem: sessao.nome,
         acao: 'empresa.modulos',
-        antes: { modulos: antes?.modulos ?? [] },
-        depois: { modulos },
+        antes: { modulos: antes?.modulos ?? [], balcaoGrade: antes?.balcaoGrade ?? false },
+        depois: { modulos, balcaoGrade },
       },
     })
   })

@@ -19,6 +19,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
 import { spawn, spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { createConnection } from 'node:net'
 import { mkdirSync, readFileSync, watch } from 'node:fs'
 import { join } from 'node:path'
@@ -89,16 +90,28 @@ if (!igual) {
   }
 }
 
-// Comando inteiro numa string só, e não `spawn(cmd, [args])`: com `shell: true`
-// o Node avisa (DEP0190) que argumentos separados não são escapados. Aqui são
-// constantes, mas o aviso aparecia toda vez que alguém subia o sistema.
+// O Next é aberto pelo ARQUIVO do binário, com o Node que já está rodando —
+// e não por `npx next dev` numa shell. Dois motivos, e o segundo custou caro:
 //
-// Vem de uma função porque o site pode ser trocado por um novo em pé (ver o
-// vigia do schema, logo abaixo). E cada filho carrega o próprio `on('exit')`
-// comparando consigo mesmo: sem isso, matar o site para reiniciar dispararia
-// o encerramento geral e derrubaria o banco junto.
+// 1. Com `shell: true` o Node avisa (DEP0190) que os argumentos vão
+//    concatenados numa linha de comando em vez de passados um a um.
+//
+// 2. No Windows, `.kill()` num filho aberto com shell mata o `cmd.exe` e
+//    DEIXA O NEXT VIVO por baixo, segurando a porta 3000. O reinício do vigia
+//    de schema subia um Next novo, que morria com EADDRINUSE — e o
+//    `on('exit')` dele encerrava o processo inteiro, banco junto. Foi assim
+//    que o sistema caiu no meio de um teste, com "exited with code 1" e
+//    nenhuma pista. Sem shell, o filho é o próprio node.exe do Next, e
+//    `.kill()` mata quem tem que matar.
+//
+// Vem de uma função porque o site pode ser trocado por um novo em pé (o
+// vigia, logo abaixo). E cada filho carrega o próprio `on('exit')` comparando
+// consigo mesmo: sem isso, matar o site para reiniciar dispararia o
+// encerramento geral.
+const NEXT = createRequire(import.meta.url).resolve('next/dist/bin/next')
+
 const ligarSite = () => {
-  const p = spawn('npx next dev', { stdio: 'inherit', shell: true })
+  const p = spawn(process.execPath, [NEXT, 'dev'], { stdio: 'inherit' })
   p.on('exit', (c) => {
     if (p === web) void encerrar(c ?? 0)
   })
@@ -144,11 +157,15 @@ watch(atual, { persistent: false }, () => {
     console.log('\n  schema mudou — gerando o cliente e subindo o site de novo...\n')
     const r = spawnSync('npx prisma generate', { stdio: 'inherit', shell: true })
     if (r.status === 0) {
-      // Troca a referência ANTES de matar: o `on('exit')` do antigo compara
-      // com `web` e, vendo que já não é ele, sai calado em vez de encerrar
-      // tudo e derrubar o banco junto.
+      // A ordem importa duas vezes. Trocar a referência ANTES de matar faz o
+      // `on('exit')` do antigo se ver fora de `web` e sair calado. E subir o
+      // novo só DEPOIS de o antigo morrer de verdade — senão a porta ainda
+      // está presa por um instante e o novo cai com EADDRINUSE.
       const antigo = web
-      web = ligarSite()
+      web = undefined as unknown as typeof antigo
+      antigo.once('exit', () => {
+        web = ligarSite()
+      })
       antigo.kill()
     } else {
       console.error('\n  O `prisma generate` falhou. O site continua com o cliente velho.\n')

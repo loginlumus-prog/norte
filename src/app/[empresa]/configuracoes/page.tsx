@@ -27,6 +27,7 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
         razaoSocial: true, documento: true, inscricaoEstadual: true, regime: true,
         email: true, telefone: true, whatsapp: true, agenteNome: true, ramo: true,
         pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true,
+        balcaoGrade: true,
       },
     }),
   )
@@ -75,7 +76,7 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
 
       <Cartao titulo="O que sua empresa usa">
         {pode(sessao, 'empresa.configurar') ? (
-          <Modulos empresa={slug} ligados={empresa.modulos} />
+          <Modulos empresa={slug} ligados={empresa.modulos} grade={dados?.balcaoGrade ?? false} />
         ) : (
           <Aviso nivel="neutro">Só quem responde pela empresa muda isto.</Aviso>
         )}

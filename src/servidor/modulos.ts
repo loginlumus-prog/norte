@@ -81,6 +81,10 @@ export function moduloLigado(empresa: ComModulos, modulo: Modulo): boolean {
  * `sugere`     módulos já marcados no cadastro inicial
  * `categorias` as gavetas do catálogo, criadas no cadastro inicial
  * `manual`     o que o assistente já sabe da loja no primeiro dia
+ * `balcao`     'grade' = vende tocando em botões por categoria (quem não
+ *              etiqueta: sorveteria, lanchonete, floricultura, serviço);
+ *              'busca' = vende bipando a etiqueta (quem tem leitor e grade
+ *              de tamanho/cor). É só o PADRÃO — o dono troca em Configurações.
  *
  * O `manual` é o campo mais fácil de escrever errado. Ele não é propaganda do
  * ramo: é o que evita a resposta errada. Por isso quase todo um deles termina
@@ -97,6 +101,7 @@ export const RAMOS = {
     ],
     medida: 'UN',
     sugere: ['crediario', 'metas'],
+    balcao: 'busca' as const,
     categorias: ['Blusas', 'Calças', 'Vestidos', 'Jaquetas', 'Acessórios'],
     manual:
       'Peça é vendida por unidade e tem grade de tamanho e cor — quando perguntarem por uma peça, confira o tamanho E a cor antes de dizer que tem. ' +
@@ -107,6 +112,7 @@ export const RAMOS = {
     eixos: [{ nome: 'Numeração', ehCor: false, opcoes: ['34', '35', '36', '37', '38', '39', '40'] }],
     medida: 'PAR',
     sugere: ['crediario', 'metas'],
+    balcao: 'busca' as const,
     categorias: ['Tênis', 'Sandálias', 'Sapatos', 'Botas', 'Chinelos', 'Infantil'],
     manual:
       'Calçado é vendido por PAR e o que decide é a numeração: sempre pergunte o número antes de responder se tem. ' +
@@ -117,6 +123,7 @@ export const RAMOS = {
     eixos: [{ nome: 'Cor', ehCor: true, opcoes: ['Dourado', 'Prateado', 'Rosé'] }],
     medida: 'UN',
     sugere: [],
+    balcao: 'busca' as const,
     categorias: ['Brincos', 'Colares', 'Anéis', 'Pulseiras', 'Relógios'],
     manual:
       'Peça pequena, giro rápido e muita variação de cor: confira a cor antes de confirmar que tem. ' +
@@ -127,6 +134,7 @@ export const RAMOS = {
     eixos: [{ nome: 'Sabor', ehCor: false, opcoes: [] }],
     medida: 'KG',
     sugere: ['encomenda'],
+    balcao: 'grade' as const,
     categorias: ['Picolé', 'Massa', 'Açaí', 'Milk-shake', 'Complementos'],
     manual:
       'A venda sai por QUILO na maior parte dos casos, e o eixo que importa é o SABOR. ' +
@@ -138,6 +146,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'UN',
     sugere: ['encomenda'],
+    balcao: 'grade' as const,
     categorias: ['Lanches', 'Porções', 'Bebidas', 'Cafés', 'Sobremesas'],
     manual:
       'O movimento é por horário: no pico, resposta curta vale mais que resposta completa. ' +
@@ -149,6 +158,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'KG',
     sugere: ['encomenda'],
+    balcao: 'grade' as const,
     categorias: ['Pães', 'Bolos', 'Salgados', 'Frios e laticínios', 'Bebidas'],
     manual:
       'Boa parte sai por QUILO e é produção do dia: o que existe de manhã pode não existir à tarde. ' +
@@ -159,6 +169,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'UN',
     sugere: ['notaFiscal'],
+    balcao: 'busca' as const,
     categorias: ['Bebidas', 'Mercearia', 'Limpeza', 'Higiene', 'Frios', 'Hortifrúti'],
     manual:
       'Catálogo grande e giro rápido. A pergunta quase sempre é "tem?" e "quanto é?" — responda as duas de uma vez. ' +
@@ -169,6 +180,7 @@ export const RAMOS = {
     eixos: [{ nome: 'Porte', ehCor: false, opcoes: ['Filhote', 'Pequeno', 'Médio', 'Grande'] }],
     medida: 'UN',
     sugere: ['encomenda'],
+    balcao: 'busca' as const,
     categorias: ['Ração', 'Petiscos', 'Higiene', 'Brinquedos', 'Acessórios', 'Medicamentos'],
     manual:
       'Ração é o carro-chefe, e o que muda tudo é o PORTE e a idade do animal — pergunte isso antes de indicar qualquer coisa. ' +
@@ -180,6 +192,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'UN',
     sugere: [],
+    balcao: 'busca' as const,
     categorias: ['Escolar', 'Escritório', 'Arte', 'Papelaria criativa', 'Impressão'],
     manual:
       'Existe uma temporada que decide o ano: a lista de material escolar. Nessa época a pergunta chega por item de lista, e responder rápido o que tem vale mais do que responder tudo. ' +
@@ -190,6 +203,7 @@ export const RAMOS = {
     eixos: [{ nome: 'Faixa etária', ehCor: false, opcoes: ['0-2', '3-5', '6-8', '9-12', '12+'] }],
     medida: 'UN',
     sugere: ['encomenda'],
+    balcao: 'busca' as const,
     categorias: ['Bebê', 'Educativos', 'Bonecas', 'Carrinhos', 'Jogos', 'Ar livre'],
     manual:
       'A pergunta quase nunca é o produto: é "para criança de tal idade, o que serve?". A FAIXA ETÁRIA é o eixo que importa — e ela também é segurança, então nunca indique brinquedo abaixo da idade recomendada.',
@@ -199,6 +213,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'UN',
     sugere: ['encomenda'],
+    balcao: 'grade' as const,
     categorias: ['Buquês', 'Arranjos', 'Plantas', 'Vasos', 'Cestas', 'Coroas'],
     manual:
       'Quase tudo aqui é ENCOMENDA com data e hora — aniversário, casamento, velório — e a data é o que não pode falhar. ' +
@@ -210,6 +225,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'UN',
     sugere: [],
+    balcao: 'busca' as const,
     categorias: ['Motor', 'Freios', 'Suspensão', 'Elétrica', 'Filtros', 'Óleos', 'Acessórios'],
     manual:
       'Peça errada aqui custa caro para os dois lados. Antes de dizer que tem, confirme MARCA, MODELO e ANO do carro — e o código da peça, se a loja usar. ' +
@@ -220,6 +236,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'UN',
     sugere: ['notaFiscal', 'encomenda'],
+    balcao: 'busca' as const,
     categorias: [
       'Cimento e argamassa',
       'Hidráulica',
@@ -237,6 +254,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'UN',
     sugere: ['notaFiscal', 'multiUnidade', 'crediario'],
+    balcao: 'busca' as const,
     categorias: ['Bebidas', 'Alimentos', 'Descartáveis', 'Limpeza', 'Embalagens'],
     manual:
       'Quem compra aqui é revendedor, não consumidor final: fala em CAIXA e em FARDO, não em unidade. ' +
@@ -248,6 +266,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'UN',
     sugere: ['encomenda'],
+    balcao: 'grade' as const,
     categorias: ['Serviços', 'Peças e materiais', 'Mão de obra'],
     manual:
       'O que se vende é tempo e trabalho, então PRAZO é a informação mais importante da conversa. ' +
@@ -258,6 +277,7 @@ export const RAMOS = {
     eixos: [],
     medida: 'UN',
     sugere: [],
+    balcao: 'busca' as const,
     categorias: [],
     manual:
       'Responda a partir do que estiver no sistema: catálogo, preço e saldo. ' +

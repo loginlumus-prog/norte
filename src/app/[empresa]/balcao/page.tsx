@@ -38,7 +38,7 @@ export default async function BalcaoPagina({
   const conf = await comoOrg(sessao.orgId, (db) =>
     db.org.findUnique({
       where: { id: sessao.orgId },
-      select: { pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true },
+      select: { pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true, balcaoGrade: true },
     }),
   )
   const programa = conf ? programaDe(conf) : DESLIGADO
@@ -97,6 +97,7 @@ export default async function BalcaoPagina({
             slug={slug}
             unidadeId={unidadeId}
             usuarioId={sessao.usuarioId}
+            grade={conf?.balcaoGrade ?? false}
             caixaId={caixa.id}
             unidadeNome={unidadeNome}
             programa={programa}

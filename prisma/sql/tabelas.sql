@@ -86,6 +86,7 @@ CREATE TABLE "orgs" (
     "como_vende" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "dor" "Dor",
     "catalogo" "Catalogo",
+    "balcao_grade" BOOLEAN NOT NULL DEFAULT false,
     "plano" "Plano" NOT NULL DEFAULT 'BALCAO',
     "situacao" "Situacao" NOT NULL DEFAULT 'TESTE',
     "modulos" TEXT[] DEFAULT ARRAY[]::TEXT[],
