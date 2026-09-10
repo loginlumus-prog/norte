@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao } from '@/ui/base'
+import { PORTES, CATALOGOS, CANAIS, DORES } from '@/servidor/cadastro'
 import { MODULOS, RAMOS, TODOS, type Ramo } from '@/servidor/modulos'
 import { terminarCadastro, type EstadoComeco } from './acoes'
 
@@ -92,6 +93,74 @@ export function Formulario({ empresa, nomeAtual }: { empresa: string; nomeAtual:
                    placeholder="Seg a sex 9h-18h, sáb 9h-13h"
                    dica="O assistente responde com isto quando perguntarem." />
           </div>
+        </div>
+      </Cartao>
+
+      {/* ── COMO VOCÊ TRABALHA ──
+          Quatro perguntas que não identificam ninguém e mudam tudo: elas
+          decidem o que o painel destaca no primeiro mês, o que o assistente
+          já sabe da loja, e se a gente oferece importar por planilha antes de
+          a pessoa desistir de digitar.
+
+          Todas OPCIONAIS. Cadastro que trava por causa de pergunta de pesquisa
+          é cadastro que a pessoa abandona — e aí a gente não fica nem com o
+          dado nem com o cliente. */}
+      <Cartao titulo="Como você trabalha hoje">
+        <p className="mb-4 text-sm text-tinta-2">
+          Nada aqui é obrigatório, e nada aqui é sobre dinheiro. É o que faz o
+          sistema chegar já com a sua cara em vez de uma tela vazia.
+        </p>
+
+        <div className="flex flex-col gap-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Selecao
+              rotulo="Quantas pessoas mexem no sistema?"
+              name="porte"
+              defaultValue=""
+              opcoes={[{ valor: '', titulo: 'Prefiro não dizer' }, ...PORTES]}
+            />
+            <Selecao
+              rotulo="Quantos produtos, mais ou menos?"
+              name="catalogo"
+              defaultValue=""
+              opcoes={[{ valor: '', titulo: 'Não sei ainda' }, ...CATALOGOS]}
+            />
+          </div>
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className="pb-2 text-sm font-medium text-tinta">
+              Por onde você vende? <span className="text-tinta-3">Marque quantas quiser.</span>
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {CANAIS.map((c) => (
+                <Marcar
+                  key={c.valor}
+                  name="comoVende"
+                  value={c.valor}
+                  titulo={c.titulo}
+                  resumo={c.resumo}
+                />
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className="pb-2 text-sm font-medium text-tinta">
+              O que mais te incomoda hoje? <span className="text-tinta-3">Escolha uma.</span>
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {DORES.map((d) => (
+                <Marcar
+                  key={d.valor}
+                  type="radio"
+                  name="dor"
+                  value={d.valor}
+                  titulo={d.titulo}
+                  resumo={d.resumo}
+                />
+              ))}
+            </div>
+          </fieldset>
         </div>
       </Cartao>
 

@@ -340,12 +340,20 @@ export function Marcar({
   resumo,
   id,
   className,
+  // Caixa por padrao, mas serve de bolinha tambem. A diferenca entre "marque
+  // quantas quiser" e "escolha uma" e do tipo do input, nao do desenho — o
+  // cartao, a borda verde e o fundo verde sao os mesmos, e e bom que sejam:
+  // duas aparencias para a mesma pergunta so confundem.
+  type = 'checkbox',
   ...resto
 }: InputHTMLAttributes<HTMLInputElement> & {
   titulo: string
   resumo?: string
 }) {
-  const meuId = id ?? `mar-${resto.name}`
+  // Bolinha divide o `name` com as irmas — e o que faz uma desmarcar a outra.
+  // Sem o valor no id, todas nasceriam com o mesmo, e clicar no rotulo de
+  // qualquer uma marcaria sempre a primeira.
+  const meuId = id ?? `mar-${resto.name}${resto.value ? `-${resto.value}` : ''}`
   return (
     <label
       htmlFor={meuId}
@@ -360,7 +368,7 @@ export function Marcar({
       <input
         {...resto}
         id={meuId}
-        type="checkbox"
+        type={type}
         className="mt-0.5 size-4 shrink-0 accent-[var(--bom-vivo)]"
       />
       <span className="flex flex-col gap-0.5">

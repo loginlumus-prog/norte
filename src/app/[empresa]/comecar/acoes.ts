@@ -5,6 +5,7 @@ import { comoOrg } from '@/servidor/banco'
 import { sessaoViva } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
 import { TODOS, RAMOS, type Modulo, type Ramo } from '@/servidor/modulos'
+import { PORTES, DORES, CATALOGOS, CANAIS_VALIDOS, daLista } from '@/servidor/cadastro'
 import type { Regime } from '@prisma/client'
 
 export type EstadoComeco = { erro?: string }
@@ -42,6 +43,17 @@ export async function terminarCadastro(
 
   const agenteNome = modulos.includes('agente') ? texto(form, 'agenteNome') : null
 
+  // As cinco respostas de "como você trabalha". Tudo conferido contra a lista
+  // de verdade em servidor/cadastro.ts: o que chega do formulário é do
+  // navegador, e o navegador é de quem está do outro lado.
+  const porte = daLista(form.get('porte'), PORTES)
+  const dor = daLista(form.get('dor'), DORES)
+  const catalogo = daLista(form.get('catalogo'), CATALOGOS)
+  const comoVende = form
+    .getAll('comoVende')
+    .map(String)
+    .filter((c) => CANAIS_VALIDOS.includes(c))
+
   await comoOrg(sessao.orgId, async (db) => {
     await db.org.update({
       where: { id: sessao.orgId },
@@ -58,6 +70,10 @@ export async function terminarCadastro(
         telefone: texto(form, 'telefone'),
         whatsapp: texto(form, 'whatsapp'),
         corMarca: texto(form, 'corMarca'),
+        porte,
+        dor,
+        catalogo,
+        comoVende,
         configuradaEm: new Date(),
       },
     })
@@ -157,7 +173,7 @@ export async function terminarCadastro(
         alvoTipo: 'org',
         alvoId: sessao.orgId,
         alvoNome: nome,
-        depois: { ramo, modulos },
+        depois: { ramo, modulos, porte, dor, catalogo, comoVende },
       },
     })
   })
