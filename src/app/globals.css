@@ -591,15 +591,6 @@ th.numero {
 
 /* Movimento é ajuda, nunca requisito: quem pediu menos movimento no sistema
    continua vendo a cor, a borda e o texto — que é onde o recado mora. */
-/* A cena do topo respira devagar. É o único movimento dela por enquanto — o
-   laço de verdade vem depois, em cima destas mesmas artes. Escala e
-   deslocamento só, nada que force recálculo de layout. */
-@keyframes respiro-cena {
-  from { transform: scale(1) translateY(0); }
-  to   { transform: scale(1.035) translateY(-10px); }
-}
-.respiro-lento { animation: respiro-cena 19s ease-in-out infinite alternate; }
-
 /* Os brilhos que derivam atrás de tudo. A aurora do globals é gradiente
    parado; estes dois borrões andam por cima dela em ritmos diferentes e
    nunca coincidem, que é o que faz o fundo parecer luz e não papel pintado.

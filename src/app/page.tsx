@@ -391,10 +391,14 @@ export default function Inicio() {
             </div>
 
             {/* A cena sangra um pouco para fora da coluna à direita — a mesma
-                sangria que a conversa do assistente usa. */}
+                sangria que a conversa do assistente usa.
+
+                Parada, de propósito: a animação dela vai ser vídeo, gerado a
+                partir desta mesma arte. Enquanto o vídeo não chega, imagem
+                parada é melhor do que movimento que não leva a lugar nenhum. */}
             <div
               aria-hidden
-              className="respira relative aspect-[927/609] w-full lg:-mr-[12%] lg:w-[118%]"
+              className="relative aspect-[927/609] w-full lg:-mr-[12%] lg:w-[118%]"
             >
               <Image
                 src="/img/cena-sistema.png"
