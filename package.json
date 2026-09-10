@@ -17,7 +17,8 @@
     "dev:so-web": "next dev",
     "build": "next build",
     "start": "next start",
-    "conexao": "tsx scripts/conferir-conexao.ts"
+    "conexao": "tsx scripts/conferir-conexao.ts",
+    "video": "node scripts/recortar-video.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

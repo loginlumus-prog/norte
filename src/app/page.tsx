@@ -12,6 +12,7 @@ import { ConversaFlutuante } from '@/ui/ConversaFlutuante'
 import { Digitando } from '@/ui/Digitando'
 import { CompararPlanos } from '@/ui/CompararPlanos'
 import { TrocaTema } from '@/ui/TrocaTema'
+import { CenaViva } from '@/ui/CenaViva'
 
 // A página de venda.
 //
@@ -207,11 +208,11 @@ const PROVAS: [string, string][] = [
 // sugerido — tudo já existe em `src/servidor/modulos.ts`. Frase que promete
 // função inexistente é a mais cara de escrever.
 const RAMOS = [
-  { src: '/img/cena-moda.png', rotulo: 'Moda', linha: 'Cor e Tamanho na mesma peça — um cadastro, não trinta.' },
-  { src: '/img/cena-calcados.png', rotulo: 'Calçados', linha: 'Numeração do 34 ao 40, e o par que falta aparece.' },
-  { src: '/img/cena-sorveteria.png', rotulo: 'Sorveteria', linha: 'Sabor vira eixo, e a venda sai por quilo.' },
-  { src: '/img/cena-lanchonete.png', rotulo: 'Lanchonete', linha: 'Encomenda anotada no balcão, com retirada marcada.' },
-  { src: '/img/cena-deposito.png', rotulo: 'Distribuição', linha: 'Cada depósito com estoque e caixa próprios.' },
+  { nome: 'cena-moda', rotulo: 'Moda', linha: 'Cor e Tamanho na mesma peça — um cadastro, não trinta.' },
+  { nome: 'cena-calcados', rotulo: 'Calçados', linha: 'Numeração do 34 ao 40, e o par que falta aparece.' },
+  { nome: 'cena-sorveteria', rotulo: 'Sorveteria', linha: 'Sabor vira eixo, e a venda sai por quilo.' },
+  { nome: 'cena-lanchonete', rotulo: 'Lanchonete', linha: 'Encomenda anotada no balcão, com retirada marcada.' },
+  { nome: 'cena-deposito', rotulo: 'Distribuição', linha: 'Cada depósito com estoque e caixa próprios.' },
 ]
 
 const QUEM: [string, string][] = [
@@ -407,21 +408,22 @@ export default function Inicio() {
             {/* A cena sangra um pouco para fora da coluna à direita — a mesma
                 sangria que a conversa do assistente usa.
 
-                Parada, de propósito: a animação dela vai ser vídeo, gerado a
-                partir desta mesma arte. Enquanto o vídeo não chega, imagem
-                parada é melhor do que movimento que não leva a lugar nenhum. */}
+                É VÍDEO, com fundo transparente: o gráfico sobe, os pontinhos
+                andam pelas linhas pontilhadas, ela pisca e digita. O laço fecha
+                sem emenda porque o último quadro É o primeiro — foi assim que o
+                vídeo foi pedido ao gerador, e não um corte esperto aqui.
+
+                Nada de pulso, nada de escala: o movimento é dentro do desenho.
+                A cena não se mexe na página, o que acontece acontece dentro
+                dela. */}
             <div
               aria-hidden
               className="relative aspect-[927/609] w-full lg:-mr-[12%] lg:w-[118%]"
             >
-              <Image
-                src="/img/cena-sistema.png"
-                alt=""
-                fill
-                priority
-                sizes="(max-width: 1024px) 100vw, 55vw"
-                quality={90}
-                className="object-contain object-bottom"
+              <CenaViva
+                nome="cena-sistema"
+                jaAVista
+                className="absolute inset-0 h-full w-full object-contain object-bottom"
               />
             </div>
           </div>
@@ -530,14 +532,9 @@ export default function Inicio() {
               className="aurora flex flex-col overflow-hidden rounded-norte last:col-span-2 lg:last:col-span-1"
             >
               <div className="relative aspect-[124/100] w-full">
-                <Image
-                  src={r.src}
-                  alt=""
-                  aria-hidden
-                  fill
-                  sizes="(max-width: 1024px) 50vw, 20vw"
-                  quality={90}
-                  className="object-cover object-top"
+                <CenaViva
+                  nome={r.nome}
+                  className="absolute inset-0 h-full w-full object-cover object-top"
                 />
               </div>
               <div className="flex flex-col gap-1.5 px-3.5 pt-2.5 pb-3.5">
