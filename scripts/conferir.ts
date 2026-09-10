@@ -1113,36 +1113,46 @@ secao('Assinatura')
     ok('a empresa tem plano e uso', a.plano.length > 0 && a.uso.unidades > 0,
        `${a.titulo}: ${a.uso.unidades} unidade(s), ${a.uso.usuarios} pessoa(s)`)
 
-    // A TRAVA QUE FALTAVA: a regra existia em planos.ts desde a Fase 1 e
-    // ninguem chamava. Prova pelos dois lados, com o MESMO convite.
-    const convidar1 = () =>
-      convidar(dona.sessao, { email: 'cota@exemplo.com', papel: 'BALCAO', unidadeId: 'uni-a1' },
+    // CADASTRAR GENTE NAO GASTA COTA — em plano nenhum, nem no gratis.
+    //
+    // Aqui existia o contrario: a conferencia provava que o convite era
+    // RECUSADO num plano apertado. Isso valia enquanto a cobranca era por
+    // conta cadastrada, e mudou de proposito — cobrar por cadastro empurra a
+    // loja a compartilhar senha, e senha compartilhada faz o livro de
+    // auditoria mentir. O que a assinatura limita agora e quanta gente fica
+    // DENTRO ao mesmo tempo, e essa trava mora no login.
+    //
+    // Entao o que se prova mudou de sinal: o convite passa ATE no plano mais
+    // apertado da tabela.
+    const convidar1 = (email: string) =>
+      convidar(dona.sessao, { email, papel: 'BALCAO', unidadeId: 'uni-a1' },
                'https://norte.app/exemplo')
 
-    // Num plano folgado, passa.
     await comoOrg(A, (db) => db.org.update({ where: { id: A }, data: { plano: 'REDE' } }))
     let erroFolgado: unknown = null
-    try { await convidar1() } catch (e) { erroFolgado = e }
-    ok('com cota sobrando, o convite passa', erroFolgado === null,
+    try { await convidar1('cota1@exemplo.com') } catch (e) { erroFolgado = e }
+    ok('no plano folgado, o convite passa', erroFolgado === null,
        erroFolgado instanceof Error ? erroFolgado.message : '')
 
-    // No plano apertado, o MESMO convite e recusado — e a mensagem diz o teto.
-    await comoOrg(A, (db) => db.org.update({ where: { id: A }, data: { plano: 'BALCAO' } }))
-    let bloqueou: string | null = null
-    try { await convidar1() } catch (e) { if (e instanceof SemCota) bloqueou = e.motivo }
-    ok('e no plano apertado o MESMO convite e recusado', bloqueou !== null, bloqueou ?? 'passou!')
+    await comoOrg(A, (db) => db.org.update({ where: { id: A }, data: { plano: 'GRATIS' } }))
+    let erroApertado: unknown = null
+    try { await convidar1('cota2@exemplo.com') } catch (e) { erroApertado = e }
+    ok('e no plano GRATIS o convite passa igual — cadastrar nao gasta cota',
+       erroApertado === null,
+       erroApertado instanceof Error ? erroApertado.message : '')
 
-    // Descer de plano com mais loja do que cabe e RECUSADO.
+    // Descer de plano com mais loja do que cabe continua RECUSADO. A empresa
+    // de exemplo tem duas unidades, e o Gratis atende uma.
     await comoOrg(A, (db) => db.org.update({ where: { id: A }, data: { plano: 'REDE' } }))
     let desceu = true
     let motivo = ''
     try {
-      await trocarPlano(dona.sessao, 'BALCAO')
+      await trocarPlano(dona.sessao, 'GRATIS')
     } catch (e) {
       desceu = false
       motivo = e instanceof SemCota ? e.motivo : String(e)
     }
-    ok('descer de plano com 2 lojas para o de 1 e RECUSADO', !desceu, motivo.slice(0, 60))
+    ok('descer com 2 lojas para o plano de 1 e RECUSADO', !desceu, motivo.slice(0, 60))
 
     // Subir libera modulo; descer DESLIGA o que o plano nao cobre.
     await comoOrg(A, (db) => db.org.update({ where: { id: A }, data: { plano: 'REDE' } }))

@@ -411,6 +411,9 @@ enum Regime {
 }
 
 enum Plano {
+  /// Sem mensalidade: uma loja, uma pessoa por vez, teto de vendas no mes.
+  /// Nao e demonstracao com prazo — e onde a loja pequena pode ficar.
+  GRATIS
   BALCAO
   BALCAO_AGENTE
   REDE

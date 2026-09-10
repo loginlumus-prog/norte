@@ -25,7 +25,6 @@ import {
   mudanca,
   menorQueCabe,
   podeCriarUnidade,
-  podeAdicionarUsuario,
   type Mudanca,
 } from './planos'
 import { mostrar } from './dinheiro'
@@ -42,7 +41,7 @@ export type Assinatura = {
   /** Dias que faltam do teste. Negativo = passou. */
   diasDeTeste: number | null
   uso: Uso
-  limite: { unidades: number | null; usuarios: number | null }
+  limite: { unidades: number | null; vagas: number | null }
   mensal: { base: number | null; extras: number; porExtra: number | null; total: number | null }
   credito: {
     saldoCent: number
@@ -154,7 +153,7 @@ export async function assinaturaDe(sessao: Sessao): Promise<Assinatura> {
       testeAte,
       diasDeTeste,
       uso,
-      limite: { unidades: p.unidades, usuarios: p.usuarios },
+      limite: { unidades: p.unidades, vagas: p.vagas },
       mensal: mensalidade(org.plano, unidades),
       credito,
       alertas,
@@ -195,12 +194,14 @@ export async function exigirCotaDeUnidade(
   return { custoExtra: v.custoExtra, novoTotal: 'novoTotal' in v ? v.novoTotal : undefined }
 }
 
-/** A mesma trava para gente na equipe. */
-export async function exigirCotaDeUsuario(sessao: Sessao): Promise<void> {
-  const a = await assinaturaDe(sessao)
-  const v = podeAdicionarUsuario(a.plano, a.uso.usuarios)
-  if (!v.pode) throw new SemCota(v.motivo, v.sugestao)
-}
+// Aqui existia `exigirCotaDeUsuario`, que barrava CADASTRAR gente além da cota
+// do plano. Ela saiu junto com a cota de cadastro: registrar a equipe inteira
+// passou a ser de graça em todo plano, e o que a assinatura limita agora é
+// quanta gente fica DENTRO ao mesmo tempo.
+//
+// A troca não é comercial, é de segurança: cobrar por conta cadastrada empurra
+// a loja a compartilhar login, e login compartilhado faz o livro de auditoria
+// mentir. A conferência de vaga mora no login — ver `podeAbrirVaga`.
 
 /**
  * Troca o plano.

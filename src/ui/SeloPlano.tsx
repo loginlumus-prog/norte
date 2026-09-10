@@ -10,7 +10,11 @@
 // Não são ícones de produto ("uma casinha para loja"). São o MESMO mapa em
 // quatro escalas, que é como o cliente sobe de plano na vida real:
 //
-//   Balcão      um ponto. Uma loja, e o sistema em volta dela.
+//   Grátis      o ponto ainda vazado, só o chão embaixo. É o mesmo lugar,
+//               antes de começar — e é de propósito que ele não seja um
+//               desenho MENOR: o grátis não é uma versão encolhida, é o
+//               primeiro passo do mesmo caminho.
+//   Balcão      o ponto cheio. Uma loja, e o sistema em volta dela.
 //   + Assistente o mesmo ponto, com um satélite orbitando: alguém junto.
 //   Rede        vários pontos ligados. É a palavra do plano, desenhada.
 //   Corporativo o mapa inteiro, com a rosa dos ventos por trás.
@@ -32,6 +36,18 @@ const base = (tamanho: number, className?: string) => ({
   'aria-hidden': true,
   focusable: 'false' as const,
 })
+
+export function SeloGratis({ tamanho = 40, className }: Props) {
+  return (
+    <svg {...base(tamanho, className)}>
+      {/* Vazado, e não menor: o traço tem a mesma espessura e o mesmo raio do
+          Balcão. O que muda é o preenchimento — o lugar existe, ainda não
+          está ocupado. */}
+      <circle cx="24" cy="22" r="4.5" strokeWidth="1.6" />
+      <path d="M8 36 Q 24 42 40 36" strokeWidth="1.2" opacity="0.35" />
+    </svg>
+  )
+}
 
 export function SeloBalcao({ tamanho = 40, className }: Props) {
   return (
@@ -112,6 +128,7 @@ export function SeloCorporativo({ tamanho = 40, className }: Props) {
 }
 
 export const SELO = {
+  GRATIS: SeloGratis,
   BALCAO: SeloBalcao,
   BALCAO_AGENTE: SeloAgente,
   REDE: SeloRede,

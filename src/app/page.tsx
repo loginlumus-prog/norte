@@ -53,17 +53,34 @@ const CARTOES: Record<
     fora: string[]
   }
 > = {
-  BALCAO: {
+  GRATIS: {
     conta: null,
-    nota: 'o WhatsApp continua sendo você',
+    nota: 'sem prazo para acabar e sem cartão',
     itens: [
       'Produtos com as variações da sua loja',
       'Estoque com histórico de cada movimento',
       'Balcão, caixa e fechamento do turno',
+      'Clientes e histórico de compra',
+      'Um relatório simples do mês',
+    ],
+    fora: [
+      'Nota fiscal',
+      'Assistente no WhatsApp',
+      'DRE e financeiro completo',
+      'Mais de uma pessoa por vez',
+    ],
+  },
+  BALCAO: {
+    conta: null,
+    nota: 'o WhatsApp continua sendo você',
+    itens: [
+      'Tudo do Grátis, sem teto de vendas',
+      'Nota fiscal no balcão',
       'Financeiro e o DRE do mês',
+      'Até três lojas, cada uma com seu estoque',
       'Equipe com permissão por pessoa',
     ],
-    fora: ['Assistente no WhatsApp', 'Mais de uma loja', 'Crediário próprio'],
+    fora: ['Assistente no WhatsApp', 'Crediário próprio'],
   },
   BALCAO_AGENTE: {
     // "R$ 120 de crédito" não diz nada para quem nunca comprou token. O número
@@ -71,20 +88,20 @@ const CARTOES: Record<
     conta: '~2.000 conversas no WhatsApp',
     nota: 'renovado todo mês · compra mais quando quiser',
     itens: [
-      'Tudo do Balcão',
+      'Tudo do Balcão, e até cinco lojas',
       'Assistente no WhatsApp, com o nome que você der',
       'Cobrança de atraso, aviso de ruptura, relatório 2× por dia',
       'Teto de valor e de desconto que você define',
       'Toda ação do assistente assinada no livro',
     ],
-    fora: ['Mais de uma loja', 'Crediário próprio'],
+    fora: ['Crediário próprio', 'Lojas sem limite'],
   },
   REDE: {
     selo: 'O mais pedido',
     conta: '~5.800 conversas no WhatsApp',
     nota: 'renovado todo mês · compra mais quando quiser',
     itens: [
-      'Tudo do Balcão + Assistente',
+      'Tudo do Balcão + Assistente, sem limite de loja',
       'Estoque separado por loja, consolidado num clique',
       'Cada gerente vê só a loja dele',
       'Crediário próprio, com juros e cobrança',
@@ -116,8 +133,11 @@ const reais = (v: number) =>
 const cotaLojas = (l: Limite) =>
   l.unidades === null ? 'Sem limite' : l.unidades === 1 ? '1 loja' : `Até ${l.unidades}`
 
+// O número que se paga não é quanta gente existe, é quanta gente fica dentro
+// ao mesmo tempo. Cadastrar a equipe toda é de graça em qualquer plano — e
+// dizer isso na tabela é o que evita a pergunta na hora da venda.
 const cotaGente = (l: Limite) =>
-  l.usuarios === null ? 'Sem limite' : `${l.usuarios} pessoas`
+  l.vagas === null ? 'Sem limite' : l.vagas === 1 ? '1 por vez' : `${l.vagas} ao mesmo tempo`
 
 
 const FAZ = [
@@ -725,10 +745,39 @@ export default function Inicio() {
           <Titulo
             olho="Planos"
             titulo="Preço por tamanho de operação"
-            resumo="Sem taxa de implantação escondida. Loja extra tem preço de tabela, não “fale com o comercial”."
+            resumo="Sem taxa de implantação escondida. Pessoa a mais tem preço de tabela, não “fale com o comercial”."
           />
 
-          <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {/* ── O GRÁTIS FICA FORA DA GRADE, e é decisão de desenho ──
+              Quatro cartões de peso tão diferente numa fileira só achatam os
+              pagos: o olho compara R$ 0 com R$ 1.500 e para de comparar o que
+              importa, que é entre os pagos. Numa faixa própria, mais quieta,
+              ele continua achável — e quem está comparando preço segue
+              comparando os três que disputam de verdade. */}
+          <div className="mt-9 flex flex-col gap-4 rounded-norte border border-borda bg-superficie p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-baseline gap-x-3">
+                <h3 className="text-lg font-bold">{LIMITES.GRATIS.titulo}</h3>
+                <span className="numero text-sm font-semibold text-bom">
+                  R$ 0 — sem prazo e sem cartão
+                </span>
+              </div>
+              <p className="max-w-xl text-sm leading-relaxed text-tinta-2">
+                Uma loja, uma pessoa por vez, até {LIMITES.GRATIS.tetoVendasMes} vendas no mês.
+                Produto, estoque, balcão e cliente funcionam igual — o que fica de fora é nota
+                fiscal, assistente e o financeiro completo. É onde a loja pequena pode ficar, não
+                uma demonstração com prazo.
+              </p>
+            </div>
+            <a
+              href="#falar"
+              className="shrink-0 rounded-norte border border-borda px-5 py-2.5 text-center text-sm font-semibold text-tinta hover:bg-superficie-2"
+            >
+              Começar de graça
+            </a>
+          </div>
+
+          <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {PLANOS_COM_PRECO.map((codigo) => {
               const l = LIMITES[codigo]
               const c = CARTOES[codigo]

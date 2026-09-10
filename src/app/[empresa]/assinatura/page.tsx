@@ -114,19 +114,20 @@ export default async function AssinaturaPagina({
                 : undefined
             }
           />
+          {/* Dois números diferentes, e a diferença é o modelo de cobrança
+              inteiro: cadastrar gente é de graça, o que se paga é quanta
+              gente fica dentro ao mesmo tempo. Mostrar só um dos dois faria a
+              conta parecer errada para quem tem doze cadastrados e paga por
+              três. */}
           <Numero
-            rotulo="Pessoas com acesso"
-            valor={
-              a.limite.usuarios === null
-                ? String(a.uso.usuarios)
-                : `${a.uso.usuarios} de ${a.limite.usuarios}`
-            }
-            detalhe="quem entra no sistema"
-            nivel={
-              a.limite.usuarios !== null && a.uso.usuarios >= a.limite.usuarios
-                ? 'atencao'
-                : undefined
-            }
+            rotulo="Pessoas cadastradas"
+            valor={String(a.uso.usuarios)}
+            detalhe="cadastrar não tem custo"
+          />
+          <Numero
+            rotulo="Dentro ao mesmo tempo"
+            valor={a.limite.vagas === null ? 'Sem limite' : `Até ${a.limite.vagas}`}
+            detalhe="é isto que o plano limita"
           />
           <Numero
             rotulo="Crédito de IA"

@@ -15,7 +15,6 @@
 //    Sem isso, ter "gerir equipe" viraria caminho para virar dono.
 
 import { createHash, randomBytes } from 'node:crypto'
-import { exigirCotaDeUsuario } from './assinatura'
 import { comoOrg, acharOrgPorSlug } from './banco'
 import { guardarSenha } from './senha'
 import { normalizar } from './autenticacao'
@@ -72,11 +71,13 @@ export async function convidar(
   )
   if (jaTem) throw new EmailJaUsado(email)
 
-  // A cota do plano, conferida ANTES de mandar o convite. Conferir só na hora
-  // de aceitar seria pior de todas as formas: a pessoa recebe o link, escolhe
-  // a senha, e leva um "não cabe" que não é problema dela — e quem convidou
-  // só descobre depois, pelo telefone.
-  await exigirCotaDeUsuario(sessao)
+  // Aqui havia uma conferência de cota do plano. Ela saiu: cadastrar gente é
+  // de graça em todo plano, inclusive no grátis. O que a assinatura limita é
+  // quanta gente fica DENTRO ao mesmo tempo, e essa conferência mora no login.
+  //
+  // Vale dizer por quê, porque parece dinheiro deixado na mesa e não é: cobrar
+  // por conta cadastrada faz a loja compartilhar senha, e senha compartilhada
+  // faz o livro de auditoria mentir. O livro é o que este sistema vende.
 
   const token = randomBytes(32).toString('base64url')
   const expiraEm = new Date(Date.now() + VALE_DIAS * 864e5)

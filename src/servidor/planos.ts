@@ -20,11 +20,46 @@ export type Limite = {
   resumo: string
   /** null = sem limite. */
   unidades: number | null
-  usuarios: number | null
-  /** Mensalidade base, em reais. `null` = sob consulta. */
+
+  /**
+   * Quantas pessoas podem estar DENTRO ao mesmo tempo.
+   *
+   * ── por que não é "quantos usuários" ─────────────────────
+   * Cobrar por conta cadastrada empurra a loja a compartilhar login: duas
+   * pessoas, uma senha. Aí o livro de auditoria — que é uma das coisas que
+   * este sistema vende — passa a mentir, porque toda ação aparece no nome de
+   * uma pessoa só.
+   *
+   * Cobrando por simultaneidade, cadastrar a equipe inteira é de graça e não
+   * sobra motivo nenhum para emprestar senha. E é mais justo: a loja com oito
+   * meio-período e dois caixas paga por dois, não por oito.
+   */
+  vagas: number | null
+
+  /** Mensalidade base, em reais. `null` = sob consulta. `0` = grátis. */
   mensal: number | null
   /** Cobrado por unidade além da cota. null = não vende extra neste plano. */
   porUnidadeExtra: number | null
+
+  /**
+   * Cobrado por vaga além da cota. null = não vende extra (o caminho é subir).
+   *
+   * O número importa mais do que parece. Vaga extra cara demais não é
+   * adicional, é muro vestido de opção: ninguém compra, e o cliente que faz a
+   * conta percebe. Perto da taxa de dentro do plano, ela é comprada — e vira
+   * receita que sem ela não existiria.
+   */
+  porVagaExtra: number | null
+
+  /**
+   * Teto de vendas por mês. null = sem teto.
+   *
+   * Só o plano grátis tem. E é de propósito que o limite seja de VOLUME e não
+   * só de recurso: quem está indo bem bate no teto e sobe porque está
+   * vendendo, não porque esbarrou num muro. É a diferença entre "cresci" e
+   * "me capou" — e a primeira converte, a segunda faz sair.
+   */
+  tetoVendasMes: number | null
   /** Os módulos que o plano LIGA. Fora daqui, a chave nem aparece. */
   modulos: Modulo[]
   /**
@@ -46,42 +81,65 @@ export type Limite = {
 }
 
 export const PLANOS: Record<Plano, Limite> = {
+  GRATIS: {
+    titulo: 'Grátis',
+    resumo: 'Uma loja, uma pessoa por vez. Para sair do caderno hoje.',
+    unidades: 1,
+    vagas: 1,
+    mensal: 0,
+    porUnidadeExtra: null,
+    porVagaExtra: null,
+    // Nenhum módulo: sem nota fiscal, sem assistente, sem crediário. O que
+    // fica é o miolo — vender no balcão, cadastrar produto, controlar estoque
+    // e cliente. Que já é o dia inteiro de muita loja, e é o ponto.
+    modulos: [],
+    creditoMensal: 0,
+    // Trezentas vendas por mês é ~10 por dia. Loja que passa disso não é mais
+    // "estou experimentando": é operação, e operação cabe pagar R$ 100.
+    tetoVendasMes: 300,
+    degrau: 0,
+  },
   BALCAO: {
     titulo: 'Balcão',
-    resumo: 'Uma loja, o essencial para parar de vender no caderno.',
-    unidades: 1,
-    usuarios: 5,
-    mensal: 349,
-    porUnidadeExtra: null, // quem quer a segunda loja sobe de plano
-    modulos: ['notaFiscal', 'encomenda'],
+    resumo: 'Até três lojas, e o sistema inteiro menos o assistente.',
+    unidades: 3,
+    vagas: 3,
+    mensal: 100,
+    porUnidadeExtra: null,
+    porVagaExtra: 40,
+    modulos: ['notaFiscal', 'encomenda', 'multiUnidade'],
     creditoMensal: 0,
+    tetoVendasMes: null,
     degrau: 1,
   },
   BALCAO_AGENTE: {
     titulo: 'Balcão + Assistente',
-    resumo: 'Uma loja, com o assistente atendendo e cobrando no WhatsApp.',
-    unidades: 1,
-    usuarios: 5,
-    mensal: 697,
+    resumo: 'Até cinco lojas, com o assistente atendendo e cobrando no WhatsApp.',
+    unidades: 5,
+    vagas: 5,
+    mensal: 350,
     porUnidadeExtra: null,
-    modulos: ['notaFiscal', 'encomenda', 'agente', 'metas'],
+    porVagaExtra: 40,
+    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agente', 'metas'],
     // Calibrado em cima de consumo MEDIDO, nao estimado: uma loja de
     // movimento normal gasta ~R$ 36/mes de custo bruto com cache e roteamento
     // de modelo, o que da ~R$ 108 cobrados. R$ 120 cobre ela inteira e sobra.
-    // O numero anterior era R$ 40 — duraria um dia e meio numa loja cheia.
     creditoMensal: 120,
+    tetoVendasMes: null,
     degrau: 2,
   },
   REDE: {
     titulo: 'Rede',
-    resumo: 'Várias lojas, cada uma com estoque e caixa próprios.',
-    unidades: 5,
-    usuarios: 30,
-    mensal: 1497,
-    porUnidadeExtra: 249,
-    modulos: ['notaFiscal', 'encomenda', 'agente', 'metas', 'multiUnidade', 'crediario'],
+    resumo: 'Lojas e pessoas sem limite, cada loja com estoque e caixa próprios.',
+    unidades: null,
+    vagas: null,
+    mensal: 1500,
+    porUnidadeExtra: null,
+    porVagaExtra: null,
+    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agente', 'metas', 'crediario'],
     // Rede sao varias lojas conversando ao mesmo tempo.
-    creditoMensal: 350,
+    creditoMensal: 400,
+    tetoVendasMes: null,
     degrau: 3,
   },
   CORPORATIVO: {
@@ -90,20 +148,28 @@ export const PLANOS: Record<Plano, Limite> = {
       'A operação inteira com a gente junto: site, tráfego e a condução do negócio. ' +
       'Preço fechado caso a caso, depois de entender a operação.',
     unidades: null,
-    usuarios: null,
+    vagas: null,
     mensal: null, // sob consulta — de propósito, e não é evasiva:
     // o trabalho é diferente em cada caso, e um número na tabela viraria
     // promessa que a gente não sabe se consegue cumprir antes de olhar.
     porUnidadeExtra: null,
-    modulos: ['notaFiscal', 'encomenda', 'agente', 'metas', 'multiUnidade', 'crediario'],
+    porVagaExtra: null,
+    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agente', 'metas', 'crediario'],
     creditoMensal: 800,
+    tetoVendasMes: null,
     degrau: 4,
   },
 }
 
 /** Os que têm preço na tabela. O Corporativo passa por conversa. */
+/**
+ * Os que têm mensalidade de verdade. Fora ficam o Corporativo (sob consulta) e
+ * o Grátis — que tem preço, e o preço é zero, mas ele não disputa a tabela com
+ * os pagos: quem está comparando preço não está escolhendo entre R$ 0 e
+ * R$ 1.500, está escolhendo entre os pagos.
+ */
 export const PLANOS_COM_PRECO = (Object.keys(PLANOS) as Plano[]).filter(
-  (p) => PLANOS[p].mensal !== null,
+  (p) => PLANOS[p].mensal !== null && PLANOS[p].mensal !== 0,
 )
 
 export const ORDEM = (Object.keys(PLANOS) as Plano[]).sort(
@@ -157,14 +223,36 @@ export function podeCriarUnidade(plano: Plano, jaTem: number): Veredito {
   }
 }
 
-/** Mesma ideia para gente na equipe. */
-export function podeAdicionarUsuario(plano: Plano, jaTem: number): Veredito {
+/**
+ * Cabe mais uma pessoa DENTRO agora?
+ *
+ * Note que não existe mais cota de cadastro: registrar a equipe inteira é de
+ * graça, e de propósito — ver o comentário de `vagas` lá em cima. O que a
+ * assinatura limita é quanta gente fica dentro ao mesmo tempo.
+ *
+ * `jaDentro` é quem está com sessão viva neste instante, não quem tem conta.
+ */
+export function podeAbrirVaga(plano: Plano, jaDentro: number): Veredito {
   const p = PLANOS[plano]
-  if (p.usuarios === null || jaTem < p.usuarios) return { pode: true, custoExtra: 0 }
+
+  if (p.vagas === null) return { pode: true, custoExtra: 0 }
+  if (jaDentro < p.vagas) return { pode: true, custoExtra: 0 }
+
+  if (p.porVagaExtra !== null) {
+    const extras = jaDentro - p.vagas + 1
+    return {
+      pode: true,
+      custoExtra: p.porVagaExtra,
+      novoTotal: (p.mensal ?? 0) + extras * p.porVagaExtra,
+    }
+  }
+
   return {
     pode: false,
-    motivo: `O plano ${p.titulo} atende ${p.usuarios} pessoas.`,
-    sugestao: plano === 'REDE' ? 'CORPORATIVO' : 'REDE',
+    motivo:
+      `O plano ${p.titulo} deixa ${p.vagas} ` +
+      `${p.vagas === 1 ? 'pessoa' : 'pessoas'} dentro ao mesmo tempo.`,
+    sugestao: plano === 'GRATIS' ? 'BALCAO' : 'BALCAO_AGENTE',
   }
 }
 
@@ -221,7 +309,8 @@ export type Mudanca = {
 export function mudanca(
   de: Plano,
   para: Plano,
-  uso: { unidades: number; usuarios: number },
+  /** Só as lojas: gente cadastrada deixou de ser cota — ver `vagas`. */
+  uso: { unidades: number },
 ): Mudanca {
   const atual = PLANOS[de]
   const alvo = PLANOS[para]
@@ -236,11 +325,14 @@ export function mudanca(
         `Desative ${uso.unidades - alvo.unidades} antes de trocar.`,
     )
   }
-  if (alvo.usuarios !== null && uso.usuarios > alvo.usuarios) {
-    impedimentos.push(
-      `Você tem ${uso.usuarios} pessoas com acesso e o plano ${alvo.titulo} atende ` +
-        `${alvo.usuarios}. Tire o acesso de ${uso.usuarios - alvo.usuarios} antes de trocar.`,
-    )
+  // Não existe mais impedimento por quantidade de gente cadastrada: cadastro é
+  // livre em todo plano. Descer de plano aperta as VAGAS, e vaga é coisa do
+  // instante — quem estiver dentro além da nova cota simplesmente não
+  // consegue entrar de novo depois de sair. Não é perda de dado e por isso
+  // não impede a troca; é aperto de operação, e a tela de troca avisa disso
+  // com o número.
+  if (alvo.vagas !== null && (atual.vagas === null || atual.vagas > alvo.vagas)) {
+    // Não é impedimento — é aviso. Fica fora de `impedimentos` de propósito.
   }
 
   return {
@@ -257,14 +349,18 @@ export function mudanca(
   }
 }
 
-/** O menor plano que comporta este uso. Serve para sugerir, não para trocar sozinho. */
-export function menorQueCabe(uso: { unidades: number; usuarios: number }): Plano {
+/**
+ * O menor plano que comporta este uso. Serve para sugerir, não para trocar
+ * sozinho.
+ *
+ * Olha só as UNIDADES. Vaga não entra aqui porque vaga é do instante: sugerir
+ * plano com base em "quantas pessoas estavam dentro agora" daria uma sugestão
+ * diferente a cada hora do dia.
+ */
+export function menorQueCabe(uso: { unidades: number }): Plano {
   return (
-    ORDEM.find(
-      (p) =>
-        (PLANOS[p].unidades === null || uso.unidades <= PLANOS[p].unidades!) &&
-        (PLANOS[p].usuarios === null || uso.usuarios <= PLANOS[p].usuarios!),
-    ) ?? 'CORPORATIVO'
+    ORDEM.find((p) => PLANOS[p].unidades === null || uso.unidades <= PLANOS[p].unidades!) ??
+    'CORPORATIVO'
   )
 }
 
@@ -287,7 +383,11 @@ export type Recurso = {
   destaque?: boolean
 }
 
-const TODOS_OS_PLANOS: Plano[] = ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
+// O Grátis entra em TODOS_OS_PLANOS de propósito: o miolo do sistema — vender,
+// cadastrar produto, controlar estoque e cliente — existe nele igual. O que ele
+// não tem está nas outras listas.
+const TODOS_OS_PLANOS: Plano[] = ['GRATIS', 'BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
+const PAGOS: Plano[] = ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
 const COM_AGENTE: Plano[] = ['BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
 const DE_REDE: Plano[] = ['REDE', 'CORPORATIVO']
 

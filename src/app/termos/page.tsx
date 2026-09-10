@@ -73,10 +73,13 @@ export default function Termos() {
             const l = PLANOS[p]
             return (
               <li key={p}>
-                <b>{l.titulo}</b> — {real(l.mensal!)}/mês. Até{' '}
-                {l.unidades === null ? 'lojas ilimitadas' : `${l.unidades} loja(s)`} e{' '}
-                {l.usuarios === null ? 'pessoas ilimitadas' : `${l.usuarios} pessoas`}.
-                {l.porUnidadeExtra ? ` Loja além da cota: ${real(l.porUnidadeExtra)}/mês cada.` : ''}
+                <b>{l.titulo}</b> — {real(l.mensal!)}/mês.{' '}
+                {l.unidades === null ? 'Lojas sem limite' : `Até ${l.unidades} loja(s)`}, e{' '}
+                {l.vagas === null
+                  ? 'sem limite de pessoas dentro ao mesmo tempo'
+                  : `${l.vagas} pessoa(s) dentro ao mesmo tempo`}
+                . Cadastrar a equipe inteira não tem custo em nenhum plano.
+                {l.porVagaExtra ? ` Pessoa a mais ao mesmo tempo: ${real(l.porVagaExtra)}/mês cada.` : ''}
                 {l.creditoMensal > 0 ? ` Inclui ${real(l.creditoMensal)} de crédito de IA por mês.` : ''}
               </li>
             )
@@ -87,8 +90,15 @@ export default function Termos() {
           </li>
         </Itens>
         <p>
-          Não existe taxa de implantação, e loja extra tem preço de tabela: o que está escrito aqui
-          é o que se paga.
+          Existe também o plano <b>Grátis</b>: uma loja, uma pessoa dentro por vez, sem nota
+          fiscal e sem assistente, com teto de {PLANOS.GRATIS.tetoVendasMes} vendas por mês. Ele
+          não tem prazo para acabar e não vira cobrança sozinho — mas também não tem suporte
+          garantido, e pode ser descontinuado com 30 dias de aviso. Seus dados continuam seus, e a
+          cláusula 11 vale igual.
+        </p>
+        <p>
+          Não existe taxa de implantação, e pessoa a mais tem preço de tabela: o que está escrito
+          aqui é o que se paga.
         </p>
         <p>
           O preço pode ser reajustado uma vez a cada doze meses, com <b>30 dias</b> de aviso. Se o
