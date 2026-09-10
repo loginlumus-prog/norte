@@ -309,8 +309,9 @@
       Levantado do código e dos documentos do projeto, não de memória. Os tamanhos
       (<span class="tam">P</span><span class="tam">M</span><span class="tam">G</span>) são
       estimativa minha, não compromisso.
-      <br><b>Revisado em 10/09:</b> a trilha 01 andou três itens em dois dias — o banco
-      está no ar, e um deles cresceu no caminho.
+      <br><b>Revisado em 10/09, à noite:</b> a trilha 01 está em cinco de sete, e o que
+      falta são dois itens — um espera dinheiro, o outro espera advogado. A metade barata
+      da trilha 04 saiu junto.
     </p>
   </header>
 
@@ -552,16 +553,17 @@
     <div class="trilha">
       <div class="n">01</div>
       <div>
-        <h3>Pôr no ar <span class="selo feito">3 de 7</span></h3>
+        <h3>Pôr no ar <span class="selo feito">5 de 7</span></h3>
         <p class="destrava">Destrava: poder cobrar de alguém.</p>
         <ul>
           <li class="ok"><span class="tam ok">&check;</span><b>Projeto Supabase em São Paulo</b> — criado, pago e no ar. As tabelas subiram, as travas de isolamento aplicaram, e a API pública do Supabase foi fechada antes de existir a primeira tabela. <span class="quando">09/09</span></li>
           <li class="ok"><span class="tam ok">&check;</span><b>Trava no seed</b> — <code>npm run preparar</code> agora olha para onde está apontando: fora de <code>127.0.0.1</code>, não semeia. E a conferência, que apaga e recria empresas, se recusa a rodar fora do laptop. <span class="quando">09/09</span></li>
           <li class="ok"><span class="tam ok">&check;</span><b>Papel próprio para a busca de empresa</b> — nasceu a <b>portaria</b>. O buraco era maior do que esta linha dizia: o papel que respondia o login tinha <code>BYPASSRLS</code>, ou seja, passava por cima de toda política de toda tabela. Hoje são nove colunas de uma tabela, medidas contra o banco de verdade. <span class="quando">10/09</span></li>
           <li><span class="tam">M</span><b>Deploy na Vercel, região gru1</b> — o <code>vercel.json</code> está pronto e a região fixada. Espera a fatura: escolher região é recurso de plano pago, e o gratuito é para projeto sem fins comerciais — que é exatamente o que o Norte não é.</li>
-          <li><span class="tam">M</span><b>Um jeito de criar empresa</b> — script primeiro, tela nossa depois. É a peça que falta para existir um cliente de verdade lá dentro, e a única da trilha que não espera nem dinheiro nem decisão sua.</li>
-          <li><span class="tam">M</span><b>Contrato, termos de uso e política de privacidade</b> — antes de entrar dinheiro, não depois.</li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Um jeito de criar empresa</b> — <code>npm run empresa</code> cria a empresa e o convite do dono, e devolve um link. Quem abre escolhe nome e senha, a conta nasce como DONO e cai no cadastro inicial. O caminho inteiro foi andado no navegador, do script ao painel. <span class="quando">10/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Termos de uso e política de privacidade</b> — escritos, e descrevendo o que o sistema REALMENTE faz. Enquanto a razão social e o CNPJ não existirem, as duas páginas mostram uma tarja vermelha dizendo que são rascunho — e a tarja não tem interruptor. Falta <b>quem assina</b> e uma leitura de advogado. <span class="quando">10/09</span></li>
           <li><span class="tam">P</span><b>Backup e ponto de restauração</b> — importa mais que RLS no dia em que um cliente apagar o próprio catálogo. O plano pago já guarda cópia diária; falta conferir que ela existe e <i>restaurar uma vez</i>, antes de precisar.</li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Um caminho para o schema andar</b> — não estava nesta lista e apareceu na hora de mexer no banco: o preparar conferia se faltava TABELA e não conferia coluna, então mudança de schema deixava produção para trás em silêncio. Agora <code>npm run migrar</code> escreve o SQL, mostra na tela, e só aplica depois de revisado. <span class="quando">10/09</span></li>
         </ul>
       </div>
     </div>
@@ -601,14 +603,15 @@
     <div class="trilha">
       <div class="n">04</div>
       <div>
-        <h3>Nichos e ajudas</h3>
+        <h3>Nichos e ajudas <span class="selo feito">3 de 6</span></h3>
         <p class="destrava">Destrava: a demonstração parecer feita para ele.</p>
         <ul>
-          <li><span class="tam">P</span><b>Quatro campos novos no preset</b> — categorias, vocabulário, destaques do painel, manual do agente.</li>
-          <li><span class="tam">M</span><b>Cadastro rico</b> — as cinco perguntas novas, sem dado financeiro.</li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Dois dos quatro campos do preset</b> — <b>categorias</b> (o cadastro cria as gavetas do catálogo) e <b>manual do agente</b> (o assistente nasce sabendo do que aquele comércio vive). Os dois têm consumidor; sem isso seriam dado morto. <span class="quando">10/09</span></li>
+          <li><span class="tam">M</span><b>Os outros dois campos: vocabulário e destaques do painel</b> — ficaram para depois de propósito. Não é escrever a tabela, é fazer o sistema LER dela: vocabulário toca o rótulo de toda tela, e destaque toca o painel. É M, não P — a estimativa antiga contava só a escrita.</li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Cadastro rico</b> — quatro perguntas novas (o horário já existia), todas opcionais, nenhuma sobre dinheiro. Um valor inventado à mão foi descartado pela conferência do servidor. <span class="quando">10/09</span></li>
           <li><span class="tam">M</span><b>Componente de ajuda</b> — um só, aceito por qualquer bloco, com foco e teclado.</li>
           <li><span class="tam">M</span><b>Os textos das ajudas</b> — escrita, bloco por bloco. É o trabalho de verdade desta trilha.</li>
-          <li><span class="tam">P</span><b>Seis nichos de nível 1</b> — papelaria, pet shop, autopeças, floricultura, brinquedos, construção.</li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Dez nichos novos</b>, e não seis — sorveteria, lanchonete, padaria, pet shop, papelaria, brinquedos, floricultura, autopeças, construção e distribuidora. Saiu o "alimentação" genérico: ele cobria três negócios diferentes e por isso não servia direito para nenhum. São dezesseis ao todo. <span class="quando">10/09</span></li>
           <li><span class="tam">M</span><b>“Perguntar à Aurora” dentro da ajuda</b> — depois da trilha 03, porque depende do motor.</li>
         </ul>
       </div>
@@ -640,24 +643,62 @@
           <li><span class="tam">P</span><b>Caixa dentro de caixa no balcão</b> — a oferta de pontos dentro do painel de pagamento.</li>
           <li><span class="tam">P</span><b>Informação por cor sozinha</b> — o ponto colorido do painel e o alerta de plano não têm texto junto.</li>
           <li><span class="tam">M</span><b>Larguras de campo e rótulo à esquerda</b> — seis formulários fora do padrão.</li>
-          <li><span class="tam">P</span><b>Os seis vídeos do Kling</b> — prompts entregues, esperando você gerar.</li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Os seis vídeos</b> — gerados, recortados com fundo transparente e no ar. O laço fecha sem emenda porque o último quadro é o primeiro. <span class="quando">10/09</span></li>
         </ul>
       </div>
     </div>
   </section>
 
   <section>
+    <h2>O que só apareceu porque a gente andou</h2>
+    <p>
+      Três coisas que nenhum plano tinha previsto, e que só existiam porque ninguém tinha
+      criado uma empresa de verdade nem mexido no schema depois de o banco estar no ar.
+    </p>
+    <div class="nota trava">
+      <p>
+        <b>Nenhuma empresa nova conseguia terminar o cadastro.</b> A conferência de cota da
+        primeira unidade abria a própria transação, chamada de dentro da transação do
+        cadastro — duas transações, uma conexão, dois segundos de espera e “Deu problema aqui
+        do nosso lado” na cara de quem acabou de assinar. As empresas de exemplo escondiam
+        isso porque já nascem com unidade e nunca caem nesse caminho.
+      </p>
+      <p>
+        Consertado, e a classe do erro foi fechada junto: o <code>comoOrg</code> agora recusa
+        aninhamento em voz alta, dizendo as duas empresas e o conserto.
+      </p>
+    </div>
+    <div class="nota aviso">
+      <p>
+        <b>O pino do isolamento podia ser sequestrado.</b> Toda política de RLS pergunta a uma
+        função de que empresa é a requisição — e chamava ela sem escrever o schema. Nome sem
+        schema resolve pelo caminho de busca de <i>quem consulta</i>. Medido: a porta estava
+        fechada por um GRANT, e um <code>grant create</code> acidental a reabriria em silêncio.
+        Agora está fechada por construção, e virou conferência permanente.
+      </p>
+    </div>
+    <div class="nota">
+      <p>
+        <b>O schema não tinha como andar.</b> O <code>preparar-banco</code> conferia se faltava
+        tabela e não conferia coluna. Enquanto não há cliente lá dentro dá para recriar o banco
+        e seguir; depois do primeiro, recriar é apagar a loja de alguém. Virou o
+        <code>npm run migrar</code>.
+      </p>
+    </div>
+
     <h2>O que está travado numa decisão sua</h2>
     <p>Nenhum destes eu resolvo sozinho, e cada um segura uma trilha inteira.</p>
     <p class="assinatura">
       Saiu desta lista em 10/09: <b>o projeto Supabase</b> — decidido, pago e no ar.
+      Entrou uma: quem assina os termos.
     </p>
     <div class="rolagem">
       <table>
         <thead><tr><th>Decisão</th><th>Segura</th><th>Quando aperta</th></tr></thead>
         <tbody>
           <tr><td>Fatura da Vercel, em atraso</td><td>O deploy — e só ele</td><td>Agora. É o único item da trilha 01 parado por dinheiro; o resto anda sem ela</td></tr>
-          <tr><td>Contrato e termos de uso</td><td>Cobrar de verdade</td><td>Antes do 1º cliente</td></tr>
+          <tr><td>Razão social, CNPJ e encarregado de dados</td><td>Os termos valerem</td><td>Agora — o texto está pronto e mostra tarja de rascunho até isso existir</td></tr>
+          <tr><td>Leitura de advogado nos termos</td><td>Cobrar de verdade</td><td>Antes do 1º cliente</td></tr>
           <tr><td>Z-API × Meta oficial</td><td>Trilha 03</td><td>Antes de ~15 clientes</td></tr>
           <tr><td>Gateway: Asaas, Iugu ou Vindi</td><td>Cobrança recorrente</td><td>Perto do 10º cliente — dá para cobrar por Pix enquanto são poucos</td></tr>
           <tr><td>Emissor de NF-e: Focus ou Nuvem Fiscal</td><td>Módulo de nota</td><td>Quando o 1º cliente pedir nota</td></tr>
@@ -675,16 +716,20 @@
     </p>
     <div class="nota aviso">
       <p>
-        <b>Onde a agulha está hoje.</b> O banco está no ar e trancado; o que falta da
-        trilha 01 são quatro itens, e só um deles espera dinheiro. A ordem que sobra é:
-        <b>criar empresa</b> (é o que faz existir um cliente lá dentro), <b>contrato e
-        termos</b> (antes de entrar dinheiro), <b>backup restaurado uma vez</b> — e o
-        <b>deploy</b> assim que a fatura da Vercel virar.
+        <b>Onde a agulha está hoje.</b> A trilha 01 está em cinco de sete, e o que falta não
+        é código: <b>backup restaurado uma vez</b> (pequeno, e só meu), o <b>deploy</b>
+        quando a fatura da Vercel virar, e a <b>identidade de quem assina</b> os termos, que
+        é sua. Uma empresa nasce, o dono recebe o link, entra e configura — andado ponta a
+        ponta, no navegador.
       </p>
       <p>
-        Nada disso depende do deploy. Dá para ter a empresa criada, o convite funcionando e
-        o dono entrando <i>no banco de produção</i> antes de existir endereço público — a
-        aplicação já alcança São Paulo do seu laptop.
+        A metade barata da trilha 04 saiu junto: dezesseis ramos, cada um chegando com as
+        categorias e o manual do assistente prontos, e quatro perguntas novas no cadastro.
+      </p>
+      <p>
+        <b>O próximo pedaço grande é o componente de ajuda</b> — o ícone do Norte em cada
+        bloco do painel. Ele não depende de nada que esteja travado, e o trabalho de verdade
+        dele é escrita, não engenharia.
       </p>
     </div>
     <p>
