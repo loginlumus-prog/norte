@@ -42,6 +42,60 @@ entre desenvolvimento e produção**.
 
 Os dados ficam em `.banco/`. Apagar a pasta = banco novo.
 
+## Subir para o ar
+
+O banco fica no Supabase e a aplicação na Vercel, **os dois em São Paulo**. A
+razão não é preferência: a latência que pesa é entre a aplicação e o banco, não
+entre a pessoa e o banco. Com os dois juntos, cada consulta leva ~1ms; com um
+oceano no meio, ~110ms — e uma tela que faz cinco consultas passa de 5ms para
+550ms de banco.
+
+O `vercel.json` fixa `gru1` para não depender de ninguém lembrar de marcar no
+painel. Não há região de reserva de propósito: cair para outra região poria a
+aplicação longe do banco, que é justamente o que este arranjo evita.
+
+> Escolher região de função é recurso de plano pago na Vercel. No plano
+> gratuito o `regions` é ignorado e tudo roda na região padrão (Estados
+> Unidos) — o que, com o banco em São Paulo, é a pior combinação possível.
+> Confira depois do primeiro deploy: `VERCEL_REGION` diz onde a função rodou.
+
+### O banco hospedado
+
+```bash
+npm run preparar -- --producao   # tabelas, papel da aplicação e RLS
+npm run conexao  -- --producao   # confere que a aplicação chega lá — só leitura
+```
+
+As credenciais moram em `.env.producao`, nunca no `.env`. Ver
+`.env.producao.example`, que explica por que o caminho é o **pooler** e não o
+host direto (que só tem endereço IPv6, e nem a Vercel nem a maioria das redes
+falam IPv6).
+
+A conferência completa (`npm run conferir`) **se recusa** a rodar fora do
+laptop: ela apaga e recria as empresas de exemplo, e num banco de produção
+ainda vazio isso deixaria `ana@exemplo.com`, com senha escrita neste
+repositório, no ar.
+
+### As três variáveis na Vercel
+
+| | |
+|---|---|
+| `DATABASE_URL` | papel `app_norte`, porta **6543** (modo transação) |
+| `DATABASE_URL_ADMIN` | papel `postgres`, porta **6543** |
+| `SEGREDO_SESSAO` | 48 bytes aleatórios, **diferente** do local |
+
+A porta muda conforme o uso: **5432** é sessão, e é o que DDL e migração
+precisam; **6543** é transação, e é o que serverless precisa, porque a conexão
+é emprestada por transação em vez de ficar presa a um processo.
+
+O `comoOrg` faz tudo dentro de uma transação só (`set local role` e
+`set_config(..., true)`), então o carimbo da empresa não vaza quando o pooler
+troca a conexão por baixo. Se alguém um dia trocar por `SET` de sessão, o
+`npm run conexao` acusa antes de virar vazamento.
+
+`POOL_MAX` não vai: o padrão (10) é o certo fora do PGlite.
+
+
 ## Estado
 
 **Cadastro inicial e módulos.** A empresa responde o que usa e o sistema
