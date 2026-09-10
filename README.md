@@ -62,8 +62,11 @@ lista numa ferramenta de venda, e de onde sai o "cliente sumido" que o
 assistente vai buscar.
 
 O critério da fase era "passar um dia inteiro de vendas reais sem abrir o
-sistema antigo". Falta para cumprir: **escolher o cliente na venda**,
-etiqueta, troca, parcela com juro e o modo sem internet.
+sistema antigo". Falta para cumprir: etiqueta, troca, parcela com juro e o
+modo sem internet.
+
+(Escolher o cliente na venda saiu desta lista em 08/09: o balcão manda o
+cliente na venda e o programa de pontos está ligado.)
 
 **Fase 3 — o DRE fecha, o resto não.** Contas a pagar com aviso de vencida,
 lançamento de despesa, 18 categorias já amarradas à linha do DRE, e o

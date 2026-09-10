@@ -1,0 +1,674 @@
+<title>Plano de execução do Norte</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap">
+
+<style>
+  :root {
+    --papel: #f6f4f0;
+    --carta: #fffefc;
+    --carta-2: #f1eee7;
+    --tinta: #2b2620;
+    --tinta-2: #55514a;
+    --tinta-3: #8a857c;
+    --linha: #e4e0d7;
+    --linha-suave: #efece5;
+    --titulo: #14265c;
+    --navy: #101f4a;
+    --marca: #1f4fd8;
+    --sol: #ef7208;
+    --verde: #05713a;
+    --critico: #b81f14;
+
+    --display: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+    --texto: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --papel: #0f121c;
+      --carta: #171b27;
+      --carta-2: #1e2330;
+      --tinta: #e8e6e1;
+      --tinta-2: #a8a49c;
+      --tinta-3: #7d7a74;
+      --linha: #2a2e3b;
+      --linha-suave: #232735;
+      --titulo: #d6e2ff;
+      --navy: #0b1024;
+      --marca: #6d92ff;
+      --sol: #ffc04d;
+      --verde: #10b45f;
+      --critico: #ef8378;
+    }
+  }
+
+  :root[data-theme='dark'] {
+    --papel: #0f121c;
+    --carta: #171b27;
+    --carta-2: #1e2330;
+    --tinta: #e8e6e1;
+    --tinta-2: #a8a49c;
+    --tinta-3: #7d7a74;
+    --linha: #2a2e3b;
+    --linha-suave: #232735;
+    --titulo: #d6e2ff;
+    --navy: #0b1024;
+    --marca: #6d92ff;
+    --sol: #ffc04d;
+    --verde: #10b45f;
+    --critico: #ef8378;
+  }
+
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: var(--texto);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .folha {
+    max-width: 54rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 6rem;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--display);
+    color: var(--titulo);
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h1 {
+    font-size: clamp(2.1rem, 5vw, 3.1rem);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1.02;
+  }
+
+  h2 {
+    font-size: clamp(1.4rem, 3vw, 1.85rem);
+    font-weight: 700;
+    line-height: 1.15;
+  }
+
+  h3 {
+    font-size: 1.06rem;
+    font-weight: 700;
+    color: var(--tinta);
+  }
+
+  p, li { max-width: 68ch; }
+  p { margin: 0.9rem 0; }
+
+  .olho {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--sol);
+    margin: 0 0 0.6rem;
+  }
+
+  .lede {
+    font-size: 1.1rem;
+    color: var(--tinta-2);
+    max-width: 62ch;
+  }
+
+  section { margin-top: 3.6rem; }
+  section > h2 + p { margin-top: 0.8rem; }
+
+  .cabeca {
+    border-bottom: 1px solid var(--linha);
+    padding-bottom: 2.2rem;
+  }
+
+  .assinatura {
+    font-size: 0.8rem;
+    color: var(--tinta-3);
+    margin-top: 1.4rem;
+  }
+
+  /* ── tabela ── */
+  .rolagem { overflow-x: auto; margin: 1.4rem 0; }
+  table {
+    width: 100%;
+    min-width: 34rem;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+  }
+  th {
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--tinta-3);
+    padding: 0 0.9rem 0.6rem 0;
+    border-bottom: 1px solid var(--linha);
+  }
+  td {
+    padding: 0.75rem 0.9rem 0.75rem 0;
+    border-bottom: 1px solid var(--linha-suave);
+    vertical-align: top;
+    color: var(--tinta-2);
+  }
+  td:first-child { color: var(--tinta); font-weight: 600; }
+
+  .selo {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .selo.feito { color: var(--verde); background: color-mix(in srgb, var(--verde) 14%, transparent); }
+  .selo.quase { color: var(--sol); background: color-mix(in srgb, var(--sol) 15%, transparent); }
+  .selo.zero  { color: var(--tinta-3); background: color-mix(in srgb, var(--tinta-3) 14%, transparent); }
+
+  /* ── trilhas ── */
+  .trilha {
+    display: grid;
+    grid-template-columns: 3.1rem 1fr;
+    gap: 1.1rem;
+    padding: 1.5rem 0;
+    border-top: 1px solid var(--linha);
+  }
+  .trilha .n {
+    font-family: var(--display);
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--linha);
+    letter-spacing: -0.04em;
+  }
+  .trilha .destrava {
+    font-size: 0.86rem;
+    color: var(--marca);
+    font-weight: 600;
+    margin: 0.15rem 0 0.9rem;
+  }
+  .trilha ul { margin: 0.6rem 0 0; padding-left: 1.1rem; }
+  .trilha li { margin: 0.35rem 0; color: var(--tinta-2); }
+  .trilha li b { color: var(--tinta); font-weight: 600; }
+
+  .tam {
+    display: inline-block;
+    font-family: var(--display);
+    font-size: 0.66rem;
+    font-weight: 700;
+    width: 1.15rem;
+    height: 1.15rem;
+    line-height: 1.15rem;
+    text-align: center;
+    border-radius: 4px;
+    background: var(--carta-2);
+    color: var(--tinta-3);
+    margin-right: 0.35rem;
+    vertical-align: 1px;
+  }
+
+  /* ── blocos de destaque ── */
+  .nota {
+    background: var(--carta);
+    border: 1px solid var(--linha);
+    border-radius: 10px;
+    padding: 1.15rem 1.3rem;
+    margin: 1.5rem 0;
+  }
+  .nota > :first-child { margin-top: 0; }
+  .nota > :last-child { margin-bottom: 0; }
+  .nota.aviso { border-left: 3px solid var(--sol); }
+  .nota.trava { border-left: 3px solid var(--critico); }
+
+  code {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 0.86em;
+    background: var(--carta-2);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+  }
+
+  pre {
+    background: var(--navy);
+    color: #e6ecff;
+    border-radius: 10px;
+    padding: 1.05rem 1.2rem;
+    overflow-x: auto;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    margin: 1.3rem 0;
+  }
+  pre .c { color: #8fa3d8; }
+
+  .duas {
+    display: grid;
+    gap: 1.1rem;
+    grid-template-columns: 1fr;
+    margin: 1.5rem 0;
+  }
+  @media (min-width: 46rem) { .duas { grid-template-columns: 1fr 1fr; } }
+  .duas > div {
+    background: var(--carta);
+    border: 1px solid var(--linha);
+    border-radius: 10px;
+    padding: 1.15rem 1.3rem;
+  }
+  .duas h3 { margin-bottom: 0.5rem; }
+  .duas ol { margin: 0; padding-left: 1.15rem; font-size: 0.93rem; color: var(--tinta-2); }
+  .duas li { margin: 0.3rem 0; }
+
+  .lista-nicho { columns: 2; column-gap: 2rem; font-size: 0.93rem; padding-left: 1.1rem; }
+  .lista-nicho li { margin: 0.25rem 0; color: var(--tinta-2); break-inside: avoid; }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--linha);
+    margin: 3rem 0 0;
+  }
+</style>
+
+<div class="folha">
+
+  <header class="cabeca">
+    <p class="olho">Norte · 9 de setembro de 2026</p>
+    <h1>Plano de execução</h1>
+    <p class="lede">
+      O que falta para o Norte sair do laptop e ter o primeiro cliente pagando — e onde
+      entram os nichos, o cadastro que pergunta de verdade e as ajudas no painel.
+    </p>
+    <p class="assinatura">
+      Levantado do código e dos documentos do projeto, não de memória. Os tamanhos
+      (<span class="tam">P</span><span class="tam">M</span><span class="tam">G</span>) são
+      estimativa minha, não compromisso.
+    </p>
+  </header>
+
+  <section>
+    <h2>Onde estamos</h2>
+    <p>
+      As seis fases do plano original, com o estado real. O critério de cada fase é o que
+      decide se ela fechou — não a sensação de que está quase.
+    </p>
+
+    <div class="rolagem">
+      <table>
+        <thead>
+          <tr><th>Fase</th><th>Estado</th><th>O que falta</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1 · Fundação</td>
+            <td><span class="selo feito">fechada</span></td>
+            <td>
+              O critério era “duas lojas existem, duas pessoas entram, e o teste prova que
+              nenhuma enxerga a outra”. É o que o <code>npm run conferir</code> faz — 147
+              conferências, e ele tenta vazar de propósito.
+            </td>
+          </tr>
+          <tr>
+            <td>2 · O balcão funciona</td>
+            <td><span class="selo quase">quase</span></td>
+            <td>Etiqueta, troca, parcela com juro, modo sem internet.</td>
+          </tr>
+          <tr>
+            <td>3 · O dinheiro fecha</td>
+            <td><span class="selo quase">parcial</span></td>
+            <td>
+              O DRE fecha, conferido linha a linha. Faltam recorrentes (a tabela existe, o
+              motor não), contas a receber, DRE em PDF e conciliação de maquininha.
+            </td>
+          </tr>
+          <tr>
+            <td>4 · O agente</td>
+            <td><span class="selo quase">metade</span></td>
+            <td>
+              Ele existe, tem nome, teto e o propor/confirmar funciona ponta a ponta. Falta o
+              que o liga ao mundo: canal de WhatsApp, motor de conversa e gatilhos.
+            </td>
+          </tr>
+          <tr>
+            <td>5 · Módulos pagos</td>
+            <td><span class="selo zero">não começou</span></td>
+            <td>Crediário completo, NF-e via emissor, tarefas da loja.</td>
+          </tr>
+          <tr>
+            <td>6 · Virar empresa</td>
+            <td><span class="selo zero">não começou</span></td>
+            <td>
+              Cadastro sozinho, cobrança recorrente, marca por cliente, backup e
+              monitoramento, contrato e termos.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="nota aviso">
+      <p>
+        <b>Um item do README está mentindo a favor do trabalho pendente:</b> ele lista
+        “escolher o cliente na venda” como falta da Fase 2, e isso já está feito — o balcão
+        manda o cliente na venda e o programa de pontos está ligado. Corrigir isso é o
+        primeiro commit do plano: documento que erra sobre o que falta é pior que documento
+        nenhum.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Nicho não é código — e isso já foi decidido</h2>
+    <p>
+      A parte mais importante da sua ideia já está no projeto, e está do jeito certo. O
+      arquivo <code>src/servidor/modulos.ts</code> tem o comentário que fecha a questão:
+    </p>
+
+    <pre><span class="c">// Se o ramo virasse um `if` no código, o primeiro cliente misto</span>
+<span class="c">// (loja de roupa com cafeteria dentro) quebraria o sistema.</span>
+<span class="c">// Por isso tudo aqui é sugestão inicial, e o dono muda depois</span>
+<span class="c">// sem ficar preso.</span></pre>
+
+    <p>
+      Então <b>ramo é uma linha de configuração</b>, nunca um caminho no código. Hoje cada
+      ramo já carrega os eixos de variação (a sorveteria cria Sabor, a sapataria cria
+      Numeração), a unidade de medida (UN, KG, PAR) e os módulos que ele sugere ligar.
+      Acrescentar “padaria” é acrescentar uma linha — não é um deploy novo, não é uma tela
+      nova, e não quebra quem já está dentro.
+    </p>
+    <p>
+      O que o preset <b>ainda não carrega</b>, e precisa carregar para entregar o que você
+      quer:
+    </p>
+    <ul>
+      <li><b>Categorias iniciais</b> — a sorveteria já abre com Picolé, Massa, Açaí.</li>
+      <li>
+        <b>Vocabulário</b> — a oficina fala “ordem de serviço”, a moda fala “venda”, o
+        restaurante fala “comanda”. É tabela de tradução, não código. E é o que faz o sistema
+        parecer feito para ele em vez de genérico.
+      </li>
+      <li>
+        <b>O que o painel destaca</b> — a sorveteria quer o sabor que mais saiu hoje; a moda
+        quer a peça parada há 60 dias; a distribuidora quer o pedido que não saiu.
+      </li>
+      <li>
+        <b>O manual inicial do agente</b> — a Aurora de uma sorveteria não deveria começar
+        sabendo as mesmas coisas que a de uma sapataria.
+      </li>
+    </ul>
+
+    <h3 style="margin-top:2rem">A divisão que decide o cronograma</h3>
+    <p>
+      Você falou em padaria, oficina, “tudo”. Aqui mora a diferença entre uma tarde e um
+      trimestre, e confundir as duas é como cronograma vira ficção:
+    </p>
+
+    <div class="duas">
+      <div>
+        <h3>Nível 1 — só preset</h3>
+        <p style="font-size:.9rem;color:var(--tinta-2);margin-top:0">
+          Vende produto no balcão. Mesma mecânica que já existe. Cada um é
+          <span class="tam">P</span>uma tarde.
+        </p>
+        <ul class="lista-nicho">
+          <li>Moda</li>
+          <li>Calçados</li>
+          <li>Sorveteria</li>
+          <li>Lanchonete</li>
+          <li>Distribuidora</li>
+          <li>Mercearia</li>
+          <li>Papelaria</li>
+          <li>Pet shop</li>
+          <li>Autopeças</li>
+          <li>Floricultura</li>
+          <li>Brinquedos</li>
+          <li>Material de construção</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Nível 2 — precisa de módulo novo</h3>
+        <p style="font-size:.9rem;color:var(--tinta-2);margin-top:0">
+          A operação tem um objeto que o sistema não tem. Cada um é
+          <span class="tam">G</span>semanas.
+        </p>
+        <ul style="padding-left:1.1rem;font-size:.93rem;color:var(--tinta-2)">
+          <li><b>Oficina</b> — ordem de serviço: mão de obra + peça, aberta por dias.</li>
+          <li><b>Restaurante</b> — comanda e mesa, com conta que cresce.</li>
+          <li><b>Padaria de produção</b> — receita, rendimento e perda.</li>
+          <li><b>Salão</b> — agenda por profissional e comissão sobre serviço.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="nota">
+      <p>
+        <b>Sobre “isso parece mais um ERP”:</b> sim, e a arquitetura aguenta — porque a
+        empresa nomeia os próprios eixos em vez de o código ter colunas fixas. Mas largura se
+        vende, não se constrói. Cada vertical precisa de um comércio de verdade daquele ramo
+        para validar, senão a gente escreve o que <i>acha</i> que uma oficina faz. A regra que
+        eu proponho: <b>um vertical novo por cliente validado daquele ramo</b> — nunca por
+        antecipação.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>O cadastro que pergunta de verdade</h2>
+    <p>
+      Hoje o primeiro acesso pergunta pouco: o ramo, quais módulos ligar e o nome do
+      assistente. Funciona, e já esconde o que a empresa não usa — quem não vende fiado não vê
+      Crediário em lugar nenhum.
+    </p>
+    <p>O que vale acrescentar, e por quê:</p>
+    <ul>
+      <li><b>Porte</b> — quantas pessoas mexem no sistema, quantas lojas. Já decide cota de plano e o que mostrar.</li>
+      <li><b>Como vende hoje</b> — só balcão, balcão + WhatsApp, entrega. Decide o manual do agente.</li>
+      <li><b>Horário de funcionamento</b> — decide a hora do relatório e quando o agente pode responder sozinho.</li>
+      <li><b>O que mais dói hoje</b> — uma pergunta só, com quatro opções. É o que o painel destaca no primeiro mês, e é o melhor dado de venda que existe.</li>
+      <li><b>Quantos produtos, mais ou menos</b> — decide se a gente oferece importar por planilha antes de ele desistir de digitar.</li>
+    </ul>
+
+    <div class="nota trava">
+      <p>
+        <b>O que continua proibido no cadastro:</b> nada de dado financeiro. Sem faturamento,
+        sem conta bancária, sem cartão. Essa decisão foi tomada por segurança e continua de
+        pé — o gateway pede o que precisa, na hora de cobrar, e o sistema nunca guarda.
+      </p>
+    </div>
+
+    <p>
+      O ganho não é o formulário: é que <b>uma resposta alimenta três coisas ao mesmo
+      tempo</b> — o que aparece no sistema, o que o painel destaca e o que o agente já sabe
+      da loja no primeiro dia.
+    </p>
+  </section>
+
+  <section>
+    <h2>O ícone do Norte em cada bloco</h2>
+    <p>
+      A ideia é boa e tem uma armadilha. Ajuda que diz “aqui aparecem suas vendas” é ruído: a
+      pessoa lê uma vez, entende que não serve, e nunca mais passa o mouse. O que faz alguém
+      voltar a clicar é a ajuda dizer <b>o que fazer com aquele número</b>.
+    </p>
+    <p>Por isso ela tem duas camadas:</p>
+    <ul>
+      <li>
+        <b>Camada escrita</b> — texto nosso, por bloco e por ramo. Sai agora, não custa nada
+        por uso, funciona sem internet e sem crédito. É trabalho de escrita, não de
+        engenharia.
+      </li>
+      <li>
+        <b>Camada viva</b> — um botão “perguntar à Aurora” dentro da ajuda, que lê os números
+        reais da loja e responde sobre eles. Consome crédito de IA — o crédito <i>do
+        cliente</i>, que o sistema já mede e cobra. Por isso ela é um clique, e não algo que
+        dispara sozinho ao passar o mouse.
+      </li>
+    </ul>
+
+    <div class="nota aviso">
+      <p>
+        <b>Duas regras de construção, senão nasce quebrado:</b> não pode ser só
+        <i>hover</i> — celular não tem mouse e teclado não passa por cima, então é um botão de
+        verdade, que abre no clique e no foco. E é <b>um componente só</b>, que qualquer bloco
+        aceita, senão daqui a três telas a ajuda existe em duas e some nas outras.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>O plano, em trilhas</h2>
+    <p>
+      A ordem não é por facilidade nem por empolgação — é por dependência e por dinheiro. Cada
+      trilha diz o que ela destrava.
+    </p>
+
+    <div class="trilha">
+      <div class="n">01</div>
+      <div>
+        <h3>Pôr no ar</h3>
+        <p class="destrava">Destrava: poder cobrar de alguém.</p>
+        <ul>
+          <li><span class="tam">P</span><b>Projeto Supabase em São Paulo</b> — US$ 10/mês. Decisão sua.</li>
+          <li><span class="tam">P</span><b>Trava no seed</b> — hoje o <code>npm run preparar</code> semeia duas empresas de exemplo. Isso não pode encostar em produção.</li>
+          <li><span class="tam">P</span><b>Papel próprio para a busca de empresa</b> — hoje a credencial de dono das tabelas fica no ambiente de produção por causa de uma consulta só. Ela merece um papel de leitura, restrito à tabela <code>orgs</code>.</li>
+          <li><span class="tam">M</span><b>Deploy na Vercel, região gru1</b> — junto com o banco em São Paulo. Latência de balcão não perdoa ida e volta aos EUA.</li>
+          <li><span class="tam">M</span><b>Um jeito de criar empresa</b> — script primeiro, tela nossa depois. É a peça que falta para existir um cliente de verdade lá dentro.</li>
+          <li><span class="tam">M</span><b>Contrato, termos de uso e política de privacidade</b> — antes de entrar dinheiro, não depois.</li>
+          <li><span class="tam">P</span><b>Backup e ponto de restauração</b> — importa mais que RLS no dia em que um cliente apagar o próprio catálogo.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="trilha">
+      <div class="n">02</div>
+      <div>
+        <h3>Fechar o balcão</h3>
+        <p class="destrava">Destrava: o cliente largar o sistema antigo.</p>
+        <ul>
+          <li><span class="tam">M</span><b>Etiqueta 33×22</b> (Elgin L42 Pro) — código existe e está validado em produção na outra loja.</li>
+          <li><span class="tam">M</span><b>Troca e vale-troca</b> — as regras de varejo genérico já foram escritas; falta a regra da loja.</li>
+          <li><span class="tam">M</span><b>Parcela com juro</b> — junto com a chave da parcela, que já custou caro descobrir.</li>
+          <li><span class="tam">G</span><b>Modo sem internet</b> — o balcão vende com a rede caída e sobe depois. Cinco armadilhas já mapeadas.</li>
+        </ul>
+        <p style="font-size:.9rem;color:var(--tinta-3);margin-bottom:0">
+          Tudo aqui é <b>portar</b>, não inventar: o código está rodando em produção no
+          projeto da loja há meses.
+        </p>
+      </div>
+    </div>
+
+    <div class="trilha">
+      <div class="n">03</div>
+      <div>
+        <h3>Ligar o agente no mundo</h3>
+        <p class="destrava">Destrava: o que a gente realmente vende.</p>
+        <ul>
+          <li><span class="tam">P</span><b>Escolher o canal</b> — Z-API ou API oficial da Meta. Decisão sua, e ela muda o custo por cliente.</li>
+          <li><span class="tam">G</span><b>Motor de conversa</b> — o laço com a lista de ferramentas filtrada por capacidade.</li>
+          <li><span class="tam">M</span><b>Os quatro gatilhos que geram recibo</b> — relatório 8h e 20h, cliente sumido, estoque parado, aviso de ruptura.</li>
+          <li><span class="tam">M</span><b>Painel de recibos e de consumo de IA</b> — é o que prova que o crédito virou dinheiro.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="trilha">
+      <div class="n">04</div>
+      <div>
+        <h3>Nichos e ajudas</h3>
+        <p class="destrava">Destrava: a demonstração parecer feita para ele.</p>
+        <ul>
+          <li><span class="tam">P</span><b>Quatro campos novos no preset</b> — categorias, vocabulário, destaques do painel, manual do agente.</li>
+          <li><span class="tam">M</span><b>Cadastro rico</b> — as cinco perguntas novas, sem dado financeiro.</li>
+          <li><span class="tam">M</span><b>Componente de ajuda</b> — um só, aceito por qualquer bloco, com foco e teclado.</li>
+          <li><span class="tam">M</span><b>Os textos das ajudas</b> — escrita, bloco por bloco. É o trabalho de verdade desta trilha.</li>
+          <li><span class="tam">P</span><b>Seis nichos de nível 1</b> — papelaria, pet shop, autopeças, floricultura, brinquedos, construção.</li>
+          <li><span class="tam">M</span><b>“Perguntar à Aurora” dentro da ajuda</b> — depois da trilha 03, porque depende do motor.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="trilha">
+      <div class="n">05</div>
+      <div>
+        <h3>O resto do dinheiro e os módulos pagos</h3>
+        <p class="destrava">Destrava: o contador virar aliado, e a assinatura dobrar de preço.</p>
+        <ul>
+          <li><span class="tam">M</span>Recorrentes, contas a receber, DRE em PDF, conciliação de maquininha.</li>
+          <li><span class="tam">G</span>Crediário completo, com cobrança pelo agente.</li>
+          <li><span class="tam">G</span>NF-e via emissor de terceiro.</li>
+          <li><span class="tam">M</span>Tarefas da loja e escala de turno.</li>
+          <li><span class="tam">G</span>Cobrança recorrente, aviso e suspensão automática.</li>
+          <li><span class="tam">M</span>Marca por cliente: nome, logo, cor.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="trilha">
+      <div class="n">00</div>
+      <div>
+        <h3>Dívida aberta</h3>
+        <p class="destrava">Não destrava nada — mas cresce se ficar parada.</p>
+        <ul>
+          <li><span class="tam">P</span><b>Caixa dentro de caixa no balcão</b> — a oferta de pontos dentro do painel de pagamento.</li>
+          <li><span class="tam">P</span><b>Informação por cor sozinha</b> — o ponto colorido do painel e o alerta de plano não têm texto junto.</li>
+          <li><span class="tam">M</span><b>Larguras de campo e rótulo à esquerda</b> — seis formulários fora do padrão.</li>
+          <li><span class="tam">P</span><b>Os seis vídeos do Kling</b> — prompts entregues, esperando você gerar.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>O que está travado numa decisão sua</h2>
+    <p>Nenhum destes eu resolvo sozinho, e cada um segura uma trilha inteira.</p>
+    <div class="rolagem">
+      <table>
+        <thead><tr><th>Decisão</th><th>Segura</th><th>Quando aperta</th></tr></thead>
+        <tbody>
+          <tr><td>Projeto Supabase (US$ 10/mês)</td><td>Trilha 01 inteira</td><td>Agora</td></tr>
+          <tr><td>Contrato e termos de uso</td><td>Cobrar de verdade</td><td>Antes do 1º cliente</td></tr>
+          <tr><td>Z-API × Meta oficial</td><td>Trilha 03</td><td>Antes de ~15 clientes</td></tr>
+          <tr><td>Gateway: Asaas, Iugu ou Vindi</td><td>Cobrança recorrente</td><td>Perto do 10º cliente — dá para cobrar por Pix enquanto são poucos</td></tr>
+          <tr><td>Emissor de NF-e: Focus ou Nuvem Fiscal</td><td>Módulo de nota</td><td>Quando o 1º cliente pedir nota</td></tr>
+          <tr><td><code>usenorte.com.br</code> e marca no INPI</td><td>Nada técnico</td><td>Quanto antes — nome sem registro é nome emprestado</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Se fosse comigo, nesta ordem</h2>
+    <p>
+      <b>Trilha 01 inteira</b>, primeiro e sem desvio. Enquanto o sistema roda só no seu
+      laptop, tudo o mais é ensaio.
+    </p>
+    <p>
+      Depois <b>a metade barata da trilha 04</b> — os quatro campos do preset e o cadastro
+      rico. São poucos dias, não dependem de mais nada, e mudam toda conversa de venda: o
+      sujeito da sorveteria entra e vê Sabor, Picolé e Açaí já lá dentro, em vez de uma tela
+      vazia pedindo que ele imagine.
+    </p>
+    <p>
+      Aí <b>trilha 02</b>, que é o que faz o cliente largar o sistema antigo de vez, e por
+      último <b>trilha 03</b>, que é o que justifica cobrar R$ 697 em vez de R$ 349.
+    </p>
+    <p>
+      As ajudas escritas podem entrar em qualquer buraco entre as trilhas — são escrita, não
+      dependem de deploy, e cada uma que fica pronta já vale sozinha.
+    </p>
+  </section>
+
+  <hr>
+  <p class="assinatura">
+    Este documento vive em <code>docs/plano-execucao.html</code>, versionado junto com o
+    código. Quando uma trilha fechar, o estado muda aqui — e não numa conversa que ninguém
+    acha depois.
+  </p>
+
+</div>
