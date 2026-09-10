@@ -215,6 +215,26 @@
     vertical-align: 1px;
   }
 
+  /* ── o que ja fechou ──
+     Item pronto nao sai da lista: ele vira o registro de que aconteceu, com a
+     data. Lista que so mostra o que falta esconde o avanco e parece sempre a
+     mesma — que e exatamente a sensacao que este documento existe para evitar. */
+  /* recuado pela COR do negrito e pelo verde do visto, nao por cinza fraco:
+     item fechado continua sendo texto que alguem le daqui a um mes. */
+  .trilha li.ok { color: var(--tinta-2); }
+  .trilha li.ok b { color: var(--tinta-2); font-weight: 700; }
+  .tam.ok {
+    color: var(--verde);
+    background: color-mix(in srgb, var(--verde) 16%, transparent);
+  }
+  .quando {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--verde);
+    white-space: nowrap;
+  }
+  .trilha h3 .selo { margin-left: 0.45rem; vertical-align: 2px; }
+
   /* ── blocos de destaque ── */
   .nota {
     background: var(--carta);
@@ -279,7 +299,7 @@
 <div class="folha">
 
   <header class="cabeca">
-    <p class="olho">Norte · 9 de setembro de 2026</p>
+    <p class="olho">Norte · 10 de setembro de 2026</p>
     <h1>Plano de execução</h1>
     <p class="lede">
       O que falta para o Norte sair do laptop e ter o primeiro cliente pagando — e onde
@@ -289,6 +309,8 @@
       Levantado do código e dos documentos do projeto, não de memória. Os tamanhos
       (<span class="tam">P</span><span class="tam">M</span><span class="tam">G</span>) são
       estimativa minha, não compromisso.
+      <br><b>Revisado em 10/09:</b> a trilha 01 andou três itens em dois dias — o banco
+      está no ar, e um deles cresceu no caminho.
     </p>
   </header>
 
@@ -352,13 +374,12 @@
       </table>
     </div>
 
-    <div class="nota aviso">
+    <div class="nota">
       <p>
-        <b>Um item do README está mentindo a favor do trabalho pendente:</b> ele lista
-        “escolher o cliente na venda” como falta da Fase 2, e isso já está feito — o balcão
-        manda o cliente na venda e o programa de pontos está ligado. Corrigir isso é o
-        primeiro commit do plano: documento que erra sobre o que falta é pior que documento
-        nenhum.
+        <b>O README parou de mentir.</b> Ele listava “escolher o cliente na venda” como
+        falta da Fase 2, e isso já estava feito — o balcão manda o cliente na venda e o
+        programa de pontos está ligado. Foi o primeiro commit deste plano, e a data ficou
+        escrita na linha: documento que erra sobre o que falta é pior que documento nenhum.
       </p>
     </div>
   </section>
@@ -531,16 +552,16 @@
     <div class="trilha">
       <div class="n">01</div>
       <div>
-        <h3>Pôr no ar</h3>
+        <h3>Pôr no ar <span class="selo feito">3 de 7</span></h3>
         <p class="destrava">Destrava: poder cobrar de alguém.</p>
         <ul>
-          <li><span class="tam">P</span><b>Projeto Supabase em São Paulo</b> — US$ 10/mês. Decisão sua.</li>
-          <li><span class="tam">P</span><b>Trava no seed</b> — hoje o <code>npm run preparar</code> semeia duas empresas de exemplo. Isso não pode encostar em produção.</li>
-          <li><span class="tam">P</span><b>Papel próprio para a busca de empresa</b> — hoje a credencial de dono das tabelas fica no ambiente de produção por causa de uma consulta só. Ela merece um papel de leitura, restrito à tabela <code>orgs</code>.</li>
-          <li><span class="tam">M</span><b>Deploy na Vercel, região gru1</b> — junto com o banco em São Paulo. Latência de balcão não perdoa ida e volta aos EUA.</li>
-          <li><span class="tam">M</span><b>Um jeito de criar empresa</b> — script primeiro, tela nossa depois. É a peça que falta para existir um cliente de verdade lá dentro.</li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Projeto Supabase em São Paulo</b> — criado, pago e no ar. As tabelas subiram, as travas de isolamento aplicaram, e a API pública do Supabase foi fechada antes de existir a primeira tabela. <span class="quando">09/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Trava no seed</b> — <code>npm run preparar</code> agora olha para onde está apontando: fora de <code>127.0.0.1</code>, não semeia. E a conferência, que apaga e recria empresas, se recusa a rodar fora do laptop. <span class="quando">09/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Papel próprio para a busca de empresa</b> — nasceu a <b>portaria</b>. O buraco era maior do que esta linha dizia: o papel que respondia o login tinha <code>BYPASSRLS</code>, ou seja, passava por cima de toda política de toda tabela. Hoje são nove colunas de uma tabela, medidas contra o banco de verdade. <span class="quando">10/09</span></li>
+          <li><span class="tam">M</span><b>Deploy na Vercel, região gru1</b> — o <code>vercel.json</code> está pronto e a região fixada. Espera a fatura: escolher região é recurso de plano pago, e o gratuito é para projeto sem fins comerciais — que é exatamente o que o Norte não é.</li>
+          <li><span class="tam">M</span><b>Um jeito de criar empresa</b> — script primeiro, tela nossa depois. É a peça que falta para existir um cliente de verdade lá dentro, e a única da trilha que não espera nem dinheiro nem decisão sua.</li>
           <li><span class="tam">M</span><b>Contrato, termos de uso e política de privacidade</b> — antes de entrar dinheiro, não depois.</li>
-          <li><span class="tam">P</span><b>Backup e ponto de restauração</b> — importa mais que RLS no dia em que um cliente apagar o próprio catálogo.</li>
+          <li><span class="tam">P</span><b>Backup e ponto de restauração</b> — importa mais que RLS no dia em que um cliente apagar o próprio catálogo. O plano pago já guarda cópia diária; falta conferir que ela existe e <i>restaurar uma vez</i>, antes de precisar.</li>
         </ul>
       </div>
     </div>
@@ -615,6 +636,7 @@
         <h3>Dívida aberta</h3>
         <p class="destrava">Não destrava nada — mas cresce se ficar parada.</p>
         <ul>
+          <li><span class="tam">P</span><b>A portaria ainda enumera</b> — ela lê a fachada de <i>qualquer</i> empresa, então quem tiver esse segredo consegue listar o nome e o endereço de todos os clientes. Fechar é trocar a consulta por uma função que recebe o endereço e não deixa listar. Está anotado no <code>rls.sql</code>.</li>
           <li><span class="tam">P</span><b>Caixa dentro de caixa no balcão</b> — a oferta de pontos dentro do painel de pagamento.</li>
           <li><span class="tam">P</span><b>Informação por cor sozinha</b> — o ponto colorido do painel e o alerta de plano não têm texto junto.</li>
           <li><span class="tam">M</span><b>Larguras de campo e rótulo à esquerda</b> — seis formulários fora do padrão.</li>
@@ -627,11 +649,14 @@
   <section>
     <h2>O que está travado numa decisão sua</h2>
     <p>Nenhum destes eu resolvo sozinho, e cada um segura uma trilha inteira.</p>
+    <p class="assinatura">
+      Saiu desta lista em 10/09: <b>o projeto Supabase</b> — decidido, pago e no ar.
+    </p>
     <div class="rolagem">
       <table>
         <thead><tr><th>Decisão</th><th>Segura</th><th>Quando aperta</th></tr></thead>
         <tbody>
-          <tr><td>Projeto Supabase (US$ 10/mês)</td><td>Trilha 01 inteira</td><td>Agora</td></tr>
+          <tr><td>Fatura da Vercel, em atraso</td><td>O deploy — e só ele</td><td>Agora. É o único item da trilha 01 parado por dinheiro; o resto anda sem ela</td></tr>
           <tr><td>Contrato e termos de uso</td><td>Cobrar de verdade</td><td>Antes do 1º cliente</td></tr>
           <tr><td>Z-API × Meta oficial</td><td>Trilha 03</td><td>Antes de ~15 clientes</td></tr>
           <tr><td>Gateway: Asaas, Iugu ou Vindi</td><td>Cobrança recorrente</td><td>Perto do 10º cliente — dá para cobrar por Pix enquanto são poucos</td></tr>
@@ -648,6 +673,20 @@
       <b>Trilha 01 inteira</b>, primeiro e sem desvio. Enquanto o sistema roda só no seu
       laptop, tudo o mais é ensaio.
     </p>
+    <div class="nota aviso">
+      <p>
+        <b>Onde a agulha está hoje.</b> O banco está no ar e trancado; o que falta da
+        trilha 01 são quatro itens, e só um deles espera dinheiro. A ordem que sobra é:
+        <b>criar empresa</b> (é o que faz existir um cliente lá dentro), <b>contrato e
+        termos</b> (antes de entrar dinheiro), <b>backup restaurado uma vez</b> — e o
+        <b>deploy</b> assim que a fatura da Vercel virar.
+      </p>
+      <p>
+        Nada disso depende do deploy. Dá para ter a empresa criada, o convite funcionando e
+        o dono entrando <i>no banco de produção</i> antes de existir endereço público — a
+        aplicação já alcança São Paulo do seu laptop.
+      </p>
+    </div>
     <p>
       Depois <b>a metade barata da trilha 04</b> — os quatro campos do preset e o cadastro
       rico. São poucos dias, não dependem de mais nada, e mudam toda conversa de venda: o
