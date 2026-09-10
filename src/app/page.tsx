@@ -78,7 +78,8 @@ const CARTOES: Record<
       'Nota fiscal no balcão',
       'Financeiro e o DRE do mês',
       'Até três lojas, cada uma com seu estoque',
-      'Equipe com permissão por pessoa',
+      'Equipe sem limite de cadastro, com permissão por pessoa',
+      'Fechamento de mês guiado · em breve',
     ],
     fora: ['Assistente no WhatsApp', 'Crediário próprio'],
   },
@@ -91,21 +92,24 @@ const CARTOES: Record<
       'Tudo do Balcão, e até cinco lojas',
       'Assistente no WhatsApp, com o nome que você der',
       'Cobrança de atraso, aviso de ruptura, relatório 2× por dia',
+      'Análise básica: o que aconteceu no dia e no mês · em breve',
       'Teto de valor e de desconto que você define',
       'Toda ação do assistente assinada no livro',
     ],
-    fora: ['Crediário próprio', 'Lojas sem limite'],
+    fora: ['Análise profunda do negócio', 'Crediário próprio', 'Lojas sem limite'],
   },
   REDE: {
     selo: 'O mais pedido',
     conta: '~5.000 conversas no WhatsApp',
     nota: 'renovado todo mês · compra mais quando quiser',
     itens: [
-      'Tudo do Balcão + Assistente, sem limite de loja',
-      'Estoque separado por loja, consolidado num clique',
-      'Cada gerente vê só a loja dele',
+      'Tudo do Assistente, sem limite de loja nem de gente',
+      'Análise profunda: onde está perdendo, onde está ganhando, e o que fazer · em breve',
+      'Comparação entre lojas: venda, margem e estoque parado lado a lado · em breve',
+      'Curva ABC e dinheiro parado: o que sustenta e o que come o capital · em breve',
+      'Escala e presença: quem abriu o caixa, a que horas, e quanto vendeu · em breve',
       'Crediário próprio, com juros e cobrança',
-      'Metas e ranking de vendedor',
+      'Cada gerente vê só a loja dele',
     ],
     fora: [],
   },
@@ -845,14 +849,35 @@ export default function Inicio() {
                   </dl>
 
                   <ul className="mt-6 flex flex-1 flex-col gap-2 border-t border-borda-suave pt-4">
-                    {c.itens.map((x) => (
-                      <li key={x} className="flex gap-2 text-[13px] leading-snug text-tinta-2">
-                        <span aria-hidden className="mt-px shrink-0 text-[11px] text-bom">
-                          ✓
-                        </span>
-                        {x}
-                      </li>
-                    ))}
+                    {/* O sufixo " · em breve" vira etiqueta em vez de texto
+                        corrido. Marcar o que ainda nao existe nao enfraquece a
+                        lista: quem assina por uma linha que nao encontra
+                        depois cancela, e esse cancelamento vem com reclamacao
+                        publica junto. Marcado, vira expectativa. */}
+                    {c.itens.map((x) => {
+                      const breve = x.endsWith(' · em breve')
+                      const texto = breve ? x.slice(0, -' · em breve'.length) : x
+                      return (
+                        <li key={x} className="flex gap-2 text-[13px] leading-snug text-tinta-2">
+                          <span
+                            aria-hidden
+                            className={
+                              'mt-px shrink-0 text-[11px] ' + (breve ? 'text-tinta-3' : 'text-bom')
+                            }
+                          >
+                            ✓
+                          </span>
+                          <span>
+                            {texto}
+                            {breve && (
+                              <span className="ml-1.5 rounded-full bg-superficie-2 px-1.5 py-0.5 align-middle text-[9px] font-bold tracking-wide text-tinta-3 uppercase">
+                                em breve
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      )
+                    })}
                     {/* O que NÃO tem, agrupado no fim. Esconder o que falta é o
                         que faz o cliente descobrir depois de assinar — e
                         mostrar aumenta a confiança na lista inteira. */}

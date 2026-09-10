@@ -66,8 +66,15 @@ const FALAS: Fala[] = [
     de: 'agente',
     texto: 'Pronto. Entrou em contas a pagar e avisei o Carlos no balcão.',
     destaque: 'Esse mês eu já recuperei R$ 1.240 de crediário atrasado.',
-    // Sangra: passa da borda direita da seção e é cortada.
-    recuo: '-mr-10 ml-3',
+    // Sangra: passa da borda direita da seção e é cortada — o que sugere que a
+    // conversa continua fora do quadro, em vez de terminar ali.
+    //
+    // Só a partir de `sm`. No celular a seção inteira tem a largura da tela, e
+    // a sangria deixava de ser efeito para virar defeito: os 40px saíam pela
+    // direita e COMIAM O FIM DA FRASE — "avisei o Carlos no balcão" terminava
+    // fora da tela, e a frase de maior valor da conversa ("já recuperei
+    // R$ 1.240") era justamente a mais cortada.
+    recuo: 'ml-3 sm:-mr-10',
   },
 ]
 

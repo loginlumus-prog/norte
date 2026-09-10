@@ -19,6 +19,7 @@ import {
   mudanca,
   menorQueCabe,
   planoLibera,
+  RECURSOS,
 } from '../src/servidor/planos'
 import { TODOS } from '../src/servidor/modulos'
 
@@ -282,6 +283,60 @@ describe('o plano decide quais módulos existem', () => {
         teto(antes.unidades),
       )
       expect(teto(depois.vagas), `vagas em ${ORDEM[i]}`).toBeGreaterThanOrEqual(teto(antes.vagas))
+    }
+  })
+})
+
+// A tabela de comparacao e a tabela de planos precisam contar a MESMA coisa.
+// Ja divergiram: a linha do credito dizia "R$ 120/mes" depois de o plano virar
+// 100, porque o numero estava escrito a mao nos dois lugares. Agora ele e
+// derivado — e este teste e o que impede alguem de escrever a mao de novo.
+describe('a tabela de comparação não pode divergir dos planos', () => {
+  const acha = (titulo: string) => {
+    const r = RECURSOS.find((x) => x.titulo === titulo)
+    if (!r) throw new Error(`sem a linha "${titulo}"`)
+    return r
+  }
+
+  it('o crédito na tabela é o crédito do plano', () => {
+    const r = acha('Crédito de IA incluso')
+    for (const p of ORDEM) {
+      const c = PLANOS[p].creditoMensal
+      if (!planoLibera(p, 'agente')) continue
+      const dito = r.detalhe?.[p] ?? ''
+      if (c === null) expect(dito, p).toBe('no contrato')
+      else expect(dito, p).toContain(String(c))
+    }
+  })
+
+  it('o número de lojas na tabela é a cota do plano', () => {
+    const r = acha('Lojas')
+    for (const p of ORDEM) {
+      const n = PLANOS[p].unidades
+      const dito = r.detalhe?.[p] ?? ''
+      if (n === null) expect(dito, p).toBe('à vontade')
+      else expect(dito, p).toContain(String(n))
+    }
+  })
+
+  it('o número de vagas na tabela é a cota do plano, com o preço da extra', () => {
+    const r = acha('Dentro ao mesmo tempo')
+    for (const p of ORDEM) {
+      const l = PLANOS[p]
+      const dito = r.detalhe?.[p] ?? ''
+      if (l.vagas === null) expect(dito, p).toBe('à vontade')
+      else {
+        expect(dito, p).toContain(String(l.vagas))
+        if (l.porVagaExtra) expect(dito, p).toContain(String(l.porVagaExtra))
+      }
+    }
+  })
+
+  it('nenhuma linha promete recurso em plano que não o tem', () => {
+    for (const r of RECURSOS) {
+      for (const p of Object.keys(r.detalhe ?? {}) as (keyof typeof PLANOS)[]) {
+        expect(r.em, `${r.titulo} detalha ${p} sem ter ${p}`).toContain(p)
+      }
     }
   })
 })

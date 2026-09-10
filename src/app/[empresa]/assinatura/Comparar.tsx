@@ -76,6 +76,11 @@ export function Comparar({ atual }: { atual: Plano }) {
               <tr key={r.titulo} className="border-t border-borda-suave">
                 <th scope="row" className="px-3 py-2 text-left font-normal text-tinta-2">
                   {r.titulo}
+                  {r.quando === 'breve' && (
+                    <span className="ml-2 inline-block rounded-full bg-superficie-2 px-1.5 py-0.5 align-middle text-[10px] font-bold tracking-wide whitespace-nowrap text-tinta-3 uppercase">
+                      em breve
+                    </span>
+                  )}
                 </th>
                 {ORDEM.map((p) => {
                   const tem = temRecurso(r, p)

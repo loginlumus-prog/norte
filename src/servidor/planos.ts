@@ -16,6 +16,15 @@ import type { Modulo } from './modulos'
 
 export type Limite = {
   titulo: string
+  /**
+   * O artigo que o nome pede: "do Balcão", mas "da Rede".
+   *
+   * Parece frescura e não é — sem ele a página escreve "Do Rede para cima",
+   * que qualquer brasileiro lê como erro e desconta da confiança em tudo que
+   * está em volta. Mora aqui, junto do nome, porque é propriedade DO NOME: no
+   * dia em que um plano for renomeado, o artigo vem junto.
+   */
+  artigo: 'o' | 'a'
   /** Uma frase: para quem este plano é. */
   resumo: string
   /** null = sem limite. */
@@ -87,6 +96,7 @@ export type Limite = {
 export const PLANOS: Record<Plano, Limite> = {
   GRATIS: {
     titulo: 'Grátis',
+    artigo: 'o',
     resumo: 'Uma loja, uma pessoa por vez. Para sair do caderno hoje.',
     unidades: 1,
     vagas: 1,
@@ -105,7 +115,8 @@ export const PLANOS: Record<Plano, Limite> = {
   },
   BALCAO: {
     titulo: 'Balcão',
-    resumo: 'Até três lojas, e o sistema inteiro menos o assistente.',
+    artigo: 'o',
+    resumo: 'Até três lojas, e o sistema inteiro — menos o assistente.',
     unidades: 3,
     vagas: 3,
     mensal: 100,
@@ -117,7 +128,11 @@ export const PLANOS: Record<Plano, Limite> = {
     degrau: 1,
   },
   BALCAO_AGENTE: {
-    titulo: 'Balcão + Assistente',
+    // Era "Balcao + Assistente". O "+" fazia o plano ler como ACESSORIO do
+    // anterior — alguma coisa que se acrescenta — em vez de degrau proprio. Sem
+    // ele, o nome diz o que muda: aqui alguem passa a atender por voce.
+    titulo: 'Assistente',
+    artigo: 'o',
     resumo: 'Até cinco lojas, com o assistente atendendo e cobrando no WhatsApp.',
     unidades: 5,
     vagas: 5,
@@ -140,8 +155,16 @@ export const PLANOS: Record<Plano, Limite> = {
     degrau: 2,
   },
   REDE: {
-    titulo: 'Rede',
-    resumo: 'Lojas e pessoas sem limite, cada loja com estoque e caixa próprios.',
+    // Era "Rede", que descrevia o FORMATO do cliente (varias lojas) e nao o que
+    // ele recebe. Passou a subvender no dia em que o destaque deste plano
+    // deixou de ser loja ilimitada e virou a analise do negocio.
+    //
+    // "Direcao" e o que ele entrega, e e o nome do produto cumprido: o selo
+    // deste plano ja e o mapa inteiro com a rosa dos ventos por tras.
+    titulo: 'Direção',
+    artigo: 'a',
+    resumo:
+      'Lojas e pessoas sem limite, e a análise que diz onde você está perdendo e o que fazer.',
     unidades: null,
     vagas: null,
     mensal: 1500,
@@ -155,6 +178,7 @@ export const PLANOS: Record<Plano, Limite> = {
   },
   CORPORATIVO: {
     titulo: 'Corporativo',
+    artigo: 'o',
     resumo:
       'A operação inteira com a gente junto: site, tráfego e a condução do negócio. ' +
       'Preço fechado caso a caso, depois de entender a operação.',
@@ -395,6 +419,20 @@ export type Recurso = {
   detalhe?: Partial<Record<Plano, string>>
   /** Aparece na lista curta do cartao. O resto so na tabela. */
   destaque?: boolean
+  /**
+   * `'breve'` = ESTA COMPRADO, mas ainda nao existe.
+   *
+   * Este campo existe para a pagina de venda poder falar do que vem sem
+   * mentir. A tentacao e listar o que esta planejado junto com o que funciona
+   * — e ai alguem assina o plano de cima pela analise profunda, entra, nao
+   * acha, e cancela. Cancelamento por promessa quebrada e o unico que vem com
+   * reclamacao publica junto.
+   *
+   * Marcado, ele vira expectativa em vez de mentira. E some daqui no dia em
+   * que a coisa existir — se ficar marcado por seis meses, isso tambem esta
+   * dizendo alguma coisa.
+   */
+  quando?: 'breve'
 }
 
 // O Grátis entra em TODOS_OS_PLANOS de propósito: o miolo do sistema — vender,
@@ -402,8 +440,23 @@ export type Recurso = {
 // não tem está nas outras listas.
 const TODOS_OS_PLANOS: Plano[] = ['GRATIS', 'BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
 const PAGOS: Plano[] = ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
+const SEM_GRATIS = PAGOS
 const COM_AGENTE: Plano[] = ['BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
 const DE_REDE: Plano[] = ['REDE', 'CORPORATIVO']
+
+// ── os numeros da tabela saem do PLANO, nunca da mao ────────
+// Aqui havia "R$ 120/mes" escrito a mao na linha do credito, e ele continuou
+// dizendo 120 depois de o plano virar 100. Nao foi descuido: e o que SEMPRE
+// acontece com numero repetido em dois lugares — um muda, o outro fica.
+//
+// O comentario no topo deste arquivo ja avisava disso para a pagina de venda.
+// Valia para a tabela tambem, e agora vale de verdade: se o numero muda no
+// plano, a tabela acompanha sozinha.
+const porPlano = (planos: Plano[], f: (l: Limite) => string): Partial<Record<Plano, string>> =>
+  Object.fromEntries(planos.map((p) => [p, f(PLANOS[p])]))
+
+const aVontade = (n: number | null, texto: (n: number) => string) =>
+  n === null ? 'à vontade' : texto(n)
 
 export const RECURSOS: Recurso[] = [
   // ── Operação ──
@@ -416,14 +469,39 @@ export const RECURSOS: Recurso[] = [
   { titulo: 'Produto com grade de cor e tamanho', grupo: 'Operação', em: TODOS_OS_PLANOS },
   { titulo: 'Estoque, entrada de mercadoria e balanço', grupo: 'Operação', em: TODOS_OS_PLANOS },
   { titulo: 'Ficha do cliente com histórico', grupo: 'Operação', em: TODOS_OS_PLANOS },
-  { titulo: 'Programa de pontos', grupo: 'Operação', em: TODOS_OS_PLANOS },
-  { titulo: 'Nota fiscal (NFC-e e NF-e)', grupo: 'Operação', em: TODOS_OS_PLANOS },
-  { titulo: 'Encomenda e entrega', grupo: 'Operação', em: TODOS_OS_PLANOS },
+  { titulo: 'Programa de pontos', grupo: 'Operação', em: PAGOS },
+  { titulo: 'Nota fiscal (NFC-e e NF-e)', grupo: 'Operação', em: PAGOS, destaque: true },
+  { titulo: 'Encomenda e entrega', grupo: 'Operação', em: PAGOS },
+  {
+    titulo: 'Previsão de ruptura com prazo do fornecedor',
+    grupo: 'Operação',
+    em: DE_REDE,
+    quando: 'breve',
+  },
 
   // ── Dinheiro ──
-  { titulo: 'Financeiro com DRE do mês', grupo: 'Dinheiro', em: TODOS_OS_PLANOS, destaque: true },
-  { titulo: 'Contas a pagar e recorrentes', grupo: 'Dinheiro', em: TODOS_OS_PLANOS },
+  {
+    titulo: 'Relatório de vendas',
+    grupo: 'Dinheiro',
+    em: TODOS_OS_PLANOS,
+    detalhe: { GRATIS: 'simples', BALCAO: 'completo', BALCAO_AGENTE: 'completo', REDE: 'completo', CORPORATIVO: 'completo' },
+  },
+  { titulo: 'Financeiro com DRE do mês', grupo: 'Dinheiro', em: PAGOS, destaque: true },
+  { titulo: 'Contas a pagar e recorrentes', grupo: 'Dinheiro', em: PAGOS },
   { titulo: 'Metas e comissão por vendedor', grupo: 'Dinheiro', em: COM_AGENTE },
+  {
+    titulo: 'Fechamento de mês guiado',
+    grupo: 'Dinheiro',
+    em: PAGOS,
+    quando: 'breve',
+  },
+  {
+    titulo: 'Curva ABC e dinheiro parado',
+    grupo: 'Dinheiro',
+    em: DE_REDE,
+    quando: 'breve',
+    destaque: true,
+  },
   { titulo: 'Crediário próprio, com juros e cobrança', grupo: 'Dinheiro', em: DE_REDE, destaque: true },
 
   // ── Assistente ──
@@ -437,44 +515,77 @@ export const RECURSOS: Recurso[] = [
     titulo: 'Crédito de IA incluso',
     grupo: 'Assistente',
     em: COM_AGENTE,
-    detalhe: {
-      BALCAO_AGENTE: 'R$ 120/mês',
-      REDE: 'R$ 350/mês',
-      CORPORATIVO: 'R$ 800/mês',
-    },
+    detalhe: porPlano(COM_AGENTE, (l) =>
+      l.creditoMensal === null ? 'no contrato' : `R$ ${l.creditoMensal}/mês`,
+    ),
     destaque: true,
   },
   { titulo: 'Relatório sozinho, de manhã e à noite', grupo: 'Assistente', em: COM_AGENTE },
   { titulo: 'Ele avisa quando falta peça ou some cliente', grupo: 'Assistente', em: COM_AGENTE },
   { titulo: 'Ele propõe reposição e você confirma', grupo: 'Assistente', em: COM_AGENTE },
+  {
+    // A linha que separa os dois planos de cima, e ela e uma so: um conta o
+    // que aconteceu, o outro diz o que fazer a respeito.
+    titulo: 'Análise do negócio',
+    grupo: 'Assistente',
+    em: COM_AGENTE,
+    // Uma palavra por coluna. A tabela COMPARA; quem explica e o cartao do
+     // plano, que tem largura para isso. Frase de cinquenta caracteres numa
+     // celula de comparacao estoura a linha e empurra a tabela para fora da
+     // tela — aconteceu, e o print mostrou.
+    detalhe: {
+      BALCAO_AGENTE: 'básica',
+      REDE: 'profunda',
+      CORPORATIVO: 'profunda',
+    },
+    quando: 'breve',
+    destaque: true,
+  },
 
   // ── Estrutura ──
   {
-    titulo: 'Unidades',
+    titulo: 'Lojas',
     grupo: 'Estrutura',
     em: TODOS_OS_PLANOS,
-    detalhe: {
-      BALCAO: '1',
-      BALCAO_AGENTE: '1',
-      REDE: '5 (+R$ 249 cada)',
-      CORPORATIVO: 'à vontade',
-    },
+    detalhe: porPlano(TODOS_OS_PLANOS, (l) =>
+      aVontade(l.unidades, (n) => (n === 1 ? '1' : `até ${n}`)),
+    ),
+    destaque: true,
+  },
+  // Duas linhas, e a diferenca entre elas e o modelo de cobranca inteiro:
+  // cadastrar a equipe e de graca, o que se paga e quanta gente fica dentro ao
+  // mesmo tempo. Numa linha so, quem tem doze cadastrados e paga por tres
+  // acharia que a conta esta errada.
+  {
+    titulo: 'Pessoas cadastradas',
+    grupo: 'Estrutura',
+    em: TODOS_OS_PLANOS,
+    detalhe: porPlano(TODOS_OS_PLANOS, () => 'à vontade'),
+  },
+  {
+    titulo: 'Dentro ao mesmo tempo',
+    grupo: 'Estrutura',
+    em: TODOS_OS_PLANOS,
+    detalhe: porPlano(TODOS_OS_PLANOS, (l) =>
+      aVontade(l.vagas, (n) => (l.porVagaExtra ? `${n} (+R$ ${l.porVagaExtra} cada)` : String(n))),
+    ),
+    destaque: true,
+  },
+  { titulo: 'Estoque e caixa separados por loja', grupo: 'Estrutura', em: SEM_GRATIS, destaque: true },
+  { titulo: 'Painel consolidado da rede', grupo: 'Estrutura', em: DE_REDE },
+  {
+    titulo: 'Comparação entre lojas',
+    grupo: 'Estrutura',
+    em: DE_REDE,
+    quando: 'breve',
     destaque: true,
   },
   {
-    titulo: 'Pessoas com acesso',
+    titulo: 'Escala e presença da equipe',
     grupo: 'Estrutura',
-    em: TODOS_OS_PLANOS,
-    detalhe: {
-      BALCAO: '5',
-      BALCAO_AGENTE: '5',
-      REDE: '30',
-      CORPORATIVO: 'à vontade',
-    },
-    destaque: true,
+    em: DE_REDE,
+    quando: 'breve',
   },
-  { titulo: 'Estoque e caixa separados por loja', grupo: 'Estrutura', em: DE_REDE, destaque: true },
-  { titulo: 'Painel consolidado da rede', grupo: 'Estrutura', em: DE_REDE },
   { titulo: 'Livro de auditoria de tudo que mexe', grupo: 'Estrutura', em: TODOS_OS_PLANOS },
   {
     titulo: 'Site, tráfego e condução do negócio',
