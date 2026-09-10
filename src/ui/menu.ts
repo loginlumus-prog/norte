@@ -20,6 +20,9 @@ export const MENU = (slug: string): ItemMenu[] => [
   // fazendo dois trabalhos. Agora exige 'relatorio.ver', que e o numero.
   { href: `/${slug}`, titulo: 'Painel', exige: 'relatorio.ver' },
   { href: `/${slug}/balcao`, titulo: 'Balcão', exige: 'venda.criar' },
+  // Logo depois do balcão, porque é a segunda tela mais aberta de qualquer
+  // loja: vender, e depois olhar o que vendeu.
+  { href: `/${slug}/vendas`, titulo: 'Vendas', exige: 'venda.ver' },
   { href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver' },
   { href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },
   { href: `/${slug}/clientes`, titulo: 'Clientes', exige: 'cliente.ver' },

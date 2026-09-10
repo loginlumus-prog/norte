@@ -38,6 +38,7 @@
 //    quem passa dele.
 
 import { comoOrg } from './banco'
+import type { SituacaoVenda } from '@prisma/client'
 import { exigir, pode, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, reais, multiplicar } from './dinheiro'
@@ -411,4 +412,231 @@ function descrever(v: {
   if (!v) return 'item removido'
   const partes = v.opcoes.map((o) => o.opcao.valor)
   return partes.length ? `${v.produto.nome} — ${partes.join(' · ')}` : v.produto.nome
+}
+
+// ─────────────────────────────────────────────────────────────
+// O QUE JÁ FOI VENDIDO
+// ─────────────────────────────────────────────────────────────
+//
+// Até aqui o sistema sabia VENDER e não sabia MOSTRAR o que vendeu. Não
+// existia tela para achar a venda de ontem, conferir o que saiu num dia, ou
+// localizar uma venda quando o cliente volta com a peça. Loja não opera assim:
+// "consultar vendas" é a segunda tela mais aberta de qualquer balcão, depois do
+// próprio balcão.
+
+export type FiltroVendas = {
+  unidadeIds: string[]
+  de: Date
+  /** Exclusivo. */
+  ate: Date
+  /** Número da venda, ou pedaço do nome do cliente. */
+  q?: string | null
+  situacao?: SituacaoVenda | null
+}
+
+export type VendaNaLista = {
+  id: string
+  numero: number
+  criadaEm: Date
+  situacao: SituacaoVenda
+  total: number
+  itens: number
+  cliente: string | null
+  vendedor: string | null
+  unidade: string
+  /** As formas usadas, para a lista dizer "Pix + Dinheiro" sem abrir a venda. */
+  formas: string[]
+}
+
+export async function listarVendas(sessao: Sessao, f: FiltroVendas): Promise<VendaNaLista[]> {
+  exigir(sessao, 'venda.ver')
+
+  // A unidade vem do endereço, e o endereço é de quem digita. Só entram as
+  // unidades em que a pessoa pode VER venda — o gerente da loja 3 não lista a
+  // loja 5 trocando o número na URL.
+  const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'venda.ver', u))
+  if (permitidas.length === 0) return []
+
+  const q = f.q?.trim() ?? ''
+  const numero = /^\d+$/.test(q) ? Number(q) : null
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const vendas = await db.venda.findMany({
+      where: {
+        unidadeId: { in: permitidas },
+        criadaEm: { gte: f.de, lt: f.ate },
+        ...(f.situacao ? { situacao: f.situacao } : {}),
+        ...(numero !== null
+          ? { numero }
+          : q
+            ? { cliente: { nome: { contains: q, mode: 'insensitive' } } }
+            : {}),
+      },
+      orderBy: { criadaEm: 'desc' },
+      // Um dia cheio de loja grande são umas 300 vendas. Quinhentas cobrem
+      // qualquer filtro razoável; acima disso a pessoa está pedindo relatório,
+      // não lista.
+      take: 500,
+      select: {
+        id: true,
+        numero: true,
+        criadaEm: true,
+        situacao: true,
+        total: true,
+        vendedorNome: true,
+        cliente: { select: { nome: true } },
+        unidade: { select: { nome: true } },
+        _count: { select: { itens: true } },
+        pagamentos: { select: { forma: true } },
+      },
+    })
+
+    return vendas.map((v) => ({
+      id: v.id,
+      numero: v.numero,
+      criadaEm: v.criadaEm,
+      situacao: v.situacao,
+      total: Number(v.total),
+      itens: v._count.itens,
+      cliente: v.cliente?.nome ?? null,
+      vendedor: v.vendedorNome,
+      unidade: v.unidade.nome,
+      formas: [...new Set(v.pagamentos.map((p) => p.forma))],
+    }))
+  })
+}
+
+/** A venda inteira, para a ficha. */
+export async function acharVenda(sessao: Sessao, vendaId: string) {
+  exigir(sessao, 'venda.ver')
+  const v = await comoOrg(sessao.orgId, (db) =>
+    db.venda.findUnique({
+      where: { id: vendaId },
+      include: {
+        itens: { orderBy: { id: 'asc' } },
+        pagamentos: { orderBy: { criadoEm: 'asc' } },
+        cliente: { select: { id: true, nome: true, telefone: true } },
+        unidade: { select: { id: true, nome: true } },
+        caixa: { select: { id: true, aberto: true } },
+      },
+    }),
+  )
+  // Achar por id passa pelo RLS (só vem venda desta empresa), mas a unidade
+  // ainda precisa ser conferida: gerente de uma loja não abre venda da outra.
+  if (!v || !pode(sessao, 'venda.ver', v.unidadeId)) return null
+  return v
+}
+
+export type Cancelamento =
+  | { ok: true; numero: number }
+  | { ok: false; motivo: 'nao_achada' | 'ja_cancelada' | 'sem_motivo' }
+
+/**
+ * Desfaz uma venda: o estoque volta, os pontos voltam, e a venda fica marcada
+ * — nunca apagada. Cancelar é evento, e evento fica no livro.
+ *
+ * ── o que NÃO acontece aqui ──────────────────────────────────
+ * O dinheiro não volta sozinho. Se a venda foi em Pix ou cartão, devolver é
+ * ato de gente, feito por fora, e o sistema não tem como saber se aconteceu.
+ * Por isso o motivo é obrigatório: é ele que, no livro, conta o que foi feito
+ * com o dinheiro.
+ *
+ * E a venda cancelada some do DRE, do painel e do fechamento do caixa sozinha:
+ * todos eles só somam `CONCLUIDA`. Não existe "estorno" a lançar — a venda
+ * simplesmente deixa de contar, e o histórico de estoque ganha uma devolução
+ * apontando para ela.
+ */
+export async function cancelarVenda(
+  sessao: Sessao,
+  vendaId: string,
+  motivo: string,
+): Promise<Cancelamento> {
+  const texto = motivo.trim()
+  if (texto.length < 3) return { ok: false, motivo: 'sem_motivo' }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const v = await db.venda.findUnique({
+      where: { id: vendaId },
+      select: {
+        id: true,
+        numero: true,
+        unidadeId: true,
+        situacao: true,
+        clienteId: true,
+        pontosGanhos: true,
+        pontosUsados: true,
+        total: true,
+        itens: { select: { variacaoId: true, quantidade: true } },
+      },
+    })
+    if (!v) return { ok: false as const, motivo: 'nao_achada' as const }
+
+    // Conferido DEPOIS de achar, porque a unidade da venda é o que decide.
+    exigir(sessao, 'venda.cancelar', v.unidadeId)
+
+    if (v.situacao === 'CANCELADA') return { ok: false as const, motivo: 'ja_cancelada' as const }
+
+    // ── 1. o estoque volta ──
+    // Uma DEVOLUCAO por item, apontando para a venda. Assim o histórico do
+    // produto mostra os dois movimentos, um cancelando o outro, em vez de a
+    // venda simplesmente sumir e o saldo "aparecer" sem explicação.
+    for (const i of v.itens) {
+      await mexerEstoqueEm(db, sessao, {
+        variacaoId: i.variacaoId,
+        unidadeId: v.unidadeId,
+        tipo: 'DEVOLUCAO',
+        quantidade: Number(i.quantidade),
+        referencia: v.id,
+        motivo: `Cancelamento da venda ${v.numero}`,
+      })
+    }
+
+    // ── 2. os pontos voltam ao que eram ──
+    // O que a venda deu, sai; o que ela gastou, volta. Uma escrita só no saldo,
+    // com o delta — mesma razão da venda: duas cancelando ao mesmo tempo não
+    // podem se atropelar.
+    const delta = v.pontosUsados - v.pontosGanhos
+    if (v.clienteId && delta !== 0) {
+      const depois = await db.cliente.update({
+        where: { id: v.clienteId },
+        data: { pontos: { increment: delta } },
+        select: { pontos: true },
+      })
+      await db.movimentoPontos.create({
+        data: {
+          orgId: sessao.orgId,
+          clienteId: v.clienteId,
+          tipo: 'AJUSTE',
+          pontos: delta,
+          saldoDepois: depois.pontos,
+          vendaId: v.id,
+          motivo: `Cancelamento da venda ${v.numero}`,
+          quem: sessao.nome,
+        },
+      })
+    }
+
+    // ── 3. a marca ──
+    await db.venda.update({
+      where: { id: v.id },
+      data: { situacao: 'CANCELADA', canceladaEm: new Date(), motivoCancelamento: texto },
+    })
+
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: v.unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'venda.cancelou',
+        alvoTipo: 'venda',
+        alvoId: v.id,
+        alvoNome: `Venda ${v.numero}`,
+        valor: v.total,
+        motivo: texto,
+      },
+    })
+
+    return { ok: true as const, numero: v.numero }
+  })
 }
