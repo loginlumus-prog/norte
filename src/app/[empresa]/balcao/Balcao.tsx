@@ -12,6 +12,11 @@
 //    fila esperando, abrir e fechar janela custa segundos que não existem.
 // 4. O TROCO APARECE ANTES DE CONFIRMAR, grande. É o número que a pessoa vai
 //    conferir na gaveta.
+// 5. QUEM NÃO TEM ETIQUETA TOCA NO BOTÃO. Sorveteria não etiqueta picolé,
+//    lanchonete não etiqueta X-salada. Para essas, embaixo da busca fica a
+//    grade: categorias como abas, produtos como botões com nome e preço, um
+//    toque lança. E a quantidade se escolhe ANTES de tocar ("×20, picolé"),
+//    que é uma ação a menos do que lançar e corrigir depois.
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { EscolherCliente } from './Cliente'
@@ -19,7 +24,7 @@ import type { ClienteNoBalcao } from './acoes'
 import { chaveDoBalcao, guardar, recuperar, esquecer, faz } from './guardar'
 import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
 import { Botao, Campo, Aviso, Situacao, cx } from '@/ui/base'
-import { procurar, fecharVenda, type Achado } from './acoes'
+import { procurar, grade, fecharVenda, type Achado, type Grade } from './acoes'
 
 const FORMAS = [
   { chave: 'DINHEIRO', titulo: 'Dinheiro' },
@@ -59,6 +64,24 @@ export function Balcao({
   const [recado, setRecado] = useState<{ nivel: 'bom' | 'critico'; texto: string } | null>(null)
   const [voltou, setVoltou] = useState<number | null>(null)
   const [indo, comecar] = useTransition()
+
+  // ── a grade e a quantidade ───────────────────────────────
+  // `qtd` é a quantidade do PRÓXIMO lançamento, e volta a 1 depois de cada um.
+  // Para peso (KG), é o peso lido na balança; para unidade, quantas.
+  const [qtd, setQtd] = useState(1)
+  const [botoes, setBotoes] = useState<Grade | null>(null)
+  const [categoriaId, setCategoriaId] = useState<string | null>(null)
+  const qtdRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let vivo = true
+    grade(slug, unidadeId, categoriaId)
+      .then((g) => vivo && setBotoes(g))
+      .catch(() => vivo && setBotoes(null))
+    return () => {
+      vivo = false
+    }
+  }, [slug, unidadeId, categoriaId])
 
   const busca = useRef<HTMLInputElement>(null)
   const focarBusca = () => busca.current?.focus()
@@ -129,15 +152,22 @@ export function Balcao({
 
   function lancar(a: Achado) {
     setRecado(null)
+    const q = qtd > 0 ? qtd : 1
     setCarrinho((c) => {
       const jaTem = c.find((l) => l.id === a.id)
-      // Peso não acumula sozinho: 0,3 kg + 0,3 kg raramente é o que se quer.
+      // Unidade acumula: tocar duas vezes no picolé é dois picolés. Peso
+      // não acumula sozinho: 0,3 kg + 0,3 kg raramente é o que se quer — a
+      // segunda pesagem SUBSTITUI a primeira.
       if (jaTem && a.medida === 'UN') {
-        return c.map((l) => (l.id === a.id ? { ...l, quantidade: l.quantidade + 1 } : l))
+        return c.map((l) => (l.id === a.id ? { ...l, quantidade: l.quantidade + q } : l))
       }
-      if (jaTem) return c
-      return [...c, { ...a, quantidade: a.medida === 'UN' ? 1 : 1 }]
+      if (jaTem) return c.map((l) => (l.id === a.id ? { ...l, quantidade: q } : l))
+      return [...c, { ...a, quantidade: q }]
     })
+    // A quantidade é do lançamento, não da sessão: "×20" vale para o próximo
+    // toque e mais nenhum. Sem isto, o "20" esquecido lançava 20 do item
+    // seguinte — e o erro só aparecia no total.
+    setQtd(1)
     setTermo('')
     setAchados([])
     focarBusca()
@@ -251,7 +281,31 @@ export function Balcao({
 
         {recado && <Aviso nivel={recado.nivel}>{recado.texto}</Aviso>}
 
-        <div className="relative">
+        <div className="relative flex gap-2">
+          {/* A quantidade fica À ESQUERDA, antes do produto, porque é essa a
+              ordem em que se fala: "vinte picolés", não "picolé, vinte".
+              Estreita e com o × na frente para ler como multiplicador. */}
+          <label className="flex shrink-0 items-center gap-1 rounded-norte border-2 border-borda bg-superficie px-2">
+            <span aria-hidden className="text-sm text-tinta-3">×</span>
+            <input
+              ref={qtdRef}
+              type="number"
+              min={0.001}
+              step="any"
+              inputMode="decimal"
+              value={qtd}
+              onChange={(e) => setQtd(Number(e.target.value))}
+              onFocus={(e) => e.target.select()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  focarBusca()
+                }
+              }}
+              aria-label="Quantidade do próximo item"
+              className="numero w-14 bg-transparent py-3 text-center text-base text-tinta focus:outline-none"
+            />
+          </label>
           <input
             ref={busca}
             autoFocus
@@ -310,10 +364,76 @@ export function Balcao({
           )}
         </div>
 
+        {/* ── a grade de botões ──
+            Aparece quando a busca está vazia — quem está digitando quer o
+            dropdown, quem não está quer os botões. Some sozinha quando não há
+            o que mostrar (loja sem produto ainda). */}
+        {termo.trim().length < 2 && botoes && botoes.itens.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {botoes.categorias.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {[{ id: null as string | null, nome: 'Todos', quantos: 0 }, ...botoes.categorias].map((c) => (
+                  <button
+                    key={c.id ?? 'todos'}
+                    type="button"
+                    onClick={() => setCategoriaId(c.id)}
+                    aria-pressed={categoriaId === c.id}
+                    className={cx(
+                      'rounded-full px-3 py-1.5 text-sm font-semibold transition-colors',
+                      categoriaId === c.id
+                        ? 'bg-tinta text-superficie'
+                        : 'border border-borda bg-superficie text-tinta-2 hover:bg-superficie-2',
+                    )}
+                  >
+                    {c.nome}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
+              {botoes.itens.map((a) => {
+                const acabou = a.saldo <= 0
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => lancar(a)}
+                    disabled={acabou}
+                    title={acabou ? 'Acabou' : `Lançar ${a.descricao}`}
+                    className={cx(
+                      'flex min-h-[4.25rem] flex-col justify-between rounded-norte border px-3 py-2 text-left transition-colors',
+                      acabou
+                        ? 'cursor-not-allowed border-borda-suave bg-superficie-2 text-tinta-3'
+                        : 'border-borda bg-superficie hover:border-marca hover:bg-superficie-2 active:bg-marca/10',
+                    )}
+                  >
+                    <span className="line-clamp-2 text-[13px] leading-snug font-medium">{a.descricao}</span>
+                    <span className="flex items-baseline justify-between gap-2 pt-1">
+                      <span className="numero text-sm font-bold">{brl(a.preco)}</span>
+                      <span className={cx('numero text-[11px]', acabou ? 'font-semibold' : 'text-tinta-3')}>
+                        {acabou ? 'acabou' : a.saldo}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {botoes.cortou && (
+              <p className="text-xs text-tinta-3">
+                Categoria grande demais para botão — mostrando os primeiros. Para o resto, digite.
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="overflow-hidden rounded-norte border border-borda bg-superficie">
           {carrinho.length === 0 ? (
-            <p className="px-4 py-16 text-center text-sm text-tinta-3">
-              Bipe a primeira etiqueta para começar.
+            <p className="px-4 py-10 text-center text-sm text-tinta-3">
+              {botoes && botoes.itens.length > 0
+                ? 'Toque num produto, ou bipe a etiqueta.'
+                : 'Bipe a primeira etiqueta para começar.'}
             </p>
           ) : (
             <table className="w-full text-sm">

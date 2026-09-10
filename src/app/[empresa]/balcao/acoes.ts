@@ -92,6 +92,88 @@ export async function procurar(
   })
 }
 
+export type Grade = {
+  categorias: { id: string; nome: string; quantos: number }[]
+  itens: Achado[]
+  /** Passou do teto de botões: a tela avisa para usar a busca. */
+  cortou: boolean
+}
+
+/**
+ * A grade de botões do balcão: os itens de uma categoria, para tocar em vez de
+ * digitar.
+ *
+ * ── por que existe, se a busca já existe ─────────────────────
+ * A busca serve para loja com etiqueta e leitor: bipa, Enter, próximo. Uma
+ * sorveteria não tem etiqueta em picolé, nem uma lanchonete no X-salada — e
+ * digitar "pic" a cada venda, com fila, é o que faz a pessoa voltar para o
+ * caderno. Ali a venda é apertar um botão com o nome e o preço, que é como
+ * todo sistema de balcão de alimentação funciona há vinte anos.
+ *
+ * As mesmas travas da busca: sessão, capacidade e unidade — o endereço é
+ * público, e o botão escondido não é trava.
+ */
+export async function grade(
+  slug: string,
+  unidadeId: string,
+  categoriaId: string | null,
+): Promise<Grade> {
+  const s = await exigirSessao(slug)
+  exigir(s, 'produto.ver', unidadeId)
+  exigir(s, 'estoque.ver', unidadeId)
+
+  // Umas 120 por tela é o que cabe sem virar parede. Acima disso, a categoria
+  // está grande demais para botão e a busca é o caminho.
+  const TETO = 120
+
+  return comoOrg(s.orgId, async (db) => {
+    const [categorias, vs] = await Promise.all([
+      db.categoria.findMany({
+        orderBy: { ordem: 'asc' },
+        select: {
+          id: true,
+          nome: true,
+          _count: { select: { produtos: { where: { ativo: true } } } },
+        },
+      }),
+      db.variacao.findMany({
+        where: {
+          ativa: true,
+          produto: { ativo: true, ...(categoriaId ? { categoriaId } : {}) },
+        },
+        orderBy: [{ produto: { nome: 'asc' } }, { codigo: 'asc' }],
+        take: TETO + 1,
+        select: {
+          id: true,
+          codigo: true,
+          ajustePreco: true,
+          produto: { select: { nome: true, medida: true, precoVista: true } },
+          opcoes: { select: { opcao: { select: { valor: true } } } },
+          estoques: { where: { unidadeId }, select: { quantidade: true } },
+        },
+      }),
+    ])
+
+    return {
+      categorias: categorias
+        .filter((c) => c._count.produtos > 0)
+        .map((c) => ({ id: c.id, nome: c.nome, quantos: c._count.produtos })),
+      itens: vs.slice(0, TETO).map((v) => ({
+        id: v.id,
+        codigo: v.codigo,
+        medida: v.produto.medida as string,
+        descricao:
+          v.opcoes.length > 0
+            ? `${v.produto.nome} — ${v.opcoes.map((o) => o.opcao.valor).join(' · ')}`
+            : v.produto.nome,
+        preco: Number(v.produto.precoVista ?? 0) + Number(v.ajustePreco ?? 0),
+        saldo: Number(v.estoques[0]?.quantidade ?? 0),
+      })),
+      cortou: vs.length > TETO,
+    }
+  })
+}
+
 export type ItemEnviado = { variacaoId: string; quantidade: number; precoUnit: number }
 
 export async function fecharVenda(

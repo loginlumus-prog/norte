@@ -33,11 +33,22 @@ export async function semearCatalogo(cliente: Client, orgId: string, unidadeId: 
     [orgId],
   )
 
+  // ── as gavetas do catálogo ──────────────────────────────────
+  // Duas, uma por produto. Existem para a grade do balcão ter abas: sem
+  // categoria, os botões aparecem todos juntos — o que serve para dez itens e
+  // não serve para cem.
+  await cliente.query(
+    `insert into categorias (id, org_id, nome, ordem, criada_em) values
+       ('cat-camisetas', $1, 'Camisetas', 0, now()),
+       ('cat-sorvetes',  $1, 'Sorvetes',  1, now())`,
+    [orgId],
+  )
+
   // ── produto que varia em dois eixos ─────────────────────────
   await cliente.query(
-    `insert into produtos (id, org_id, nome, marca, medida, preco_vista, preco_cartao,
+    `insert into produtos (id, org_id, nome, marca, medida, categoria_id, preco_vista, preco_cartao,
                            preco_crediario, custo, ativo, criado_em, atualizado_em)
-     values ('prod-camiseta', $1, 'Camiseta canelada', 'Básica', 'UN',
+     values ('prod-camiseta', $1, 'Camiseta canelada', 'Básica', 'UN', 'cat-camisetas',
              49.90, 54.90, 59.90, 22.00, true, now(), now())`,
     [orgId],
   )
@@ -96,9 +107,9 @@ export async function semearCatalogo(cliente: Client, orgId: string, unidadeId: 
   // Aqui está a prova de que o modelo não assume roupa: uma variação só,
   // marcada como padrão, medida em quilo, saldo com casas decimais.
   await cliente.query(
-    `insert into produtos (id, org_id, nome, medida, preco_vista, preco_cartao,
+    `insert into produtos (id, org_id, nome, medida, categoria_id, preco_vista, preco_cartao,
                            preco_crediario, custo, ativo, criado_em, atualizado_em)
-     values ('prod-sorvete', $1, 'Sorvete a granel', 'KG',
+     values ('prod-sorvete', $1, 'Sorvete a granel', 'KG', 'cat-sorvetes',
              44.90, 47.90, 47.90, 18.50, true, now(), now())`,
     [orgId],
   )
