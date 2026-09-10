@@ -19,7 +19,9 @@
 // e não sofre disso. Quando houver Postgres hospedado, essas checagens podem
 // voltar para cá.
 
-import 'dotenv/config'
+import { carregarAmbiente } from './ambiente'
+
+carregarAmbiente()
 import { comoOrg, acharOrgPorSlug, fechar } from '../src/servidor/banco'
 import { entrar, RECADO } from '../src/servidor/autenticacao'
 import { pode } from '../src/servidor/permissao'

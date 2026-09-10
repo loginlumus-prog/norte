@@ -9,3 +9,4 @@ src/generated/
 .next/
 *.tsbuildinfo
 .tmp/
+.env.producao

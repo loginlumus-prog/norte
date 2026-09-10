@@ -4,15 +4,20 @@
 // Roda contra QUALQUER Postgres — o local do `npm run banco`, ou um hospedado
 // (Neon, Supabase) quando existir. É o mesmo caminho, de propósito.
 //
-//   npm run preparar
+//   npm run preparar                 → usa o .env (o laptop)
+//   npm run preparar -- --producao   → usa o .env.producao (o banco hospedado)
 //
 // Usa DATABASE_URL_ADMIN (dono das tabelas). A aplicação nunca usa essa URL.
+//
+// As empresas de exemplo só nascem em banco local. Ver a trava mais abaixo.
 
-import 'dotenv/config'
+import { carregarAmbiente } from './ambiente'
 import { Client } from 'pg'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { semearExemplo, SENHA_EXEMPLO } from './exemplo-base'
+
+const { arquivo } = carregarAmbiente()
 
 const raiz = join(import.meta.dirname, '..')
 const ler = (p: string) => readFileSync(join(raiz, p), 'utf8')
@@ -42,7 +47,9 @@ await cliente.connect()
 
 const passo = (t: string) => console.log(`  ${t}`)
 
-console.log(`\n  Preparando ${url.replace(/:[^:@]*@/, ':***@')}\n`)
+console.log(
+  `\n  Preparando ${url.replace(/:[^:@]*@/, ':***@')}\n  credenciais de ${arquivo}\n`,
+)
 
 if (!local) {
   console.log('  ⚠  Este banco NÃO é local.\n')
