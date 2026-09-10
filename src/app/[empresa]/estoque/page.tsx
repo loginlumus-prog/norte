@@ -10,7 +10,10 @@ import { Cartao, Situacao, Vazio, Aviso } from '@/ui/base'
 import { Tira, Secao } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
+import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
+
+type SituacaoItem = 'acabaram' | 'minimo' | 'ok'
 import { Entrada } from './Entrada'
 import { Corrigir } from './Corrigir'
 
@@ -35,10 +38,13 @@ export default async function TelaEstoque({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string }>
+  searchParams: Promise<{ unidade?: string; q?: string; situacao?: string }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida } = await searchParams
+  const { unidade: pedida, q: qBruto, situacao: sitPedida } = await searchParams
+  const q = (qBruto ?? '').trim()
+  const situacao: SituacaoItem | null =
+    sitPedida === 'acabaram' || sitPedida === 'minimo' || sitPedida === 'ok' ? sitPedida : null
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -124,6 +130,27 @@ export default async function TelaEstoque({
   const acabaram = itens.filter((i) => nivelDe(i) === 'critico')
   const noMinimo = itens.filter((i) => nivelDe(i) === 'atencao')
   const valorParado = itens.reduce((s, i) => s + i.saldo * i.custo, 0)
+
+  // ── o que a pessoa pediu ─────────────────────────────────
+  // Filtrado DEPOIS de somar, de propósito: a tira de cima e o "precisa
+  // comprar" continuam falando do estoque inteiro; só a lista de baixo
+  // obedece ao filtro. Se filtrasse antes, buscar "camiseta" faria a tira
+  // dizer que só existe camiseta na loja.
+  //
+  // A busca casa com nome e com etiqueta — e é sem acento e sem caixa, porque
+  // quem digita no balcão não vai parar para pôr o til em "açaí".
+  const solto = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const termo = solto(q)
+  const nivelPedido = situacao === 'acabaram' ? 'critico' : situacao === 'minimo' ? 'atencao' : situacao === 'ok' ? 'bom' : null
+  const listados = itens.filter(
+    (i) =>
+      (!termo || solto(i.nome).includes(termo) || (i.codigo ?? '').toLowerCase() === termo) &&
+      (!nivelPedido || nivelDe(i) === nivelPedido),
+  )
+
+  const atuais = { unidade: onde.unidadeId, q, situacao }
+  const link = (mudanca: Record<string, string | null>) =>
+    enderecoCom(`/${slug}/estoque`, atuais, mudanca)
 
   const colunas = [
     {
@@ -245,9 +272,34 @@ export default async function TelaEstoque({
         </Secao>
       )}
 
-      <Secao titulo="Tudo que tem">
+      <Secao
+        titulo="Tudo que tem"
+        acao={
+          <Fichas
+            opcoes={[
+              { valor: null, rotulo: 'tudo', quantos: itens.length },
+              { valor: 'acabaram', rotulo: 'acabaram', quantos: acabaram.length },
+              { valor: 'minimo', rotulo: 'no mínimo', quantos: noMinimo.length },
+              { valor: 'ok', rotulo: 'com estoque', quantos: itens.length - acabaram.length - noMinimo.length },
+            ]}
+            atual={situacao}
+            linkDe={(v) => link({ situacao: v })}
+          />
+        }
+      >
+        <Busca
+          valor={q}
+          placeholder="Nome ou etiqueta"
+          rotulo="Buscar no estoque"
+          manter={{ unidade: onde.unidadeId, situacao }}
+          limparEm={link({ q: null })}
+        />
         <Cartao
-          titulo={`${itens.length} item(ns)`}
+          titulo={
+            q || situacao
+              ? `${listados.length} de ${itens.length} item(ns)`
+              : `${itens.length} item(ns)`
+          }
           acao={
             valorParado > 0 ? (
               <span className="text-xs text-tinta-3">
@@ -263,8 +315,10 @@ export default async function TelaEstoque({
             <Vazio>
               Nenhum item com estoque nesta loja. Cadastre um produto e dê entrada nele.
             </Vazio>
+          ) : listados.length === 0 ? (
+            <Vazio>{q ? `Nada com “${q}”.` : 'Nada nessa situação.'}</Vazio>
           ) : (
-            <Tabela colunas={colunas} linhas={itens} chave={(i) => i.id} vazio="Vazio." />
+            <Tabela colunas={colunas} linhas={listados} chave={(i) => i.id} vazio="Vazio." />
           )}
         </Cartao>
       </Secao>
