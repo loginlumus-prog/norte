@@ -23,12 +23,30 @@ const url =
 
 const SENHA_APP = process.env.SENHA_APP ?? 'norte_dev'
 
+// ── o banco é daqui ou é de verdade? ─────────────────────────
+// As duas empresas de exemplo (ana@exemplo.com e a Vizinha, com senha escrita
+// no repositório) são ótimas no laptop e são um buraco em produção: e-mail
+// conhecido, senha conhecida, dono de uma empresa que ninguém criou.
+//
+// A trava não é uma bandeira que alguém precisa lembrar de passar — quem
+// esquece a bandeira é justamente quem não devia semear. Ela olha PARA ONDE
+// está apontando: fora de 127.0.0.1, não semeia, e diz por quê. Quem quiser
+// exemplo num banco remoto de propósito (uma demonstração, um ambiente de
+// teste) pede na mão com `--com-exemplo`.
+const local = /@(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(url)
+const pediuExemplo = process.argv.includes('--com-exemplo')
+const semear = local || pediuExemplo
+
 const cliente = new Client({ connectionString: url })
 await cliente.connect()
 
 const passo = (t: string) => console.log(`  ${t}`)
 
 console.log(`\n  Preparando ${url.replace(/:[^:@]*@/, ':***@')}\n`)
+
+if (!local) {
+  console.log('  ⚠  Este banco NÃO é local.\n')
+}
 
 // ── 1. tabelas ───────────────────────────────────────────────
 // O DDL gerado pelo Prisma não é idempotente (CREATE TYPE sem IF NOT EXISTS),
@@ -95,11 +113,16 @@ await cliente.query(`
 passo('travas de isolamento (RLS)...')
 await cliente.query(ler('prisma/sql/rls.sql'))
 
-await semearExemplo(cliente, passo)
+if (semear) {
+  await semearExemplo(cliente, passo)
+} else {
+  passo('empresas de exemplo: PULADAS (banco remoto)')
+}
 
 await cliente.end()
 
-console.log(`
+if (semear) {
+  console.log(`
   Pronto.
 
   Entrar como:  ana@exemplo.com (dona) / carlos@exemplo.com (balcao)
@@ -109,6 +132,22 @@ console.log(`
     DATABASE_URL="postgresql://app_norte:${SENHA_APP}@127.0.0.1:${process.env.PORTA_BANCO ?? 5433}/postgres"
     DATABASE_URL_ADMIN="${url}"
 `)
+} else {
+  // Sem exemplo, o banco está montado e VAZIO — que é o certo para produção, e
+  // também quer dizer que ninguém entra nele ainda. A primeira empresa nasce
+  // por fora; enquanto esse caminho não existe, este aviso é o lembrete.
+  const alvo = new URL(url)
+  console.log(`
+  Pronto — tabelas, papel da aplicação e travas de isolamento.
+  Nenhuma empresa foi criada: este banco não é local.
+
+  A URL da aplicação (o papel SEM privilégio, o que faz o RLS valer):
+    DATABASE_URL="postgresql://app_norte:<SENHA_APP>@${alvo.host}${alvo.pathname}"
+
+  Para semear o exemplo aqui mesmo, de propósito:
+    npm run preparar -- --com-exemplo
+`)
+}
 
 /** Escapa senha para dentro do SQL. */
 function quote(s: string) {
