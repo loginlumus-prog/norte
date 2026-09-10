@@ -16,7 +16,8 @@
     "dev": "tsx scripts/tudo.ts",
     "dev:so-web": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "conexao": "tsx scripts/conferir-conexao.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

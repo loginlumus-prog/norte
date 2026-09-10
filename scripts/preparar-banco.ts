@@ -26,7 +26,30 @@ const url =
   process.env.DATABASE_URL_ADMIN ??
   `postgresql://postgres:postgres@127.0.0.1:${process.env.PORTA_BANCO ?? 5433}/postgres`
 
-const SENHA_APP = process.env.SENHA_APP ?? 'norte_dev'
+// ── a senha do papel da aplicação ────────────────────────────
+// O padrão `norte_dev` existe para o laptop não precisar de configuração
+// nenhuma, e isso é bom — mas ele quase virou a senha do banco de produção.
+// Aconteceu: o SENHA_APP sumiu do .env.producao numa reescrita do arquivo, o
+// script não reclamou, e o papel nasceu com a senha que está escrita AQUI,
+// neste arquivo, no repositório.
+//
+// Não deu erro em lugar nenhum. O banco subiu, o RLS aplicou, tudo parecia
+// certo — e a aplicação tinha uma credencial pública.
+//
+// Fora do laptop, agora, é obrigatório: sem SENHA_APP, o script para.
+const SENHA_APP = process.env.SENHA_APP ?? (ehLocal(url) ? 'norte_dev' : '')
+
+if (!SENHA_APP) {
+  console.error(
+    `\n  RECUSADO: falta SENHA_APP em ${arquivo}.\n\n` +
+      `  Este banco não é o do laptop, e o padrão do script (norte_dev) está\n` +
+      `  escrito no repositório. Criar o papel da aplicação com ele seria pôr\n` +
+      `  uma senha pública no banco de produção.\n\n` +
+      `  Gere uma:\n` +
+      `    node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"\n`,
+  )
+  process.exit(1)
+}
 
 // ── o banco é daqui ou é de verdade? ─────────────────────────
 // As duas empresas de exemplo (ana@exemplo.com e a Vizinha, com senha escrita
