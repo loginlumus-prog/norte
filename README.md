@@ -258,6 +258,18 @@ desenvolvimento:
   "esta escrita tem que dar erro" envenenaria a conexão e as seguintes
   passariam pelo motivo errado. Essas ficam no `npm test`, que fala com o
   PGlite direto e não sofre disso.
+- **O usuário da URL é ignorado.** Medido: conectando com
+  `app_portaria:portaria_dev` o banco responde `current_user = postgres`, com
+  `rolsuper = true`. Ou seja, **toda** conexão local é superusuário, inclusive a
+  da aplicação — e permissão por papel ou por coluna simplesmente não existe
+  aqui. O isolamento continua valendo no laptop porque o `comoOrg` faz
+  `set local role` explícito dentro da transação, e não porque a conexão seja
+  limitada.
+
+  A consequência prática: qualquer coisa que dependa de **quem** a conexão é —
+  o papel sem privilégio, a portaria que só lê nove colunas — passa
+  automaticamente no local, sem provar nada. Isso se confere com
+  `npm run conexao -- --producao`, contra um Postgres que autentica de verdade.
 
 Quando houver banco hospedado (Neon é o plano — ver `DECISOES.md`), as
 checagens de escrita voltam para o `conferir`.

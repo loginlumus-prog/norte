@@ -12,7 +12,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 
 const PAPEL_APP = 'app_norte'
 
-function url(nome: 'DATABASE_URL' | 'DATABASE_URL_ADMIN') {
+function url(nome: 'DATABASE_URL' | 'DATABASE_URL_PORTARIA') {
   const v = process.env[nome]
   if (!v) throw new Error(`Falta ${nome} no .env. Rode "npm run preparar" para ver a sua.`)
   return v
@@ -92,15 +92,27 @@ export async function comoOrg<T>(
  * assim nunca existe busca de usuário por e-mail atravessando empresas, que
  * seria um buraco pronto para enumerar cliente dos outros.
  *
+ * ── por que uma conexão só para isto ─────────────────────────
+ * Isto já foi feito com a credencial de ADMIN, e essa era a maior fraqueza da
+ * arquitetura: no Postgres do Supabase o papel `postgres` tem BYPASSRLS, ou
+ * seja, ele passa por cima de TODA política de TODA tabela. Era uma chave
+ * mestra viva no ambiente de produção, usada a cada tela de login, para
+ * responder uma pergunta de portaria.
+ *
+ * Agora quem responde é `app_portaria`, que no banco só tem permissão de
+ * SELECT em NOVE COLUNAS de UMA tabela. Se este segredo vazar, o que se ganha
+ * é a fachada das empresas — nome, slug, logo, cor. Nem uma venda, nem um
+ * cliente, nem um centavo.
+ *
  * Devolve só o que a tela de login precisa mostrar. Nada sensível.
  */
-let admin: PrismaClient | undefined
+let portaria: PrismaClient | undefined
 
 export async function acharOrgPorSlug(slug: string) {
-  admin ??= new PrismaClient({
-    adapter: new PrismaPg({ connectionString: url('DATABASE_URL_ADMIN'), max: 1 }),
+  portaria ??= new PrismaClient({
+    adapter: new PrismaPg({ connectionString: url('DATABASE_URL_PORTARIA'), max: 1 }),
   })
-  return admin.org.findUnique({
+  return portaria.org.findUnique({
     where: { slug },
     select: {
       id: true,
@@ -119,5 +131,5 @@ export async function acharOrgPorSlug(slug: string) {
 
 export async function fechar() {
   await guardado.__prismaNorte?.$disconnect()
-  await admin?.$disconnect()
+  await portaria?.$disconnect()
 }

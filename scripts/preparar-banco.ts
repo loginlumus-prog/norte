@@ -38,14 +38,18 @@ const url =
 //
 // Fora do laptop, agora, é obrigatório: sem SENHA_APP, o script para.
 const SENHA_APP = process.env.SENHA_APP ?? (ehLocal(url) ? 'norte_dev' : '')
+const SENHA_PORTARIA = process.env.SENHA_PORTARIA ?? (ehLocal(url) ? 'portaria_dev' : '')
 
-if (!SENHA_APP) {
+if (!SENHA_APP || !SENHA_PORTARIA) {
+  const faltando = [!SENHA_APP && 'SENHA_APP', !SENHA_PORTARIA && 'SENHA_PORTARIA']
+    .filter(Boolean)
+    .join(' e ')
   console.error(
-    `\n  RECUSADO: falta SENHA_APP em ${arquivo}.\n\n` +
-      `  Este banco não é o do laptop, e o padrão do script (norte_dev) está\n` +
-      `  escrito no repositório. Criar o papel da aplicação com ele seria pôr\n` +
-      `  uma senha pública no banco de produção.\n\n` +
-      `  Gere uma:\n` +
+    `\n  RECUSADO: falta ${faltando} em ${arquivo}.\n\n` +
+      `  Este banco não é o do laptop, e os padrões do script estão escritos no\n` +
+      `  repositório. Criar os papéis com eles seria pôr senha pública no banco\n` +
+      `  de produção — já aconteceu uma vez, sem dar erro nenhum.\n\n` +
+      `  Gere as que faltam:\n` +
       `    node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"\n`,
   )
   process.exit(1)
@@ -137,6 +141,37 @@ await cliente.query(`
   grant usage on schema public to app_norte;
   grant select, insert, update, delete on all tables in schema public to app_norte;
   grant usage, select on all sequences in schema public to app_norte;
+`)
+
+// ── 2.1 a portaria ───────────────────────────────────────────
+// Um papel que só sabe responder "de que empresa é este endereço", que é a
+// única leitura legítima antes de existir empresa no contexto.
+//
+// O limite dele não está na política de RLS — está no GRANT por COLUNA. Ele
+// enxerga a fachada da empresa (nome, slug, logo, cor, o que a tela de login
+// precisa) e mais nada: nem documento, nem telefone, nem crédito de IA, nem o
+// teto de desconto do assistente.
+//
+// Antes quem fazia isso era o admin, que no Postgres do Supabase tem
+// BYPASSRLS — uma credencial que lê o banco inteiro, viva no ambiente de
+// produção, usada a cada login.
+passo('portaria (o papel que só abre a porta)...')
+await cliente.query(`
+  do $$
+  begin
+    if not exists (select 1 from pg_roles where rolname = 'app_portaria') then
+      create role app_portaria login password ${quote(SENHA_PORTARIA)};
+    end if;
+  end $$;
+
+  grant usage on schema public to app_portaria;
+
+  -- nada em bloco: só esta tabela, e só estas colunas
+  revoke all on all tables in schema public from app_portaria;
+  grant select (
+    id, nome, slug, situacao, logo_url, cor_marca,
+    modulos, configurada_em, agente_nome
+  ) on public.orgs to app_portaria;
 `)
 
 // ── 3. as travas ─────────────────────────────────────────────

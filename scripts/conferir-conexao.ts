@@ -116,6 +116,57 @@ ok('consulta sem empresa no contexto não devolve nada', solto[0]!.n === '0')
 
 await c.end()
 
+// ── 5. a portaria só abre a porta ────────────────────────────
+// O papel que responde "de que empresa é este endereço", antes de existir
+// sessão. Ele precisa ler a fachada e NÃO PODE ler mais nada — se um dia
+// alguém der `grant ... on all tables` em bloco, é aqui que aparece.
+//
+// Este teste não existe no banco local, e não por esquecimento: o PGlite
+// ignora o usuário da URL e responde tudo como superusuário. Permissão por
+// papel e por coluna só é verificável num Postgres que autentica de verdade.
+const urlPortaria = process.env.DATABASE_URL_PORTARIA
+if (!urlPortaria) {
+  ok('DATABASE_URL_PORTARIA configurada', false, `falta em ${arquivo}`)
+} else {
+  const p = new Client({ connectionString: urlPortaria, connectionTimeoutMillis: 15000 })
+  await p.connect()
+
+  const { rows: eu } = await p.query<{ eu: string; super: boolean; ignora: boolean }>(
+    `select current_user as eu,
+            (select rolsuper from pg_roles where rolname = current_user) as "super",
+            (select rolbypassrls from pg_roles where rolname = current_user) as ignora`,
+  )
+  ok('a portaria chega como app_portaria', eu[0]!.eu === 'app_portaria', eu[0]!.eu)
+  ok('e não é superusuário nem ignora RLS', !eu[0]!.super && !eu[0]!.ignora)
+
+  const deixa = async (sql: string) => {
+    try {
+      await p.query(sql)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  ok('lê a fachada da empresa', await deixa('select id, nome, slug, cor_marca from orgs limit 1'))
+
+  // O que ela NÃO pode. Cada um destes é uma coluna ou tabela que a tela de
+  // login não precisa — e que, portanto, este segredo não deve alcançar.
+  const proibido: [string, string][] = [
+    ['o documento e o telefone', 'select documento, telefone from orgs limit 1'],
+    ['o crédito de IA', 'select credito_ia_cent from orgs limit 1'],
+    ['a tabela inteira com select *', 'select * from orgs limit 1'],
+    ['os usuários', 'select * from usuarios limit 1'],
+    ['as vendas', 'select * from vendas limit 1'],
+  ]
+  for (const [nome, sql] of proibido) {
+    ok(`e NÃO alcança ${nome}`, !(await deixa(sql)))
+  }
+  ok('e não escreve', !(await deixa("update orgs set nome = nome where id = ''")))
+
+  await p.end()
+}
+
 console.log(
   `\n  ${falhou === 0 ? 'Tudo certo' : 'TEM COISA ERRADA'}. ${passou} conferências${
     falhou ? `, ${falhou} falharam` : ''

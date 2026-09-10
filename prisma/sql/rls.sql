@@ -53,6 +53,36 @@ create policy org_propria on public.orgs
   using (id = app_org_id())
   with check (id = app_org_id());
 
+-- ── a portaria: quem responde "de quem é este endereço" ─────
+--
+-- Existe UMA leitura que acontece legitimamente antes de existir empresa no
+-- contexto: descobrir de que empresa é o endereço acessado, para a tela de
+-- login saber que nome e que cor mostrar. É o ovo e a galinha do multi-empresa.
+--
+-- Antes isso era feito com a credencial de ADMIN — que no Postgres do Supabase
+-- tem BYPASSRLS, ou seja, passa por cima de toda política de toda tabela. Uma
+-- credencial que lê o banco inteiro, no ambiente de produção, usada a cada
+-- login, para responder uma pergunta de portaria.
+--
+-- Agora quem responde é um papel que só sabe isso. A política abaixo deixa ele
+-- LER linha de orgs; o que limita o estrago é o GRANT por COLUNA, feito no
+-- preparar-banco.ts: ele enxerga nome, slug, logo e cor, e mais nada — nem
+-- documento, nem telefone, nem crédito, nem os limites do assistente.
+--
+-- Sobra: ele consegue enumerar empresas. Para fechar também isso, o caminho é
+-- trocar a consulta por uma função SECURITY DEFINER que recebe o slug e não
+-- deixa listar. Fica anotado; o ganho aqui já é sair de "lê tudo" para "lê a
+-- fachada".
+drop policy if exists org_portaria on public.orgs;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'app_portaria') then
+    create policy org_portaria on public.orgs
+      for select to app_portaria
+      using (true);
+  end if;
+end $$;
+
 -- ── auditoria é livro: só entra, nunca muda nem sai ──────────
 drop policy if exists org_isolada on public.auditoria;
 
