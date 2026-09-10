@@ -99,12 +99,18 @@ export async function terminarCadastro(
       await db.unidade.create({ data: { orgId: sessao.orgId, ...dadosUnidade } })
     }
 
-    // Semeia os eixos do ramo. Isto é ATALHO, não regra: a empresa acrescenta,
-    // renomeia e apaga depois. O ramo escolhe o que nasce pronto, nunca o
+    // ── o que o ramo deixa pronto ────────────────────────────
+    // Tudo daqui para baixo é ATALHO, não regra: a empresa acrescenta,
+    // renomeia e apaga depois. O ramo escolhe o que NASCE pronto, nunca o
     // caminho que o código toma.
+    //
+    // E cada bloco só age se ainda não existir nada — quem voltar ao cadastro
+    // para trocar o telefone não pode ganhar uma segunda leva de categorias.
+    const preset = RAMOS[ramo]
+
     const jaTemEixo = await db.eixo.count()
     if (jaTemEixo === 0) {
-      for (const [i, e] of RAMOS[ramo].eixos.entries()) {
+      for (const [i, e] of preset.eixos.entries()) {
         const eixo = await db.eixo.create({
           data: { orgId: sessao.orgId, nome: e.nome, ordem: i, ehCor: e.ehCor },
         })
@@ -113,6 +119,32 @@ export async function terminarCadastro(
             data: { orgId: sessao.orgId, eixoId: eixo.id, valor, ordem: j },
           })
         }
+      }
+    }
+
+    // As gavetas do catálogo. Tela de categoria vazia é uma pergunta sem
+    // resposta ("como é que EU deveria dividir isso?"); cinco nomes do ramo
+    // dela são um ponto de partida que ela corrige em trinta segundos.
+    const jaTemCategoria = await db.categoria.count()
+    if (jaTemCategoria === 0 && preset.categorias.length > 0) {
+      await db.categoria.createMany({
+        data: preset.categorias.map((nome, i) => ({ orgId: sessao.orgId, nome, ordem: i })),
+      })
+    }
+
+    // O assistente nasce DESLIGADO e sem poder nenhum — mas já sabendo do que
+    // aquele comércio vive. O manual do ramo é o que separa um assistente que
+    // pergunta "qual o tamanho?" numa sapataria (onde a pergunta é o NÚMERO)
+    // de um que abre a boca certo no primeiro dia.
+    //
+    // `create` direto, e não `salvarAgente`: aquela função abre a própria
+    // transação, e a gente já está dentro de uma.
+    if (agenteNome) {
+      const jaTemAgente = await db.agente.count()
+      if (jaTemAgente === 0) {
+        await db.agente.create({
+          data: { orgId: sessao.orgId, nome: agenteNome, manual: preset.manual },
+        })
       }
     }
 

@@ -38,7 +38,7 @@ export async function semearExemplo(cliente: Client, passo: (t: string) => void)
         ('org-exemplo-a', 'Comércio Exemplo', 'exemplo', 'BALCAO_AGENTE', 'ATIVA', '#0D4A57',
          'roupa', ARRAY['agente','metas','multiUnidade'], now(), '(71) 99999-0000', now(), now()),
         ('org-exemplo-b', 'Empresa Vizinha', 'vizinha', 'REDE', 'ATIVA', '#7A4B12',
-         'alimentacao', ARRAY['crediario','notaFiscal','multiUnidade'], now(), null, now(), now());
+         'sorveteria', ARRAY['crediario','notaFiscal','multiUnidade'], now(), null, now(), now());
 
       -- A de exemplo tem programa de pontos ligado; a Vizinha nao. E assim que
       -- se ve, lado a lado, o balcao com e sem a oferta de pontos na tela.
