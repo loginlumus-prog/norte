@@ -18,9 +18,9 @@
 
 import { PGlite } from '@electric-sql/pglite'
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createConnection } from 'node:net'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const PASTA = join(process.cwd(), '.banco')
@@ -48,6 +48,45 @@ if (await portaOcupada()) {
   servidor = new PGLiteSocketServer({ db, port: PORTA, host: '127.0.0.1', maxConnections: 30 })
   await servidor.start()
   console.log(`\n  banco no ar na ${PORTA}  (dados em .banco/)\n`)
+}
+
+// ── o cliente do Prisma acompanha o schema ───────────────────
+// O `prisma generate` escreve um cliente dentro do node_modules, e é ELE que
+// sabe quais campos existem. Mudar o schema.prisma sem gerar de novo deixa um
+// cliente velho no processo — e o erro que sai é this:
+//
+//   PrismaClientValidationError: Invalid `prisma.org.update()` invocation
+//   Unknown argument `porte`. Did you mean `nome`?
+//
+// Que na tela vira "Deu problema aqui do nosso lado", sem nenhuma pista de que
+// a causa é um comando que faltou rodar. Já custou caro uma vez: o cadastro
+// inicial parou de funcionar e o motivo estava a três camadas de distância.
+//
+// A conferência é por CONTEÚDO, não por data de arquivo: `git checkout` mexe
+// na data sem mexer no conteúdo, e a gente geraria de novo à toa toda vez que
+// trocasse de branch.
+//
+// (Isto cobre subir o sistema com o schema já mudado. Mudar o schema com o
+// sistema NO AR continua pedindo um reinício — o cliente já está carregado na
+// memória do processo, e nada aqui alcança isso.)
+const copiaGerada = join(process.cwd(), 'node_modules', '.prisma', 'client', 'schema.prisma')
+const atual = join(process.cwd(), 'prisma', 'schema.prisma')
+
+const igual = (() => {
+  try {
+    return readFileSync(copiaGerada, 'utf8') === readFileSync(atual, 'utf8')
+  } catch {
+    return false
+  }
+})()
+
+if (!igual) {
+  console.log('  schema mudou — gerando o cliente do Prisma...\n')
+  const r = spawnSync('npx prisma generate', { stdio: 'inherit', shell: true })
+  if (r.status !== 0) {
+    console.error('\n  O `prisma generate` falhou. Sem ele o sistema sobe com o cliente velho.\n')
+    process.exit(1)
+  }
 }
 
 // Comando inteiro numa string só, e não `spawn(cmd, [args])`: com `shell: true`

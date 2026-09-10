@@ -28,7 +28,19 @@ export async function apagarExemplo(cliente: Client) {
 
 export async function semearExemplo(cliente: Client, passo: (t: string) => void) {
   // ── 4. exemplo ───────────────────────────────────────────────
-  const { rows } = await cliente.query<{ n: string }>('select count(*)::int as n from orgs')
+  // A pergunta certa é "as DUAS de exemplo existem?", e não "a tabela está
+  // vazia?".
+  //
+  // Era a segunda, e o efeito só apareceu quando passou a existir empresa de
+  // verdade no laptop: a conferência apaga as duas de exemplo, chega aqui,
+  // encontra a tabela NÃO vazia por causa da outra empresa, decide que não
+  // precisa semear — e o passo seguinte tenta gravar catálogo numa empresa que
+  // acabou de ser apagada. O erro sai lá na frente, como violação de chave
+  // estrangeira em `eixos`, sem dizer nada sobre a causa.
+  const { rows } = await cliente.query<{ n: string }>(
+    'select count(*)::int as n from orgs where id = any($1)',
+    [[ORG_A, ORG_B]],
+  )
   if (Number(rows[0]!.n) === 0) {
     passo('duas empresas de exemplo...')
     await cliente.query(`
@@ -81,7 +93,7 @@ export async function semearExemplo(cliente: Client, passo: (t: string) => void)
     // 'usr-a4' fica de proposito SEM acesso: e o caso "conta existe, senha bate,
     // mas nao tem papel em lugar nenhum".
   } else {
-    passo('já tem empresa cadastrada — exemplo não foi tocado')
+    passo('as empresas de exemplo já existem — não foram tocadas')
   }
 
   if (await semearCatalogo(cliente, 'org-exemplo-a', 'uni-a1')) {

@@ -90,17 +90,28 @@ async function chao() {
   const c = new Client({ connectionString: process.env.DATABASE_URL_ADMIN })
   await c.connect()
 
-  // Trava: apagar empresa é coisa séria. Se existir alguma que não seja uma
-  // das duas de exemplo, este banco é de alguém — e ninguém roda conferência
-  // em cima de loja funcionando.
-  const { rows: orgs } = await c.query<{ id: string }>('select id from orgs')
-  const estranha = orgs.find((o) => o.id !== A && o.id !== B)
-  if (estranha) {
-    console.error(`
-  RECUSADO: este banco tem empresa de verdade (${estranha.id}).`)
-    console.error(`  A conferência apaga e recria o exemplo. Aponte o .env para o banco local.
-`)
-    process.exit(1)
+  // ── o que esta conferência apaga, e o que ela NÃO apaga ──
+  // Ela apaga e recria DUAS empresas, pelos ids: as de exemplo. Qualquer outra
+  // que exista aqui passa incólume — o delete é por id, não por varredura.
+  //
+  // Antes isto era uma RECUSA: achou empresa estranha, não roda. A intenção
+  // era boa e o efeito era ruim. Criar uma empresa no laptop para testar o
+  // caminho de verdade (`npm run empresa`) passava a impedir a conferência de
+  // rodar, e a saída virava apagar a empresa que a gente acabou de criar — que
+  // foi exatamente o que aconteceu, e a empresa sumiu debaixo de quem ia usar.
+  //
+  // A trava contra rodar isto num banco de gente existe, e é outra: o
+  // `exigirBancoLocal` lá em cima, que só deixa passar 127.0.0.1. Aqui basta
+  // dizer o que fica de fora, em voz alta.
+  const { rows: orgs } = await c.query<{ id: string; nome: string }>('select id, nome from orgs')
+  const outras = orgs.filter((o) => o.id !== A && o.id !== B)
+  if (outras.length > 0) {
+    console.log(
+      `\n  Este banco tem ${outras.length} empresa(s) além das de exemplo. ` +
+        `Nenhuma será tocada:\n` +
+        outras.map((o) => `    · ${o.nome}`).join('\n') +
+        '\n',
+    )
   }
 
   await apagarExemplo(c)
