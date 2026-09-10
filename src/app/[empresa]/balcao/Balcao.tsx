@@ -13,9 +13,10 @@
 // 4. O TROCO APARECE ANTES DE CONFIRMAR, grande. É o número que a pessoa vai
 //    conferir na gaveta.
 
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { EscolherCliente } from './Cliente'
 import type { ClienteNoBalcao } from './acoes'
+import { chaveDoBalcao, guardar, recuperar, esquecer, faz } from './guardar'
 import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
 import { Botao, Campo, Aviso, Situacao, cx } from '@/ui/base'
 import { procurar, fecharVenda, type Achado } from './acoes'
@@ -35,12 +36,15 @@ const cent = (v: number) => Math.round(v * 100)
 export function Balcao({
   slug,
   unidadeId,
+  usuarioId,
   caixaId,
   unidadeNome,
   programa,
 }: {
   slug: string
   unidadeId: string
+  /** Quem está operando. Entra na chave do que fica guardado — ver guardar.ts. */
+  usuarioId: string
   caixaId: string | null
   unidadeNome: string
   programa: Programa
@@ -53,10 +57,44 @@ export function Balcao({
   const [cliente, setCliente] = useState<ClienteNoBalcao | null>(null)
   const [pontosUsar, setPontosUsar] = useState(0)
   const [recado, setRecado] = useState<{ nivel: 'bom' | 'critico'; texto: string } | null>(null)
+  const [voltou, setVoltou] = useState<number | null>(null)
   const [indo, comecar] = useTransition()
 
   const busca = useRef<HTMLInputElement>(null)
   const focarBusca = () => busca.current?.focus()
+
+  // ── a venda em andamento não se perde ────────────────────
+  // Ver guardar.ts para o porquê. Aqui é só a ligação com a tela, e ela tem
+  // uma ordem que importa: RECUPERAR antes de começar a GUARDAR.
+  //
+  // Sem isso os dois efeitos brigam na montagem — o de guardar rodaria com o
+  // carrinho ainda vazio e apagaria o que o de recuperar ia buscar. O
+  // `primeiraVez` existe só para o segundo efeito deixar a montagem passar.
+  const chave = useMemo(
+    () => chaveDoBalcao(slug, unidadeId, usuarioId),
+    [slug, unidadeId, usuarioId],
+  )
+  const primeiraVez = useRef(true)
+
+  useEffect(() => {
+    const g = recuperar(chave)
+    if (!g) return
+    setCarrinho(g.carrinho as Linha[])
+    setPagos(g.pagos)
+    setDesconto(g.desconto)
+    setCliente(g.cliente)
+    setPontosUsar(g.pontosUsar)
+    setVoltou(g.em)
+  }, [chave])
+
+  useEffect(() => {
+    if (primeiraVez.current) {
+      primeiraVez.current = false
+      return
+    }
+    if (carrinho.length === 0) esquecer(chave)
+    else guardar(chave, { carrinho, pagos, desconto, cliente, pontosUsar })
+  }, [chave, carrinho, pagos, desconto, cliente, pontosUsar])
 
   // Busca conforme digita, com uma pausa curta para não consultar a cada tecla.
   useEffect(() => {
@@ -125,6 +163,7 @@ export function Balcao({
     setPagos((p) => p.map((x, j) => (j === i ? { ...x, valor: Math.max(valor, 0) } : x)))
 
   function limpar() {
+    setVoltou(null)
     setCarrinho([])
     setPagos([])
     setDesconto(0)
@@ -192,6 +231,24 @@ export function Balcao({
     <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
       {/* ── esquerda: buscar e lançar ── */}
       <div className="flex flex-col gap-3">
+        {/* Recuperar em silêncio seria pior que perder: a pessoa veria itens
+            que ela não lançou agora e não saberia de onde vieram. Diz o que
+            aconteceu, de quando é, e deixa jogar fora num clique. */}
+        {voltou !== null && carrinho.length > 0 && (
+          <Aviso nivel="atencao">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>Recuperamos a venda que estava sendo montada {faz(voltou)}.</span>
+              <button
+                type="button"
+                onClick={limpar}
+                className="font-semibold underline underline-offset-2"
+              >
+                Não é essa — começar do zero
+              </button>
+            </span>
+          </Aviso>
+        )}
+
         {recado && <Aviso nivel={recado.nivel}>{recado.texto}</Aviso>}
 
         <div className="relative">

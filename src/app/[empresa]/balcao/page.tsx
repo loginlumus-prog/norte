@@ -96,6 +96,7 @@ export default async function BalcaoPagina({
           <Balcao
             slug={slug}
             unidadeId={unidadeId}
+            usuarioId={sessao.usuarioId}
             caixaId={caixa.id}
             unidadeNome={unidadeNome}
             programa={programa}
