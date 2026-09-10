@@ -11,7 +11,7 @@
 //
 // As empresas de exemplo só nascem em banco local. Ver a trava mais abaixo.
 
-import { carregarAmbiente } from './ambiente'
+import { carregarAmbiente, ehLocal } from './ambiente'
 import { Client } from 'pg'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -38,7 +38,7 @@ const SENHA_APP = process.env.SENHA_APP ?? 'norte_dev'
 // está apontando: fora de 127.0.0.1, não semeia, e diz por quê. Quem quiser
 // exemplo num banco remoto de propósito (uma demonstração, um ambiente de
 // teste) pede na mão com `--com-exemplo`.
-const local = /@(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(url)
+const local = ehLocal(url)
 const pediuExemplo = process.argv.includes('--com-exemplo')
 const semear = local || pediuExemplo
 

@@ -44,3 +44,43 @@ export function carregarAmbiente(): { producao: boolean; arquivo: string } {
   config({ path: arquivo })
   return { producao, arquivo }
 }
+
+/**
+ * O banco desta URL é o do laptop?
+ *
+ * Definição única de propósito: dois scripts decidem coisa diferente com esta
+ * mesma resposta (um pula o exemplo, o outro se recusa a rodar), e duas cópias
+ * da regra divergiriam no dia em que alguém acrescentasse um host.
+ *
+ * Casa com o `@` que separa a senha do host, e não com a senha — senha com `@`
+ * dentro existe, e um teste ingênuo diria "local" para um banco remoto.
+ */
+export function ehLocal(url: string | undefined): boolean {
+  return !!url && /@(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(url)
+}
+
+/**
+ * Impede que um script destrutivo rode em banco que não é o do laptop.
+ *
+ * A conferência APAGA e recria as duas empresas de exemplo a cada execução —
+ * ela é bancada de teste, não diagnóstico. A trava que já existia dentro dela
+ * só dispara quando encontra empresa de verdade, e por isso não protege o pior
+ * caso: banco de produção ainda VAZIO, esperando o primeiro cliente. Ali ela
+ * passaria direto e deixaria ana@exemplo.com com senha conhecida no ar.
+ */
+export function exigirBancoLocal(o: { script: string }): void {
+  const url = process.env.DATABASE_URL_ADMIN
+  if (ehLocal(url)) return
+
+  let onde = 'um banco remoto'
+  try {
+    onde = new URL(url!).host
+  } catch {}
+
+  console.error(
+    `\n  RECUSADO: ${o.script} apaga e recria as empresas de exemplo,\n` +
+      `  e este banco não é o do laptop — é ${onde}.\n\n` +
+      `  Rode sem --producao, contra o banco local.\n`,
+  )
+  process.exit(1)
+}
