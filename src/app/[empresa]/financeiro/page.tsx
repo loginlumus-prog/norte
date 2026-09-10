@@ -1,7 +1,10 @@
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
-import { aVencer, montarDRE } from '@/servidor/financeiro'
+import { aVencer, montarDRE, listarLancamentos } from '@/servidor/financeiro'
+import { Tabela } from '@/ui/Tabela'
+import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
+import type { TipoLancamento } from '@prisma/client'
 import { comoOrg } from '@/servidor/banco'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
@@ -25,10 +28,21 @@ export default async function Financeiro({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string; mes?: string }>
+  searchParams: Promise<{
+    unidade?: string
+    mes?: string
+    q?: string
+    tipo?: string
+    situacao?: string
+    categoria?: string
+  }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, mes } = await searchParams
+  const { unidade: pedida, mes, q: qBruto, tipo: tipoPedido, situacao: sitPedida, categoria: catPedida } =
+    await searchParams
+  const q = (qBruto ?? '').trim()
+  const tipo: TipoLancamento | null = tipoPedido === 'DESPESA' || tipoPedido === 'RECEITA' ? tipoPedido : null
+  const situacaoL: 'aberto' | 'pago' | null = sitPedida === 'aberto' || sitPedida === 'pago' ? sitPedida : null
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -42,7 +56,7 @@ export default async function Financeiro({
   const de = new Date(ano!, mesNum! - 1, 1)
   const ate = new Date(ano!, mesNum!, 0, 23, 59, 59)
 
-  const [contas, dre, categorias, unidades] = await Promise.all([
+  const [contas, dre, categorias, unidades, lancamentos] = await Promise.all([
     aVencer(sessao, onde.ids),
     montarDRE(sessao, onde.ids, de, ate),
     comoOrg(sessao.orgId, (db) =>
@@ -59,7 +73,33 @@ export default async function Financeiro({
         select: { id: true, nome: true },
       }),
     ),
+    listarLancamentos(sessao, {
+      unidadeIds: onde.ids,
+      ano: ano!,
+      mes: mesNum!,
+      tipo,
+      situacao: situacaoL,
+      categoriaId: catPedida ?? null,
+      q,
+    }),
   ])
+
+  const categoriaL = categorias.some((c) => c.id === catPedida) ? catPedida! : null
+  const atuais = {
+    unidade: onde.unidadeId,
+    mes: mes ?? null,
+    q,
+    tipo,
+    situacao: situacaoL,
+    categoria: categoriaL,
+  }
+  const linkL = (mudanca: Record<string, string | null>) =>
+    enderecoCom(`/${slug}/financeiro`, atuais, mudanca)
+
+  const somaL = (t: TipoLancamento) =>
+    lancamentos.filter((l) => l.tipo === t).reduce((s, l) => s + l.valor, 0)
+  const abertos = lancamentos.filter((l) => !l.pagoEm)
+  const hojeZero = new Date(new Date().toDateString())
 
   const podeLancar = pode(sessao, 'financeiro.lancar')
   const menu = MENU(slug).map((i) =>
@@ -156,6 +196,136 @@ export default async function Financeiro({
             unidadeId={onde.unidadeId}
           />
         )}
+      </Secao>
+
+      {/* ── LANÇAMENTOS ──
+          O DRE agrega; isto é a prova dele. "Quanto paguei de fornecedor em
+          agosto" e "esse R$ 1.200 é o quê" não tinham onde ser olhados. */}
+      <Secao
+        titulo={`Lançamentos de ${MES[de.getMonth()]}`}
+        resumo="Tudo que foi lançado com vencimento neste mês. É daqui que sai o resultado logo abaixo."
+        acao={
+          <Fichas
+            opcoes={[
+              { valor: null, rotulo: 'tudo', quantos: lancamentos.length },
+              { valor: 'aberto', rotulo: 'em aberto', quantos: abertos.length },
+              { valor: 'pago', rotulo: 'pagos', quantos: lancamentos.length - abertos.length },
+            ]}
+            atual={situacaoL}
+            linkDe={(v) => linkL({ situacao: v })}
+          />
+        }
+      >
+        <div className="flex flex-col gap-2">
+          <Busca
+            valor={q}
+            placeholder="Descrição, fornecedor ou número do documento"
+            rotulo="Buscar lançamento"
+            manter={{ unidade: onde.unidadeId, mes: mes ?? null, tipo, situacao: situacaoL, categoria: categoriaL }}
+            limparEm={linkL({ q: null })}
+          />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Fichas
+              opcoes={[
+                { valor: null, rotulo: 'despesas e receitas' },
+                { valor: 'DESPESA', rotulo: 'só despesas' },
+                { valor: 'RECEITA', rotulo: 'só receitas' },
+              ]}
+              atual={tipo}
+              linkDe={(v) => linkL({ tipo: v })}
+            />
+            <Fichas
+              opcoes={[
+                { valor: null, rotulo: 'todas as categorias' },
+                ...categorias
+                  .filter((c) => !tipo || c.tipo === tipo)
+                  .map((c) => ({ valor: c.id, rotulo: c.nome })),
+              ]}
+              atual={categoriaL}
+              linkDe={(v) => linkL({ categoria: v })}
+            />
+          </div>
+        </div>
+
+        <Cartao
+          titulo={`${lancamentos.length} lançamento${lancamentos.length === 1 ? '' : 's'}`}
+          acao={
+            <span className="flex gap-4 text-xs text-tinta-3">
+              <span>
+                despesas <b className="numero text-tinta-2">{brl(somaL('DESPESA'))}</b>
+              </span>
+              <span>
+                receitas <b className="numero text-tinta-2">{brl(somaL('RECEITA'))}</b>
+              </span>
+            </span>
+          }
+        >
+          <Tabela
+            colunas={[
+              {
+                chave: 'venc',
+                titulo: 'Vence',
+                largura: '5rem',
+                celula: (l: (typeof lancamentos)[number]) => (
+                  <span className="numero text-tinta-2">{dia(l.vencimento)}</span>
+                ),
+              },
+              {
+                chave: 'desc',
+                titulo: 'Lançamento',
+                celula: (l: (typeof lancamentos)[number]) => (
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-tinta">{l.descricao}</span>
+                    <span className="text-xs text-tinta-3">
+                      {l.categoria}
+                      {l.fornecedor ? ` · ${l.fornecedor}` : ''}
+                      {l.documento ? ` · ${l.documento}` : ''}
+                    </span>
+                  </span>
+                ),
+              },
+              {
+                chave: 'sit',
+                titulo: '',
+                largura: '7rem',
+                celula: (l: (typeof lancamentos)[number]) =>
+                  l.pagoEm ? (
+                    <Situacao nivel="bom">pago {dia(l.pagoEm)}</Situacao>
+                  ) : l.vencimento < hojeZero ? (
+                    <Situacao nivel="critico">vencido</Situacao>
+                  ) : (
+                    <Situacao nivel="neutro">em aberto</Situacao>
+                  ),
+              },
+              {
+                chave: 'valor',
+                titulo: 'Valor',
+                numero: true,
+                largura: '8rem',
+                celula: (l: (typeof lancamentos)[number]) => (
+                  <span className={'numero font-semibold ' + (l.tipo === 'RECEITA' ? 'text-bom' : 'text-tinta')}>
+                    {l.tipo === 'RECEITA' ? '+ ' : ''}
+                    {brl(l.valor)}
+                  </span>
+                ),
+              },
+              ...(podeLancar
+                ? [
+                    {
+                      chave: 'acao',
+                      titulo: '',
+                      largura: '6rem',
+                      celula: (l: (typeof lancamentos)[number]) =>
+                        l.pagoEm ? null : <Pagar slug={slug} id={l.id} />,
+                    },
+                  ]
+                : []),
+            ]}
+            linhas={lancamentos}
+            chave={(l) => l.id}
+            vazio={q || tipo || situacaoL || categoriaL ? 'Nada com esse filtro.' : 'Nada lançado neste mês.'}
+          />
+        </Cartao>
       </Secao>
 
       {/* ── DRE ── */}

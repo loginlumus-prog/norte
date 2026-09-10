@@ -8,7 +8,11 @@ import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, Vazio } from '@/ui/base'
 import { Tira, brl } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
+import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
+
+type Quem = 'sumidos' | 'nunca' | 'ativos'
+type Ordem = 'nome' | 'gastou' | 'recente'
 
 // A lista de clientes.
 //
@@ -27,21 +31,47 @@ export default async function Clientes({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ q?: string }>
+  searchParams: Promise<{ q?: string; quem?: string; ordem?: string }>
 }) {
   const { empresa: slug } = await params
-  const { q } = await searchParams
+  const { q, quem: quemPedido, ordem: ordemPedida } = await searchParams
+  const quem: Quem | null =
+    quemPedido === 'sumidos' || quemPedido === 'nunca' || quemPedido === 'ativos' ? quemPedido : null
+  const ordem: Ordem = ordemPedida === 'gastou' || ordemPedida === 'recente' ? ordemPedida : 'nome'
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const clientes = await listarClientes(sessao, q)
   const podeEditar = pode(sessao, 'cliente.editar')
 
-  const sumidos = clientes.filter((c) => {
+  const ehSumido = (c: (typeof clientes)[number]) => {
     const d = diasDesde(c.ultimaCompra)
     return c.compras > 0 && d !== null && d >= DIAS_SUMIDO
-  })
+  }
+  const sumidos = clientes.filter(ehSumido)
   const semCompra = clientes.filter((c) => c.compras === 0)
+
+  // ── quem a pessoa quer ver, e em que ordem ───────────────
+  // A tira de cima ja dizia "14 sumidos" e nao dava para clicar — a pessoa
+  // lia o numero e tinha que procurar um por um na lista. Agora cada numero e
+  // um filtro. E a ordem importa mais aqui do que em qualquer outra lista:
+  // "quem mais gasta" e "quem comprou por ultimo" sao as duas perguntas de
+  // quem vai mandar mensagem, e por nome e so para achar alguem.
+  const listados = clientes
+    .filter((c) =>
+      quem === 'sumidos' ? ehSumido(c) : quem === 'nunca' ? c.compras === 0 : quem === 'ativos' ? c.compras > 0 && !ehSumido(c) : true,
+    )
+    .sort((a, b) =>
+      ordem === 'gastou'
+        ? b.gastou - a.gastou
+        : ordem === 'recente'
+          ? (b.ultimaCompra?.getTime() ?? 0) - (a.ultimaCompra?.getTime() ?? 0)
+          : a.nome.localeCompare(b.nome),
+    )
+
+  const atuais = { q, quem, ordem: ordem === 'nome' ? null : ordem }
+  const link = (mudanca: Record<string, string | null>) =>
+    enderecoCom(`/${slug}/clientes`, atuais, mudanca)
 
   return (
     <Estrutura
@@ -70,34 +100,48 @@ export default async function Clientes({
         ]}
       />
 
-      {/* A busca vive no endereço, não em estado escondido: assim o link da
-          busca pode ser mandado para outra pessoa e abre igual. */}
-      <form className="flex gap-2">
-        <input
-          name="q"
-          defaultValue={q ?? ''}
+      <div className="flex flex-col gap-2">
+        <Busca
+          valor={q}
           placeholder="Nome, telefone ou CPF"
-          aria-label="Buscar cliente"
-          className="flex-1 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
+          rotulo="Buscar cliente"
+          manter={{ quem, ordem: atuais.ordem }}
+          limparEm={link({ q: null })}
         />
-        <button
-          type="submit"
-          className="rounded-norte border border-borda bg-superficie px-4 py-2 text-sm font-semibold text-tinta hover:bg-superficie-2"
-        >
-          Buscar
-        </button>
-        {q && (
-          <Link
-            href={`/${slug}/clientes`}
-            className="flex items-center px-2 text-sm text-tinta-3 hover:text-tinta"
-          >
-            limpar
-          </Link>
-        )}
-      </form>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <Fichas
+            opcoes={[
+              { valor: null, rotulo: 'todos', quantos: clientes.length },
+              { valor: 'ativos', rotulo: 'compram', quantos: clientes.length - semCompra.length - sumidos.length },
+              { valor: 'sumidos', rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length },
+              { valor: 'nunca', rotulo: 'nunca compraram', quantos: semCompra.length },
+            ]}
+            atual={quem}
+            linkDe={(v) => link({ quem: v })}
+          />
+          <span className="flex items-center gap-1 text-xs text-tinta-3">
+            ordenar:
+            <Fichas
+              opcoes={[
+                { valor: null, rotulo: 'nome' },
+                { valor: 'gastou', rotulo: 'quem mais gasta' },
+                { valor: 'recente', rotulo: 'compra mais recente' },
+              ]}
+              atual={ordem === 'nome' ? null : ordem}
+              linkDe={(v) => link({ ordem: v })}
+            />
+          </span>
+        </div>
+      </div>
 
       <Cartao
-        titulo={q ? `Resultado de “${q}”` : `${clientes.length} cliente(s)`}
+        titulo={
+          q
+            ? `Resultado de “${q}”`
+            : quem
+              ? `${listados.length} de ${clientes.length} cliente(s)`
+              : `${clientes.length} cliente(s)`
+        }
         acao={
           clientes.length >= 200 ? (
             <span className="text-xs text-tinta-3">
@@ -174,9 +218,9 @@ export default async function Clientes({
                 },
               },
             ]}
-            linhas={clientes}
+            linhas={listados}
             chave={(c) => c.id}
-            vazio="Ninguém aqui."
+            vazio={quem === 'sumidos' ? 'Ninguém sumido — bom sinal.' : quem === 'nunca' ? 'Todo mundo cadastrado já comprou.' : 'Ninguém aqui.'}
           />
         )}
       </Cartao>

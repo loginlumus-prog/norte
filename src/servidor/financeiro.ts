@@ -361,3 +361,94 @@ export async function montarDRE(
     }
   })
 }
+
+/* ── os lançamentos, listados ─────────────────────────────── */
+
+export type FiltroLancamentos = {
+  unidadeIds: string[]
+  /** Mês (1-12) e ano do vencimento. */
+  ano: number
+  mes: number
+  tipo?: TipoLancamento | null
+  categoriaId?: string | null
+  /** 'aberto' = ainda não pago; 'pago' = já pago. */
+  situacao?: 'aberto' | 'pago' | null
+  q?: string | null
+}
+
+export type LancamentoNaLista = {
+  id: string
+  tipo: TipoLancamento
+  descricao: string
+  valor: number
+  vencimento: Date
+  pagoEm: Date | null
+  categoria: string
+  fornecedor: string | null
+  documento: string | null
+  quem: string
+}
+
+/**
+ * Tudo que foi lançado no mês, para ver e corrigir.
+ *
+ * O financeiro tinha o que VENCE e o DRE, e não tinha a lista do que foi
+ * lançado — o dono que quer saber "quanto eu paguei de fornecedor em agosto"
+ * ou "esse lançamento de R$ 1.200 é o quê?" não tinha onde olhar. O DRE
+ * agrega; esta lista é a prova dele.
+ *
+ * Filtra por VENCIMENTO, e não por data de criação: é a coluna que o dono usa
+ * para pensar ("as contas de setembro"), e é a mesma régua do DRE.
+ */
+export async function listarLancamentos(
+  sessao: Sessao,
+  f: FiltroLancamentos,
+): Promise<LancamentoNaLista[]> {
+  exigir(sessao, 'financeiro.ver')
+
+  const de = new Date(f.ano, f.mes - 1, 1)
+  const ate = new Date(f.ano, f.mes, 1)
+  const q = f.q?.trim() ?? ''
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const linhas = await db.lancamento.findMany({
+      where: {
+        // Lançamento sem unidade é da empresa inteira (aluguel do escritório,
+        // contador) e aparece em qualquer loja escolhida.
+        OR: [{ unidadeId: { in: f.unidadeIds } }, { unidadeId: null }],
+        vencimento: { gte: de, lt: ate },
+        ...(f.tipo ? { tipo: f.tipo } : {}),
+        ...(f.categoriaId ? { categoriaId: f.categoriaId } : {}),
+        ...(f.situacao === 'aberto' ? { pagoEm: null } : f.situacao === 'pago' ? { pagoEm: { not: null } } : {}),
+        ...(q
+          ? {
+              OR: [
+                { descricao: { contains: q, mode: 'insensitive' } },
+                { fornecedor: { contains: q, mode: 'insensitive' } },
+                { documento: { contains: q, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ vencimento: 'asc' }, { criadoEm: 'asc' }],
+      take: 500,
+      select: {
+        id: true, tipo: true, descricao: true, valor: true, vencimento: true, pagoEm: true,
+        fornecedor: true, documento: true, quem: true,
+        categoria: { select: { nome: true } },
+      },
+    })
+    return linhas.map((l) => ({
+      id: l.id,
+      tipo: l.tipo,
+      descricao: l.descricao,
+      valor: Number(l.valor),
+      vencimento: l.vencimento,
+      pagoEm: l.pagoEm,
+      categoria: l.categoria.nome,
+      fornecedor: l.fornecedor,
+      documento: l.documento,
+      quem: l.quem,
+    }))
+  })
+}
