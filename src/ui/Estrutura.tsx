@@ -203,7 +203,7 @@ export async function Estrutura({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between gap-3 border-b border-borda bg-superficie px-4 py-2.5">
-          <h1 className="truncate text-base font-bold tracking-tight text-tinta">{titulo}</h1>
+          <h1 className="truncate text-base font-bold tracking-tight">{titulo}</h1>
           {acao}
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4">{children}</main>

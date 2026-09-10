@@ -11,6 +11,7 @@ import { Marca, Simbolo } from '@/ui/Marca'
 import { ConversaFlutuante } from '@/ui/ConversaFlutuante'
 import { Digitando } from '@/ui/Digitando'
 import { CompararPlanos } from '@/ui/CompararPlanos'
+import { TrocaTema } from '@/ui/TrocaTema'
 
 // A página de venda.
 //
@@ -316,7 +317,15 @@ export default function Inicio() {
               peso: quem ja e cliente procura "entrar" e nao pode competir com
               a chamada de venda. Texto simples para um, botao solido escuro
               para o outro. */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* A troca de tema mora aqui e não só dentro do sistema: quem chega
+                pela página de venda também trabalha em sala clara ou escura, e
+                descobrir que o produto tem os dois temas ANTES de assinar é
+                argumento de venda, não configuração escondida.
+
+                Sem `inicial`: ele lê o cookie sozinho depois de montar, e esta
+                página não precisa saber que o cookie existe. */}
+            <TrocaTema tom="papel" />
             <a href="/exemplo/entrar" className="text-sm font-medium text-tinta-2 hover:text-tinta">
               Entrar
             </a>
@@ -444,7 +453,7 @@ export default function Inicio() {
           <div className="mt-9 grid gap-x-8 gap-y-7 sm:grid-cols-3">
             {DOR.map(([t, d]) => (
               <div key={t} className="flex flex-col gap-2 border-t border-borda pt-4">
-                <h3 className="text-base font-bold text-tinta">{t}</h3>
+                <h3 className="text-base font-bold">{t}</h3>
                 <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
               </div>
             ))}
@@ -528,7 +537,7 @@ export default function Inicio() {
           <div className="mt-10 grid gap-x-8 gap-y-7 sm:grid-cols-3">
             {QUEM.map(([t, d]) => (
               <div key={t} className="flex flex-col gap-2 border-t border-borda pt-4">
-                <h3 className="text-base font-bold text-tinta">{t}</h3>
+                <h3 className="text-base font-bold">{t}</h3>
                 <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
               </div>
             ))}
@@ -550,7 +559,7 @@ export default function Inicio() {
                 key={f.t}
                 className="flex flex-col gap-2 border-t border-borda pt-4"
               >
-                <h3 className="text-base font-bold text-tinta">{f.t}</h3>
+                <h3 className="text-base font-bold">{f.t}</h3>
                 <p className="text-sm leading-relaxed text-tinta-2">{f.d}</p>
               </div>
             ))}
@@ -717,8 +726,8 @@ export default function Inicio() {
                   className={
                     'relative flex flex-col rounded-norte p-6 ' +
                     (eleito
-                      ? 'bg-superficie-2 shadow-norte ring-1 ring-marca/35 lg:-my-3 lg:pt-9'
-                      : 'bg-superficie ring-1 ring-borda')
+                      ? 'bg-superficie-2 shadow-norte-alta ring-1 ring-marca/35 lg:-my-3 lg:pt-9'
+                      : 'bg-superficie shadow-norte ring-1 ring-borda')
                   }
                 >
                   {eleito && (
@@ -880,7 +889,7 @@ export default function Inicio() {
           <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {SEGURANCA.map(([t, d]) => (
               <div key={t} className="flex flex-col gap-2 rounded-norte bg-fundo p-5">
-                <h3 className="text-base font-bold text-tinta">{t}</h3>
+                <h3 className="text-base font-bold">{t}</h3>
                 <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
               </div>
             ))}
@@ -957,7 +966,7 @@ function Titulo({ olho, titulo, resumo }: { olho: string; titulo: string; resumo
   return (
     <div className="flex max-w-2xl flex-col gap-2.5">
       <span className="text-xs font-bold tracking-[0.14em] text-marca uppercase">{olho}</span>
-      <h2 className="text-3xl leading-tight font-extrabold tracking-[-0.02em] text-balance text-tinta">
+      <h2 className="text-3xl leading-tight font-extrabold tracking-[-0.02em] text-balance">
         {titulo}
       </h2>
       {resumo && <p className="leading-relaxed text-tinta-2">{resumo}</p>}

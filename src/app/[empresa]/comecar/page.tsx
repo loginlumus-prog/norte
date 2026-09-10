@@ -16,7 +16,7 @@ export default async function Comecar({ params }: { params: Promise<{ empresa: s
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-6">
       <header className="flex flex-col gap-2">
         <p className="font-mono text-xs tracking-widest text-tinta-3 uppercase">Primeiro acesso</p>
-        <h1 className="text-2xl font-extrabold tracking-tight text-tinta">
+        <h1 className="text-2xl font-extrabold tracking-tight">
           Vamos deixar o Norte com a cara da sua empresa
         </h1>
         <p className="max-w-prose text-tinta-2">

@@ -29,7 +29,7 @@ export function AbrirCaixa({
   return (
     <div className="mx-auto flex w-full max-w-sm flex-col gap-4 rounded-norte border border-borda bg-superficie p-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-bold text-tinta">Abrir o caixa</h2>
+        <h2 className="text-lg font-bold">Abrir o caixa</h2>
         <p className="text-sm text-tinta-2">
           {unidadeNome} — sem caixa aberto não dá para vender. É assim que o dinheiro do
           dia tem dono e hora.
@@ -123,7 +123,7 @@ export function FecharCaixa({
     <div className="flex flex-col gap-4">
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-norte border border-borda bg-superficie p-4">
-          <h3 className="mb-2 text-sm font-bold text-tinta">O que passou pela gaveta</h3>
+          <h3 className="mb-2 text-sm font-bold">O que passou pela gaveta</h3>
           {linha('Abertura', conferencia.abertura)}
           {linha('Vendas em dinheiro', conferencia.dinheiroVendido)}
           {linha('Suprimentos', conferencia.suprimentos)}
@@ -136,7 +136,7 @@ export function FecharCaixa({
         </div>
 
         <div className="rounded-norte border border-borda bg-superficie p-4">
-          <h3 className="mb-2 text-sm font-bold text-tinta">
+          <h3 className="mb-2 text-sm font-bold">
             {conferencia.vendas} venda{conferencia.vendas === 1 ? '' : 's'} no turno
           </h3>
           {conferencia.porForma.map((f) => linha(f.forma, f.total))}
@@ -190,7 +190,7 @@ export function Movimento({ slug, caixaId }: { slug: string; caixaId: string }) 
 
   return (
     <div className="flex flex-col gap-3 rounded-norte border border-borda bg-superficie p-4">
-      <h3 className="text-sm font-bold text-tinta">Tirar ou pôr dinheiro</h3>
+      <h3 className="text-sm font-bold">Tirar ou pôr dinheiro</h3>
       {erro && <Aviso nivel="critico">{erro}</Aviso>}
 
       <div className="flex gap-1.5">

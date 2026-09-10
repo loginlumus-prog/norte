@@ -313,7 +313,31 @@ h3,
      faz o título soar firme. É o contrário do que uma serifada quer. */
   letter-spacing: -0.028em;
   font-weight: 700;
-  color: var(--titulo);
+}
+
+/* A COR do título mora numa CAMADA, e o resto do desenho não. Não é capricho
+   de organização — é a diferença entre um título legível e um invisível.
+
+   CSS fora de camada ganha de CSS dentro de camada, e o Tailwind põe todo
+   text-* em @layer utilities. Enquanto esta cor estava solta, ela vencia
+   qualquer classe de cor: um h2 com className="text-nav-tinta" dentro de um
+   bloco escuro continuava pintado de --titulo. No tema escuro --titulo já é
+   claro e ninguém percebia; no tema claro ele é azul-marinho, e o título do
+   fechamento ficava azul-marinho sobre azul-marinho — 1,11:1, invisível.
+
+   Dentro de @layer base a classe volta a ganhar da regra de elemento, que é
+   o que qualquer pessoa espera ao escrever a classe. O "!" que existe hoje em
+   alguns títulos continua funcionando, e virou redundante.
+
+   Fonte, peso e tracking ficam FORA de propósito: esses valem sempre, e a
+   ideia da regra é justamente não depender de ninguém lembrar deles. */
+@layer base {
+  h1,
+  h2,
+  h3,
+  .display {
+    color: var(--titulo);
+  }
 }
 
 /* A capa vai mais pesada e mais apertada ainda: em tamanho grande é onde o
@@ -386,6 +410,11 @@ th.numero {
    Em CSS o degradê é calculado pelo navegador na resolução da tela: sem
    artefato, sem download de 300 KB, e muda de cor junto com o tema. */
 .aurora {
+  /* Cor sólida por baixo dos degradês. O atalho background zera a
+     background-color, e como as três camadas aqui são imagens, o bloco
+     ficava com fundo transparente — em impressão, em modo de alto contraste
+     ou se um degradê falhar, o texto claro cairia sobre o branco da página. */
+  background-color: var(--nav);
   background:
     radial-gradient(60rem 34rem at 92% 18%, color-mix(in srgb, var(--sol) 22%, transparent) 0%, transparent 62%),
     radial-gradient(52rem 40rem at 74% 62%, color-mix(in srgb, var(--marca) 30%, transparent) 0%, transparent 66%),

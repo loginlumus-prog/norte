@@ -254,7 +254,7 @@ export function Cartao({
       <section className="realce rounded-norte border border-borda bg-superficie">
         {titulo && (
           <header className="flex items-center justify-between gap-3 rounded-t-norte border-b border-borda bg-superficie-2 px-4 py-2.5">
-            <h2 className="text-sm font-semibold text-tinta">{titulo}</h2>
+            <h2 className="text-sm font-semibold">{titulo}</h2>
             {acao}
           </header>
         )}
@@ -269,7 +269,7 @@ export function Cartao({
         <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-borda pb-2">
           {/* Sem a caixa em volta, é o TÍTULO que segura a seção — então ele
               cresce e ganha peso. Título fraco sem caixa vira texto solto. */}
-          <h2 className="text-[15px] font-bold tracking-tight text-tinta">{titulo}</h2>
+          <h2 className="text-[15px] font-bold tracking-tight">{titulo}</h2>
           {acao}
         </header>
       )}

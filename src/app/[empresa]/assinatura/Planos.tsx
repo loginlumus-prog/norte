@@ -112,7 +112,7 @@ export function Planos({
               <div className="flex flex-col gap-1.5 pr-24">
                 <div className="flex items-center gap-2">
                   <Selo tamanho={22} className="shrink-0 text-tinta-3" />
-                  <h3 className="text-lg font-bold tracking-tight text-tinta">{p.titulo}</h3>
+                  <h3 className="text-lg font-bold tracking-tight">{p.titulo}</h3>
                 </div>
                 <p className="text-xs leading-relaxed text-tinta-2">{p.resumo}</p>
               </div>
