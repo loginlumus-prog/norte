@@ -965,10 +965,23 @@ export default function Inicio() {
       <footer className="border-t border-borda bg-superficie">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-8 sm:flex-row sm:items-center sm:justify-between">
           <Marca tamanho={22} id="rodape" />
-          <p className="text-xs text-tinta-3">
-            Cada empresa entra pelo próprio endereço. Recebeu um convite? Use o link que chegou
-            para você.
-          </p>
+          <div className="flex flex-col gap-3 sm:items-end">
+            <p className="text-xs text-tinta-3">
+              Cada empresa entra pelo próprio endereço. Recebeu um convite? Use o link que chegou
+              para você.
+            </p>
+            {/* Termos e privacidade no rodapé, e não escondidos numa página de
+                ajuda: quem procura isso antes de assinar procura no rodapé, e
+                quem não acha desconfia — com razão. */}
+            <nav className="flex gap-5 text-xs text-tinta-3">
+              <a href="/termos" className="hover:text-tinta-2">
+                Termos de uso
+              </a>
+              <a href="/privacidade" className="hover:text-tinta-2">
+                Privacidade
+              </a>
+            </nav>
+          </div>
         </div>
       </footer>
     </div>
