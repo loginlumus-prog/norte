@@ -18,6 +18,7 @@
     "build": "next build",
     "start": "next start",
     "conexao": "tsx scripts/conferir-conexao.ts",
+    "empresa": "tsx scripts/criar-empresa.ts",
     "video": "node scripts/recortar-video.mjs"
   },
   "dependencies": {

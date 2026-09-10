@@ -1,7 +1,6 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { exigirCotaDeUnidade } from '@/servidor/assinatura'
 import { comoOrg } from '@/servidor/banco'
 import { sessaoViva } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
@@ -83,10 +82,20 @@ export async function terminarCadastro(
     if (primeira) {
       await db.unidade.update({ where: { id: primeira.id }, data: dadosUnidade })
     } else {
-      // Unidade NOVA gasta cota do plano. A primeira nunca gasta: ela e o
-      // proprio cadastro da empresa, e recusar ali seria travar quem esta
-      // entrando no sistema pela primeira vez.
-      await exigirCotaDeUnidade(sessao)
+      // A PRIMEIRA unidade não passa por cota, e não é economia de código: ela
+      // É o cadastro da empresa. Recusar aqui seria barrar quem está entrando
+      // no sistema pela primeira vez — e nem existe plano que barre, porque o
+      // menor deles já cabe uma.
+      //
+      // Aqui havia uma chamada a `exigirCotaDeUnidade`, e ela quebrava TODA
+      // empresa nova: a função abre a própria transação, e esta linha roda
+      // dentro de uma. Duas transações, uma conexão, dois segundos de espera e
+      // "Deu problema aqui do nosso lado" na cara de quem acabou de assinar.
+      // Só não aparecia no desenvolvimento porque as empresas de exemplo já
+      // nascem com unidade e nunca caem neste ramo.
+      //
+      // Quando existir tela de "abrir outra loja", a cota é lá — e FORA da
+      // transação. O `comoOrg` agora recusa aninhamento e explica o porquê.
       await db.unidade.create({ data: { orgId: sessao.orgId, ...dadosUnidade } })
     }
 

@@ -21,9 +21,21 @@ import { guardarSenha } from './senha'
 import { normalizar } from './autenticacao'
 import { exigir, podeConceder, type Papel, type Sessao } from './permissao'
 
-const VALE_DIAS = 7
+export const VALE_DIAS = 7
 
-const resumir = (token: string) => createHash('sha256').update(token).digest('hex')
+/**
+ * O que fica no banco no lugar do link.
+ *
+ * Exportado porque o script que cria empresa precisa gravar o PRIMEIRO convite
+ * — o do dono — e ali ainda não existe sessão para chamar `convidar`. Duas
+ * cópias desta linha seria uma a mais: o dia em que uma mudasse, os convites
+ * do outro caminho parariam de abrir, e o erro apareceria como "link inválido"
+ * sem pista nenhuma.
+ */
+export const resumirToken = (token: string) =>
+  createHash('sha256').update(token).digest('hex')
+
+const resumir = resumirToken
 
 export type ConviteCriado = {
   id: string

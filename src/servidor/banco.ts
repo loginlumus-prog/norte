@@ -9,6 +9,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
+import { AsyncLocalStorage } from 'node:async_hooks'
 
 const PAPEL_APP = 'app_norte'
 
@@ -65,19 +66,52 @@ export type BancoDaOrg = Omit<
  * Tudo dentro do `fn` só enxerga dados dessa empresa — inclusive consulta que
  * esqueceu o filtro, porque o filtro não está no código, está no banco.
  */
+// Qual empresa está carimbada na transação deste caminho de execução. Serve
+// só para o aviso logo abaixo — ver `comoOrg`.
+const emTransacao = new AsyncLocalStorage<string>()
+
 export async function comoOrg<T>(
   orgId: string,
   fn: (db: BancoDaOrg) => Promise<T>,
 ): Promise<T> {
   if (!orgId) throw new Error('comoOrg exige uma empresa. Sem empresa, sem acesso.')
 
-  return cliente().$transaction(async (tx) => {
+  // ── comoOrg dentro de comoOrg ────────────────────────────
+  // Isto TRAVA, e trava mentindo. A transação de fora está segurando uma
+  // conexão do pool; a de dentro pede outra e espera. Quando o pool é
+  // pequeno — e no banco local ele é de um — ninguém devolve nada, o Prisma
+  // conta até dois segundos e desiste com "Unable to start a transaction in
+  // the given time". Essa frase não diz nada sobre a causa, e o caminho até
+  // ela é longo: já custou o cadastro inicial de TODA empresa nova, porque a
+  // conferência de cota da primeira unidade abria a segunda transação.
+  //
+  // E, se as empresas fossem diferentes, o estrago seria pior que travar:
+  // seria ler dado carimbado com a empresa errada.
+  //
+  // O conserto é sempre o mesmo, e por isso ele está escrito no erro.
+  const jaCarimbada = emTransacao.getStore()
+  if (jaCarimbada) {
+    throw new Error(
+      `comoOrg foi chamado DENTRO de outro comoOrg (${jaCarimbada}` +
+        (jaCarimbada === orgId ? '' : ` → ${orgId}, e são empresas DIFERENTES`) +
+        `).
+
+` +
+        `  A transação de fora segura a conexão que a de dentro precisa, e ninguém sai do lugar.
+` +
+        `  Conserto: tire a chamada de dentro da transação. Leia ANTES, e passe o
+` +
+        `  resultado para dentro do comoOrg.`,
+    )
+  }
+
+  return emTransacao.run(orgId, () => cliente().$transaction(async (tx) => {
     // papel sem privilégio: sem isso o RLS é ignorado
     await tx.$executeRawUnsafe(`set local role ${PAPEL_APP}`)
     // 'true' = vale só nesta transação, não vaza para a próxima requisição
     await tx.$queryRaw`select set_config('app.org_id', ${orgId}, true)`
     return fn(tx as unknown as BancoDaOrg)
-  })
+  }))
 }
 
 // ─────────────────────────────────────────────────────────────
