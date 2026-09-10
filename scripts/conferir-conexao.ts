@@ -88,6 +88,36 @@ ok(
   `${travas[0]!.tabelas} tabelas`,
 )
 
+// ── 2.1 ninguém sequestra o pino do isolamento ───────────────
+// Toda política pergunta a `public.app_org_id()` de que empresa é a
+// requisição. Se o papel da aplicação pudesse criar objeto — em `public` ou
+// num schema próprio — ele poderia pôr outra função com esse nome à frente no
+// caminho de busca e passar a responder ele mesmo de que empresa é a
+// requisição. O RLS continuaria ligado, forçado, e inútil.
+//
+// Hoje as três portas estão fechadas. Elas ficam AQUI porque nenhuma delas se
+// fecha sozinha: são efeito de GRANTs continuarem certos, e um
+// `grant create on schema public` de uma migração reabriria a primeira sem
+// avisar ninguém.
+const { rows: pino } = await c.query<{
+  cria_em_public: boolean
+  cria_schema: boolean
+  caminho_fixo: string[] | null
+}>(
+  `select has_schema_privilege(current_user, 'public', 'CREATE')            as cria_em_public,
+          has_database_privilege(current_user, current_database(), 'CREATE') as cria_schema,
+          (select proconfig from pg_proc p
+             join pg_namespace n on n.oid = p.pronamespace
+            where p.proname = 'app_org_id' and n.nspname = 'public')         as caminho_fixo`,
+)
+ok('a aplicação não cria objeto em public', pino[0]!.cria_em_public === false)
+ok('e não cria schema nenhum', pino[0]!.cria_schema === false)
+ok(
+  'e o caminho de busca da app_org_id está fixo',
+  (pino[0]!.caminho_fixo ?? []).some((v) => v.startsWith('search_path=')),
+  pino[0]!.caminho_fixo?.join(', ') ?? 'solto',
+)
+
 // ── 3. o carimbo não vaza entre transações ───────────────────
 // O teste que só faz sentido no pooler. Carimba a empresa numa transação,
 // confere que vale ali dentro, fecha, e abre outra para ver se sobrou.

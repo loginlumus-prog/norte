@@ -12,8 +12,31 @@
 -- Rodar DEPOIS de `prisma migrate`.
 
 -- ── quem é a org da requisição ────────────────────────────────
-create or replace function app_org_id() returns text
-language sql stable as $$
+--
+-- Esta função é o pino que segura o isolamento inteiro: TODA política aqui
+-- embaixo pergunta a ela de que empresa é a requisição. Por isso ela leva duas
+-- proteções que uma função comum não precisaria.
+--
+-- 1. `set search_path` FIXO. Sem isso, quem chamasse a função poderia pôr um
+--    schema próprio na frente do caminho de busca e fazer o Postgres resolver
+--    outro `nullif`, outro `current_setting` — e a resposta viria de código
+--    que não é este.
+--
+-- 2. As políticas chamam `public.app_org_id()`, com o schema escrito. Uma
+--    política que chama `public.app_org_id()` solto resolve o nome pelo caminho de
+--    busca de QUEM está consultando: bastaria uma função com esse nome num
+--    schema à frente para a política inteira passar a perguntar a ela de que
+--    empresa é a requisição — e receber a resposta que o atacante quisesse.
+--
+-- Hoje isso não é alcançável: medido em produção, o papel da aplicação não
+-- pode criar objeto em `public` nem criar schema nenhum. Mas essa porta está
+-- fechada por um GRANT continuar certo para sempre, e um `grant create on
+-- schema public` acidental — de uma migração, de uma ferramenta — reabriria
+-- ela em silêncio. Fechar por construção custa duas linhas.
+create or replace function public.app_org_id() returns text
+language sql stable
+set search_path = pg_catalog
+as $$
   select nullif(current_setting('app.org_id', true), '')
 $$;
 
@@ -39,8 +62,8 @@ begin
     execute format('drop policy if exists org_isolada on public.%I', t.relname);
     execute format($f$
       create policy org_isolada on public.%I
-        using (org_id = app_org_id())
-        with check (org_id = app_org_id())
+        using (org_id = public.app_org_id())
+        with check (org_id = public.app_org_id())
     $f$, t.relname);
   end loop;
 end $$;
@@ -50,8 +73,8 @@ alter table public.orgs enable row level security;
 alter table public.orgs force row level security;
 drop policy if exists org_propria on public.orgs;
 create policy org_propria on public.orgs
-  using (id = app_org_id())
-  with check (id = app_org_id());
+  using (id = public.app_org_id())
+  with check (id = public.app_org_id());
 
 -- ── a portaria: quem responde "de quem é este endereço" ─────
 --
@@ -90,11 +113,11 @@ drop policy if exists org_isolada on public.auditoria;
 -- vez que nasce tabela nova (é assim que ela entra na proteção sozinha).
 drop policy if exists auditoria_le on public.auditoria;
 create policy auditoria_le on public.auditoria
-  for select using (org_id = app_org_id());
+  for select using (org_id = public.app_org_id());
 
 drop policy if exists auditoria_grava on public.auditoria;
 create policy auditoria_grava on public.auditoria
-  for insert with check (org_id = app_org_id());
+  for insert with check (org_id = public.app_org_id());
 
 -- sem policy de UPDATE e sem policy de DELETE: com FORCE RLS ligado,
 -- a ausência da policy é a proibição. Nem o dono da tabela reescreve.
