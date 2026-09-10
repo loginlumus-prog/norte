@@ -309,9 +309,9 @@
       Levantado do código e dos documentos do projeto, não de memória. Os tamanhos
       (<span class="tam">P</span><span class="tam">M</span><span class="tam">G</span>) são
       estimativa minha, não compromisso.
-      <br><b>Revisado em 10/09, à noite:</b> a trilha 01 está em cinco de sete, e o que
-      falta são dois itens — um espera dinheiro, o outro espera advogado. A metade barata
-      da trilha 04 saiu junto.
+      <br><b>Revisado em 10/09, de madrugada:</b> uma varredura do sistema inteiro contra
+      o que a página promete e contra o vídeo do concorrente. Entraram seis telas ou pedaços
+      de tela que faltavam para uma loja operar. A trilha 01 segue em cinco de sete.
     </p>
   </header>
 
@@ -650,6 +650,43 @@
   </section>
 
   <section>
+    <h2>A varredura: o que uma loja de verdade encontrava faltando</h2>
+    <p>
+      Comparei cada tela com o que a página de venda promete e com o Datacaixa — o sistema
+      de R$ 1.200/mês do vídeo. O concorrente é feio e é simples, e a simplicidade dele é uma
+      lição: <b>a venda é tocar num botão com nome e preço.</b> O resto do menu dele
+      (consultar vendas, trocas, comissão, taxas do cartão) é a lista do que toda loja pede
+      no primeiro mês.
+    </p>
+    <div class="trilha">
+      <div class="n">✓</div>
+      <div>
+        <h3>O que entrou nesta varredura <span class="selo feito">6 de 6</span></h3>
+        <ul>
+          <li class="ok"><span class="tam ok">&check;</span><b>Tela de vendas</b> — não existia. Dava para vender e não dava para achar o que foi vendido. Lista com período, unidade e busca por número ou cliente; ficha com itens, pagamento e quem vendeu; <b>cancelar</b>, que existia no schema e na permissão e não tinha uma linha de código — o estoque volta, os pontos voltam, a venda fica marcada, e o motivo é obrigatório porque o dinheiro não volta sozinho. <span class="quando">10/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Busca e filtro em produtos e estoque</b> — eram despejo alfabético. Nome, marca e etiqueta; situação (acabaram / no mínimo); categoria. Tudo no endereço, para virar link. <span class="quando">10/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Balcão em grade</b> — a lição do vídeo: categorias como abas, produtos como botões, quantidade escolhida <i>antes</i> do toque ("×20, picolé"). E o jeito de vender segue o ramo: sorveteria nasce com botões, moda nasce com a busca, e o dono troca em Configurações. <span class="quando">10/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Clientes com filtro e ordem</b> — "sumidos" e "nunca compraram" viraram clicáveis; ordem por quem mais gasta e por compra mais recente. <span class="quando">10/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Lista de lançamentos no financeiro</b> — o DRE agrega; a lista é a prova dele. Busca, tipo, situação, categoria, e "paguei" em cada linha. <span class="quando">10/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>A venda em andamento sobrevive</b> — o carrinho ficava só na tela e sumia num F5. Agora fica guardado no aparelho, por pessoa, por doze horas. <span class="quando">10/09</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="trilha">
+      <div class="n">→</div>
+      <div>
+        <h3>O que a varredura achou e ainda não fez</h3>
+        <p class="destrava">Em ordem de quanto uma loja sente a falta.</p>
+        <ul>
+          <li><span class="tam">M</span><b>Trocas e devoluções</b> — o concorrente tem, toda loja de roupa precisa, e hoje o caminho é cancelar a venda inteira. Já está na trilha 02.</li>
+          <li><span class="tam">M</span><b>Taxa por forma de pagamento</b> — o DRE mostra o bruto do cartão; o que entra na conta é menos. Sem a taxa, o lucro do mês está errado para cima em toda loja que aceita cartão. Precisa de uma tabela de taxas por forma e de o DRE descontá-las.</li>
+          <li><span class="tam">P</span><b>Comprovante para imprimir</b> — a ficha da venda existe; falta a via do cliente, em papel térmico e em PDF para o WhatsApp.</li>
+          <li><span class="tam">P</span><b>Exportar</b> — vendas, clientes e lançamentos em planilha. É obrigação dos termos (cláusula 11) e é o que o contador pede.</li>
+          <li><span class="tam">P</span><b>Etiqueta com código de barras</b> — quem vende por etiqueta precisa imprimi-la. Já na trilha 02 (Elgin L42 Pro).</li>
+        </ul>
+      </div>
+    </div>
+
     <h2>O que só apareceu porque a gente andou</h2>
     <p>
       Três coisas que nenhum plano tinha previsto, e que só existiam porque ninguém tinha
@@ -683,6 +720,15 @@
         tabela e não conferia coluna. Enquanto não há cliente lá dentro dá para recriar o banco
         e seguir; depois do primeiro, recriar é apagar a loja de alguém. Virou o
         <code>npm run migrar</code>.
+      </p>
+    </div>
+    <div class="nota trava">
+      <p>
+        <b>O sistema caiu no meio de um teste, sem pista.</b> O vigia que reinicia o site
+        quando o schema muda matava o <code>cmd.exe</code> e deixava o Next vivo por baixo,
+        segurando a porta; o novo morria e derrubava tudo, banco junto. Só apareceu porque
+        uma migração rodou com o sistema no ar. Consertado, e provado: schema tocado, site de
+        volta com PID novo.
       </p>
     </div>
 
