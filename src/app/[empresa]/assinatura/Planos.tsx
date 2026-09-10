@@ -138,7 +138,11 @@ export function Planos({
               {/* O CRÉDITO, dentro do plano. É o que diferencia os pacotes na
                   prática — mais que a lista de recursos, que é quase a mesma. */}
               <div className="rounded-norte bg-superficie-2 px-3 py-2.5">
-                {p.creditoMensal > 0 ? (
+                {p.creditoMensal === null ? (
+                  <p className="text-[11px] leading-snug text-tinta-3">
+                    Crédito de IA combinado no contrato.
+                  </p>
+                ) : p.creditoMensal > 0 ? (
                   <>
                     <p className="numero text-base font-bold text-tinta">
                       {brl(p.creditoMensal)}{' '}

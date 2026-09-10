@@ -71,8 +71,12 @@ export type Limite = {
    * mensalidade obrigaria a cobrar do cliente pequeno o risco do grande.
    *
    * O que passa disso é recarga, e a recarga é o cliente que decide.
+   *
+   * `null` = definido em contrato. Só o Corporativo: lá o volume de conversa
+   * varia demais entre um cliente e outro para caber num número de tabela, e
+   * um número de tabela viraria promessa antes de alguém olhar a operação.
    */
-  creditoMensal: number
+  creditoMensal: number | null
   /**
    * Ordem comercial. É ela que define o que é SUBIR e o que é DESCER — e
    * comparar por preço não serviria, porque o Corporativo não tem preço.
@@ -121,10 +125,17 @@ export const PLANOS: Record<Plano, Limite> = {
     porUnidadeExtra: null,
     porVagaExtra: 40,
     modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agente', 'metas'],
-    // Calibrado em cima de consumo MEDIDO, nao estimado: uma loja de
-    // movimento normal gasta ~R$ 36/mes de custo bruto com cache e roteamento
-    // de modelo, o que da ~R$ 108 cobrados. R$ 120 cobre ela inteira e sobra.
-    creditoMensal: 120,
+    // ── este numero e apertado, e vale saber por que ────────
+    // O consumo foi MEDIDO, nao estimado: uma loja de movimento normal gasta
+    // ~R$ 36/mes de custo bruto com cache e roteamento de modelo, o que da
+    // ~R$ 108 cobrados no mes cheio.
+    //
+    // R$ 100 cobre uns 27 dias dessa loja. Nos ultimos dias do mes ela fica
+    // sem credito — e sao justamente os dias em que a cobranca de atraso mais
+    // importa, porque e quando as pessoas recebem. Quem quiser o mes inteiro
+    // recarrega, e a recarga e barata; mas a tela precisa avisar ANTES de
+    // acabar, e o aviso ja existe (creditoAvisoCent).
+    creditoMensal: 100,
     tetoVendasMes: null,
     degrau: 2,
   },
@@ -138,7 +149,7 @@ export const PLANOS: Record<Plano, Limite> = {
     porVagaExtra: null,
     modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agente', 'metas', 'crediario'],
     // Rede sao varias lojas conversando ao mesmo tempo.
-    creditoMensal: 400,
+    creditoMensal: 300,
     tetoVendasMes: null,
     degrau: 3,
   },
@@ -155,7 +166,10 @@ export const PLANOS: Record<Plano, Limite> = {
     porUnidadeExtra: null,
     porVagaExtra: null,
     modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agente', 'metas', 'crediario'],
-    creditoMensal: 800,
+    // Sem numero de tabela, pelo mesmo motivo do preco: o volume de conversa
+    // de um cliente Corporativo nao se parece com o de outro, e chutar aqui
+    // seria prometer antes de olhar a operacao. Sai no contrato.
+    creditoMensal: null,
     tetoVendasMes: null,
     degrau: 4,
   },
@@ -287,8 +301,8 @@ export type Mudanca = {
   ganha: Modulo[]
   /** Módulos que somem — e ISSO precisa estar na tela antes do clique. */
   perde: Modulo[]
-  /** Crédito de IA mensal que passa a vir incluso. */
-  creditoMensal: number
+  /** Crédito de IA mensal que passa a vir incluso. `null` = sai no contrato. */
+  creditoMensal: number | null
   /**
    * Impedimentos concretos. Vazio = pode trocar.
    *

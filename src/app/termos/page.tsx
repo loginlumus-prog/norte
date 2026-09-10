@@ -80,7 +80,7 @@ export default function Termos() {
                   : `${l.vagas} pessoa(s) dentro ao mesmo tempo`}
                 . Cadastrar a equipe inteira não tem custo em nenhum plano.
                 {l.porVagaExtra ? ` Pessoa a mais ao mesmo tempo: ${real(l.porVagaExtra)}/mês cada.` : ''}
-                {l.creditoMensal > 0 ? ` Inclui ${real(l.creditoMensal)} de crédito de IA por mês.` : ''}
+                {l.creditoMensal ? ` Inclui ${real(l.creditoMensal)} de crédito de IA por mês.` : ''}
               </li>
             )
           })}

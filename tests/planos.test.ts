@@ -236,10 +236,23 @@ describe('o plano decide quais módulos existem', () => {
     expect(planoLibera('BALCAO_AGENTE', 'crediario')).toBe(false)
   })
 
-  it('todo plano com agente tem crédito de IA incluso, e sem agente não tem', () => {
+  // A regra é: quem tem assistente tem crédito, quem não tem não tem. O
+  // Corporativo cumpre por outro caminho — o crédito dele existe e sai no
+  // contrato, e é isso que `null` quer dizer. Zero seria outra coisa: seria
+  // "tem assistente e não tem com que rodar", que não é plano nenhum.
+  it('todo plano com agente tem crédito, e sem agente tem zero', () => {
     for (const p of ORDEM) {
-      expect(PLANOS[p].creditoMensal > 0, p).toBe(planoLibera(p, 'agente'))
+      const c = PLANOS[p].creditoMensal
+      if (planoLibera(p, 'agente')) expect(c === null || c > 0, `${p} tem agente sem crédito`).toBe(true)
+      else expect(c, `${p} não tem agente mas tem crédito`).toBe(0)
     }
+  })
+
+  it('e só o Corporativo deixa o crédito para o contrato', () => {
+    for (const p of ORDEM) {
+      if (p !== 'CORPORATIVO') expect(PLANOS[p].creditoMensal, p).not.toBeNull()
+    }
+    expect(PLANOS.CORPORATIVO.creditoMensal).toBeNull()
   })
 
   it('nenhum plano libera módulo que não existe', () => {

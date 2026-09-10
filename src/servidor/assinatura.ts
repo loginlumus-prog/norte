@@ -47,7 +47,8 @@ export type Assinatura = {
     saldoCent: number
     avisoCent: number
     /** Quanto o plano inclui por mês, em reais. */
-    inclusoMensal: number
+    /** `null` = sai no contrato (só o Corporativo). */
+    inclusoMensal: number | null
     /** Gasto dos últimos 30 dias, para dar noção de quanto dura o saldo. */
     gasto30Cent: number
     /** Estimativa de dias que o saldo aguenta no ritmo atual. null = sem gasto. */
@@ -99,8 +100,11 @@ export async function assinaturaDe(sessao: Sessao): Promise<Assinatura> {
       inclusoMensal: p.creditoMensal,
       gasto30Cent,
       diasQueDura: porDia > 0 ? Math.floor(saldoCent / porDia) : null,
-      acabou: p.creditoMensal > 0 && saldoCent <= 0,
-      baixo: p.creditoMensal > 0 && saldoCent > 0 && saldoCent <= org.creditoAvisoCent,
+      // `creditoMensal` nulo é o Corporativo: ele TEM assistente, o crédito
+      // dele existe e sai no contrato. Então o aviso de "acabou" vale igual —
+      // o que não existe é uma cota de tabela para desenhar a régua.
+      acabou: p.creditoMensal !== 0 && saldoCent <= 0,
+      baixo: p.creditoMensal !== 0 && saldoCent > 0 && saldoCent <= org.creditoAvisoCent,
     }
 
     const testeAte = org.testeAte
@@ -334,7 +338,7 @@ export async function resumoDaBarra(
   )
   const p = PLANOS[org.plano]
 
-  const semCredito = p.creditoMensal > 0 && org.creditoIaCent <= org.creditoAvisoCent
+  const semCredito = p.creditoMensal !== 0 && org.creditoIaCent <= org.creditoAvisoCent
   const testeAcabando =
     org.situacao === 'TESTE' &&
     org.testeAte !== null &&

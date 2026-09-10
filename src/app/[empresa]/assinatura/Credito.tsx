@@ -37,7 +37,8 @@ export function Credito({
   saldoCent: number
   gasto30Cent: number
   diasQueDura: number | null
-  inclusoMensal: number
+  /** `null` = combinado em contrato (so o Corporativo). */
+  inclusoMensal: number | null
   podeMexer: boolean
 }) {
   const acao = recarregar.bind(null, slug)
@@ -50,7 +51,7 @@ export function Credito({
   // É a régua que a pessoa já tem na cabeça: "o plano me dá R$ 120, e eu
   // estou com quanto disso?". Passar da cota (recarregou a mais) enche a
   // barra e continua legível, em vez de estourar para fora.
-  const cotaCent = Math.max(inclusoMensal * 100, 1)
+  const cotaCent = Math.max((inclusoMensal ?? 0) * 100, 1)
   const cheio = Math.max(0, Math.min(100, (saldoCent / cotaCent) * 100))
   const consumoDiaCent = Math.round(gasto30Cent / 30)
   // Onde o consumo de UM dia cai dentro da barra: dá escala ao que se gasta.
@@ -87,19 +88,27 @@ export function Credito({
         <div className="flex flex-col gap-0.5">
           <span className="text-xs font-medium text-tinta-3">O plano já inclui</span>
           <span className="numero text-2xl font-bold text-tinta">
-            {inclusoMensal > 0
+            {inclusoMensal
               ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
                   inclusoMensal,
                 )
               : '—'}
           </span>
           <span className="text-xs text-tinta-2">
-            {inclusoMensal > 0 ? 'por mês, renovado no ciclo' : 'seu plano não tem assistente'}
+            {inclusoMensal === null
+              ? 'combinado no contrato'
+              : inclusoMensal > 0
+                ? 'por mês, renovado no ciclo'
+                : 'seu plano não tem assistente'}
           </span>
         </div>
       </div>
 
-      {inclusoMensal > 0 && (
+      {/* A barra compara o saldo com a cota do mês. Sem cota publicada
+          (Corporativo), não existe "quanto do mês já foi" para desenhar — e
+          desenhar assim mesmo, com uma régua inventada, seria pior que não
+          desenhar. */}
+      {!!inclusoMensal && (
         <div className="flex flex-col gap-1.5">
           <div
             className="relative h-3 overflow-hidden rounded-full bg-superficie-3"
@@ -136,7 +145,10 @@ export function Credito({
         </div>
       )}
 
-      {podeMexer && inclusoMensal > 0 && (
+      {/* Recarregar vale para todo plano que TEM assistente — inclusive o
+          Corporativo, cujo credito sai no contrato mas acaba igual. So quem
+          nao tem assistente (credito zero) nao tem o que recarregar. */}
+      {podeMexer && inclusoMensal !== 0 && (
         <form action={agir} className="flex flex-col gap-2 border-t border-borda-suave pt-3">
           <div className="flex flex-wrap items-end gap-2">
             <div className="w-40">

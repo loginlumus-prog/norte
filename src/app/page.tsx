@@ -85,7 +85,7 @@ const CARTOES: Record<
   BALCAO_AGENTE: {
     // "R$ 120 de crédito" não diz nada para quem nunca comprou token. O número
     // sai do custo medido por conversa, com cache e roteamento de modelo.
-    conta: '~2.000 conversas no WhatsApp',
+    conta: '~1.650 conversas no WhatsApp',
     nota: 'renovado todo mês · compra mais quando quiser',
     itens: [
       'Tudo do Balcão, e até cinco lojas',
@@ -98,7 +98,7 @@ const CARTOES: Record<
   },
   REDE: {
     selo: 'O mais pedido',
-    conta: '~5.800 conversas no WhatsApp',
+    conta: '~5.000 conversas no WhatsApp',
     nota: 'renovado todo mês · compra mais quando quiser',
     itens: [
       'Tudo do Balcão + Assistente, sem limite de loja',
@@ -110,8 +110,8 @@ const CARTOES: Record<
     fora: [],
   },
   CORPORATIVO: {
-    conta: '~13.000 conversas no WhatsApp',
-    nota: 'e o resto combinado no contrato',
+    conta: 'crédito combinado no contrato',
+    nota: 'junto com o preço, depois de olhar a operação',
     itens: [],
     fora: [],
   },
@@ -903,10 +903,15 @@ export default function Inicio() {
               <p className="text-2xl leading-none font-extrabold tracking-tight !text-white">
                 Sob consulta
               </p>
+              {/* Sem número de crédito aqui, e é de propósito: o volume de
+                  conversa de um cliente Corporativo não se parece com o de
+                  outro. Um número de tabela viraria promessa feita antes de
+                  alguém olhar a operação — que é o mesmo motivo de o preço
+                  ser sob consulta. */}
               <p className="text-xs leading-relaxed text-white/60">
                 Sem limite de loja nem de gente, com{' '}
                 <span className="font-semibold text-sol-claro">
-                  {reais(LIMITES.CORPORATIVO.creditoMensal)} de crédito de IA por mês
+                  crédito de IA dimensionado para a sua operação
                 </span>{' '}
                 e o resto combinado no contrato.
               </p>
