@@ -14,7 +14,7 @@ CREATE TYPE "Catalogo" AS ENUM ('ATE_50', 'ATE_500', 'ATE_5000', 'MAIS_DE_5000')
 CREATE TYPE "Regime" AS ENUM ('MEI', 'SIMPLES', 'PRESUMIDO', 'REAL');
 
 -- CreateEnum
-CREATE TYPE "Plano" AS ENUM ('BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO');
+CREATE TYPE "Plano" AS ENUM ('GRATIS', 'BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO');
 
 -- CreateEnum
 CREATE TYPE "Situacao" AS ENUM ('TESTE', 'ATIVA', 'INADIMPLENTE', 'SUSPENSA', 'CANCELADA');
@@ -214,6 +214,16 @@ CREATE TABLE "cobranca" (
     "atualizada_em" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "cobranca_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "presencas" (
+    "org_id" TEXT NOT NULL,
+    "usuario_id" TEXT NOT NULL,
+    "desde" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "ultimo_sinal" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "presencas_pkey" PRIMARY KEY ("org_id","usuario_id")
 );
 
 -- CreateTable
@@ -713,6 +723,9 @@ CREATE INDEX "auditoria_org_id_alvo_tipo_alvo_id_idx" ON "auditoria"("org_id", "
 CREATE UNIQUE INDEX "cobranca_org_id_key" ON "cobranca"("org_id");
 
 -- CreateIndex
+CREATE INDEX "presencas_org_id_ultimo_sinal_idx" ON "presencas"("org_id", "ultimo_sinal");
+
+-- CreateIndex
 CREATE INDEX "categorias_org_id_idx" ON "categorias"("org_id");
 
 -- CreateIndex
@@ -888,6 +901,12 @@ ALTER TABLE "auditoria" ADD CONSTRAINT "auditoria_usuario_id_fkey" FOREIGN KEY (
 
 -- AddForeignKey
 ALTER TABLE "cobranca" ADD CONSTRAINT "cobranca_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "presencas" ADD CONSTRAINT "presencas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "presencas" ADD CONSTRAINT "presencas_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "categorias" ADD CONSTRAINT "categorias_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

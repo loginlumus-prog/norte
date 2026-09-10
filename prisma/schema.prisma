@@ -140,6 +140,7 @@ model Org {
 
   unidades  Unidade[]
   usuarios  Usuario[]
+  presencas Presenca[]
   acessos   Acesso[]
   convites  Convite[]
   auditoria Auditoria[]
@@ -257,6 +258,7 @@ model Usuario {
 
   acessos   Acesso[]
   auditoria Auditoria[]
+  presencas Presenca[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -408,6 +410,35 @@ enum Regime {
   SIMPLES
   PRESUMIDO
   REAL
+}
+
+/// Quem esta DENTRO do sistema agora.
+///
+/// Uma linha por PESSOA, nao por aparelho — foi decisao, nao economia. Contando
+/// aparelho, o dono que olha o celular com o computador aberto no balcao
+/// gastaria duas vagas, e ele nao estaria errado em achar que e roubo. Contando
+/// pessoa, a frase que se vende e a que se cobra: "quantas pessoas podem estar
+/// dentro ao mesmo tempo".
+///
+/// A linha nasce no login e morre quando a pessoa sai. Entre um e outro, o que
+/// diz se ela esta viva e o `ultimoSinal`: quem parou de mexer devolve a vaga
+/// sozinho, sem depender de ninguem lembrar de clicar em sair. Ver
+/// src/servidor/presenca.ts.
+model Presenca {
+  orgId     String  @map("org_id")
+  org       Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  usuarioId String  @map("usuario_id")
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  /// Quando esta pessoa entrou.
+  desde DateTime @default(now())
+
+  /// A ultima vez que ela mexeu em alguma coisa. E ISTO que segura a vaga.
+  ultimoSinal DateTime @default(now()) @map("ultimo_sinal")
+
+  @@id([orgId, usuarioId])
+  @@index([orgId, ultimoSinal])
+  @@map("presencas")
 }
 
 enum Plano {
