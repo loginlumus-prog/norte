@@ -10,3 +10,6 @@ src/generated/
 *.tsbuildinfo
 .tmp/
 .env.producao
+
+# quadros e clipes de trabalho da animacao (o que vale entra em public/video)
+.video/

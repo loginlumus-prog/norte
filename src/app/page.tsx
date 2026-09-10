@@ -201,12 +201,17 @@ const PROVAS: [string, string][] = [
 // isso, dentro de caixas iguais, uma cena apareceria grande e a vizinha
 // minúscula. O rótulo é HTML embaixo da arte — modelo de imagem escreve
 // garrancho.
+//
+// A linha embaixo do rótulo não é slogan: é o que MUDA no sistema quando a
+// empresa escolhe aquele ramo. Eixo de variação, unidade de medida, módulo
+// sugerido — tudo já existe em `src/servidor/modulos.ts`. Frase que promete
+// função inexistente é a mais cara de escrever.
 const RAMOS = [
-  { src: '/img/cena-moda.png', rotulo: 'Moda' },
-  { src: '/img/cena-calcados.png', rotulo: 'Calçados' },
-  { src: '/img/cena-sorveteria.png', rotulo: 'Sorveteria' },
-  { src: '/img/cena-lanchonete.png', rotulo: 'Lanchonete' },
-  { src: '/img/cena-deposito.png', rotulo: 'Distribuição' },
+  { src: '/img/cena-moda.png', rotulo: 'Moda', linha: 'Cor e Tamanho na mesma peça — um cadastro, não trinta.' },
+  { src: '/img/cena-calcados.png', rotulo: 'Calçados', linha: 'Numeração do 34 ao 40, e o par que falta aparece.' },
+  { src: '/img/cena-sorveteria.png', rotulo: 'Sorveteria', linha: 'Sabor vira eixo, e a venda sai por quilo.' },
+  { src: '/img/cena-lanchonete.png', rotulo: 'Lanchonete', linha: 'Encomenda anotada no balcão, com retirada marcada.' },
+  { src: '/img/cena-deposito.png', rotulo: 'Distribuição', linha: 'Cada depósito com estoque e caixa próprios.' },
 ]
 
 const QUEM: [string, string][] = [
@@ -507,16 +512,24 @@ export default function Inicio() {
             na origem (a lanchonete cortada, as outras com margem transparente)
             — então dentro da caixa as cinco ocupam exatamente o mesmo lugar.
 
-            A sobra em cima é de propósito: a caixa é um pouco mais alta do que
-            a arte precisa, e a arte encosta embaixo. Sem isso o abajur fica
-            colado na borda de cima e parece cortado. */}
+            ── por que a arte encosta EM CIMA ──
+            Antes a caixa era mais alta que a arte e a arte encostava embaixo,
+            deixando uma faixa vazia no topo. A intenção era dar ar ao abajur;
+            o efeito foi outro — a cena parecia afundada na caixa, e a faixa
+            lia como erro de carregamento, não como respiro.
+
+            Agora a caixa tem a proporção EXATA da arte (1,24:1), então a cena
+            preenche de borda a borda e o fio do abajur é cortado no topo, que
+            é como quadro de cena funciona: o que sai do quadro sugere que o
+            lugar continua. O ar que a arte perdeu virou a linha de texto — que
+            informa, enquanto a faixa vazia não informava nada. */}
         <div className="mt-9 grid grid-cols-2 gap-1.5 lg:grid-cols-5">
           {RAMOS.map((r) => (
             <div
               key={r.rotulo}
-              className="aurora flex flex-col justify-end overflow-hidden rounded-norte last:col-span-2 lg:last:col-span-1"
+              className="aurora flex flex-col overflow-hidden rounded-norte last:col-span-2 lg:last:col-span-1"
             >
-              <div className="relative aspect-[276/252] w-full">
+              <div className="relative aspect-[124/100] w-full">
                 <Image
                   src={r.src}
                   alt=""
@@ -524,12 +537,15 @@ export default function Inicio() {
                   fill
                   sizes="(max-width: 1024px) 50vw, 20vw"
                   quality={90}
-                  className="object-contain object-bottom"
+                  className="object-cover object-top"
                 />
               </div>
-              <span className="px-3.5 pt-2 pb-3 text-[11px] font-bold tracking-[0.16em] text-nav-tinta-2 uppercase">
-                {r.rotulo}
-              </span>
+              <div className="flex flex-col gap-1.5 px-3.5 pt-2.5 pb-3.5">
+                <span className="text-[11px] font-bold tracking-[0.16em] text-nav-tinta uppercase">
+                  {r.rotulo}
+                </span>
+                <p className="text-[12.5px] leading-snug text-nav-tinta-2">{r.linha}</p>
+              </div>
             </div>
           ))}
         </div>
