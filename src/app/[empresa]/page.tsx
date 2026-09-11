@@ -6,6 +6,7 @@ import { pode } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
 import { resumoDoPainel } from '@/servidor/painel'
 import { resumoCrediario } from '@/servidor/crediario'
+import { metasDoMes, mesChave } from '@/servidor/metas'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { moduloLigado } from '@/servidor/modulos'
 import { Estrutura } from '@/ui/Estrutura'
@@ -59,15 +60,16 @@ export default async function Painel({
   const onde = await escolherUnidade(sessao, empresa, pedida)
   const j = janela(lerPeriodo(pedido))
   const temCrediario = moduloLigado(empresa, 'crediario') && pode(sessao, 'crediario.ver')
-  const [r, fiado] = await Promise.all([
+  const verEquipe = moduloLigado(empresa, 'metas') && pode(sessao, 'equipe.ver')
+  const [r, fiado, metas] = await Promise.all([
     resumoDoPainel(sessao, onde.ids, j),
     temCrediario ? resumoCrediario(sessao, onde.ids) : Promise.resolve(null),
+    verEquipe ? metasDoMes(sessao, mesChave(new Date())) : Promise.resolve([]),
   ])
 
   const completo = r.plano !== 'GRATIS'
   const verDinheiro = pode(sessao, 'financeiro.ver')
   const verEstoque = pode(sessao, 'estoque.ver')
-  const verEquipe = moduloLigado(empresa, 'metas') && pode(sessao, 'equipe.ver')
 
   // O menu avisa ANTES de a pessoa clicar. É a diferença entre descobrir que
   // acabou o estoque porque foi olhar, e ser avisado assim que entra.
@@ -404,15 +406,56 @@ export default async function Painel({
       {/* ── EQUIPE ── */}
       {verEquipe && (
         <Secao titulo="Equipe">
-          <Cartao titulo={`Quem mais vendeu · ${j.rotulo.toLowerCase()}`}>
-            <Ranque
-              itens={r.porVendedor.map((v) => ({
-                rotulo: v.nome,
-                valor: v.total,
-                detalhe: `${v.vendas} vendas`,
-              }))}
-            />
-          </Cartao>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Cartao titulo={`Quem mais vendeu · ${j.rotulo.toLowerCase()}`}>
+              <Ranque
+                itens={r.porVendedor.map((v) => ({
+                  rotulo: v.nome,
+                  valor: v.total,
+                  detalhe: `${v.vendas} vendas`,
+                }))}
+              />
+            </Cartao>
+            {metas.some((m) => m.valor > 0) && (
+              <Cartao
+                titulo="Meta do mês"
+                acao={
+                  <Link href={`/${slug}/equipe`} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
+                    metas e comissão
+                  </Link>
+                }
+              >
+                <ul className="flex flex-col gap-2">
+                  {metas
+                    .filter((m) => m.valor > 0)
+                    .sort((a, b) => (b.progresso ?? 0) - (a.progresso ?? 0))
+                    .map((m) => {
+                      const p = m.progresso ?? 0
+                      return (
+                        <li key={m.usuarioId} className="flex flex-col gap-1">
+                          <div className="flex items-baseline justify-between gap-3 text-sm">
+                            <span className="truncate text-tinta">{m.nome}</span>
+                            <span className="flex shrink-0 items-baseline gap-2">
+                              <span className="numero font-semibold text-tinta">{brl(m.liquido)}</span>
+                              <span className="numero text-xs text-tinta-3">de {brl(m.valor)}</span>
+                              <span className={'numero text-xs font-semibold ' + (p >= 1 ? 'text-bom' : p >= 0.7 ? 'text-atencao' : 'text-critico')}>
+                                {Math.round(p * 100)}%
+                              </span>
+                            </span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-superficie-2">
+                            <div
+                              className={'h-full rounded-full ' + (p >= 1 ? 'bg-bom-vivo' : p >= 0.7 ? 'bg-atencao-vivo' : 'bg-critico-vivo')}
+                              style={{ width: `${Math.min(p, 1) * 100}%` }}
+                            />
+                          </div>
+                        </li>
+                      )
+                    })}
+                </ul>
+              </Cartao>
+            )}
+          </div>
         </Secao>
       )}
 

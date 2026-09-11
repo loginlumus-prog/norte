@@ -23,9 +23,11 @@ import type { ReactNode } from 'react'
 import { pode, type Capacidade, type Sessao } from '@/servidor/permissao'
 import { moduloLigado, type Modulo } from '@/servidor/modulos'
 import { sairAcao } from '@/app/[empresa]/acoes'
+import { TRANCA_MIN, AVISO_SEG } from '@/servidor/presenca'
 import { TrocaTema, type Tema } from './TrocaTema'
 import { Simbolo } from './Marca'
 import { Gaveta } from './Gaveta'
+import { Tranca } from './Tranca'
 import { cx, Ponto } from './base'
 
 export type ItemMenu = {
@@ -261,6 +263,10 @@ export async function Estrutura({
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4">{children}</main>
       </div>
+
+      {/* Trinta minutos parada, a tela tranca e pede a senha. Mora aqui
+          porque aqui é por onde toda tela passa — ver Tranca.tsx. */}
+      <Tranca slug={empresa.slug} nome={sessao.nome} trancaMin={TRANCA_MIN} avisoSeg={AVISO_SEG} />
     </div>
   )
 }

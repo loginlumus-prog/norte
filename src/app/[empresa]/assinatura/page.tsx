@@ -204,7 +204,9 @@ export default async function AssinaturaPagina({
           atual={a.plano}
           opcoes={opcoes}
           podeTrocar={podeMexer}
-          whatsapp="5571999990000"
+          // O número é nosso, não da empresa cliente, e vem do ambiente: número
+          // escrito no código é número que ninguém lembra de trocar.
+          whatsapp={process.env.NORTE_WHATSAPP ?? null}
         />
 
         {/* Cartao vende, tabela decide. Quem esta quase trocando quer a

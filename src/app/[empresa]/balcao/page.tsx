@@ -4,6 +4,7 @@ import { escolherUnidade } from '@/servidor/unidade'
 import { caixaAberto, conferirCaixa } from '@/servidor/caixa'
 import { listarVendedores } from '@/servidor/equipe'
 import { configCrediario } from '@/servidor/crediario'
+import { minhaMeta, mesChave } from '@/servidor/metas'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
@@ -64,6 +65,10 @@ export default async function BalcaoPagina({
     ? { maxParcelas: (await configCrediario(sessao)).maxParcelas }
     : null
 
+  // A meta de quem está no caixa, na barra: "faltam R$ 800" é o que faz a
+  // meta existir durante o dia, e não só no dia 30.
+  const meta = moduloLigado(empresa, 'metas') ? await minhaMeta(sessao, mesChave(new Date())) : null
+
   return (
     <Estrutura
       empresa={empresa}
@@ -103,6 +108,7 @@ export default async function BalcaoPagina({
             caixa={caixa}
             conferencia={conferencia!}
             podeOperar={podeOperarCaixa}
+            meta={meta && meta.valor > 0 ? { valor: meta.valor, vendido: meta.vendido } : null}
           />
           <Balcao
             slug={slug}

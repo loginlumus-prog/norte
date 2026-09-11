@@ -63,7 +63,8 @@ export function Planos({
   atual: Plano
   opcoes: Mudanca[]
   podeTrocar: boolean
-  whatsapp: string
+  /** Nosso WhatsApp comercial. Sem ele, o Corporativo pede contato pelo suporte. */
+  whatsapp: string | null
 }) {
   const acao = trocar.bind(null, slug)
   const [estado, agir, pendente] = useActionState<EstadoAssinatura, FormData>(acao, {})
@@ -168,16 +169,22 @@ export function Planos({
                     Em uso
                   </span>
                 ) : sobConsulta ? (
-                  <a
-                    href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(
-                      'Olá! Quero conversar sobre o plano Corporativo do Norte.',
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block rounded-norte border border-tinta bg-tinta px-3 py-2.5 text-center text-sm font-semibold text-superficie hover:opacity-90"
-                  >
-                    Falar com a gente
-                  </a>
+                  whatsapp ? (
+                    <a
+                      href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(
+                        'Olá! Quero conversar sobre o plano Corporativo do Norte.',
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded-norte border border-tinta bg-tinta px-3 py-2.5 text-center text-sm font-semibold text-superficie hover:opacity-90"
+                    >
+                      Falar com a gente
+                    </a>
+                  ) : (
+                    <span className="block rounded-norte border border-borda py-2.5 text-center text-sm font-semibold text-tinta-3">
+                      Fechado por conversa — chame o suporte
+                    </span>
+                  )
                 ) : (
                   <form action={agir}>
                     <input type="hidden" name="plano" value={m.para} />

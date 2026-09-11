@@ -26,12 +26,15 @@ export function BarraCaixa({
   caixa,
   conferencia,
   podeOperar,
+  meta = null,
 }: {
   slug: string
   unidadeId: string
   caixa: { id: string; abertoEm: Date; abertoPor: string }
   conferencia: { vendas: number; vendidoTotal: number; esperado: number }
   podeOperar: boolean
+  /** A meta do mês de quem está no caixa. Nula sem módulo de metas ou sem meta. */
+  meta?: { valor: number; vendido: number } | null
 }) {
   const [painel, setPainel] = useState<'SANGRIA' | 'SUPRIMENTO' | null>(null)
   const [feito, setFeito] = useState<string | null>(null)
@@ -58,6 +61,19 @@ export function BarraCaixa({
           <span className="numero self-start text-sm font-semibold text-tinta">{brl(conferencia.esperado)}</span>
         </div>
         <span className="text-xs text-tinta-3">{caixa.abertoPor}</span>
+        {meta && (
+          <div className="flex flex-col" title="Sua meta do mês, líquida de devolução">
+            <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">sua meta do mês</span>
+            <span className="numero self-start text-sm font-semibold text-tinta">
+              {brl(meta.vendido)} <span className="text-tinta-3">de {brl(meta.valor)}</span>
+              {meta.vendido >= meta.valor ? (
+                <span className="ml-1 text-bom">· bateu</span>
+              ) : (
+                <span className="ml-1 text-tinta-2">· faltam {brl(meta.valor - meta.vendido)}</span>
+              )}
+            </span>
+          </div>
+        )}
         {dias >= 1 && (
           <Situacao nivel="atencao">
             aberto há {dias} dia{dias === 1 ? '' : 's'}

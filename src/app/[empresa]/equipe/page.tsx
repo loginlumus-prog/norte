@@ -6,21 +6,42 @@ import { comoOrg } from '@/servidor/banco'
 import { pode, podeConceder, type Papel } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Secao, Tira } from '@/ui/painel'
+import { Secao, Tira, Numero, brl } from '@/ui/painel'
+import { Cartao } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
+import { moduloLigado } from '@/servidor/modulos'
+import { metasDoMes, mesChave, mesValido, nomeDoMes } from '@/servidor/metas'
+import Link from 'next/link'
 import { Equipe, type PessoaNaTela, type ConviteNaTela } from './Equipe'
+import { Metas } from './Metas'
 
 const TODOS_PAPEIS: Papel[] = ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR']
 
 const dia = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(d)
 
-export default async function TelaEquipe({ params }: { params: Promise<{ empresa: string }> }) {
+export default async function TelaEquipe({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ empresa: string }>
+  searchParams: Promise<{ mes?: string }>
+}) {
   const { empresa: slug } = await params
+  const { mes: mesPedido } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const podeGerir = pode(sessao, 'equipe.gerir')
+  const temMetas = moduloLigado(empresa, 'metas')
+  const mes = mesValido(mesPedido) ? mesPedido : mesChave(new Date())
+  const metas = temMetas ? await metasDoMes(sessao, mes) : []
+  const [ano, mesNum] = mes.split('-').map(Number)
+  const mesAnterior = mesChave(new Date(ano!, mesNum! - 2, 1))
+  const mesSeguinte = mesChave(new Date(ano!, mesNum!, 1))
+  const totalMeta = metas.reduce((s, m) => s + m.valor, 0)
+  const totalVendido = metas.reduce((s, m) => s + m.liquido, 0)
+  const totalComissao = metas.reduce((s, m) => s + m.comissao, 0)
 
   const [pessoas, convites, unidades] = await Promise.all([
     listarEquipe(sessao),
@@ -78,6 +99,47 @@ export default async function TelaEquipe({ params }: { params: Promise<{ empresa
           { rotulo: 'sem acesso', quantos: naTela.length - ativos + semAcesso, nivel: 'neutro' },
         ]}
       />
+
+      {temMetas && (
+        <Secao
+          titulo={`Metas e comissão · ${nomeDoMes(mes)}`}
+          resumo="Quanto cada pessoa vendeu no mês, líquido de devolução, contra a meta dela — e a comissão que isso dá."
+          acao={
+            <span className="flex items-center gap-2 text-sm">
+              <Link href={`/${slug}/equipe?mes=${mesAnterior}`} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
+                ←
+              </Link>
+              <Link href={`/${slug}/equipe?mes=${mesSeguinte}`} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
+                →
+              </Link>
+            </span>
+          }
+        >
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Numero
+              principal
+              rotulo="Vendido pela equipe"
+              valor={brl(totalVendido)}
+              detalhe={totalMeta > 0 ? `de ${brl(totalMeta)} de meta · ${Math.round((totalVendido / totalMeta) * 100)}%` : 'sem meta definida'}
+            />
+            <Numero rotulo="Comissão do mês" valor={brl(totalComissao)} detalhe="a pagar com o salário" nivel={totalComissao > 0 ? 'atencao' : undefined} />
+            <Numero
+              rotulo="Bateram a meta"
+              valor={`${metas.filter((m) => m.progresso !== null && m.progresso >= 1).length} de ${metas.filter((m) => m.progresso !== null).length}`}
+              detalhe="pessoas com meta"
+            />
+          </div>
+          <Cartao caixa>
+            <Metas slug={slug} mes={mes} metas={metas} podeGerir={podeGerir} />
+          </Cartao>
+          {totalComissao > 0 && (
+            <p className="text-xs text-tinta-3">
+              A comissão não vira lançamento sozinha: no fechamento da folha, lance em Financeiro na categoria
+              &ldquo;Comissão&rdquo;. Assim o DRE conta uma vez, no mês em que foi paga.
+            </p>
+          )}
+        </Secao>
+      )}
 
       <Secao titulo="Equipe">
         <Equipe

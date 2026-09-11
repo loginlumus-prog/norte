@@ -42,6 +42,7 @@ export const ACOES: Record<string, string> = {
   'cliente.alterou': 'alterou um cliente',
   'crediario.recebeu': 'recebeu uma parcela',
   'equipe.papel.alterou': 'mudou o acesso de alguém',
+  'equipe.meta': 'definiu meta e comissão',
   'equipe.desativou': 'desativou uma conta',
   'equipe.reativou': 'reativou uma conta',
   'convite.criou': 'convidou alguém',

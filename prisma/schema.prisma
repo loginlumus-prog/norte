@@ -185,6 +185,7 @@ model Org {
   parcelas       Parcela[]
   recebimentos   Recebimento[]
   taxas          TaxaPagamento[]
+  metas          Meta[]
   categoriasFin  CategoriaFinanceira[]
   contasFin      ContaFinanceira[]
   lancamentos    Lancamento[]
@@ -284,6 +285,7 @@ model Usuario {
   acessos   Acesso[]
   auditoria Auditoria[]
   presencas Presenca[]
+  metas     Meta[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -291,6 +293,34 @@ model Usuario {
   @@unique([orgId, email])
   @@index([orgId])
   @@map("usuarios")
+}
+
+/// A meta de venda de uma pessoa num mês, e a comissão dela.
+///
+/// Uma linha por pessoa por mês. Mês sem linha herda a última escrita — a
+/// meta de setembro vale para outubro até alguém mudar — porque meta que
+/// zera todo dia primeiro é meta que ninguém acompanha.
+model Meta {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  usuarioId String  @map("usuario_id")
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  /// "2026-09"
+  mes String
+
+  /// Quanto a pessoa precisa vender no mês. Zero = sem meta, só comissão.
+  valor Decimal @default(0) @db.Decimal(12, 2)
+  /// Porcento sobre o que ela vendeu (líquido de devolução).
+  comissaoPct Decimal @default(0) @map("comissao_pct") @db.Decimal(5, 2)
+
+  quem         String
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@unique([orgId, usuarioId, mes])
+  @@map("metas")
 }
 
 /// Permissão é POR UNIDADE, não global.

@@ -8,7 +8,29 @@ import { headers } from 'next/headers'
 import { exigirSessao } from '@/servidor/pagina'
 import { convidar, revogarConvite, EmailJaUsado } from '@/servidor/convite'
 import { mudarAcesso, mudarSituacao } from '@/servidor/equipe'
+import { salvarMeta, mesValido } from '@/servidor/metas'
 import { SemPermissao, type Papel } from '@/servidor/permissao'
+
+export async function salvarMetaAcao(
+  slug: string,
+  m: { usuarioId: string; mes: string; valor: number; comissaoPct: number },
+): Promise<EstadoEquipe> {
+  const sessao = await exigirSessao(slug)
+  if (!mesValido(m.mes)) return { erro: 'Mês inválido.' }
+  if (!Number.isFinite(m.valor) || m.valor < 0) return { erro: 'A meta é um valor em reais, zero ou mais.' }
+  if (!Number.isFinite(m.comissaoPct) || m.comissaoPct < 0 || m.comissaoPct > 50) {
+    return { erro: 'A comissão é uma porcentagem entre 0 e 50.' }
+  }
+  try {
+    await salvarMeta(sessao, m)
+    revalidatePath(`/${slug}/equipe`)
+    revalidatePath(`/${slug}`)
+    return { ok: 'Salvo.' }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode definir metas.' }
+    return { erro: e instanceof Error ? e.message : 'Não deu para salvar.' }
+  }
+}
 
 export type EstadoEquipe = { erro?: string; ok?: string; link?: string }
 
