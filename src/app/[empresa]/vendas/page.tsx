@@ -47,7 +47,7 @@ export default async function Vendas({
 }) {
   const { empresa: slug } = await params
   const { unidade: pedida, periodo: pedido, q, situacao: sit, vendedor: vendedorPedido, forma: formaPedida } = await searchParams
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'venda.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'venda.ver')

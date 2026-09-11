@@ -50,7 +50,7 @@ export default async function FichaVenda({
   params: Promise<{ empresa: string; id: string }>
 }) {
   const { empresa: slug, id } = await params
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'venda.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const v = await acharVenda(sessao, id)

@@ -59,7 +59,7 @@ export default async function Produtos({
     pendenciaPedida === 'sem-categoria' || pendenciaPedida === 'sem-custo' || pendenciaPedida === 'sem-ean' || pendenciaPedida === 'sem-venda'
       ? pendenciaPedida
       : null
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'produto.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   // O estoque é por loja. Sem este filtro, a tela somaria o saldo das duas e

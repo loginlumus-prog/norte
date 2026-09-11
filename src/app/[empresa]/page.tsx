@@ -57,7 +57,10 @@ export default async function Painel({
     notFound()
   }
 
-  const onde = await escolherUnidade(sessao, empresa, pedida)
+  // A unidade se escolhe pela capacidade de LER relatório, não de vender: o
+  // contador lê o painel e não vende em loja nenhuma — com 'venda.ver' ele
+  // caía em "sem acesso a nenhuma unidade" logo depois de entrar.
+  const onde = await escolherUnidade(sessao, empresa, pedida, 'relatorio.ver')
   const j = janela(lerPeriodo(pedido))
   const temCrediario = moduloLigado(empresa, 'crediario') && pode(sessao, 'crediario.ver')
   const verEquipe = moduloLigado(empresa, 'metas') && pode(sessao, 'equipe.ver')

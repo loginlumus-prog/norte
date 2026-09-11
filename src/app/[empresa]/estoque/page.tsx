@@ -57,7 +57,7 @@ export default async function TelaEstoque({
     sitPedida === 'acabaram' || sitPedida === 'minimo' || sitPedida === 'ok' ? sitPedida : null
   const tipo = TIPOS.find((t) => t === tipoPedido) ?? null
   const j = janela(lerPeriodo(periodoPedido))
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'estoque.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'estoque.ver')

@@ -39,7 +39,7 @@ export default async function Clientes({
   const { q, quem: quemPedido, ordem: ordemPedida } = await searchParams
   const quem: Quem | null = QUEM.find((x) => x === quemPedido) ?? null
   const ordem: Ordem = ordemPedida === 'gastou' || ordemPedida === 'recente' ? ordemPedida : 'nome'
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'cliente.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const clientes = await listarClientes(sessao, q)

@@ -47,7 +47,7 @@ export default async function Comprovante({
 }) {
   const { empresa: slug, id } = await params
   const { imprimir } = await searchParams
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'venda.ver' })
 
   const v = await acharVenda(sessao, id)
   if (!v) notFound()

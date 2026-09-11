@@ -65,11 +65,11 @@ export function BarraCaixa({
           <div className="flex flex-col" title="Sua meta do mês, líquida de devolução">
             <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">sua meta do mês</span>
             <span className="numero self-start text-sm font-semibold text-tinta">
-              {brl(meta.vendido)} <span className="text-tinta-3">de {brl(meta.valor)}</span>
+              {brl(meta.vendido)} <span className="text-tinta-3">de {brl(meta.valor)}</span>{' '}
               {meta.vendido >= meta.valor ? (
-                <span className="ml-1 text-bom">· bateu</span>
+                <span className="text-bom">· bateu</span>
               ) : (
-                <span className="ml-1 text-tinta-2">· faltam {brl(meta.valor - meta.vendido)}</span>
+                <span className="text-tinta-2">· faltam {brl(meta.valor - meta.vendido)}</span>
               )}
             </span>
           </div>

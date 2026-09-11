@@ -37,7 +37,7 @@ const NOVO: AgenteNaTela = {
 
 export default async function TelaAgente({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'agente.configurar' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const agora = new Date()

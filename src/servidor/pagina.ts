@@ -19,7 +19,7 @@ import { redirect, notFound } from 'next/navigation'
 import { acharOrgPorSlug, comoOrg } from './banco'
 import { lerSessao } from './sessao'
 import { sinal } from './presenca'
-import { sessaoAindaVale, type Sessao } from './permissao'
+import { sessaoAindaVale, pode, type Capacidade, type Sessao } from './permissao'
 
 export type Empresa = NonNullable<Awaited<ReturnType<typeof acharOrgPorSlug>>>
 
@@ -73,16 +73,29 @@ export async function exigirSessao(slugEmpresa: string): Promise<Sessao> {
   return s
 }
 
+/**
+ * Toda tela de dentro começa aqui.
+ *
+ * `capacidade` é a que a tela exige. Sem ela, a tela abre para quem colou o
+ * endereço e só estoura lá embaixo, quando a primeira consulta chama
+ * `exigir` — e estouro é a tela de "deu problema", que parece defeito. Com
+ * ela, quem não pode cai no "este endereço não abre", que é a verdade.
+ */
 export async function exigirEntrada(
   slugEmpresa: string,
-  /** A própria tela de cadastro passa `false`, senão entraria em laço. */
-  exigirConfigurada = true,
+  opcoes: boolean | { configurada?: boolean; capacidade?: Capacidade } = true,
 ): Promise<{ empresa: Empresa; sessao: Sessao }> {
+  // A própria tela de cadastro passa `false`, senão entraria em laço.
+  const exigirConfigurada = typeof opcoes === 'boolean' ? opcoes : (opcoes.configurada ?? true)
+  const capacidade = typeof opcoes === 'boolean' ? undefined : opcoes.capacidade
+
   const empresa = await acharOrgPorSlug(slugEmpresa)
   if (!empresa) notFound()
 
   const sessao = await sessaoViva(slugEmpresa)
   if (!sessao) redirect(`/${slugEmpresa}/entrar`)
+
+  if (capacidade && !pode(sessao, capacidade)) notFound()
 
   // O cookie diz de quem é a sessão; o endereço diz qual empresa foi aberta.
   // Se divergirem, a sessão não vale — vale a empresa do endereço, sempre.

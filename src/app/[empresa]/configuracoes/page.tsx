@@ -51,7 +51,7 @@ const REGIME: Record<string, string> = {
 
 export default async function Configuracoes({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'empresa.configurar' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const dados = await comoOrg(sessao.orgId, (db) =>

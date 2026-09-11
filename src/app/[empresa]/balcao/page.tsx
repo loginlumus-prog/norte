@@ -27,7 +27,7 @@ export default async function BalcaoPagina({
 }) {
   const { empresa: slug } = await params
   const { unidade: pedida, caixa: aba } = await searchParams
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'venda.criar' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   // Vender é sempre EM uma loja — não existe venda "consolidada". Por isso

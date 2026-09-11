@@ -32,7 +32,7 @@ export default async function FichaCliente({
   params: Promise<{ empresa: string; id: string }>
 }) {
   const { empresa: slug, id } = await params
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'cliente.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const cliente = await acharCliente(sessao, id)

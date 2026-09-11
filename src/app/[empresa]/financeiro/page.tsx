@@ -45,7 +45,7 @@ export default async function Financeiro({
   const q = (qBruto ?? '').trim()
   const tipo: TipoLancamento | null = tipoPedido === 'DESPESA' || tipoPedido === 'RECEITA' ? tipoPedido : null
   const situacaoL: 'aberto' | 'pago' | null = sitPedida === 'aberto' || sitPedida === 'pago' ? sitPedida : null
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'financeiro.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'financeiro.ver')

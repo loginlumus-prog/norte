@@ -137,7 +137,7 @@ export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPes
 export async function minhaMeta(sessao: Sessao, mes: string) {
   const { de, ate } = janelaDoMes(mes)
   return comoOrg(sessao.orgId, async (db) => {
-    const [linha, vendas] = await Promise.all([
+    const [linha, vendas, devolucoes] = await Promise.all([
       db.meta.findFirst({
         where: { usuarioId: sessao.usuarioId, mes: { lte: mes } },
         orderBy: { mes: 'desc' },
@@ -147,10 +147,16 @@ export async function minhaMeta(sessao: Sessao, mes: string) {
         where: { vendedorId: sessao.usuarioId, situacao: 'CONCLUIDA', criadaEm: { gte: de, lt: ate } },
         _sum: { total: true },
       }),
+      // Líquido de devolução, a mesma conta da tela da equipe — os dois
+      // números têm que ser o mesmo, senão a pessoa desconfia dos dois.
+      db.devolucao.aggregate({
+        where: { venda: { vendedorId: sessao.usuarioId }, criadaEm: { gte: de, lt: ate } },
+        _sum: { valor: true },
+      }),
     ])
     if (!linha) return null
     const valorC = centavos(linha.valor)
-    const vendidoC = centavos(vendas._sum.total ?? 0)
+    const vendidoC = Math.max(centavos(vendas._sum.total ?? 0) - centavos(devolucoes._sum.valor ?? 0), 0)
     return {
       valor: reais(valorC),
       comissaoPct: Number(linha.comissaoPct),

@@ -12,7 +12,7 @@ import { Editor } from '../Editor'
 
 export default async function NovoProduto({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'produto.editar' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   // A tela nem abre para quem não pode. O botão que leva até aqui já está

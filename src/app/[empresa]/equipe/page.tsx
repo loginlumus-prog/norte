@@ -29,7 +29,7 @@ export default async function TelaEquipe({
 }) {
   const { empresa: slug } = await params
   const { mes: mesPedido } = await searchParams
-  const { empresa, sessao } = await exigirEntrada(slug)
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'equipe.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const podeGerir = pode(sessao, 'equipe.gerir')
