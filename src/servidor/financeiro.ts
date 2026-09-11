@@ -443,21 +443,21 @@ export async function resultadoPorMes(
   return comoOrg(sessao.orgId, async (db) => {
     const [vendas, devol, cmv, despesas, pagamentos, taxas] = await Promise.all([
       db.$queryRaw<{ mes: string; total: string }[]>`
-        select to_char(v.criada_em, 'YYYY-MM') as mes, sum(v.total) as total
+        select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, sum(v.total) as total
           from vendas v
          where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
            and v.criada_em >= ${de} and v.criada_em <= ${ate}
          group by 1
       `,
       db.$queryRaw<{ mes: string; total: string }[]>`
-        select to_char(d.criada_em, 'YYYY-MM') as mes, sum(d.valor) as total
+        select to_char(d.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, sum(d.valor) as total
           from devolucoes d
          where d.unidade_id = any(${unidadeIds})
            and d.criada_em >= ${de} and d.criada_em <= ${ate}
          group by 1
       `,
       db.$queryRaw<{ mes: string; total: string }[]>`
-        select to_char(v.criada_em, 'YYYY-MM') as mes,
+        select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes,
                coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as total
           from venda_itens i join vendas v on v.id = i.venda_id
          where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
@@ -474,7 +474,7 @@ export async function resultadoPorMes(
          group by 1
       `,
       db.$queryRaw<{ mes: string; forma: FormaPagamento; parcelado: boolean; total: string }[]>`
-        select to_char(v.criada_em, 'YYYY-MM') as mes, p.forma,
+        select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, p.forma,
                (p.forma = 'CREDITO' and p.parcelas >= 2) as parcelado, sum(p.valor) as total
           from pagamentos p join vendas v on v.id = p.venda_id
          where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
