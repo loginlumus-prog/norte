@@ -27,6 +27,7 @@ import type { SituacaoVenda } from '@prisma/client'
 
 const FORMA: Record<string, string> = {
   DINHEIRO: 'Dinheiro', PIX: 'Pix', DEBITO: 'Débito', CREDITO: 'Crédito', CREDIARIO: 'Crediário',
+  VALE: 'Vale', TRANSFERENCIA: 'Transferência',
 }
 
 const quando = (d: Date) =>
@@ -125,6 +126,11 @@ export default async function Vendas({
           <span className="flex items-center justify-end gap-2">
             <Situacao nivel="critico">cancelada</Situacao>
             <span className="numero text-tinta-3 line-through">{brl(v.total)}</span>
+          </span>
+        ) : v.devolvido > 0 ? (
+          <span className="flex flex-col items-end">
+            <span className="numero font-semibold text-tinta">{brl(v.total)}</span>
+            <span className="numero text-xs text-atencao">− {brl(v.devolvido)} devolvido</span>
           </span>
         ) : (
           <span className="numero font-semibold text-tinta">{brl(v.total)}</span>

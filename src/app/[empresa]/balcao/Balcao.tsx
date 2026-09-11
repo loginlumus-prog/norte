@@ -36,7 +36,9 @@ import { tabelaDe, ROTULO_TABELA, type Tabela } from '@/servidor/preco'
 import { multiplicar } from '@/servidor/dinheiro'
 import type { Vendedor } from '@/servidor/equipe'
 import { Botao, Aviso, Situacao, cx } from '@/ui/base'
-import { procurar, grade, fecharVenda, type Achado, type Grade } from './acoes'
+import { procurar, grade, fecharVenda, consultarValeAcao, type Achado, type Grade } from './acoes'
+
+type Pago = { forma: string; valor: number; referencia?: string; rotulo?: string }
 
 const FORMAS = [
   { chave: 'DINHEIRO', titulo: 'Dinheiro' },
@@ -93,7 +95,13 @@ export function Balcao({
   const [termo, setTermo] = useState('')
   const [achados, setAchados] = useState<Achado[]>([])
   const [carrinho, setCarrinho] = useState<Linha[]>([])
-  const [pagos, setPagos] = useState<{ forma: string; valor: number }[]>([])
+  const [pagos, setPagos] = useState<Pago[]>([])
+
+  // ── o vale de troca ──────────────────────────────────────
+  const [valeAberto, setValeAberto] = useState(false)
+  const [valeCodigo, setValeCodigo] = useState('')
+  const [valeErro, setValeErro] = useState<string | null>(null)
+  const [valeIndo, setValeIndo] = useState(false)
   const [desconto, setDesconto] = useState(0)
   const [cliente, setCliente] = useState<ClienteNoBalcao | null>(null)
   const [vendedorId, setVendedorId] = useState(usuarioId)
@@ -302,6 +310,53 @@ export function Balcao({
   const mudarPago = (i: number, valor: number) =>
     setPagos((p) => p.map((x, j) => (j === i ? { ...x, valor: Math.max(valor, 0) } : x)))
 
+  // O vale entra pelo código do papel. A tela consulta antes de aceitar,
+  // para dizer o saldo e de quem é; o servidor confere de novo ao fechar.
+  async function usarVale() {
+    const codigo = valeCodigo.trim()
+    if (!codigo) return
+    setValeIndo(true)
+    setValeErro(null)
+    try {
+      const r = await consultarValeAcao(slug, codigo)
+      if (!r.ok) {
+        setValeErro(
+          r.motivo === 'nao_achado' ? 'Vale não encontrado. Confira o código.'
+          : r.motivo === 'zerado' ? 'Este vale já foi todo usado.'
+          : 'Este vale venceu.',
+        )
+        return
+      }
+      if (pagos.some((p) => p.referencia === r.codigo)) {
+        setValeErro('Esse vale já está nesta venda.')
+        return
+      }
+      const t = tabelaDe([...pagos.map((p) => p.forma), 'VALE'])
+      const aPagarNa = Math.max(Math.max(totalNa(t) - descontoCent, 0) - pontosCent, 0)
+      const falta = aPagarNa - pagoCent
+      if (falta <= 0) {
+        setValeErro('Não falta nada para pagar.')
+        return
+      }
+      const valorCent = Math.min(cent(r.saldo), falta)
+      setPagos((p) => [
+        ...p,
+        {
+          forma: 'VALE',
+          valor: valorCent / 100,
+          referencia: r.codigo,
+          rotulo: `Vale ${r.codigo}${r.cliente ? ` · ${r.cliente}` : ''}`,
+        },
+      ])
+      setValeCodigo('')
+      setValeAberto(false)
+    } catch {
+      setValeErro('Não deu para consultar o vale agora.')
+    } finally {
+      setValeIndo(false)
+    }
+  }
+
   function limpar() {
     setVoltou(null)
     setCarrinho([])
@@ -377,6 +432,9 @@ export function Balcao({
         setRecado({ nivel: 'critico', texto: 'Item avulso só com permissão de desconto acima do teto.' })
       } else if (r.motivo === 'vendedor_invalido') {
         setRecado({ nivel: 'critico', texto: 'Esse vendedor não pode vender nesta loja.' })
+      } else if (r.motivo === 'vale_recusado') {
+        setRecado({ nivel: 'critico', texto: r.recado })
+        setPagos((p) => p.filter((x) => x.forma !== 'VALE'))
       } else {
         setRecado({ nivel: 'critico', texto: 'Não deu para fechar a venda.' })
       }
@@ -896,11 +954,55 @@ export function Balcao({
             ))}
           </div>
 
+          {/* O vale de troca: um botão só, que abre o campo do código. Fora da
+              grade das quatro formas porque não é forma que se escolhe — é
+              papel que a pessoa trouxe. */}
+          {!valeAberto ? (
+            <button
+              type="button"
+              onClick={() => setValeAberto(true)}
+              disabled={carrinho.length === 0 || faltaCent <= 0}
+              className="self-start text-xs font-medium text-marca underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              + vale de troca
+            </button>
+          ) : (
+            <div className="flex flex-col gap-1.5 rounded-norte border border-borda-suave p-2">
+              <label className="text-xs text-tinta-2">Código do vale (está no papel)</label>
+              <div className="flex gap-1.5">
+                <input
+                  autoFocus
+                  value={valeCodigo}
+                  onChange={(e) => setValeCodigo(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void usarVale()
+                    }
+                    if (e.key === 'Escape') setValeAberto(false)
+                  }}
+                  placeholder="VT-XXXXXX"
+                  aria-label="Código do vale de troca"
+                  className="min-w-0 flex-1 rounded border border-borda bg-superficie px-2 py-1.5 font-mono text-sm tracking-wider text-tinta placeholder:text-tinta-3"
+                />
+                <Botao tom="secundario" onClick={() => void usarVale()} carregando={valeIndo} className="py-1.5 text-xs">
+                  Usar
+                </Botao>
+              </div>
+              {valeErro && <span className="text-xs font-medium text-critico">{valeErro}</span>}
+              <button type="button" onClick={() => setValeAberto(false)} className="self-start text-xs text-tinta-3 hover:text-tinta">
+                cancelar
+              </button>
+            </div>
+          )}
+
           {pagos.length > 0 && (
             <ul className="flex flex-col gap-1">
               {pagos.map((p, i) => (
                 <li key={i} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="text-tinta-2">{FORMAS.find((f) => f.chave === p.forma)?.titulo ?? p.forma}</span>
+                  <span className="truncate text-tinta-2">
+                    {p.rotulo ?? FORMAS.find((f) => f.chave === p.forma)?.titulo ?? p.forma}
+                  </span>
                   <span className="flex items-center gap-1.5">
                     <input
                       type="number"

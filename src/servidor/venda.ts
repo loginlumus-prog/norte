@@ -41,8 +41,9 @@ import { comoOrg } from './banco'
 import type { SituacaoVenda } from '@prisma/client'
 import { exigir, pode, PODERES, type Papel, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
-import { centavos, reais, multiplicar } from './dinheiro'
+import { centavos, reais, multiplicar, mostrar } from './dinheiro'
 import { tabelaDe, precoNaTabela, ROTULO_TABELA, type Tabela } from './preco'
+import { normalizarCodigo, venceu } from './devolucao'
 import {
   programaDe,
   conferirUso,
@@ -112,6 +113,7 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'pontos_recusados'; recado: string }
   | { ok: false; motivo: 'avulso_negado' }
   | { ok: false; motivo: 'vendedor_invalido' }
+  | { ok: false; motivo: 'vale_recusado'; recado: string }
 
 /** Os papéis que podem vender. Derivado da tabela de poderes, não escrito à mão. */
 const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) =>
@@ -366,6 +368,50 @@ export async function registrarVenda(
       if (!caixa?.aberto) return { ok: false as const, motivo: 'caixa_fechado' as const }
     }
 
+    // ── 3.3 o vale de troca, quando paga com ele ──
+    // O código vem do navegador; o saldo vem do banco, agora. Primeiro
+    // confere TODOS os vales sem escrever nada — uma recusa aqui é saída
+    // limpa. Só depois desconta, e desconto que falha (dois caixas gastando o
+    // mesmo vale no mesmo segundo) estoura a transação inteira em vez de
+    // devolver "não deu": devolver depois de escrever deixaria o primeiro
+    // desconto gravado numa venda que não aconteceu.
+    const valeDoPagamento = new Map<number, string>()
+    const valesConferidos: { indice: number; id: string; valorCent: number }[] = []
+    for (const [i, p] of v.pagamentos.entries()) {
+      if (p.forma !== 'VALE') continue
+      const codigo = normalizarCodigo(p.referencia ?? '')
+      const valorCent = centavos(p.valor)
+      const vale = codigo
+        ? await db.vale.findFirst({ where: { codigo }, select: { id: true, saldo: true, validade: true } })
+        : null
+      if (!vale) {
+        return { ok: false as const, motivo: 'vale_recusado' as const, recado: 'Vale não encontrado. Confira o código.' }
+      }
+      if (vale.validade && venceu(vale.validade)) {
+        return { ok: false as const, motivo: 'vale_recusado' as const, recado: 'Este vale já venceu.' }
+      }
+      if (centavos(vale.saldo) < valorCent) {
+        return {
+          ok: false as const,
+          motivo: 'vale_recusado' as const,
+          recado: `O vale só tem ${mostrar(centavos(vale.saldo))}.`,
+        }
+      }
+      valesConferidos.push({ indice: i, id: vale.id, valorCent })
+    }
+    for (const c of valesConferidos) {
+      const mexeu = await db.vale.updateMany({
+        where: { id: c.id, saldo: { gte: reais(c.valorCent) } },
+        data: { saldo: { decrement: reais(c.valorCent) } },
+      })
+      if (mexeu.count === 0) throw new ValeDisputado(c.id)
+      const depois = await db.vale.findUnique({ where: { id: c.id }, select: { saldo: true } })
+      if (depois && centavos(depois.saldo) <= 0) {
+        await db.vale.update({ where: { id: c.id }, data: { usadoEm: new Date() } })
+      }
+      valeDoPagamento.set(c.indice, c.id)
+    }
+
     // ── 4. o número, sem corrida ──
     // O banco incrementa e devolve numa operação só.
     const linhas = await db.$queryRaw<{ numero: number }[]>`
@@ -402,12 +448,13 @@ export async function registrarVenda(
           create: itens.map(({ _cent, _tabelaCent, ...i }) => ({ orgId: sessao.orgId, ...i })),
         },
         pagamentos: {
-          create: v.pagamentos.map((p) => ({
+          create: v.pagamentos.map((p, i) => ({
             orgId: sessao.orgId,
             forma: p.forma,
             valor: reais(centavos(p.valor)),
             parcelas: p.parcelas ?? 1,
-            referencia: p.referencia,
+            referencia: p.forma === 'VALE' ? normalizarCodigo(p.referencia ?? '') : p.referencia,
+            valeId: valeDoPagamento.get(i) ?? null,
           })),
         },
       },
@@ -508,6 +555,14 @@ export async function registrarVenda(
   })
 }
 
+/** Dois caixas gastaram o mesmo vale no mesmo instante. Raro, e a venda não pode ficar. */
+export class ValeDisputado extends Error {
+  constructor(readonly valeId: string) {
+    super('O vale acabou de ser usado em outro caixa. Nada foi gravado.')
+    this.name = 'ValeDisputado'
+  }
+}
+
 /** Alguém levou a última peça entre a conferência e a baixa. Raro, e correto. */
 export class EstoqueSumiu extends Error {
   constructor(readonly variacaoId: string) {
@@ -557,6 +612,8 @@ export type VendaNaLista = {
   unidade: string
   /** As formas usadas, para a lista dizer "Pix + Dinheiro" sem abrir a venda. */
   formas: string[]
+  /** Quanto desta venda já voltou em devolução. Zero na maioria. */
+  devolvido: number
 }
 
 export async function listarVendas(sessao: Sessao, f: FiltroVendas): Promise<VendaNaLista[]> {
@@ -599,6 +656,7 @@ export async function listarVendas(sessao: Sessao, f: FiltroVendas): Promise<Ven
         unidade: { select: { nome: true } },
         _count: { select: { itens: true } },
         pagamentos: { select: { forma: true } },
+        devolucoes: { select: { valor: true } },
       },
     })
 
@@ -613,6 +671,7 @@ export async function listarVendas(sessao: Sessao, f: FiltroVendas): Promise<Ven
       vendedor: v.vendedorNome,
       unidade: v.unidade.nome,
       formas: [...new Set(v.pagamentos.map((p) => p.forma))],
+      devolvido: v.devolucoes.reduce((s, d) => s + Number(d.valor), 0),
     }))
   })
 }
@@ -624,8 +683,21 @@ export async function acharVenda(sessao: Sessao, vendaId: string) {
     db.venda.findUnique({
       where: { id: vendaId },
       include: {
-        itens: { orderBy: { id: 'asc' } },
-        pagamentos: { orderBy: { criadoEm: 'asc' } },
+        itens: {
+          orderBy: { id: 'asc' },
+          include: { devolucoes: { select: { quantidade: true } } },
+        },
+        pagamentos: {
+          orderBy: { criadoEm: 'asc' },
+          include: { vale: { select: { codigo: true } } },
+        },
+        devolucoes: {
+          orderBy: { criadaEm: 'asc' },
+          include: {
+            itens: { select: { vendaItemId: true, quantidade: true, valor: true } },
+            vale: { select: { codigo: true, saldo: true, validade: true } },
+          },
+        },
         cliente: { select: { id: true, nome: true, telefone: true } },
         unidade: { select: { id: true, nome: true } },
         caixa: { select: { id: true, aberto: true } },

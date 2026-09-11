@@ -127,6 +127,17 @@ model Org {
   /// programa vira 3% de desconto em toda venda e deixa de ser fidelidade.
   pontosMinimo Int @default(0) @map("pontos_minimo")
 
+  // ── crediário ────────────────────────────────────────────
+  /// Juro de ATRASO, em porcento ao mês, cobrado sobre o que ficou vencido.
+  /// Não é juro do parcelamento: parcelar não custa nada ao cliente — o preço
+  /// "no crediário" do produto já embute o risco. Quem recebe pode mudar o
+  /// valor na hora, com a pessoa na frente.
+  crediarioJurosMes Decimal @default(3) @map("crediario_juros_mes") @db.Decimal(5, 2)
+  /// Em quantas vezes, no máximo, a loja parcela.
+  crediarioMaxParcelas Int @default(6) @map("crediario_max_parcelas")
+  /// Dias entre uma parcela e a outra — e até a primeira.
+  crediarioDiasEntre Int @default(30) @map("crediario_dias_entre")
+
   // ── credito de IA ────────────────────────────────────────
   /// Saldo de credito de IA, em centavos.
   ///
@@ -168,6 +179,11 @@ model Org {
   vendas         Venda[]
   vendaItens     VendaItem[]
   pagamentos     Pagamento[]
+  devolucoes     Devolucao[]
+  devolucaoItens DevolucaoItem[]
+  vales          Vale[]
+  parcelas       Parcela[]
+  recebimentos   Recebimento[]
   categoriasFin  CategoriaFinanceira[]
   contasFin      ContaFinanceira[]
   lancamentos    Lancamento[]
@@ -225,6 +241,8 @@ model Unidade {
   movimentos MovimentoEstoque[]
   caixas      Caixa[]
   vendas      Venda[]
+  devolucoes  Devolucao[]
+  parcelas    Parcela[]
   lancamentos Lancamento[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
@@ -765,6 +783,8 @@ model Cliente {
 
   vendas Venda[]
   movimentosPontos MovimentoPontos[]
+  vales  Vale[]
+  parcelas Parcela[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   conversas ConversaAgente[]
@@ -802,8 +822,9 @@ model Caixa {
   saldoContado  Decimal? @map("saldo_contado") @db.Decimal(12, 2)
   observacoes   String?
 
-  vendas     Venda[]
-  movimentos CaixaMovimento[]
+  vendas       Venda[]
+  movimentos   CaixaMovimento[]
+  recebimentos Recebimento[]
 
   @@index([orgId, unidadeId, aberto])
   @@map("caixas")
@@ -874,6 +895,8 @@ model Venda {
 
   itens      VendaItem[]
   pagamentos Pagamento[]
+  devolucoes Devolucao[]
+  parcelas   Parcela[]
 
   criadaEm    DateTime  @default(now()) @map("criada_em")
   concluidaEm DateTime? @map("concluida_em")
@@ -918,6 +941,8 @@ model VendaItem {
   /// Custo do momento da venda — é o que permite calcular a margem depois.
   custoUnit   Decimal? @map("custo_unit") @db.Decimal(12, 2)
 
+  devolucoes DevolucaoItem[]
+
   @@index([orgId, vendaId])
   @@index([orgId, variacaoId])
   @@map("venda_itens")
@@ -939,10 +964,196 @@ model Pagamento {
   /// Bandeira, autorização, chave do Pix — o que ajuda a conciliar depois.
   referencia String?
 
+  /// Quando a forma é VALE: o vale de troca que pagou. É por aqui que o vale
+  /// sabe onde foi gasto.
+  valeId String? @map("vale_id")
+  vale   Vale?   @relation(fields: [valeId], references: [id])
+
   criadoEm DateTime @default(now()) @map("criado_em")
 
   @@index([orgId, vendaId])
   @@map("pagamentos")
+}
+
+// ─────────────────────────────────────────────────────────────
+// DEVOLUÇÃO E TROCA
+// ─────────────────────────────────────────────────────────────
+//
+// Devolver não é cancelar. Cancelar desfaz a venda inteira; devolver tira
+// PARTE dela — a blusa que não serviu, de uma sacola de cinco peças — e o
+// valor daquela parte precisa ir para algum lugar: vira um vale (a troca), sai
+// da gaveta (dinheiro), ou é devolvido por fora (estorno de cartão ou Pix,
+// que o sistema não faz e só anota).
+//
+// O item devolvido volta ao estoque com um movimento DEVOLUCAO apontando para
+// a venda, e a devolução fica ligada à venda para sempre: a ficha mostra o
+// que saiu, o que voltou e quando.
+
+model Devolucao {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  vendaId String @map("venda_id")
+  venda   Venda  @relation(fields: [vendaId], references: [id])
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id])
+
+  /// Para onde foi o valor devolvido.
+  destino DestinoDevolucao
+  /// O que a pessoa recebe de volta, já proporcional ao que ela pagou.
+  valor   Decimal @db.Decimal(12, 2)
+  motivo  String
+  quem    String
+  usuarioId String? @map("usuario_id")
+
+  /// Quando `destino` é VALE, o vale que nasceu daqui.
+  valeId String? @unique @map("vale_id")
+  vale   Vale?   @relation(fields: [valeId], references: [id])
+
+  itens DevolucaoItem[]
+
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@index([orgId, vendaId])
+  @@index([orgId, unidadeId, criadaEm])
+  @@map("devolucoes")
+}
+
+model DevolucaoItem {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  devolucaoId String    @map("devolucao_id")
+  devolucao   Devolucao @relation(fields: [devolucaoId], references: [id], onDelete: Cascade)
+
+  vendaItemId String    @map("venda_item_id")
+  vendaItem   VendaItem @relation(fields: [vendaItemId], references: [id])
+
+  quantidade Decimal @db.Decimal(14, 3)
+  valor      Decimal @db.Decimal(12, 2)
+
+  @@index([orgId, devolucaoId])
+  @@index([orgId, vendaItemId])
+  @@map("devolucao_itens")
+}
+
+enum DestinoDevolucao {
+  /// Vira crédito para trocar: o vale.
+  VALE
+  /// Saiu da gaveta — registrado como sangria do caixa aberto.
+  DINHEIRO
+  /// Devolvido por fora (estorno de cartão, Pix de volta). O sistema só anota.
+  ESTORNO
+}
+
+/// O vale de troca: o crédito que a pessoa leva no papel e gasta numa venda
+/// futura, como forma de pagamento VALE. O código é curto e sem letras
+/// ambíguas, porque ele é digitado no balcão lendo de um papel amassado.
+model Vale {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  codigo String
+
+  clienteId String?  @map("cliente_id")
+  cliente   Cliente? @relation(fields: [clienteId], references: [id])
+
+  valor Decimal @db.Decimal(12, 2)
+  /// O que ainda dá para gastar. Vale pode ser usado em mais de uma venda.
+  saldo Decimal @db.Decimal(12, 2)
+
+  validade DateTime? @db.Date
+  quem     String
+
+  /// Quando o saldo zerou.
+  usadoEm DateTime? @map("usado_em")
+
+  devolucao  Devolucao?
+  pagamentos Pagamento[]
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@unique([orgId, codigo])
+  @@index([orgId, clienteId])
+  @@map("vales")
+}
+
+// ─────────────────────────────────────────────────────────────
+// CREDIÁRIO
+// ─────────────────────────────────────────────────────────────
+//
+// Vender fiado é a venda que a loja de bairro mais faz e a que mais perde:
+// o caderno some, a parcela esquece, a cobrança constrange. Aqui a venda
+// paga em CREDIARIO nasce com as parcelas já escritas — quantas, de quanto,
+// para quando — e cada recebimento fica ligado à parcela que abateu.
+//
+// Parcela é dívida do CLIENTE; por isso venda no crediário exige cliente.
+// Sem nome, não há para quem cobrar.
+
+model Parcela {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  vendaId String @map("venda_id")
+  venda   Venda  @relation(fields: [vendaId], references: [id])
+
+  clienteId String  @map("cliente_id")
+  cliente   Cliente @relation(fields: [clienteId], references: [id])
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id])
+
+  /// 2 de 6.
+  numero Int
+  de     Int
+
+  vencimento DateTime @db.Date
+  valor      Decimal  @db.Decimal(12, 2)
+  /// O que já foi abatido do valor (sem contar juros). Pode ser parcial.
+  pago       Decimal  @default(0) @db.Decimal(12, 2)
+  /// Juros de atraso já cobrados nesta parcela, somados.
+  juros      Decimal  @default(0) @db.Decimal(12, 2)
+  quitadaEm  DateTime? @map("quitada_em")
+
+  recebimentos Recebimento[]
+
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@index([orgId, clienteId, vencimento])
+  @@index([orgId, vencimento, quitadaEm])
+  @@index([orgId, vendaId])
+  @@map("parcelas")
+}
+
+model Recebimento {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  parcelaId String  @map("parcela_id")
+  parcela   Parcela @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+
+  /// O caixa aberto na hora, quando foi em dinheiro — para o fechamento bater.
+  caixaId String? @map("caixa_id")
+  caixa   Caixa?  @relation(fields: [caixaId], references: [id])
+
+  forma FormaPagamento
+  /// O total que entrou.
+  valor Decimal @db.Decimal(12, 2)
+  /// A parte do total que é juro de atraso. O resto abate a parcela.
+  juros Decimal @default(0) @db.Decimal(12, 2)
+  quem  String
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, parcelaId])
+  @@index([orgId, criadoEm])
+  @@map("recebimentos")
 }
 
 enum SituacaoVenda {

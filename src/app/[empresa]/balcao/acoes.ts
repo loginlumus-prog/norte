@@ -17,6 +17,7 @@ import { registrarVenda, type PagamentoDaVenda } from '@/servidor/venda'
 import { abrirCaixa, fecharCaixa, movimentarCaixa } from '@/servidor/caixa'
 import { listarClientes, criarCliente } from '@/servidor/cliente'
 import { escada, type Tabela } from '@/servidor/preco'
+import { consultarVale } from '@/servidor/devolucao'
 import type { FormaPagamento } from '@prisma/client'
 
 export type Achado = {
@@ -216,7 +217,7 @@ export async function fecharVenda(
     unidadeId: string
     caixaId: string | null
     itens: ItemEnviado[]
-    pagamentos: { forma: string; valor: number }[]
+    pagamentos: { forma: string; valor: number; referencia?: string }[]
     desconto: number
     clienteId?: string | null
     vendedorId?: string | null
@@ -240,6 +241,7 @@ export async function fecharVenda(
     pagamentos: dados.pagamentos.map((p) => ({
       forma: p.forma as FormaPagamento,
       valor: p.valor,
+      referencia: p.referencia,
     })) as PagamentoDaVenda[],
   })
 
@@ -271,6 +273,16 @@ export async function movimentar(
   const s = await exigirSessao(slug)
   await movimentarCaixa(s, caixaId, tipo, valor, motivo)
   revalidatePath(`/${slug}/balcao`)
+}
+
+// ── o vale de troca ──────────────────────────────────────────
+// O balcão pergunta antes de aceitar: a pessoa digita o código do papel, a
+// tela mostra o saldo e de quem é, e só então o vale entra como pagamento.
+// Ao fechar, o servidor confere de novo e desconta — o que a tela viu é só
+// para a conversa não travar.
+export async function consultarValeAcao(slug: string, codigo: string) {
+  const s = await exigirSessao(slug)
+  return consultarVale(s, codigo)
 }
 
 // ── o cliente da venda ───────────────────────────────────────
