@@ -13,7 +13,7 @@
 // que falta todo dia é caixa que ninguém confere mais.
 
 import { comoOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, pode, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
 import type { TipoCaixa } from '@prisma/client'
 
@@ -247,4 +247,128 @@ export class CaixaFechado extends Error {
     super('Este caixa já foi fechado.')
     this.name = 'CaixaFechado'
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// OS TURNOS QUE JÁ PASSARAM
+// ─────────────────────────────────────────────────────────────
+//
+// O fechamento gravava a diferença no livro e ninguém lia. A pergunta que o
+// dono faz é simples e tem que ter uma tela: "em qual turno faltou dinheiro,
+// e quem estava no caixa?". É esta lista.
+
+export type TurnoDeCaixa = {
+  id: string
+  unidade: string
+  unidadeId: string
+  aberto: boolean
+  abertoPor: string
+  abertoEm: Date
+  fechadoPor: string | null
+  fechadoEm: Date | null
+  saldoAbertura: number
+  saldoEsperado: number | null
+  saldoContado: number | null
+  /** Positiva sobra, negativa falta. Nula enquanto está aberto. */
+  diferenca: number | null
+  observacoes: string | null
+  vendas: number
+  vendido: number
+  sangrias: number
+  suprimentos: number
+  /** Horas desde que abriu. Turno aberto há mais de um dia é esquecimento. */
+  horasAberto: number
+}
+
+export async function listarCaixas(
+  sessao: Sessao,
+  f: { unidadeIds: string[]; de: Date; ate: Date },
+): Promise<TurnoDeCaixa[]> {
+  exigir(sessao, 'caixa.ver')
+
+  // A unidade vem do endereço. Só as que a pessoa pode ver.
+  const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'caixa.ver', u))
+  if (permitidas.length === 0) return []
+
+  return comoOrg(sessao.orgId, async (db) => {
+    // Uma consulta só, com os totais por turno calculados no banco. Buscar os
+    // turnos e depois somar as vendas de cada um seriam duzentas idas ao banco
+    // para uma tela de lista.
+    const linhas = await db.$queryRaw<
+      {
+        id: string
+        unidade: string
+        unidade_id: string
+        aberto: boolean
+        aberto_por: string
+        aberto_em: Date
+        fechado_por: string | null
+        fechado_em: Date | null
+        saldo_abertura: string
+        saldo_esperado: string | null
+        saldo_contado: string | null
+        observacoes: string | null
+        vendas: number
+        vendido: string
+        sangrias: string
+        suprimentos: string
+      }[]
+    >`
+      select c.id, u.nome as unidade, c.unidade_id, c.aberto, c.aberto_por, c.aberto_em,
+             c.fechado_por, c.fechado_em, c.saldo_abertura, c.saldo_esperado, c.saldo_contado,
+             c.observacoes,
+             (select count(*) from vendas v where v.caixa_id = c.id and v.situacao = 'CONCLUIDA')::int as vendas,
+             (select coalesce(sum(v.total), 0) from vendas v where v.caixa_id = c.id and v.situacao = 'CONCLUIDA') as vendido,
+             (select coalesce(sum(m.valor), 0) from caixa_movimentos m where m.caixa_id = c.id and m.tipo = 'SANGRIA') as sangrias,
+             (select coalesce(sum(m.valor), 0) from caixa_movimentos m where m.caixa_id = c.id and m.tipo = 'SUPRIMENTO') as suprimentos
+        from caixas c
+        join unidades u on u.id = c.unidade_id
+       where c.unidade_id = any(${permitidas})
+         and (c.aberto or (c.aberto_em >= ${f.de} and c.aberto_em < ${f.ate}))
+       order by c.aberto desc, c.aberto_em desc
+       limit 300
+    `
+
+    const agora = Date.now()
+    return linhas.map((l) => {
+      const esperado = l.saldo_esperado === null ? null : reais(centavos(l.saldo_esperado))
+      const contado = l.saldo_contado === null ? null : reais(centavos(l.saldo_contado))
+      return {
+        id: l.id,
+        unidade: l.unidade,
+        unidadeId: l.unidade_id,
+        aberto: l.aberto,
+        abertoPor: l.aberto_por,
+        abertoEm: l.aberto_em,
+        fechadoPor: l.fechado_por,
+        fechadoEm: l.fechado_em,
+        saldoAbertura: reais(centavos(l.saldo_abertura)),
+        saldoEsperado: esperado,
+        saldoContado: contado,
+        diferenca:
+          esperado !== null && contado !== null ? reais(centavos(contado) - centavos(esperado)) : null,
+        observacoes: l.observacoes,
+        vendas: Number(l.vendas),
+        vendido: reais(centavos(l.vendido)),
+        sangrias: reais(centavos(l.sangrias)),
+        suprimentos: reais(centavos(l.suprimentos)),
+        horasAberto: (agora - new Date(l.aberto_em).getTime()) / 36e5,
+      }
+    })
+  })
+}
+
+/** Os movimentos de um turno, para a ficha dele. */
+export async function movimentosDoCaixa(sessao: Sessao, caixaId: string) {
+  exigir(sessao, 'caixa.ver')
+  return comoOrg(sessao.orgId, async (db) => {
+    const caixa = await db.caixa.findUnique({ where: { id: caixaId }, select: { unidadeId: true } })
+    if (!caixa || !pode(sessao, 'caixa.ver', caixa.unidadeId)) return []
+    const movs = await db.caixaMovimento.findMany({
+      where: { caixaId },
+      orderBy: { criadoEm: 'asc' },
+      select: { id: true, tipo: true, valor: true, motivo: true, quem: true, criadoEm: true },
+    })
+    return movs.map((m) => ({ ...m, valor: Number(m.valor) }))
+  })
 }
