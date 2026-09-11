@@ -16,6 +16,7 @@ import { comoOrg } from '@/servidor/banco'
 import { registrarVenda, type PagamentoDaVenda } from '@/servidor/venda'
 import { abrirCaixa, fecharCaixa, movimentarCaixa } from '@/servidor/caixa'
 import { listarClientes, criarCliente } from '@/servidor/cliente'
+import { escada, type Tabela } from '@/servidor/preco'
 import type { FormaPagamento } from '@prisma/client'
 
 export type Achado = {
@@ -23,8 +24,62 @@ export type Achado = {
   codigo: string | null
   descricao: string
   medida: string
+  /** O preço à vista. É o que a grade e a busca mostram. */
   preco: number
+  /**
+   * Os três preços, já com o ajuste da variação e já preenchidos (cartão
+   * vazio vale à vista, etc.). A forma de pagamento escolhe qual vale — ver
+   * preco.ts. A tela mostra a escada; o servidor decide de novo ao fechar.
+   */
+  precos: Record<Tabela, number>
   saldo: number
+}
+
+type VariacaoLida = {
+  id: string
+  codigo: string | null
+  ajustePreco: { toString(): string } | null
+  produto: {
+    nome: string
+    medida: string
+    precoVista: { toString(): string } | null
+    precoCartao: { toString(): string } | null
+    precoCrediario: { toString(): string } | null
+  }
+  opcoes: { opcao: { valor: string } }[]
+  estoques: { quantidade: { toString(): string } }[]
+}
+
+const SELECAO_DA_VARIACAO = {
+  id: true,
+  codigo: true,
+  ajustePreco: true,
+  produto: {
+    select: { nome: true, medida: true, precoVista: true, precoCartao: true, precoCrediario: true },
+  },
+  opcoes: { select: { opcao: { select: { valor: true } } } },
+} as const
+
+/** Uma variação do banco vira o que o balcão precisa. Um lugar só, para a busca e a grade concordarem. */
+function montarAchado(v: VariacaoLida): Achado {
+  const ajuste = Number(v.ajustePreco ?? 0)
+  const e = escada({
+    vista: Number(v.produto.precoVista ?? 0),
+    cartao: v.produto.precoCartao != null ? Number(v.produto.precoCartao) : null,
+    crediario: v.produto.precoCrediario != null ? Number(v.produto.precoCrediario) : null,
+  })
+  return {
+    id: v.id,
+    codigo: v.codigo,
+    medida: v.produto.medida,
+    descricao:
+      v.opcoes.length > 0
+        ? `${v.produto.nome} — ${v.opcoes.map((o) => o.opcao.valor).join(' · ')}`
+        : v.produto.nome,
+    preco: e.vista + ajuste,
+    precos: { vista: e.vista + ajuste, cartao: e.cartao + ajuste, crediario: e.crediario + ajuste },
+    saldo: Number(v.estoques[0]?.quantidade ?? 0),
+  }
 }
 
 /**
@@ -59,30 +114,17 @@ export async function procurar(
           { codigo: { equals: t, mode: 'insensitive' } },
           { codigoBarras: t },
           { produto: { nome: { contains: t, mode: 'insensitive' } } },
+          { produto: { marca: { contains: t, mode: 'insensitive' } } },
         ],
       },
       take: 12,
       select: {
-        id: true,
-        codigo: true,
-        ajustePreco: true,
-        produto: { select: { nome: true, medida: true, precoVista: true } },
-        opcoes: { select: { opcao: { select: { valor: true } } } },
+        ...SELECAO_DA_VARIACAO,
         estoques: { where: { unidadeId }, select: { quantidade: true } },
       },
     })
 
-    const achados = vs.map((v) => ({
-      id: v.id,
-      codigo: v.codigo,
-      medida: v.produto.medida as string,
-      descricao:
-        v.opcoes.length > 0
-          ? `${v.produto.nome} — ${v.opcoes.map((o) => o.opcao.valor).join(' · ')}`
-          : v.produto.nome,
-      preco: Number(v.produto.precoVista ?? 0) + Number(v.ajustePreco ?? 0),
-      saldo: Number(v.estoques[0]?.quantidade ?? 0),
-    }))
+    const achados = vs.map(montarAchado)
 
     // Código exato na frente: é o caso do leitor de código de barras.
     const exato = t.toUpperCase()
@@ -144,11 +186,7 @@ export async function grade(
         orderBy: [{ produto: { nome: 'asc' } }, { codigo: 'asc' }],
         take: TETO + 1,
         select: {
-          id: true,
-          codigo: true,
-          ajustePreco: true,
-          produto: { select: { nome: true, medida: true, precoVista: true } },
-          opcoes: { select: { opcao: { select: { valor: true } } } },
+          ...SELECAO_DA_VARIACAO,
           estoques: { where: { unidadeId }, select: { quantidade: true } },
         },
       }),
@@ -158,23 +196,19 @@ export async function grade(
       categorias: categorias
         .filter((c) => c._count.produtos > 0)
         .map((c) => ({ id: c.id, nome: c.nome, quantos: c._count.produtos })),
-      itens: vs.slice(0, TETO).map((v) => ({
-        id: v.id,
-        codigo: v.codigo,
-        medida: v.produto.medida as string,
-        descricao:
-          v.opcoes.length > 0
-            ? `${v.produto.nome} — ${v.opcoes.map((o) => o.opcao.valor).join(' · ')}`
-            : v.produto.nome,
-        preco: Number(v.produto.precoVista ?? 0) + Number(v.ajustePreco ?? 0),
-        saldo: Number(v.estoques[0]?.quantidade ?? 0),
-      })),
+      itens: vs.slice(0, TETO).map(montarAchado),
       cortou: vs.length > TETO,
     }
   })
 }
 
-export type ItemEnviado = { variacaoId: string; quantidade: number; precoUnit: number }
+export type ItemEnviado = {
+  /** Nulo = avulso. */
+  variacaoId: string | null
+  quantidade: number
+  precoUnit: number
+  avulso?: { descricao: string; precoUnit: number }
+}
 
 export async function fecharVenda(
   slug: string,
@@ -185,6 +219,7 @@ export async function fecharVenda(
     pagamentos: { forma: string; valor: number }[]
     desconto: number
     clienteId?: string | null
+    vendedorId?: string | null
     pontosUsar?: number
   },
 ) {
@@ -193,9 +228,14 @@ export async function fecharVenda(
   const r = await registrarVenda(s, {
     unidadeId: dados.unidadeId,
     caixaId: dados.caixaId,
-    itens: dados.itens,
+    itens: dados.itens.map((i) =>
+      i.variacaoId
+        ? { variacaoId: i.variacaoId, quantidade: i.quantidade, precoUnit: i.precoUnit }
+        : { variacaoId: null, quantidade: i.quantidade, avulso: i.avulso },
+    ),
     desconto: dados.desconto,
     clienteId: dados.clienteId ?? null,
+    vendedorId: dados.vendedorId ?? null,
     pontosUsar: dados.pontosUsar ?? 0,
     pagamentos: dados.pagamentos.map((p) => ({
       forma: p.forma as FormaPagamento,

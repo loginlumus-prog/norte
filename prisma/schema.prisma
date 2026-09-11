@@ -899,8 +899,12 @@ model VendaItem {
   vendaId String @map("venda_id")
   venda   Venda  @relation(fields: [vendaId], references: [id], onDelete: Cascade)
 
-  variacaoId String   @map("variacao_id")
-  variacao   Variacao @relation(fields: [variacaoId], references: [id])
+  /// Nulo = item AVULSO: vendido fora do catálogo (um conserto, uma peça que
+  /// ninguém cadastrou, um serviço). Não mexe em estoque, e só quem pode passar
+  /// do teto de desconto lança — preço digitado na hora é o mesmo buraco que
+  /// desconto sem teto, e precisa da mesma trava.
+  variacaoId String?   @map("variacao_id")
+  variacao   Variacao? @relation(fields: [variacaoId], references: [id])
 
   /// fotografia
   descricao String

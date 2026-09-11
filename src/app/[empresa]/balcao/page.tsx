@@ -2,13 +2,16 @@ import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
 import { caixaAberto, conferirCaixa } from '@/servidor/caixa'
+import { listarVendedores } from '@/servidor/equipe'
+import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Aviso, Situacao } from '@/ui/base'
+import { Aviso } from '@/ui/base'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import type { Tema } from '@/ui/TrocaTema'
 import { Balcao } from './Balcao'
+import { BarraCaixa } from './BarraCaixa'
 import { comoOrg } from '@/servidor/banco'
 import { programaDe, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
@@ -48,8 +51,12 @@ export default async function BalcaoPagina({
 
   const podeOperarCaixa = unidadeId ? pode(sessao, 'caixa.operar', unidadeId) : false
 
-  const hora = (d: Date) =>
-    new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(d)
+  // "Quem vendeu" só existe com o módulo de metas: sem meta e sem comissão,
+  // a pergunta não tem para que servir, e o seletor seria mais um campo.
+  const vendedores =
+    unidadeId && moduloLigado(empresa, 'metas') ? await listarVendedores(sessao, unidadeId) : null
+
+  const podeAvulso = unidadeId ? pode(sessao, 'venda.desconto', unidadeId) : false
 
   return (
     <Estrutura
@@ -60,16 +67,7 @@ export default async function BalcaoPagina({
       tema={tema}
       titulo={aba === 'fechar' ? 'Fechar o caixa' : 'Balcão'}
       acao={
-        <span className="flex items-center gap-2">
-          {caixa && (
-            <Situacao nivel="bom">
-              caixa aberto {hora(caixa.abertoEm)} · {caixa.abertoPor}
-            </Situacao>
-          )}
-          {onde.mostrarSeletor && (
-            <SeletorUnidade opcoes={onde.opcoes} atual={unidadeId} />
-          )}
-        </span>
+        onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={unidadeId} /> : undefined
       }
     >
       {!unidadeId ? (
@@ -93,6 +91,13 @@ export default async function BalcaoPagina({
         </div>
       ) : (
         <>
+          <BarraCaixa
+            slug={slug}
+            unidadeId={unidadeId}
+            caixa={caixa}
+            conferencia={conferencia!}
+            podeOperar={podeOperarCaixa}
+          />
           <Balcao
             slug={slug}
             unidadeId={unidadeId}
@@ -101,16 +106,9 @@ export default async function BalcaoPagina({
             caixaId={caixa.id}
             unidadeNome={unidadeNome}
             programa={programa}
+            vendedores={vendedores}
+            podeAvulso={podeAvulso}
           />
-          <p className="text-xs text-tinta-3">
-            <a
-              href={`/${slug}/balcao?caixa=fechar${unidadeId ? `&unidade=${unidadeId}` : ''}`}
-              className="font-medium text-marca underline underline-offset-2"
-            >
-              Fechar o caixa
-            </a>{' '}
-            — {conferencia?.vendas ?? 0} venda(s) no turno.
-          </p>
         </>
       )}
     </Estrutura>

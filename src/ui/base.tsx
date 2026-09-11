@@ -35,15 +35,19 @@ export function Botao({
   carregando,
   children,
   className,
+  botaoRef,
   ...resto
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   tom?: Tom
   largo?: boolean
   carregando?: boolean
+  /** Para quem precisa levar o foco até o botão — o F10 do balcão faz isso. */
+  botaoRef?: Ref<HTMLButtonElement>
 }) {
   return (
     <button
       {...resto}
+      ref={botaoRef}
       disabled={resto.disabled || carregando}
       aria-busy={carregando || undefined}
       className={cx(

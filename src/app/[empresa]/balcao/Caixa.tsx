@@ -181,8 +181,20 @@ export function FecharCaixa({
   )
 }
 
-export function Movimento({ slug, caixaId }: { slug: string; caixaId: string }) {
-  const [tipo, setTipo] = useState<'SANGRIA' | 'SUPRIMENTO'>('SANGRIA')
+export function Movimento({
+  slug,
+  caixaId,
+  tipoInicial = 'SANGRIA',
+  aoRegistrar,
+}: {
+  slug: string
+  caixaId: string
+  /** Com qual dos dois o painel abre — o botão da barra já disse qual. */
+  tipoInicial?: 'SANGRIA' | 'SUPRIMENTO'
+  /** Chamado depois de gravar, para quem abriu o painel poder fechá-lo. */
+  aoRegistrar?: (tipo: 'SANGRIA' | 'SUPRIMENTO', valor: number) => void
+}) {
+  const [tipo, setTipo] = useState<'SANGRIA' | 'SUPRIMENTO'>(tipoInicial)
   const [valor, setValor] = useState('')
   const [motivo, setMotivo] = useState('')
   const [erro, setErro] = useState<string | null>(null)
@@ -235,8 +247,10 @@ export function Movimento({ slug, caixaId }: { slug: string; caixaId: string }) 
             setErro(null)
             try {
               await movimentar(slug, caixaId, tipo, Number(valor), motivo)
+              const v = Number(valor)
               setValor('')
               setMotivo('')
+              aoRegistrar?.(tipo, v)
             } catch (e) {
               setErro(e instanceof Error ? e.message : 'Não deu para registrar.')
             }

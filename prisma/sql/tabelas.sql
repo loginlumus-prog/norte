@@ -437,7 +437,7 @@ CREATE TABLE "venda_itens" (
     "id" TEXT NOT NULL,
     "org_id" TEXT NOT NULL,
     "venda_id" TEXT NOT NULL,
-    "variacao_id" TEXT NOT NULL,
+    "variacao_id" TEXT,
     "descricao" TEXT NOT NULL,
     "codigo" TEXT,
     "medida" "Medida" NOT NULL DEFAULT 'UN',
@@ -1006,7 +1006,7 @@ ALTER TABLE "venda_itens" ADD CONSTRAINT "venda_itens_org_id_fkey" FOREIGN KEY (
 ALTER TABLE "venda_itens" ADD CONSTRAINT "venda_itens_venda_id_fkey" FOREIGN KEY ("venda_id") REFERENCES "vendas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "venda_itens" ADD CONSTRAINT "venda_itens_variacao_id_fkey" FOREIGN KEY ("variacao_id") REFERENCES "variacoes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "venda_itens" ADD CONSTRAINT "venda_itens_variacao_id_fkey" FOREIGN KEY ("variacao_id") REFERENCES "variacoes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "pagamentos" ADD CONSTRAINT "pagamentos_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

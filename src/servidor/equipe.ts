@@ -19,7 +19,7 @@
 
 import { comoOrg } from './banco'
 import { cortarSessoes } from './pagina'
-import { exigir, podeConceder, type Papel, type Sessao } from './permissao'
+import { exigir, podeConceder, PODERES, type Papel, type Sessao } from './permissao'
 
 export type PessoaDaEquipe = {
   id: string
@@ -54,6 +54,40 @@ export async function listarEquipe(sessao: Sessao): Promise<PessoaDaEquipe[]> {
         unidadeNome: a.unidadeId ? (nomeDa.get(a.unidadeId) ?? null) : null,
       })),
     }))
+  })
+}
+
+export type Vendedor = { id: string; nome: string }
+
+/**
+ * Quem pode vender NESTA unidade — para o balcão escolher "quem vendeu".
+ *
+ * Derivado da tabela de poderes: é gente ativa cujo papel inclui
+ * `venda.criar`, com acesso à unidade ou à empresa inteira. A lista existe
+ * para meta e comissão: a vendedora atende no salão, a caixa registra, e a
+ * venda precisa ir para o nome certo.
+ */
+export async function listarVendedores(sessao: Sessao, unidadeId: string): Promise<Vendedor[]> {
+  exigir(sessao, 'venda.criar', unidadeId)
+  const agora = new Date()
+  const papeis = (Object.keys(PODERES) as Papel[]).filter((p) => PODERES[p].includes('venda.criar'))
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const pessoas = await db.usuario.findMany({
+      where: {
+        ativo: true,
+        acessos: {
+          some: {
+            papel: { in: papeis },
+            OR: [{ unidadeId: null }, { unidadeId }],
+            AND: [{ OR: [{ expiraEm: null }, { expiraEm: { gt: agora } }] }],
+          },
+        },
+      },
+      orderBy: { nome: 'asc' },
+      select: { id: true, nome: true },
+    })
+    return pessoas
   })
 }
 

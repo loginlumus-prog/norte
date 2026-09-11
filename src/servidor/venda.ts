@@ -39,9 +39,10 @@
 
 import { comoOrg } from './banco'
 import type { SituacaoVenda } from '@prisma/client'
-import { exigir, pode, type Sessao } from './permissao'
+import { exigir, pode, PODERES, type Papel, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, reais, multiplicar } from './dinheiro'
+import { tabelaDe, precoNaTabela, ROTULO_TABELA, type Tabela } from './preco'
 import {
   programaDe,
   conferirUso,
@@ -52,11 +53,19 @@ import {
 import type { FormaPagamento } from '@prisma/client'
 
 export type ItemDaVenda = {
-  variacaoId: string
+  /** Nulo = item avulso, fora do catálogo. Aí `avulso` é obrigatório. */
+  variacaoId: string | null
   quantidade: number
   /** Se não vier, usa o preço do produto conforme a forma de pagamento. */
   precoUnit?: number
   desconto?: number
+  /**
+   * Item que não existe no cadastro: um conserto, uma peça que ninguém
+   * cadastrou, um serviço. Não mexe em estoque. Só quem pode passar do teto
+   * de desconto lança — preço digitado na hora é o mesmo buraco que desconto
+   * sem teto, e leva a mesma trava.
+   */
+  avulso?: { descricao: string; precoUnit: number }
 }
 
 export type PagamentoDaVenda = {
@@ -70,6 +79,13 @@ export type NovaVenda = {
   unidadeId: string
   caixaId?: string | null
   clienteId?: string | null
+  /**
+   * Quem vendeu, quando não é quem está no caixa. É o que faz meta e comissão
+   * existirem: a vendedora atende no salão, a caixa registra. Sem vir, é a
+   * própria pessoa da sessão. Conferido no servidor: precisa ser gente ativa
+   * da empresa, com acesso de venda NESTA unidade.
+   */
+  vendedorId?: string | null
   /** Pontos que o cliente quer gastar nesta venda. Confere no servidor. */
   pontosUsar?: number
   itens: ItemDaVenda[]
@@ -94,7 +110,13 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'caixa_fechado' }
   | { ok: false; motivo: 'desconto_acima_do_teto'; percentual: number; teto: number }
   | { ok: false; motivo: 'pontos_recusados'; recado: string }
+  | { ok: false; motivo: 'avulso_negado' }
+  | { ok: false; motivo: 'vendedor_invalido' }
 
+/** Os papéis que podem vender. Derivado da tabela de poderes, não escrito à mão. */
+const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) =>
+  PODERES[p].includes('venda.criar'),
+)
 
 export async function registrarVenda(
   sessao: Sessao,
@@ -103,6 +125,24 @@ export async function registrarVenda(
   exigir(sessao, 'venda.criar', v.unidadeId)
 
   if (v.itens.length === 0) return { ok: false, motivo: 'sem_itens' }
+
+  // ── 0. item avulso é privilégio, não é atalho ──
+  // Quem lança "Conserto — R$ 30" está inventando um preço. É exatamente o
+  // que o teto de desconto existe para impedir, então a trava é a mesma.
+  const avulsos = v.itens.filter((i) => !i.variacaoId)
+  if (avulsos.length > 0) {
+    if (!pode(sessao, 'venda.desconto', v.unidadeId)) return { ok: false, motivo: 'avulso_negado' }
+    for (const a of avulsos) {
+      if (!a.avulso || !a.avulso.descricao.trim() || !(a.avulso.precoUnit >= 0) || !(a.quantidade > 0)) {
+        return { ok: false, motivo: 'avulso_negado' }
+      }
+    }
+  }
+  const doCatalogo = v.itens.filter((i): i is ItemDaVenda & { variacaoId: string } => !!i.variacaoId)
+
+  // A forma de pagamento escolhe a tabela de preço. Decidido aqui, uma vez,
+  // e usado em todo item — ver preco.ts.
+  const tabela: Tabela = tabelaDe(v.pagamentos.map((p) => p.forma))
 
   return comoOrg(sessao.orgId, async (db) => {
     const empresa = await db.org.findUnique({
@@ -115,12 +155,43 @@ export async function registrarVenda(
     const teto = Number(empresa?.descontoMaximo ?? 0)
     const programa = empresa ? programaDe(empresa) : DESLIGADO
 
+    // ── 0.1 quem vendeu ──
+    // O id vem do navegador. Precisa ser gente ativa desta empresa, com
+    // acesso de venda nesta unidade — senão a comissão do mês vai para um
+    // nome que ninguém escolheu, ou para alguém que já saiu.
+    let vendedor = { id: sessao.usuarioId, nome: sessao.nome }
+    if (v.vendedorId && v.vendedorId !== sessao.usuarioId) {
+      const agora = new Date()
+      const pessoa = await db.usuario.findUnique({
+        where: { id: v.vendedorId },
+        select: {
+          nome: true, ativo: true,
+          acessos: { select: { papel: true, unidadeId: true, expiraEm: true } },
+        },
+      })
+      const podeVender =
+        !!pessoa?.ativo &&
+        pessoa.acessos.some(
+          (a) =>
+            (!a.expiraEm || a.expiraEm > agora) &&
+            PAPEIS_QUE_VENDEM.includes(a.papel as Papel) &&
+            (a.unidadeId === null || a.unidadeId === v.unidadeId),
+        )
+      if (!podeVender) return { ok: false as const, motivo: 'vendedor_invalido' as const }
+      vendedor = { id: v.vendedorId, nome: pessoa!.nome }
+    }
+
     // ── 1. o que está sendo vendido, com preço e custo de agora ──
     const variacoes = await db.variacao.findMany({
-      where: { id: { in: v.itens.map((i) => i.variacaoId) } },
+      where: { id: { in: doCatalogo.map((i) => i.variacaoId) } },
       select: {
         id: true, codigo: true, ajustePreco: true,
-        produto: { select: { nome: true, medida: true, precoVista: true, custo: true } },
+        produto: {
+          select: {
+            nome: true, medida: true, custo: true,
+            precoVista: true, precoCartao: true, precoCrediario: true,
+          },
+        },
         opcoes: { select: { opcao: { select: { valor: true } } } },
       },
     })
@@ -128,12 +199,12 @@ export async function registrarVenda(
 
     // ── 2. estoque: confere TUDO antes de escrever qualquer coisa ──
     const saldos = await db.estoque.findMany({
-      where: { unidadeId: v.unidadeId, variacaoId: { in: v.itens.map((i) => i.variacaoId) } },
+      where: { unidadeId: v.unidadeId, variacaoId: { in: doCatalogo.map((i) => i.variacaoId) } },
       select: { variacaoId: true, quantidade: true },
     })
     const saldoDe = new Map(saldos.map((e) => [e.variacaoId, Number(e.quantidade)]))
 
-    const faltando = v.itens
+    const faltando = doCatalogo
       .filter((i) => (saldoDe.get(i.variacaoId) ?? 0) < i.quantidade)
       .map((i) => ({
         descricao: descrever(porId.get(i.variacaoId)),
@@ -146,11 +217,41 @@ export async function registrarVenda(
     // O preço vem do banco como decimal exato; ler o TEXTO dele (e não o
     // número) evita o erro de ponto flutuante antes que ele exista.
     const itens = v.itens.map((i) => {
+      // Avulso: o preço É o que a pessoa digitou. A trava foi lá em cima,
+      // na permissão; aqui ele entra como tabela dele mesmo, sem desconto.
+      if (!i.variacaoId) {
+        const precoCent = centavos(i.avulso!.precoUnit)
+        const totalCent = multiplicar(precoCent, i.quantidade)
+        return {
+          variacaoId: null,
+          descricao: i.avulso!.descricao.trim(),
+          codigo: null,
+          medida: 'UN' as const,
+          quantidade: i.quantidade,
+          precoUnit: reais(precoCent),
+          desconto: 0,
+          total: reais(totalCent),
+          custoUnit: null,
+          _cent: totalCent,
+          _tabelaCent: totalCent,
+        }
+      }
+
       const va = porId.get(i.variacaoId)
-      // O preço de tabela é do banco. O do navegador só é aceito para BAIXO —
-      // vender por mais caro do que a etiqueta é sempre erro de sincronia, e
-      // erro de sincronia não pode virar cobrança a mais no cliente.
-      const tabelaCent = centavos(va?.produto.precoVista ?? 0) + centavos(va?.ajustePreco ?? 0)
+      // O preço de tabela é do banco, NA TABELA DA FORMA DE PAGAMENTO. O do
+      // navegador só é aceito para BAIXO — vender por mais caro do que a
+      // etiqueta é sempre erro de sincronia, e erro de sincronia não pode
+      // virar cobrança a mais no cliente.
+      const p = va?.produto
+      const tabelaCent =
+        precoNaTabela(
+          {
+            vista: centavos(p?.precoVista ?? 0),
+            cartao: p?.precoCartao != null ? centavos(p.precoCartao) : null,
+            crediario: p?.precoCrediario != null ? centavos(p.precoCrediario) : null,
+          },
+          tabela,
+        ) + centavos(va?.ajustePreco ?? 0)
       const pedidoCent = i.precoUnit != null ? centavos(i.precoUnit) : tabelaCent
       const precoCent = Math.max(0, Math.min(pedidoCent, tabelaCent))
       const descontoCent = centavos(i.desconto ?? 0)
@@ -286,8 +387,8 @@ export async function registrarVenda(
         caixaId: v.caixaId ?? null,
         clienteId: v.clienteId ?? null,
         numero,
-        vendedorId: sessao.usuarioId,
-        vendedorNome: sessao.nome,
+        vendedorId: vendedor.id,
+        vendedorNome: vendedor.nome,
         situacao: 'CONCLUIDA',
         subtotal,
         desconto,
@@ -314,7 +415,8 @@ export async function registrarVenda(
     })
 
     // ── 6. baixa o estoque, na MESMA transação ──
-    for (const i of v.itens) {
+    // Só o que é do catálogo: item avulso não tem de onde sair.
+    for (const i of doCatalogo) {
       const r = await mexerEstoqueEm(db, sessao, {
         variacaoId: i.variacaoId,
         unidadeId: v.unidadeId,
@@ -381,8 +483,17 @@ export async function registrarVenda(
         alvoNome: `Venda ${numero}`,
         valor: total,
         // Desconto entra no livro com o número. É o que permite ao dono
-        // perguntar depois "quem andou dando 40%?" e ter resposta.
-        motivo: abatidoCent > 0 ? `desconto ${(Math.round(percentual * 10) / 10).toFixed(1)}%` : null,
+        // perguntar depois "quem andou dando 40%?" e ter resposta. E quando
+        // quem vendeu não é quem registrou, os dois nomes ficam.
+        motivo:
+          [
+            abatidoCent > 0 ? `desconto ${(Math.round(percentual * 10) / 10).toFixed(1)}%` : null,
+            avulsos.length > 0 ? `${avulsos.length} item(ns) avulso(s)` : null,
+            vendedor.id !== sessao.usuarioId ? `vendedor: ${vendedor.nome}` : null,
+            tabela !== 'vista' ? `preço ${ROTULO_TABELA[tabela]}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || null,
       },
     })
 
@@ -579,8 +690,10 @@ export async function cancelarVenda(
     // ── 1. o estoque volta ──
     // Uma DEVOLUCAO por item, apontando para a venda. Assim o histórico do
     // produto mostra os dois movimentos, um cancelando o outro, em vez de a
-    // venda simplesmente sumir e o saldo "aparecer" sem explicação.
+    // venda simplesmente sumir e o saldo "aparecer" sem explicação. Item
+    // avulso não tem para onde voltar.
     for (const i of v.itens) {
+      if (!i.variacaoId) continue
       await mexerEstoqueEm(db, sessao, {
         variacaoId: i.variacaoId,
         unidadeId: v.unidadeId,

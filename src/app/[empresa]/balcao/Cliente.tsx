@@ -36,10 +36,17 @@ export function EscolherCliente({
   slug,
   escolhido,
   aoEscolher,
+  pedido = 0,
 }: {
   slug: string
   escolhido: ClienteNoBalcao | null
   aoEscolher: (c: ClienteNoBalcao | null) => void
+  /**
+   * Um contador que o balcão incrementa quando alguém aperta Alt+N: cada
+   * mudança abre a busca. É o jeito de um atalho de teclado de fora chegar
+   * num componente que guarda o próprio estado de aberto.
+   */
+  pedido?: number
 }) {
   const [aberto, setAberto] = useState(false)
   const [termo, setTermo] = useState('')
@@ -52,6 +59,10 @@ export function EscolherCliente({
   useEffect(() => {
     if (aberto) campo.current?.focus()
   }, [aberto])
+
+  useEffect(() => {
+    if (pedido > 0) setAberto(true)
+  }, [pedido])
 
   // Espera a digitação parar: buscar a cada tecla faz o banco trabalhar seis
   // vezes para uma resposta só, e a lista pisca embaixo do dedo de quem digita.
@@ -87,7 +98,7 @@ export function EscolherCliente({
 
   if (escolhido) {
     return (
-      <div className="flex flex-col gap-1 border-b border-borda-suave pb-3">
+      <div className="flex flex-col gap-1">
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate text-sm font-semibold text-tinta">{escolhido.nome}</span>
           <button
@@ -115,7 +126,7 @@ export function EscolherCliente({
       <button
         type="button"
         onClick={() => setAberto(true)}
-        className="border-b border-borda-suave pb-3 text-left text-sm text-tinta-3 underline-offset-2 hover:text-tinta hover:underline"
+        className="text-left text-sm text-tinta-3 underline-offset-2 hover:text-tinta hover:underline"
       >
         + Quem está comprando?
       </button>
@@ -123,7 +134,7 @@ export function EscolherCliente({
   }
 
   return (
-    <div className="flex flex-col gap-2 border-b border-borda-suave pb-3">
+    <div className="flex flex-col gap-2">
       <input
         ref={campo}
         value={termo}
