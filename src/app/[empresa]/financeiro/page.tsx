@@ -1,7 +1,9 @@
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
-import { aVencer, montarDRE, listarLancamentos } from '@/servidor/financeiro'
+import { aVencer, montarDRE, listarLancamentos, resultadoPorMes } from '@/servidor/financeiro'
+import { BarrasMeses, Rosca } from '@/ui/Graficos'
+import Link from 'next/link'
 import { Tabela } from '@/ui/Tabela'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { TipoLancamento } from '@prisma/client'
@@ -56,7 +58,7 @@ export default async function Financeiro({
   const de = new Date(ano!, mesNum! - 1, 1)
   const ate = new Date(ano!, mesNum!, 0, 23, 59, 59)
 
-  const [contas, dre, categorias, unidades, lancamentos] = await Promise.all([
+  const [contas, dre, categorias, unidades, lancamentos, meses] = await Promise.all([
     aVencer(sessao, onde.ids),
     montarDRE(sessao, onde.ids, de, ate),
     comoOrg(sessao.orgId, (db) =>
@@ -82,7 +84,14 @@ export default async function Financeiro({
       categoriaId: catPedida ?? null,
       q,
     }),
+    resultadoPorMes(sessao, onde.ids, 6),
   ])
+
+  // "Para onde foi o dinheiro": as linhas negativas do DRE que não são
+  // total nem informativa — CMV, cada grupo de despesa, financeiras.
+  const saidas = dre.linhas
+    .filter((l) => !l.total && !l.fora && l.valor < 0 && l.chave !== 'devolucoes')
+    .map((l) => ({ rotulo: l.rotulo.replace('(−) ', ''), valor: -l.valor }))
 
   const categoriaL = categorias.some((c) => c.id === catPedida) ? catPedida! : null
   const atuais = {
@@ -402,8 +411,53 @@ export default async function Financeiro({
             bate com o extrato. A mercadoria é a exceção: comprar não é despesa, vira custo
             quando a peça vende (a linha do CMV). Por isso a compra aparece separada, fora
             da conta do resultado.
+            {dre.taxasCalculadas > 0 ? (
+              <>
+                {' '}As taxas de cartão e Pix ({brl(dre.taxasCalculadas)}) são calculadas venda a venda
+                com o que está em{' '}
+                <Link href={`/${slug}/configuracoes`} className="font-medium text-marca underline-offset-2 hover:underline">
+                  Configurações
+                </Link>
+                .
+              </>
+            ) : (
+              <>
+                {' '}A taxa da maquininha ainda não entra: escreva as suas em{' '}
+                <Link href={`/${slug}/configuracoes`} className="font-medium text-marca underline-offset-2 hover:underline">
+                  Configurações
+                </Link>{' '}
+                e o resultado passa a descontá-la sozinho.
+              </>
+            )}
           </p>
         </Cartao>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Cartao caixa titulo="Entrou × saiu, nos últimos 6 meses">
+            <BarrasMeses
+              rotulos={meses.map((m) => m.rotulo)}
+              series={[
+                { nome: 'Receita', cor: 'var(--bom-vivo)', valores: meses.map((m) => m.receita) },
+                { nome: 'Saiu (mercadoria, despesas, taxas)', cor: 'var(--critico-vivo)', valores: meses.map((m) => m.cmv + m.despesas + m.taxas) },
+              ]}
+            />
+            <ul className="mt-3 grid grid-cols-3 gap-1 text-xs sm:grid-cols-6">
+              {meses.map((m) => (
+                <li key={m.mes} className="flex flex-col items-center rounded bg-superficie-2 px-1 py-1">
+                  <span className="text-tinta-3">{m.rotulo}</span>
+                  <span className={cx('numero font-semibold', m.resultado < 0 ? 'text-critico' : 'text-bom')}>
+                    {m.resultado < 0 ? '−' : ''}
+                    {brl(Math.abs(m.resultado)).replace('R$ ', '')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-tinta-3">Embaixo de cada mês, o resultado: o que sobrou ou faltou.</p>
+          </Cartao>
+          <Cartao caixa titulo={`Para onde foi o dinheiro em ${MES[de.getMonth()]}`}>
+            <Rosca fatias={saidas} vazio="Nada saiu neste mês." />
+          </Cartao>
+        </div>
       </Secao>
     </Estrutura>
   )

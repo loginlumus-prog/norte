@@ -551,6 +551,18 @@ CREATE TABLE "recebimentos" (
 );
 
 -- CreateTable
+CREATE TABLE "taxas_pagamento" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "forma" "FormaPagamento" NOT NULL,
+    "parcelas" INTEGER NOT NULL DEFAULT 1,
+    "percentual" DECIMAL(5,2) NOT NULL,
+    "atualizada_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "taxas_pagamento_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "categorias_financeiras" (
     "id" TEXT NOT NULL,
     "org_id" TEXT NOT NULL,
@@ -933,6 +945,9 @@ CREATE INDEX "recebimentos_org_id_parcela_id_idx" ON "recebimentos"("org_id", "p
 CREATE INDEX "recebimentos_org_id_criado_em_idx" ON "recebimentos"("org_id", "criado_em");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "taxas_pagamento_org_id_forma_parcelas_key" ON "taxas_pagamento"("org_id", "forma", "parcelas");
+
+-- CreateIndex
 CREATE INDEX "categorias_financeiras_org_id_tipo_idx" ON "categorias_financeiras"("org_id", "tipo");
 
 -- CreateIndex
@@ -1186,6 +1201,9 @@ ALTER TABLE "recebimentos" ADD CONSTRAINT "recebimentos_parcela_id_fkey" FOREIGN
 
 -- AddForeignKey
 ALTER TABLE "recebimentos" ADD CONSTRAINT "recebimentos_caixa_id_fkey" FOREIGN KEY ("caixa_id") REFERENCES "caixas"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "taxas_pagamento" ADD CONSTRAINT "taxas_pagamento_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "categorias_financeiras" ADD CONSTRAINT "categorias_financeiras_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

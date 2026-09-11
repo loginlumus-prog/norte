@@ -184,6 +184,7 @@ model Org {
   vales          Vale[]
   parcelas       Parcela[]
   recebimentos   Recebimento[]
+  taxas          TaxaPagamento[]
   categoriasFin  CategoriaFinanceira[]
   contasFin      ContaFinanceira[]
   lancamentos    Lancamento[]
@@ -1154,6 +1155,30 @@ model Recebimento {
   @@index([orgId, parcelaId])
   @@index([orgId, criadoEm])
   @@map("recebimentos")
+}
+
+/// O que a maquininha (e o Pix) cobram da loja, em porcento, por forma.
+///
+/// Sem isto o DRE mostra o bruto do cartão, e o que entra na conta é menos:
+/// o lucro do mês sai errado para cima em toda loja que aceita cartão. Com a
+/// taxa escrita, o DRE desconta sozinho, venda a venda, sem ninguém lançar
+/// "taxa de maquininha" à mão no fim do mês.
+///
+/// `parcelas`: 1 = à vista; 2 = parcelado em duas ou mais. Só o crédito usa o
+/// 2 — é onde a taxa muda de verdade.
+model TaxaPagamento {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  forma      FormaPagamento
+  parcelas   Int            @default(1)
+  percentual Decimal        @db.Decimal(5, 2)
+
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@unique([orgId, forma, parcelas])
+  @@map("taxas_pagamento")
 }
 
 enum SituacaoVenda {

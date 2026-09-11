@@ -1,0 +1,487 @@
+'use client'
+
+// Os gráficos do sistema.
+//
+// Cinco formas, cada uma para uma pergunta:
+//
+//   Rosca        "de que é feito o todo?"      — formas de pagamento, grupos do DRE
+//   BarrasH      "quem é maior?"               — categorias, lojas, vendedores
+//   BarrasMeses  "como foi mês a mês?"         — receita × despesa
+//   Linhas       "este período contra o outro" — vendas por dia, agora e antes
+//   Calor        "quando acontece?"            — hora × dia da semana
+//
+// ── as regras que valem em todos ─────────────────────────────
+// • Cor vem das fichas do tema (var(--marca), var(--bom-vivo)...), nunca de
+//   um hex solto: o gráfico tem que ler igual no claro e no escuro.
+// • Cor de série segue a SÉRIE, nunca a posição: filtrar não repinta.
+// • Duas séries ou mais têm legenda; uma série só não — o título já diz.
+// • Texto veste texto: valor e rótulo em tinta, e a cor fica na marca ao lado.
+// • Passar o mouse mostra o número exato. O alvo é a coluna inteira, não a
+//   barra fina: é o dia fraco que a pessoa quer investigar.
+// • Um eixo só. Duas medidas de escala diferente são dois gráficos.
+
+import { useId, useState } from 'react'
+import { cx } from './base'
+
+/** A ordem fixa das cores de série. A nona série vira "Outros". */
+export const PALETA = [
+  'var(--marca)',
+  'var(--bom-vivo)',
+  'var(--sol)',
+  'var(--atencao-vivo)',
+  'var(--critico-vivo)',
+  'var(--marca-forte)',
+  'var(--bom)',
+  'var(--tinta-3)',
+] as const
+
+const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const pct = (v: number) => `${(v * 100).toFixed(v < 0.1 ? 1 : 0).replace('.', ',')}%`
+
+/* ── Rosca ────────────────────────────────────────────────── */
+
+export type Fatia = { rotulo: string; valor: number; cor?: string; detalhe?: string }
+
+export function Rosca({
+  fatias,
+  formato = brl,
+  centro,
+  vazio = 'Nada no período.',
+}: {
+  fatias: Fatia[]
+  formato?: (v: number) => string
+  /** O número do meio. Sem ele, mostra o total. */
+  centro?: { valor: string; rotulo: string }
+  vazio?: string
+}) {
+  const [aceso, setAceso] = useState<number | null>(null)
+  const vivas = fatias.filter((f) => f.valor > 0)
+  const total = vivas.reduce((s, f) => s + f.valor, 0)
+  if (total <= 0) return <p className="py-6 text-center text-sm text-tinta-3">{vazio}</p>
+
+  // Mais de oito fatias: as menores viram "Outros". Cor de mais não é cor.
+  const ordenadas = [...vivas].sort((a, b) => b.valor - a.valor)
+  const mostradas =
+    ordenadas.length > 8
+      ? [
+          ...ordenadas.slice(0, 7),
+          { rotulo: 'Outros', valor: ordenadas.slice(7).reduce((s, f) => s + f.valor, 0) },
+        ]
+      : ordenadas
+
+  const R = 42
+  const C = 2 * Math.PI * R
+  const FOLGA = 2 // px de respiro entre fatias
+  let acumulado = 0
+  const arcos = mostradas.map((f, i) => {
+    const fracao = f.valor / total
+    const comprimento = Math.max(fracao * C - FOLGA, 0.5)
+    const arco = { i, f, fracao, dash: `${comprimento} ${C - comprimento}`, offset: -acumulado * C + C / 4, cor: f.cor ?? PALETA[i % PALETA.length]! }
+    acumulado += fracao
+    return arco
+  })
+  const emCima = aceso !== null ? mostradas[aceso] : null
+
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      <svg viewBox="0 0 100 100" className="size-36 shrink-0" role="img" aria-label={`Total ${formato(total)}`}>
+        <circle cx="50" cy="50" r={R} fill="none" stroke="var(--superficie-2)" strokeWidth="12" />
+        {arcos.map((a) => (
+          <circle
+            key={a.i}
+            cx="50"
+            cy="50"
+            r={R}
+            fill="none"
+            stroke={a.cor}
+            strokeWidth={aceso === a.i ? 14 : 12}
+            strokeDasharray={a.dash}
+            strokeDashoffset={a.offset}
+            style={{ transition: 'stroke-width .15s, opacity .15s', opacity: aceso === null || aceso === a.i ? 1 : 0.35 }}
+            onMouseEnter={() => setAceso(a.i)}
+            onMouseLeave={() => setAceso(null)}
+          />
+        ))}
+        <text x="50" y="47" textAnchor="middle" className="numero" style={{ fontSize: 11, fontWeight: 700, fill: 'var(--tinta)' }}>
+          {emCima ? formato(emCima.valor) : centro?.valor ?? formato(total)}
+        </text>
+        <text x="50" y="58" textAnchor="middle" style={{ fontSize: 6.5, fill: 'var(--tinta-3)' }}>
+          {emCima ? `${emCima.rotulo} · ${pct(emCima.valor / total)}` : centro?.rotulo ?? 'total'}
+        </text>
+      </svg>
+
+      {/* A legenda é a tabela do gráfico: nome, valor exato e a fatia. Quem
+          não distingue as cores lê a mesma coisa. */}
+      <ul className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+        {arcos.map((a) => (
+          <li
+            key={a.i}
+            onMouseEnter={() => setAceso(a.i)}
+            onMouseLeave={() => setAceso(null)}
+            className={cx('flex items-center justify-between gap-3 rounded px-1 py-0.5', aceso === a.i && 'bg-superficie-2')}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span aria-hidden className="size-2.5 shrink-0 rounded-sm" style={{ background: a.cor }} />
+              <span className="truncate text-tinta">{a.f.rotulo}</span>
+              {a.f.detalhe && <span className="shrink-0 text-xs text-tinta-3">{a.f.detalhe}</span>}
+            </span>
+            <span className="flex shrink-0 items-baseline gap-2">
+              <span className="numero font-semibold text-tinta">{formato(a.f.valor)}</span>
+              <span className="numero w-10 text-right text-xs text-tinta-3">{pct(a.fracao)}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/* ── BarrasH ──────────────────────────────────────────────── */
+
+export function BarrasH({
+  itens,
+  formato = brl,
+  cor = 'var(--marca)',
+  vazio = 'Nada no período.',
+}: {
+  itens: { rotulo: string; valor: number; detalhe?: string; cor?: string }[]
+  formato?: (v: number) => string
+  cor?: string
+  vazio?: string
+}) {
+  if (itens.length === 0) return <p className="py-6 text-center text-sm text-tinta-3">{vazio}</p>
+  const maior = Math.max(...itens.map((i) => i.valor), 1)
+  return (
+    <ol className="flex flex-col gap-2">
+      {itens.map((i) => (
+        <li key={i.rotulo} className="flex flex-col gap-1">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="truncate text-sm text-tinta">{i.rotulo}</span>
+            <span className="numero shrink-0 text-sm font-semibold text-tinta">{formato(i.valor)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-superficie-2">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${Math.max((i.valor / maior) * 100, 2)}%`, background: i.cor ?? cor }}
+              />
+            </div>
+            {i.detalhe && <span className="shrink-0 text-xs text-tinta-3">{i.detalhe}</span>}
+          </div>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+/* ── BarrasMeses ──────────────────────────────────────────── */
+
+export type Serie = { nome: string; cor: string; valores: number[] }
+
+export function BarrasMeses({
+  rotulos,
+  series,
+  formato = brl,
+  altura = 140,
+}: {
+  /** Um rótulo por grupo: "abr", "mai"... */
+  rotulos: string[]
+  series: Serie[]
+  formato?: (v: number) => string
+  altura?: number
+}) {
+  const [aceso, setAceso] = useState<number | null>(null)
+  const maior = Math.max(...series.flatMap((s) => s.valores), 1)
+  // Três linhas de grade, em números redondos: o eixo serve para ler
+  // ordem de grandeza, não para medir com régua.
+  const passo = passoRedondo(maior / 3)
+  const topo = Math.ceil(maior / passo) * passo
+  const linhas = Array.from({ length: Math.round(topo / passo) + 1 }, (_, i) => i * passo)
+  const g = aceso !== null ? aceso : null
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex h-9 flex-wrap items-start gap-x-4 gap-y-1">
+        {g !== null ? (
+          <div className="flex flex-wrap items-baseline gap-x-3 rounded-norte border border-borda bg-superficie-2 px-2.5 py-1.5 text-xs">
+            <span className="font-semibold text-tinta">{rotulos[g]}</span>
+            {series.map((s) => (
+              <span key={s.nome} className="flex items-center gap-1.5 text-tinta-2">
+                <span aria-hidden className="size-2 rounded-sm" style={{ background: s.cor }} />
+                {s.nome} <b className="numero text-tinta">{formato(s.valores[g] ?? 0)}</b>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-tinta-2">
+            {series.map((s) => (
+              <li key={s.nome} className="flex items-center gap-1.5">
+                <span aria-hidden className="size-2 rounded-sm" style={{ background: s.cor }} />
+                {s.nome}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <div className="numero flex shrink-0 flex-col-reverse justify-between text-[10px] text-tinta-3" style={{ height: altura }}>
+          {linhas.map((l) => (
+            <span key={l}>{curto(l)}</span>
+          ))}
+        </div>
+        <div className="relative flex flex-1 items-end gap-2" style={{ height: altura }} onMouseLeave={() => setAceso(null)}>
+          {linhas.map((l) => (
+            <div
+              key={l}
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 border-t border-dashed border-borda-suave"
+              style={{ bottom: `${(l / topo) * 100}%` }}
+            />
+          ))}
+          {rotulos.map((r, gi) => (
+            <button
+              type="button"
+              key={r}
+              onMouseEnter={() => setAceso(gi)}
+              onFocus={() => setAceso(gi)}
+              onBlur={() => setAceso(null)}
+              aria-label={`${r}: ${series.map((s) => `${s.nome} ${formato(s.valores[gi] ?? 0)}`).join(', ')}`}
+              className={cx('relative flex h-full flex-1 cursor-default items-end justify-center gap-0.5 rounded-sm', aceso === gi && 'bg-superficie-2')}
+            >
+              {series.map((s) => {
+                const v = s.valores[gi] ?? 0
+                return (
+                  <span
+                    key={s.nome}
+                    aria-hidden
+                    className="w-full max-w-4 rounded-t-sm"
+                    style={{
+                      height: `${v > 0 ? Math.max((v / topo) * 100, 2) : 0}%`,
+                      background: s.cor,
+                      opacity: aceso === null || aceso === gi ? 1 : 0.55,
+                    }}
+                  />
+                )
+              })}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex gap-2 pl-8">
+        {rotulos.map((r) => (
+          <span key={r} className="flex-1 text-center text-[10px] text-tinta-3">
+            {r}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ── Linhas ───────────────────────────────────────────────── */
+
+export function Linhas({
+  rotulos,
+  series,
+  formato = brl,
+  altura = 120,
+}: {
+  rotulos: string[]
+  /** A primeira série é a principal e ganha área; as outras são linha fina. */
+  series: Serie[]
+  formato?: (v: number) => string
+  altura?: number
+}) {
+  const [aceso, setAceso] = useState<number | null>(null)
+  const id = useId()
+  const n = rotulos.length
+  const maior = Math.max(...series.flatMap((s) => s.valores), 1)
+  const W = 100
+  const H = 40
+  const x = (i: number) => (n > 1 ? (i / (n - 1)) * W : W / 2)
+  const y = (v: number) => H - (v / maior) * (H - 2) - 1
+  const caminho = (vals: number[]) => vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(' ')
+
+  if (n === 0) return <p className="py-6 text-center text-sm text-tinta-3">Sem dado no período.</p>
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex h-9 flex-wrap items-start gap-x-4 gap-y-1">
+        {aceso !== null ? (
+          <div className="flex flex-wrap items-baseline gap-x-3 rounded-norte border border-borda bg-superficie-2 px-2.5 py-1.5 text-xs">
+            <span className="font-semibold text-tinta">{rotulos[aceso]}</span>
+            {series.map((s) => (
+              <span key={s.nome} className="flex items-center gap-1.5 text-tinta-2">
+                <span aria-hidden className="size-2 rounded-full" style={{ background: s.cor }} />
+                {s.nome} <b className="numero text-tinta">{formato(s.valores[aceso] ?? 0)}</b>
+              </span>
+            ))}
+          </div>
+        ) : (
+          series.length > 1 && (
+            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-tinta-2">
+              {series.map((s) => (
+                <li key={s.nome} className="flex items-center gap-1.5">
+                  <span aria-hidden className="h-0.5 w-4 rounded" style={{ background: s.cor }} />
+                  {s.nome}
+                </li>
+              ))}
+            </ul>
+          )
+        )}
+      </div>
+      <div className="relative" style={{ height: altura }} onMouseLeave={() => setAceso(null)}>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-hidden>
+          <defs>
+            <linearGradient id={`${id}-area`} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stopColor={series[0]?.cor} stopOpacity="0.28" />
+              <stop offset="1" stopColor={series[0]?.cor} stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          {[0.25, 0.5, 0.75].map((f) => (
+            <line key={f} x1="0" x2={W} y1={H * f} y2={H * f} stroke="var(--borda-suave)" strokeWidth="0.3" strokeDasharray="1 1" />
+          ))}
+          {series[0] && n > 1 && (
+            <path d={`${caminho(series[0].valores)} L${W},${H} L0,${H} Z`} fill={`url(#${id}-area)`} />
+          )}
+          {[...series].reverse().map((s, k) => (
+            <path
+              key={s.nome}
+              d={caminho(s.valores)}
+              fill="none"
+              stroke={s.cor}
+              strokeWidth={k === series.length - 1 ? 0.9 : 0.6}
+              strokeDasharray={k === series.length - 1 ? undefined : '1.2 1'}
+              vectorEffect="non-scaling-stroke"
+              style={{ strokeWidth: k === series.length - 1 ? 2 : 1.5 }}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ))}
+          {aceso !== null && (
+            <line x1={x(aceso)} x2={x(aceso)} y1="0" y2={H} stroke="var(--tinta-3)" strokeWidth="0.3" />
+          )}
+        </svg>
+        {/* Marcadores em HTML para não esticarem com o SVG. */}
+        {aceso !== null &&
+          series.map((s) => (
+            <span
+              key={s.nome}
+              aria-hidden
+              className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-superficie"
+              style={{ left: `${x(aceso)}%`, top: `${(y(s.valores[aceso] ?? 0) / H) * 100}%`, background: s.cor }}
+            />
+          ))}
+        {/* As colunas de alvo: a largura inteira de cada dia. */}
+        <div className="absolute inset-0 flex">
+          {rotulos.map((r, i) => (
+            <button
+              type="button"
+              key={r}
+              onMouseEnter={() => setAceso(i)}
+              onFocus={() => setAceso(i)}
+              onBlur={() => setAceso(null)}
+              aria-label={`${r}: ${series.map((s) => `${s.nome} ${formato(s.valores[i] ?? 0)}`).join(', ')}`}
+              className="h-full flex-1 cursor-default"
+            />
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-between text-[10px] text-tinta-3">
+        <span>{rotulos[0]}</span>
+        {n > 2 && <span>{rotulos[Math.floor((n - 1) / 2)]}</span>}
+        <span>{rotulos[n - 1]}</span>
+      </div>
+    </div>
+  )
+}
+
+/* ── Calor ────────────────────────────────────────────────── */
+
+export function Calor({
+  linhas,
+  colunas,
+  valores,
+  formato = brl,
+  cor = 'var(--marca)',
+}: {
+  /** Ex.: dias da semana. */
+  linhas: string[]
+  /** Ex.: horas. */
+  colunas: string[]
+  /** valores[linha][coluna] */
+  valores: number[][]
+  formato?: (v: number) => string
+  cor?: string
+}) {
+  const [aceso, setAceso] = useState<{ l: number; c: number } | null>(null)
+  const maior = Math.max(...valores.flat(), 1)
+  const v = aceso ? (valores[aceso.l]?.[aceso.c] ?? 0) : null
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex h-7 items-start text-xs">
+        {aceso && v !== null ? (
+          <span className="rounded-norte border border-borda bg-superficie-2 px-2.5 py-1">
+            <b className="text-tinta">{linhas[aceso.l]}, {colunas[aceso.c]}h</b>
+            <span className="text-tinta-2"> · </span>
+            <b className="numero text-tinta">{formato(v)}</b>
+          </span>
+        ) : (
+          <span className="text-tinta-3">Mais escuro, mais movimento. Passe o mouse para ver o valor.</span>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <div className="grid gap-px" style={{ gridTemplateColumns: `2.2rem repeat(${colunas.length}, minmax(1.1rem, 1fr))` }} onMouseLeave={() => setAceso(null)}>
+          <span />
+          {colunas.map((c) => (
+            <span key={c} className="numero text-center text-[9px] text-tinta-3">
+              {c}
+            </span>
+          ))}
+          {linhas.map((l, li) => (
+            <div key={l} className="contents">
+              <span className="pr-1 text-right text-[10px] text-tinta-3">{l}</span>
+              {colunas.map((c, ci) => {
+                const val = valores[li]?.[ci] ?? 0
+                return (
+                  <button
+                    type="button"
+                    key={c}
+                    onMouseEnter={() => setAceso({ l: li, c: ci })}
+                    onFocus={() => setAceso({ l: li, c: ci })}
+                    onBlur={() => setAceso(null)}
+                    aria-label={`${l} ${c}h: ${formato(val)}`}
+                    className={cx('h-5 rounded-[3px] border', aceso?.l === li && aceso?.c === ci ? 'border-tinta' : 'border-transparent')}
+                    style={{
+                      background: cor,
+                      opacity: val > 0 ? 0.15 + 0.85 * (val / maior) : 0.05,
+                    }}
+                  />
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── ajudantes ────────────────────────────────────────────── */
+
+/** "R$ 12,3k" para eixo; inteiro pequeno fica inteiro. */
+function curto(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace('.', ',')}M`
+  if (v >= 1000) return `${(v / 1000).toFixed(v >= 10000 ? 0 : 1).replace('.', ',')}k`
+  return String(Math.round(v))
+}
+
+/** Um passo redondo (1, 2, 5 × 10^n) perto do pedido. */
+function passoRedondo(bruto: number): number {
+  if (bruto <= 0) return 1
+  const mag = Math.pow(10, Math.floor(Math.log10(bruto)))
+  const r = bruto / mag
+  return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * mag
+}

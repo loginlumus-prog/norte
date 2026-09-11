@@ -15,7 +15,8 @@
 import { comoOrg } from './banco'
 import { exigir, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
-import type { GrupoDRE, TipoLancamento } from '@prisma/client'
+import { lerTaxas, taxaDe, taxaEmCentavos, taxasDoPeriodo } from './taxas'
+import type { FormaPagamento, GrupoDRE, TipoLancamento } from '@prisma/client'
 
 /* ── categorias que toda empresa começa tendo ─────────────── */
 
@@ -230,6 +231,10 @@ export type DRE = {
   linhas: LinhaDRE[]
   resultado: number
   margem: number
+  /** O que voltou em devolução no período. Já descontado da receita. */
+  devolucoes: number
+  /** As taxas de cartão e Pix calculadas venda a venda. Zero quando a loja não escreveu taxa. */
+  taxasCalculadas: number
 }
 
 const ROTULO: Record<GrupoDRE, string> = {
@@ -261,7 +266,7 @@ export async function montarDRE(
   exigir(sessao, 'financeiro.ver')
 
   return comoOrg(sessao.orgId, async (db) => {
-    const [venda, cmv, grupos] = await Promise.all([
+    const [venda, cmv, grupos, devol, jurosCred, taxas] = await Promise.all([
       db.venda.aggregate({
         where: { unidadeId: { in: unidadeIds }, situacao: 'CONCLUIDA', criadaEm: { gte: de, lte: ate } },
         _sum: { total: true },
@@ -283,6 +288,20 @@ export async function montarDRE(
          group by c.grupo, c.nome
          order by 3 desc
       `,
+      // O que voltou em devolução sai da receita: a peça devolvida não foi
+      // vendida, mesmo que a venda continue registrada.
+      db.devolucao.aggregate({
+        where: { unidadeId: { in: unidadeIds }, criadaEm: { gte: de, lte: ate } },
+        _sum: { valor: true },
+      }),
+      // Juro de atraso do crediário é receita que não é venda.
+      db.$queryRaw<{ juros: string }[]>`
+        select coalesce(sum(r.juros), 0) as juros
+          from recebimentos r join parcelas p on p.id = r.parcela_id
+         where p.unidade_id = any(${unidadeIds})
+           and r.criado_em >= ${de} and r.criado_em <= ${ate}
+      `,
+      taxasDoPeriodo(db, unidadeIds, de, ate),
     ])
 
     const porGrupo = (g: GrupoDRE) => {
@@ -293,8 +312,17 @@ export async function montarDRE(
       }
     }
 
-    const receitaVendaC = centavos(venda._sum.total ?? 0)
+    const vendaBrutaC = centavos(venda._sum.total ?? 0)
+    const devolC = centavos(devol._sum.valor ?? 0)
+    const receitaVendaC = vendaBrutaC - devolC
+
     const outrasReceitas = porGrupo('RECEITA_OUTRA')
+    const jurosC = centavos(jurosCred[0]?.juros ?? 0)
+    if (jurosC > 0) {
+      outrasReceitas.valor += jurosC
+      outrasReceitas.itens.push({ nome: 'Juros de crediário recebidos', valor: reais(jurosC) })
+    }
+
     const imposto = porGrupo('IMPOSTO')
     const cmvC = centavos(cmv[0]?.custo ?? 0)
 
@@ -309,6 +337,13 @@ export async function montarDRE(
     const operacionalC = lucroBrutoC - totalOperacionalC
 
     const financeira = porGrupo('FINANCEIRA')
+    // A taxa da maquininha calculada venda a venda entra aqui, ao lado do que
+    // a loja lançou à mão. Quem lança à mão zera a taxa em Configurações e
+    // esta linha some.
+    if (taxas.totalCent > 0) {
+      financeira.valor += taxas.totalCent
+      financeira.itens.push({ nome: 'Taxas de cartão e Pix (calculadas)', valor: reais(taxas.totalCent) })
+    }
     const resultadoC = operacionalC - financeira.valor
 
     // Compra de mercadoria NÃO é despesa do mês: ela vira custo quando a peça
@@ -319,7 +354,8 @@ export async function montarDRE(
     const compra = porGrupo('MERCADORIA')
 
     const linhas: LinhaDRE[] = [
-      { chave: 'venda', rotulo: 'Venda de mercadoria', valor: reais(receitaVendaC) },
+      { chave: 'venda', rotulo: 'Venda de mercadoria', valor: reais(vendaBrutaC) },
+      ...(devolC > 0 ? [{ chave: 'devolucoes', rotulo: '(−) Devoluções', valor: -reais(devolC) }] : []),
       ...(outrasReceitas.valor > 0
         ? [{ chave: 'outras', rotulo: 'Outras receitas', valor: reais(outrasReceitas.valor), itens: outrasReceitas.itens }]
         : []),
@@ -358,7 +394,116 @@ export async function montarDRE(
       linhas,
       resultado: reais(resultadoC),
       margem: receitaBrutaC > 0 ? (resultadoC / receitaBrutaC) * 100 : 0,
+      devolucoes: reais(devolC),
+      taxasCalculadas: reais(taxas.totalCent),
     }
+  })
+}
+
+/* ── mês a mês ────────────────────────────────────────────── */
+
+export type MesDoResultado = {
+  /** "2026-04" */
+  mes: string
+  /** "abr" */
+  rotulo: string
+  receita: number
+  cmv: number
+  despesas: number
+  taxas: number
+  resultado: number
+}
+
+const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+/**
+ * O resultado dos últimos N meses, para o gráfico "entrou × saiu".
+ *
+ * A mesma conta do DRE, mês a mês, em quatro consultas agrupadas — não em N
+ * chamadas de `montarDRE`. Receita já líquida de devoluções; saída = custo da
+ * mercadoria vendida + despesas pagas (menos compra de mercadoria, que já
+ * está no CMV) + taxas calculadas.
+ */
+export async function resultadoPorMes(
+  sessao: Sessao,
+  unidadeIds: string[],
+  meses = 6,
+): Promise<MesDoResultado[]> {
+  exigir(sessao, 'financeiro.ver')
+
+  const agora = new Date()
+  const de = new Date(agora.getFullYear(), agora.getMonth() - (meses - 1), 1)
+  const ate = new Date(agora.getFullYear(), agora.getMonth() + 1, 0, 23, 59, 59)
+  const chaves: string[] = []
+  for (let i = 0; i < meses; i++) {
+    const d = new Date(de.getFullYear(), de.getMonth() + i, 1)
+    chaves.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const [vendas, devol, cmv, despesas, pagamentos, taxas] = await Promise.all([
+      db.$queryRaw<{ mes: string; total: string }[]>`
+        select to_char(v.criada_em, 'YYYY-MM') as mes, sum(v.total) as total
+          from vendas v
+         where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
+           and v.criada_em >= ${de} and v.criada_em <= ${ate}
+         group by 1
+      `,
+      db.$queryRaw<{ mes: string; total: string }[]>`
+        select to_char(d.criada_em, 'YYYY-MM') as mes, sum(d.valor) as total
+          from devolucoes d
+         where d.unidade_id = any(${unidadeIds})
+           and d.criada_em >= ${de} and d.criada_em <= ${ate}
+         group by 1
+      `,
+      db.$queryRaw<{ mes: string; total: string }[]>`
+        select to_char(v.criada_em, 'YYYY-MM') as mes,
+               coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as total
+          from venda_itens i join vendas v on v.id = i.venda_id
+         where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
+           and v.criada_em >= ${de} and v.criada_em <= ${ate}
+         group by 1
+      `,
+      db.$queryRaw<{ mes: string; total: string }[]>`
+        select to_char(l.pago_em, 'YYYY-MM') as mes, sum(l.valor) as total
+          from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
+         where l.tipo = 'DESPESA' and l.pago_em is not null
+           and c.grupo <> 'MERCADORIA'
+           and l.pago_em >= ${de} and l.pago_em <= ${ate}
+           and (l.unidade_id = any(${unidadeIds}) or l.unidade_id is null)
+         group by 1
+      `,
+      db.$queryRaw<{ mes: string; forma: FormaPagamento; parcelado: boolean; total: string }[]>`
+        select to_char(v.criada_em, 'YYYY-MM') as mes, p.forma,
+               (p.forma = 'CREDITO' and p.parcelas >= 2) as parcelado, sum(p.valor) as total
+          from pagamentos p join vendas v on v.id = p.venda_id
+         where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
+           and v.criada_em >= ${de} and v.criada_em <= ${ate}
+         group by 1, 2, 3
+      `,
+      lerTaxas(db),
+    ])
+
+    const soma = (linhas: { mes: string; total: string }[], mes: string) =>
+      linhas.filter((l) => l.mes === mes).reduce((s, l) => s + centavos(l.total), 0)
+
+    return chaves.map((mes) => {
+      const receitaC = soma(vendas, mes) - soma(devol, mes)
+      const cmvC = soma(cmv, mes)
+      const despC = soma(despesas, mes)
+      const taxaC = pagamentos
+        .filter((p) => p.mes === mes)
+        .reduce((s, p) => s + taxaEmCentavos(centavos(p.total), taxaDe(taxas, p.forma, p.parcelado ? 2 : 1)), 0)
+      return {
+        mes,
+        rotulo: MES_CURTO[Number(mes.slice(5)) - 1]!,
+        receita: reais(receitaC),
+        cmv: reais(cmvC),
+        despesas: reais(despC),
+        taxas: reais(taxaC),
+        resultado: reais(receitaC - cmvC - despC - taxaC),
+      }
+    })
   })
 }
 

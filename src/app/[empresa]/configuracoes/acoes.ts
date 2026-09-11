@@ -8,6 +8,29 @@ import { exigirSessao } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { salvarConfigCrediario } from '@/servidor/crediario'
+import { salvarTaxas, FORMAS_COM_TAXA } from '@/servidor/taxas'
+
+export type EstadoTaxas = { erro?: string; ok?: string }
+
+export async function salvarTaxasAcao(_antes: EstadoTaxas, form: FormData): Promise<EstadoTaxas> {
+  const slug = String(form.get('empresa') ?? '')
+  const s = await exigirSessao(slug)
+  const taxas = FORMAS_COM_TAXA.map((f) => {
+    const bruto = String(form.get(`taxa-${f.forma}-${f.parcelas}`) ?? '').trim().replace(',', '.')
+    const n = bruto === '' ? 0 : Number(bruto)
+    return { forma: f.forma, parcelas: f.parcelas, percentual: n }
+  })
+  if (taxas.some((t) => !Number.isFinite(t.percentual) || t.percentual < 0)) {
+    return { erro: 'Taxa é um número em porcento, zero ou mais. Ex.: 3,2' }
+  }
+  if (taxas.some((t) => t.percentual > 30)) {
+    return { erro: 'Nenhuma maquininha cobra mais de 30%. Confira o número — é porcento, não reais.' }
+  }
+  await salvarTaxas(s, taxas)
+  revalidatePath(`/${slug}/configuracoes`)
+  revalidatePath(`/${slug}/financeiro`)
+  return { ok: 'Taxas salvas. O resultado do mês já desconta.' }
+}
 
 export type EstadoCrediario = { erro?: string; ok?: string }
 

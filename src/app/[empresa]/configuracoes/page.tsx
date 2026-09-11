@@ -10,8 +10,39 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Modulos } from './Modulos'
 import { Pontos } from './Pontos'
 import { Crediario } from './Crediario'
+import { Taxas } from './Taxas'
 import { configCrediario } from '@/servidor/crediario'
 import { moduloLigado } from '@/servidor/modulos'
+import { taxasDaEmpresa, FORMAS_COM_TAXA } from '@/servidor/taxas'
+import { montarDRE } from '@/servidor/financeiro'
+import { unidadesVisiveis } from '@/servidor/unidade'
+
+/**
+ * O cartão das taxas busca o que precisa sozinho: as taxas escritas e quanto
+ * elas deram no mês corrente — o número que faz a pessoa preencher.
+ */
+async function TaxasCard({ slug, sessao }: { slug: string; sessao: Parameters<typeof taxasDaEmpresa>[0] }) {
+  const agora = new Date()
+  const de = new Date(agora.getFullYear(), agora.getMonth(), 1)
+  const ate = new Date(agora.getFullYear(), agora.getMonth() + 1, 0, 23, 59, 59)
+  const [taxas, unidades] = await Promise.all([taxasDaEmpresa(sessao), unidadesVisiveis(sessao, 'financeiro.ver')])
+  const dre = unidades.length
+    ? await montarDRE(sessao, unidades.map((u) => u.id), de, ate)
+    : null
+  return (
+    <Taxas
+      empresa={slug}
+      linhas={FORMAS_COM_TAXA.map((f) => ({
+        forma: f.forma,
+        parcelas: f.parcelas,
+        rotulo: f.rotulo,
+        dica: f.dica,
+        percentual: taxas.find((t) => t.forma === f.forma && t.parcelas === f.parcelas)?.percentual ?? 0,
+      }))}
+      taxasNoMes={dre?.taxasCalculadas ?? 0}
+    />
+  )
+}
 
 const REGIME: Record<string, string> = {
   MEI: 'MEI', SIMPLES: 'Simples Nacional',
@@ -99,6 +130,14 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
           />
         ) : (
           <Aviso nivel="neutro">So quem responde pela empresa muda isto.</Aviso>
+        )}
+      </Cartao>
+
+      <Cartao titulo="Taxas da maquininha e do Pix">
+        {pode(sessao, 'empresa.configurar') ? (
+          <TaxasCard slug={slug} sessao={sessao} />
+        ) : (
+          <Aviso nivel="neutro">Só quem responde pela empresa muda isto.</Aviso>
         )}
       </Cartao>
 
