@@ -32,7 +32,7 @@ export const MENU = (slug: string): ItemMenu[] => [
   // O histórico dos turnos: quem abriu, quem fechou, e quanto faltou ou
   // sobrou. Sem esta tela a diferença do caixa ia para o livro e ninguém lia.
   { grupo: 'Vender', href: `/${slug}/caixa`, titulo: 'Caixa', exige: 'caixa.ver' },
-  { grupo: 'Vender', href: `/${slug}/crediario`, titulo: 'Crediário', exige: 'crediario.ver', modulo: 'crediario', emBreve: true },
+  { grupo: 'Vender', href: `/${slug}/crediario`, titulo: 'Crediário', exige: 'crediario.ver', modulo: 'crediario' },
 
   // ── catálogo ──
   { grupo: 'Catálogo', href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver' },

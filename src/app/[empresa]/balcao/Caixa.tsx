@@ -79,6 +79,8 @@ export function FecharCaixa({
   conferencia: {
     abertura: number
     dinheiroVendido: number
+    dinheiroRecebido: number
+    recebidoCrediario: number
     suprimentos: number
     sangrias: number
     esperado: number
@@ -126,6 +128,7 @@ export function FecharCaixa({
           <h3 className="mb-2 text-sm font-bold">O que passou pela gaveta</h3>
           {linha('Abertura', conferencia.abertura)}
           {linha('Vendas em dinheiro', conferencia.dinheiroVendido)}
+          {conferencia.dinheiroRecebido > 0 && linha('Crediário recebido em dinheiro', conferencia.dinheiroRecebido)}
           {linha('Suprimentos', conferencia.suprimentos)}
           {linha('Sangrias', -conferencia.sangrias)}
           {linha('Deveria ter', conferencia.esperado, true)}
@@ -141,6 +144,7 @@ export function FecharCaixa({
           </h3>
           {conferencia.porForma.map((f) => linha(f.forma, f.total))}
           {linha('Total vendido', conferencia.vendidoTotal, true)}
+          {conferencia.recebidoCrediario > 0 && linha('Crediário recebido (todas as formas)', conferencia.recebidoCrediario)}
         </div>
       </div>
 

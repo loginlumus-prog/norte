@@ -44,6 +44,7 @@ import { mexerEstoqueEm } from './estoque'
 import { centavos, reais, multiplicar, mostrar } from './dinheiro'
 import { tabelaDe, precoNaTabela, ROTULO_TABELA, type Tabela } from './preco'
 import { normalizarCodigo, venceu } from './devolucao'
+import { montarParcelas } from './crediario'
 import {
   programaDe,
   conferirUso,
@@ -114,6 +115,7 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'avulso_negado' }
   | { ok: false; motivo: 'vendedor_invalido' }
   | { ok: false; motivo: 'vale_recusado'; recado: string }
+  | { ok: false; motivo: 'crediario_recusado'; recado: string }
 
 /** Os papéis que podem vender. Derivado da tabela de poderes, não escrito à mão. */
 const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) =>
@@ -150,12 +152,38 @@ export async function registrarVenda(
     const empresa = await db.org.findUnique({
       where: { id: sessao.orgId },
       select: {
-        descontoMaximo: true,
+        descontoMaximo: true, modulos: true,
         pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true,
+        crediarioMaxParcelas: true, crediarioDiasEntre: true,
       },
     })
     const teto = Number(empresa?.descontoMaximo ?? 0)
     const programa = empresa ? programaDe(empresa) : DESLIGADO
+
+    // ── 0.2 crediário é módulo, e é dívida com nome ──
+    // Sem o módulo, a forma não existe. Com ele, precisa de cliente — não há
+    // para quem cobrar uma parcela sem nome — e cabe no máximo de vezes que
+    // a loja decidiu.
+    const fiado = v.pagamentos.filter((p) => p.forma === 'CREDIARIO')
+    if (fiado.length > 0) {
+      if (!empresa?.modulos.includes('crediario')) {
+        return { ok: false as const, motivo: 'crediario_recusado' as const, recado: 'O crediário está desligado nesta empresa.' }
+      }
+      if (!v.clienteId) {
+        return { ok: false as const, motivo: 'crediario_recusado' as const, recado: 'Venda no crediário precisa de cliente cadastrado.' }
+      }
+      if (fiado.length > 1) {
+        return { ok: false as const, motivo: 'crediario_recusado' as const, recado: 'Só um lançamento de crediário por venda.' }
+      }
+      const n = fiado[0]!.parcelas ?? 1
+      if (!Number.isInteger(n) || n < 1 || n > (empresa.crediarioMaxParcelas ?? 1)) {
+        return {
+          ok: false as const,
+          motivo: 'crediario_recusado' as const,
+          recado: `A loja parcela em até ${empresa.crediarioMaxParcelas}×.`,
+        }
+      }
+    }
 
     // ── 0.1 quem vendeu ──
     // O id vem do navegador. Precisa ser gente ativa desta empresa, com
@@ -461,6 +489,31 @@ export async function registrarVenda(
       select: { id: true, numero: true },
     })
 
+    // ── 5.1 as parcelas do crediário ──
+    // Nascem junto com a venda, na mesma transação: venda fiada sem parcela
+    // escrita é o caderno que some.
+    if (fiado.length > 0 && v.clienteId) {
+      const p = fiado[0]!
+      const parcelas = montarParcelas(
+        centavos(p.valor),
+        p.parcelas ?? 1,
+        new Date(),
+        empresa?.crediarioDiasEntre ?? 30,
+      )
+      await db.parcela.createMany({
+        data: parcelas.map((x) => ({
+          orgId: sessao.orgId,
+          vendaId: venda.id,
+          clienteId: v.clienteId!,
+          unidadeId: v.unidadeId,
+          numero: x.numero,
+          de: x.de,
+          vencimento: x.vencimento,
+          valor: reais(x.valorCent),
+        })),
+      })
+    }
+
     // ── 6. baixa o estoque, na MESMA transação ──
     // Só o que é do catálogo: item avulso não tem de onde sair.
     for (const i of doCatalogo) {
@@ -538,6 +591,7 @@ export async function registrarVenda(
             avulsos.length > 0 ? `${avulsos.length} item(ns) avulso(s)` : null,
             vendedor.id !== sessao.usuarioId ? `vendedor: ${vendedor.nome}` : null,
             tabela !== 'vista' ? `preço ${ROTULO_TABELA[tabela]}` : null,
+            fiado.length > 0 ? `crediário em ${fiado[0]!.parcelas ?? 1}×` : null,
           ]
             .filter(Boolean)
             .join(' · ') || null,

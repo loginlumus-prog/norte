@@ -38,7 +38,7 @@ import type { Vendedor } from '@/servidor/equipe'
 import { Botao, Aviso, Situacao, cx } from '@/ui/base'
 import { procurar, grade, fecharVenda, consultarValeAcao, type Achado, type Grade } from './acoes'
 
-type Pago = { forma: string; valor: number; referencia?: string; rotulo?: string }
+type Pago = { forma: string; valor: number; referencia?: string; rotulo?: string; parcelas?: number }
 
 const FORMAS = [
   { chave: 'DINHEIRO', titulo: 'Dinheiro' },
@@ -73,6 +73,7 @@ export function Balcao({
   programa,
   vendedores,
   podeAvulso,
+  crediario,
 }: {
   slug: string
   unidadeId: string
@@ -91,11 +92,16 @@ export function Balcao({
   vendedores: Vendedor[] | null
   /** Pode lançar item fora do catálogo. É a mesma trava do desconto acima do teto. */
   podeAvulso: boolean
+  /** O crediário da loja. Nulo = módulo desligado: a forma nem aparece. */
+  crediario: { maxParcelas: number } | null
 }) {
   const [termo, setTermo] = useState('')
   const [achados, setAchados] = useState<Achado[]>([])
   const [carrinho, setCarrinho] = useState<Linha[]>([])
   const [pagos, setPagos] = useState<Pago[]>([])
+
+  // ── o crediário ──────────────────────────────────────────
+  const [parcelasN, setParcelasN] = useState(1)
 
   // ── o vale de troca ──────────────────────────────────────
   const [valeAberto, setValeAberto] = useState(false)
@@ -310,6 +316,28 @@ export function Balcao({
   const mudarPago = (i: number, valor: number) =>
     setPagos((p) => p.map((x, j) => (j === i ? { ...x, valor: Math.max(valor, 0) } : x)))
 
+  // Fiado é dívida com nome: sem cliente, a tela abre a busca de cliente em
+  // vez de aceitar. O total é o da tabela "no crediário" — o preço que já
+  // embute o risco de vender a prazo.
+  function pagarNoCrediario() {
+    if (!crediario) return
+    if (!cliente) {
+      setRecado({ nivel: 'critico', texto: 'Venda no crediário precisa de cliente. Escolha quem está comprando.' })
+      setPedidoCliente((n) => n + 1)
+      return
+    }
+    if (pagos.some((p) => p.forma === 'CREDIARIO')) return
+    const t = tabelaDe([...pagos.map((p) => p.forma), 'CREDIARIO'])
+    const aPagarNa = Math.max(Math.max(totalNa(t) - descontoCent, 0) - pontosCent, 0)
+    const falta = aPagarNa - pagoCent
+    if (falta <= 0) return
+    setRecado(null)
+    setPagos((p) => [
+      ...p,
+      { forma: 'CREDIARIO', valor: falta / 100, parcelas: parcelasN, rotulo: `Crediário ${parcelasN}×` },
+    ])
+  }
+
   // O vale entra pelo código do papel. A tela consulta antes de aceitar,
   // para dizer o saldo e de quem é; o servidor confere de novo ao fechar.
   async function usarVale() {
@@ -393,9 +421,15 @@ export function Balcao({
         // O troco não é pagamento: o que entra no sistema é o que FICA na
         // gaveta. E ele sai do dinheiro, nunca do cartão.
         pagamentos: (() => {
-          if (trocoCent === 0) return pagos
-          const ultimoDinheiro = pagos.map((p) => p.forma).lastIndexOf('DINHEIRO')
-          return pagos.map((p, i) =>
+          const limpos = pagos.map((p) => ({
+            forma: p.forma,
+            valor: p.valor,
+            referencia: p.referencia,
+            parcelas: p.parcelas,
+          }))
+          if (trocoCent === 0) return limpos
+          const ultimoDinheiro = limpos.map((p) => p.forma).lastIndexOf('DINHEIRO')
+          return limpos.map((p, i) =>
             i === ultimoDinheiro ? { ...p, valor: p.valor - trocoCent / 100 } : p,
           )
         })(),
@@ -435,6 +469,8 @@ export function Balcao({
       } else if (r.motivo === 'vale_recusado') {
         setRecado({ nivel: 'critico', texto: r.recado })
         setPagos((p) => p.filter((x) => x.forma !== 'VALE'))
+      } else if (r.motivo === 'crediario_recusado') {
+        setRecado({ nivel: 'critico', texto: r.recado })
       } else {
         setRecado({ nivel: 'critico', texto: 'Não deu para fechar a venda.' })
       }
@@ -953,6 +989,35 @@ export function Balcao({
               </Botao>
             ))}
           </div>
+
+          {/* O crediário: escolhe em quantas vezes e lança. Fica fora da grade
+              das quatro formas porque exige cliente e tem parcela — é outra
+              conversa, não outro botão. */}
+          {crediario && (
+            <div className="flex items-stretch gap-1.5">
+              <select
+                value={parcelasN}
+                onChange={(e) => setParcelasN(Number(e.target.value))}
+                aria-label="Em quantas vezes"
+                disabled={carrinho.length === 0 || faltaCent <= 0}
+                className="rounded-norte border border-borda bg-superficie px-2 text-xs font-semibold text-tinta disabled:opacity-50"
+              >
+                {Array.from({ length: crediario.maxParcelas }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n}×
+                  </option>
+                ))}
+              </select>
+              <Botao
+                tom="secundario"
+                onClick={pagarNoCrediario}
+                disabled={carrinho.length === 0 || faltaCent <= 0 || pagos.some((p) => p.forma === 'CREDIARIO')}
+                className="flex-1 py-2 text-xs"
+              >
+                Crediário{cliente ? '' : ' (precisa de cliente)'}
+              </Botao>
+            </div>
+          )}
 
           {/* O vale de troca: um botão só, que abre o campo do código. Fora da
               grade das quatro formas porque não é forma que se escolhe — é

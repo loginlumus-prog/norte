@@ -18,6 +18,7 @@ import { abrirCaixa, fecharCaixa, movimentarCaixa } from '@/servidor/caixa'
 import { listarClientes, criarCliente } from '@/servidor/cliente'
 import { escada, type Tabela } from '@/servidor/preco'
 import { consultarVale } from '@/servidor/devolucao'
+import { situacaoDosClientes } from '@/servidor/crediario'
 import type { FormaPagamento } from '@prisma/client'
 
 export type Achado = {
@@ -217,7 +218,7 @@ export async function fecharVenda(
     unidadeId: string
     caixaId: string | null
     itens: ItemEnviado[]
-    pagamentos: { forma: string; valor: number; referencia?: string }[]
+    pagamentos: { forma: string; valor: number; referencia?: string; parcelas?: number }[]
     desconto: number
     clienteId?: string | null
     vendedorId?: string | null
@@ -242,6 +243,7 @@ export async function fecharVenda(
       forma: p.forma as FormaPagamento,
       valor: p.valor,
       referencia: p.referencia,
+      parcelas: p.parcelas,
     })) as PagamentoDaVenda[],
   })
 
@@ -299,6 +301,9 @@ export type ClienteNoBalcao = {
   gastou: number
   diasSemVir: number | null
   pontos: number
+  /** Quanto deve no crediário, e quanto disso está vencido. Zero quando nada. */
+  devendo: number
+  vencido: number
 }
 
 export async function procurarClientes(
@@ -309,21 +314,25 @@ export async function procurarClientes(
   const t = termo.trim()
   if (t.length < 2) return []
 
-  const achados = await listarClientes(s, t)
-  return achados
-    .filter((c) => c.ativo)
-    .slice(0, 8)
-    .map((c) => ({
-      id: c.id,
-      nome: c.nome,
-      telefone: c.telefone,
-      compras: c.compras,
-      gastou: c.gastou,
-      pontos: c.pontos,
-      diasSemVir: c.ultimaCompra
-        ? Math.floor((Date.now() - c.ultimaCompra.getTime()) / 864e5)
-        : null,
-    }))
+  const achados = (await listarClientes(s, t)).filter((c) => c.ativo).slice(0, 8)
+  // "EM DIA" ou "ATRASADO" na hora de escolher a pessoa: é o que muda a
+  // conversa antes de a venda começar, não depois.
+  const situacao = await comoOrg(s.orgId, (db) =>
+    situacaoDosClientes(db, achados.map((c) => c.id)),
+  )
+  return achados.map((c) => ({
+    id: c.id,
+    nome: c.nome,
+    telefone: c.telefone,
+    compras: c.compras,
+    gastou: c.gastou,
+    pontos: c.pontos,
+    diasSemVir: c.ultimaCompra
+      ? Math.floor((Date.now() - c.ultimaCompra.getTime()) / 864e5)
+      : null,
+    devendo: situacao.get(c.id)?.devendo ?? 0,
+    vencido: situacao.get(c.id)?.vencido ?? 0,
+  }))
 }
 
 /**
@@ -363,6 +372,8 @@ export async function cadastrarNoBalcao(
       gastou: 0,
       pontos: 0,
       diasSemVir: null,
+      devendo: 0,
+      vencido: 0,
     },
   }
 }

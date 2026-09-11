@@ -7,6 +7,28 @@ import { revalidatePath } from 'next/cache'
 import { exigirSessao } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
+import { salvarConfigCrediario } from '@/servidor/crediario'
+
+export type EstadoCrediario = { erro?: string; ok?: string }
+
+export async function salvarCrediario(
+  _antes: EstadoCrediario,
+  form: FormData,
+): Promise<EstadoCrediario> {
+  const slug = String(form.get('empresa') ?? '')
+  const s = await exigirSessao(slug)
+  const jurosMes = Number(String(form.get('jurosMes') ?? '').replace(',', '.'))
+  const maxParcelas = Number(form.get('maxParcelas'))
+  const diasEntre = Number(form.get('diasEntre'))
+  if (!Number.isFinite(jurosMes) || jurosMes < 0) return { erro: 'O juro precisa ser um número, zero ou mais.' }
+  if (!Number.isInteger(maxParcelas) || maxParcelas < 1) return { erro: 'Em quantas vezes? Pelo menos 1.' }
+  if (!Number.isInteger(diasEntre) || diasEntre < 7) return { erro: 'O intervalo entre parcelas precisa ser de pelo menos 7 dias.' }
+
+  const salvo = await salvarConfigCrediario(s, { jurosMes, maxParcelas, diasEntre })
+  revalidatePath(`/${slug}/configuracoes`)
+  revalidatePath(`/${slug}/balcao`)
+  return { ok: `Crediário: ${salvo.jurosMes}% ao mês de atraso, até ${salvo.maxParcelas}×, a cada ${salvo.diasEntre} dias.` }
+}
 
 export type EstadoPontos = { erro?: string; ok?: string }
 

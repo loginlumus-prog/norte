@@ -132,6 +132,10 @@ export async function movimentarCaixa(
 export type Conferencia = {
   abertura: number
   dinheiroVendido: number
+  /** Parcela de crediário recebida em dinheiro neste turno. Entra na gaveta. */
+  dinheiroRecebido: number
+  /** Crediário recebido em todas as formas — para a pessoa conferir. */
+  recebidoCrediario: number
   suprimentos: number
   sangrias: number
   esperado: number
@@ -149,7 +153,7 @@ export async function conferirCaixa(sessao: Sessao, caixaId: string): Promise<Co
       select: { saldoAbertura: true },
     })
 
-    const [movs, formas, totalVendas] = await Promise.all([
+    const [movs, formas, totalVendas, recebidos] = await Promise.all([
       db.caixaMovimento.groupBy({ by: ['tipo'], where: { caixaId }, _sum: { valor: true } }),
       db.$queryRaw<{ forma: string; total: string }[]>`
         select p.forma::text as forma, sum(p.valor) as total
@@ -158,6 +162,8 @@ export async function conferirCaixa(sessao: Sessao, caixaId: string): Promise<Co
          group by 1 order by 2 desc
       `,
       db.venda.count({ where: { caixaId, situacao: 'CONCLUIDA' } }),
+      // A parcela recebida no balcão é dinheiro que entrou pela mesma gaveta.
+      db.recebimento.groupBy({ by: ['forma'], where: { caixaId }, _sum: { valor: true } }),
     ])
 
     const soma = (t: TipoCaixa) =>
@@ -165,15 +171,19 @@ export async function conferirCaixa(sessao: Sessao, caixaId: string): Promise<Co
 
     const aberturaC = centavos(caixa?.saldoAbertura ?? 0)
     const dinheiroC = centavos(formas.find((f) => f.forma === 'DINHEIRO')?.total ?? 0)
+    const recebidoDinheiroC = centavos(recebidos.find((r) => r.forma === 'DINHEIRO')?._sum.valor ?? 0)
+    const recebidoC = recebidos.reduce((s, r) => s + centavos(r._sum.valor ?? 0), 0)
     const supC = soma('SUPRIMENTO')
     const sanC = soma('SANGRIA')
 
     return {
       abertura: reais(aberturaC),
       dinheiroVendido: reais(dinheiroC),
+      dinheiroRecebido: reais(recebidoDinheiroC),
+      recebidoCrediario: reais(recebidoC),
       suprimentos: reais(supC),
       sangrias: reais(sanC),
-      esperado: reais(aberturaC + dinheiroC + supC - sanC),
+      esperado: reais(aberturaC + dinheiroC + recebidoDinheiroC + supC - sanC),
       vendidoTotal: reais(formas.reduce((s, f) => s + centavos(f.total), 0)),
       porForma: formas.map((f) => ({ forma: f.forma, total: reais(centavos(f.total)) })),
       vendas: totalVendas,

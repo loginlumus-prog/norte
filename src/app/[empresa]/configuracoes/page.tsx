@@ -9,6 +9,9 @@ import { MENU } from '@/ui/menu'
 import type { Tema } from '@/ui/TrocaTema'
 import { Modulos } from './Modulos'
 import { Pontos } from './Pontos'
+import { Crediario } from './Crediario'
+import { configCrediario } from '@/servidor/crediario'
+import { moduloLigado } from '@/servidor/modulos'
 
 const REGIME: Record<string, string> = {
   MEI: 'MEI', SIMPLES: 'Simples Nacional',
@@ -98,6 +101,16 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
           <Aviso nivel="neutro">So quem responde pela empresa muda isto.</Aviso>
         )}
       </Cartao>
+
+      {moduloLigado(empresa, 'crediario') && (
+        <Cartao titulo="Crediário">
+          {pode(sessao, 'empresa.configurar') ? (
+            <Crediario empresa={slug} inicial={await configCrediario(sessao)} />
+          ) : (
+            <Aviso nivel="neutro">Só quem responde pela empresa muda isto.</Aviso>
+          )}
+        </Cartao>
+      )}
 
       <Cartao
         titulo="Dados da empresa"

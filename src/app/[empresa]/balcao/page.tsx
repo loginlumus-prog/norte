@@ -3,6 +3,7 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
 import { caixaAberto, conferirCaixa } from '@/servidor/caixa'
 import { listarVendedores } from '@/servidor/equipe'
+import { configCrediario } from '@/servidor/crediario'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
@@ -58,6 +59,11 @@ export default async function BalcaoPagina({
 
   const podeAvulso = unidadeId ? pode(sessao, 'venda.desconto', unidadeId) : false
 
+  // Crediário só existe com o módulo: sem ele, a forma nem aparece.
+  const crediario = moduloLigado(empresa, 'crediario')
+    ? { maxParcelas: (await configCrediario(sessao)).maxParcelas }
+    : null
+
   return (
     <Estrutura
       empresa={empresa}
@@ -108,6 +114,7 @@ export default async function BalcaoPagina({
             programa={programa}
             vendedores={vendedores}
             podeAvulso={podeAvulso}
+            crediario={crediario}
           />
         </>
       )}

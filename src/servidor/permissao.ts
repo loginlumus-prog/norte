@@ -32,7 +32,8 @@ export const CAPACIDADES = [
   'cliente.editar',
   // dinheiro
   'crediario.ver',
-  'crediario.cobrar',
+  'crediario.cobrar', // mandar cobrança, negociar
+  'crediario.receber', // receber a parcela no balcão — é dinheiro entrando, como venda
   'financeiro.ver',
   'financeiro.lancar',
   'relatorio.ver',
@@ -72,25 +73,27 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
     'produto.ver', 'produto.editar', 'produto.preco',
     'estoque.ver', 'estoque.ajustar',
     'cliente.ver', 'cliente.editar',
-    'crediario.ver', 'crediario.cobrar',
+    'crediario.ver', 'crediario.cobrar', 'crediario.receber',
     'financeiro.ver', 'relatorio.ver',
     'equipe.ver', 'equipe.gerir', 'auditoria.ver',
   ],
 
   // Balcão: vende. Não mexe em preço, não ajusta estoque, não vê o financeiro.
+  // Recebe parcela porque é dinheiro entrando no caixa com a pessoa na
+  // frente — a mesma coisa que uma venda.
   BALCAO: [
     'venda.ver', 'venda.criar',
     'caixa.ver', 'caixa.operar',
     'produto.ver', 'estoque.ver',
     'cliente.ver', 'cliente.editar',
-    'crediario.ver',
+    'crediario.ver', 'crediario.receber',
   ],
 
   // Financeiro: o dinheiro. Não mexe em produto nem vende.
   FINANCEIRO: [
     'venda.ver', 'caixa.ver',
     'cliente.ver',
-    'crediario.ver', 'crediario.cobrar',
+    'crediario.ver', 'crediario.cobrar', 'crediario.receber',
     'financeiro.ver', 'financeiro.lancar',
     'relatorio.ver', 'auditoria.ver',
   ],

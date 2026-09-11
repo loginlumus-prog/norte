@@ -20,7 +20,7 @@
 // e um cadastro sujo é pior que cadastro nenhum.
 
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { Botao } from '@/ui/base'
+import { Botao, Situacao } from '@/ui/base'
 import { brl } from '@/ui/painel'
 import { procurarClientes, cadastrarNoBalcao, type ClienteNoBalcao } from './acoes'
 
@@ -109,13 +109,23 @@ export function EscolherCliente({
             trocar
           </button>
         </div>
-        <span className="text-xs text-tinta-3">
-          {escolhido.compras === 0
-            ? 'primeira compra aqui'
-            : `${escolhido.compras} compra(s) · ${brl(escolhido.gastou)}`}
-          {escolhido.diasSemVir !== null && escolhido.diasSemVir >= 60 && (
-            <span className="text-atencao"> · sumiu há {escolhido.diasSemVir} dias</span>
-          )}
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-tinta-3">
+          <span>
+            {escolhido.compras === 0
+              ? 'primeira compra aqui'
+              : `${escolhido.compras} compra(s) · ${brl(escolhido.gastou)}`}
+            {escolhido.diasSemVir !== null && escolhido.diasSemVir >= 60 && (
+              <span className="text-atencao"> · sumiu há {escolhido.diasSemVir} dias</span>
+            )}
+          </span>
+          {/* EM DIA e ATRASADO não podem ter a mesma cara: é a informação
+              que decide se a loja vende fiado de novo para esta pessoa. */}
+          {escolhido.devendo > 0 &&
+            (escolhido.vencido > 0 ? (
+              <Situacao nivel="critico">deve {brl(escolhido.devendo)} · atrasado</Situacao>
+            ) : (
+              <Situacao nivel="atencao">deve {brl(escolhido.devendo)} · em dia</Situacao>
+            ))}
         </span>
       </div>
     )
@@ -163,6 +173,11 @@ export function EscolherCliente({
                 <span className="text-xs text-tinta-3">
                   {telefoneBonito(c.telefone) || 'sem telefone'}
                   {c.compras > 0 && ` · ${c.compras} compra(s) · ${brl(c.gastou)}`}
+                  {c.devendo > 0 && (
+                    <span className={c.vencido > 0 ? 'font-semibold text-critico' : 'text-atencao'}>
+                      {' '}· deve {brl(c.devendo)}{c.vencido > 0 ? ' (atrasado)' : ''}
+                    </span>
+                  )}
                 </span>
               </button>
             </li>
