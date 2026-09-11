@@ -11,8 +11,10 @@ import { Tabela } from '@/ui/Tabela'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
 
-type Quem = 'sumidos' | 'nunca' | 'ativos'
+type Quem = 'sumidos' | 'nunca' | 'ativos' | 'novos' | 'aniversario' | 'pontos' | 'devendo'
 type Ordem = 'nome' | 'gastou' | 'recente'
+const QUEM: Quem[] = ['sumidos', 'nunca', 'ativos', 'novos', 'aniversario', 'pontos', 'devendo']
+const MES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 
 // A lista de clientes.
 //
@@ -35,8 +37,7 @@ export default async function Clientes({
 }) {
   const { empresa: slug } = await params
   const { q, quem: quemPedido, ordem: ordemPedida } = await searchParams
-  const quem: Quem | null =
-    quemPedido === 'sumidos' || quemPedido === 'nunca' || quemPedido === 'ativos' ? quemPedido : null
+  const quem: Quem | null = QUEM.find((x) => x === quemPedido) ?? null
   const ordem: Ordem = ordemPedida === 'gastou' || ordemPedida === 'recente' ? ordemPedida : 'nome'
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
@@ -50,6 +51,12 @@ export default async function Clientes({
   }
   const sumidos = clientes.filter(ehSumido)
   const semCompra = clientes.filter((c) => c.compras === 0)
+  const mesAtual = new Date().getMonth()
+  const trintaDias = Date.now() - 30 * 864e5
+  const aniversariantes = clientes.filter((c) => c.nascimento && c.nascimento.getMonth() === mesAtual)
+  const comPontos = clientes.filter((c) => c.pontos > 0)
+  const devendo = clientes.filter((c) => c.devendo > 0)
+  const novos = clientes.filter((c) => c.criadoEm.getTime() >= trintaDias)
 
   // ── quem a pessoa quer ver, e em que ordem ───────────────
   // A tira de cima ja dizia "14 sumidos" e nao dava para clicar — a pessoa
@@ -57,9 +64,19 @@ export default async function Clientes({
   // um filtro. E a ordem importa mais aqui do que em qualquer outra lista:
   // "quem mais gasta" e "quem comprou por ultimo" sao as duas perguntas de
   // quem vai mandar mensagem, e por nome e so para achar alguem.
+  //
+  // Aniversariante do mes, quem tem ponto para gastar e quem deve sao os
+  // tres motivos de mandar mensagem que a loja mais tem — e nenhum tinha filtro.
   const listados = clientes
     .filter((c) =>
-      quem === 'sumidos' ? ehSumido(c) : quem === 'nunca' ? c.compras === 0 : quem === 'ativos' ? c.compras > 0 && !ehSumido(c) : true,
+      quem === 'sumidos' ? ehSumido(c)
+      : quem === 'nunca' ? c.compras === 0
+      : quem === 'ativos' ? c.compras > 0 && !ehSumido(c)
+      : quem === 'novos' ? c.criadoEm.getTime() >= trintaDias
+      : quem === 'aniversario' ? !!c.nascimento && c.nascimento.getMonth() === mesAtual
+      : quem === 'pontos' ? c.pontos > 0
+      : quem === 'devendo' ? c.devendo > 0
+      : true,
     )
     .sort((a, b) =>
       ordem === 'gastou'
@@ -82,20 +99,31 @@ export default async function Clientes({
       tema={tema}
       titulo="Clientes"
       acao={
-        podeEditar ? (
-          <Link
-            href={`/${slug}/clientes/novo`}
-            className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"
+        <span className="flex flex-wrap items-center gap-2">
+          <a
+            href={`/${slug}/clientes/exportar${q ? `?q=${encodeURIComponent(q)}` : ''}`}
+            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            title="Baixar a lista em planilha"
           >
-            + Novo cliente
-          </Link>
-        ) : undefined
+            Planilha
+          </a>
+          {podeEditar && (
+            <Link
+              href={`/${slug}/clientes/novo`}
+              className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"
+            >
+              + Novo cliente
+            </Link>
+          )}
+        </span>
       }
     >
       <Tira
         itens={[
           { rotulo: 'compraram', quantos: clientes.length - semCompra.length, nivel: 'bom' },
           { rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length, nivel: 'atencao' },
+          { rotulo: 'devendo no crediário', quantos: devendo.length, nivel: devendo.some((c) => c.vencido > 0) ? 'critico' : 'atencao' },
+          { rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length, nivel: 'bom' },
           { rotulo: 'nunca compraram', quantos: semCompra.length, nivel: 'neutro' },
         ]}
       />
@@ -114,6 +142,10 @@ export default async function Clientes({
               { valor: null, rotulo: 'todos', quantos: clientes.length },
               { valor: 'ativos', rotulo: 'compram', quantos: clientes.length - semCompra.length - sumidos.length },
               { valor: 'sumidos', rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length },
+              { valor: 'novos', rotulo: 'cadastrados há 30 dias', quantos: novos.length },
+              { valor: 'aniversario', rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length },
+              { valor: 'pontos', rotulo: 'com pontos', quantos: comPontos.length },
+              { valor: 'devendo', rotulo: 'devendo', quantos: devendo.length },
               { valor: 'nunca', rotulo: 'nunca compraram', quantos: semCompra.length },
             ]}
             atual={quem}
@@ -217,10 +249,36 @@ export default async function Clientes({
                   return <Situacao nivel="bom">há {d} dia(s)</Situacao>
                 },
               },
+              ...(devendo.length > 0 || comPontos.length > 0
+                ? [
+                    {
+                      chave: 'extra',
+                      titulo: '',
+                      largura: '9rem',
+                      celula: (c: (typeof clientes)[number]) => (
+                        <span className="flex flex-col items-end gap-0.5">
+                          {c.devendo > 0 && (
+                            <Situacao nivel={c.vencido > 0 ? 'critico' : 'atencao'}>
+                              deve {brl(c.devendo)}
+                            </Situacao>
+                          )}
+                          {c.pontos > 0 && <span className="numero text-xs text-tinta-3">{c.pontos} pontos</span>}
+                        </span>
+                      ),
+                    },
+                  ]
+                : []),
             ]}
             linhas={listados}
             chave={(c) => c.id}
-            vazio={quem === 'sumidos' ? 'Ninguém sumido — bom sinal.' : quem === 'nunca' ? 'Todo mundo cadastrado já comprou.' : 'Ninguém aqui.'}
+            vazio={
+              quem === 'sumidos' ? 'Ninguém sumido — bom sinal.'
+              : quem === 'nunca' ? 'Todo mundo cadastrado já comprou.'
+              : quem === 'devendo' ? 'Ninguém devendo.'
+              : quem === 'aniversario' ? `Ninguém faz aniversário em ${MES_NOME[mesAtual]} — ou a data de nascimento não foi cadastrada.`
+              : quem === 'pontos' ? 'Ninguém com pontos para usar.'
+              : 'Ninguém aqui.'
+            }
           />
         )}
       </Cartao>

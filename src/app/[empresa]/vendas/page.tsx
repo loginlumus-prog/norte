@@ -12,7 +12,10 @@ import { Tabela } from '@/ui/Tabela'
 import { SeletorPeriodo } from '@/ui/Periodo'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import type { Tema } from '@/ui/TrocaTema'
-import type { SituacaoVenda } from '@prisma/client'
+import type { FormaPagamento, SituacaoVenda } from '@prisma/client'
+import { Fichas } from '@/ui/Busca'
+
+const FORMAS_FILTRO: FormaPagamento[] = ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'CREDIARIO', 'VALE']
 
 // As vendas que já aconteceram.
 //
@@ -40,10 +43,10 @@ export default async function Vendas({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string; periodo?: string; q?: string; situacao?: string }>
+  searchParams: Promise<{ unidade?: string; periodo?: string; q?: string; situacao?: string; vendedor?: string; forma?: string }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, periodo: pedido, q, situacao: sit } = await searchParams
+  const { unidade: pedida, periodo: pedido, q, situacao: sit, vendedor: vendedorPedido, forma: formaPedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -54,8 +57,22 @@ export default async function Vendas({
   // que a lista nunca teria seria filtro que devolve vazio sem explicar.
   const situacao: SituacaoVenda | null =
     sit === 'CONCLUIDA' || sit === 'CANCELADA' ? sit : null
+  const forma = FORMAS_FILTRO.find((f) => f === formaPedida) ?? null
+  const vendedorId = vendedorPedido || null
 
-  const vendas = await listarVendas(sessao, { unidadeIds: onde.ids, de: j.de, ate: j.ate, q, situacao })
+  // Duas consultas: a lista filtrada e a base do período, de onde saem as
+  // opções de vendedor e forma. Se as opções viessem da lista filtrada,
+  // escolher "Carlos" faria "Ana" sumir do filtro — e não teria como voltar.
+  const [vendas, base] = await Promise.all([
+    listarVendas(sessao, { unidadeIds: onde.ids, de: j.de, ate: j.ate, q, situacao, vendedorId, forma }),
+    vendedorId || forma
+      ? listarVendas(sessao, { unidadeIds: onde.ids, de: j.de, ate: j.ate, q, situacao })
+      : Promise.resolve(null),
+  ])
+  const universo = base ?? vendas
+  const vendedores = [...new Map(universo.filter((v) => v.vendedorId).map((v) => [v.vendedorId!, v.vendedor ?? '—'])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+  const formasUsadas = FORMAS_FILTRO.filter((f) => universo.some((v) => v.formas.includes(f)))
 
   const concluidas = vendas.filter((v) => v.situacao === 'CONCLUIDA')
   const canceladas = vendas.filter((v) => v.situacao === 'CANCELADA')
@@ -69,9 +86,12 @@ export default async function Vendas({
     p.set('periodo', j.chave)
     if (q) p.set('q', q)
     if (situacao) p.set('situacao', situacao)
+    if (vendedorId) p.set('vendedor', vendedorId)
+    if (forma) p.set('forma', forma)
     for (const [k, v] of Object.entries(mudanca)) v === null ? p.delete(k) : p.set(k, v)
     return `/${slug}/vendas?${p.toString()}`
   }
+  const linkExportar = link({}).replace(`/${slug}/vendas?`, `/${slug}/vendas/exportar?`)
 
   const colunas = [
     {
@@ -160,9 +180,16 @@ export default async function Vendas({
       tema={tema}
       titulo="Vendas"
       acao={
-        <span className="flex items-center gap-2">
+        <span className="flex flex-wrap items-center gap-2">
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
           <SeletorPeriodo atual={j.chave} />
+          <a
+            href={linkExportar}
+            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            title="Baixar em planilha: uma linha por item vendido, com os filtros desta tela"
+          >
+            Planilha
+          </a>
         </span>
       }
     >
@@ -214,6 +241,33 @@ export default async function Vendas({
           { rotulo: 'canceladas', quantos: canceladas.length, nivel: canceladas.length ? 'critico' : 'neutro' },
         ]}
       />
+
+      {/* Quem vendeu e como receberam: os dois recortes que a pergunta do dia
+          usa ("o que a Maria vendeu no sábado", "quanto entrou no Pix"). */}
+      {(vendedores.length > 1 || formasUsadas.length > 1 || vendedorId || forma) && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          {(vendedores.length > 1 || vendedorId) && (
+            <span className="flex items-center gap-1 text-xs text-tinta-3">
+              vendeu:
+              <Fichas
+                opcoes={[{ valor: null, rotulo: 'qualquer pessoa' }, ...vendedores.map(([id, nome]) => ({ valor: id, rotulo: nome }))]}
+                atual={vendedorId}
+                linkDe={(v) => link({ vendedor: v })}
+              />
+            </span>
+          )}
+          {(formasUsadas.length > 1 || forma) && (
+            <span className="flex items-center gap-1 text-xs text-tinta-3">
+              pagamento:
+              <Fichas
+                opcoes={[{ valor: null, rotulo: 'qualquer' }, ...formasUsadas.map((f) => ({ valor: f, rotulo: FORMA[f] ?? f }))]}
+                atual={forma}
+                linkDe={(v) => link({ forma: v })}
+              />
+            </span>
+          )}
+        </div>
+      )}
 
       <Cartao
         titulo={q ? `Resultado de “${q}”` : `${vendas.length} venda${vendas.length === 1 ? '' : 's'}`}

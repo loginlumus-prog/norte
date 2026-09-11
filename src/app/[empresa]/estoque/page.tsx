@@ -1,21 +1,31 @@
+import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
 import { pode } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
-import { conferirSaldos } from '@/servidor/estoque'
+import { conferirSaldos, listarMovimentos, ROTULO_MOVIMENTO, type MovimentoNaLista } from '@/servidor/estoque'
+import { janela, lerPeriodo } from '@/servidor/periodo'
+import { moduloLigado } from '@/servidor/modulos'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Cartao, Situacao, Vazio, Aviso } from '@/ui/base'
+import { Cartao, Situacao, Vazio, Aviso, cx } from '@/ui/base'
 import { Tira, Secao } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
+import { SeletorPeriodo } from '@/ui/Periodo'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
+import type { TipoMovimento } from '@prisma/client'
 
 type SituacaoItem = 'acabaram' | 'minimo' | 'ok'
 import { Entrada } from './Entrada'
 import { Corrigir } from './Corrigir'
+import { Transferir } from './Transferir'
+
+const TIPOS: TipoMovimento[] = ['ENTRADA', 'VENDA', 'DEVOLUCAO', 'AJUSTE', 'PERDA', 'TRANSFERENCIA', 'BALANCO']
+const quando = (d: Date) =>
+  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d)
 
 // A tela do estoque.
 //
@@ -38,17 +48,32 @@ export default async function TelaEstoque({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string; q?: string; situacao?: string }>
+  searchParams: Promise<{ unidade?: string; q?: string; situacao?: string; periodo?: string; tipo?: string }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, q: qBruto, situacao: sitPedida } = await searchParams
+  const { unidade: pedida, q: qBruto, situacao: sitPedida, periodo: periodoPedido, tipo: tipoPedido } = await searchParams
   const q = (qBruto ?? '').trim()
   const situacao: SituacaoItem | null =
     sitPedida === 'acabaram' || sitPedida === 'minimo' || sitPedida === 'ok' ? sitPedida : null
+  const tipo = TIPOS.find((t) => t === tipoPedido) ?? null
+  const j = janela(lerPeriodo(periodoPedido))
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'estoque.ver')
+  const movimentos = await listarMovimentos(sessao, {
+    unidadeIds: onde.ids,
+    de: j.de,
+    ate: j.ate,
+    tipos: tipo ? [tipo] : null,
+    q,
+  })
+  // Transferir só faz sentido com mais de uma loja E com uma loja escolhida:
+  // no consolidado não se sabe de onde a peça sairia.
+  const destinos =
+    moduloLigado(empresa, 'multiUnidade') && onde.unidadeId
+      ? onde.opcoes.filter((u) => u.id !== onde.unidadeId && pode(sessao, 'estoque.ajustar', u.id))
+      : []
   // Dar entrada é sempre EM UMA loja. Sem loja escolhida (consolidado), a
   // mercadoria não teria onde entrar — então a ação usa a primeira visível.
   const unidadeAlvo = onde.unidadeId ?? onde.opcoes[0]?.id ?? null
@@ -148,7 +173,7 @@ export default async function TelaEstoque({
       (!nivelPedido || nivelDe(i) === nivelPedido),
   )
 
-  const atuais = { unidade: onde.unidadeId, q, situacao }
+  const atuais = { unidade: onde.unidadeId, q, situacao, periodo: periodoPedido ?? null, tipo }
   const link = (mudanca: Record<string, string | null>) =>
     enderecoCom(`/${slug}/estoque`, atuais, mudanca)
 
@@ -209,7 +234,18 @@ export default async function TelaEstoque({
             titulo: '',
             largura: '17rem',
             celula: (i: (typeof itens)[number]) => (
-              <Corrigir slug={slug} variacaoId={i.id} unidadeId={onde.unidadeId!} saldo={i.saldo} />
+              <div className="flex flex-col gap-1">
+                <Corrigir slug={slug} variacaoId={i.id} unidadeId={onde.unidadeId!} saldo={i.saldo} />
+                {destinos.length > 0 && (
+                  <Transferir
+                    slug={slug}
+                    variacaoId={i.id}
+                    deUnidadeId={onde.unidadeId!}
+                    destinos={destinos.map((d) => ({ id: d.id, nome: d.nome }))}
+                    saldo={i.saldo}
+                  />
+                )}
+              </div>
             ),
           },
         ]
@@ -224,7 +260,18 @@ export default async function TelaEstoque({
       ativo={`/${slug}/estoque`}
       tema={tema}
       titulo="Estoque"
-      acao={onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} /> : undefined}
+      acao={
+        <span className="flex items-center gap-2">
+          {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+          <a
+            href={`/${slug}/estoque/exportar${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
+            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            title="Baixar em planilha — a folha do balanço, com uma coluna para o contado"
+          >
+            Planilha
+          </a>
+        </span>
+      }
     >
       <Tira
         itens={[
@@ -321,6 +368,107 @@ export default async function TelaEstoque({
             <Tabela colunas={colunas} linhas={listados} chave={(i) => i.id} vazio="Vazio." />
           )}
         </Cartao>
+      </Secao>
+
+      {/* ── MOVIMENTOS ──
+          Todo movimento fica gravado desde o primeiro dia e não tinha onde
+          ser lido. "Quem deu baixa de 30 na terça?" é o que decide se o
+          estoque é confiável ou é só um número. */}
+      <Secao
+        titulo="Movimentos"
+        resumo="Tudo que entrou, saiu, foi corrigido ou transferido — com quem e quando."
+        acao={<SeletorPeriodo atual={j.chave} />}
+      >
+        <Fichas
+          opcoes={[
+            { valor: null, rotulo: 'todos', quantos: movimentos.length },
+            ...TIPOS.map((t) => ({ valor: t, rotulo: ROTULO_MOVIMENTO[t].toLowerCase() })),
+          ]}
+          atual={tipo}
+          linkDe={(v) => link({ tipo: v })}
+        />
+        <Tabela
+          colunas={[
+            {
+              chave: 'quando',
+              titulo: 'Quando',
+              largura: '7rem',
+              celula: (m: MovimentoNaLista) => <span className="numero whitespace-nowrap text-tinta-2">{quando(m.criadoEm)}</span>,
+            },
+            {
+              chave: 'item',
+              titulo: 'Item',
+              celula: (m: MovimentoNaLista) => (
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-tinta">{m.descricao}</span>
+                  <span className="text-xs text-tinta-3">
+                    {m.codigo ? <span className="font-mono">{m.codigo} · </span> : null}
+                    {m.motivo ?? ROTULO_MOVIMENTO[m.tipo]}
+                    {m.referencia && m.tipo === 'VENDA' ? (
+                      <>
+                        {' · '}
+                        <Link href={`/${slug}/vendas/${m.referencia}`} className="text-marca underline-offset-2 hover:underline">
+                          ver venda
+                        </Link>
+                      </>
+                    ) : null}
+                  </span>
+                </span>
+              ),
+            },
+            {
+              chave: 'tipo',
+              titulo: 'Tipo',
+              largura: '8rem',
+              celula: (m: MovimentoNaLista) => (
+                <Situacao
+                  nivel={
+                    m.tipo === 'ENTRADA' || m.tipo === 'DEVOLUCAO' ? 'bom'
+                    : m.tipo === 'PERDA' ? 'critico'
+                    : m.tipo === 'AJUSTE' || m.tipo === 'BALANCO' ? 'atencao'
+                    : 'neutro'
+                  }
+                >
+                  {ROTULO_MOVIMENTO[m.tipo]}
+                </Situacao>
+              ),
+            },
+            ...(onde.unidadeId === null && onde.opcoes.length > 1
+              ? [{ chave: 'loja', titulo: 'Loja', largura: '8rem', celula: (m: MovimentoNaLista) => <span className="text-tinta-2">{m.unidade}</span> }]
+              : []),
+            {
+              chave: 'qtd',
+              titulo: 'Quantidade',
+              numero: true,
+              largura: '7rem',
+              celula: (m: MovimentoNaLista) => (
+                <span className={cx('numero font-semibold', m.quantidade < 0 ? 'text-critico' : 'text-bom')}>
+                  {m.quantidade > 0 ? '+' : ''}
+                  {qtd(m.quantidade, m.medida)}
+                </span>
+              ),
+            },
+            {
+              chave: 'saldo',
+              titulo: 'Ficou',
+              numero: true,
+              largura: '6rem',
+              celula: (m: MovimentoNaLista) => <span className="numero text-tinta-2">{qtd(m.saldoDepois, m.medida)}</span>,
+            },
+            {
+              chave: 'quem',
+              titulo: 'Quem',
+              largura: '8rem',
+              celula: (m: MovimentoNaLista) => <span className="truncate text-xs text-tinta-2">{m.quem}</span>,
+            },
+          ]}
+          linhas={movimentos}
+          chave={(m) => m.id}
+          vazio={q || tipo ? 'Nenhum movimento com esse filtro no período.' : 'Nenhum movimento no período.'}
+        />
+        {movimentos.length === 500 && (
+          <p className="text-xs text-tinta-3">Mostrando os 500 mais recentes. Aperte o período ou o filtro.</p>
+        )}
       </Secao>
     </Estrutura>
   )

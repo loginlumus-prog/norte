@@ -4,7 +4,7 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
-import { Cartao, Situacao, Vazio, Ponto } from '@/ui/base'
+import { Cartao, Situacao, Vazio, Ponto, cx } from '@/ui/base'
 import { Tira } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
 import { MENU } from '@/ui/menu'
@@ -14,6 +14,8 @@ import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
 
 type SituacaoItem = 'acabaram' | 'minimo' | 'ok'
+type Ordem = 'nome' | 'vendidos' | 'estoque' | 'preco'
+type Pendencia = 'sem-categoria' | 'sem-custo' | 'sem-ean' | 'sem-venda'
 
 const MEDIDA: Record<string, string> = {
   UN: 'un', KG: 'kg', G: 'g', L: 'L', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx',
@@ -34,13 +36,29 @@ export default async function Produtos({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string; q?: string; categoria?: string; situacao?: string }>
+  searchParams: Promise<{
+    unidade?: string
+    q?: string
+    categoria?: string
+    situacao?: string
+    marca?: string
+    ordem?: string
+    pendencia?: string
+  }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, q: qBruto, categoria: categoriaPedida, situacao: sitPedida } = await searchParams
+  const {
+    unidade: pedida, q: qBruto, categoria: categoriaPedida, situacao: sitPedida,
+    marca: marcaPedida, ordem: ordemPedida, pendencia: pendenciaPedida,
+  } = await searchParams
   const q = (qBruto ?? '').trim()
   const situacao: SituacaoItem | null =
     sitPedida === 'acabaram' || sitPedida === 'minimo' || sitPedida === 'ok' ? sitPedida : null
+  const ordem: Ordem = ordemPedida === 'vendidos' || ordemPedida === 'estoque' || ordemPedida === 'preco' ? ordemPedida : 'nome'
+  const pendencia: Pendencia | null =
+    pendenciaPedida === 'sem-categoria' || pendenciaPedida === 'sem-custo' || pendenciaPedida === 'sem-ean' || pendenciaPedida === 'sem-venda'
+      ? pendenciaPedida
+      : null
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -52,16 +70,43 @@ export default async function Produtos({
   // A busca cobre nome, marca e ETIQUETA. Etiqueta porque quem está com a
   // peça na mão lê o código dela, não o nome — e é assim que se acha "aquele
   // produto" em catálogo de 800 itens.
-  const categorias = await comoOrg(sessao.orgId, (db) =>
-    db.categoria.findMany({ orderBy: { ordem: 'asc' }, select: { id: true, nome: true } }),
-  )
+  const trintaDias = new Date(Date.now() - 30 * 864e5)
+  const [categorias, marcas, vendidosBrutos] = await Promise.all([
+    comoOrg(sessao.orgId, (db) =>
+      db.categoria.findMany({ orderBy: { ordem: 'asc' }, select: { id: true, nome: true } }),
+    ),
+    comoOrg(sessao.orgId, (db) =>
+      db.produto.findMany({
+        where: { ativo: true, marca: { not: null } },
+        distinct: ['marca'],
+        orderBy: { marca: 'asc' },
+        select: { marca: true },
+      }),
+    ),
+    // Quanto cada produto vendeu nos últimos 30 dias, para ordenar e para
+    // achar o que não vendeu nada — é a lista de quem precisa de promoção.
+    comoOrg(sessao.orgId, (db) =>
+      db.$queryRaw<{ produto_id: string; quantidade: string }[]>`
+        select va.produto_id, sum(i.quantidade) as quantidade
+          from venda_itens i
+          join vendas v on v.id = i.venda_id
+          join variacoes va on va.id = i.variacao_id
+         where v.situacao = 'CONCLUIDA' and v.criada_em >= ${trintaDias}
+           and v.unidade_id = any(${onde.ids})
+         group by 1
+      `,
+    ),
+  ])
   const categoriaId = categorias.some((c) => c.id === categoriaPedida) ? categoriaPedida! : null
+  const marca = marcas.some((m) => m.marca === marcaPedida) ? marcaPedida! : null
+  const vendidos30 = new Map(vendidosBrutos.map((v) => [v.produto_id, Number(v.quantidade)]))
 
   const produtos = await comoOrg(sessao.orgId, (db) =>
     db.produto.findMany({
       where: {
         ativo: true,
         ...(categoriaId ? { categoriaId } : {}),
+        ...(marca ? { marca } : {}),
         ...(q
           ? {
               OR: [
@@ -80,14 +125,14 @@ export default async function Produtos({
       },
       orderBy: { nome: 'asc' },
       select: {
-        id: true, nome: true, marca: true, medida: true,
+        id: true, nome: true, marca: true, medida: true, custo: true,
         categoria: { select: { id: true, nome: true } },
         precoVista: true, precoCartao: true, precoCrediario: true,
         variacoes: {
           where: { ativa: true },
           orderBy: { codigo: 'asc' },
           select: {
-            id: true, codigo: true, padrao: true,
+            id: true, codigo: true, codigoBarras: true, padrao: true,
             opcoes: {
               select: { opcao: { select: { valor: true, hex: true, eixo: { select: { nome: true, ordem: true } } } } },
             },
@@ -103,6 +148,15 @@ export default async function Produtos({
 
   const podeVerPreco = pode(sessao, 'produto.ver')
   const podeEditar = pode(sessao, 'produto.editar')
+  const podeVerCusto = pode(sessao, 'produto.preco')
+
+  const totalDe = (p: { variacoes: { estoques: { quantidade: unknown }[] }[] }) =>
+    p.variacoes.reduce((s, v) => s + v.estoques.reduce((t, e) => t + Number(e.quantidade), 0), 0)
+  const margemDe = (p: { precoVista: unknown; custo: unknown }) => {
+    const preco = Number(p.precoVista ?? 0)
+    if (p.custo == null || preco <= 0) return null
+    return ((preco - Number(p.custo)) / preco) * 100
+  }
 
   // Conta a situação de cada variação uma vez, para a tira de cima e para o
   // cabeçalho de cada produto falarem a mesma coisa.
@@ -128,15 +182,43 @@ export default async function Produtos({
   // E filtra as VARIAÇÕES, não só o produto: pedindo "acabaram", a camiseta
   // aparece só com o tamanho que acabou, e não com a grade inteira.
   const nivelPedido = situacao === 'acabaram' ? 'critico' : situacao === 'minimo' ? 'atencao' : situacao === 'ok' ? 'bom' : null
-  const listados = nivelPedido
+  const porSituacao = nivelPedido
     ? produtos
         .map((p) => ({ ...p, variacoes: p.variacoes.filter((v) => situacaoDe(v) === nivelPedido) }))
         .filter((p) => p.variacoes.length > 0)
     : produtos
 
-  const atuais = { unidade: onde.unidadeId, q, categoria: categoriaId, situacao }
+  // As pendências de cadastro: o que falta preencher para o sistema fazer
+  // o que promete. Sem custo não há margem; sem categoria o balcão em grade
+  // não tem aba; sem código de barras o leitor não lê.
+  const pendente = (p: (typeof produtos)[number]) =>
+    pendencia === 'sem-categoria' ? !p.categoria
+    : pendencia === 'sem-custo' ? p.custo == null
+    : pendencia === 'sem-ean' ? p.variacoes.some((v) => !v.codigoBarras)
+    : pendencia === 'sem-venda' ? !vendidos30.has(p.id)
+    : true
+  const listados = porSituacao
+    .filter(pendente)
+    .sort((a, b) =>
+      ordem === 'vendidos' ? (vendidos30.get(b.id) ?? 0) - (vendidos30.get(a.id) ?? 0)
+      : ordem === 'estoque' ? totalDe(b) - totalDe(a)
+      : ordem === 'preco' ? Number(b.precoVista ?? 0) - Number(a.precoVista ?? 0)
+      : a.nome.localeCompare(b.nome),
+    )
+  const pendencias = {
+    semCategoria: produtos.filter((p) => !p.categoria).length,
+    semCusto: produtos.filter((p) => p.custo == null).length,
+    semEan: produtos.filter((p) => p.variacoes.some((v) => !v.codigoBarras)).length,
+    semVenda: produtos.filter((p) => !vendidos30.has(p.id)).length,
+  }
+
+  const atuais = {
+    unidade: onde.unidadeId, q, categoria: categoriaId, situacao, marca,
+    ordem: ordem === 'nome' ? null : ordem, pendencia,
+  }
   const link = (mudanca: Record<string, string | null>) =>
     enderecoCom(`/${slug}/produtos`, atuais, mudanca)
+  const linkEtiquetas = enderecoCom(`/${slug}/produtos/etiquetas`, { unidade: onde.unidadeId, q, categoria: categoriaId })
 
   return (
     <Estrutura
@@ -147,8 +229,24 @@ export default async function Produtos({
       tema={tema}
       titulo="Produtos"
       acao={
-        <span className="flex items-center gap-2">
+        <span className="flex flex-wrap items-center gap-2">
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+          {(q || categoriaId) && (
+            <Link
+              href={linkEtiquetas}
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+              title="Imprimir as etiquetas do que está filtrado"
+            >
+              Etiquetas
+            </Link>
+          )}
+          <a
+            href={`/${slug}/produtos/exportar${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
+            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            title="Baixar o catálogo em planilha"
+          >
+            Planilha
+          </a>
           {podeEditar && (
             <Link
               href={`/${slug}/produtos/novo`}
@@ -201,6 +299,47 @@ export default async function Produtos({
             />
           )}
         </div>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          {/* Marca só vira filtro com poucas marcas: quarenta fichas de marca
+              é uma parede, e aí a busca por nome resolve melhor. */}
+          {marcas.length > 1 && marcas.length <= 12 && (
+            <span className="flex items-center gap-1 text-xs text-tinta-3">
+              marca:
+              <Fichas
+                opcoes={[{ valor: null, rotulo: 'todas' }, ...marcas.map((m) => ({ valor: m.marca!, rotulo: m.marca! }))]}
+                atual={marca}
+                linkDe={(v) => link({ marca: v })}
+              />
+            </span>
+          )}
+          <span className="flex items-center gap-1 text-xs text-tinta-3">
+            pendência:
+            <Fichas
+              opcoes={[
+                { valor: null, rotulo: 'nenhuma' },
+                { valor: 'sem-venda', rotulo: 'sem venda em 30 dias', quantos: pendencias.semVenda },
+                { valor: 'sem-custo', rotulo: 'sem custo', quantos: pendencias.semCusto },
+                { valor: 'sem-categoria', rotulo: 'sem categoria', quantos: pendencias.semCategoria },
+                { valor: 'sem-ean', rotulo: 'sem código de barras', quantos: pendencias.semEan },
+              ]}
+              atual={pendencia}
+              linkDe={(v) => link({ pendencia: v })}
+            />
+          </span>
+          <span className="flex items-center gap-1 text-xs text-tinta-3">
+            ordenar:
+            <Fichas
+              opcoes={[
+                { valor: null, rotulo: 'nome' },
+                { valor: 'vendidos', rotulo: 'mais vendidos (30 dias)' },
+                { valor: 'estoque', rotulo: 'mais estoque' },
+                { valor: 'preco', rotulo: 'maior preço' },
+              ]}
+              atual={ordem === 'nome' ? null : ordem}
+              linkDe={(v) => link({ ordem: v })}
+            />
+          </span>
+        </div>
       </div>
 
       {produtos.length === 0 && !q && !categoriaId && (
@@ -222,30 +361,31 @@ export default async function Produtos({
         </Cartao>
       )}
 
-      {listados.length === 0 && (q || categoriaId || situacao) && (
+      {listados.length === 0 && (q || categoriaId || situacao || marca || pendencia) && (
         <Cartao>
           <Vazio>
             {q ? `Nada com “${q}”` : 'Nada'}
             {situacao === 'acabaram' ? ' acabou' : situacao === 'minimo' ? ' no mínimo' : ''}
-            {categoriaId ? ` em ${categorias.find((c) => c.id === categoriaId)?.nome}` : ''}.
+            {categoriaId ? ` em ${categorias.find((c) => c.id === categoriaId)?.nome}` : ''}
+            {marca ? ` da ${marca}` : ''}
+            {pendencia ? ' com essa pendência' : ''}.
           </Vazio>
         </Cartao>
       )}
 
       {listados.map((p) => {
-        const total = p.variacoes.reduce(
-          (s, v) => s + v.estoques.reduce((t, e) => t + Number(e.quantidade), 0),
-          0,
-        )
+        const total = totalDe(p)
         const acabaram = p.variacoes.filter((v) => situacaoDe(v) === 'critico').length
         const noMinimo = p.variacoes.filter((v) => situacaoDe(v) === 'atencao').length
+        const margem = margemDe(p)
+        const vendeu = vendidos30.get(p.id)
 
         return (
           <Cartao
             key={p.id}
             titulo={p.nome}
             acao={
-              <span className="flex items-center gap-2 text-xs text-tinta-3">
+              <span className="flex flex-wrap items-center gap-2 text-xs text-tinta-3">
                 {podeEditar && (
                   <Link
                     href={`/${slug}/produtos/${p.id}`}
@@ -254,6 +394,13 @@ export default async function Produtos({
                     editar
                   </Link>
                 )}
+                <Link
+                  href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
+                  className="hover:text-tinta"
+                  title="Imprimir etiquetas deste produto"
+                >
+                  etiquetas
+                </Link>
                 {p.categoria && (
                   <Link href={link({ categoria: p.categoria.id })} className="hover:text-tinta">
                     {p.categoria.nome}
@@ -261,6 +408,19 @@ export default async function Produtos({
                 )}
                 {p.marca && <span>{p.marca}</span>}
                 {podeVerPreco && <span className="numero">{dinheiro(p.precoVista)} à vista</span>}
+                {podeVerCusto &&
+                  (margem === null ? (
+                    <Link href={`/${slug}/produtos/${p.id}`} className="text-atencao hover:underline" title="Sem custo cadastrado, não há margem">
+                      sem custo
+                    </Link>
+                  ) : (
+                    <span className={cx('numero', margem < 20 ? 'text-critico' : margem < 40 ? 'text-atencao' : 'text-bom')}>
+                      margem {margem.toFixed(0)}%
+                    </span>
+                  ))}
+                <span className="numero" title="Vendido nos últimos 30 dias, nesta loja">
+                  {vendeu ? `${quantidade(vendeu, p.medida)} em 30d` : 'sem venda em 30d'}
+                </span>
                 {acabaram > 0 && <Ponto nivel="critico" quantos={acabaram} titulo="acabaram" />}
                 {noMinimo > 0 && <Ponto nivel="atencao" quantos={noMinimo} titulo="no mínimo" />}
                 <Situacao nivel={total > 0 ? 'bom' : 'critico'}>

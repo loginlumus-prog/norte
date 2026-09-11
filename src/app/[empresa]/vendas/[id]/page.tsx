@@ -142,9 +142,31 @@ export default async function FichaVenda({
       tema={tema}
       titulo={`Venda ${v.numero}`}
       acao={
-        <Link href={`/${slug}/vendas`} className="text-sm font-medium text-tinta-2 hover:text-tinta">
-          ← todas as vendas
-        </Link>
+        <span className="flex flex-wrap items-center gap-3">
+          <Link href={`/${slug}/vendas`} className="text-sm font-medium text-tinta-2 hover:text-tinta">
+            ← todas as vendas
+          </Link>
+          <Link
+            href={`/${slug}/vendas/${v.id}/comprovante`}
+            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+          >
+            Comprovante
+          </Link>
+          {v.cliente?.telefone && (
+            <a
+              href={`https://wa.me/55${v.cliente.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                `Olá, ${v.cliente.nome.split(' ')[0]}! Aqui é da ${empresa.nome}. Segue o resumo da sua compra nº ${v.numero}: ${v.itens
+                  .map((i) => `${qtd(i.quantidade, i.medida)} ${i.descricao}`)
+                  .join(', ')}. Total ${brl(total)}. Obrigado pela preferência!`,
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            >
+              Mandar pelo WhatsApp
+            </a>
+          )}
+        </span>
       }
     >
       {cancelada && (
@@ -239,6 +261,41 @@ export default async function FichaVenda({
           <p className="mt-3 border-t border-borda-suave pt-3 text-[13px] text-tinta-2">{v.observacoes}</p>
         )}
       </Cartao>
+
+      {v.parcelas.length > 0 && (
+        <Cartao titulo={`Crediário · ${v.parcelas.length} parcela${v.parcelas.length === 1 ? '' : 's'}`}>
+          <ul className="flex flex-col divide-y divide-borda-suave text-sm">
+            {v.parcelas.map((p) => {
+              const resta = Number(p.valor) - Number(p.pago)
+              return (
+                <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                  <span className="text-tinta">
+                    {p.numero}/{p.de} · vence{' '}
+                    {new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(p.vencimento)}
+                  </span>
+                  <span className="flex items-center gap-3">
+                    {p.quitadaEm ? (
+                      <Situacao nivel="bom">quitada</Situacao>
+                    ) : p.vencimento < new Date() ? (
+                      <Situacao nivel="critico">vencida</Situacao>
+                    ) : (
+                      <Situacao nivel="neutro">em aberto</Situacao>
+                    )}
+                    <span className="numero font-semibold text-tinta">{brl(p.quitadaEm ? Number(p.valor) : resta)}</span>
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+          <p className="mt-3 text-xs text-tinta-3">
+            Receber é em{' '}
+            <Link href={`/${slug}/crediario?q=${v.numero}`} className="font-medium text-marca underline-offset-2 hover:underline">
+              Crediário
+            </Link>
+            .
+          </p>
+        </Cartao>
+      )}
 
       {temDevolucao && (
         <Cartao titulo={`${v.devolucoes.length === 1 ? 'Devolução' : 'Devoluções'}`}>

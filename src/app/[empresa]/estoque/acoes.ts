@@ -7,8 +7,35 @@ import { revalidatePath } from 'next/cache'
 import { exigirSessao } from '@/servidor/pagina'
 import { exigir, SemPermissao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
-import { mexerEstoque } from '@/servidor/estoque'
+import { mexerEstoque, transferir } from '@/servidor/estoque'
 import { registrarEntrada, definirMinimo, type ItemEntrada } from '@/servidor/entrada'
+
+/** Tirar de uma loja e pôr na outra. A trava inteira está em `transferir`. */
+export async function transferirAcao(
+  slug: string,
+  dados: { variacaoId: string; deUnidadeId: string; paraUnidadeId: string; quantidade: number; motivo: string },
+): Promise<EstadoEntrada> {
+  const s = await exigirSessao(slug)
+  try {
+    const r = await transferir(s, dados)
+    if (!r.ok) {
+      return {
+        erro:
+          r.motivo === 'sem_saldo'
+            ? `Só tem ${r.saldo ?? 0} na loja de origem.`
+            : r.motivo === 'mesma_unidade'
+              ? 'Escolha outra loja para receber.'
+              : 'A quantidade precisa ser maior que zero.',
+      }
+    }
+    revalidatePath(`/${slug}/estoque`)
+    revalidatePath(`/${slug}/produtos`)
+    return { ok: `Transferido. Ficaram ${r.saldoOrigem} aqui e ${r.saldoDestino} lá.` }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para mexer no estoque das duas lojas.' }
+    return { erro: e instanceof Error ? e.message : 'Não deu para transferir.' }
+  }
+}
 
 export type AchadoEstoque = {
   id: string

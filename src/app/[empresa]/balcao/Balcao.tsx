@@ -112,7 +112,12 @@ export function Balcao({
   const [cliente, setCliente] = useState<ClienteNoBalcao | null>(null)
   const [vendedorId, setVendedorId] = useState(usuarioId)
   const [pontosUsar, setPontosUsar] = useState(0)
-  const [recado, setRecado] = useState<{ nivel: 'bom' | 'critico'; texto: string } | null>(null)
+  const [recado, setRecado] = useState<{
+    nivel: 'bom' | 'critico'
+    texto: string
+    /** "imprimir comprovante", depois de fechar. */
+    link?: { href: string; rotulo: string }
+  } | null>(null)
   const [alerta, setAlerta] = useState<string | null>(null)
   const [voltou, setVoltou] = useState<number | null>(null)
   const [pedidoCliente, setPedidoCliente] = useState(0)
@@ -443,6 +448,7 @@ export function Balcao({
         setRecado({
           nivel: 'bom',
           texto: `Venda ${r.numero} fechada — ${brl(r.total)}${ganhou}`,
+          link: { href: `/${slug}/vendas/${r.vendaId}/comprovante?imprimir=1`, rotulo: 'imprimir comprovante' },
         })
         limpar()
       } else if (r.motivo === 'pontos_recusados') {
@@ -531,7 +537,23 @@ export function Balcao({
         </Aviso>
       )}
 
-      {recado && <Aviso nivel={recado.nivel}>{recado.texto}</Aviso>}
+      {recado && (
+        <Aviso nivel={recado.nivel}>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>{recado.texto}</span>
+            {recado.link && (
+              <a
+                href={recado.link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold underline underline-offset-2"
+              >
+                {recado.link.rotulo}
+              </a>
+            )}
+          </span>
+        </Aviso>
+      )}
       {alerta && <Aviso nivel="atencao">{alerta}</Aviso>}
 
       {/* ── quem compra, quem vende ── */}

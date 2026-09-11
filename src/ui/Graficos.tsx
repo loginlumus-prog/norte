@@ -38,18 +38,31 @@ export const PALETA = [
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const pct = (v: number) => `${(v * 100).toFixed(v < 0.1 ? 1 : 0).replace('.', ',')}%`
 
+/**
+ * Como escrever o número. É uma PALAVRA, não uma função, porque o gráfico é
+ * componente de cliente e a página que o usa é de servidor — e função não
+ * atravessa essa fronteira. Cada palavra vira a função aqui dentro.
+ */
+export type Formato = 'brl' | 'un' | 'inteiro' | 'kg' | 'pct'
+const formatar = (f: Formato) => (v: number) =>
+  f === 'un' ? `${v.toLocaleString('pt-BR')} un`
+  : f === 'kg' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg`
+  : f === 'inteiro' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+  : f === 'pct' ? `${v.toFixed(1).replace('.', ',')}%`
+  : brl(v)
+
 /* ── Rosca ────────────────────────────────────────────────── */
 
 export type Fatia = { rotulo: string; valor: number; cor?: string; detalhe?: string }
 
 export function Rosca({
   fatias,
-  formato = brl,
+  formato = 'brl',
   centro,
   vazio = 'Nada no período.',
 }: {
   fatias: Fatia[]
-  formato?: (v: number) => string
+  formato?: Formato
   /** O número do meio. Sem ele, mostra o total. */
   centro?: { valor: string; rotulo: string }
   vazio?: string
@@ -84,7 +97,7 @@ export function Rosca({
 
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <svg viewBox="0 0 100 100" className="size-36 shrink-0" role="img" aria-label={`Total ${formato(total)}`}>
+      <svg viewBox="0 0 100 100" className="size-36 shrink-0" role="img" aria-label={`Total ${formatar(formato)(total)}`}>
         <circle cx="50" cy="50" r={R} fill="none" stroke="var(--superficie-2)" strokeWidth="12" />
         {arcos.map((a) => (
           <circle
@@ -103,7 +116,7 @@ export function Rosca({
           />
         ))}
         <text x="50" y="47" textAnchor="middle" className="numero" style={{ fontSize: 11, fontWeight: 700, fill: 'var(--tinta)' }}>
-          {emCima ? formato(emCima.valor) : centro?.valor ?? formato(total)}
+          {emCima ? formatar(formato)(emCima.valor) : centro?.valor ?? formatar(formato)(total)}
         </text>
         <text x="50" y="58" textAnchor="middle" style={{ fontSize: 6.5, fill: 'var(--tinta-3)' }}>
           {emCima ? `${emCima.rotulo} · ${pct(emCima.valor / total)}` : centro?.rotulo ?? 'total'}
@@ -126,7 +139,7 @@ export function Rosca({
               {a.f.detalhe && <span className="shrink-0 text-xs text-tinta-3">{a.f.detalhe}</span>}
             </span>
             <span className="flex shrink-0 items-baseline gap-2">
-              <span className="numero font-semibold text-tinta">{formato(a.f.valor)}</span>
+              <span className="numero font-semibold text-tinta">{formatar(formato)(a.f.valor)}</span>
               <span className="numero w-10 text-right text-xs text-tinta-3">{pct(a.fracao)}</span>
             </span>
           </li>
@@ -140,12 +153,12 @@ export function Rosca({
 
 export function BarrasH({
   itens,
-  formato = brl,
+  formato = 'brl',
   cor = 'var(--marca)',
   vazio = 'Nada no período.',
 }: {
   itens: { rotulo: string; valor: number; detalhe?: string; cor?: string }[]
-  formato?: (v: number) => string
+  formato?: Formato
   cor?: string
   vazio?: string
 }) {
@@ -157,7 +170,7 @@ export function BarrasH({
         <li key={i.rotulo} className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-3">
             <span className="truncate text-sm text-tinta">{i.rotulo}</span>
-            <span className="numero shrink-0 text-sm font-semibold text-tinta">{formato(i.valor)}</span>
+            <span className="numero shrink-0 text-sm font-semibold text-tinta">{formatar(formato)(i.valor)}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-superficie-2">
@@ -181,13 +194,13 @@ export type Serie = { nome: string; cor: string; valores: number[] }
 export function BarrasMeses({
   rotulos,
   series,
-  formato = brl,
+  formato = 'brl',
   altura = 140,
 }: {
   /** Um rótulo por grupo: "abr", "mai"... */
   rotulos: string[]
   series: Serie[]
-  formato?: (v: number) => string
+  formato?: Formato
   altura?: number
 }) {
   const [aceso, setAceso] = useState<number | null>(null)
@@ -208,7 +221,7 @@ export function BarrasMeses({
             {series.map((s) => (
               <span key={s.nome} className="flex items-center gap-1.5 text-tinta-2">
                 <span aria-hidden className="size-2 rounded-sm" style={{ background: s.cor }} />
-                {s.nome} <b className="numero text-tinta">{formato(s.valores[g] ?? 0)}</b>
+                {s.nome} <b className="numero text-tinta">{formatar(formato)(s.valores[g] ?? 0)}</b>
               </span>
             ))}
           </div>
@@ -246,7 +259,7 @@ export function BarrasMeses({
               onMouseEnter={() => setAceso(gi)}
               onFocus={() => setAceso(gi)}
               onBlur={() => setAceso(null)}
-              aria-label={`${r}: ${series.map((s) => `${s.nome} ${formato(s.valores[gi] ?? 0)}`).join(', ')}`}
+              aria-label={`${r}: ${series.map((s) => `${s.nome} ${formatar(formato)(s.valores[gi] ?? 0)}`).join(', ')}`}
               className={cx('relative flex h-full flex-1 cursor-default items-end justify-center gap-0.5 rounded-sm', aceso === gi && 'bg-superficie-2')}
             >
               {series.map((s) => {
@@ -284,13 +297,13 @@ export function BarrasMeses({
 export function Linhas({
   rotulos,
   series,
-  formato = brl,
+  formato = 'brl',
   altura = 120,
 }: {
   rotulos: string[]
   /** A primeira série é a principal e ganha área; as outras são linha fina. */
   series: Serie[]
-  formato?: (v: number) => string
+  formato?: Formato
   altura?: number
 }) {
   const [aceso, setAceso] = useState<number | null>(null)
@@ -314,7 +327,7 @@ export function Linhas({
             {series.map((s) => (
               <span key={s.nome} className="flex items-center gap-1.5 text-tinta-2">
                 <span aria-hidden className="size-2 rounded-full" style={{ background: s.cor }} />
-                {s.nome} <b className="numero text-tinta">{formato(s.valores[aceso] ?? 0)}</b>
+                {s.nome} <b className="numero text-tinta">{formatar(formato)(s.valores[aceso] ?? 0)}</b>
               </span>
             ))}
           </div>
@@ -382,7 +395,7 @@ export function Linhas({
               onMouseEnter={() => setAceso(i)}
               onFocus={() => setAceso(i)}
               onBlur={() => setAceso(null)}
-              aria-label={`${r}: ${series.map((s) => `${s.nome} ${formato(s.valores[i] ?? 0)}`).join(', ')}`}
+              aria-label={`${r}: ${series.map((s) => `${s.nome} ${formatar(formato)(s.valores[i] ?? 0)}`).join(', ')}`}
               className="h-full flex-1 cursor-default"
             />
           ))}
@@ -403,7 +416,7 @@ export function Calor({
   linhas,
   colunas,
   valores,
-  formato = brl,
+  formato = 'brl',
   cor = 'var(--marca)',
 }: {
   /** Ex.: dias da semana. */
@@ -412,7 +425,7 @@ export function Calor({
   colunas: string[]
   /** valores[linha][coluna] */
   valores: number[][]
-  formato?: (v: number) => string
+  formato?: Formato
   cor?: string
 }) {
   const [aceso, setAceso] = useState<{ l: number; c: number } | null>(null)
@@ -426,7 +439,7 @@ export function Calor({
           <span className="rounded-norte border border-borda bg-superficie-2 px-2.5 py-1">
             <b className="text-tinta">{linhas[aceso.l]}, {colunas[aceso.c]}h</b>
             <span className="text-tinta-2"> · </span>
-            <b className="numero text-tinta">{formato(v)}</b>
+            <b className="numero text-tinta">{formatar(formato)(v)}</b>
           </span>
         ) : (
           <span className="text-tinta-3">Mais escuro, mais movimento. Passe o mouse para ver o valor.</span>
@@ -452,7 +465,7 @@ export function Calor({
                     onMouseEnter={() => setAceso({ l: li, c: ci })}
                     onFocus={() => setAceso({ l: li, c: ci })}
                     onBlur={() => setAceso(null)}
-                    aria-label={`${l} ${c}h: ${formato(val)}`}
+                    aria-label={`${l} ${c}h: ${formatar(formato)(val)}`}
                     className={cx('h-5 rounded-[3px] border', aceso?.l === li && aceso?.c === ci ? 'border-tinta' : 'border-transparent')}
                     style={{
                       background: cor,

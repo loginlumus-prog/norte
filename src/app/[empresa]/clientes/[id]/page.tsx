@@ -1,12 +1,18 @@
+import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
-import { acharCliente, mostrarTelefone } from '@/servidor/cliente'
+import { acharCliente, mostrarTelefone, comprasPorMes, favoritosDoCliente } from '@/servidor/cliente'
+import { valesDoCliente } from '@/servidor/devolucao'
+import { listarParcelas } from '@/servidor/crediario'
+import { moduloLigado } from '@/servidor/modulos'
+import { unidadesVisiveis } from '@/servidor/unidade'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Cartao, Situacao, Vazio } from '@/ui/base'
+import { Cartao, Situacao, Vazio, cx } from '@/ui/base'
 import { Numero, Secao, brl } from '@/ui/painel'
+import { BarrasMeses, BarrasH } from '@/ui/Graficos'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ClienteNaTela } from '../Editor'
 
@@ -31,6 +37,32 @@ export default async function FichaCliente({
 
   const cliente = await acharCliente(sessao, id)
   if (!cliente) notFound()
+
+  const temCrediario = moduloLigado(empresa, 'crediario') && pode(sessao, 'crediario.ver')
+  const [meses, favoritos, vales, parcelas] = await Promise.all([
+    comprasPorMes(sessao, id, 12),
+    favoritosDoCliente(sessao, id),
+    valesDoCliente(sessao, id),
+    temCrediario
+      ? unidadesVisiveis(sessao, 'crediario.ver').then((us) =>
+          listarParcelas(sessao, { unidadeIds: us.map((u) => u.id), situacao: 'aberta', clienteId: id }),
+        )
+      : Promise.resolve([]),
+  ])
+  const devendo = parcelas.reduce((s, p) => s + p.resta, 0)
+  const vencidas = parcelas.filter((p) => p.situacao === 'vencida')
+  const primeiroNome = cliente.nome.split(' ')[0]
+  const telefoneLimpo = cliente.telefone?.replace(/\D/g, '') ?? ''
+  const cobranca =
+    telefoneLimpo && vencidas.length > 0
+      ? `https://wa.me/55${telefoneLimpo}?text=${encodeURIComponent(
+          `Olá, ${primeiroNome}! Aqui é da ${empresa.nome}. Passando para lembrar ${
+            vencidas.length === 1
+              ? `da parcela ${vencidas[0]!.numero}/${vencidas[0]!.de} de ${brl(vencidas[0]!.resta)}, que venceu em ${new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(vencidas[0]!.vencimento)}`
+              : `das ${vencidas.length} parcelas em atraso, que somam ${brl(vencidas.reduce((s, p) => s + p.resta, 0))}`
+          }. Podemos acertar? Obrigado!`,
+        )}`
+      : null
 
   const podeEditar = pode(sessao, 'cliente.editar')
 
@@ -93,6 +125,101 @@ export default async function FichaCliente({
             nivel={dias !== null && dias >= 60 ? 'atencao' : undefined}
           />
         </div>
+
+        {cliente.vendas.length > 0 && (
+          <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
+            <Cartao caixa titulo="Quanto gastou, mês a mês">
+              <BarrasMeses
+                rotulos={meses.map((m) => m.rotulo)}
+                series={[{ nome: 'Gastou', cor: 'var(--bom-vivo)', valores: meses.map((m) => m.total) }]}
+                altura={110}
+              />
+            </Cartao>
+            <Cartao caixa titulo="O que mais leva">
+              <BarrasH
+                itens={favoritos.map((f) => ({
+                  rotulo: f.descricao,
+                  valor: f.quantidade,
+                  detalhe: `${f.vezes}× · ${brl(f.total)}`,
+                }))}
+                formato="un"
+              />
+            </Cartao>
+          </div>
+        )}
+
+        {/* ── o que a loja deve a ela, e o que ela deve à loja ── */}
+        {(vales.length > 0 || parcelas.length > 0) && (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {vales.length > 0 && (
+              <Cartao caixa titulo="Vales de troca com saldo">
+                <ul className="flex flex-col divide-y divide-borda-suave text-sm">
+                  {vales.map((v) => (
+                    <li key={v.id} className="flex items-center justify-between gap-3 py-2">
+                      <span className="flex flex-col">
+                        <span className="numero font-mono font-bold text-tinta">{v.codigo}</span>
+                        <span className="text-xs text-tinta-3">
+                          {v.validade
+                            ? `${v.vencido ? 'venceu' : 'vale até'} ${new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(v.validade)}`
+                            : 'sem validade'}
+                        </span>
+                      </span>
+                      <span className={cx('numero font-semibold', v.vencido ? 'text-tinta-3 line-through' : 'text-bom')}>{brl(v.saldo)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Cartao>
+            )}
+            {parcelas.length > 0 && (
+              <Cartao
+                caixa
+                titulo={`Crediário · deve ${brl(devendo)}`}
+                acao={
+                  cobranca ? (
+                    <a
+                      href={cobranca}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-norte border border-critico-borda bg-critico-fundo px-2.5 py-1 text-xs font-semibold text-critico hover:brightness-95"
+                    >
+                      Cobrar pelo WhatsApp
+                    </a>
+                  ) : undefined
+                }
+              >
+                <ul className="flex flex-col divide-y divide-borda-suave text-sm">
+                  {parcelas.map((p) => (
+                    <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                      <span className="flex flex-col">
+                        <span className="text-tinta">
+                          Venda {p.vendaNumero} · parcela {p.numero}/{p.de}
+                        </span>
+                        <span className="text-xs text-tinta-3">
+                          vence {new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(p.vencimento)}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {p.situacao === 'vencida' ? (
+                          <Situacao nivel="critico">{p.diasAtraso}d atrasada</Situacao>
+                        ) : (
+                          <Situacao nivel="neutro">em dia</Situacao>
+                        )}
+                        <span className={cx('numero font-semibold', p.situacao === 'vencida' ? 'text-critico' : 'text-tinta')}>{brl(p.resta)}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="pt-2 text-xs text-tinta-3">
+                  Receber é em{' '}
+                  <Link href={`/${slug}/crediario?cliente=${cliente.id}`} className="font-medium text-marca underline-offset-2 hover:underline">
+                    Crediário
+                  </Link>
+                  .
+                </p>
+              </Cartao>
+            )}
+          </div>
+        )}
 
         {cliente.pontos > 0 || cliente.movimentosPontos.length > 0 ? (
           <Cartao titulo="Pontos">

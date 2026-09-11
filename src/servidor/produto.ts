@@ -18,7 +18,7 @@
 import { comoOrg } from './banco'
 import { exigir, type Sessao } from './permissao'
 import type { BancoDaOrg } from './banco'
-import type { Medida } from '@prisma/client'
+import { Prisma, type Medida } from '@prisma/client'
 
 export type EixoEscolhido = {
   eixoId: string
@@ -433,6 +433,86 @@ export async function acharProduto(sessao: Sessao, produtoId: string) {
       },
     }),
   )
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMO O PRODUTO VENDE
+// ─────────────────────────────────────────────────────────────
+
+export type ComoVende = {
+  porDia: { dia: string; total: number; quantidade: number }[]
+  qtd30: number
+  total30: number
+  qtd90: number
+  total90: number
+  custo90: number
+  ultimaVenda: Date | null
+}
+
+/**
+ * Os últimos 90 dias deste produto, dia a dia e somados. É o que responde
+ * "vale repor?" e "por quanto está saindo?" — a ficha sem isto é cadastro.
+ */
+export async function comoVende(sessao: Sessao, produtoId: string, unidadeIds?: string[]): Promise<ComoVende> {
+  exigir(sessao, 'produto.ver')
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+  const de90 = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 89)
+  const de30 = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 29)
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const linhas = await db.$queryRaw<{ dia: string; total: string; quantidade: string; custo: string }[]>`
+      select to_char((v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD') as dia,
+             sum(i.total) as total, sum(i.quantidade) as quantidade,
+             sum(i.quantidade * coalesce(i.custo_unit, 0)) as custo
+        from venda_itens i
+        join vendas v on v.id = i.venda_id
+        join variacoes va on va.id = i.variacao_id
+       where va.produto_id = ${produtoId} and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${de90}
+         ${unidadeIds ? Prisma.sql`and v.unidade_id = any(${unidadeIds})` : Prisma.empty}
+       group by 1 order by 1
+    `
+    const ultima = await db.vendaItem.findFirst({
+      where: { variacao: { produtoId }, venda: { situacao: 'CONCLUIDA' } },
+      orderBy: { venda: { criadaEm: 'desc' } },
+      select: { venda: { select: { criadaEm: true } } },
+    })
+
+    const porDia = linhas.map((l) => ({ dia: l.dia, total: Number(l.total), quantidade: Number(l.quantidade) }))
+    const chave30 = `${de30.getFullYear()}-${String(de30.getMonth() + 1).padStart(2, '0')}-${String(de30.getDate()).padStart(2, '0')}`
+    const d30 = linhas.filter((l) => l.dia >= chave30)
+    return {
+      porDia,
+      qtd30: d30.reduce((s, l) => s + Number(l.quantidade), 0),
+      total30: d30.reduce((s, l) => s + Number(l.total), 0),
+      qtd90: linhas.reduce((s, l) => s + Number(l.quantidade), 0),
+      total90: linhas.reduce((s, l) => s + Number(l.total), 0),
+      custo90: linhas.reduce((s, l) => s + Number(l.custo), 0),
+      ultimaVenda: ultima?.venda.criadaEm ?? null,
+    }
+  })
+}
+
+/** O saldo de cada item deste produto em cada loja — a grade vista pelo estoque. */
+export async function estoqueDoProduto(sessao: Sessao, produtoId: string) {
+  exigir(sessao, 'estoque.ver')
+  return comoOrg(sessao.orgId, async (db) => {
+    const linhas = await db.estoque.findMany({
+      where: { variacao: { produtoId }, unidade: { ativa: true } },
+      select: {
+        variacaoId: true, quantidade: true, minimo: true,
+        unidade: { select: { id: true, nome: true } },
+      },
+    })
+    return linhas.map((l) => ({
+      variacaoId: l.variacaoId,
+      unidadeId: l.unidade.id,
+      unidade: l.unidade.nome,
+      quantidade: Number(l.quantidade),
+      minimo: l.minimo === null ? null : Number(l.minimo),
+    }))
+  })
 }
 
 /** Os eixos da empresa com as opções de cada um — o que a tela oferece. */

@@ -15,6 +15,7 @@
 
 import { comoOrg } from './banco'
 import { exigir, type Sessao } from './permissao'
+import { situacaoDosClientes } from './crediario'
 
 /** Só os dígitos. É o que faz a busca e a checagem de repetido funcionarem. */
 export const soDigitos = (v: string) => v.replace(/\D/g, '')
@@ -196,6 +197,12 @@ export type ClienteNaLista = {
   gastou: number
   ultimaCompra: Date | null
   pontos: number
+  nascimento: Date | null
+  criadoEm: Date
+  cidade: string | null
+  /** Crediário em aberto e, disso, o vencido. Zero quando não deve. */
+  devendo: number
+  vencido: number
 }
 
 /**
@@ -228,9 +235,12 @@ export async function listarClientes(
           }
         : {},
       orderBy: { nome: 'asc' },
-      take: 200,
+      // Quinhentos com os filtros da tela; a busca acha o resto. Acima disso
+      // a pessoa quer a planilha, e ela existe.
+      take: 500,
       select: {
         id: true, nome: true, telefone: true, ativo: true, pontos: true,
+        nascimento: true, criadoEm: true, cidade: true,
         vendas: {
           where: { situacao: 'CONCLUIDA' },
           select: { total: true, criadaEm: true },
@@ -238,19 +248,67 @@ export async function listarClientes(
       },
     })
 
+    const fiado = await situacaoDosClientes(db, clientes.map((c) => c.id))
+
     return clientes.map((c) => ({
       id: c.id,
       nome: c.nome,
       telefone: c.telefone,
       ativo: c.ativo,
       pontos: c.pontos,
+      nascimento: c.nascimento,
+      criadoEm: c.criadoEm,
+      cidade: c.cidade,
       compras: c.vendas.length,
       gastou: c.vendas.reduce((s, v) => s + Number(v.total), 0),
       ultimaCompra: c.vendas.reduce<Date | null>(
         (maior, v) => (!maior || v.criadaEm > maior ? v.criadaEm : maior),
         null,
       ),
+      devendo: fiado.get(c.id)?.devendo ?? 0,
+      vencido: fiado.get(c.id)?.vencido ?? 0,
     }))
+  })
+}
+
+/** Quanto a pessoa gastou em cada um dos últimos N meses — para a ficha desenhar. */
+export async function comprasPorMes(sessao: Sessao, clienteId: string, meses = 12) {
+  exigir(sessao, 'cliente.ver')
+  const agora = new Date()
+  const de = new Date(agora.getFullYear(), agora.getMonth() - (meses - 1), 1)
+  const chaves: string[] = []
+  for (let i = 0; i < meses; i++) {
+    const d = new Date(de.getFullYear(), de.getMonth() + i, 1)
+    chaves.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const linhas = await db.$queryRaw<{ mes: string; total: string; compras: number }[]>`
+      select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes,
+             sum(v.total) as total, count(*)::int as compras
+        from vendas v
+       where v.cliente_id = ${clienteId} and v.situacao = 'CONCLUIDA' and v.criada_em >= ${de}
+       group by 1
+    `
+    return chaves.map((mes) => {
+      const l = linhas.find((x) => x.mes === mes)
+      return { mes, rotulo: MES[Number(mes.slice(5)) - 1]!, total: Number(l?.total ?? 0), compras: Number(l?.compras ?? 0) }
+    })
+  })
+}
+
+/** O que a pessoa mais leva. Cinco itens, por quantidade. */
+export async function favoritosDoCliente(sessao: Sessao, clienteId: string) {
+  exigir(sessao, 'cliente.ver')
+  return comoOrg(sessao.orgId, async (db) => {
+    const linhas = await db.$queryRaw<{ descricao: string; quantidade: string; total: string; vezes: number }[]>`
+      select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total, count(distinct v.id)::int as vezes
+        from venda_itens i join vendas v on v.id = i.venda_id
+       where v.cliente_id = ${clienteId} and v.situacao = 'CONCLUIDA'
+       group by 1 order by 2 desc limit 5
+    `
+    return linhas.map((l) => ({ descricao: l.descricao, quantidade: Number(l.quantidade), total: Number(l.total), vezes: l.vezes }))
   })
 }
 

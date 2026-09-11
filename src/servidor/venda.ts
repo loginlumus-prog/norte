@@ -652,6 +652,10 @@ export type FiltroVendas = {
   /** Número da venda, ou pedaço do nome do cliente. */
   q?: string | null
   situacao?: SituacaoVenda | null
+  /** Só as vendas desta pessoa. */
+  vendedorId?: string | null
+  /** Só as vendas que tiveram esta forma de pagamento (inteira ou em parte). */
+  forma?: FormaPagamento | null
 }
 
 export type VendaNaLista = {
@@ -663,6 +667,7 @@ export type VendaNaLista = {
   itens: number
   cliente: string | null
   vendedor: string | null
+  vendedorId: string | null
   unidade: string
   /** As formas usadas, para a lista dizer "Pix + Dinheiro" sem abrir a venda. */
   formas: string[]
@@ -688,6 +693,8 @@ export async function listarVendas(sessao: Sessao, f: FiltroVendas): Promise<Ven
         unidadeId: { in: permitidas },
         criadaEm: { gte: f.de, lt: f.ate },
         ...(f.situacao ? { situacao: f.situacao } : {}),
+        ...(f.vendedorId ? { vendedorId: f.vendedorId } : {}),
+        ...(f.forma ? { pagamentos: { some: { forma: f.forma } } } : {}),
         ...(numero !== null
           ? { numero }
           : q
@@ -706,6 +713,7 @@ export async function listarVendas(sessao: Sessao, f: FiltroVendas): Promise<Ven
         situacao: true,
         total: true,
         vendedorNome: true,
+        vendedorId: true,
         cliente: { select: { nome: true } },
         unidade: { select: { nome: true } },
         _count: { select: { itens: true } },
@@ -723,9 +731,88 @@ export async function listarVendas(sessao: Sessao, f: FiltroVendas): Promise<Ven
       itens: v._count.itens,
       cliente: v.cliente?.nome ?? null,
       vendedor: v.vendedorNome,
+      vendedorId: v.vendedorId,
       unidade: v.unidade.nome,
       formas: [...new Set(v.pagamentos.map((p) => p.forma))],
       devolvido: v.devolucoes.reduce((s, d) => s + Number(d.valor), 0),
+    }))
+  })
+}
+
+export type ItemVendido = {
+  vendaId: string
+  numero: number
+  criadaEm: Date
+  situacao: SituacaoVenda
+  unidade: string
+  cliente: string | null
+  vendedor: string | null
+  descricao: string
+  codigo: string | null
+  medida: string
+  quantidade: number
+  precoUnit: number
+  total: number
+  custoUnit: number | null
+  formas: string
+  totalVenda: number
+}
+
+/**
+ * Uma linha por ITEM vendido — é o que vai para a planilha. O contador e
+ * quem analisa querem saber o que saiu, não só quanto; e planilha com a
+ * venda numa linha e os itens em outra tabela ninguém consegue cruzar.
+ */
+export async function listarItensVendidos(sessao: Sessao, f: FiltroVendas): Promise<ItemVendido[]> {
+  exigir(sessao, 'venda.ver')
+  const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'venda.ver', u))
+  if (permitidas.length === 0) return []
+  const q = f.q?.trim() ?? ''
+  const numero = /^\d+$/.test(q) ? Number(q) : null
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const itens = await db.vendaItem.findMany({
+      where: {
+        venda: {
+          unidadeId: { in: permitidas },
+          criadaEm: { gte: f.de, lt: f.ate },
+          ...(f.situacao ? { situacao: f.situacao } : {}),
+          ...(f.vendedorId ? { vendedorId: f.vendedorId } : {}),
+          ...(f.forma ? { pagamentos: { some: { forma: f.forma } } } : {}),
+          ...(numero !== null ? { numero } : q ? { cliente: { nome: { contains: q, mode: 'insensitive' } } } : {}),
+        },
+      },
+      orderBy: [{ venda: { criadaEm: 'desc' } }, { id: 'asc' }],
+      take: 5000,
+      select: {
+        descricao: true, codigo: true, medida: true, quantidade: true, precoUnit: true, total: true, custoUnit: true,
+        venda: {
+          select: {
+            id: true, numero: true, criadaEm: true, situacao: true, total: true, vendedorNome: true,
+            cliente: { select: { nome: true } },
+            unidade: { select: { nome: true } },
+            pagamentos: { select: { forma: true } },
+          },
+        },
+      },
+    })
+    return itens.map((i) => ({
+      vendaId: i.venda.id,
+      numero: i.venda.numero,
+      criadaEm: i.venda.criadaEm,
+      situacao: i.venda.situacao,
+      unidade: i.venda.unidade.nome,
+      cliente: i.venda.cliente?.nome ?? null,
+      vendedor: i.venda.vendedorNome,
+      descricao: i.descricao,
+      codigo: i.codigo,
+      medida: i.medida,
+      quantidade: Number(i.quantidade),
+      precoUnit: Number(i.precoUnit),
+      total: Number(i.total),
+      custoUnit: i.custoUnit === null ? null : Number(i.custoUnit),
+      formas: [...new Set(i.venda.pagamentos.map((p) => p.forma))].join(' + '),
+      totalVenda: Number(i.venda.total),
     }))
   })
 }
@@ -751,6 +838,10 @@ export async function acharVenda(sessao: Sessao, vendaId: string) {
             itens: { select: { vendaItemId: true, quantidade: true, valor: true } },
             vale: { select: { codigo: true, saldo: true, validade: true } },
           },
+        },
+        parcelas: {
+          orderBy: { numero: 'asc' },
+          select: { id: true, numero: true, de: true, vencimento: true, valor: true, pago: true, quitadaEm: true },
         },
         cliente: { select: { id: true, nome: true, telefone: true } },
         unidade: { select: { id: true, nome: true } },
