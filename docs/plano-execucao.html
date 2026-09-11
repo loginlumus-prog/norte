@@ -309,9 +309,11 @@
       Levantado do código e dos documentos do projeto, não de memória. Os tamanhos
       (<span class="tam">P</span><span class="tam">M</span><span class="tam">G</span>) são
       estimativa minha, não compromisso.
-      <br><b>Revisado em 10/09, de madrugada:</b> uma varredura do sistema inteiro contra
-      o que a página promete e contra o vídeo do concorrente. Entraram seis telas ou pedaços
-      de tela que faltavam para uma loja operar. A trilha 01 segue em cinco de sete.
+      <br><b>Revisado em 11/09:</b> o sistema inteiro, de uma vez. O balcão virou PDV no
+      desenho da referência, entraram trocas com vale, o crediário completo, a taxa do cartão
+      no DRE, o painel com gráficos, as planilhas, a etiqueta, o comprovante, metas e
+      comissão, a tela que tranca. O que resta depende de coisa de fora: o deploy, a chave do
+      WhatsApp, o gateway de pagamento.
     </p>
   </header>
 
@@ -650,6 +652,53 @@
   </section>
 
   <section>
+    <h2>O sistema inteiro, de uma vez</h2>
+    <p>
+      Pedido do dia 11: pegar tudo que existe, comparar com o PDV de referência e com o que a
+      página promete, e entregar completo — cada tela com o que uma loja precisa, cada perfil
+      vendo só o que é dele, tudo testado. Foram oito fases, cada uma um commit com os testes
+      passando (328 no fim, mais 147 conferências no banco).
+    </p>
+    <div class="trilha">
+      <div class="n">✓</div>
+      <div>
+        <h3>O que entrou <span class="selo feito">8 de 8</span></h3>
+        <ul>
+          <li class="ok"><span class="tam ok">&check;</span><b>Estrutura</b> — menu por grupos (Vender · Catálogo · Pessoas · Dinheiro · Empresa), o menu no celular (não existia nenhum), a tela de <b>Auditoria</b> (o livro era escrito por todo canto e não tinha onde ser lido) e a tela de <b>Caixa</b> (os turnos, com quem abriu, quem fechou e quanto faltou). <span class="quando">11/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Balcão vira PDV</b> — barra do caixa (desde que horas, na gaveta, sangria, suprimento, troca, fechar), cliente e vendedor, tabela de itens completa, F10 / Ctrl+P / Alt+N / Alt+F. E três coisas que não eram desenho: <b>a forma de pagamento escolhe o preço</b> (os três preços existiam e o balcão ignorava — quem vendia no cartão pagava a taxa do próprio bolso), quem vendeu pode ser outra pessoa que não a do caixa, e item avulso para quem pode passar do teto de desconto. <span class="quando">11/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Trocas e devoluções</b> — parte da venda volta; o valor vira <b>vale de troca</b> (código curto, 90 dias), sai da gaveta como sangria, ou fica anotado como estorno. O vale paga qualquer venda no balcão. <span class="quando">11/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Crediário</b> — a venda fiada nasce com as parcelas escritas; juro é de atraso, não de parcelamento; recebimento parcial; a tela de quem deve, vencidas primeiro; "deve R$ X · atrasado" ao escolher o cliente no balcão; a regra da loja em Configurações. <span class="quando">11/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>A taxa do cartão no DRE</b> — quatro taxas em Configurações e o resultado do mês desconta venda a venda. Mais: devolução sai da receita, juro do fiado entra como outra receita, e dois gráficos no financeiro (entrou × saiu por mês; para onde foi o dinheiro). <span class="quando">11/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Painel com os gráficos de cada coisa</b> — a linha do período contra o anterior, rosca por forma, barras por hora, o mapa de calor semana × hora, categorias, dinheiro parado por categoria, fiado, meta da equipe, vendas com cliente identificado. O Grátis vê o essencial e vê onde está o resto. <span class="quando">11/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Produtos, estoque, clientes e vendas completos</b> — filtros por marca, pendência e ordem; margem em cada produto; a ficha do produto com 30/90 dias e o saldo por loja; movimentos do estoque; transferir entre lojas; clientes por aniversário, pontos, devendo; cobrar pelo WhatsApp com a mensagem pronta; vendas por vendedor e forma; <b>planilha</b> em quatro telas; <b>etiqueta</b> Code 128 (A4 ou térmica); <b>comprovante</b> de 80 mm. <span class="quando">11/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Metas e comissão</b> por vendedor (o balcão diz "faltam R$ 800"), a <b>tela que tranca</b> aos 30 minutos com a senha da própria pessoa, cada tela declarando a capacidade que exige (quem não pode cai no 404, não no "deu problema"), e um teste que lista o que cada perfil vê no menu. <span class="quando">11/09</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="nota trava">
+      <p>
+        <b>Antes de subir para produção, três coisas que só o deploy resolve.</b>
+        (1) As cinco migrações novas estão em <code>prisma/migrations</code>, aplicadas no
+        laptop e prontas: <code>npm run migrar -- --producao</code> e depois
+        <code>npm run preparar -- --producao</code>, que liga o RLS e as permissões nas
+        tabelas novas. (2) A variável <code>TZ=America/Sao_Paulo</code> no Vercel — sem ela
+        o servidor conta o dia em Londres e a venda das 22h cai no dia seguinte; as consultas
+        de "por dia" e "por hora" já convertem sozinhas, o resto do calendário depende disto.
+        (3) <code>NORTE_WHATSAPP</code>, o nosso número comercial, para o botão do plano
+        Corporativo — sem ele o cartão manda chamar o suporte.
+      </p>
+    </div>
+    <div class="nota aviso">
+      <p>
+        <b>O que ficou de fora, e por quê.</b> O PIN por venda do PDV de referência não faz
+        sentido aqui: lá o login é compartilhado; aqui cada pessoa entra com a própria conta e
+        a vaga é por pessoa. O modo sem internet ("vendas que precisam de acerto") é obra
+        grande e fica para depois do primeiro cliente. A análise do assistente segue "em breve"
+        porque depende da chave da IA. E o gateway de pagamento da assinatura continua sendo o
+        único pedaço que a tela não fecha sozinha.
+      </p>
+    </div>
+
     <h2>A varredura: o que uma loja de verdade encontrava faltando</h2>
     <p>
       Comparei cada tela com o que a página de venda promete e com o Datacaixa — o sistema

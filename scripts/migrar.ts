@@ -36,7 +36,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { Client } from 'pg'
 import { carregarAmbiente, ehLocal } from './ambiente'
@@ -109,7 +109,7 @@ if (nova !== -1) {
       .join('\n')
       .trim() + '\n'
 
-  const sql = soSql(
+  const bruto = soSql(
     String(
       prisma(
         [
@@ -125,6 +125,25 @@ if (nova !== -1) {
       ),
     ),
   )
+
+  // ── o que já está escrito em migração pendente não entra de novo ──
+  // O diff é contra o banco. Se uma migração anterior ainda não foi aplicada
+  // lá, tudo dela volta aqui, e aplicadas em sequência a segunda falharia em
+  // "já existe". Cada bloco (comentário + comando, separados por linha em
+  // branco) que já mora numa pasta de migração sai deste arquivo.
+  const blocos = (texto: string) =>
+    texto.replace(/\r\n/g, '\n').split('\n\n').map((b) => b.trim()).filter(Boolean)
+  const jaEscritos = new Set(
+    readdirSync(pastaMigracoes)
+      .filter((d) => d !== BASE && existsSync(join(pastaMigracoes, d, 'migration.sql')))
+      .flatMap((d) => blocos(readFileSync(join(pastaMigracoes, d, 'migration.sql'), 'utf8'))),
+  )
+  const meus = blocos(bruto)
+  const repetidos = meus.filter((b) => jaEscritos.has(b)).length
+  const sql = meus.filter((b) => !jaEscritos.has(b)).join('\n\n') + '\n'
+  if (repetidos > 0) {
+    console.log(`  ${repetidos} bloco(s) já estavam em migração pendente e ficaram de fora.\n`)
+  }
 
   const vazio = sql
     .split('\n')
