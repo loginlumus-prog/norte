@@ -1,0 +1,624 @@
+<title>A conta do assistente</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap">
+
+<style>
+  :root {
+    --papel: #f6f4f0;
+    --carta: #fffefc;
+    --carta-2: #f1eee7;
+    --tinta: #2b2620;
+    --tinta-2: #55514a;
+    --tinta-3: #8a857c;
+    --linha: #e4e0d7;
+    --linha-suave: #efece5;
+    --titulo: #14265c;
+    --navy: #101f4a;
+    --marca: #1f4fd8;
+    --sol: #ef7208;
+    --verde: #05713a;
+    --critico: #b81f14;
+
+    --display: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+    --texto: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --papel: #0f121c;
+      --carta: #171b27;
+      --carta-2: #1e2330;
+      --tinta: #e8e6e1;
+      --tinta-2: #a8a49c;
+      --tinta-3: #7d7a74;
+      --linha: #2a2e3b;
+      --linha-suave: #232735;
+      --titulo: #d6e2ff;
+      --navy: #0b1024;
+      --marca: #6d92ff;
+      --sol: #ffc04d;
+      --verde: #10b45f;
+      --critico: #ef8378;
+    }
+  }
+
+  :root[data-theme='dark'] {
+    --papel: #0f121c;
+    --carta: #171b27;
+    --carta-2: #1e2330;
+    --tinta: #e8e6e1;
+    --tinta-2: #a8a49c;
+    --tinta-3: #7d7a74;
+    --linha: #2a2e3b;
+    --linha-suave: #232735;
+    --titulo: #d6e2ff;
+    --navy: #0b1024;
+    --marca: #6d92ff;
+    --sol: #ffc04d;
+    --verde: #10b45f;
+    --critico: #ef8378;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: var(--texto);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+  }
+
+  .folha {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 5rem;
+  }
+
+  h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; }
+
+  h1 {
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--titulo);
+    margin: 0 0 0.5rem;
+  }
+
+  h2 {
+    font-size: clamp(1.3rem, 3vw, 1.7rem);
+    font-weight: 700;
+    color: var(--titulo);
+    margin: 3.5rem 0 0.25rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--linha);
+  }
+
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 2rem 0 0.5rem;
+  }
+
+  p { margin: 0.75rem 0; max-width: 46rem; }
+
+  .lede {
+    font-size: 1.1rem;
+    color: var(--tinta-2);
+    max-width: 44rem;
+  }
+
+  .cabeca {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    font-family: var(--display);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    color: var(--tinta-3);
+    margin-bottom: 1.5rem;
+  }
+  .agulha { color: var(--sol); font-size: 1rem; }
+
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    background: var(--carta-2);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+  }
+
+  .rolagem { overflow-x: auto; margin: 1.25rem 0; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    min-width: 34rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--linha-suave);
+    vertical-align: top;
+  }
+  thead th {
+    font-family: var(--display);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tinta-3);
+    border-bottom: 1px solid var(--linha);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.soma td { font-weight: 700; border-top: 2px solid var(--linha); background: var(--carta-2); }
+
+  .nota {
+    background: var(--carta);
+    border: 1px solid var(--linha);
+    border-left: 4px solid var(--marca);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0;
+  }
+  .nota p { margin: 0.4rem 0; }
+  .nota.trava { border-left-color: var(--critico); }
+  .nota.aviso { border-left-color: var(--sol); }
+  .nota.bom { border-left-color: var(--verde); }
+
+  .duas {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+    margin: 1.5rem 0;
+  }
+  @media (min-width: 45rem) { .duas { grid-template-columns: 1fr 1fr; } }
+
+  .carta {
+    background: var(--carta);
+    border: 1px solid var(--linha);
+    border-radius: 12px;
+    padding: 1.25rem;
+  }
+  .carta h3 { margin-top: 0; }
+
+  .selo {
+    display: inline-block;
+    font-family: var(--display);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    padding: 0.22em 0.6em;
+    border-radius: 999px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .selo.feito { background: color-mix(in srgb, var(--verde) 16%, transparent); color: var(--verde); }
+  .selo.falta { background: color-mix(in srgb, var(--critico) 15%, transparent); color: var(--critico); }
+  .selo.parte { background: color-mix(in srgb, var(--sol) 18%, transparent); color: var(--sol); }
+
+  ul, ol { max-width: 46rem; padding-left: 1.25rem; }
+  li { margin: 0.5rem 0; }
+
+  .passos { list-style: none; padding: 0; counter-reset: passo; }
+  .passos li {
+    counter-increment: passo;
+    position: relative;
+    padding-left: 2.6rem;
+    margin: 1.1rem 0;
+  }
+  .passos li::before {
+    content: counter(passo);
+    position: absolute;
+    left: 0;
+    top: 0.1rem;
+    width: 1.8rem;
+    height: 1.8rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--navy);
+    color: #fff;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+
+  .assinatura {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--linha);
+    color: var(--tinta-3);
+    font-size: 0.85rem;
+  }
+
+  .grande {
+    font-family: var(--display);
+    font-size: 1.9rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--titulo);
+    display: block;
+    font-variant-numeric: tabular-nums;
+  }
+  .rotulo {
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tinta-3);
+    font-weight: 700;
+  }
+</style>
+
+<div class="folha">
+
+  <div class="cabeca"><span class="agulha">&#9650;</span> Norte &middot; setembro de 2026</div>
+
+  <h1>A conta do assistente</h1>
+  <p class="lede">
+    Como a loja liga o WhatsApp dela, o que já existe e o que falta construir, e — com o número
+    na mesa — tudo que a gente paga para isso funcionar, do primeiro cliente ao quinquagésimo.
+  </p>
+
+  <div class="nota">
+    <p>
+      <b>O resumo, antes do detalhe.</b> O assistente está <b>desenhado e travado por dentro</b>:
+      o modelo de dados existe, os poderes são lista fechada, o teto de gasto por dia existe, e
+      nenhuma ação dele escreve sem alguém confirmar. O que <b>não</b> existe ainda é o fio que
+      liga ele ao WhatsApp: receber mensagem, responder, e conversar com o modelo de IA. Isso
+      depende de duas assinaturas que ainda não foram feitas — o canal e a chave da IA.
+    </p>
+  </div>
+
+  <h2>Como a loja liga o WhatsApp dela</h2>
+  <p>
+    Existem dois caminhos, e a escolha não é técnica: ela muda o custo por cliente, o tempo até
+    o primeiro assistente no ar, e o risco que a gente assume. O sistema já prevê os dois —
+    <code>CanalAgente</code> tem <code>ZAPI</code> e <code>META</code> desde o começo.
+  </p>
+
+  <div class="duas">
+    <div class="carta">
+      <h3>Caminho rápido &mdash; Z-API <span class="selo parte">no mesmo dia</span></h3>
+      <p>
+        A loja abre o WhatsApp dela, lê um QR code, e pronto: o número que ela já usa passa a
+        responder pelo assistente. Não muda nada para o cliente dela, e não precisa aprovação de
+        ninguém.
+      </p>
+      <p>
+        <b>O risco é real e precisa ser dito:</b> é um caminho não oficial. A Meta pode derrubar
+        o número, e quando derruba não avisa nem devolve. Para uma loja, perder o WhatsApp é
+        perder a agenda de clientes inteira.
+      </p>
+    </div>
+    <div class="carta">
+      <h3>Caminho oficial &mdash; API da Meta <span class="selo falta">dias ou semanas</span></h3>
+      <p>
+        A empresa precisa de conta no Meta Business, verificação do CNPJ, e um número dedicado.
+        Depois disso o número vira &ldquo;número de API&rdquo;: ele deixa de funcionar no
+        aplicativo do celular, e só fala pelo sistema.
+      </p>
+      <p>
+        <b>Em troca:</b> nada é derrubado, o selo de empresa verificada aparece para o cliente, e
+        a conversa iniciada pelo cliente não tem custo por mensagem.
+      </p>
+    </div>
+  </div>
+
+  <div class="rolagem">
+    <table>
+      <thead>
+        <tr>
+          <th>&nbsp;</th>
+          <th>Z-API</th>
+          <th>API oficial da Meta</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Tempo até o primeiro cliente no ar</td><td>no mesmo dia</td><td>de 3 dias a 3 semanas</td></tr>
+        <tr><td>O número que a loja já usa</td><td>serve</td><td>não serve &mdash; precisa de um novo</td></tr>
+        <tr><td>Aplicativo do WhatsApp no celular</td><td>continua funcionando</td><td>para de funcionar naquele número</td></tr>
+        <tr><td>Verificação de CNPJ</td><td>não precisa</td><td>obrigatória</td></tr>
+        <tr><td>Risco de derrubada</td><td>existe, e é da loja</td><td>não existe</td></tr>
+        <tr><td>Custo</td><td>mensalidade por instância, uma por loja</td><td>sem mensalidade; paga por mensagem que a gente inicia</td></tr>
+        <tr><td>Serve para quantos clientes</td><td>bom até uns 10 a 15</td><td>é o que escala</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="nota aviso">
+    <p>
+      <b>A recomendação, se fosse comigo:</b> começar no Z-API com os primeiros clientes e migrar
+      para a Meta antes de chegar em quinze. O Z-API tira o produto do papel em um dia e prova que
+      alguém paga por ele; a Meta é o que aguenta cinquenta lojas sem a gente perder o sono. O
+      importante é que <b>o cliente não sente a troca</b>: o sistema guarda o canal por empresa,
+      então dá para migrar uma loja de cada vez.
+    </p>
+  </div>
+
+  <h2>O que já existe, e o que falta</h2>
+  <p>
+    Vale separar porque o desenho está bem mais adiantado do que a ligação — e é a ligação que
+    depende de dinheiro.
+  </p>
+
+  <div class="rolagem">
+    <table>
+      <thead>
+        <tr><th>Peça</th><th>Situação</th><th>O que é</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Cadastro do assistente</td>
+          <td><span class="selo feito">pronto</span></td>
+          <td>Nome, personalidade, saudação e o manual da loja. Cada empresa batiza o dela.</td>
+        </tr>
+        <tr>
+          <td>Poderes</td>
+          <td><span class="selo feito">pronto</span></td>
+          <td>Lista fechada, conferida no servidor. O que não está na lista nem é oferecido ao modelo.</td>
+        </tr>
+        <tr>
+          <td>Tetos</td>
+          <td><span class="selo feito">pronto</span></td>
+          <td>Desconto máximo, valor máximo, gasto de IA por dia e mensagens por dia. Números, nunca texto.</td>
+        </tr>
+        <tr>
+          <td>Proposta e confirmação</td>
+          <td><span class="selo feito">pronto</span></td>
+          <td>O assistente <b>propõe</b> e uma pessoa confirma. Nenhuma escrita dele acontece direto.</td>
+        </tr>
+        <tr>
+          <td>Carteira de crédito de IA</td>
+          <td><span class="selo feito">pronto</span></td>
+          <td>Saldo, consumo medido por conversa, aviso antes de acabar, e ele para quando zera.</td>
+        </tr>
+        <tr>
+          <td>Livro de auditoria</td>
+          <td><span class="selo feito">pronto</span></td>
+          <td>Toda ação do assistente fica assinada, do mesmo jeito que a de uma pessoa.</td>
+        </tr>
+        <tr>
+          <td>Ligar o canal (QR code / Meta)</td>
+          <td><span class="selo falta">falta</span></td>
+          <td>A tela que mostra o QR e guarda o número. Depende de escolher o canal.</td>
+        </tr>
+        <tr>
+          <td>Receber mensagem (webhook)</td>
+          <td><span class="selo falta">falta</span></td>
+          <td>O endereço que o canal chama quando chega mensagem. Nenhuma rota dessas existe hoje.</td>
+        </tr>
+        <tr>
+          <td>Conversar com o modelo</td>
+          <td><span class="selo falta">falta</span></td>
+          <td>O laço que monta o contexto, chama a IA e devolve a resposta. Depende da chave.</td>
+        </tr>
+        <tr>
+          <td>Gatilhos (agir sozinho)</td>
+          <td><span class="selo parte">meio</span></td>
+          <td>A tabela existe; o relógio que dispara ainda não.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Como a gente gerencia tudo isso</h2>
+  <p>
+    A pergunta por trás é: com cinquenta lojas, quem cuida de cinquenta WhatsApps? A resposta
+    muda com o canal.
+  </p>
+  <ul>
+    <li>
+      <b>No Z-API</b>, cada loja é uma <i>instância</i> — um número, um QR code, uma mensalidade.
+      Gerenciar é ter uma lista de instâncias e saber qual pertence a quem. O sistema já guarda
+      isso: o canal e o número moram na tabela do agente, por empresa.
+    </li>
+    <li>
+      <b>Na Meta</b>, existe UM aplicativo nosso e vários números pendurados nele. A conta é
+      única, o painel é único, e cada loja entra como mais um número. É bem menos trabalho por
+      cliente, e é por isso que ele é o destino.
+    </li>
+    <li>
+      <b>Nos dois casos</b>, quem separa uma loja da outra é o banco, não o canal. Toda consulta
+      já roda com o carimbo da empresa e as travas de isolamento ligadas — <b>43 tabelas</b>, todas
+      conferidas. Uma mensagem que chega pelo número da loja A não alcança dado da loja B nem por
+      engano de programação.
+    </li>
+  </ul>
+
+  <h2>A conta</h2>
+  <p>
+    Três grupos, e a diferença entre eles é o que decide se o negócio fecha: o que a gente paga
+    uma vez, o que a gente paga por cliente, e o que só aparece quando entra dinheiro.
+  </p>
+
+  <h3>Fixo &mdash; não cresce quando entra cliente</h3>
+  <div class="rolagem">
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Quando</th><th class="n">Por mês</th><th>Observação</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Domínio <code>.com.br</code></td><td>agora</td><td class="n">~R$ 4</td><td>uns R$ 40 por ano, pago de uma vez</td></tr>
+        <tr><td>Hospedagem do sistema</td><td>agora</td><td class="n">R$ 0 a R$ 110</td><td>Render grátis serve para começar; Vercel Pro é US$ 20</td></tr>
+        <tr><td>Banco de dados</td><td>ao passar de ~500 MB</td><td class="n">R$ 0 a R$ 140</td><td>Supabase grátis aguenta os primeiros clientes</td></tr>
+        <tr class="soma"><td>Soma</td><td>&nbsp;</td><td class="n">R$ 4 a R$ 254</td><td>e ela é a mesma com 1 ou com 50 lojas</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Por cliente &mdash; cresce a cada loja que assina</h3>
+  <div class="rolagem">
+    <table>
+      <thead>
+        <tr><th>Item</th><th class="n">Por mês</th><th>Observação</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Canal &mdash; Z-API (uma instância por loja)</td>
+          <td class="n">~R$ 100</td>
+          <td>confirmar a tabela no dia de assinar</td>
+        </tr>
+        <tr>
+          <td>Canal &mdash; Meta oficial</td>
+          <td class="n">~R$ 0 no começo</td>
+          <td>conversa que o CLIENTE inicia não custa; a gente paga quando a loja inicia</td>
+        </tr>
+        <tr>
+          <td>Crédito de IA (plano Assistente)</td>
+          <td class="n">até R$ 100</td>
+          <td>é o que está incluso; a loja só gasta o que usa</td>
+        </tr>
+        <tr>
+          <td>Crédito de IA (plano Direção)</td>
+          <td class="n">até R$ 300</td>
+          <td>idem</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Eventual &mdash; só quando entra dinheiro</h3>
+  <ul>
+    <li>
+      <b>Gateway de pagamento da mensalidade.</b> No Brasil a faixa é de 1% a 4% por transação,
+      dependendo de cartão, Pix ou boleto, e de quem for o fornecedor. Não custa nada parado.
+      É o último pedaço que a tela de assinatura não fecha sozinha.
+    </li>
+    <li>
+      <b>Nota fiscal.</b> Quando a emissão entrar de verdade, o certificado digital A1 custa uns
+      R$ 150 a R$ 250 por ano, e é <b>da loja</b>, não nosso.
+    </li>
+  </ul>
+
+  <h2>O número que decide tudo</h2>
+  <p>
+    De todos os custos acima, um é perigoso, e vale entender por quê. A medição está escrita no
+    próprio código, em <code>custo-ia.ts</code>, porque ela é a conta que sustenta a mensalidade.
+  </p>
+
+  <div class="nota trava">
+    <p>
+      <b>Sem cache, um assistente sozinho custa de R$ 750 a R$ 900 por mês.</b>
+      Foi medido: R$ 120 a R$ 150 de crédito duravam de quatro a seis dias numa loja só. E a
+      mensalidade do plano Assistente é R$ 350. Quer dizer: <b>um único cliente conversador
+      consumiria o dobro do que paga</b>, e a gente só descobriria no fim do trimestre.
+    </p>
+    <p>
+      O custo quase nunca vem da resposta &mdash; vem da <b>pergunta</b>. Cada mensagem reenvia a
+      instrução do agente, o catálogo, as regras da loja e o histórico. São dezenas de milhares de
+      tokens de entrada por turno, iguais aos do turno anterior, pagos de novo. A resposta tem
+      duzentas palavras.
+    </p>
+  </div>
+
+  <div class="nota bom">
+    <p>
+      <b>O que resolve, e já está no cálculo:</b> o cache. A parte que não muda é gravada uma vez
+      e relida por <b>um décimo</b> do preço. Numa conversa de dez turnos, é a diferença entre
+      pagar dez vezes e pagar uma e meia. Com ele, a conta do projeto fecha em
+      <b>~R$ 0,06 por conversa</b> &mdash; que é de onde saem os &ldquo;~1.650 conversas&rdquo; do
+      plano Assistente e as &ldquo;~5.000&rdquo; do Direção.
+    </p>
+    <p>
+      E existe uma segunda trava, que já está construída: <b>teto de gasto por dia</b>, por
+      empresa. Estourou, o assistente para e avisa. Mesmo que o cache falhe, o prejuízo tem
+      tamanho conhecido.
+    </p>
+  </div>
+
+  <h3>Como fica a conta, por plano</h3>
+  <div class="rolagem">
+    <table>
+      <thead>
+        <tr>
+          <th>Plano</th>
+          <th class="n">A loja paga</th>
+          <th class="n">Canal</th>
+          <th class="n">IA (pior caso)</th>
+          <th class="n">Sobra</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Balcão <span style="color:var(--tinta-3)">&middot; sem assistente</span></td><td class="n">R$ 100</td><td class="n">&mdash;</td><td class="n">&mdash;</td><td class="n" style="color:var(--verde)">R$ 100</td></tr>
+        <tr><td>Assistente</td><td class="n">R$ 350</td><td class="n">R$ 100</td><td class="n">R$ 100</td><td class="n" style="color:var(--verde)">R$ 150</td></tr>
+        <tr><td>Direção</td><td class="n">R$ 1.500</td><td class="n">R$ 100</td><td class="n">R$ 300</td><td class="n" style="color:var(--verde)">R$ 1.100</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="color: var(--tinta-2); font-size: 0.92rem;">
+    A coluna &ldquo;sobra&rdquo; é por loja e antes do fixo. Com o fixo em R$ 254 no pior caso,
+    <b>dois clientes no plano Assistente já pagam a estrutura inteira</b> &mdash; e do terceiro em
+    diante é margem.
+  </p>
+
+  <h2>Como começar nos primeiros clientes</h2>
+  <p>
+    Na ordem, e cada passo só depois que o anterior provou alguma coisa. O que mais custa caro
+    neste estágio é construir para um cliente que não existe.
+  </p>
+
+  <ol class="passos">
+    <li>
+      <b>Subir o sistema sem assistente nenhum.</b> O Norte já resolve balcão, estoque, caixa,
+      crediário, financeiro e análise sem tocar em WhatsApp. Isso é produto vendável hoje, no
+      plano Balcão, por R$ 100. Custo nosso para servir: perto de zero.
+    </li>
+    <li>
+      <b>Vender para dois ou três conhecidos, no Balcão.</b> Sem assistente, sem promessa de IA.
+      O objetivo aqui não é faturar: é descobrir onde o sistema machuca uma loja de verdade,
+      enquanto ainda é barato consertar.
+    </li>
+    <li>
+      <b>Assinar a chave da IA e o Z-API, para UM cliente.</b> Aqui começa a sair dinheiro por
+      mês. Um cliente só, escolhido a dedo, de preferência alguém que atenda muito no WhatsApp:
+      é ele que vai mostrar se R$ 0,06 por conversa é otimista ou não.
+    </li>
+    <li>
+      <b>Medir uma semana antes de vender o plano Assistente para o segundo.</b> A tela de
+      crédito já mostra quanto durou e quanto custou por dia. Se o número bater, o plano fecha.
+      Se não bater, o que se ajusta é o cache e o tamanho do contexto &mdash; nunca o preço para o
+      cliente que já assinou.
+    </li>
+    <li>
+      <b>Do quinto cliente em diante, abrir a conta na Meta.</b> A verificação demora, e ela
+      precisa estar pronta <i>antes</i> de o Z-API virar problema, não depois.
+    </li>
+    <li>
+      <b>Gateway de pagamento por último.</b> Com três ou quatro clientes, cobrar no Pix na mão
+      funciona e custa zero. Ele entra quando a cobrança manual começar a tomar tempo.
+    </li>
+  </ol>
+
+  <h2>O que eu não sei, e você precisa confirmar</h2>
+  <div class="nota aviso">
+    <p>
+      <b>Preço muda, e eu não tenho como olhar a tabela de hoje.</b> Os números de canal aqui são
+      ordem de grandeza, não cotação. Antes de assinar qualquer coisa, confirme no site do
+      fornecedor: a mensalidade da instância do Z-API, e o preço por mensagem da Meta para o
+      Brasil na categoria <i>utility</i>. A Meta em particular mexeu nessa tabela mais de uma vez
+      nos últimos dois anos, e o que valia ontem pode não valer.
+    </p>
+    <p>
+      O que <b>não</b> é chute são os números de IA: eles vêm da medição que está no código, e a
+      tabela de preço por milhão de tokens está escrita em <code>custo-ia.ts</code>, num lugar só,
+      justamente para ser atualizada quando o fornecedor ou o câmbio mudar.
+    </p>
+  </div>
+
+  <div class="assinatura">
+    Norte &middot; documento de apoio ao plano de execução. Os números de IA saem de
+    <code>src/servidor/custo-ia.ts</code> e os de plano de <code>src/servidor/planos.ts</code> &mdash;
+    quando eles mudarem no código, este documento fica velho.
+  </div>
+
+</div>

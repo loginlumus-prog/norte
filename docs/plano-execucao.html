@@ -699,6 +699,48 @@
       </p>
     </div>
 
+    <h2>12/09 &mdash; quatro &ldquo;em breve&rdquo; saem do papel</h2>
+    <p>
+      Pedido: olhar o sistema inteiro com rigor, consertar o que estiver errado, e fazer o que
+      ainda falta da tabela de planos. Entraram quatro recursos, sa&iacute;ram tr&ecirc;s
+      defeitos, e a conta do assistente virou documento.
+    </p>
+    <div class="trilha">
+      <div class="n">&#10003;</div>
+      <div>
+        <h3>O que entrou <span class="selo feito">4 recursos</span></h3>
+        <ul>
+          <li class="ok"><span class="tam ok">&check;</span><b>An&aacute;lise</b> &mdash; tela nova, do plano Dire&ccedil;&atilde;o para cima, com as tr&ecirc;s leituras que o painel n&atilde;o d&aacute;: as lojas lado a lado (entrou, margem, ticket, e o custo do que n&atilde;o teve sa&iacute;da), a <b>curva ABC</b> com classe e acumulado, e o <b>dinheiro parado</b> &mdash; pe&ccedil;a com estoque que n&atilde;o vende h&aacute; 30 dias ou mais. <span class="quando">12/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Escala e presen&ccedil;a</b> &mdash; cada turno de caixa: quem abriu, quanto ficou, quanto saiu <i>naquele</i> turno, e o que faltou na gaveta. Pede <code>caixa.ver</code> al&eacute;m de <code>relatorio.ver</code>: o contador l&ecirc; o resultado e n&atilde;o precisa saber quem abriu a gaveta. <span class="quando">12/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Fechamento de m&ecirc;s guiado</b> &mdash; a lista que a contadora faria por telefone. Caixa aberto, diferen&ccedil;a de gaveta, conta vencida, taxa de maquininha n&atilde;o escrita e fiado vencido: cada uma erra o resultado <b>para cima</b>, que &eacute; o lado perigoso. Cada linha diz o n&uacute;mero, diz por que importa, e leva para onde se resolve. N&atilde;o existe bot&atilde;o de trancar o m&ecirc;s, de prop&oacute;sito. <span class="quando">12/09</span></li>
+        </ul>
+        <h3>O que estava errado</h3>
+        <ul>
+          <li class="ok"><span class="tam ok">&check;</span><b>N&uacute;mero fora de tabela alinhava &agrave; direita.</b> Em tabela isso &eacute; certo &mdash; &eacute; o que faz a v&iacute;rgula cair embaixo da v&iacute;rgula. Fora dela, o r&oacute;tulo ficava na esquerda e o n&uacute;mero fugia para a direita, sozinho. Acontecia no cr&eacute;dito do assistente, no painel e na barra do caixa, e cada um tinha ganhado um remendo pr&oacute;prio. A regra passou a valer s&oacute; onde nasceu. <span class="quando">12/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>O bot&atilde;o de colocar cr&eacute;dito descia</b> e ficava torto ao lado do campo: o alinhamento era pelo fim do bloco, e o bloco terminava na dica de baixo, n&atilde;o no campo. <span class="quando">12/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>O driver do banco avisava que ia quebrar.</b> Nove telas disparavam consultas em paralelo DENTRO de uma transa&ccedil;&atilde;o &mdash; onde tudo corre na mesma conex&atilde;o, ent&atilde;o o paralelismo era zero e o aviso subia como erro no painel de quem desenvolve. Em s&eacute;rie, o n&uacute;mero de idas ao banco &eacute; id&ecirc;ntico. <span class="quando">12/09</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="nota">
+      <p>
+        <b>A conta do assistente virou documento &agrave; parte.</b> Como a loja liga o WhatsApp
+        dela (Z-API contra API oficial da Meta), o que j&aacute; existe e o que falta construir,
+        e o custo de ponta a ponta &mdash; fixo, por cliente e eventual. O n&uacute;mero que decide
+        tudo est&aacute; l&aacute;: sem cache, um assistente sozinho custa de R$ 750 a R$ 900 por
+        m&ecirc;s contra uma mensalidade de R$ 350.
+      </p>
+    </div>
+    <div class="nota aviso">
+      <p>
+        <b>Sobraram tr&ecirc;s &ldquo;em breve&rdquo;, e nenhum depende de escrever c&oacute;digo
+        primeiro.</b> A <b>an&aacute;lise b&aacute;sica</b> e a <b>an&aacute;lise profunda</b>
+        dependem da chave da IA. A <b>previs&atilde;o de ruptura com prazo do fornecedor</b>
+        precisa de um cadastro de fornecedor com prazo de entrega, que ainda n&atilde;o existe no
+        banco &mdash; &eacute; a pr&oacute;xima obra de tamanho m&eacute;dio.
+      </p>
+    </div>
+
     <h2>A varredura: o que uma loja de verdade encontrava faltando</h2>
     <p>
       Comparei cada tela com o que a página de venda promete e com o Datacaixa — o sistema
