@@ -1,0 +1,66 @@
+# Como o Norte sobe no Render.
+#
+# Isto é um "Blueprint": o Render lê este arquivo e monta o serviço sozinho —
+# comando de build, comando de start, versão do Node e quais segredos ele
+# precisa pedir. Sem isso, cada campo é preenchido na mão numa tela, e um
+# errado derruba o deploy com uma mensagem que não diz qual.
+#
+# ── a pegadinha que derrubou a primeira tentativa ────────────
+# O Render põe NODE_ENV=production no ambiente do build. Com isso, um `npm ci`
+# normal PULA as devDependencies — e neste projeto o typescript, o tailwind e o
+# CLI do prisma moram lá. O build então falha procurando o tailwind, que está
+# no package.json, instalado, funcionando no laptop. Daí o `--include=dev`:
+# ele manda instalar tudo, independente do NODE_ENV.
+#
+# ── e por que `prisma generate` aparece aqui ─────────────────
+# O Prisma 7 não gera mais o cliente sozinho depois do install. Sem esta linha
+# o build passa e o site sobe, mas toda consulta morre em "@prisma/client did
+# not initialize yet" — erro que aparece só quando alguém abre uma tela.
+#
+# ── o banco NÃO nasce daqui ──────────────────────────────────
+# O Postgres é o Supabase, que já existe e já está migrado. O Render só roda a
+# aplicação. As três credenciais entram como segredo (`sync: false`): o Render
+# pergunta uma vez, guarda cifrado, e elas nunca passam por este arquivo — que
+# é público, igual ao resto do repositório.
+
+services:
+  - type: web
+    name: norte
+    runtime: node
+    plan: free
+    # Das regiões do plano grátis, é a mais perto de São Paulo, onde mora o
+    # banco. Cada tela faz várias consultas em sequência; o que se ganha aqui
+    # em milissegundos aparece na tela como "abriu rápido". Se o Render recusar
+    # esta região, trocar por `oregon` (o padrão dele) resolve — fica mais
+    # lento, não quebra nada.
+    region: virginia
+    branch: master
+    autoDeploy: true
+
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    startCommand: npm run start
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+
+      # Sem isto o servidor conta o dia em Londres, e a venda das 22h cai no
+      # dia seguinte nos relatórios.
+      - key: TZ
+        value: America/Sao_Paulo
+
+      # O plano grátis é uma máquina pequena e o Supabase grátis tem limite de
+      # conexão. Folgado o bastante para uma demonstração, apertado o bastante
+      # para não estourar a cota do banco.
+      - key: POOL_MAX
+        value: "3"
+
+      # ── os três segredos: o Render pede na primeira vez ──
+      # Estão no seu .env.producao, nesta ordem. O DATABASE_URL_ADMIN NÃO entra
+      # aqui: ele é dono das tabelas e ignora o RLS. Migração é coisa de laptop.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_PORTARIA
+        sync: false
+      - key: SEGREDO_SESSAO
+        sync: false
