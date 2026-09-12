@@ -22,7 +22,7 @@ describe('o que cada perfil vê no menu', () => {
   it('o dono vê tudo', () => {
     expect(visiveis('DONO')).toEqual([
       'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Produtos', 'Estoque', 'Clientes', 'Equipe',
-      'Financeiro', 'Assistente', 'Auditoria', 'Assinatura', 'Configurações',
+      'Financeiro', 'Análise', 'Assistente', 'Auditoria', 'Assinatura', 'Configurações',
     ])
   })
 
@@ -45,7 +45,10 @@ describe('o que cada perfil vê no menu', () => {
   })
 
   it('o contador só olha o dinheiro', () => {
-    expect(visiveis('CONTADOR')).toEqual(['Painel', 'Financeiro'])
+    // A Análise entra porque ela é leitura de resultado, que é o trabalho
+    // dele. Lá dentro a escala dos turnos não aparece: aquela parte pede
+    // `caixa.ver`, e quem fecha o mês não precisa saber quem abriu a gaveta.
+    expect(visiveis('CONTADOR')).toEqual(['Painel', 'Financeiro', 'Análise'])
   })
 
   it('o financeiro vê vendas e caixa, e não vende', () => {

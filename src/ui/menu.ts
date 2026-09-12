@@ -44,6 +44,11 @@ export const MENU = (slug: string): ItemMenu[] => [
 
   // ── dinheiro ──
   { grupo: 'Dinheiro', href: `/${slug}/financeiro`, titulo: 'Financeiro', exige: 'financeiro.ver' },
+  // As três leituras que o painel não dá: lojas lado a lado, curva ABC e a
+  // escala dos turnos. O item aparece para quem lê relatório em qualquer
+  // plano — quem não tem o Rede encontra lá dentro o que ele faz, e não um
+  // item apagado no menu, que só ensina que existe algo escondido.
+  { grupo: 'Dinheiro', href: `/${slug}/analise`, titulo: 'Análise', exige: 'relatorio.ver' },
 
   // ── empresa ──
   { grupo: 'Empresa', href: `/${slug}/agente`, titulo: 'Assistente', exige: 'agente.configurar', modulo: 'agente' },
