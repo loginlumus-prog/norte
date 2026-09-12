@@ -489,17 +489,11 @@ export const RECURSOS: Recurso[] = [
   { titulo: 'Financeiro com DRE do mês', grupo: 'Dinheiro', em: PAGOS, destaque: true },
   { titulo: 'Contas a pagar e recorrentes', grupo: 'Dinheiro', em: PAGOS },
   { titulo: 'Metas e comissão por vendedor', grupo: 'Dinheiro', em: COM_AGENTE },
-  {
-    titulo: 'Fechamento de mês guiado',
-    grupo: 'Dinheiro',
-    em: PAGOS,
-    quando: 'breve',
-  },
+  { titulo: 'Fechamento de mês guiado', grupo: 'Dinheiro', em: PAGOS },
   {
     titulo: 'Curva ABC e dinheiro parado',
     grupo: 'Dinheiro',
     em: DE_REDE,
-    quando: 'breve',
     destaque: true,
   },
   { titulo: 'Crediário próprio, com juros e cobrança', grupo: 'Dinheiro', em: DE_REDE, destaque: true },
@@ -577,14 +571,12 @@ export const RECURSOS: Recurso[] = [
     titulo: 'Comparação entre lojas',
     grupo: 'Estrutura',
     em: DE_REDE,
-    quando: 'breve',
     destaque: true,
   },
   {
     titulo: 'Escala e presença da equipe',
     grupo: 'Estrutura',
     em: DE_REDE,
-    quando: 'breve',
   },
   { titulo: 'Livro de auditoria de tudo que mexe', grupo: 'Estrutura', em: TODOS_OS_PLANOS },
   {

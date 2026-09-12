@@ -134,7 +134,21 @@ export default async function Financeiro({
       ativo={`/${slug}/financeiro`}
       tema={tema}
       titulo="Financeiro"
-      acao={onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} /> : undefined}
+      acao={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* O fechamento fica AQUI, e não no menu: ele é a última coisa que
+              se faz no financeiro, uma vez por mês. Item de menu para algo
+              mensal ocupa espaço todo dia para servir num. */}
+          <Link
+            href={`/${slug}/financeiro/fechamento`}
+            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            title="A lista do que conferir antes de dar o mês por fechado"
+          >
+            Fechar o mês
+          </Link>
+          {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+        </div>
+      }
     >
       {/* ── A PAGAR ── */}
       <Secao titulo="Contas a pagar">
