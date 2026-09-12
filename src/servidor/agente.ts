@@ -451,14 +451,21 @@ export async function podeGastarHoje(orgId: string): Promise<VeredictoIA> {
   const inicio = new Date()
   inicio.setHours(0, 0, 0, 0)
 
-  const [hoje, org] = await comoOrg(orgId, (db) =>
-    Promise.all([
-      db.consumoIA.aggregate({ where: { criadoEm: { gte: inicio } }, _sum: { cobradoCent: true } }),
-      db.org.findUniqueOrThrow({ where: { id: orgId }, select: { creditoIaCent: true } }),
-    ]),
-  )
-  const gastoCent = hoje._sum.cobradoCent ?? 0
-  const saldoCent = org.creditoIaCent
+  // Em série, e não em Promise.all: dentro de uma transação as duas consultas
+  // correm na MESMA conexão, então disparar juntas não ganha tempo nenhum — o
+  // driver só enfileira, avisa que isso acaba no pg@9, e o aviso vira erro na
+  // tela de quem está desenvolvendo.
+  const { gastoCent, saldoCent } = await comoOrg(orgId, async (db) => {
+    const hoje = await db.consumoIA.aggregate({
+      where: { criadoEm: { gte: inicio } },
+      _sum: { cobradoCent: true },
+    })
+    const org = await db.org.findUniqueOrThrow({
+      where: { id: orgId },
+      select: { creditoIaCent: true },
+    })
+    return { gastoCent: hoje._sum.cobradoCent ?? 0, saldoCent: org.creditoIaCent }
+  })
 
   // Duas travas, e elas respondem perguntas diferentes.
   //

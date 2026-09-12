@@ -118,11 +118,7 @@ export function Numero({
         {ponto && <span aria-hidden className={cx('size-1.5 shrink-0 rounded-full', ponto)} />}
         {rotulo}
       </span>
-      {/* `self-start`: a classe `.numero` alinha à direita (é para tabela), e
-          num flex-col o span estica até a borda — no celular o número ia
-          parar no canto direito, longe do rótulo. Encolhido ao conteúdo, ele
-          fica embaixo do rótulo em qualquer largura. */}
-      <span className="numero self-start text-[26px] leading-tight font-bold tracking-tight text-tinta">
+      <span className="numero text-[26px] leading-tight font-bold tracking-tight text-tinta">
         {valor}
       </span>
       <span className="flex flex-wrap items-baseline gap-x-2 text-xs">

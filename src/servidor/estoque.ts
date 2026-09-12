@@ -298,10 +298,8 @@ export async function transferir(
   exigir(sessao, 'estoque.ajustar', t.paraUnidadeId)
 
   return comoOrg(sessao.orgId, async (db) => {
-    const [de, para] = await Promise.all([
-      db.unidade.findUnique({ where: { id: t.deUnidadeId }, select: { nome: true } }),
-      db.unidade.findUnique({ where: { id: t.paraUnidadeId }, select: { nome: true } }),
-    ])
+    const de = await db.unidade.findUnique({ where: { id: t.deUnidadeId }, select: { nome: true } })
+    const para = await db.unidade.findUnique({ where: { id: t.paraUnidadeId }, select: { nome: true } })
     if (!de || !para) throw new Error('Unidade não encontrada nesta empresa.')
 
     const saida = await mexerEstoqueEm(db, sessao, {

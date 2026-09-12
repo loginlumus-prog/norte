@@ -348,12 +348,26 @@ h1 {
 }
 
 /* Números em coluna precisam alinhar. Vale para tabela, total, dinheiro. */
-.numero,
+/* Número: dígito de largura fixa, e nunca quebrado no meio.
+ *
+ * Alinhar à direita é COISA DE TABELA, e só. Numa coluna de valores, a
+ * direita é o que faz a vírgula cair embaixo da vírgula e o olho comparar
+ * sem ler. Fora da tabela, o mesmo alinhamento vira defeito: um <span> solto
+ * dentro de uma coluna flex se estica na largura toda, o rótulo fica na
+ * esquerda e o número foge para a direita, sem nada do outro lado.
+ *
+ * Era o que acontecia no crédito do assistente, no painel e na barra do
+ * caixa — e cada um desses tinha ganhado um `self-start` de remendo. O
+ * remendo some; a regra passa a valer onde ela nasceu. Fora de tabela, quem
+ * quiser o número na direita pede `text-right`, que é explícito. */
+.numero {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 td.numero,
 th.numero {
-  font-variant-numeric: tabular-nums;
   text-align: right;
-  white-space: nowrap;
 }
 
 /* Foco visível sempre — teclado é como o balcão trabalha rápido. */

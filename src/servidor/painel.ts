@@ -98,205 +98,165 @@ export async function resumoDoPainel(
        group by 1 order by 1
     `
 
-    const [
-      org,
-      totaisAtual,
-      totaisAnterior,
-      porDia,
-      porDiaAnterior,
-      porHora,
-      porForma,
-      porCategoria,
-      porUnidade,
-      porVendedor,
-      maisVendidos,
-      paradosBrutos,
-      acabandoBrutos,
-      estoque,
-      estoquePorCategoria,
-      clientesTotal,
-      clientesNovos,
-      identificacao,
-      recorrentes,
-      devolucoes,
-      custoMes,
-    ] = await Promise.all([
-      db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { plano: true } }),
-
-      db.venda.aggregate({
-        where: {
-          unidadeId: { in: uni }, situacao: 'CONCLUIDA',
-          criadaEm: { gte: j.de, lt: j.ate },
-        },
-        _sum: { total: true }, _count: true,
-      }),
-      db.venda.aggregate({
-        where: {
-          unidadeId: { in: uni }, situacao: 'CONCLUIDA',
-          criadaEm: { gte: j.deAnterior, lt: j.ateAnterior },
-        },
-        _sum: { total: true }, _count: true,
-      }),
-
-      // Com a contagem junto: sem ela o grafico responde "quanto" e nao
-      // responde "de quantas vendas" — e dia de R$ 900 em uma venda e dia de
-      // R$ 900 em vinte sao dois dias completamente diferentes para quem
-      // decide o que fazer amanha.
-      porDiaSql(j.de, j.ate),
-      porDiaSql(j.deAnterior, j.ateAnterior),
-
-      // Quando a loja vende: dia da semana × hora. E o que decide escala de
-      // equipe e horario de abrir.
-      db.$queryRaw<{ dia: number; hora: number; total: string }[]>`
-        select extract(dow from (v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo'))::int as dia,
-               extract(hour from (v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo'))::int as hora,
-               sum(v.total) as total
-          from vendas v
-         where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+    const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { plano: true } })
+    const totaisAtual = await db.venda.aggregate({
+      where: {
+        unidadeId: { in: uni }, situacao: 'CONCLUIDA',
+        criadaEm: { gte: j.de, lt: j.ate },
+      },
+      _sum: { total: true }, _count: true,
+    })
+    const totaisAnterior = await db.venda.aggregate({
+      where: {
+        unidadeId: { in: uni }, situacao: 'CONCLUIDA',
+        criadaEm: { gte: j.deAnterior, lt: j.ateAnterior },
+      },
+      _sum: { total: true }, _count: true,
+    })
+    // Com a contagem junto: sem ela o grafico responde "quanto" e nao
+    // responde "de quantas vendas" — e dia de R$ 900 em uma venda e dia de
+    // R$ 900 em vinte sao dois dias completamente diferentes para quem
+    // decide o que fazer amanha.
+    const porDia = await porDiaSql(j.de, j.ate)
+    const porDiaAnterior = await porDiaSql(j.deAnterior, j.ateAnterior)
+    // Quando a loja vende: dia da semana × hora. E o que decide escala de
+    // equipe e horario de abrir.
+    const porHora = await db.$queryRaw<{ dia: number; hora: number; total: string }[]>`
+      select extract(dow from (v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo'))::int as dia,
+             extract(hour from (v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo'))::int as hora,
+             sum(v.total) as total
+        from vendas v
+       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
+       group by 1, 2
+    `
+    const porForma = await db.$queryRaw<{ forma: string; total: string; vendas: string }[]>`
+      select p.forma::text as forma, sum(p.valor) as total, count(*)::int as vendas
+        from pagamentos p
+        join vendas v on v.id = p.venda_id
+       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
+       group by 1 order by 2 desc
+    `
+    const porCategoria = await db.$queryRaw<{ nome: string; total: string; quantidade: string }[]>`
+      select coalesce(c.nome, 'Sem categoria') as nome, sum(i.total) as total, sum(i.quantidade) as quantidade
+        from venda_itens i
+        join vendas v on v.id = i.venda_id
+        left join variacoes va on va.id = i.variacao_id
+        left join produtos p on p.id = va.produto_id
+        left join categorias c on c.id = p.categoria_id
+       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
+       group by 1 order by 2 desc limit 8
+    `
+    const porUnidade = await db.$queryRaw<{ unidadeId: string; nome: string; total: string; vendas: string }[]>`
+      select u.id as "unidadeId", u.nome,
+             coalesce(sum(v.total), 0) as total,
+             count(v.id)::int as vendas
+        from unidades u
+        left join vendas v on v.unidade_id = u.id
+             and v.situacao = 'CONCLUIDA' and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
+       where u.id = any(${uni})
+       group by u.id, u.nome order by 3 desc
+    `
+    const porVendedor = await db.$queryRaw<{ nome: string; total: string; vendas: string }[]>`
+      select coalesce(v.vendedor_nome, 'sem vendedor') as nome,
+             sum(v.total) as total, count(*)::int as vendas
+        from vendas v
+       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
+       group by 1 order by 2 desc limit 8
+    `
+    const maisVendidos = await db.$queryRaw<{ descricao: string; quantidade: string; total: string }[]>`
+      select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total
+        from venda_itens i
+        join vendas v on v.id = i.venda_id
+       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
+       group by 1 order by 3 desc limit 8
+    `
+    // Parado: tem saldo e NÃO vendeu nos 30 dias. É dinheiro na arara.
+    const paradosBrutos = await db.$queryRaw<{ descricao: string; codigo: string | null; saldo: string; dias: number | null }[]>`
+      select p.nome ||
+             coalesce(' — ' || (select string_agg(o.valor, ' · ')
+                                  from variacao_opcoes vo join opcoes o on o.id = vo.opcao_id
+                                 where vo.variacao_id = va.id), '') as descricao,
+             va.codigo,
+             sum(e.quantidade) as saldo,
+             (select (current_date - max(v.criada_em::date))::int
+                from venda_itens i join vendas v on v.id = i.venda_id
+               where i.variacao_id = va.id and v.unidade_id = any(${uni})) as dias
+        from variacoes va
+        join produtos p on p.id = va.produto_id
+        join estoque e on e.variacao_id = va.id and e.unidade_id = any(${uni})
+       where va.ativa and e.quantidade > 0
+       group by va.id, p.nome, va.codigo
+      having not exists (
+               select 1 from venda_itens i join vendas v on v.id = i.venda_id
+                where i.variacao_id = va.id and v.unidade_id = any(${uni})
+                  and v.criada_em >= ${trintaDias})
+       order by saldo desc limit 8
+    `
+    const acabandoBrutos = await db.$queryRaw<{ descricao: string; codigo: string | null; saldo: string; minimo: string }[]>`
+      select p.nome ||
+             coalesce(' — ' || (select string_agg(o.valor, ' · ')
+                                  from variacao_opcoes vo join opcoes o on o.id = vo.opcao_id
+                                 where vo.variacao_id = va.id), '') as descricao,
+             va.codigo, sum(e.quantidade) as saldo, max(e.minimo) as minimo
+        from estoque e
+        join variacoes va on va.id = e.variacao_id
+        join produtos p on p.id = va.produto_id
+       where e.unidade_id = any(${uni}) and va.ativa and e.minimo is not null
+       group by va.id, p.nome, va.codigo
+      having sum(e.quantidade) <= max(e.minimo)
+       order by sum(e.quantidade) asc limit 8
+    `
+    const estoque = await db.$queryRaw<{ itens: string; unidades: string; valor: string }[]>`
+      select count(distinct e.variacao_id)::int as itens,
+             coalesce(sum(e.quantidade), 0) as unidades,
+             coalesce(sum(e.quantidade * coalesce(p.custo, 0)), 0) as valor
+        from estoque e
+        join variacoes va on va.id = e.variacao_id
+        join produtos p on p.id = va.produto_id
+       where e.unidade_id = any(${uni}) and e.quantidade > 0
+    `
+    const estoquePorCategoria = await db.$queryRaw<{ nome: string; valor: string }[]>`
+      select coalesce(c.nome, 'Sem categoria') as nome,
+             coalesce(sum(e.quantidade * coalesce(p.custo, 0)), 0) as valor
+        from estoque e
+        join variacoes va on va.id = e.variacao_id
+        join produtos p on p.id = va.produto_id
+        left join categorias c on c.id = p.categoria_id
+       where e.unidade_id = any(${uni}) and e.quantidade > 0
+       group by 1 order by 2 desc limit 8
+    `
+    const clientesTotal = await db.cliente.count({ where: { ativo: true } })
+    const clientesNovos = await db.cliente.count({ where: { ativo: true, criadoEm: { gte: j.de, lt: j.ate } } })
+    const identificacao = await db.$queryRaw<{ identificadas: number; vendas: number; pessoas: number }[]>`
+      select count(*) filter (where v.cliente_id is not null)::int as identificadas,
+             count(*)::int as vendas,
+             count(distinct v.cliente_id)::int as pessoas
+        from vendas v
+       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
+    `
+    const recorrentes = await db.$queryRaw<{ n: number }[]>`
+      select count(*)::int as n from (
+        select v.cliente_id from vendas v
+         where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA' and v.cliente_id is not null
            and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-         group by 1, 2
-      `,
-
-      db.$queryRaw<{ forma: string; total: string; vendas: string }[]>`
-        select p.forma::text as forma, sum(p.valor) as total, count(*)::int as vendas
-          from pagamentos p
-          join vendas v on v.id = p.venda_id
-         where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-         group by 1 order by 2 desc
-      `,
-
-      db.$queryRaw<{ nome: string; total: string; quantidade: string }[]>`
-        select coalesce(c.nome, 'Sem categoria') as nome, sum(i.total) as total, sum(i.quantidade) as quantidade
-          from venda_itens i
-          join vendas v on v.id = i.venda_id
-          left join variacoes va on va.id = i.variacao_id
-          left join produtos p on p.id = va.produto_id
-          left join categorias c on c.id = p.categoria_id
-         where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-         group by 1 order by 2 desc limit 8
-      `,
-
-      db.$queryRaw<{ unidadeId: string; nome: string; total: string; vendas: string }[]>`
-        select u.id as "unidadeId", u.nome,
-               coalesce(sum(v.total), 0) as total,
-               count(v.id)::int as vendas
-          from unidades u
-          left join vendas v on v.unidade_id = u.id
-               and v.situacao = 'CONCLUIDA' and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-         where u.id = any(${uni})
-         group by u.id, u.nome order by 3 desc
-      `,
-
-      db.$queryRaw<{ nome: string; total: string; vendas: string }[]>`
-        select coalesce(v.vendedor_nome, 'sem vendedor') as nome,
-               sum(v.total) as total, count(*)::int as vendas
-          from vendas v
-         where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-         group by 1 order by 2 desc limit 8
-      `,
-
-      db.$queryRaw<{ descricao: string; quantidade: string; total: string }[]>`
-        select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total
-          from venda_itens i
-          join vendas v on v.id = i.venda_id
-         where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-         group by 1 order by 3 desc limit 8
-      `,
-
-      // Parado: tem saldo e NÃO vendeu nos 30 dias. É dinheiro na arara.
-      db.$queryRaw<{ descricao: string; codigo: string | null; saldo: string; dias: number | null }[]>`
-        select p.nome ||
-               coalesce(' — ' || (select string_agg(o.valor, ' · ')
-                                    from variacao_opcoes vo join opcoes o on o.id = vo.opcao_id
-                                   where vo.variacao_id = va.id), '') as descricao,
-               va.codigo,
-               sum(e.quantidade) as saldo,
-               (select (current_date - max(v.criada_em::date))::int
-                  from venda_itens i join vendas v on v.id = i.venda_id
-                 where i.variacao_id = va.id and v.unidade_id = any(${uni})) as dias
-          from variacoes va
-          join produtos p on p.id = va.produto_id
-          join estoque e on e.variacao_id = va.id and e.unidade_id = any(${uni})
-         where va.ativa and e.quantidade > 0
-         group by va.id, p.nome, va.codigo
-        having not exists (
-                 select 1 from venda_itens i join vendas v on v.id = i.venda_id
-                  where i.variacao_id = va.id and v.unidade_id = any(${uni})
-                    and v.criada_em >= ${trintaDias})
-         order by saldo desc limit 8
-      `,
-
-      db.$queryRaw<{ descricao: string; codigo: string | null; saldo: string; minimo: string }[]>`
-        select p.nome ||
-               coalesce(' — ' || (select string_agg(o.valor, ' · ')
-                                    from variacao_opcoes vo join opcoes o on o.id = vo.opcao_id
-                                   where vo.variacao_id = va.id), '') as descricao,
-               va.codigo, sum(e.quantidade) as saldo, max(e.minimo) as minimo
-          from estoque e
-          join variacoes va on va.id = e.variacao_id
-          join produtos p on p.id = va.produto_id
-         where e.unidade_id = any(${uni}) and va.ativa and e.minimo is not null
-         group by va.id, p.nome, va.codigo
-        having sum(e.quantidade) <= max(e.minimo)
-         order by sum(e.quantidade) asc limit 8
-      `,
-
-      db.$queryRaw<{ itens: string; unidades: string; valor: string }[]>`
-        select count(distinct e.variacao_id)::int as itens,
-               coalesce(sum(e.quantidade), 0) as unidades,
-               coalesce(sum(e.quantidade * coalesce(p.custo, 0)), 0) as valor
-          from estoque e
-          join variacoes va on va.id = e.variacao_id
-          join produtos p on p.id = va.produto_id
-         where e.unidade_id = any(${uni}) and e.quantidade > 0
-      `,
-
-      db.$queryRaw<{ nome: string; valor: string }[]>`
-        select coalesce(c.nome, 'Sem categoria') as nome,
-               coalesce(sum(e.quantidade * coalesce(p.custo, 0)), 0) as valor
-          from estoque e
-          join variacoes va on va.id = e.variacao_id
-          join produtos p on p.id = va.produto_id
-          left join categorias c on c.id = p.categoria_id
-         where e.unidade_id = any(${uni}) and e.quantidade > 0
-         group by 1 order by 2 desc limit 8
-      `,
-
-      db.cliente.count({ where: { ativo: true } }),
-      db.cliente.count({ where: { ativo: true, criadoEm: { gte: j.de, lt: j.ate } } }),
-
-      db.$queryRaw<{ identificadas: number; vendas: number; pessoas: number }[]>`
-        select count(*) filter (where v.cliente_id is not null)::int as identificadas,
-               count(*)::int as vendas,
-               count(distinct v.cliente_id)::int as pessoas
-          from vendas v
-         where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-      `,
-      db.$queryRaw<{ n: number }[]>`
-        select count(*)::int as n from (
-          select v.cliente_id from vendas v
-           where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA' and v.cliente_id is not null
-             and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-           group by v.cliente_id having count(*) >= 2) s
-      `,
-
-      db.devolucao.aggregate({
-        where: { unidadeId: { in: uni }, criadaEm: { gte: j.de, lt: j.ate } },
-        _sum: { valor: true }, _count: true,
-      }),
-
-      db.$queryRaw<{ custo: string }[]>`
-        select coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as custo
-          from venda_itens i join vendas v on v.id = i.venda_id
-         where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-      `,
-    ])
+         group by v.cliente_id having count(*) >= 2) s
+    `
+    const devolucoes = await db.devolucao.aggregate({
+      where: { unidadeId: { in: uni }, criadaEm: { gte: j.de, lt: j.ate } },
+      _sum: { valor: true }, _count: true,
+    })
+    const custoMes = await db.$queryRaw<{ custo: string }[]>`
+      select coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as custo
+        from venda_itens i join vendas v on v.id = i.venda_id
+       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
+    `
 
     const total = n(totaisAtual._sum.total)
 

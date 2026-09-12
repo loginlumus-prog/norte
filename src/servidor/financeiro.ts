@@ -266,43 +266,41 @@ export async function montarDRE(
   exigir(sessao, 'financeiro.ver')
 
   return comoOrg(sessao.orgId, async (db) => {
-    const [venda, cmv, grupos, devol, jurosCred, taxas] = await Promise.all([
-      db.venda.aggregate({
-        where: { unidadeId: { in: unidadeIds }, situacao: 'CONCLUIDA', criadaEm: { gte: de, lte: ate } },
-        _sum: { total: true },
-      }),
-      db.$queryRaw<{ custo: string }[]>`
-        select coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as custo
-          from venda_itens i join vendas v on v.id = i.venda_id
-         where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${de} and v.criada_em <= ${ate}
-      `,
-      // Regime de CAIXA: conta o que foi pago no período, não o que venceu.
-      // É como o comércio pequeno enxerga o mês, e é o que bate com o extrato.
-      db.$queryRaw<{ grupo: GrupoDRE; nome: string; total: string }[]>`
-        select c.grupo, c.nome, sum(l.valor) as total
-          from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
-         where l.pago_em is not null
-           and l.pago_em >= ${de} and l.pago_em <= ${ate}
-           and (l.unidade_id = any(${unidadeIds}) or l.unidade_id is null)
-         group by c.grupo, c.nome
-         order by 3 desc
-      `,
-      // O que voltou em devolução sai da receita: a peça devolvida não foi
-      // vendida, mesmo que a venda continue registrada.
-      db.devolucao.aggregate({
-        where: { unidadeId: { in: unidadeIds }, criadaEm: { gte: de, lte: ate } },
-        _sum: { valor: true },
-      }),
-      // Juro de atraso do crediário é receita que não é venda.
-      db.$queryRaw<{ juros: string }[]>`
-        select coalesce(sum(r.juros), 0) as juros
-          from recebimentos r join parcelas p on p.id = r.parcela_id
-         where p.unidade_id = any(${unidadeIds})
-           and r.criado_em >= ${de} and r.criado_em <= ${ate}
-      `,
-      taxasDoPeriodo(db, unidadeIds, de, ate),
-    ])
+    const venda = await db.venda.aggregate({
+      where: { unidadeId: { in: unidadeIds }, situacao: 'CONCLUIDA', criadaEm: { gte: de, lte: ate } },
+      _sum: { total: true },
+    })
+    const cmv = await db.$queryRaw<{ custo: string }[]>`
+      select coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as custo
+        from venda_itens i join vendas v on v.id = i.venda_id
+       where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${de} and v.criada_em <= ${ate}
+    `
+    // Regime de CAIXA: conta o que foi pago no período, não o que venceu.
+    // É como o comércio pequeno enxerga o mês, e é o que bate com o extrato.
+    const grupos = await db.$queryRaw<{ grupo: GrupoDRE; nome: string; total: string }[]>`
+      select c.grupo, c.nome, sum(l.valor) as total
+        from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
+       where l.pago_em is not null
+         and l.pago_em >= ${de} and l.pago_em <= ${ate}
+         and (l.unidade_id = any(${unidadeIds}) or l.unidade_id is null)
+       group by c.grupo, c.nome
+       order by 3 desc
+    `
+    // O que voltou em devolução sai da receita: a peça devolvida não foi
+    // vendida, mesmo que a venda continue registrada.
+    const devol = await db.devolucao.aggregate({
+      where: { unidadeId: { in: unidadeIds }, criadaEm: { gte: de, lte: ate } },
+      _sum: { valor: true },
+    })
+    // Juro de atraso do crediário é receita que não é venda.
+    const jurosCred = await db.$queryRaw<{ juros: string }[]>`
+      select coalesce(sum(r.juros), 0) as juros
+        from recebimentos r join parcelas p on p.id = r.parcela_id
+       where p.unidade_id = any(${unidadeIds})
+         and r.criado_em >= ${de} and r.criado_em <= ${ate}
+    `
+    const taxas = await taxasDoPeriodo(db, unidadeIds, de, ate)
 
     const porGrupo = (g: GrupoDRE) => {
       const itens = grupos.filter((x) => x.grupo === g)
@@ -441,48 +439,46 @@ export async function resultadoPorMes(
   }
 
   return comoOrg(sessao.orgId, async (db) => {
-    const [vendas, devol, cmv, despesas, pagamentos, taxas] = await Promise.all([
-      db.$queryRaw<{ mes: string; total: string }[]>`
-        select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, sum(v.total) as total
-          from vendas v
-         where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${de} and v.criada_em <= ${ate}
-         group by 1
-      `,
-      db.$queryRaw<{ mes: string; total: string }[]>`
-        select to_char(d.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, sum(d.valor) as total
-          from devolucoes d
-         where d.unidade_id = any(${unidadeIds})
-           and d.criada_em >= ${de} and d.criada_em <= ${ate}
-         group by 1
-      `,
-      db.$queryRaw<{ mes: string; total: string }[]>`
-        select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes,
-               coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as total
-          from venda_itens i join vendas v on v.id = i.venda_id
-         where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${de} and v.criada_em <= ${ate}
-         group by 1
-      `,
-      db.$queryRaw<{ mes: string; total: string }[]>`
-        select to_char(l.pago_em, 'YYYY-MM') as mes, sum(l.valor) as total
-          from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
-         where l.tipo = 'DESPESA' and l.pago_em is not null
-           and c.grupo <> 'MERCADORIA'
-           and l.pago_em >= ${de} and l.pago_em <= ${ate}
-           and (l.unidade_id = any(${unidadeIds}) or l.unidade_id is null)
-         group by 1
-      `,
-      db.$queryRaw<{ mes: string; forma: FormaPagamento; parcelado: boolean; total: string }[]>`
-        select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, p.forma,
-               (p.forma = 'CREDITO' and p.parcelas >= 2) as parcelado, sum(p.valor) as total
-          from pagamentos p join vendas v on v.id = p.venda_id
-         where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
-           and v.criada_em >= ${de} and v.criada_em <= ${ate}
-         group by 1, 2, 3
-      `,
-      lerTaxas(db),
-    ])
+    const vendas = await db.$queryRaw<{ mes: string; total: string }[]>`
+      select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, sum(v.total) as total
+        from vendas v
+       where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${de} and v.criada_em <= ${ate}
+       group by 1
+    `
+    const devol = await db.$queryRaw<{ mes: string; total: string }[]>`
+      select to_char(d.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, sum(d.valor) as total
+        from devolucoes d
+       where d.unidade_id = any(${unidadeIds})
+         and d.criada_em >= ${de} and d.criada_em <= ${ate}
+       group by 1
+    `
+    const cmv = await db.$queryRaw<{ mes: string; total: string }[]>`
+      select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes,
+             coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as total
+        from venda_itens i join vendas v on v.id = i.venda_id
+       where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${de} and v.criada_em <= ${ate}
+       group by 1
+    `
+    const despesas = await db.$queryRaw<{ mes: string; total: string }[]>`
+      select to_char(l.pago_em, 'YYYY-MM') as mes, sum(l.valor) as total
+        from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
+       where l.tipo = 'DESPESA' and l.pago_em is not null
+         and c.grupo <> 'MERCADORIA'
+         and l.pago_em >= ${de} and l.pago_em <= ${ate}
+         and (l.unidade_id = any(${unidadeIds}) or l.unidade_id is null)
+       group by 1
+    `
+    const pagamentos = await db.$queryRaw<{ mes: string; forma: FormaPagamento; parcelado: boolean; total: string }[]>`
+      select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, p.forma,
+             (p.forma = 'CREDITO' and p.parcelas >= 2) as parcelado, sum(p.valor) as total
+        from pagamentos p join vendas v on v.id = p.venda_id
+       where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${de} and v.criada_em <= ${ate}
+       group by 1, 2, 3
+    `
+    const taxas = await lerTaxas(db)
 
     const soma = (linhas: { mes: string; total: string }[], mes: string) =>
       linhas.filter((l) => l.mes === mes).reduce((s, l) => s + centavos(l.total), 0)

@@ -153,18 +153,16 @@ export async function conferirCaixa(sessao: Sessao, caixaId: string): Promise<Co
       select: { saldoAbertura: true },
     })
 
-    const [movs, formas, totalVendas, recebidos] = await Promise.all([
-      db.caixaMovimento.groupBy({ by: ['tipo'], where: { caixaId }, _sum: { valor: true } }),
-      db.$queryRaw<{ forma: string; total: string }[]>`
-        select p.forma::text as forma, sum(p.valor) as total
-          from pagamentos p join vendas v on v.id = p.venda_id
-         where v.caixa_id = ${caixaId} and v.situacao = 'CONCLUIDA'
-         group by 1 order by 2 desc
-      `,
-      db.venda.count({ where: { caixaId, situacao: 'CONCLUIDA' } }),
-      // A parcela recebida no balcão é dinheiro que entrou pela mesma gaveta.
-      db.recebimento.groupBy({ by: ['forma'], where: { caixaId }, _sum: { valor: true } }),
-    ])
+    const movs = await db.caixaMovimento.groupBy({ by: ['tipo'], where: { caixaId }, _sum: { valor: true } })
+    const formas = await db.$queryRaw<{ forma: string; total: string }[]>`
+      select p.forma::text as forma, sum(p.valor) as total
+        from pagamentos p join vendas v on v.id = p.venda_id
+       where v.caixa_id = ${caixaId} and v.situacao = 'CONCLUIDA'
+       group by 1 order by 2 desc
+    `
+    const totalVendas = await db.venda.count({ where: { caixaId, situacao: 'CONCLUIDA' } })
+    // A parcela recebida no balcão é dinheiro que entrou pela mesma gaveta.
+    const recebidos = await db.recebimento.groupBy({ by: ['forma'], where: { caixaId }, _sum: { valor: true } })
 
     const soma = (t: TipoCaixa) =>
       centavos(movs.find((m) => m.tipo === t)?._sum.valor ?? 0)

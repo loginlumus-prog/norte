@@ -34,16 +34,14 @@ export async function listarEquipe(sessao: Sessao): Promise<PessoaDaEquipe[]> {
   exigir(sessao, 'equipe.ver')
 
   return comoOrg(sessao.orgId, async (db) => {
-    const [pessoas, unidades] = await Promise.all([
-      db.usuario.findMany({
-        orderBy: [{ ativo: 'desc' }, { nome: 'asc' }],
-        select: {
-          id: true, nome: true, email: true, ativo: true, ultimoLogin: true,
-          acessos: { select: { id: true, papel: true, unidadeId: true, expiraEm: true } },
-        },
-      }),
-      db.unidade.findMany({ select: { id: true, nome: true } }),
-    ])
+    const pessoas = await db.usuario.findMany({
+      orderBy: [{ ativo: 'desc' }, { nome: 'asc' }],
+      select: {
+        id: true, nome: true, email: true, ativo: true, ultimoLogin: true,
+        acessos: { select: { id: true, papel: true, unidadeId: true, expiraEm: true } },
+      },
+    })
+    const unidades = await db.unidade.findMany({ select: { id: true, nome: true } })
 
     const nomeDa = new Map(unidades.map((u) => [u.id, u.nome]))
     return pessoas.map((p) => ({

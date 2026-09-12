@@ -52,19 +52,19 @@ export function BarraCaixa({
           <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">
             caixa desde {hora(new Date(caixa.abertoEm))}
           </span>
-          <span className="numero self-start text-sm font-semibold text-tinta">
+          <span className="numero text-sm font-semibold text-tinta">
             {conferencia.vendas} venda{conferencia.vendas === 1 ? '' : 's'} · {brl(conferencia.vendidoTotal)}
           </span>
         </div>
         <div className="flex flex-col">
           <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">na gaveta</span>
-          <span className="numero self-start text-sm font-semibold text-tinta">{brl(conferencia.esperado)}</span>
+          <span className="numero text-sm font-semibold text-tinta">{brl(conferencia.esperado)}</span>
         </div>
         <span className="text-xs text-tinta-3">{caixa.abertoPor}</span>
         {meta && (
           <div className="flex flex-col" title="Sua meta do mês, líquida de devolução">
             <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">sua meta do mês</span>
-            <span className="numero self-start text-sm font-semibold text-tinta">
+            <span className="numero text-sm font-semibold text-tinta">
               {brl(meta.vendido)} <span className="text-tinta-3">de {brl(meta.valor)}</span>{' '}
               {meta.vendido >= meta.valor ? (
                 <span className="text-bom">· bateu</span>

@@ -150,14 +150,17 @@ export function Credito({
           nao tem assistente (credito zero) nao tem o que recarregar. */}
       {podeMexer && inclusoMensal !== 0 && (
         <form action={agir} className="flex flex-col gap-2 border-t border-borda-suave pt-3">
+          {/* O "em reais" mora no rótulo, e não numa dica embaixo do campo, por
+              um motivo de alinhamento: `items-end` alinha pelo FIM do bloco, e
+              com a dica o fim do bloco é a linha de texto, não o campo — o
+              botão descia e ficava torto ao lado da caixa. */}
           <div className="flex flex-wrap items-end gap-2">
             <div className="w-40">
               <Campo
-                rotulo="Colocar crédito"
+                rotulo="Colocar crédito (R$)"
                 name="valor"
                 inputMode="decimal"
                 placeholder="50,00"
-                dica="Em reais."
               />
             </div>
             <Botao type="submit" carregando={pendente}>

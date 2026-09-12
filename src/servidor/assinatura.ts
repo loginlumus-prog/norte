@@ -73,20 +73,18 @@ export async function assinaturaDe(sessao: Sessao): Promise<Assinatura> {
     })
 
     const desde30 = new Date(Date.now() - 30 * DIA)
-    const [unidades, usuarios, gasto] = await Promise.all([
-      // Só unidade ATIVA conta cota. Desativar é o caminho legítimo para
-      // caber num plano menor, e ele precisa funcionar.
-      db.unidade.count({ where: { ativa: true } }),
-      // Cota é de ACESSO, não de cadastro: quem saiu da empresa continua no
-      // banco por causa do histórico e não pode ocupar vaga.
-      db.usuario.count({ where: { ativo: true, acessos: { some: {} } } }),
-      // O que a LOJA pagou, nao o que o fornecedor cobrou da gente: e o
-      // consumo dela que a tela dela mostra.
-      db.consumoIA.aggregate({
-        where: { criadoEm: { gte: desde30 } },
-        _sum: { cobradoCent: true },
-      }),
-    ])
+    // Só unidade ATIVA conta cota. Desativar é o caminho legítimo para
+    // caber num plano menor, e ele precisa funcionar.
+    const unidades = await db.unidade.count({ where: { ativa: true } })
+    // Cota é de ACESSO, não de cadastro: quem saiu da empresa continua no
+    // banco por causa do histórico e não pode ocupar vaga.
+    const usuarios = await db.usuario.count({ where: { ativo: true, acessos: { some: {} } } })
+    // O que a LOJA pagou, nao o que o fornecedor cobrou da gente: e o
+    // consumo dela que a tela dela mostra.
+    const gasto = await db.consumoIA.aggregate({
+      where: { criadoEm: { gte: desde30 } },
+      _sum: { cobradoCent: true },
+    })
 
     const p = PLANOS[org.plano]
     const uso: Uso = { unidades, usuarios }

@@ -77,34 +77,32 @@ export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPes
   const { de, ate } = janelaDoMes(mes)
 
   return comoOrg(sessao.orgId, async (db) => {
-    const [pessoas, metas, vendas, devolucoes] = await Promise.all([
-      db.usuario.findMany({
-        where: { ativo: true, acessos: { some: { papel: { in: PAPEIS_QUE_VENDEM } } } },
-        orderBy: { nome: 'asc' },
-        select: { id: true, nome: true },
-      }),
-      // Todas as linhas até o mês pedido, da mais recente para trás: a
-      // primeira de cada pessoa é a que vale (a do mês, ou a herdada).
-      db.meta.findMany({
-        where: { mes: { lte: mes } },
-        orderBy: { mes: 'desc' },
-        select: { usuarioId: true, mes: true, valor: true, comissaoPct: true },
-      }),
-      db.$queryRaw<{ vendedor_id: string; total: string }[]>`
-        select v.vendedor_id, sum(v.total) as total
-          from vendas v
-         where v.situacao = 'CONCLUIDA' and v.vendedor_id is not null
-           and v.criada_em >= ${de} and v.criada_em < ${ate}
-         group by 1
-      `,
-      db.$queryRaw<{ vendedor_id: string; total: string }[]>`
-        select v.vendedor_id, sum(d.valor) as total
-          from devolucoes d join vendas v on v.id = d.venda_id
-         where v.vendedor_id is not null
-           and d.criada_em >= ${de} and d.criada_em < ${ate}
-         group by 1
-      `,
-    ])
+    const pessoas = await db.usuario.findMany({
+      where: { ativo: true, acessos: { some: { papel: { in: PAPEIS_QUE_VENDEM } } } },
+      orderBy: { nome: 'asc' },
+      select: { id: true, nome: true },
+    })
+    // Todas as linhas até o mês pedido, da mais recente para trás: a
+    // primeira de cada pessoa é a que vale (a do mês, ou a herdada).
+    const metas = await db.meta.findMany({
+      where: { mes: { lte: mes } },
+      orderBy: { mes: 'desc' },
+      select: { usuarioId: true, mes: true, valor: true, comissaoPct: true },
+    })
+    const vendas = await db.$queryRaw<{ vendedor_id: string; total: string }[]>`
+      select v.vendedor_id, sum(v.total) as total
+        from vendas v
+       where v.situacao = 'CONCLUIDA' and v.vendedor_id is not null
+         and v.criada_em >= ${de} and v.criada_em < ${ate}
+       group by 1
+    `
+    const devolucoes = await db.$queryRaw<{ vendedor_id: string; total: string }[]>`
+      select v.vendedor_id, sum(d.valor) as total
+        from devolucoes d join vendas v on v.id = d.venda_id
+       where v.vendedor_id is not null
+         and d.criada_em >= ${de} and d.criada_em < ${ate}
+       group by 1
+    `
 
     const vendidoDe = new Map(vendas.map((v) => [v.vendedor_id, centavos(v.total)]))
     const devolvidoDe = new Map(devolucoes.map((d) => [d.vendedor_id, centavos(d.total)]))
@@ -137,23 +135,21 @@ export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPes
 export async function minhaMeta(sessao: Sessao, mes: string) {
   const { de, ate } = janelaDoMes(mes)
   return comoOrg(sessao.orgId, async (db) => {
-    const [linha, vendas, devolucoes] = await Promise.all([
-      db.meta.findFirst({
-        where: { usuarioId: sessao.usuarioId, mes: { lte: mes } },
-        orderBy: { mes: 'desc' },
-        select: { valor: true, comissaoPct: true },
-      }),
-      db.venda.aggregate({
-        where: { vendedorId: sessao.usuarioId, situacao: 'CONCLUIDA', criadaEm: { gte: de, lt: ate } },
-        _sum: { total: true },
-      }),
-      // Líquido de devolução, a mesma conta da tela da equipe — os dois
-      // números têm que ser o mesmo, senão a pessoa desconfia dos dois.
-      db.devolucao.aggregate({
-        where: { venda: { vendedorId: sessao.usuarioId }, criadaEm: { gte: de, lt: ate } },
-        _sum: { valor: true },
-      }),
-    ])
+    const linha = await db.meta.findFirst({
+      where: { usuarioId: sessao.usuarioId, mes: { lte: mes } },
+      orderBy: { mes: 'desc' },
+      select: { valor: true, comissaoPct: true },
+    })
+    const vendas = await db.venda.aggregate({
+      where: { vendedorId: sessao.usuarioId, situacao: 'CONCLUIDA', criadaEm: { gte: de, lt: ate } },
+      _sum: { total: true },
+    })
+    // Líquido de devolução, a mesma conta da tela da equipe — os dois
+    // números têm que ser o mesmo, senão a pessoa desconfia dos dois.
+    const devolucoes = await db.devolucao.aggregate({
+      where: { venda: { vendedorId: sessao.usuarioId }, criadaEm: { gte: de, lt: ate } },
+      _sum: { valor: true },
+    })
     if (!linha) return null
     const valorC = centavos(linha.valor)
     const vendidoC = Math.max(centavos(vendas._sum.total ?? 0) - centavos(devolucoes._sum.valor ?? 0), 0)
