@@ -36,6 +36,12 @@ export type DadosProduto = {
   precoCartao?: number | null
   precoCrediario?: number | null
   custo?: number | null
+  /**
+   * Dias do pedido à prateleira. Nulo = não informado, e a previsão de
+   * ruptura usa o prazo padrão dela. É cadastro, não preço: quem pode editar
+   * a ficha pode preencher.
+   */
+  prazoReposicaoDias?: number | null
 }
 
 export type ResultadoProduto =
@@ -158,6 +164,7 @@ export async function criarProduto(
         precoCartao: dados.precoCartao ?? dados.precoVista,
         precoCrediario: dados.precoCrediario ?? dados.precoCartao ?? dados.precoVista,
         custo: dados.custo ?? null,
+        prazoReposicaoDias: dados.prazoReposicaoDias ?? null,
         eixos: {
           create: usados.map((e, i) => ({ orgId: sessao.orgId, eixoId: e.eixoId, ordem: i })),
         },
@@ -253,6 +260,7 @@ export async function editarProduto(
         ...(dados.precoCartao !== undefined && { precoCartao: dados.precoCartao }),
         ...(dados.precoCrediario !== undefined && { precoCrediario: dados.precoCrediario }),
         ...(dados.custo !== undefined && { custo: dados.custo }),
+        ...(dados.prazoReposicaoDias !== undefined && { prazoReposicaoDias: dados.prazoReposicaoDias }),
         ...(dados.ativo !== undefined && { ativo: dados.ativo }),
       },
     })
@@ -419,7 +427,7 @@ export async function acharProduto(sessao: Sessao, produtoId: string) {
       select: {
         id: true, nome: true, marca: true, descricao: true, categoriaId: true,
         medida: true, precoVista: true, precoCartao: true, precoCrediario: true,
-        custo: true, ativo: true,
+        custo: true, prazoReposicaoDias: true, ativo: true,
         eixos: { orderBy: { ordem: 'asc' }, select: { eixoId: true, ordem: true } },
         variacoes: {
           orderBy: { codigo: 'asc' },

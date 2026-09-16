@@ -36,6 +36,8 @@ export type ProdutoNaTela = {
   precoCartao: string
   precoCrediario: string
   custo: string
+  /** Dias, como texto do campo. Vazio = não informado. */
+  prazoReposicaoDias: string
   ativo: boolean
   /** As opções já marcadas hoje, por eixo. */
   marcadas: Record<string, string[]>
@@ -139,6 +141,21 @@ export function Editor({
             placeholder="22,00"
             inputMode="decimal"
             dica="Sem ele o relatório não sabe calcular margem."
+          />
+          {/* Ao lado do custo porque é a outra metade da conta de compra:
+              quanto custa e quanto demora. Sem ele a previsão de ruptura usa
+              um prazo padrão e avisa que é padrão. */}
+          <Campo
+            rotulo="Prazo de reposição (dias)"
+            name="prazoReposicaoDias"
+            type="number"
+            min={0}
+            max={365}
+            step={1}
+            defaultValue={produto?.prazoReposicaoDias ?? ''}
+            placeholder="7"
+            inputMode="numeric"
+            dica="Quantos dias o fornecedor leva para entregar. É o que transforma 'está acabando' em 'vai faltar'."
           />
         </div>
       </Cartao>

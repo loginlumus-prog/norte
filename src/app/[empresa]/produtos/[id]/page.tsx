@@ -98,6 +98,7 @@ export default async function FichaProduto({
     precoCartao: emReais(produto.precoCartao),
     precoCrediario: emReais(produto.precoCrediario),
     custo: emReais(produto.custo),
+    prazoReposicaoDias: produto.prazoReposicaoDias == null ? '' : String(produto.prazoReposicaoDias),
     ativo: produto.ativo,
     marcadas,
     comHistorico: produto.variacoes.length,

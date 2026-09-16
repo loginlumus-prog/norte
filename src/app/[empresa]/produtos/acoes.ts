@@ -23,6 +23,25 @@ const preco = (f: FormData, k: string): number | null => {
   return Number.isFinite(v) && v >= 0 ? v : null
 }
 
+const PRAZO_MAXIMO_DIAS = 365
+
+/**
+ * O prazo de reposição: inteiro de 0 a 365 dias.
+ *
+ * Vazio é "não informado" (nulo), e é diferente de zero: zero quer dizer
+ * "o fornecedor entrega no mesmo dia". Fora da faixa ou com letra, a ação
+ * devolve erro em vez de gravar nulo em silêncio — a pessoa digitou alguma
+ * coisa e merece saber que não entrou.
+ */
+const prazo = (f: FormData): { valor: number | null } | { erro: string } => {
+  const bruto = String(f.get('prazoReposicaoDias') ?? '').trim()
+  if (!bruto) return { valor: null }
+  if (!/^\d+$/.test(bruto) || Number(bruto) > PRAZO_MAXIMO_DIAS) {
+    return { erro: `O prazo de reposição é em dias inteiros, de 0 a ${PRAZO_MAXIMO_DIAS}.` }
+  }
+  return { valor: Number(bruto) }
+}
+
 /**
  * Quais opções de quais eixos foram marcadas.
  *
@@ -56,6 +75,8 @@ export async function criar(
 
   const vista = preco(form, 'precoVista')
   if (vista == null || vista <= 0) return { erro: 'Informe o preço à vista.' }
+  const reposicao = prazo(form)
+  if ('erro' in reposicao) return { erro: reposicao.erro }
 
   const medidaBruta = String(form.get('medida') ?? 'UN') as Medida
   const medida = MEDIDAS.includes(medidaBruta) ? medidaBruta : 'UN'
@@ -74,6 +95,7 @@ export async function criar(
         precoCartao: preco(form, 'precoCartao'),
         precoCrediario: preco(form, 'precoCrediario'),
         custo: preco(form, 'custo'),
+        prazoReposicaoDias: reposicao.valor,
       },
       eixosDoFormulario(form, eixosDaEmpresa),
     )
@@ -101,6 +123,8 @@ export async function editar(
 
   const vista = preco(form, 'precoVista')
   if (vista == null || vista <= 0) return { erro: 'Informe o preço à vista.' }
+  const reposicao = prazo(form)
+  if ('erro' in reposicao) return { erro: reposicao.erro }
 
   const medidaBruta = String(form.get('medida') ?? 'UN') as Medida
   const medida = MEDIDAS.includes(medidaBruta) ? medidaBruta : 'UN'
@@ -116,6 +140,7 @@ export async function editar(
       precoCartao: preco(form, 'precoCartao') ?? vista,
       precoCrediario: preco(form, 'precoCrediario') ?? vista,
       custo: preco(form, 'custo'),
+      prazoReposicaoDias: reposicao.valor,
       ativo: form.get('ativo') === 'on',
     })
     if (!r.ok) return { erro: r.motivo }
