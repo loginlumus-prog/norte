@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Norte em escala</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap">
+
+<style>
+  :root {
+    --papel: #f6f4f0;
+    --carta: #fffefc;
+    --carta-2: #f1eee7;
+    --tinta: #2b2620;
+    --tinta-2: #55514a;
+    --tinta-3: #8a857c;
+    --linha: #e4e0d7;
+    --linha-suave: #efece5;
+    --titulo: #14265c;
+    --navy: #101f4a;
+    --navy-tinta: #ffffff;
+    --navy-tinta-2: #a6b6dd;
+    --marca: #1f4fd8;
+    --marca-suave: #e9eefd;
+    --sol: #ef7208;
+    --verde: #05713a;
+    --verde-fundo: #dcf5e6;
+    --ambar: #8a5406;
+    --ambar-fundo: #fdefd3;
+    --critico: #b81f14;
+    --critico-fundo: #fde5e2;
+
+    --display: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+    --texto: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --papel: #0f121c;
+      --carta: #171b27;
+      --carta-2: #1e2330;
+      --tinta: #e8e6e1;
+      --tinta-2: #a8a49c;
+      --tinta-3: #7d7a74;
+      --linha: #2a2e3b;
+      --linha-suave: #232735;
+      --titulo: #d6e2ff;
+      --navy: #0b1024;
+      --navy-tinta: #ffffff;
+      --navy-tinta-2: #98a7cd;
+      --marca: #6d92ff;
+      --marca-suave: #16224a;
+      --sol: #ffc04d;
+      --verde: #3ddc8a;
+      --verde-fundo: #0a2c1d;
+      --ambar: #fbc45c;
+      --ambar-fundo: #2f2410;
+      --critico: #ff8578;
+      --critico-fundo: #31150f;
+    }
+  }
+
+  :root[data-theme='dark'] {
+    --papel: #0f121c;
+    --carta: #171b27;
+    --carta-2: #1e2330;
+    --tinta: #e8e6e1;
+    --tinta-2: #a8a49c;
+    --tinta-3: #7d7a74;
+    --linha: #2a2e3b;
+    --linha-suave: #232735;
+    --titulo: #d6e2ff;
+    --navy: #0b1024;
+    --navy-tinta: #ffffff;
+    --navy-tinta-2: #98a7cd;
+    --marca: #6d92ff;
+    --marca-suave: #16224a;
+    --sol: #ffc04d;
+    --verde: #3ddc8a;
+    --verde-fundo: #0a2c1d;
+    --ambar: #fbc45c;
+    --ambar-fundo: #2f2410;
+    --critico: #ff8578;
+    --critico-fundo: #31150f;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: var(--texto);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+  }
+
+  .folha { max-width: 62rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
+
+  h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; }
+  h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; letter-spacing: -0.02em; color: var(--titulo); margin: 0 0 0.5rem; }
+  h2 { font-size: clamp(1.3rem, 3vw, 1.7rem); font-weight: 700; color: var(--titulo); margin: 3.5rem 0 0.25rem; padding-top: 1.5rem; border-top: 2px solid var(--linha); }
+  h3 { font-size: 1.05rem; font-weight: 700; margin: 2rem 0 0.5rem; }
+
+  p { margin: 0.75rem 0; max-width: 46rem; }
+  .lede { font-size: 1.1rem; color: var(--tinta-2); max-width: 44rem; }
+
+  .cabeca { display: flex; align-items: baseline; gap: 0.6rem; font-family: var(--display); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.7rem; color: var(--tinta-3); margin-bottom: 1.5rem; }
+  .agulha { color: var(--sol); font-size: 1rem; }
+
+  code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.85em; background: var(--carta-2); padding: 0.1em 0.35em; border-radius: 4px; }
+
+  .n { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .rolagem { overflow-x: auto; margin: 1.25rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; min-width: 34rem; }
+  th, td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--linha-suave); vertical-align: top; }
+  th { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta-3); font-weight: 700; border-bottom: 1px solid var(--linha); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.total td { font-weight: 700; border-top: 2px solid var(--linha); }
+  td small, li small { color: var(--tinta-3); }
+
+  ul, ol { padding-left: 1.3rem; max-width: 46rem; }
+  li { margin: 0.35rem 0; }
+  li b { color: var(--tinta); }
+
+  .resposta { border-left: 3px solid var(--sol); padding: 0.25rem 0 0.25rem 1.1rem; margin: 1.5rem 0; }
+  .resposta li { margin: 0.55rem 0; }
+
+  .degraus { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); margin: 1.5rem 0; }
+  .degrau { background: var(--carta); border: 1px solid var(--linha); border-radius: 10px; padding: 1.1rem 1.2rem 1.2rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .degrau .olho { font-family: var(--display); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--tinta-3); }
+  .degrau .grande { font-family: var(--display); font-size: 2rem; font-weight: 800; color: var(--titulo); line-height: 1; }
+  .degrau dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.75rem; font-size: 0.9rem; }
+  .degrau dt { color: var(--tinta-3); }
+  .degrau dd { margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .degrau .custo { margin-top: 0.4rem; padding-top: 0.6rem; border-top: 1px solid var(--linha-suave); display: flex; justify-content: space-between; align-items: baseline; }
+  .degrau .custo b { font-family: var(--display); font-size: 1.25rem; color: var(--titulo); }
+  .degrau ul { margin: 0.2rem 0 0; padding-left: 1rem; font-size: 0.88rem; color: var(--tinta-2); }
+
+  .nota { background: var(--carta); border: 1px solid var(--linha); border-radius: 10px; padding: 1rem 1.2rem; margin: 1.5rem 0; }
+  .nota p { margin: 0.35rem 0; }
+  .nota.aviso { border-color: color-mix(in srgb, var(--ambar) 45%, transparent); background: var(--ambar-fundo); }
+  .nota.aviso p, .nota.aviso li { color: var(--tinta); }
+
+  .selo { display: inline-block; font-family: var(--display); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 999px; vertical-align: middle; margin-left: 0.4rem; }
+  .selo.feito { background: var(--verde-fundo); color: var(--verde); }
+  .selo.pendente { background: var(--ambar-fundo); color: var(--ambar); }
+  .selo.voce { background: var(--marca-suave); color: var(--marca); }
+
+  /* para onde vai o dinheiro: barras 100% */
+  .barras { display: flex; flex-direction: column; gap: 1rem; margin: 1.25rem 0; }
+  .barra-linha { display: grid; grid-template-columns: 7.5rem 1fr; gap: 0.8rem; align-items: center; }
+  .barra-linha .rotulo { font-weight: 700; font-family: var(--display); }
+  .barra-linha .rotulo small { display: block; font-family: var(--texto); font-weight: 500; color: var(--tinta-3); }
+  .barra { display: flex; height: 26px; border-radius: 6px; overflow: hidden; border: 1px solid var(--linha); background: var(--carta); }
+  .barra span { display: block; min-width: 3px; height: 100%; }
+  .barra .zap { background: var(--verde); }
+  .barra .ia { background: var(--marca); }
+  .barra .gw { background: var(--sol); }
+  .barra .infra { background: var(--tinta-3); }
+  .barra .margem { background: var(--carta-2); }
+  .legenda { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; font-size: 0.85rem; color: var(--tinta-2); margin-top: 0.4rem; }
+  .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 0.35rem; vertical-align: -1px; border: 1px solid var(--linha); }
+  @media (max-width: 560px) { .barra-linha { grid-template-columns: 1fr; gap: 0.3rem; } }
+
+  .fontes { font-size: 0.85rem; color: var(--tinta-2); }
+  .fontes a { color: var(--marca); }
+  .rodape { margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--linha); font-size: 0.85rem; color: var(--tinta-3); }
+  a { color: var(--marca); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+</style>
+
+<body>
+<main class="folha">
+  <div class="cabeca"><span class="agulha">&#9670;</span> Norte &middot; 16 de setembro de 2026 &middot; escala, custos e gest&atilde;o</div>
+
+  <h1>Norte a 500, 1.000 e 2.000 assinantes</h1>
+  <p class="lede">
+    Como a estrutura de hoje aguenta cada degrau, o que precisa mudar em cada um, quanto custa
+    por m&ecirc;s (m&aacute;quina, gente e o que se paga por cliente) e o que a gest&atilde;o passa
+    a olhar toda semana. Os n&uacute;meros s&atilde;o estimativas com premissas escritas; mude a
+    premissa e a conta muda junto.
+  </p>
+
+  <div class="resposta">
+    <ul>
+      <li><b>M&aacute;quina n&atilde;o &eacute; o problema.</b> A infraestrutura fixa fica entre R$&nbsp;1.300 (500 assinantes) e R$&nbsp;4.100 por m&ecirc;s (2.000): menos de 1% da receita em todos os degraus.</li>
+      <li><b>O que pesa &eacute; o que se paga POR cliente do Assistente</b>: o WhatsApp (uma inst&acirc;ncia por empresa, ~R$&nbsp;100) e a IA (~R$&nbsp;36 por loja com cache). Somados, s&atilde;o ~22% da receita no mix estimado.</li>
+      <li><b>A segunda maior linha &eacute; gente</b>: uma pessoa de suporte a cada 150 a 250 assinantes, mais desenvolvimento. &Eacute; o custo que cresce em degraus, n&atilde;o em linha reta.</li>
+      <li><b>A arquitetura j&aacute; escala horizontalmente</b> (sess&atilde;o em cookie, sem estado no servidor, isolamento no banco). O que falta para dormir tranquilo em 500 j&aacute; entrou hoje ou &eacute; assinatura de servi&ccedil;o, n&atilde;o obra: backup cont&iacute;nuo, monitor de erro, endere&ccedil;o de sa&uacute;de e um processo separado para as rotinas do assistente.</li>
+      <li><b>A sobra estimada</b>, antes de marketing e pr&oacute;-labore: R$&nbsp;60 a 75 mil por m&ecirc;s em 500; R$&nbsp;105 a 135 mil em 1.000; R$&nbsp;215 a 270 mil em 2.000.</li>
+    </ul>
+  </div>
+
+  <h2>1. Como o sistema &eacute; hoje, e o que isso j&aacute; aguenta</h2>
+  <p>
+    Um processo Next.js serve as telas e as a&ccedil;&otilde;es; um Postgres no Supabase (S&atilde;o
+    Paulo) guarda tudo, acessado pelo pooler em modo transa&ccedil;&atilde;o; cada requisi&ccedil;&atilde;o
+    abre uma transa&ccedil;&atilde;o carimbada com a empresa, e o pr&oacute;prio banco recusa linha de
+    outra (RLS for&ccedil;ado nas 45 tabelas). A sess&atilde;o vive num cookie assinado, ent&atilde;o
+    o servidor n&atilde;o guarda estado: dois, tr&ecirc;s ou dez processos servem a mesma base sem
+    se coordenar.
+  </p>
+  <div class="rolagem">
+    <table>
+      <thead><tr><th>Pe&ccedil;a</th><th>Como est&aacute;</th><th>Aguenta at&eacute;</th><th>O que falta</th></tr></thead>
+      <tbody>
+        <tr><td><b>Aplica&ccedil;&atilde;o</b></td><td>1 processo Node, sem estado; deploy pelo <code>render.yaml</code></td><td>~500 assinantes num Standard (1 vCPU); a segunda inst&acirc;ncia &eacute; por redund&acirc;ncia, n&atilde;o por carga</td><td>Endere&ccedil;o de sa&uacute;de <span class="selo feito">entrou hoje</span>; processo separado para rotinas</td></tr>
+        <tr><td><b>Banco</b></td><td>Supabase, pooler 6543, &iacute;ndices compostos por empresa em toda tabela quente</td><td>Small: ~1.000 assinantes; Medium: ~2.000 sem r&eacute;plica</td><td>Backup cont&iacute;nuo (PITR) <span class="selo voce">assinar</span>; r&eacute;plica de leitura a partir de ~1.500</td></tr>
+        <tr><td><b>Portaria</b></td><td>Papel que s&oacute; l&ecirc; a fachada da empresa (9 colunas), 1 conex&atilde;o</td><td>Centenas de logins por segundo numa conex&atilde;o s&oacute;</td><td>Passou a 2 conex&otilde;es, configur&aacute;vel por <code>POOL_PORTARIA</code> <span class="selo feito">entrou hoje</span></td></tr>
+        <tr><td><b>Sess&atilde;o e presen&ccedil;a</b></td><td>Cookie assinado; um sinal no banco por pessoa a cada minuto</td><td>2.000 assinantes: ~40 escritas/s no pico, dentro do que um Small faz</td><td>Nada at&eacute; 2.000; depois, Redis para o sinal</td></tr>
+        <tr><td><b>Auditoria</b></td><td>Livro s&oacute; de escrita, nunca reescrito</td><td>~3 milh&otilde;es de linhas por m&ecirc;s em 500</td><td>Arquivar o que passar de 24 meses em armazenamento frio</td></tr>
+        <tr><td><b>Assistente (WhatsApp)</b></td><td>Modelo de dados pronto; canal e la&ccedil;o de IA ainda n&atilde;o ligados</td><td>&mdash;</td><td>Fila (pg-boss no mesmo Postgres) e processo trabalhador, desde o primeiro cliente do Assistente</td></tr>
+        <tr><td><b>Observabilidade</b></td><td>Log do processo</td><td>&mdash;</td><td>Sentry (erros) e um monitor externo que abre uma tela de verdade a cada minuto <span class="selo voce">assinar</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>2. As premissas da conta</h2>
+  <p>Tudo abaixo deriva destes n&uacute;meros. Quando a base real existir, eles s&atilde;o os primeiros a medir.</p>
+  <div class="rolagem">
+    <table>
+      <thead><tr><th>Premissa</th><th class="num">Valor</th><th>De onde vem</th></tr></thead>
+      <tbody>
+        <tr><td>Lojas por assinante</td><td class="num">1,8</td><td>Mix de loja &uacute;nica (Gr&aacute;tis, Balc&atilde;o) com redes pequenas (Dire&ccedil;&atilde;o)</td></tr>
+        <tr><td>Pessoas cadastradas por assinante</td><td class="num">4</td><td>Cadastro &eacute; livre em todo plano; pagam-se as vagas simult&acirc;neas</td></tr>
+        <tr><td>Vendas por dia, por loja</td><td class="num">30</td><td>Loja de rua de moda, cal&ccedil;ado, pet; o Gr&aacute;tis tem teto de 300/m&ecirc;s</td></tr>
+        <tr><td>Telas abertas por dia, por assinante</td><td class="num">400</td><td>4 pessoas &times; ~100 telas (balc&atilde;o abre uma por venda)</td></tr>
+        <tr><td>Mix de planos</td><td class="num">20 / 40 / 30 / 8 / 2</td><td>Gr&aacute;tis / Balc&atilde;o / Assistente / Dire&ccedil;&atilde;o / Corporativo, em % dos assinantes</td></tr>
+        <tr><td>Receita m&eacute;dia por assinante (contando os gr&aacute;tis)</td><td class="num">R$ 325</td><td>0,40&times;100 + 0,30&times;350 + 0,08&times;1.500 + 0,02&times;3.000</td></tr>
+        <tr><td>WhatsApp por empresa com Assistente</td><td class="num">~R$ 100/m&ecirc;s</td><td>Inst&acirc;ncia n&atilde;o oficial (Z-API); confirmar na tabela vigente. A API oficial da Meta cobra por conversa, n&atilde;o por inst&acirc;ncia</td></tr>
+        <tr><td>IA por loja, com cache</td><td class="num">~R$ 36/m&ecirc;s</td><td>Medido; est&aacute; em <code>planos.ts</code>. O cliente paga 3&times; isso pelo cr&eacute;dito inclu&iacute;do</td></tr>
+        <tr><td>Gateway de cobran&ccedil;a</td><td class="num">R$ 3 a 10 por cliente/m&ecirc;s</td><td>Pix e boleto em torno de R$ 2 a 3,50 por cobran&ccedil;a; cart&atilde;o ~3% + fixo</td></tr>
+        <tr><td>Suporte</td><td class="num">1 pessoa / 150&ndash;250 assinantes</td><td>Atendimento por WhatsApp; loja pequena pergunta muito no primeiro m&ecirc;s</td></tr>
+        <tr><td>Custo-empresa mensal</td><td class="num">R$ 6&ndash;8 mil suporte &middot; R$ 15&ndash;20 mil dev</td><td>CLT com encargos, fora de capital; ops/financeiro R$ 8 mil</td></tr>
+        <tr><td>C&acirc;mbio</td><td class="num">US$ 1 = R$ 5,15</td><td>Cota&ccedil;&atilde;o de setembro de 2026</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>3. Os tr&ecirc;s degraus</h2>
+  <p>Cada cart&atilde;o diz a carga que o degrau imp&otilde;e, a m&aacute;quina que responde a ela, o custo fixo dessa m&aacute;quina e o que muda no c&oacute;digo para chegar l&aacute;.</p>
+
+  <div class="degraus">
+    <div class="degrau">
+      <span class="olho">Degrau 1</span>
+      <span class="grande">500</span>
+      <dl>
+        <dt>Telas por dia</dt><dd>200 mil</dd>
+        <dt>Pico</dt><dd>~20 req/s</dd>
+        <dt>Vendas por dia</dt><dd>27 mil</dd>
+        <dt>Crescimento do banco</dt><dd>2,7 GB/m&ecirc;s</dd>
+        <dt>Conex&otilde;es de app</dt><dd>~30 de 400</dd>
+      </dl>
+      <div class="custo"><span>Infra fixa</span><b class="n">R$ 1.300/m&ecirc;s</b></div>
+      <ul>
+        <li>Supabase Pro + Small + PITR &middot; US$ 130</li>
+        <li>Render: 2 web Standard + 1 trabalhador &middot; US$ 75</li>
+        <li>Sentry Team, e-mail transacional &middot; US$ 46</li>
+        <li>Cloudflare gr&aacute;tis, dom&iacute;nio &middot; R$ 4</li>
+      </ul>
+      <ul>
+        <li><b>C&oacute;digo:</b> trabalhador para as rotinas do assistente; fila no Postgres; cache de 10 s da fachada da empresa</li>
+      </ul>
+    </div>
+
+    <div class="degrau">
+      <span class="olho">Degrau 2</span>
+      <span class="grande">1.000</span>
+      <dl>
+        <dt>Telas por dia</dt><dd>400 mil</dd>
+        <dt>Pico</dt><dd>~40 req/s</dd>
+        <dt>Vendas por dia</dt><dd>54 mil</dd>
+        <dt>Crescimento do banco</dt><dd>5,4 GB/m&ecirc;s</dd>
+        <dt>Conex&otilde;es de app</dt><dd>~40 de 600</dd>
+      </dl>
+      <div class="custo"><span>Infra fixa</span><b class="n">R$ 2.500/m&ecirc;s</b></div>
+      <ul>
+        <li>Supabase Pro + Medium + PITR + disco &middot; US$ 182</li>
+        <li>Render: 2 web Pro + 1 trabalhador &middot; US$ 195</li>
+        <li>Sentry, monitor externo, e-mail, Cloudflare Pro &middot; US$ 114</li>
+      </ul>
+      <ul>
+        <li><b>C&oacute;digo:</b> painel com resumo em cache por minuto; arquivamento da auditoria; limite de taxa por empresa nas a&ccedil;&otilde;es p&uacute;blicas; ambiente de homologa&ccedil;&atilde;o</li>
+      </ul>
+    </div>
+
+    <div class="degrau">
+      <span class="olho">Degrau 3</span>
+      <span class="grande">2.000</span>
+      <dl>
+        <dt>Telas por dia</dt><dd>800 mil</dd>
+        <dt>Pico</dt><dd>~80 req/s</dd>
+        <dt>Vendas por dia</dt><dd>108 mil</dd>
+        <dt>Crescimento do banco</dt><dd>11 GB/m&ecirc;s</dd>
+        <dt>Conex&otilde;es de app</dt><dd>~60 de 800</dd>
+      </dl>
+      <div class="custo"><span>Infra fixa</span><b class="n">R$ 4.100/m&ecirc;s</b></div>
+      <ul>
+        <li>Supabase Pro + Large + PITR + r&eacute;plica de leitura + disco &middot; US$ 351</li>
+        <li>Render: 3 web Pro + 2 trabalhadores &middot; US$ 305</li>
+        <li>Sentry Business, monitor, e-mail, Cloudflare Pro &middot; US$ 144</li>
+      </ul>
+      <ul>
+        <li><b>C&oacute;digo:</b> An&aacute;lise e relat&oacute;rios lendo da r&eacute;plica; sinal de presen&ccedil;a em Redis; p&aacute;gina de status; plant&atilde;o</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="nota">
+    <p><b>Por que 20 requisi&ccedil;&otilde;es por segundo n&atilde;o assustam.</b> Cada tela do Norte gasta de 50 a 150 ms de servidor, quase tudo esperando o banco. Um processo Node de 1 vCPU serve mais de 100 dessas por segundo; o gargalo que aparece primeiro &eacute; o banco, e por isso a tabela acima cresce o Supabase antes de crescer o Render.</p>
+    <p><b>Por que duas inst&acirc;ncias desde o degrau 1.</b> N&atilde;o &eacute; carga: &eacute; o deploy trocar de vers&atilde;o sem derrubar o balc&atilde;o de ninguém, e uma inst&acirc;ncia morrer sem a loja perceber. Com o endere&ccedil;o de sa&uacute;de que entrou hoje, o Render s&oacute; manda tr&aacute;fego para a inst&acirc;ncia nova depois que ela responde.</p>
+  </div>
+
+  <h2>4. A conta do m&ecirc;s, degrau a degrau</h2>
+  <p>Receita e custo no mix estimado. As faixas de gente s&atilde;o o intervalo entre contratar cedo e contratar apertado.</p>
+  <div class="rolagem">
+    <table>
+      <thead><tr><th>Por m&ecirc;s</th><th class="num">500</th><th class="num">1.000</th><th class="num">2.000</th></tr></thead>
+      <tbody>
+        <tr><td><b>Receita</b> <small>(R$ 325 por assinante)</small></td><td class="num">R$ 162.500</td><td class="num">R$ 325.000</td><td class="num">R$ 650.000</td></tr>
+        <tr><td>Custo vari&aacute;vel por cliente <small>(WhatsApp, IA, gateway, infra rateada)</small></td><td class="num">&minus; R$ 35.300</td><td class="num">&minus; R$ 70.700</td><td class="num">&minus; R$ 141.400</td></tr>
+        <tr><td>Infraestrutura fixa</td><td class="num">&minus; R$ 1.300</td><td class="num">&minus; R$ 2.500</td><td class="num">&minus; R$ 4.100</td></tr>
+        <tr><td>Gente <small>(suporte, dev, ops, contabilidade)</small></td><td class="num">&minus; R$ 32 a 47 mil</td><td class="num">&minus; R$ 70 a 100 mil</td><td class="num">&minus; R$ 135 a 190 mil</td></tr>
+        <tr><td>Impostos <small>(Simples at&eacute; R$ 400 mil/m&ecirc;s; depois Presumido)</small></td><td class="num">&minus; ~R$ 19 mil</td><td class="num">&minus; ~R$ 45 mil</td><td class="num">&minus; ~R$ 98 mil</td></tr>
+        <tr class="total"><td>Sobra antes de marketing e pr&oacute;-labore</td><td class="num">R$ 60 a 75 mil</td><td class="num">R$ 105 a 135 mil</td><td class="num">R$ 215 a 270 mil</td></tr>
+        <tr><td>Infra fixa como % da receita</td><td class="num">0,8%</td><td class="num">0,8%</td><td class="num">0,6%</td></tr>
+        <tr><td>Equipe estimada</td><td class="num">2&ndash;3 suporte &middot; 1 dev</td><td class="num">4&ndash;6 suporte &middot; 2 dev &middot; 1 ops</td><td class="num">8&ndash;12 suporte &middot; 1 l&iacute;der &middot; 3 dev &middot; 2 ops</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="nota aviso">
+    <p><b>Duas coisas a conferir com o contador antes de usar estes n&uacute;meros para levantar dinheiro.</b> A faixa do Simples depende do Fator R (folha sobre receita); com equipe de suporte grande, a al&iacute;quota efetiva cai. E o teto do Simples (R$ 4,8 milh&otilde;es por ano) &eacute; cruzado entre 1.000 e 2.000 assinantes: a partir dali a empresa muda de regime, e o planejamento disso come&ccedil;a um ano antes.</p>
+  </div>
+
+  <h2>5. Para onde vai o dinheiro de cada plano</h2>
+  <p>A mensalidade de cada plano, repartida entre o que se paga por fora para servi-lo e o que sobra bruto. O Gr&aacute;tis n&atilde;o aparece: custa ~R$ 1 de m&aacute;quina e o suporte que ele pedir.</p>
+
+  <div class="barras">
+    <div class="barra-linha">
+      <div class="rotulo">Balc&atilde;o <small>R$ 100</small></div>
+      <div>
+        <div class="barra" role="img" aria-label="Balcão: gateway R$ 3, infra R$ 2, margem bruta R$ 95">
+          <span class="gw" style="width:3%" title="Gateway R$ 3"></span>
+          <span class="infra" style="width:2%" title="Infra R$ 2"></span>
+          <span class="margem" style="width:95%" title="Margem bruta R$ 95"></span>
+        </div>
+        <div class="legenda"><span><i style="background:var(--sol)"></i>Gateway R$ 3</span><span><i style="background:var(--tinta-3)"></i>Infra R$ 2</span><span><i style="background:var(--carta-2)"></i>Margem bruta <b class="n">R$ 95 (95%)</b></span></div>
+      </div>
+    </div>
+    <div class="barra-linha">
+      <div class="rotulo">Assistente <small>R$ 350</small></div>
+      <div>
+        <div class="barra" role="img" aria-label="Assistente: WhatsApp R$ 100, IA R$ 36, gateway R$ 5, infra R$ 3, margem bruta R$ 206">
+          <span class="zap" style="width:28.6%" title="WhatsApp R$ 100"></span>
+          <span class="ia" style="width:10.3%" title="IA R$ 36"></span>
+          <span class="gw" style="width:1.4%" title="Gateway R$ 5"></span>
+          <span class="infra" style="width:0.9%" title="Infra R$ 3"></span>
+          <span class="margem" style="width:58.8%" title="Margem bruta R$ 206"></span>
+        </div>
+        <div class="legenda"><span><i style="background:var(--verde)"></i>WhatsApp R$ 100</span><span><i style="background:var(--marca)"></i>IA R$ 36</span><span><i style="background:var(--sol)"></i>Gateway R$ 5</span><span><i style="background:var(--tinta-3)"></i>Infra R$ 3</span><span><i style="background:var(--carta-2)"></i>Margem bruta <b class="n">R$ 206 (59%)</b></span></div>
+      </div>
+    </div>
+    <div class="barra-linha">
+      <div class="rotulo">Dire&ccedil;&atilde;o <small>R$ 1.500</small></div>
+      <div>
+        <div class="barra" role="img" aria-label="Direção: WhatsApp R$ 100, IA R$ 100, gateway R$ 10, infra R$ 6, margem bruta R$ 1.284">
+          <span class="zap" style="width:6.7%" title="WhatsApp R$ 100"></span>
+          <span class="ia" style="width:6.7%" title="IA R$ 100"></span>
+          <span class="gw" style="width:0.7%" title="Gateway R$ 10"></span>
+          <span class="infra" style="width:0.4%" title="Infra R$ 6"></span>
+          <span class="margem" style="width:85.5%" title="Margem bruta R$ 1.284"></span>
+        </div>
+        <div class="legenda"><span><i style="background:var(--verde)"></i>WhatsApp R$ 100</span><span><i style="background:var(--marca)"></i>IA R$ 100</span><span><i style="background:var(--sol)"></i>Gateway R$ 10</span><span><i style="background:var(--tinta-3)"></i>Infra R$ 6</span><span><i style="background:var(--carta-2)"></i>Margem bruta <b class="n">R$ 1.284 (86%)</b></span></div>
+      </div>
+    </div>
+  </div>
+  <p>
+    A leitura importante: <b>o Assistente &eacute; o plano de margem mais apertada</b>, e o que
+    aperta &eacute; a inst&acirc;ncia de WhatsApp, n&atilde;o a IA. Isso &eacute; um argumento
+    concreto na decis&atilde;o Z-API contra API oficial da Meta: a oficial cobra por conversa
+    (centavos), e para uma loja que troca 300 mensagens por m&ecirc;s sai mais barata que a
+    inst&acirc;ncia fixa. O outro caminho &eacute; negociar a faixa de parceiro da Z-API a partir
+    de ~50 inst&acirc;ncias.
+  </p>
+
+  <h2>6. O que muda no c&oacute;digo, e quando</h2>
+  <p>Em ordem de urg&ecirc;ncia. Nada aqui &eacute; reescrita; s&atilde;o pe&ccedil;as que se encaixam na arquitetura que j&aacute; existe.</p>
+  <ol>
+    <li><b>Endere&ccedil;o de sa&uacute;de e troca de vers&atilde;o sem queda</b> <span class="selo feito">hoje</span> &mdash; <code>/saude</code> responde sem tocar no banco e o <code>render.yaml</code> passou a esperar por ele antes de virar o tr&aacute;fego.</li>
+    <li><b>Backup cont&iacute;nuo (PITR)</b> <span class="selo voce">assinar</span> &mdash; o Supabase Pro guarda 7 dias de backup di&aacute;rio; PITR (US$ 100/m&ecirc;s) permite voltar a qualquer minuto. &Eacute; a diferen&ccedil;a entre perder um dia de vendas de 500 lojas e perder dois minutos. Antes do primeiro cliente pagante, e um teste de restaura&ccedil;&atilde;o por trimestre.</li>
+    <li><b>Monitor de erro e de disponibilidade</b> <span class="selo voce">assinar</span> &mdash; Sentry recebendo as exce&ccedil;&otilde;es do servidor e do navegador; um monitor externo abrindo <code>/exemplo/entrar</code> a cada minuto e avisando no WhatsApp quando falhar.</li>
+    <li><b>Processo trabalhador e fila</b> <span class="selo pendente">com o primeiro cliente do Assistente</span> &mdash; relat&oacute;rio de manh&atilde; e &agrave; noite, cobran&ccedil;a de atraso e o pr&oacute;prio la&ccedil;o de IA n&atilde;o podem rodar dentro do processo que serve o balc&atilde;o. Fila no pr&oacute;prio Postgres (pg-boss), um trabalhador no Render, tetos de gasto por dia j&aacute; existem (<code>gastoDiaCent</code>).</li>
+    <li><b>Cache de 10 segundos da fachada da empresa</b> <span class="selo pendente">~300 assinantes</span> &mdash; toda requisi&ccedil;&atilde;o pergunta &agrave; portaria de quem &eacute; o endere&ccedil;o; um cache curto em mem&oacute;ria corta 90% dessas idas. Curto de prop&oacute;sito: ligar um m&oacute;dulo em Configura&ccedil;&otilde;es tem que aparecer na tela seguinte.</li>
+    <li><b>Painel com resumo por minuto</b> <span class="selo pendente">~800</span> &mdash; o painel &eacute; a tela mais aberta e a mais pesada; guardar o resultado por empresa por 60 s tira ele do caminho cr&iacute;tico do banco.</li>
+    <li><b>Arquivamento da auditoria</b> <span class="selo pendente">~1.000</span> &mdash; o livro cresce sem parar (&eacute; a natureza dele). O que passar de 24 meses vai para armazenamento frio, consult&aacute;vel, fora do banco quente.</li>
+    <li><b>Limite de taxa por empresa</b> <span class="selo pendente">~1.000</span> &mdash; o login j&aacute; tem freio por e-mail e por origem; as a&ccedil;&otilde;es p&uacute;blicas (exportar, convite) ganham teto por empresa por minuto.</li>
+    <li><b>Ambiente de homologa&ccedil;&atilde;o</b> <span class="selo pendente">~1.000</span> &mdash; um segundo servi&ccedil;o no Render apontando para um branch, com banco pr&oacute;prio (branch do Supabase). Toda migra&ccedil;&atilde;o passa por ele antes de produ&ccedil;&atilde;o.</li>
+    <li><b>R&eacute;plica de leitura</b> <span class="selo pendente">~1.500</span> &mdash; An&aacute;lise, curva ABC e fechamento leem da r&eacute;plica; o balc&atilde;o fica sozinho no prim&aacute;rio. &Eacute; uma segunda URL em <code>comoOrg</code> para leitura, nada mais.</li>
+    <li><b>Sinal de presen&ccedil;a fora do Postgres</b> <span class="selo pendente">~2.000</span> &mdash; hoje &eacute; uma escrita por pessoa por minuto; em 2.000 assinantes s&atilde;o dezenas por segundo o dia inteiro, e Redis faz isso de gra&ccedil;a.</li>
+    <li><b>Seguran&ccedil;a que acompanha o tamanho</b> &mdash; segundo fator para o papel DONO (~500), rota&ccedil;&atilde;o do <code>SEGREDO_SESSAO</code> com aviso (derruba todas as sess&otilde;es), lista de sess&otilde;es ativas por pessoa, encarregado de dados e termos revisados (LGPD) antes de cobrar.</li>
+  </ol>
+
+  <h2>7. Gest&atilde;o: o que se olha toda semana</h2>
+  <p>Com 500 empresas dentro, a diferen&ccedil;a entre incidente e cat&aacute;strofe &eacute; quem viu primeiro. Estes s&atilde;o os pain&eacute;is da reuni&atilde;o de segunda.</p>
+  <div class="rolagem">
+    <table>
+      <thead><tr><th>Indicador</th><th>Onde</th><th>Limite que acende</th></tr></thead>
+      <tbody>
+        <tr><td>Tempo de resposta p95 por tela</td><td>Sentry / Render</td><td>Acima de 800 ms no balc&atilde;o</td></tr>
+        <tr><td>Taxa de erro</td><td>Sentry</td><td>Acima de 0,5% das requisi&ccedil;&otilde;es</td></tr>
+        <tr><td>CPU e conex&otilde;es do banco</td><td>Supabase</td><td>CPU acima de 60% por 15 min; pooler acima de 70% do teto</td></tr>
+        <tr><td>Consultas lentas</td><td><code>pg_stat_statements</code></td><td>Qualquer consulta acima de 500 ms de m&eacute;dia</td></tr>
+        <tr><td>Custo de IA por plano</td><td>Tabela <code>consumo_ia</code></td><td>Custo bruto acima de 40% do cr&eacute;dito cobrado</td></tr>
+        <tr><td>Churn e inadimpl&ecirc;ncia</td><td>Gateway + <code>cobrancas</code></td><td>Cancelamento acima de 3% ao m&ecirc;s; atraso acima de 8%</td></tr>
+        <tr><td>Tempo de primeira resposta no suporte</td><td>WhatsApp comercial</td><td>Acima de 15 min em hor&aacute;rio comercial</td></tr>
+        <tr><td>Backup restaur&aacute;vel</td><td>Ensaio trimestral</td><td>Restaurar num projeto vazio e abrir o painel de uma empresa</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Os rituais</h3>
+  <ul>
+    <li><b>Suporte em duas camadas.</b> A primeira responde pelo WhatsApp com o Guia do Norte na m&atilde;o (o mesmo manual que a tela mostra); a segunda &eacute; quem entra na empresa com papel SUPORTE, prazo e motivo, e tudo que fizer fica no livro do cliente.</li>
+    <li><b>Deploy s&oacute; com migra&ccedil;&atilde;o aditiva.</b> Nunca apagar coluna no mesmo deploy que para de us&aacute;-la; o <code>npm run migrar</code> j&aacute; imp&otilde;e a leitura do SQL antes de aplicar.</li>
+    <li><b>Runbook de incidente</b> com tr&ecirc;s p&aacute;ginas: banco fora, aplica&ccedil;&atilde;o fora, WhatsApp fora. Quem avisa quem, em quanto tempo, e o texto que vai para os clientes.</li>
+    <li><b>P&aacute;gina de status</b> a partir de 1.000: o cliente que v&ecirc; &ldquo;estamos cientes&rdquo; n&atilde;o liga; o que n&atilde;o v&ecirc; liga para todo mundo.</li>
+    <li><b>Revis&atilde;o de custo por cliente</b> todo m&ecirc;s: WhatsApp, IA e gateway por plano, contra a mensalidade. &Eacute; o n&uacute;mero que decide se o Assistente continua a R$ 350.</li>
+  </ul>
+
+  <h2>8. O que entrou hoje no produto</h2>
+  <p>
+    A atualiza&ccedil;&atilde;o grande pedida em 16/09: as funcionalidades de quadro (do tipo Monday),
+    desempenho, precifica&ccedil;&atilde;o e ruptura, o Guia do Norte em toda tela, e a p&aacute;gina
+    de venda com as se&ccedil;&otilde;es novas. Tudo distribu&iacute;do pelos planos numa escada: a
+    tela existe em todo plano, e o que o plano n&atilde;o abre aparece trancado, com exemplo por
+    tr&aacute;s e o nome do plano que abre.
+  </p>
+  <div class="rolagem">
+    <table>
+      <thead><tr><th>Recurso</th><th>Gr&aacute;tis</th><th>Balc&atilde;o</th><th>Assistente</th><th>Dire&ccedil;&atilde;o</th></tr></thead>
+      <tbody>
+        <tr><td><b>Tarefas</b> &mdash; quadro da equipe com grupos, situa&ccedil;&atilde;o colorida e &ldquo;+ adicionar&rdquo;</td><td>1 quadro, 30 abertas</td><td>&agrave; vontade</td><td>&agrave; vontade</td><td>&agrave; vontade</td></tr>
+        <tr><td>Respons&aacute;vel, prazo e prioridade em estrelas</td><td>trancado</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+        <tr><td>Linha do tempo e modelos de quadro (abertura da loja, invent&aacute;rio, campanha, mercadoria)</td><td>trancado</td><td>trancado</td><td>&#10003;</td><td>&#10003;</td></tr>
+        <tr><td>Quadro da rede inteira, loja a loja</td><td>trancado</td><td>trancado</td><td>trancado</td><td>&#10003;</td></tr>
+        <tr><td><b>Desempenho em estrelas</b> &mdash; 50% meta, 30% tarefas no prazo, 20% presen&ccedil;a</td><td>trancado</td><td>trancado</td><td>b&aacute;sico</td><td>completo (3 meses, por loja)</td></tr>
+        <tr><td><b>Pre&ccedil;os</b> &mdash; margem e markup item a item</td><td>trancado</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+        <tr><td>Pre&ccedil;o sugerido para a margem alvo</td><td>trancado</td><td>trancado</td><td>&#10003;</td><td>&#10003;</td></tr>
+        <tr><td><b>Vai faltar</b> &mdash; previs&atilde;o de ruptura com prazo de reposi&ccedil;&atilde;o do produto</td><td>trancado</td><td>trancado</td><td>trancado</td><td>&#10003;</td></tr>
+        <tr><td><b>Guia do Norte</b> &mdash; ajuda em toda tela, com busca e passo a passo; responde por IA quando h&aacute; chave</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    A escada mora em um lugar s&oacute; (<code>LIBERACOES</code>, em <code>planos.ts</code>), a
+    tabela de compara&ccedil;&atilde;o da p&aacute;gina de venda l&ecirc; dela, e um teste garante que
+    as duas nunca divergem.
+  </p>
+
+  <h2>9. O que continua dependendo de voc&ecirc;</h2>
+  <ul>
+    <li><b>Hospedagem de verdade</b> &mdash; o <code>render.yaml</code> sobe sozinho; faltam as tr&ecirc;s credenciais que s&oacute; voc&ecirc; cola, e o dom&iacute;nio.</li>
+    <li><b>Backup cont&iacute;nuo e monitor</b> &mdash; duas assinaturas (Supabase PITR; Sentry ou equivalente). Sem elas, 500 clientes &eacute; um risco que n&atilde;o vale correr.</li>
+    <li><b>Chave da IA</b> &mdash; liga o Guia respondendo perguntas livres e, depois, o assistente no WhatsApp. Conta sua; o c&oacute;digo l&ecirc; <code>ANTHROPIC_API_KEY</code>.</li>
+    <li><b>Z-API ou API oficial da Meta</b> &mdash; a decis&atilde;o que mais mexe na margem do Assistente (se&ccedil;&atilde;o 5). A conta est&aacute; em <code>docs/conta-do-assistente.html</code>.</li>
+    <li><b>Gateway de cobran&ccedil;a</b> (Asaas, Iugu ou Vindi) &mdash; perto do d&eacute;cimo cliente; at&eacute; l&aacute; Pix na m&atilde;o.</li>
+    <li><b>Conta do empres&aacute;rio e ponto</b> (a proposta do Gabriel) &mdash; a an&aacute;lise j&aacute; foi entregue; nada foi aplicado e nada aqui depende disso. Quando decidir, entra como trilha pr&oacute;pria.</li>
+  </ul>
+
+  <h2>Fontes</h2>
+  <ul class="fontes">
+    <li>Supabase, pre&ccedil;os e compute: <a href="https://supabase.com/pricing">supabase.com/pricing</a> e <a href="https://flexprice.io/blog/supabase-pricing-breakdown">resumo de 2026</a>. Limites de conex&atilde;o do pooler: <a href="https://supabase.com/docs/guides/database/connecting-to-postgres/pooling-and-limits">documenta&ccedil;&atilde;o</a>.</li>
+    <li>Render, inst&acirc;ncias: <a href="https://render.com/pricing">render.com/pricing</a> e <a href="https://www.getpricepulse.com/blog/render-pricing-2026.html">resumo de 2026</a>.</li>
+    <li>Vercel Pro (alternativa): <a href="https://vercel.com/pricing">vercel.com/pricing</a>.</li>
+    <li>APIs de WhatsApp no Brasil em 2026: <a href="https://wafly.com.br/comparativos/quanto-custa-api-whatsapp/">comparativo</a> e <a href="https://api-wa.me/blog/quanto-custa-api-whatsapp-precos-meta">pre&ccedil;os da Meta</a>.</li>
+    <li>C&acirc;mbio: <a href="https://br.investing.com/currencies/usd-brl">Investing.com, USD/BRL</a>, setembro de 2026.</li>
+    <li>Custo de IA medido e margem: <code>src/servidor/custo-ia.ts</code> e <code>src/servidor/planos.ts</code>, neste reposit&oacute;rio.</li>
+  </ul>
+
+  <p class="rodape">Este documento vive em <code>docs/norte-em-escala.html</code>, versionado junto com o c&oacute;digo. Quando uma premissa for medida de verdade, o n&uacute;mero muda aqui.</p>
+</main>
+</body>
+</html>

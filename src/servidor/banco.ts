@@ -143,8 +143,16 @@ export async function comoOrg<T>(
 let portaria: PrismaClient | undefined
 
 export async function acharOrgPorSlug(slug: string) {
+  // Poucas conexões, e de propósito: a portaria responde uma pergunta de uma
+  // linha, em milissegundos. Uma conexão só aguenta centenas de logins por
+  // segundo; duas é folga para o dia em que a resposta demorar. Passa a ser
+  // gargalo antes de qualquer outra coisa? Não: o que cresce com a base é o
+  // pool da aplicação (POOL_MAX), e é ele que se ajusta por instância.
   portaria ??= new PrismaClient({
-    adapter: new PrismaPg({ connectionString: url('DATABASE_URL_PORTARIA'), max: 1 }),
+    adapter: new PrismaPg({
+      connectionString: url('DATABASE_URL_PORTARIA'),
+      max: Number(process.env.POOL_PORTARIA ?? 2),
+    }),
   })
   return portaria.org.findUnique({
     where: { slug },

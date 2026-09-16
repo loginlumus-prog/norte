@@ -39,6 +39,9 @@ services:
 
     buildCommand: npm ci --include=dev && npx prisma generate && npm run build
     startCommand: npm run start
+    # O Render só manda tráfego para a instância nova depois que este endereço
+    # responde 200 — é o que faz o deploy trocar de versão sem ninguém ver.
+    healthCheckPath: /saude
 
     envVars:
       - key: NODE_VERSION

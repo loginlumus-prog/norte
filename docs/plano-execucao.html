@@ -733,11 +733,40 @@
     </div>
     <div class="nota aviso">
       <p>
-        <b>Sobraram tr&ecirc;s &ldquo;em breve&rdquo;, e nenhum depende de escrever c&oacute;digo
-        primeiro.</b> A <b>an&aacute;lise b&aacute;sica</b> e a <b>an&aacute;lise profunda</b>
-        dependem da chave da IA. A <b>previs&atilde;o de ruptura com prazo do fornecedor</b>
-        precisa de um cadastro de fornecedor com prazo de entrega, que ainda n&atilde;o existe no
-        banco &mdash; &eacute; a pr&oacute;xima obra de tamanho m&eacute;dio.
+        <b>Sobraram tr&ecirc;s &ldquo;em breve&rdquo; nesta data.</b> A <b>an&aacute;lise b&aacute;sica</b> e a <b>an&aacute;lise profunda</b>
+        dependem da chave da IA. A <b>previs&atilde;o de ruptura</b> entrou em 16/09 sem cadastro de fornecedor:
+        o prazo de reposi&ccedil;&atilde;o passou a morar no produto (ver a se&ccedil;&atilde;o seguinte).
+      </p>
+    </div>
+
+    <h2>16/09 &mdash; a empresa por dentro: quadro, estrelas, pre&ccedil;o e o Guia</h2>
+    <p>
+      Pedido: crescer o Norte para o tamanho de empresa grande &mdash; acompanhamento de equipe do
+      tipo Monday (quadro com situa&ccedil;&atilde;o colorida, respons&aacute;vel, linha do tempo,
+      prazo e estrelas), as dores do varejo que a Dext lista (excesso, ruptura, precifica&ccedil;&atilde;o,
+      produtividade), tudo distribu&iacute;do pelos planos como escada, e uma ajuda que sabe o sistema
+      inteiro. Junto, a pergunta de quanto custa aguentar 500, 1.000 e 2.000 assinantes.
+      Cinco frentes em paralelo, cada uma com testes pr&oacute;prios; a su&iacute;te foi de 355 para 548.
+    </p>
+    <div class="trilha">
+      <div class="n">&#10003;</div>
+      <div>
+        <h3>O que entrou <span class="selo feito">5 frentes</span></h3>
+        <ul>
+          <li class="ok"><span class="tam ok">&check;</span><b>Tarefas</b> &mdash; quadros por loja ou da empresa, grupos, tarefa com respons&aacute;vel, situa&ccedil;&atilde;o (a fazer, em andamento, parado, feito), linha do tempo, prazo e prioridade em estrelas; quatro modelos prontos (abertura e fechamento, invent&aacute;rio, campanha, chegada de mercadoria); vis&atilde;o loja a loja. Duas capacidades novas: <code>tarefa.ver</code> (a balconista d&aacute; baixa no que &eacute; dela) e <code>tarefa.gerir</code>. Isolamento provado em PGlite. <span class="quando">16/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Desempenho em estrelas</b> &mdash; 0 a 5 por pessoa por m&ecirc;s: metade da nota &eacute; a meta, 30% s&atilde;o tarefas entregues no prazo, 20% presen&ccedil;a (dias em que entrou). Sem um insumo, os pesos se redistribuem. Na tela Equipe e num cart&atilde;o do Painel. <span class="quando">16/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Pre&ccedil;os</b> &mdash; margem, markup e o pre&ccedil;o que a margem alvo pede, item a item; quem est&aacute; abaixo do custo, abaixo do alvo, sem custo; quanto saiu em 30 dias. S&oacute; leitura: pre&ccedil;o se muda na ficha. <span class="quando">16/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Vai faltar</b> &mdash; a previs&atilde;o de ruptura saiu do &ldquo;em breve&rdquo; sem cadastro de fornecedor: o prazo de reposi&ccedil;&atilde;o mora no produto (campo novo na ficha). Quantos dias o saldo dura no ritmo de 30 dias, e at&eacute; quando pedir. <span class="quando">16/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Guia do Norte</b> &mdash; o bot&atilde;o com o s&iacute;mbolo em toda tela abre o manual da tela atual (20 telas, 88 como-fazer, 344 passos, 59 perguntas), uma busca, e uma caixa de pergunta que responde pelo manual ou, quando houver <code>ANTHROPIC_API_KEY</code>, pela IA usando s&oacute; o manual como contexto. Nenhum dado do banco vai para a IA. <span class="quando">16/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>A escada dos planos</b> &mdash; <code>LIBERACOES</code> em <code>planos.ts</code> diz a partir de que plano cada peda&ccedil;o abre; <code>Trancado</code> e <code>Cadeado</code> mostram o que o plano n&atilde;o abre, com amostra por tr&aacute;s e o nome do plano. Um teste garante que a tabela de compara&ccedil;&atilde;o e a escada nunca divergem. <span class="quando">16/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>P&aacute;gina de venda</b> &mdash; tr&ecirc;s se&ccedil;&otilde;es novas (as seis dores e onde cada uma &eacute; resolvida; o quadro vivo da equipe; a roda dos m&oacute;dulos), cart&otilde;es dos planos atualizados, e o &ldquo;a partir de R$ 349&rdquo; corrigido para o menor plano pago de verdade, derivado da tabela. <span class="quando">16/09</span></li>
+          <li class="ok"><span class="tam ok">&check;</span><b>Escala</b> &mdash; endere&ccedil;o <code>/saude</code> e <code>healthCheckPath</code> no Render (troca de vers&atilde;o sem queda); pool da portaria configur&aacute;vel. A conta de 500 a 2.000 assinantes est&aacute; em <code>docs/norte-em-escala.html</code>. <span class="quando">16/09</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="nota aviso">
+      <p>
+        <b>Sobrou um &ldquo;em breve&rdquo; s&oacute;</b>: a an&aacute;lise b&aacute;sica e a profunda do neg&oacute;cio, que dependem da chave da IA. Com a chave, o Guia j&aacute; responde por IA no mesmo dia.
       </p>
     </div>
 
