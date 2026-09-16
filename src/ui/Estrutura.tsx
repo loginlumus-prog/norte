@@ -28,6 +28,7 @@ import { TrocaTema, type Tema } from './TrocaTema'
 import { Simbolo } from './Marca'
 import { Gaveta } from './Gaveta'
 import { Tranca } from './Tranca'
+import { Guia } from './Guia'
 import { cx, Ponto } from './base'
 
 export type ItemMenu = {
@@ -267,6 +268,7 @@ export async function Estrutura({
       {/* Trinta minutos parada, a tela tranca e pede a senha. Mora aqui
           porque aqui é por onde toda tela passa — ver Tranca.tsx. */}
       <Tranca slug={empresa.slug} nome={sessao.nome} trancaMin={TRANCA_MIN} avisoSeg={AVISO_SEG} />
+      <Guia slug={empresa.slug} empresa={empresa.nome} nome={sessao.nome} />
     </div>
   )
 }

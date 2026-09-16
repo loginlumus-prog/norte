@@ -74,7 +74,7 @@ export function Tranca({
     return (
       <div
         role="status"
-        className="fixed right-4 bottom-4 z-50 flex items-center gap-3 rounded-norte border border-atencao-borda bg-atencao-fundo px-4 py-3 text-sm font-medium text-atencao shadow-norte-alta"
+        className="fixed right-4 bottom-20 z-50 flex items-center gap-3 rounded-norte border border-atencao-borda bg-atencao-fundo px-4 py-3 text-sm font-medium text-atencao shadow-norte-alta"
       >
         <span aria-hidden className="respira size-2 rounded-full bg-atencao-vivo" />
         A tela vai trancar em <b className="numero">{restante}s</b>. Mexa em qualquer coisa para continuar.
