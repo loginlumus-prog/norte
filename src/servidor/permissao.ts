@@ -30,6 +30,9 @@ export const CAPACIDADES = [
   // pessoas
   'cliente.ver',
   'cliente.editar',
+  // o quadro de tarefas da equipe
+  'tarefa.ver', // ver o quadro e mexer nas PRÓPRIAS tarefas (situação, progresso)
+  'tarefa.gerir', // criar quadro, criar e atribuir tarefa, apagar
   // dinheiro
   'crediario.ver',
   'crediario.cobrar', // mandar cobrança, negociar
@@ -59,6 +62,7 @@ const SO_LEITURA: Capacidade[] = [
   'relatorio.ver',
   'equipe.ver',
   'auditoria.ver',
+  'tarefa.ver',
 ]
 
 export const PODERES: Record<Papel, readonly Capacidade[]> = {
@@ -76,17 +80,21 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
     'crediario.ver', 'crediario.cobrar', 'crediario.receber',
     'financeiro.ver', 'relatorio.ver',
     'equipe.ver', 'equipe.gerir', 'auditoria.ver',
+    'tarefa.ver', 'tarefa.gerir',
   ],
 
   // Balcão: vende. Não mexe em preço, não ajusta estoque, não vê o financeiro.
   // Recebe parcela porque é dinheiro entrando no caixa com a pessoa na
   // frente — a mesma coisa que uma venda.
+  // Vê o quadro e dá baixa no que é dela — a lista de abertura da loja é
+  // trabalho de quem abre a loja. Criar tarefa para os outros é do gerente.
   BALCAO: [
     'venda.ver', 'venda.criar',
     'caixa.ver', 'caixa.operar',
     'produto.ver', 'estoque.ver',
     'cliente.ver', 'cliente.editar',
     'crediario.ver', 'crediario.receber',
+    'tarefa.ver',
   ],
 
   // Financeiro: o dinheiro. Não mexe em produto nem vende.
@@ -96,6 +104,7 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
     'crediario.ver', 'crediario.cobrar', 'crediario.receber',
     'financeiro.ver', 'financeiro.lancar',
     'relatorio.ver', 'auditoria.ver',
+    'tarefa.ver',
   ],
 
   // Contador: convidado. Só olha o dinheiro, não escreve nada em lugar nenhum.

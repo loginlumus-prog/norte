@@ -412,7 +412,7 @@ export function menorQueCabe(uso: { unidades: number }): Plano {
 
 export type Recurso = {
   titulo: string
-  grupo: 'Operação' | 'Dinheiro' | 'Assistente' | 'Estrutura'
+  grupo: 'Operação' | 'Dinheiro' | 'Equipe' | 'Assistente' | 'Estrutura'
   /** Em quais planos ele existe. */
   em: Plano[]
   /** Quando o recurso e quantitativo, o numero de cada plano. */
@@ -473,10 +473,22 @@ export const RECURSOS: Recurso[] = [
   { titulo: 'Nota fiscal (NFC-e e NF-e)', grupo: 'Operação', em: PAGOS, destaque: true },
   { titulo: 'Encomenda e entrega', grupo: 'Operação', em: PAGOS },
   {
-    titulo: 'Previsão de ruptura com prazo do fornecedor',
+    // Deixou de ser "em breve" em 16/09: o prazo mora no PRODUTO (dias que o
+    // fornecedor leva para repor), não num cadastro de fornecedor — que
+    // continua não existindo, e não precisa existir para isto funcionar.
+    titulo: 'Previsão de ruptura com prazo de reposição',
     grupo: 'Operação',
     em: DE_REDE,
-    quando: 'breve',
+    destaque: true,
+  },
+  {
+    // Custo contra preço, item a item: margem, markup e o preço que a margem
+    // alvo pediria. A sugestão é do Assistente para cima; a leitura da margem
+    // é de todo plano pago.
+    titulo: 'Precificação: margem, markup e preço sugerido',
+    grupo: 'Operação',
+    em: PAGOS,
+    detalhe: { BALCAO: 'margem', BALCAO_AGENTE: 'completa', REDE: 'completa', CORPORATIVO: 'completa' },
   },
 
   // ── Dinheiro ──
@@ -488,7 +500,7 @@ export const RECURSOS: Recurso[] = [
   },
   { titulo: 'Financeiro com DRE do mês', grupo: 'Dinheiro', em: PAGOS, destaque: true },
   { titulo: 'Contas a pagar e recorrentes', grupo: 'Dinheiro', em: PAGOS },
-  { titulo: 'Metas e comissão por vendedor', grupo: 'Dinheiro', em: COM_AGENTE },
+  { titulo: 'Metas e comissão por vendedor', grupo: 'Equipe', em: COM_AGENTE },
   { titulo: 'Fechamento de mês guiado', grupo: 'Dinheiro', em: PAGOS },
   {
     titulo: 'Curva ABC e dinheiro parado',
@@ -497,6 +509,36 @@ export const RECURSOS: Recurso[] = [
     destaque: true,
   },
   { titulo: 'Crediário próprio, com juros e cobrança', grupo: 'Dinheiro', em: DE_REDE, destaque: true },
+
+  // ── Equipe ──
+  // O quadro existe em TODO plano — inclusive no Grátis, com um quadro só. É
+  // a tela que a equipe abre todo dia, e é onde quem paga pouco vê, trancado
+  // e com nome, o que o plano de cima abre.
+  {
+    titulo: 'Quadro de tarefas da equipe',
+    grupo: 'Equipe',
+    em: TODOS_OS_PLANOS,
+    detalhe: porPlano(TODOS_OS_PLANOS, (l) => (l.degrau === 0 ? '1 quadro' : 'à vontade')),
+    destaque: true,
+  },
+  { titulo: 'Responsável, prazo e prioridade na tarefa', grupo: 'Equipe', em: PAGOS },
+  { titulo: 'Linha do tempo e modelos de quadro', grupo: 'Equipe', em: COM_AGENTE },
+  { titulo: 'Quadro da rede inteira, loja a loja', grupo: 'Equipe', em: DE_REDE },
+  {
+    // Estrelas por pessoa e por mês: meta batida, tarefa entregue no prazo,
+    // dias presente. Básico conta; completo compara entre lojas e olha três
+    // meses para trás.
+    titulo: 'Desempenho da equipe em estrelas',
+    grupo: 'Equipe',
+    em: COM_AGENTE,
+    detalhe: { BALCAO_AGENTE: 'básico', REDE: 'completo', CORPORATIVO: 'completo' },
+    destaque: true,
+  },
+  {
+    titulo: 'Escala e presença da equipe',
+    grupo: 'Equipe',
+    em: DE_REDE,
+  },
 
   // ── Assistente ──
   {
@@ -573,11 +615,6 @@ export const RECURSOS: Recurso[] = [
     em: DE_REDE,
     destaque: true,
   },
-  {
-    titulo: 'Escala e presença da equipe',
-    grupo: 'Estrutura',
-    em: DE_REDE,
-  },
   { titulo: 'Livro de auditoria de tudo que mexe', grupo: 'Estrutura', em: TODOS_OS_PLANOS },
   {
     titulo: 'Site, tráfego e condução do negócio',
@@ -604,4 +641,68 @@ export function destaquesDe(p: Plano): { titulo: string; detalhe?: string }[] {
 }
 
 /** Os grupos, na ordem, para a tabela. */
-export const GRUPOS: Recurso['grupo'][] = ['Operação', 'Dinheiro', 'Assistente', 'Estrutura']
+export const GRUPOS: Recurso['grupo'][] = ['Operação', 'Dinheiro', 'Equipe', 'Assistente', 'Estrutura']
+
+// ─────────────────────────────────────────────────────────────
+// O QUE CADA PLANO ABRE DENTRO DE UMA TELA — a escada
+// ─────────────────────────────────────────────────────────────
+//
+// Módulo é grosso: liga ou desliga uma tela inteira. Isto aqui é fino: a
+// MESMA tela existe em todo plano, e o que muda é quanto dela está aberto. O
+// quadro de tarefas está no Grátis; o responsável e o prazo entram no Balcão;
+// a linha do tempo, no Assistente; a visão da rede, na Direção.
+//
+// ── por que a parte trancada APARECE ─────────────────────────
+// Esconder o que o plano não tem ensina que o sistema é pequeno. Mostrar
+// trancado — com um exemplo por trás e o nome do plano que abre — ensina o
+// que existe, e é a melhor propaganda que o plano de cima pode ter. A regra
+// de cortesia é uma só: trancado nunca parece quebrado. Tem cadeado, tem o
+// nome do plano, tem botão para ver os planos. Ver `ui/Cadeado.tsx`.
+//
+// ── por que é "a partir de", e não lista ─────────────────────
+// Todo recurso, quando existe, existe do plano X para cima — é a mesma escada
+// que a tabela de comparação já confere. Plano novo acima herda sozinho;
+// lista precisaria ser lembrada.
+
+export const LIBERACOES = {
+  'tarefas.quadro': { desde: 'GRATIS', titulo: 'Quadro de tarefas' },
+  'tarefas.varios': { desde: 'BALCAO', titulo: 'Mais de um quadro' },
+  'tarefas.responsavel': { desde: 'BALCAO', titulo: 'Responsável pela tarefa' },
+  'tarefas.prazo': { desde: 'BALCAO', titulo: 'Prazo da tarefa' },
+  'tarefas.prioridade': { desde: 'BALCAO', titulo: 'Prioridade em estrelas' },
+  'tarefas.linhaDoTempo': { desde: 'BALCAO_AGENTE', titulo: 'Linha do tempo' },
+  'tarefas.modelos': { desde: 'BALCAO_AGENTE', titulo: 'Modelos de quadro' },
+  'tarefas.rede': { desde: 'REDE', titulo: 'Quadro da rede inteira' },
+  'desempenho.basico': { desde: 'BALCAO_AGENTE', titulo: 'Desempenho da equipe' },
+  'desempenho.completo': { desde: 'REDE', titulo: 'Desempenho completo' },
+  'precos.margem': { desde: 'BALCAO', titulo: 'Margem e markup' },
+  'precos.sugestao': { desde: 'BALCAO_AGENTE', titulo: 'Preço sugerido' },
+  'ruptura.previsao': { desde: 'REDE', titulo: 'Previsão de ruptura' },
+} as const satisfies Record<string, { desde: Plano; titulo: string }>
+
+export type Liberacao = keyof typeof LIBERACOES
+
+/** Este plano abre este pedaço? */
+export function liberado(plano: Plano, chave: Liberacao): boolean {
+  return PLANOS[plano].degrau >= PLANOS[LIBERACOES[chave].desde].degrau
+}
+
+/** O plano que abre este pedaço — para a tela dizer "do Balcão para cima". */
+export function planoQueAbre(chave: Liberacao): Limite & { codigo: Plano } {
+  const codigo = LIBERACOES[chave].desde
+  return { ...PLANOS[codigo], codigo }
+}
+
+/** "do Balcão", "da Direção" — com o artigo que o nome pede. */
+export function doPlano(p: Plano): string {
+  const l = PLANOS[p]
+  return `${l.artigo === 'a' ? 'da' : 'do'} ${l.titulo}`
+}
+
+/**
+ * No Grátis o quadro é um só, e as tarefas em aberto têm teto.
+ *
+ * Trinta é o tamanho de uma lista de abertura e fechamento com folga. Quem
+ * passa disso está organizando uma equipe, e organizar equipe é o Balcão.
+ */
+export const TAREFAS_ABERTAS_NO_GRATIS = 30

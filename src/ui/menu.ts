@@ -37,10 +37,17 @@ export const MENU = (slug: string): ItemMenu[] => [
   // ── catálogo ──
   { grupo: 'Catálogo', href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver' },
   { grupo: 'Catálogo', href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },
+  // Margem, markup e o preço que a margem alvo pede. Exige mexer em preço, e
+  // não só ver produto: quem não pode mudar o preço não precisa ver o custo.
+  { grupo: 'Catálogo', href: `/${slug}/precos`, titulo: 'Preços', exige: 'produto.preco' },
 
   // ── pessoas ──
   { grupo: 'Pessoas', href: `/${slug}/clientes`, titulo: 'Clientes', exige: 'cliente.ver' },
   { grupo: 'Pessoas', href: `/${slug}/equipe`, titulo: 'Equipe', exige: 'equipe.ver' },
+  // O quadro da equipe: o que abrir, conferir, montar e ligar. Aparece para
+  // quem trabalha na loja, não só para quem manda — a balconista vê a lista
+  // de abertura e dá baixa no que é dela.
+  { grupo: 'Pessoas', href: `/${slug}/tarefas`, titulo: 'Tarefas', exige: 'tarefa.ver' },
 
   // ── dinheiro ──
   { grupo: 'Dinheiro', href: `/${slug}/financeiro`, titulo: 'Financeiro', exige: 'financeiro.ver' },

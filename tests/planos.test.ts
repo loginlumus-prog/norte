@@ -20,6 +20,11 @@ import {
   menorQueCabe,
   planoLibera,
   RECURSOS,
+  LIBERACOES,
+  liberado,
+  planoQueAbre,
+  doPlano,
+  GRUPOS,
 } from '../src/servidor/planos'
 import { TODOS } from '../src/servidor/modulos'
 
@@ -351,5 +356,75 @@ describe('o teto de vendas é só do Grátis', () => {
 
   it('e o plano grátis não vende vaga extra: o caminho dele é subir', () => {
     expect(PLANOS.GRATIS.porVagaExtra).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+// A ESCADA: o que cada plano abre dentro de uma tela
+// ─────────────────────────────────────────────────────────────
+
+describe('a escada do que cada plano abre', () => {
+  const chaves = Object.keys(LIBERACOES) as (keyof typeof LIBERACOES)[]
+
+  it('todo degrau aponta para um plano que existe', () => {
+    for (const c of chaves) expect(ORDEM, c).toContain(LIBERACOES[c].desde)
+  })
+
+  // Subir de plano nunca pode TRANCAR o que estava aberto. É a mesma regra
+  // dos módulos, pelo mesmo motivo: a tela de troca mostraria perda numa
+  // subida, e o cliente para de subir.
+  it('subir de plano nunca tranca o que estava aberto', () => {
+    for (const c of chaves) {
+      let aberto = false
+      for (const p of ORDEM) {
+        const agora = liberado(p, c)
+        if (aberto) expect(agora, `${c} fecha em ${p}`).toBe(true)
+        aberto = agora
+      }
+    }
+  })
+
+  it('o Grátis tem o quadro, e só ele; o Corporativo abre tudo', () => {
+    expect(liberado('GRATIS', 'tarefas.quadro')).toBe(true)
+    expect(liberado('GRATIS', 'tarefas.responsavel')).toBe(false)
+    expect(liberado('GRATIS', 'tarefas.linhaDoTempo')).toBe(false)
+    for (const c of chaves) expect(liberado('CORPORATIVO', c), c).toBe(true)
+  })
+
+  it('a linha do tempo e o desempenho são do Assistente; a rede, da Direção', () => {
+    expect(liberado('BALCAO', 'tarefas.linhaDoTempo')).toBe(false)
+    expect(liberado('BALCAO_AGENTE', 'tarefas.linhaDoTempo')).toBe(true)
+    expect(liberado('BALCAO_AGENTE', 'desempenho.basico')).toBe(true)
+    expect(liberado('BALCAO_AGENTE', 'tarefas.rede')).toBe(false)
+    expect(liberado('REDE', 'tarefas.rede')).toBe(true)
+    expect(liberado('REDE', 'ruptura.previsao')).toBe(true)
+  })
+
+  it('a frase do cadeado sai com o artigo do plano', () => {
+    expect(doPlano('BALCAO')).toBe('do Balcão')
+    expect(doPlano('REDE')).toBe('da Direção')
+    expect(planoQueAbre('tarefas.rede').codigo).toBe('REDE')
+  })
+
+  // A tabela de comparação promete em texto o que a escada abre em código.
+  // As duas precisam concordar, senão a página de venda vende uma coisa e a
+  // tela entrega outra.
+  it('a tabela de comparação concorda com a escada', () => {
+    const acha = (t: string) => RECURSOS.find((r) => r.titulo === t)!
+    const quadro = acha('Quadro de tarefas da equipe')
+    for (const p of ORDEM) expect(quadro.em, p).toContain(p)
+    const detalhes = acha('Responsável, prazo e prioridade na tarefa')
+    for (const p of ORDEM) expect(detalhes.em.includes(p), p).toBe(liberado(p, 'tarefas.responsavel'))
+    const rede = acha('Quadro da rede inteira, loja a loja')
+    for (const p of ORDEM) expect(rede.em.includes(p), p).toBe(liberado(p, 'tarefas.rede'))
+    const desempenho = acha('Desempenho da equipe em estrelas')
+    for (const p of ORDEM) expect(desempenho.em.includes(p), p).toBe(liberado(p, 'desempenho.basico'))
+    const ruptura = acha('Previsão de ruptura com prazo de reposição')
+    expect(ruptura.quando).toBeUndefined()
+    for (const p of ORDEM) expect(ruptura.em.includes(p), p).toBe(liberado(p, 'ruptura.previsao'))
+  })
+
+  it('todo recurso da tabela está num grupo que a tabela desenha', () => {
+    for (const r of RECURSOS) expect(GRUPOS, r.titulo).toContain(r.grupo)
   })
 })

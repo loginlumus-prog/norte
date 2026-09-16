@@ -43,6 +43,14 @@ export const ACOES: Record<string, string> = {
   'crediario.recebeu': 'recebeu uma parcela',
   'equipe.papel.alterou': 'mudou o acesso de alguém',
   'equipe.meta': 'definiu meta e comissão',
+  'quadro.criou': 'criou um quadro de tarefas',
+  'quadro.alterou': 'alterou um quadro de tarefas',
+  'quadro.arquivou': 'arquivou um quadro de tarefas',
+  'tarefa.criou': 'criou uma tarefa',
+  'tarefa.alterou': 'alterou uma tarefa',
+  'tarefa.moveu': 'mudou a situação de uma tarefa',
+  'tarefa.concluiu': 'concluiu uma tarefa',
+  'tarefa.apagou': 'apagou uma tarefa',
   'equipe.desativou': 'desativou uma conta',
   'equipe.reativou': 'reativou uma conta',
   'convite.criou': 'convidou alguém',
@@ -70,6 +78,7 @@ export const ASSUNTOS: { chave: string; rotulo: string; prefixos: string[] }[] =
   { chave: 'produto', rotulo: 'produtos e estoque', prefixos: ['produto.', 'estoque.'] },
   { chave: 'cliente', rotulo: 'clientes', prefixos: ['cliente.', 'crediario.', 'pontos.'] },
   { chave: 'equipe', rotulo: 'equipe e acessos', prefixos: ['equipe.', 'convite.', 'sessao.', 'vaga.'] },
+  { chave: 'tarefa', rotulo: 'tarefas', prefixos: ['tarefa.', 'quadro.'] },
   { chave: 'empresa', rotulo: 'empresa', prefixos: ['empresa.', 'plano.', 'agente.', 'financeiro.'] },
 ]
 

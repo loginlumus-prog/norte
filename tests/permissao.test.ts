@@ -81,6 +81,20 @@ describe('balcão vende e só', () => {
   })
 })
 
+describe('o quadro de tarefas', () => {
+  it('quem trabalha na loja vê o quadro; quem manda nela cria tarefa', () => {
+    expect(pode(balcao3, 'tarefa.ver', LOJA_3)).toBe(true)
+    expect(pode(balcao3, 'tarefa.gerir', LOJA_3)).toBe(false)
+    expect(pode(gerente3, 'tarefa.gerir', LOJA_3)).toBe(true)
+    expect(pode(financeiro, 'tarefa.ver')).toBe(true)
+    expect(pode(financeiro, 'tarefa.gerir')).toBe(false)
+  })
+
+  it('o contador não tem nada com o quadro', () => {
+    expect(pode(contador, 'tarefa.ver')).toBe(false)
+  })
+})
+
 describe('contador é convidado', () => {
   it('vê o financeiro e os relatórios', () => {
     expect(pode(contador, 'financeiro.ver')).toBe(true)

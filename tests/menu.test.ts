@@ -21,14 +21,18 @@ const visiveis = (papel: Papel, modulos: string[] = TODOS) =>
 describe('o que cada perfil vê no menu', () => {
   it('o dono vê tudo', () => {
     expect(visiveis('DONO')).toEqual([
-      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Produtos', 'Estoque', 'Clientes', 'Equipe',
-      'Financeiro', 'Análise', 'Assistente', 'Auditoria', 'Assinatura', 'Configurações',
+      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Produtos', 'Estoque', 'Preços', 'Clientes', 'Equipe',
+      'Tarefas', 'Financeiro', 'Análise', 'Assistente', 'Auditoria', 'Assinatura', 'Configurações',
     ])
   })
 
   it('o balcão vê só o que é dele — e nada de dinheiro', () => {
     const v = visiveis('BALCAO')
-    expect(v).toEqual(['Balcão', 'Vendas', 'Caixa', 'Crediário', 'Produtos', 'Estoque', 'Clientes'])
+    // Tarefas entra: a lista de abertura da loja é trabalho de quem abre a
+    // loja, e ela dá baixa no que é dela. Preços não: quem não mexe em preço
+    // não precisa ver o custo.
+    expect(v).toEqual(['Balcão', 'Vendas', 'Caixa', 'Crediário', 'Produtos', 'Estoque', 'Clientes', 'Tarefas'])
+    expect(v).not.toContain('Preços')
     expect(v).not.toContain('Painel')
     expect(v).not.toContain('Financeiro')
     expect(v).not.toContain('Assinatura')
@@ -38,6 +42,8 @@ describe('o que cada perfil vê no menu', () => {
     const v = visiveis('GERENTE')
     expect(v).toContain('Painel')
     expect(v).toContain('Equipe')
+    expect(v).toContain('Tarefas')
+    expect(v).toContain('Preços')
     expect(v).toContain('Auditoria')
     expect(v).not.toContain('Assinatura')
     expect(v).not.toContain('Configurações')

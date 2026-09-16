@@ -198,6 +198,8 @@ model Org {
   consumoIA      ConsumoIA[]
   conversas      ConversaAgente[]
   mensagens      MensagemAgente[]
+  quadros        Quadro[]
+  tarefas        Tarefa[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -246,6 +248,7 @@ model Unidade {
   devolucoes  Devolucao[]
   parcelas    Parcela[]
   lancamentos Lancamento[]
+  quadros     Quadro[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -286,6 +289,7 @@ model Usuario {
   auditoria Auditoria[]
   presencas Presenca[]
   metas     Meta[]
+  tarefas   Tarefa[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -625,6 +629,12 @@ model Produto {
   precoCartao    Decimal? @map("preco_cartao") @db.Decimal(12, 2)
   precoCrediario Decimal? @map("preco_crediario") @db.Decimal(12, 2)
   custo          Decimal? @db.Decimal(12, 2)
+
+  /// Quantos dias o fornecedor leva para repor este produto, contados do
+  /// pedido à prateleira. É o número que transforma "está acabando" em "vai
+  /// faltar": se o saldo dura 6 dias e a reposição leva 10, já é tarde. Nulo
+  /// = a loja não informou, e a previsão usa só o ritmo de venda.
+  prazoReposicaoDias Int? @map("prazo_reposicao_dias")
 
   ativo Boolean @default(true)
 
@@ -1787,4 +1797,99 @@ enum TipoRecarga {
   AJUSTE
   /// Devolucao de valor cobrado errado.
   ESTORNO
+}
+
+// ─────────────────────────────────────────────────────────────
+// TAREFAS — o quadro da equipe
+// ─────────────────────────────────────────────────────────────
+//
+// O que a loja anota no quadro branco da copa: abrir a loja, conferir o
+// caixa, montar a vitrine de Natal, ligar para o fornecedor. Um quadro é um
+// assunto; a tarefa é a linha dele. O grupo ("Esta semana", "Este mês") é um
+// RÓTULO dentro do quadro, não uma tabela — nasce, muda de nome e some sem
+// migração.
+//
+// Tarefa não mexe em estoque, caixa nem dinheiro. É organização de gente, e
+// por isso mora perto de Meta e Presença, não perto de Venda.
+
+/// Um quadro de tarefas. Da empresa inteira (unidadeId nulo) ou de uma loja.
+model Quadro {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// Nulo = quadro da empresa inteira, visível em toda loja.
+  unidadeId String?  @map("unidade_id")
+  unidade   Unidade? @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  nome      String
+  descricao String?
+  /// Cor de identificação, em hex. Só aparência.
+  cor       String?
+  /// Os grupos do quadro, na ordem em que aparecem.
+  grupos    String[] @default([])
+  arquivado Boolean  @default(false)
+  ordem     Int      @default(0)
+
+  quem String
+
+  tarefas Tarefa[]
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, unidadeId, arquivado])
+  @@map("quadros")
+}
+
+/// Uma linha do quadro.
+model Tarefa {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  quadroId String @map("quadro_id")
+  quadro   Quadro @relation(fields: [quadroId], references: [id], onDelete: Cascade)
+
+  /// O nome do grupo dentro do quadro. Vazio = sem grupo.
+  grupo String @default("")
+
+  titulo    String
+  descricao String?
+
+  /// Quem responde por ela. Sai da pessoa (SetNull) sem apagar a tarefa:
+  /// desligar um funcionário não pode sumir com a lista de pendências da loja.
+  responsavelId String?  @map("responsavel_id")
+  responsavel   Usuario? @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
+
+  situacao SituacaoTarefa @default(A_FAZER)
+  /// De 1 a 5 estrelas. Zero = ninguém marcou.
+  prioridade Int @default(0)
+  /// De 0 a 100. É a linha do tempo preenchendo.
+  progresso Int @default(0)
+
+  /// Datas sem hora: uma tarefa é "para sexta", não "para sexta às 14h07".
+  inicio DateTime? @db.Date
+  prazo  DateTime? @db.Date
+  /// Carimbada quando vira FEITO; apagada se voltar. É o que permite dizer
+  /// "entregou no prazo" depois.
+  concluidaEm DateTime? @map("concluida_em")
+
+  ordem Int @default(0)
+  quem  String
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, quadroId, situacao])
+  @@index([orgId, responsavelId, situacao])
+  @@index([orgId, prazo])
+  @@map("tarefas")
+}
+
+enum SituacaoTarefa {
+  A_FAZER
+  EM_ANDAMENTO
+  PARADO
+  FEITO
 }
