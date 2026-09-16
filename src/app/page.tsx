@@ -1,10 +1,13 @@
 import type { Metadata } from 'next'
+import type { ComponentType } from 'react'
 import Image from 'next/image'
 import type { Plano } from '@prisma/client'
 import {
   PLANOS as LIMITES,
   PLANOS_COM_PRECO,
   RECOMENDADO,
+  doPlano,
+  planoQueAbre,
   type Limite,
 } from '@/servidor/planos'
 import { Marca, Simbolo } from '@/ui/Marca'
@@ -13,6 +16,17 @@ import { Digitando } from '@/ui/Digitando'
 import { CompararPlanos } from '@/ui/CompararPlanos'
 import { TrocaTema } from '@/ui/TrocaTema'
 import { CenaViva } from '@/ui/CenaViva'
+import { AoEntrar } from '@/ui/AoEntrar'
+import { QuadroVivo } from '@/ui/QuadroVivo'
+import { Modulos } from '@/ui/Modulos'
+import {
+  IconeControle,
+  IconeEquipes,
+  IconeExcesso,
+  IconePreco,
+  IconeRuptura,
+  IconeTempo,
+} from '@/ui/Icones'
 
 // A página de venda.
 //
@@ -33,7 +47,7 @@ import { CenaViva } from '@/ui/CenaViva'
 export const metadata: Metadata = {
   title: 'Norte — gestão da empresa, do balcão ao WhatsApp',
   description:
-    'Sistema de gestão para comércio: produto, estoque, balcão, caixa e o resultado do mês. Com um assistente de IA no WhatsApp que você batiza e que conhece a sua operação.',
+    'Sistema de gestão para comércio: produto, estoque, balcão, caixa, tarefas da equipe e o resultado do mês. Com um assistente de IA no WhatsApp que você batiza e que conhece a sua operação.',
 }
 
 // O texto de venda de cada plano.
@@ -61,6 +75,10 @@ const CARTOES: Record<
       'Estoque com histórico de cada movimento',
       'Balcão, caixa e fechamento do turno',
       'Clientes e histórico de compra',
+      // O quadro existe no Grátis de propósito (ver RECURSOS): é a tela que a
+      // equipe abre todo dia, e é onde quem paga zero vê, com nome e cadeado,
+      // o que o plano de cima abre.
+      'Um quadro de tarefas da equipe',
       'Um relatório simples do mês',
     ],
     fora: [
@@ -78,10 +96,12 @@ const CARTOES: Record<
       'Nota fiscal no balcão',
       'Financeiro e o DRE do mês',
       'Até três lojas, cada uma com seu estoque',
+      'Quadros de tarefas com responsável, prazo e prioridade',
+      'Preços: margem e markup item a item',
       'Equipe sem limite de cadastro, com permissão por pessoa',
       'Fechamento de mês guiado',
     ],
-    fora: ['Assistente no WhatsApp', 'Crediário próprio'],
+    fora: ['Assistente no WhatsApp', 'Desempenho da equipe em estrelas', 'Crediário próprio'],
   },
   BALCAO_AGENTE: {
     // "R$ 120 de crédito" não diz nada para quem nunca comprou token. O número
@@ -91,12 +111,23 @@ const CARTOES: Record<
     itens: [
       'Tudo do Balcão, e até cinco lojas',
       'Assistente no WhatsApp, com o nome que você der',
-      'Cobrança de atraso, aviso de ruptura, relatório 2× por dia',
+      // "Aviso de peça acabando" é o assistente falando; a PREVISÃO de ruptura
+      // contra o prazo do fornecedor é a tela de Estoque, e é da Direção para
+      // cima — por isso ela está em `fora`, com outro nome, para não parecer
+      // a mesma coisa dita duas vezes.
+      'Cobrança de atraso, aviso de peça acabando, relatório 2× por dia',
+      'Linha do tempo, modelos de quadro e desempenho da equipe em estrelas',
+      'Preço sugerido para a margem alvo',
       'Análise básica: o que aconteceu no dia e no mês · em breve',
       'Teto de valor e de desconto que você define',
       'Toda ação do assistente assinada no livro',
     ],
-    fora: ['Análise profunda do negócio', 'Crediário próprio', 'Lojas sem limite'],
+    fora: [
+      'Análise profunda do negócio',
+      'Previsão de ruptura contra o prazo do fornecedor',
+      'Crediário próprio',
+      'Lojas sem limite',
+    ],
   },
   REDE: {
     selo: 'O mais pedido',
@@ -105,6 +136,8 @@ const CARTOES: Record<
     itens: [
       'Tudo do Assistente, sem limite de loja nem de gente',
       'Análise profunda: onde está perdendo, onde está ganhando, e o que fazer · em breve',
+      'Previsão de ruptura com prazo de reposição: quantos dias o saldo aguenta, e até quando pedir',
+      'Quadro da rede inteira e desempenho completo da equipe, loja a loja',
       'Comparação entre lojas: venda, margem e estoque parado lado a lado',
       'Curva ABC e dinheiro parado: o que sustenta e o que come o capital',
       'Escala e presença: quem abriu o caixa, a que horas, e quanto vendeu',
@@ -154,6 +187,10 @@ const FAZ = [
     d: 'Cada loja com o saldo dela. A conta acontece dentro do banco, então duas vendas ao mesmo tempo nunca perdem uma baixa. E o histórico é a verdade: o sistema acusa se o saldo divergir.',
   },
   {
+    t: 'Preços',
+    d: 'Margem e markup item a item, e o preço que a margem alvo pediria. O que está abaixo do custo aparece numa lista — antes de virar prejuízo no DRE.',
+  },
+  {
     t: 'Balcão',
     d: 'Bipa a etiqueta, Enter lança. Pagamento dividido em várias formas, troco calculado, e o caixa fecha conferindo a gaveta.',
   },
@@ -164,6 +201,10 @@ const FAZ = [
   {
     t: 'Equipe',
     d: 'Permissão por pessoa e por loja. O gerente da loja 3 não vê o caixa da 5, e ninguém concede um cargo que ele mesmo não tem.',
+  },
+  {
+    t: 'Tarefas',
+    d: 'O quadro da equipe: quem está com o quê, o que parou e o que já foi feito. Modelos prontos para abertura, fechamento, inventário e chegada de mercadoria.',
   },
   {
     t: 'Livro de auditoria',
@@ -186,7 +227,10 @@ const PERGUNTAS = [
   },
   {
     p: 'Emite nota fiscal?',
-    r: 'Sim, nos planos Rede e Corporativo, e como opcional no Balcão. Você precisa do certificado digital A1 e da classificação fiscal dos produtos — é trabalho do seu contador, e é o que mais atrasa a entrada.',
+    // Dizia "Rede e Corporativo, e opcional no Balcão": o plano nem se chama
+    // mais Rede, e a nota fiscal é de todo plano pago — a tabela item por
+    // item confere. O nome vem da tabela para não envelhecer de novo.
+    r: `Sim, ${doPlano('BALCAO')} para cima. Você precisa do certificado digital A1 e da classificação fiscal dos produtos — é trabalho do seu contador, e é o que mais atrasa a entrada.`,
   },
   {
     p: 'E os meus dados ficam misturados com os de outra empresa?',
@@ -203,10 +247,20 @@ const PERGUNTAS = [
 // é, e o teto do assistente na seção dele. Nenhum número de mercado: a gente
 // não mediu, e promessa que não se cumpre vira pedido de reembolso no segundo
 // mês.
+//
+// ── o "a partir de" vem da tabela ────────────────────────────
+// Estava escrito à mão "R$ 349" — e o plano de R$ 349 não existe mais: o
+// menor plano pago hoje é o Balcão, a R$ 100. É exatamente o número que a
+// régua não pode errar, então ele passa a ser lido do mesmo lugar que a tela
+// de assinatura lê. E a segunda linha dizia "loja extra tem preço de tabela",
+// mas nenhum plano vende loja extra (`porUnidadeExtra` é null em todos); o
+// que tem preço de tabela é a PESSOA a mais dentro ao mesmo tempo.
+const MENOR_MENSAL = Math.min(...PLANOS_COM_PRECO.map((p) => LIMITES[p].mensal!))
+
 const PROVAS: [string, string][] = [
   [
-    'A partir de R$ 349 por mês',
-    'Sem taxa de implantação escondida, e loja extra tem preço de tabela.',
+    `A partir de ${reais(MENOR_MENSAL)} por mês`,
+    'Sem taxa de implantação escondida, e pessoa a mais tem preço de tabela.',
   ],
   [
     'De uma loja a quarenta',
@@ -269,6 +323,86 @@ const DOR: [string, string][] = [
     'Quem lembra de cobrar? A conversa que traz o dinheiro de volta é chata, é repetitiva, e é sempre a primeira a ficar para amanhã.',
   ],
 ]
+
+// As seis dores do varejo, e a TELA do Norte onde cada uma é resolvida.
+//
+// A referência que o dono gostou lista dores parecidas — porque são as dores
+// de qualquer loja, não as de um fornecedor. O que é nosso aqui é a resposta:
+// cada cartão termina com o nome da tela onde o número aparece, e não com uma
+// promessa de consultoria. Tela que não existe não entra — a previsão de
+// ruptura só entrou no dia em que deixou de ser "em breve".
+//
+// O ícone vem de `ui/Icones.tsx`, desenhado à mão para dizer a mecânica da
+// dor (a pilha que tomba, o vão na prateleira) e não a palavra.
+const RESOLVE: {
+  Icone: ComponentType<{ tamanho?: number; className?: string }>
+  t: string
+  d: string
+  tela: string
+}[] = [
+  {
+    Icone: IconeExcesso,
+    t: 'Estoque em excesso',
+    d: 'A curva ABC separa o que sustenta a loja do que só ocupa prateleira, e o dinheiro parado aparece em reais.',
+    tela: 'Análise',
+  },
+  {
+    Icone: IconeRuptura,
+    t: 'Ruptura',
+    d: 'Quantos dias o saldo aguenta no ritmo de venda, contra o prazo que o fornecedor leva — e até quando pedir.',
+    tela: 'Estoque',
+  },
+  {
+    Icone: IconePreco,
+    t: 'Precificação',
+    d: 'Margem, markup e o preço que a margem alvo pede, item a item. O que está abaixo do custo ou do alvo vem em lista.',
+    tela: 'Preços',
+  },
+  {
+    Icone: IconeTempo,
+    t: 'Tempo e produtividade',
+    d: 'O quadro diz quem está com o quê e o que parou; as estrelas do mês dizem quem entregou.',
+    tela: 'Tarefas e Equipe',
+  },
+  {
+    Icone: IconeControle,
+    t: 'Controle geral de estoque',
+    d: 'Entrada, transferência, balanço e conferência, loja a loja. O histórico é a verdade: se o saldo divergir, ele acusa.',
+    tela: 'Estoque',
+  },
+  {
+    Icone: IconeEquipes,
+    t: 'Integração das equipes',
+    d: 'Tarefa por loja, permissão por pessoa, e o assistente respondendo no WhatsApp com o que o sistema sabe.',
+    tela: 'Tarefas, Equipe e Assistente',
+  },
+]
+
+// O que a pessoa vê no quadro — as três perguntas que hoje são respondidas
+// no grupo de WhatsApp da loja, tarde e de memória.
+const EQUIPE: [string, string][] = [
+  [
+    'Quem está com o quê',
+    'Cada tarefa tem nome, responsável e prazo. A pergunta "de quem era isso?" deixa de existir no grupo da loja.',
+  ],
+  [
+    'O que parou, antes do fim do dia',
+    'O que travou aparece na cor dele, com a palavra junto, e o prazo está em toda linha. Não precisa abrir nada para ver onde a semana emperrou.',
+  ],
+  [
+    'Quem entregou, no fim do mês',
+    'Tarefa no prazo, meta batida e presença viram estrelas por pessoa. A conversa de desempenho passa a ter número, não impressão.',
+  ],
+]
+
+// A escada do quadro, lida de `LIBERACOES`: em que plano cada pedaço abre.
+// Escrita à mão, esta frase é a primeira a mentir no dia em que um pedaço
+// mudar de plano — e é justamente ela que a pessoa confere contra o cartão.
+const ESCADA_TAREFAS =
+  `Um quadro no ${LIMITES.GRATIS.titulo}. ` +
+  `Responsável, prazo e prioridade ${doPlano(planoQueAbre('tarefas.responsavel').codigo)} para cima; ` +
+  `linha do tempo e modelos prontos ${doPlano(planoQueAbre('tarefas.linhaDoTempo').codigo)} para cima; ` +
+  `o quadro da rede inteira, ${doPlano(planoQueAbre('tarefas.rede').codigo)}.`
 
 // O rodízio da faixa do assistente.
 //
@@ -338,6 +472,9 @@ export default function Inicio() {
             </a>
             <a href="#agente" className="hover:text-tinta">
               O assistente
+            </a>
+            <a href="#modulos" className="hover:text-tinta">
+              Módulos
             </a>
             <a href="#planos" className="hover:text-tinta">
               Planos
@@ -492,6 +629,44 @@ export default function Inicio() {
         </div>
       </section>
 
+      {/* ── o que resolve ──
+          As seis dores, cada uma com a tela que responde. Vem logo depois de
+          "O problema" porque é a resposta dele: três perguntas sem resposta
+          em cima, seis lugares onde a resposta aparece embaixo.
+
+          ── fio em cima, e não cartão com borda ──
+          A referência usa seis caixas com sombra. Aqui a grade é a mesma das
+          vizinhas — fio em cima, título forte, texto — pelo motivo que a
+          página inteira repete: caixa dentro de caixa vira caixote, e seis
+          caixotes numa fileira é catálogo de plugin. O que separa esta grade
+          das outras é o ícone, que dá a cada dor uma forma antes da palavra.
+
+          Fundo trocado (`bg-fundo`) para a página respirar entre três grades
+          de fio seguidas: papel, fundo, papel. */}
+      <section className="bg-fundo">
+        <div className="mx-auto max-w-6xl px-5 py-16">
+          <Titulo
+            olho="O que resolve"
+            titulo="Seis dores do varejo, e onde cada uma é resolvida"
+            resumo="Cada uma termina com o nome da tela onde o número aparece. Não é promessa de consultoria: é o lugar onde você vai olhar."
+          />
+          {/* `cascata`: os seis entram um atrás do outro, 60ms entre eles. É a
+              única animação da seção, e roda uma vez. */}
+          <AoEntrar className="cascata mt-9 grid grid-cols-2 gap-x-6 gap-y-9 lg:grid-cols-3">
+            {RESOLVE.map(({ Icone, t, d, tela }) => (
+              <div key={t} className="flex flex-col gap-3 border-t border-borda pt-4">
+                <Icone tamanho={40} className="text-marca" />
+                <h3 className="text-base font-bold">{t}</h3>
+                <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
+                <p className="mt-auto text-xs text-tinta-3">
+                  Na tela <span className="font-semibold text-tinta-2">{tela}</span>
+                </p>
+              </div>
+            ))}
+          </AoEntrar>
+        </div>
+      </section>
+
       {/* ── para quem é ──
           ── o que estava aqui antes ──
           Um bento de três cartões com fundo, canto arredondado e a foto presa
@@ -588,9 +763,12 @@ export default function Inicio() {
           <Titulo
             olho="O núcleo"
             titulo="O que todo cliente tem, no primeiro dia"
-            resumo="Sem módulo pago escondido no meio do caminho. O que muda de plano é a quantidade de lojas e o assistente."
+            resumo="Sem módulo pago escondido no meio do caminho. O que muda de plano é quantas lojas, o assistente — e quanto de cada tela está aberto, sempre com nome e cadeado."
           />
-          <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Oito itens, quatro por fileira. Com três colunas sobrava uma
+              fileira de dois e um buraco no fim; com quatro, duas fileiras
+              cheias — e o texto de cada item ainda cabe em `max-w-6xl`. */}
+          <div className="mt-9 grid gap-x-6 gap-y-7 sm:grid-cols-2 lg:grid-cols-4">
             {FAZ.map((f) => (
               <div
                 key={f.t}
@@ -600,6 +778,41 @@ export default function Inicio() {
                 <p className="text-sm leading-relaxed text-tinta-2">{f.d}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── a equipe ──
+          Texto à esquerda, o quadro à direita — a mesma anatomia da seção do
+          assistente, mas sobre papel. O quadro é desenhado em HTML com as
+          peças da interface (ver `ui/QuadroVivo.tsx`), sem moldura de janela,
+          e sangra 40px pela direita da coluna em `lg`. A seção tem
+          `overflow-hidden` para essa sangria nunca virar rolagem horizontal
+          na faixa em que a coluna encosta na borda da tela. */}
+      <section id="equipe" className="scroll-mt-16 overflow-hidden bg-superficie">
+        <div className="mx-auto max-w-6xl px-5 py-16">
+          <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.15fr] lg:gap-12">
+            <div className="flex flex-col gap-6">
+              <Titulo
+                olho="A equipe"
+                titulo="A equipe no mesmo quadro"
+                resumo="Abertura e fechamento da loja, inventário, campanha, chegada de mercadoria: quadros prontos para começar, e cada pessoa dá baixa no que é dela."
+              />
+              <ul className="flex flex-col gap-3">
+                {EQUIPE.map(([t, d]) => (
+                  <li key={t} className="flex gap-2.5">
+                    <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-marca" />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="text-sm font-semibold text-tinta">{t}</span>
+                      <span className="text-sm leading-relaxed text-tinta-2">{d}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="max-w-lg text-xs leading-relaxed text-tinta-3">{ESCADA_TAREFAS}</p>
+            </div>
+
+            <QuadroVivo />
           </div>
         </div>
       </section>
@@ -618,9 +831,11 @@ export default function Inicio() {
         id="agente"
         className="aurora emenda-topo emenda-base relative isolate scroll-mt-16 overflow-hidden"
         style={
+          // As vizinhas de cima e de baixo são de papel (`bg-superficie`): a
+          // equipe antes, os módulos depois. A costura dissolve na cor delas.
           {
-            '--emenda': 'var(--fundo)',
-            '--emenda-base': 'var(--fundo)',
+            '--emenda': 'var(--superficie)',
+            '--emenda-base': 'var(--superficie)',
           } as React.CSSProperties
         }
       >
@@ -728,6 +943,29 @@ export default function Inicio() {
         </div>
       </section>
 
+      {/* ── um sistema só ──
+          O diagrama: o Norte no centro e os oito módulos em volta, ligados a
+          ele — nunca entre si. É a prova visual de "sem trocar de sistema":
+          os módulos não se integram, eles leem a mesma base. Vem logo antes
+          dos planos porque é a última pergunta antes do preço: "e o que mais
+          eu vou precisar contratar?" — nada.
+
+          Texto à esquerda e a roda à direita em `lg`, porque a roda tem
+          largura fixa (40rem, ver `ui/Modulos.tsx`) e centrada sozinha num
+          contêiner de 72rem ficaria boiando. */}
+      <section id="modulos" className="scroll-mt-16 bg-superficie">
+        <div className="mx-auto max-w-6xl px-5 py-16">
+          <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,40rem)] lg:gap-14">
+            <Titulo
+              olho="Módulos"
+              titulo="Do balcão ao resultado do mês, sem trocar de sistema"
+              resumo="Venda, catálogo, gente e dinheiro leem a mesma base — e o assistente também. O que a sua empresa não usa some do menu, e volta com uma chave em Configurações."
+            />
+            <Modulos />
+          </div>
+        </div>
+      </section>
+
       {/* ── planos ──
           ── por que três cartões e não quatro ──
           O Corporativo não é o irmão maior dos outros: não tem preço de
@@ -768,8 +1006,8 @@ export default function Inicio() {
               </div>
               <p className="max-w-xl text-sm leading-relaxed text-tinta-2">
                 Uma loja, uma pessoa por vez, até {LIMITES.GRATIS.tetoVendasMes} vendas no mês.
-                Produto, estoque, balcão e cliente funcionam igual — o que fica de fora é nota
-                fiscal, assistente e o financeiro completo. É onde a loja pequena pode ficar, não
+                Produto, estoque, balcão, cliente e um quadro de tarefas funcionam igual — o que
+                fica de fora é nota fiscal, assistente e o financeiro completo. É onde a loja pequena pode ficar, não
                 uma demonstração com prazo.
               </p>
             </div>
@@ -949,9 +1187,15 @@ export default function Inicio() {
             </div>
           </div>
 
+          {/* Dizia "nota fiscal entra como opcional no Balcão" — e a tabela
+              logo abaixo mostra nota fiscal em todo plano pago. A letra miúda
+              agora diz a única coisa que é adicional de verdade, com o número
+              lido do plano: a vaga a mais. */}
           <p className="mt-5 text-xs text-tinta-3">
-            Valores mensais, por empresa. Nota fiscal e conciliação de maquininha entram como
-            opcional no plano Balcão.
+            Valores mensais, por empresa. Pessoa a mais dentro ao mesmo tempo custa{' '}
+            {reais(LIMITES.BALCAO.porVagaExtra!)} por mês no {LIMITES.BALCAO.titulo} e no{' '}
+            {LIMITES.BALCAO_AGENTE.titulo}; {LIMITES.REDE.artigo === 'a' ? 'a' : 'o'}{' '}
+            {LIMITES.REDE.titulo} não tem teto.
           </p>
 
           {/* A tabela item por item. Cartão vende, tabela decide: quem está
