@@ -3,7 +3,17 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { listarEquipe } from '@/servidor/equipe'
 import { listarConvites } from '@/servidor/convite'
 import { comoOrg } from '@/servidor/banco'
-import { pode, podeConceder, type Papel } from '@/servidor/permissao'
+import { pode, podeConceder, unidadesQuePodem, type Papel } from '@/servidor/permissao'
+import { planoDaEmpresa } from '@/servidor/relatorios'
+import { liberado } from '@/servidor/planos'
+import {
+  desempenhoDoMes,
+  desempenhoPorLoja,
+  tendenciaDaEquipe,
+  type NotaDaLoja,
+  type NotasDoMes,
+  type Tendencia,
+} from '@/servidor/desempenho'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Secao, Tira, Numero, brl } from '@/ui/painel'
@@ -14,6 +24,7 @@ import { metasDoMes, mesChave, mesValido, nomeDoMes } from '@/servidor/metas'
 import Link from 'next/link'
 import { Equipe, type PessoaNaTela, type ConviteNaTela } from './Equipe'
 import { Metas } from './Metas'
+import { Desempenho, SetasDoMes } from './Desempenho'
 
 const TODOS_PAPEIS: Papel[] = ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR']
 
@@ -50,6 +61,26 @@ export default async function TelaEquipe({
       db.unidade.findMany({ where: { ativa: true }, orderBy: { nome: 'asc' }, select: { id: true, nome: true } }),
     ),
   ])
+
+  // ── desempenho em estrelas ───────────────────────────────
+  // O plano decide quanto está aberto; o que não abre aparece trancado, com
+  // amostra (ver ui/Cadeado.tsx). Cada leitura abre o próprio comoOrg, uma
+  // depois da outra — nunca uma dentro da outra.
+  const plano = await planoDaEmpresa(sessao)
+  let notas: NotasDoMes | null = null
+  let tendencia: Tendencia | null = null
+  let porLoja: NotaDaLoja[] | null = null
+  if (liberado(plano, 'desempenho.basico')) {
+    // As metas já foram lidas logo acima; não vale ler de novo.
+    const opcoes = { metas: temMetas, metasProntas: temMetas ? metas : undefined }
+    notas = await desempenhoDoMes(sessao, mes, opcoes)
+    if (liberado(plano, 'desempenho.completo')) {
+      tendencia = await tendenciaDaEquipe(sessao, mes, 3, opcoes, notas)
+      const permitidas = unidadesQuePodem(sessao, 'equipe.ver')
+      const lojas = unidades.filter((u) => permitidas === 'todas' || permitidas.includes(u.id))
+      if (lojas.length > 1) porLoja = await desempenhoPorLoja(sessao, mes, lojas, opcoes)
+    }
+  }
 
   // Só os papéis que ESTA pessoa pode conceder. O gerente contrata balconista;
   // só o dono cria outro dono. Mostrar o que não dá para escolher só ensina
@@ -140,6 +171,14 @@ export default async function TelaEquipe({
           )}
         </Secao>
       )}
+
+      <Secao
+        titulo={`Desempenho · ${nomeDoMes(mes)}`}
+        resumo="Uma nota de 0 a 5 por pessoa: meta, tarefas no prazo e dias em que entrou no sistema. A conta fica aberta na linha."
+        acao={<SetasDoMes slug={slug} anterior={mesAnterior} seguinte={mesSeguinte} />}
+      >
+        <Desempenho slug={slug} plano={plano} pessoas={notas?.pessoas ?? []} tendencia={tendencia} lojas={porLoja} />
+      </Secao>
 
       <Secao titulo="Equipe">
         <Equipe

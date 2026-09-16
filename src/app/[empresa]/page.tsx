@@ -9,9 +9,13 @@ import { resumoCrediario } from '@/servidor/crediario'
 import { metasDoMes, mesChave } from '@/servidor/metas'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { moduloLigado } from '@/servidor/modulos'
+import { desempenhoDoMes, semDados } from '@/servidor/desempenho'
+import { liberado } from '@/servidor/planos'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Cartao, Situacao, Aviso, Ponto } from '@/ui/base'
+import { Cartao, Situacao, Aviso, Ponto, cx } from '@/ui/base'
+import { Estrelas } from '@/ui/Estrelas'
+import { Trancado } from '@/ui/Cadeado'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { SeletorPeriodo } from '@/ui/Periodo'
 import { Numero, Barras, Ranque, Secao, brl } from '@/ui/painel'
@@ -71,6 +75,17 @@ export default async function Painel({
   ])
 
   const completo = r.plano !== 'GRATIS'
+
+  // As estrelas do mês reaproveitam as metas já lidas: o painel é a tela que
+  // mais consulta o banco, e não vale ler a mesma coisa duas vezes. Fora do
+  // Promise.all porque abre o próprio comoOrg depois do das metas.
+  const verDesempenho = verEquipe && liberado(r.plano, 'desempenho.basico')
+  const desempenho = verDesempenho
+    ? await desempenhoDoMes(sessao, mesChave(new Date()), { metas: true, metasProntas: metas })
+    : null
+  const melhores = desempenho?.pessoas.filter((p) => !semDados(p.nota)).slice(0, 5) ?? []
+  const temCartaoMeta = metas.some((m) => m.valor > 0)
+
   const verDinheiro = pode(sessao, 'financeiro.ver')
   const verEstoque = pode(sessao, 'estoque.ver')
 
@@ -409,7 +424,7 @@ export default async function Painel({
       {/* ── EQUIPE ── */}
       {verEquipe && (
         <Secao titulo="Equipe">
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className={cx('grid gap-3 lg:grid-cols-2', temCartaoMeta && 'xl:grid-cols-3')}>
             <Cartao titulo={`Quem mais vendeu · ${j.rotulo.toLowerCase()}`}>
               <Ranque
                 itens={r.porVendedor.map((v) => ({
@@ -419,7 +434,7 @@ export default async function Painel({
                 }))}
               />
             </Cartao>
-            {metas.some((m) => m.valor > 0) && (
+            {temCartaoMeta && (
               <Cartao
                 titulo="Meta do mês"
                 acao={
@@ -458,6 +473,50 @@ export default async function Painel({
                 </ul>
               </Cartao>
             )}
+            <Cartao
+              titulo="Desempenho do mês"
+              acao={
+                <Link href={`/${slug}/equipe`} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
+                  ver a equipe
+                </Link>
+              }
+            >
+              {verDesempenho ? (
+                melhores.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-tinta-3">Sem meta, tarefa ou entrada registrada neste mês ainda.</p>
+                ) : (
+                  <ol className="flex flex-col gap-2">
+                    {melhores.map((p) => (
+                      <li key={p.usuarioId} className="flex items-center justify-between gap-3 text-sm">
+                        <span className="truncate text-tinta">{p.nome}</span>
+                        <Estrelas valor={p.nota.estrelas} tamanho="sm" />
+                      </li>
+                    ))}
+                  </ol>
+                )
+              ) : (
+                // Amostra inventada, nunca dado real: o plano não abre.
+                <Trancado
+                  chave="desempenho.basico"
+                  plano={r.plano}
+                  slug={slug}
+                  resumo="Uma nota de 0 a 5 por pessoa, todo mês: meta, tarefas no prazo e presença."
+                >
+                  <ol className="flex flex-col gap-2">
+                    {[
+                      ['Ana', 4.5],
+                      ['Bia', 4],
+                      ['Carlos', 3],
+                    ].map(([nome, v]) => (
+                      <li key={String(nome)} className="flex items-center justify-between gap-3 text-sm">
+                        <span className="text-tinta">{nome}</span>
+                        <Estrelas valor={Number(v)} tamanho="sm" />
+                      </li>
+                    ))}
+                  </ol>
+                </Trancado>
+              )}
+            </Cartao>
           </div>
         </Secao>
       )}
