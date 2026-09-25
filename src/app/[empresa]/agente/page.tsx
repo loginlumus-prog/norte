@@ -12,6 +12,15 @@ import { Numero, Secao, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Formulario, type AgenteNaTela } from './Formulario'
 import { Propostas } from './Propostas'
+import { Conexao } from './Conexao'
+import { Rotinas } from './Rotinas'
+import { Conversas } from './Conversas'
+import {
+  estadoDaConexao,
+  gatilhosDaTela,
+  conversasRecentes,
+  ROTINAS_NA_TELA,
+} from '@/servidor/assistente/conexao'
 
 // O agente, numa tela só.
 //
@@ -86,6 +95,13 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
     : NOVO
 
   const podeConfigurar = pode(sessao, 'agente.configurar')
+
+  // A conexão com o mundo. Em série, e fora do Promise.all de cima: cada uma
+  // abre a sua transação, e três de uma vez disputariam o pool pequeno do
+  // plano grátis sem ganhar nada visível.
+  const conexao = await estadoDaConexao(sessao)
+  const gatilhos = agente ? await gatilhosDaTela(sessao) : []
+  const conversas = agente ? await conversasRecentes(sessao) : []
   const saldo = bal.trouxe - bal.custou
 
   return (
@@ -184,6 +200,14 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
           />
         </Secao>
       )}
+
+      {/* A conexão vem antes do formulário: "ele está funcionando?" é a
+          pergunta de quem abre a tela, e a resposta cabe numa frase. */}
+      <Secao titulo="No WhatsApp">
+        <Conexao slug={slug} estado={conexao} />
+        {agente && <Rotinas slug={slug} rotinas={ROTINAS_NA_TELA} itens={gatilhos} />}
+        {agente && <Conversas itens={conversas} nome={agente.nome} />}
+      </Secao>
 
       <Secao titulo={agente ? 'Ajustar' : 'Criar o assistente'}>
         {podeConfigurar ? (

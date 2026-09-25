@@ -67,3 +67,67 @@ services:
         sync: false
       - key: SEGREDO_SESSAO
         sync: false
+
+      # ── o assistente no WhatsApp ─────────────────────────────
+      # Sem estas, o sistema inteiro funciona e o assistente fica mudo — a
+      # tela dele diz qual falta ("sem chave de IA", "sem canal"...). Nenhuma
+      # delas vai para log, nem aparece na tela.
+      #
+      # A chave da IA (console da Anthropic → API Keys).
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # A instância do Z-API: o id e o token DA INSTÂNCIA, e o token de
+      # segurança DA CONTA (Z-API → Segurança → Client-Token). Uma instância é
+      # UM número de WhatsApp: nesta etapa, UMA loja conversa por vez.
+      - key: ZAPI_INSTANCIA
+        sync: false
+      - key: ZAPI_TOKEN
+        sync: false
+      - key: ZAPI_CLIENT_TOKEN
+        sync: false
+      # Assina o endereço do webhook de cada empresa. Trocar este valor
+      # invalida o endereço de TODAS — cada loja precisa colar o novo no
+      # Z-API. Pelo menos 32 caracteres aleatórios (openssl rand -base64 48).
+      - key: WEBHOOK_SEGREDO
+        sync: false
+      # O que o relógio abaixo apresenta para rodar as rotinas. Pelo menos 32
+      # caracteres aleatórios, e diferente do de cima: um vazado não abre o
+      # outro.
+      - key: ROTINAS_SEGREDO
+        sync: false
+
+  # ── o relógio do assistente ──────────────────────────────────
+  # Relatório das 8h e das 20h, aviso de ruptura, cliente sumido: nada disso
+  # acontece se ninguém bater na porta de hora em hora. Este job só faz isso —
+  # um POST — e quem decide o que roda em cada hora é o servidor, no fuso de
+  # São Paulo. Por isso o horário aqui é "toda hora cheia" em UTC, sem conta
+  # de fuso: errar o fuso aqui não mudaria nada.
+  #
+  # Cron job do Render não tem plano grátis: é cobrado pelo tempo que roda, e
+  # um curl de hora em hora fica no mínimo da tabela.
+  #
+  # O web grátis dorme sem visita; a primeira batida da hora acorda ele, e
+  # por isso o curl espera até quase cinco minutos antes de desistir.
+  - type: cron
+    name: norte-rotinas
+    runtime: node
+    plan: starter
+    region: virginia
+    schedule: "0 * * * *"
+    buildCommand: echo "sem build — este job só chama o servidor"
+    startCommand: >-
+      curl -fsS --max-time 290 -X POST
+      -H "Authorization: Bearer $ROTINAS_SEGREDO"
+      "$NORTE_URL/api/rotinas"
+    envVars:
+      # O mesmo segredo do web, copiado de lá: um valor só para colar, e os
+      # dois nunca ficam diferentes.
+      - key: ROTINAS_SEGREDO
+        fromService:
+          type: web
+          name: norte
+          envVarKey: ROTINAS_SEGREDO
+      # O endereço público do Norte, sem barra no fim
+      # (ex.: https://norte.onrender.com).
+      - key: NORTE_URL
+        sync: false

@@ -6,11 +6,20 @@
 // navegador, e o navegador é do usuário.
 
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
+import type { TipoGatilho } from '@prisma/client'
 import { exigirSessao } from '@/servidor/pagina'
 import { salvarAgente, responderProposta } from '@/servidor/agente'
 import { TODOS_PODERES } from '@/servidor/poderes'
 import { centavos } from '@/servidor/dinheiro'
 import { acharOrgPorSlug } from '@/servidor/banco'
+import {
+  conectarCanal,
+  desconectarCanal,
+  mensagemDeTeste,
+  salvarGatilhos,
+  ROTINAS_NA_TELA,
+} from '@/servidor/assistente/conexao'
 
 export type EstadoAgente = { erro?: string; ok?: string }
 
@@ -60,4 +69,81 @@ export async function responder(slug: string, propostaId: string, aceita: boolea
   const r = await responderProposta(sessao, empresa, propostaId, aceita)
   revalidatePath(`/${slug}/agente`)
   return r
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONEXÃO — as regras moram em src/servidor/assistente/conexao.ts, e cada
+// uma confere `agente.configurar` lá dentro.
+// ─────────────────────────────────────────────────────────────
+
+export type EstadoConexaoAcao = { erro?: string; ok?: string; endereco?: string }
+
+/**
+ * A base do endereço do webhook, dos cabeçalhos da requisição — o mesmo
+ * motivo do link de convite: o código serve produção, teste e localhost.
+ * Sem o slug no fim: o webhook mora em /api, fora da empresa.
+ */
+async function baseDoSite(): Promise<string> {
+  const h = await headers()
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
+  const protocolo = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
+  return `${protocolo}://${host}`
+}
+
+const mensagem = (e: unknown) => (e instanceof Error ? e.message : 'Não deu certo.')
+
+export async function conectar(slug: string): Promise<EstadoConexaoAcao> {
+  try {
+    const sessao = await exigirSessao(slug)
+    const r = await conectarCanal(sessao, await baseDoSite(), slug)
+    revalidatePath(`/${slug}/agente`)
+    // O endereço volta UMA vez, nesta resposta. A página não o imprime.
+    return r.ok
+      ? { ok: 'Conectado. Cole este endereço no Z-API, em "Ao receber":', endereco: r.endereco }
+      : { erro: r.erro }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+export async function desconectar(slug: string): Promise<EstadoConexaoAcao> {
+  try {
+    await desconectarCanal(await exigirSessao(slug))
+    revalidatePath(`/${slug}/agente`)
+    return { ok: 'Desconectado. O que chegar pelo webhook agora é descartado.' }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+export async function testar(slug: string): Promise<EstadoConexaoAcao> {
+  try {
+    const r = await mensagemDeTeste(await exigirSessao(slug))
+    revalidatePath(`/${slug}/agente`)
+    return r.ok ? { ok: r.recado } : { erro: r.erro }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+export async function salvarRotinas(
+  slug: string,
+  _anterior: EstadoAgente,
+  form: FormData,
+): Promise<EstadoAgente> {
+  try {
+    const sessao = await exigirSessao(slug)
+    await salvarGatilhos(
+      sessao,
+      ROTINAS_NA_TELA.map((r) => ({
+        tipo: r.tipo as TipoGatilho,
+        ativo: form.get(`rotina_${r.tipo}`) === 'on',
+        dias: r.tipo === 'CLIENTE_SUMIDO' ? num(form, 'dias_CLIENTE_SUMIDO', 45) : null,
+      })),
+    )
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+  revalidatePath(`/${slug}/agente`)
+  return { ok: 'Rotinas salvas.' }
 }
