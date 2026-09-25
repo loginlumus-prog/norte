@@ -11,11 +11,15 @@ import { unidadesVisiveis } from '@/servidor/unidade'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Cartao, Situacao, Vazio, cx } from '@/ui/base'
+import { Aviso, Cartao, Situacao, Vazio, cx } from '@/ui/base'
 import { Numero, Secao, brl } from '@/ui/painel'
 import { BarrasMeses, BarrasH } from '@/ui/Graficos'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ClienteNaTela } from '../Editor'
+import { ofertasNaTela } from '../ofertasNaTela'
+import { Anonimizar } from './Anonimizar'
+import { PALAVRA_CONFIRMA } from '@/servidor/anonimizar'
+import { colunaDoDia, diaEmSP } from '@/servidor/dia'
 import { plural, quantidade } from '@/ui/texto'
 
 // A ficha do cliente.
@@ -66,7 +70,12 @@ export default async function FichaCliente({
         )}`
       : null
 
-  const podeEditar = pode(sessao, 'cliente.editar')
+  const anonimizado = !!cliente.anonimizadoEm
+  // Anonimizada não se edita (ver editarCliente): o formulário nem aparece.
+  const podeEditar = pode(sessao, 'cliente.editar') && !anonimizado
+  // Irreversível e apaga conversa: é de quem configura a empresa (o dono).
+  const podeAnonimizar = pode(sessao, 'empresa.configurar') && !anonimizado
+  const ofertas = podeEditar ? await ofertasNaTela(sessao, empresa.nome, cliente) : null
 
   const gastou = cliente.vendas.reduce((s, v) => s + Number(v.total), 0)
   const ultima = cliente.vendas[0]?.criadaEm ?? null
@@ -99,7 +108,7 @@ export default async function FichaCliente({
       tema={tema}
       titulo={cliente.nome}
       acao={
-        cliente.telefone ? (
+        cliente.telefone && !anonimizado ? (
           <a
             href={`https://wa.me/55${cliente.telefone}`}
             target="_blank"
@@ -114,6 +123,13 @@ export default async function FichaCliente({
       {/* Título sem "ela" nem "ele": a ficha é de qualquer cliente, e o
           sistema não sabe — nem precisa saber — o gênero de ninguém. */}
       <Secao titulo="Resumo">
+        {anonimizado && (
+          <Aviso nivel="neutro">
+            Cadastro anonimizado em{' '}
+            {mostrarDiaDaColuna(colunaDoDia(diaEmSP(cliente.anonimizadoEm!)), 'longo')}, a pedido do titular. As compras
+            continuam aqui, sem nome, pelo prazo que a lei manda guardar.
+          </Aviso>
+        )}
         <div className="grid gap-2 sm:grid-cols-3">
           <Numero
             rotulo="Gastou aqui"
@@ -316,9 +332,23 @@ export default async function FichaCliente({
         )}
       </Secao>
 
-      {podeEditar && (
+      {podeEditar && ofertas && (
         <Secao titulo="Cadastro">
-          <Editor slug={slug} cliente={naTela} />
+          <Editor slug={slug} cliente={naTela} ofertas={ofertas} />
+        </Secao>
+      )}
+
+      {podeAnonimizar && (
+        <Secao titulo="Dados pessoais">
+          <Cartao>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="max-w-xl text-sm text-tinta-2">
+                A pessoa pediu para apagar os dados dela? Anonimizar tira nome, contato e conversas, e mantém as
+                vendas sem nome — o registro fiscal que a lei manda guardar.
+              </p>
+              <Anonimizar slug={slug} clienteId={cliente.id} palavra={PALAVRA_CONFIRMA} />
+            </div>
+          </Cartao>
         </Secao>
       )}
     </Estrutura>

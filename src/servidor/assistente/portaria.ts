@@ -48,6 +48,25 @@ export async function empresasComAgente(): Promise<{ id: string; slug: string }[
   })
 }
 
+/**
+ * A empresa dona deste número no WhatsApp oficial (o `phone_number_id` que a
+ * Meta manda no webhook) — id e slug, e nada mais.
+ *
+ * Não é leitura de tabela: a portaria não enxerga `agentes`, e é bom que não
+ * enxergue (poderia listar os números de todo mundo). Quem responde é a função
+ * `org_do_numero_meta` do banco (prisma/sql/rls.sql), SECURITY DEFINER, que só
+ * aceita o id exato e só a portaria pode chamar. O `app_norte` continua sem
+ * nenhuma leitura entre empresas.
+ */
+export async function empresaDoNumeroMeta(phoneNumberId: string): Promise<{ id: string; slug: string } | null> {
+  if (!/^\d{1,32}$/.test(phoneNumberId)) return null
+  const linhas = await portaria().$queryRaw<{ org_id: string; org_slug: string }[]>`
+    select org_id, org_slug from public.org_do_numero_meta(${phoneNumberId})
+  `
+  const l = linhas[0]
+  return l ? { id: l.org_id, slug: l.org_slug } : null
+}
+
 export async function fecharPortariaRotinas() {
   await guardado.__portariaRotinas?.$disconnect()
   delete guardado.__portariaRotinas

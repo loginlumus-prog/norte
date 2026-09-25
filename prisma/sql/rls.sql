@@ -254,6 +254,58 @@ begin
   end if;
 end $$;
 
+-- ── a portaria do WhatsApp oficial: "de quem é este número?" ─
+--
+-- O webhook da Meta (Cloud API) chega sem empresa no endereço: é UM endereço
+-- para todas as lojas, e o que diz de quem é a mensagem é o id do número que
+-- a recebeu (`metadata.phone_number_id`). Descobrir a empresa por ele é uma
+-- leitura que atravessa empresas — a mesma família da portaria de cima.
+--
+-- Aqui já vai do jeito que o comentário de cima pede para o futuro: em vez de
+-- dar ao papel da portaria leitura na tabela `agentes` (ele passaria a poder
+-- LISTAR os números de todo mundo), uma função SECURITY DEFINER que recebe o
+-- id EXATO e devolve só id e slug da empresa. Não lista, não aceita curinga,
+-- não devolve nada do agente. Quem pode chamar: só `app_portaria`. O
+-- `app_norte` continua sem nenhuma leitura entre empresas.
+--
+-- Roda com os direitos do dono da função (quem aplica este arquivo: o admin,
+-- que passa por cima do RLS). Se um dia o dono não passar, ela devolve vazio —
+-- falha fechada: o webhook responde 200 e descarta.
+--
+-- plpgsql, e não sql: o corpo só é conferido na hora de rodar, então este
+-- arquivo pode ser aplicado antes da migração que cria a coluna sem quebrar.
+-- drop antes: `create or replace` não troca nome de parâmetro. E o parâmetro
+-- não se chama "numero" porque `agentes` tem uma coluna com esse nome, e o
+-- plpgsql não saberia qual das duas é qual.
+drop function if exists public.org_do_numero_meta(text);
+create function public.org_do_numero_meta(id_do_numero text)
+returns table (org_id text, org_slug text)
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  -- id de número da Meta é só dígito; qualquer outra coisa nem consulta
+  if id_do_numero is null or id_do_numero !~ '^[0-9]{1,32}$' then
+    return;
+  end if;
+  return query
+    select o.id::text, o.slug::text
+      from public.agentes a
+      join public.orgs o on o.id = a.org_id
+     where a.meta_phone_number_id = id_do_numero
+     limit 1;
+end $$;
+
+revoke all on function public.org_do_numero_meta(text) from public;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'app_portaria') then
+    grant execute on function public.org_do_numero_meta(text) to app_portaria;
+  end if;
+end $$;
+
 -- ── auditoria é livro: só entra, nunca muda nem sai ──────────
 drop policy if exists org_isolada on public.auditoria;
 
@@ -291,6 +343,83 @@ end $$;
 
 -- Reaplicar este arquivo depois de qualquer GRANT novo — o revoke acima
 -- desfaz permissão concedida em bloco ("grant all on all tables").
+
+-- ── a única exceção ao livro imutável: apagar o DADO PESSOAL ─
+--
+-- A LGPD dá ao cliente da loja o direito de ser anonimizado (art. 18, IV e
+-- VI), e o livro guarda dado pessoal dele: o nome no "alvo" de "cadastrou um
+-- cliente", o telefone no `antes` de "alterou um cliente", o nome no
+-- "Maria: bolo de chocolate" da encomenda. Um livro que ninguém pode tocar
+-- tornaria a anonimização uma mentira.
+--
+-- Então existe UM caminho, estreito, e só ele. Esta função:
+--   • só mexe em linhas da empresa da requisição (app_org_id(), a mesma do
+--     RLS) e só nas dos alvos que recebeu (o cliente, as encomendas e os
+--     lançamentos dele — quem escolhe é src/servidor/cliente.ts);
+--   • só faz duas coisas: troca o nome da pessoa pela frase fixa "Cliente
+--     anonimizado" (em alvo_nome e motivo) e tira do `antes`/`depois` as
+--     chaves de dado pessoal. Não muda ação, quem fez, valor, data nem loja —
+--     o livro continua dizendo O QUE aconteceu, só não diz mais COM QUEM;
+--   • não apaga linha nenhuma, e não consegue escrever texto livre.
+--
+-- O papel da aplicação continua sem UPDATE e sem DELETE no livro (o revoke
+-- de cima). Quem escreve aqui é a função, com os direitos do dono dela (o
+-- admin que aplica este arquivo, que passa por cima do RLS); se um dia o dono
+-- não passar, o UPDATE não acha linha e a anonimização da ficha segue — o
+-- teste (tests/lgpd-banco.test.ts) é quem pega.
+drop function if exists public.anonimizar_auditoria(text[], text);
+create function public.anonimizar_auditoria(alvos text[], nome text)
+returns integer
+language plpgsql
+volatile
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  org text := public.app_org_id();
+  pii text[] := array['nome', 'telefone', 'clienteNome', 'documento', 'cpf', 'email',
+                      'endereco', 'bairro', 'cep', 'nascimento', 'observacoes', 'envio'];
+  -- Nome curto demais trocaria pedaço de palavra ("Ana" em "Banana"): só o
+  -- alvo 'cliente' perde o nome inteiro, os outros só com nome de 3+ letras.
+  troca text := case when length(coalesce(nome, '')) >= 3 then nome end;
+  n integer;
+begin
+  if org is null or alvos is null or cardinality(alvos) = 0 then
+    return 0;
+  end if;
+  update public.auditoria a
+     set alvo_nome = case
+                       when a.alvo_tipo = 'cliente' then 'Cliente anonimizado'
+                       when troca is not null then replace(a.alvo_nome, troca, 'Cliente anonimizado')
+                       else a.alvo_nome
+                     end,
+         motivo = case when troca is not null then replace(a.motivo, troca, 'Cliente anonimizado') else a.motivo end,
+         antes  = case when jsonb_typeof(a.antes)  = 'object' then a.antes  - pii else a.antes  end,
+         depois = case when jsonb_typeof(a.depois) = 'object' then a.depois - pii else a.depois end
+   where a.org_id = org
+     and a.alvo_id = any(alvos)
+     -- a linha que registra a própria anonimização não tem dado pessoal, e
+     -- não é reescrita
+     and a.acao <> 'cliente.anonimizou';
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+revoke all on function public.anonimizar_auditoria(text[], text) from public;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'app_norte') then
+    grant execute on function public.anonimizar_auditoria(text[], text) to app_norte;
+  end if;
+end $$;
+
+-- ── a lista de quem não recebe oferta (optout_whatsapp) ──────
+-- Tem org_id e entra na varredura do começo: org_isolada, RLS ligado e
+-- forçado — a lista de uma loja não diz a outra quem pediu para sair. A
+-- leitura acontece no caminho da mensagem que chega (campanhas/entrada.ts),
+-- SEMPRE dentro do comoOrg da empresa dona do número. Nenhuma política
+-- especial, e nenhuma função que atravesse empresas: "PARAR" para a loja A
+-- não tira a pessoa da loja B, porque o consentimento é dado a cada loja.
 
 -- ── conferência ──────────────────────────────────────────────
 -- Deve listar TODA tabela com org_id, e rowsecurity = true em todas.

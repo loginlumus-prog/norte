@@ -26,6 +26,7 @@ import { SistemaPorDentro, type TextoTela } from '@/ui/venda/demo/SistemaPorDent
 import type { TelaId } from '@/ui/venda/demo/estado'
 import { Avatar, Barra, Pilula, reais as reaisCentavos } from '@/ui/venda/Pecas'
 import { COMECAR, ENTRAR, mailto } from '@/ui/venda/mapa'
+import { EMPRESA } from '@/servidor/legal'
 import {
   IconeAbaixo,
   IconeAdiante,
@@ -1301,13 +1302,32 @@ export default function Inicio() {
             links={[
               { nome: 'Termos de uso', href: '/termos' },
               { nome: 'Privacidade', href: '/privacidade' },
+              { nome: 'Exclusão de dados', href: '/exclusao-de-dados' },
             ]}
           />
         </div>
+        {/* A identidade de quem opera o site, igual ao cartão do CNPJ — a
+            verificação de empresa da Meta confere letra por letra. Vem de
+            src/servidor/legal.ts; enquanto for nula, só o e-mail aparece:
+            nada de razão social de mentira. */}
         <div className="border-t border-borda-suave">
-          <p className="mx-auto max-w-6xl px-4 py-6 text-xs text-tinta-3 sm:px-6">
-            © {new Date().getFullYear()} Norte. Os números das telas desta página são de exemplo.
-          </p>
+          <div className="mx-auto flex max-w-6xl flex-col gap-1.5 px-4 py-6 text-xs leading-relaxed text-tinta-3 sm:px-6">
+            <p className="break-words">
+              {[
+                EMPRESA.razaoSocial,
+                EMPRESA.cnpj && `CNPJ ${EMPRESA.cnpj}`,
+                EMPRESA.endereco,
+              ]
+                .filter(Boolean)
+                .map((parte) => (
+                  <span key={parte as string}>{parte} · </span>
+                ))}
+              <a href={`mailto:${EMPRESA.email}`} className="hover:text-tinta-2">
+                {EMPRESA.email}
+              </a>
+            </p>
+            <p>© {new Date().getFullYear()} Norte. Os números das telas desta página são de exemplo.</p>
+          </div>
         </div>
       </footer>
     </div>

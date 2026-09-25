@@ -6,13 +6,26 @@
 // suspensão por falta de pagamento tem estado próprio na tabela. Contrato que
 // promete o que o código não faz é armadilha para o lado que escreveu.
 //
-// Onde a decisão ainda não foi tomada — meio de pagamento, canal de WhatsApp —
-// o texto diz isso, em vez de inventar. Ver src/servidor/legal.ts.
+// Onde a decisão ainda não foi tomada — meio de pagamento, hospedagem — o
+// texto diz isso, em vez de inventar. Ver src/servidor/legal.ts.
+//
+// ── a cláusula 8 (WhatsApp e campanhas) ──────────────────────
+// Escrita para a entrada do Norte como provedor de tecnologia da Meta: a
+// conta de WhatsApp é da loja, a loja paga a Meta direto, a loja responde
+// pelo consentimento de quem recebe oferta. O "parar" citado lá existe em
+// src/servidor/campanhas/casar.ts, e a saída permanente (com o VOLTAR) e o
+// registro do aceite na ficha em src/servidor/ofertas.ts; o ritmo e a
+// ausência de envio em massa da conexão por QR Code estão no README
+// ("Conector do WhatsApp"). O registro do acesso do suporte (cláusula 9)
+// está em src/servidor/pagina.ts (`registrarAcessoDeSuporte`).
+//
+// `<Pendente>` marca o que o jurídico precisa decidir — em vermelho na tela.
 //
 // Isto NÃO é peça de advogado, e a página diz isso enquanto a identidade de
 // quem assina não estiver preenchida.
 
 import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
 import { PaginaLegal, Secao, Itens, Destaque } from '@/ui/PaginaLegal'
 import { EMPRESA } from '@/servidor/legal'
 import { PLANOS, PLANOS_COM_PRECO } from '@/servidor/planos'
@@ -24,6 +37,13 @@ export const metadata: Metadata = {
 }
 
 const real = (n: number) => `R$ ${n.toLocaleString('pt-BR')}`
+
+/** O que o jurídico ainda precisa decidir. Em vermelho, para ninguém confundir com texto pronto. */
+function Pendente({ children }: { children: ReactNode }) {
+  return <b className="text-critico">[{children}]</b>
+}
+
+const link = 'font-semibold text-marca hover:underline'
 
 export default function Termos() {
   return (
@@ -96,7 +116,7 @@ export default function Termos() {
           fiscal e sem assistente, com teto de {PLANOS.GRATIS.tetoVendasMes} vendas por mês. Ele
           não tem prazo para acabar e não vira cobrança sozinho — mas também não tem suporte
           garantido, e pode ser descontinuado com 30 dias de aviso. Seus dados continuam seus, e a
-          cláusula 11 vale igual.
+          cláusula 12 vale igual.
         </p>
         <p>
           Não existe taxa de implantação, e pessoa a mais tem preço de tabela: o que está escrito
@@ -112,7 +132,7 @@ export default function Termos() {
         <p>
           Empresa nova começa em teste, com o prazo dito na hora da criação. No teste o sistema é
           inteiro — não é versão capada. Acabado o prazo sem contratação, a conta é suspensa
-          conforme a cláusula 6, e os dados seguem a cláusula 11.
+          conforme a cláusula 6, e os dados seguem a cláusula 12.
         </p>
       </Secao>
 
@@ -139,7 +159,7 @@ export default function Termos() {
             <b>Do 11º ao 30º dia</b> — a conta fica suspensa. Ninguém entra, e nada é apagado.
           </li>
           <li>
-            <b>Depois de 30 dias</b> — o contrato pode ser encerrado por nós, e vale a cláusula 11.
+            <b>Depois de 30 dias</b> — o contrato pode ser encerrado por nós, e vale a cláusula 12.
           </li>
         </Itens>
         <p>
@@ -169,18 +189,114 @@ export default function Termos() {
           errar, como qualquer sistema que gera texto. <b>Conferir antes de confirmar é seu.</b>
         </Destaque>
         <p>
-          O canal de WhatsApp depende de fornecedor terceiro e das regras da plataforma. Mudança de
-          regra ou bloqueio por parte dela não é descumprimento nosso — mas dá a você direito de
-          cancelar sem multa se o canal ficar indisponível por mais de 15 dias seguidos.
+          O assistente fala pelo WhatsApp da loja, e a cláusula 8 vale para ele também.
         </p>
       </Secao>
 
-      <Secao n={8} titulo="O que é seu, e o que é nosso">
+      <Secao n={8} titulo="WhatsApp e campanhas">
+        <p>
+          O Norte conversa com a sua equipe e com os seus clientes pelo WhatsApp da loja. Há dois
+          jeitos de conectar, e as regras abaixo valem para os dois, salvo onde está dito.
+        </p>
+
+        <p className="font-semibold text-tinta">8.1 A conta é sua</p>
+        <Itens>
+          <li>
+            O número e a conta de WhatsApp são <b>da loja</b>, não do Norte. A gente conecta,
+            guarda as conversas e roda as campanhas a seu mando; desconectar é um botão, e o número
+            continua seu.
+          </li>
+          <li>
+            Na <b>conexão oficial</b> (WhatsApp Business Platform, da Meta), você aceita os termos
+            e as políticas do WhatsApp para empresas direto com a Meta, e{' '}
+            <b>paga à Meta, direto, as mensagens que ela cobra</b>, pela forma de pagamento que você
+            cadastra na conta da Meta. O Norte não revende, não intermedeia e não embute esse custo
+            na mensalidade.
+          </li>
+        </Itens>
+
+        <p className="font-semibold text-tinta">8.2 O conteúdo e o consentimento são seus</p>
+        <Itens>
+          <li>
+            Você responde pelo que as suas campanhas, o seu recado automático e a sua equipe
+            dizem: preço, oferta, prazo, promessa. O Norte entrega o texto que você escreveu.
+          </li>
+          <li>
+            Antes de <b>começar</b> uma conversa de oferta com alguém, você precisa ter o{' '}
+            <b>consentimento</b> dessa pessoa para receber mensagens da loja no WhatsApp, e
+            conseguir mostrar quando e como ela deu. Conversa que o próprio cliente começou não
+            vira autorização para mandar oferta depois. A gente fornece um modelo de texto de
+            consentimento, e a ficha do cliente tem onde registrar o aceite — sim ou não, quando,
+            por qual caminho e quem anotou. O sistema só deixa sair oferta começada pela loja
+            (fora da conversa aberta pela pessoa) para quem tem o aceite registrado.
+          </li>
+          <li>
+            Quem pedir para sair sai. Mandar <b>PARAR</b> sozinho numa mensagem encerra a campanha
+            em andamento na hora e põe o número na lista de quem não recebe ofertas da sua loja, de
+            forma permanente: nenhuma campanha começa de novo para ele até a própria pessoa mandar{' '}
+            <b>VOLTAR</b>, e a loja não desfaz isso pela tela. Qualquer outro pedido de saída, por
+            qualquer canal, você precisa respeitar também — anotando o número na lista, em
+            Clientes › Sem ofertas, ou marcando &quot;não aceitou&quot; na ficha.
+          </li>
+        </Itens>
+
+        <p className="font-semibold text-tinta">8.3 O que é proibido</p>
+        <Itens>
+          <li>
+            Mensagem em massa não pedida (spam), lista de contatos comprada, alugada ou raspada, e
+            contato com quem pediu para não receber.
+          </li>
+          <li>
+            Oferecer produto ou serviço proibido pela Política Comercial do WhatsApp ou pela
+            Política de Mensagens para Empresas do WhatsApp — e, claro, qualquer coisa ilegal.
+          </li>
+          <li>Conteúdo enganoso, discriminatório, ofensivo, ou que se passe por outra empresa ou pessoa.</li>
+        </Itens>
+
+        <p className="font-semibold text-tinta">8.4 Quando a gente pausa uma campanha</p>
+        <p>
+          A gente pode <b>pausar</b> uma campanha, ou o envio inteiro da loja, quando ela puser o
+          número em risco — muitas denúncias ou bloqueios, queda da qualidade do número apontada
+          pelo WhatsApp, ou descumprimento desta cláusula. A gente avisa você, diz o motivo e
+          religa quando o motivo acabar. Pausar não apaga nada. Em descumprimento grave ou
+          repetido, a gente pode encerrar o contrato, avisando por escrito — e os seus dados
+          seguem a cláusula 12.
+        </p>
+
+        <p className="font-semibold text-tinta">
+          8.5 A conexão por QR Code{' '}
+          <Pendente>jurídico: avaliar se mantém após a conexão oficial</Pendente>
+        </p>
+        <p>
+          Como alternativa, dá para conectar o WhatsApp da loja lendo um QR Code, do jeito do
+          WhatsApp Web. Ela é oferecida a pedido seu, e com um aviso que precisa ser lido:
+        </p>
+        <Destaque>
+          <b>A conexão por QR Code não é a API oficial do WhatsApp.</b> Os termos do WhatsApp não
+          preveem automação por esse caminho, e o WhatsApp pode <b>restringir ou banir o número</b>{' '}
+          a qualquer momento, sem aviso. O Norte reduz o risco — responde só a quem chamou, manda
+          em ritmo de gente e não tem envio em massa —, mas não consegue eliminá-lo. Ao escolher
+          essa conexão você assume esse risco, e <b>o Norte não responde</b> por restrição,
+          banimento ou perda do número, nem pelo que isso causar ao seu negócio. Use um número da
+          loja, nunca o pessoal.
+        </Destaque>
+
+        <p className="font-semibold text-tinta">8.6 Quando o WhatsApp muda as regras</p>
+        <p>
+          O WhatsApp é de outra empresa, que muda regras e preços por conta própria. Mudança de
+          regra, de preço ou bloqueio vindo do WhatsApp não é descumprimento nosso — mas, na
+          conexão oficial, se o canal ficar indisponível por mais de <b>15 dias seguidos</b> por
+          motivo que não seja o conteúdo ou o comportamento da loja, você pode cancelar sem multa.
+        </p>
+      </Secao>
+
+      <Secao n={9} titulo="O que é seu, e o que é nosso">
         <p>
           <b>Seu:</b> todo dado que entra no sistema — produtos, vendas, clientes, contas,
           conversas. A gente não vende, não aluga e não usa dado de cliente para treinar modelo de
-          IA. Só olhamos quando você pede suporte, e toda ação nossa fica registrada no livro de
-          auditoria da sua empresa, visível para você.
+          IA. Só olhamos quando você pede suporte, com um acesso só de leitura, com prazo e motivo,
+          e cada tela que a nossa equipe abre fica registrada, sozinha, no livro de auditoria da
+          sua empresa — você vê o que foi olhado, quando e por quê, na tela Auditoria.
         </p>
         <p>
           <b>Nosso:</b> o sistema — código, telas, marca, textos. Contratar dá direito de usar
@@ -189,7 +305,7 @@ export default function Termos() {
         </p>
       </Secao>
 
-      <Secao n={9} titulo="O que fica com você">
+      <Secao n={10} titulo="O que fica com você">
         <Itens>
           <li>
             Cumprir a lei no seu negócio: emissão de nota, obrigação fiscal, trabalhista e de
@@ -202,9 +318,14 @@ export default function Termos() {
           </li>
           <li>
             Ser o controlador dos dados dos <i>seus</i> clientes — inclusive base de contato e
-            consentimento para falar com eles no WhatsApp. Ver a{' '}
-            <a href="/privacidade" className="font-semibold text-marca hover:underline">
+            consentimento para falar com eles no WhatsApp (cláusula 8), e responder aos pedidos
+            deles. Ver a{' '}
+            <a href="/privacidade" className={link}>
               Política de Privacidade
+            </a>{' '}
+            e as instruções de{' '}
+            <a href="/exclusao-de-dados" className={link}>
+              exclusão de dados
             </a>
             .
           </li>
@@ -212,7 +333,7 @@ export default function Termos() {
         </Itens>
       </Secao>
 
-      <Secao n={10} titulo="Disponibilidade, suporte e falhas">
+      <Secao n={11} titulo="Disponibilidade, suporte e falhas">
         <p>
           A gente trabalha para o sistema ficar no ar o tempo todo, mas não promete um número que
           não pode garantir sozinho: parte da infraestrutura é de terceiros. Não há SLA contratado
@@ -230,7 +351,7 @@ export default function Termos() {
         </p>
       </Secao>
 
-      <Secao n={11} titulo="Quando acabar, os dados são seus">
+      <Secao n={12} titulo="Quando acabar, os dados são seus">
         <p>Encerrado o contrato, por qualquer lado e por qualquer motivo:</p>
         <Itens>
           <li>
@@ -249,7 +370,7 @@ export default function Termos() {
         <p>Cancelar não é castigo: a gente devolve seus dados sem discutir, e sem pedir motivo.</p>
       </Secao>
 
-      <Secao n={12} titulo="Mudanças nestes termos">
+      <Secao n={13} titulo="Mudanças nestes termos">
         <p>
           Mudança que afete o que você paga ou o que você recebe é avisada com <b>30 dias</b>, por
           e-mail e dentro do sistema. Continuar usando depois disso vale como aceite; se não
@@ -259,10 +380,21 @@ export default function Termos() {
         <p>Toda versão anterior fica guardada e pode ser pedida.</p>
       </Secao>
 
-      <Secao n={13} titulo="Foro">
+      <Secao n={14} titulo="Foro">
         <p>
           Vale a lei brasileira. Antes de processo, as partes se comprometem a tentar resolver
           direto, por escrito, por 30 dias. Fica eleito o foro de {EMPRESA.foro}.
+        </p>
+        <p className="text-[13px] text-tinta-3">
+          Veja também a{' '}
+          <a href="/privacidade" className={link}>
+            Política de Privacidade
+          </a>{' '}
+          e as instruções de{' '}
+          <a href="/exclusao-de-dados" className={link}>
+            exclusão de dados
+          </a>
+          .
         </p>
       </Secao>
     </PaginaLegal>

@@ -27,6 +27,7 @@ import {
   ROTINAS_NA_TELA,
   type QrNaTela,
 } from '@/servidor/assistente/conexao'
+import { conectarPelaMeta, desconectarMeta, recriarModelos } from '@/servidor/assistente/meta-conexao'
 
 export type EstadoAgente = { erro?: string; ok?: string }
 
@@ -203,6 +204,57 @@ export async function desconectarQr(slug: string): Promise<EstadoConexaoAcao> {
     revalidatePath(`/${slug}/agente`)
     if (!r.ok) return { erro: r.erro }
     return { ok: r.aviso ?? 'Desconectado. O Norte saiu dos aparelhos conectados deste WhatsApp.' }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+// ── o WhatsApp oficial (Meta) ────────────────────────────────
+// O navegador entrega o CÓDIGO do cadastro incorporado e os ids que a janela
+// da Meta mandou. Tudo o mais — trocar o código pelo token com a chave do
+// app, inscrever, registrar, cifrar, criar os modelos — acontece no servidor
+// (src/servidor/assistente/meta-conexao.ts). A resposta nunca traz o token.
+
+export type MetaAcao = { erro?: string; ok?: string; avisos?: string[] }
+
+export async function conectarMeta(
+  slug: string,
+  dados: { code: string; wabaId: string; phoneNumberId: string | null; coexistencia: boolean; pin?: string | null },
+): Promise<MetaAcao> {
+  try {
+    const r = await conectarPelaMeta(await exigirSessao(slug), {
+      code: String(dados?.code ?? ''),
+      wabaId: String(dados?.wabaId ?? ''),
+      phoneNumberId: dados?.phoneNumberId ? String(dados.phoneNumberId) : null,
+      coexistencia: dados?.coexistencia === true,
+      pin: dados?.pin ? String(dados.pin) : null,
+    })
+    revalidatePath(`/${slug}/agente`)
+    return r.ok ? { ok: r.recado, avisos: r.avisos } : { erro: r.erro }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+export async function desconectarMetaAcao(slug: string): Promise<MetaAcao> {
+  try {
+    const r = await desconectarMeta(await exigirSessao(slug))
+    revalidatePath(`/${slug}/agente`)
+    if (!r.ok) return { erro: r.erro }
+    return {
+      ok:
+        r.aviso ??
+        'Desconectado. O Norte esqueceu o acesso a esta conta e parou de usar o número — ele continua na sua conta da Meta (WhatsApp Manager).',
+    }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+export async function recriarModelosAcao(slug: string): Promise<MetaAcao> {
+  try {
+    const r = await recriarModelos(await exigirSessao(slug))
+    return r.ok ? { ok: r.recado } : { erro: r.erro }
   } catch (e) {
     return { erro: mensagem(e) }
   }

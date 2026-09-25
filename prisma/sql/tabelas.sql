@@ -32,6 +32,9 @@ CREATE TYPE "Medida" AS ENUM ('UN', 'KG', 'G', 'L', 'ML', 'M', 'PAR', 'CX');
 CREATE TYPE "TipoMovimento" AS ENUM ('ENTRADA', 'VENDA', 'DEVOLUCAO', 'AJUSTE', 'PERDA', 'TRANSFERENCIA', 'BALANCO');
 
 -- CreateEnum
+CREATE TYPE "ConsentimentoOfertas" AS ENUM ('SIM', 'NAO', 'NAO_PERGUNTADO');
+
+-- CreateEnum
 CREATE TYPE "DestinoDevolucao" AS ENUM ('VALE', 'DINHEIRO', 'ESTORNO');
 
 -- CreateEnum
@@ -396,10 +399,26 @@ CREATE TABLE "clientes" (
     "observacoes" TEXT,
     "ativo" BOOLEAN NOT NULL DEFAULT true,
     "pontos" INTEGER NOT NULL DEFAULT 0,
+    "ofertas_whatsapp" "ConsentimentoOfertas" NOT NULL DEFAULT 'NAO_PERGUNTADO',
+    "ofertas_em" TIMESTAMP(3),
+    "ofertas_origem" TEXT,
+    "ofertas_por" TEXT,
+    "anonimizado_em" TIMESTAMP(3),
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizado_em" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "clientes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "optout_whatsapp" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "telefone" TEXT NOT NULL,
+    "origem" TEXT NOT NULL,
+    "em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "optout_whatsapp_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -678,6 +697,11 @@ CREATE TABLE "agentes" (
     "zapi_token_cifrado" TEXT,
     "zapi_client_token_cifrado" TEXT,
     "webhook_token_hash" TEXT,
+    "meta_waba_id" TEXT,
+    "meta_phone_number_id" TEXT,
+    "meta_token_cifrado" TEXT,
+    "meta_numero_exibicao" TEXT,
+    "meta_conectado_em" TIMESTAMP(3),
     "modelo" TEXT NOT NULL DEFAULT 'claude-sonnet-5',
     "poderes" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "desconto_max_pct" DECIMAL(5,2) NOT NULL DEFAULT 5,
@@ -1073,6 +1097,12 @@ CREATE INDEX "clientes_org_id_nome_idx" ON "clientes"("org_id", "nome");
 CREATE INDEX "clientes_org_id_documento_idx" ON "clientes"("org_id", "documento");
 
 -- CreateIndex
+CREATE INDEX "optout_whatsapp_org_id_em_idx" ON "optout_whatsapp"("org_id", "em");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "optout_whatsapp_org_id_telefone_key" ON "optout_whatsapp"("org_id", "telefone");
+
+-- CreateIndex
 CREATE INDEX "caixas_org_id_unidade_id_aberto_idx" ON "caixas"("org_id", "unidade_id", "aberto");
 
 -- CreateIndex
@@ -1170,6 +1200,9 @@ CREATE INDEX "tentativas_login_org_id_ip_criada_em_idx" ON "tentativas_login"("o
 
 -- CreateIndex
 CREATE UNIQUE INDEX "agentes_org_id_key" ON "agentes"("org_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "agentes_meta_phone_number_id_key" ON "agentes"("meta_phone_number_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "sessoes_whatsapp_org_id_key" ON "sessoes_whatsapp"("org_id");
@@ -1359,6 +1392,9 @@ ALTER TABLE "movimentos_estoque" ADD CONSTRAINT "movimentos_estoque_unidade_id_f
 
 -- AddForeignKey
 ALTER TABLE "clientes" ADD CONSTRAINT "clientes_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "optout_whatsapp" ADD CONSTRAINT "optout_whatsapp_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "caixas" ADD CONSTRAINT "caixas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

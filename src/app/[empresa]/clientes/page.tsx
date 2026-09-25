@@ -110,6 +110,13 @@ export default async function Clientes({
       titulo="Clientes"
       acao={
         <span className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/${slug}/clientes/sem-ofertas`}
+            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            title="Quem pediu para não receber ofertas no WhatsApp"
+          >
+            Sem ofertas
+          </Link>
           {!simples && (
             <a
               href={`/${slug}/clientes/exportar${q ? `?q=${encodeURIComponent(q)}` : ''}`}

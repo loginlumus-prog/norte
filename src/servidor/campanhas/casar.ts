@@ -96,8 +96,13 @@ export function acharCampanha(
  * Palavras que, SOZINHAS, tiram a pessoa da campanha. "Não quero" no meio de
  * "não quero o azul, quero o preto" é resposta, não pedido de saída — por
  * isso vale só a mensagem inteira.
+ *
+ * Além de tirar da campanha, o pedido grava a saída PERMANENTE (lista de quem
+ * não recebe oferta, ver ../ofertas.ts) — e isso é feito pela entrada
+ * (entrada.ts), antes desta decisão. Sem campanha no meio, só as que não
+ * deixam dúvida valem (PARADAS_INEQUIVOCAS, em ofertas.ts).
  */
-export const PALAVRAS_DE_PARADA = ['parar', 'pare', 'sair', 'cancelar', 'nao quero', 'stop'] as const
+export const PALAVRAS_DE_PARADA = ['parar', 'pare', 'sair', 'cancelar', 'nao quero', 'stop', 'descadastrar'] as const
 
 export const ehPedidoDeParada = (texto: string): boolean =>
   (PALAVRAS_DE_PARADA as readonly string[]).includes(normalizar(texto))

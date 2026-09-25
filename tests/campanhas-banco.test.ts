@@ -5,7 +5,7 @@
 //      entre empresas, e o índice "uma campanha viva por telefone";
 //   2. o CAMINHO INTEIRO por `receberDeCliente` e pelo relógio, com o canal
 //      de mentira: a frase abre, a resposta anda, o relógio acorda, "parar"
-//      tira, a frase de outra campanha troca de funil, e a conversa com
+//      tira (e confirma uma vez), a frase de outra campanha troca de funil, e a conversa com
 //      alguém da loja (`ConversaAgente.humanoAte`) cala as campanhas — nos
 //      dois sentidos: quem está com humano não entra, e "Passar para uma
 //      pessoa" grava o mesmo campo.
@@ -223,11 +223,12 @@ describe('uma mensagem de cliente', () => {
     expect(await msg('quero o catálogo', canal, '7188880001', new Date(T0.getTime() + 7_200_000))).toEqual({ tratou: false })
   })
 
-  it('"parar" sozinho tira da campanha, sem mandar nada', async () => {
+  it('"parar" sozinho tira da campanha e manda UMA confirmação (a lista permanente está em lgpd-banco.test.ts)', async () => {
     const canal = new m.canal.CanalFalso()
     await msg('quero o catálogo', canal, '5571988880002')
     expect(await msg('Parar', canal, '5571988880002')).toEqual({ tratou: true })
-    expect(canal.enviadas).toHaveLength(1)
+    expect(canal.enviadas).toHaveLength(2)
+    expect(canal.enviadas[1]!.texto).toMatch(/não recebe mais ofertas.*VOLTAR/)
     expect(await execucoes('7188880002')).toMatchObject([{ status: 'cancelada', motivo_fim: 'parou' }])
   })
 

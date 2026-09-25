@@ -21,8 +21,34 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const DEV = process.env.NODE_ENV === 'development'
 
+// ── a exceção da Meta, numa tela só ──────────────────────────
+// A conexão do WhatsApp OFICIAL (tela do assistente, /<empresa>/agente) usa o
+// SDK da Meta: um script de connect.facebook.net que abre a janela do
+// Cadastro incorporado (facebook.com), fala com graph.facebook.com e põe um
+// iframe invisível de lá. Nenhuma outra tela precisa disso — então os
+// domínios da Meta entram SÓ nesta rota, e o resto do sistema continua sem
+// script, iframe ou conexão de fora.
+//
+// E uma troca a mais, também só aqui: `Cross-Origin-Opener-Policy` passa de
+// `same-origin` para `same-origin-allow-popups`. Com `same-origin`, a janela
+// da Meta nasce sem ligação com a nossa, e o recado do fim do cadastro
+// (`postMessage` com os ids da conta e do número) nunca chega.
+//
+// O que NÃO muda: `frame-ancestors 'none'` (ninguém põe o Norte num iframe,
+// nem a Meta) e o bilhete dos scripts (o SDK entra porque é carregado por um
+// script nosso, com bilhete — 'strict-dynamic' —; o domínio listado é para
+// navegador antigo que não entende 'strict-dynamic').
+const TELA_DA_META = /^\/[^/]+\/agente\/?$/
+const META = {
+  script: 'https://connect.facebook.net',
+  frame: 'https://www.facebook.com https://web.facebook.com https://staticxx.facebook.com',
+  connect: 'https://graph.facebook.com https://www.facebook.com https://web.facebook.com https://connect.facebook.net',
+  img: 'https://www.facebook.com https://*.facebook.com https://*.fbcdn.net',
+}
+
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
+  const comMeta = TELA_DA_META.test(request.nextUrl.pathname)
 
   const politica = [
     // Nada carrega de fora, a não ser o que estiver listado abaixo.
@@ -33,7 +59,10 @@ export function proxy(request: NextRequest) {
     // (é assim que o Next carrega os bundles) sem abrir a mão para o resto.
     // 'unsafe-eval' é só no desenvolvimento: o React usa eval para remontar a
     // pilha de erro do servidor no navegador. Em produção ele não usa.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${DEV ? " 'unsafe-eval'" : ''}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${comMeta ? ` ${META.script}` : ''}${DEV ? " 'unsafe-eval'" : ''}`,
+
+    // Iframe: nenhum — menos a janelinha invisível do SDK da Meta, na tela dela.
+    ...(comMeta ? [`frame-src ${META.frame}`] : []),
 
     // Folha de estilo: mesma regra. No desenvolvimento o Next injeta o CSS
     // como <style> sem bilhete, então lá vale 'unsafe-inline'.
@@ -45,11 +74,11 @@ export function proxy(request: NextRequest) {
     // que liberar <style>: atributo não executa código, no máximo pinta.
     `style-src-attr 'unsafe-inline'`,
 
-    `img-src 'self' data: blob:`,
+    `img-src 'self' data: blob:${comMeta ? ` ${META.img}` : ''}`,
     `font-src 'self' data:`,
     // Requisição de dados só para a própria origem. No desenvolvimento, o
     // recarregamento automático fala por websocket.
-    `connect-src 'self'${DEV ? ' ws: wss:' : ''}`,
+    `connect-src 'self'${comMeta ? ` ${META.connect}` : ''}${DEV ? ' ws: wss:' : ''}`,
 
     // Fecha o que não usamos. Plugin, applet, Flash: nada disso existe aqui.
     `object-src 'none'`,
@@ -66,6 +95,13 @@ export function proxy(request: NextRequest) {
 
   const cabecalhos = new Headers(request.headers)
   cabecalhos.set('x-nonce', nonce)
+  // O caminho aberto, para o registro do acesso do NOSSO suporte no livro da
+  // loja (ver `sessaoViva` em src/servidor/pagina.ts): a tela do servidor não
+  // sabe o próprio endereço, e a ação (Server Action) posta para o endereço
+  // da tela. `set`, e não `append`: um cabeçalho com este nome vindo do
+  // navegador é substituído aqui, e não dá para mentir o caminho no livro.
+  // Só o caminho, sem a busca — a busca pode ter nome de cliente.
+  cabecalhos.set('x-norte-caminho', request.nextUrl.pathname)
   cabecalhos.set('Content-Security-Policy', politica)
 
   const resposta = NextResponse.next({ request: { headers: cabecalhos } })
@@ -93,7 +129,9 @@ export function proxy(request: NextRequest) {
 
   // Isola a janela: página aberta por nós não mantém referência para mexer
   // aqui, e vice-versa.
-  resposta.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+  // Na tela da Meta, a janela do cadastro precisa conseguir responder a esta
+  // (ver TELA_DA_META lá em cima).
+  resposta.headers.set('Cross-Origin-Opener-Policy', comMeta ? 'same-origin-allow-popups' : 'same-origin')
 
   // Só HTTPS, por dois anos, incluindo subdomínio. Em desenvolvimento não —
   // travaria o http://localhost do navegador por dois anos.

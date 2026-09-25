@@ -6,9 +6,15 @@
 // que deixa testar o laço inteiro sem mandar mensagem para ninguém.
 //
 // ── qual linha cada empresa usa ──────────────────────────────
-// A pergunta "por onde sai a mensagem da empresa X?" tem quatro respostas,
+// A pergunta "por onde sai a mensagem da empresa X?" tem cinco respostas,
 // nesta ordem:
 //
+//  -1. O WHATSAPP OFICIAL (Meta, Cloud API): a loja conectou pelo Cadastro
+//      incorporado da Meta na tela do assistente (`canal = META`), e este
+//      servidor tem o app da Meta configurado (ver ./meta-regras.ts). É o
+//      caminho sem risco de banimento por "aparelho não oficial" — e o único
+//      com a JANELA DE 24 HORAS: fora dela, só modelo aprovado
+//      (`enviarModelo`). Ver ./meta.ts.
 //   0. O QR CODE: o WhatsApp da loja conectado direto no Norte, pelo conector
 //      (pasta conector/, ver ./conector.ts) — sem Z-API, sem mensalidade de
 //      terceiro. Vale quando o Agente está em `canal = PROPRIO` (o celular
@@ -42,8 +48,25 @@ import { paraEnvio } from './telefone'
 import { decifrar } from '../cifra'
 import { comoOrg } from '../banco'
 import { enviarPeloConector, lerConfigConector, type ConfigConector } from './conector'
+import { CanalMeta } from './meta'
+import { lerConfigMeta } from './meta-regras'
 
-export type Envio = { ok: true; id?: string } | { ok: false; motivo: string }
+/**
+ * `codigo` é para quem decide o que fazer depois — a frase (`motivo`) é
+ * para a tela e o log. 'janela_fechada': WhatsApp oficial, a pessoa não
+ * escreveu nas últimas 24 horas, e texto livre não sai (só modelo aprovado).
+ */
+export type CodigoFalha = 'janela_fechada' | 'modelo' | 'credencial' | 'limite' | 'numero' | 'fornecedor'
+export type Envio = { ok: true; id?: string } | { ok: false; motivo: string; codigo?: CodigoFalha }
+
+/**
+ * Um modelo (template) aprovado na conta da Meta, pronto para sair: o nome,
+ * o idioma e o texto de cada variável do corpo, na ordem ({{1}}, {{2}}...).
+ */
+export type ModeloParaEnvio = { nome: string; idioma: string; variaveis: string[] }
+
+/** A janela de atendimento com um número (só existe no WhatsApp oficial). */
+export type Janela = { aberta: boolean; ultimaEntrada: Date | null }
 
 export interface Canal {
   /** Nome para a tela e para o log: "Z-API", "teste". */
@@ -58,6 +81,35 @@ export interface Canal {
    * fornecedor busca o arquivo lá. `comoGravado` = áudio como nota de voz.
    */
   enviarMidia?(numero: string, m: MidiaParaEnvio): Promise<Envio>
+  /**
+   * Só no WhatsApp OFICIAL. A Meta só entrega texto livre a quem escreveu
+   * para a loja nas últimas 24 horas; fora disso, só modelo aprovado. Canal
+   * sem este método não tem janela (Z-API, QR Code, mentira).
+   */
+  janela?(numero: string): Promise<Janela>
+  /** Manda um modelo aprovado. Só no WhatsApp oficial. */
+  enviarModelo?(numero: string, m: ModeloParaEnvio): Promise<Envio>
+}
+
+/**
+ * Manda o texto; se o canal disser que a janela de 24 horas fechou e houver
+ * um modelo aprovado para o caso, manda o modelo no lugar.
+ *
+ * É a regra inteira do "fora da janela" num lugar só: as rotinas (relatório
+ * às 8h para a dona que não escreve desde ontem), o aviso à equipe, a
+ * mensagem de teste e as campanhas passam por aqui. Sem modelo, a falha volta
+ * como veio — com `codigo: 'janela_fechada'` —, e quem chamou decide.
+ */
+export async function enviarOuModelo(
+  canal: Canal,
+  numero: string,
+  texto: string,
+  modelo?: ModeloParaEnvio | null,
+): Promise<Envio & { porModelo?: boolean }> {
+  const r = await canal.enviar(numero, texto)
+  if (r.ok || r.codigo !== 'janela_fechada' || !modelo || !canal.enviarModelo) return r
+  const m = await canal.enviarModelo(numero, modelo)
+  return m.ok ? { ...m, porModelo: true } : m
 }
 
 export type MidiaParaEnvio = {
@@ -85,21 +137,51 @@ function lerConfigZapi(): ConfigZapi | null {
 
 // ── a linha própria, como mora no Agente ─────────────────────
 
-/** As colunas do Agente que descrevem a linha própria. Tokens ainda cifrados. */
+/**
+ * As colunas do Agente que descrevem as linhas próprias (Z-API e Meta).
+ * Tokens ainda cifrados. As da Meta são opcionais no tipo: quem monta a
+ * linha à mão (os testes, as telas antigas) não precisa saber delas.
+ */
 export type LinhaGuardada = {
   zapiInstancia: string | null
   zapiTokenCifrado: string | null
   zapiClientTokenCifrado: string | null
+  metaPhoneNumberId?: string | null
+  metaWabaId?: string | null
+  metaTokenCifrado?: string | null
 }
 
-export const SELECT_LINHA = { zapiInstancia: true, zapiTokenCifrado: true, zapiClientTokenCifrado: true } as const
+export const SELECT_LINHA = {
+  zapiInstancia: true,
+  zapiTokenCifrado: true,
+  zapiClientTokenCifrado: true,
+  metaPhoneNumberId: true,
+  metaWabaId: true,
+  metaTokenCifrado: true,
+} as const
 
 /**
  * O contexto da cifra de cada token: prende o texto cifrado à empresa E ao
  * campo. Copiado para outra empresa, ou trocado de coluna, não abre.
  */
-export const contextoDoToken = (orgId: string, campo: 'zapi_token' | 'zapi_client_token') =>
+export const contextoDoToken = (orgId: string, campo: 'zapi_token' | 'zapi_client_token' | 'meta_token') =>
   `agente:${orgId}:${campo}`
+
+/** A linha oficial da empresa, decifrada — ou nulo (sem, incompleta, ou o token não abre aqui). */
+export function linhaMeta(
+  orgId: string,
+  g: LinhaGuardada | null | undefined,
+): { phoneNumberId: string; wabaId: string | null; token: string } | null {
+  const phoneNumberId = g?.metaPhoneNumberId?.trim()
+  if (!phoneNumberId || !g?.metaTokenCifrado) return null
+  const token = decifrar(g.metaTokenCifrado, contextoDoToken(orgId, 'meta_token'))
+  if (!token) {
+    // O id da empresa é nosso; nada da credencial vai junto.
+    console.error(`[canal] o token da Meta da empresa ${orgId} não abre com a chave deste servidor`)
+    return null
+  }
+  return { phoneNumberId, wabaId: g.metaWabaId?.trim() || null, token }
+}
 
 /**
  * A linha própria da empresa, decifrada e pronta para uso — ou nulo se ela
@@ -260,26 +342,40 @@ function canalFalso(): CanalFalso {
 
 /**
  * De onde sai a mensagem da empresa. A tela mostra; o teste confere.
- * 'qr' = o WhatsApp conectado pelo QR Code; 'propria' = a instância Z-API da
- * empresa; 'global' = o Z-API do servidor (só o piloto).
+ * 'meta' = o WhatsApp oficial (Cloud API); 'qr' = o WhatsApp conectado pelo
+ * QR Code; 'propria' = a instância Z-API da empresa; 'global' = o Z-API do
+ * servidor (só o piloto).
  */
-export type OrigemCanal = 'qr' | 'propria' | 'global' | 'nenhuma'
+export type OrigemCanal = 'meta' | 'qr' | 'propria' | 'global' | 'nenhuma'
 
 /** O que a escolha lê do Agente: a linha do Z-API e, se leu, o canal ligado. */
 export type LinhaDoAgente = LinhaGuardada & { canal?: CanalAgente | null }
 
 /**
- * A regra inteira, sem banco: QR Code > linha própria no Z-API > global (só
- * a do piloto) > mentira. Recebe o que já foi lido do Agente.
+ * A regra inteira, sem banco: oficial (Meta) > QR Code > linha própria no
+ * Z-API > global (só a do piloto) > mentira. Recebe o que já foi lido do
+ * Agente.
  *
- * O QR só vale com o conector configurado AQUI: sem ele, a empresa cai para
- * o que tiver de Z-API (ou para o de mentira, e a tela diz).
+ * O oficial só vale com o app da Meta configurado AQUI (as variáveis META_*),
+ * e o QR só com o conector: sem eles, a empresa cai para o que tiver de Z-API
+ * (ou para o de mentira, e a tela diz). Uma variável esquecida no deploy não
+ * derruba nada — só troca o caminho, e a tela mostra qual.
  */
 export function escolherCanal(
   org: { id: string; slug: string },
   linha: LinhaDoAgente | null | undefined,
   buscar: typeof fetch = fetch,
 ): { canal: Canal; origem: OrigemCanal } {
+  if (linha?.canal === 'META') {
+    const cfg = lerConfigMeta()
+    const oficial = cfg ? linhaMeta(org.id, linha) : null
+    if (cfg && oficial) {
+      return {
+        canal: new CanalMeta(org.id, { phoneNumberId: oficial.phoneNumberId, token: oficial.token, versao: cfg.versao }, { buscar }),
+        origem: 'meta',
+      }
+    }
+  }
   if (linha?.canal === 'PROPRIO') {
     const conector = lerConfigConector()
     if (conector) return { canal: new CanalProprio(org.id, conector, buscar), origem: 'qr' }

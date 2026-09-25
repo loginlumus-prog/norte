@@ -679,6 +679,7 @@ function EditorPorDentro({ slug, inicial, dentro }: { slug: string; inicial: Par
                   midias={midias}
                   aoSubirMidia={(m) => setMidias((ms) => [m, ...ms.filter((x) => x.id !== m.id)])}
                   horario={inicial.horario}
+                  modelos={inicial.modelos ?? null}
                   pendencias={ps.filter((p) => p.nodeId === noEscolhido.id)}
                 />
                 </>

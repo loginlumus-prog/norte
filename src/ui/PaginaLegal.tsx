@@ -74,12 +74,15 @@ export function PaginaLegal({
       <footer className="border-t border-borda bg-superficie">
         <div className="mx-auto flex max-w-3xl flex-col gap-3 px-5 py-8 sm:flex-row sm:items-center sm:justify-between">
           <Marca tamanho={22} id="rodape" />
-          <nav className="flex gap-5 text-xs text-tinta-3">
+          <nav className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-tinta-3">
             <a href="/termos" className="hover:text-tinta-2">
               Termos de uso
             </a>
             <a href="/privacidade" className="hover:text-tinta-2">
               Privacidade
+            </a>
+            <a href="/exclusao-de-dados" className="hover:text-tinta-2">
+              Exclusão de dados
             </a>
           </nav>
         </div>

@@ -211,6 +211,7 @@ model Org {
   campanhaPassos    CampanhaPasso[]
   campanhaAjustes   CampanhaAjustes?
   midias            Midia[]
+  semOfertas        OptOutWhatsapp[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -853,6 +854,27 @@ model Cliente {
   /// esperando — mas quem discorda dele ganha, e a conferencia bate os dois.
   pontos Int @default(0)
 
+  // ── ofertas no WhatsApp: o consentimento (LGPD arts. 7º, I, e 8º) ──
+  // A loja só COMEÇA conversa de oferta com quem aceitou, e quem prova o
+  // aceite é a loja (art. 8º, § 2º). Por isso os quatro campos andam juntos:
+  // o que a pessoa disse, quando, por qual caminho e quem da loja anotou. O
+  // texto que ela ouviu/leu vai no livro de auditoria (a versão), porque o
+  // texto muda e o aceite antigo vale para o que ele dizia.
+  //
+  // NAO_PERGUNTADO é o padrão de propósito: cliente antigo não "aceitou" por
+  // ter sido cadastrado. Ver src/servidor/ofertas.ts.
+  ofertasWhatsapp ConsentimentoOfertas @default(NAO_PERGUNTADO) @map("ofertas_whatsapp")
+  ofertasEm       DateTime?            @map("ofertas_em")
+  /// balcao | ficha | site | whatsapp | telefone — ver ORIGENS_ACEITE em ofertas.ts
+  ofertasOrigem   String?              @map("ofertas_origem")
+  /// Quem anotou: o nome de quem estava na tela, ou "o próprio cliente, pelo WhatsApp".
+  ofertasPor      String?              @map("ofertas_por")
+
+  /// Carimbada quando a loja anonimiza o cadastro a pedido do titular (LGPD
+  /// art. 18). Dali em diante a ficha não se edita: o nome virou "Cliente
+  /// anonimizado" e as vendas continuam penduradas nela pelo prazo fiscal.
+  anonimizadoEm DateTime? @map("anonimizado_em")
+
   vendas Venda[]
   movimentosPontos MovimentoPontos[]
   vales  Vale[]
@@ -867,6 +889,43 @@ model Cliente {
   @@index([orgId, nome])
   @@index([orgId, documento])
   @@map("clientes")
+}
+
+enum ConsentimentoOfertas {
+  SIM /// aceitou receber ofertas no WhatsApp (com data, caminho e quem anotou)
+  NAO /// recusou, ou pediu para sair
+  NAO_PERGUNTADO /// ninguém perguntou ainda — e isso NÃO é aceite
+}
+
+/// Quem NÃO recebe oferta desta empresa no WhatsApp — cadastrado ou não.
+///
+/// É a lista de descadastro PERMANENTE. O "PARAR" que antes só encerrava a
+/// campanha em andamento agora grava aqui, e nenhuma campanha começa para
+/// quem está na lista até a própria pessoa mandar VOLTAR. Vale também para
+/// quem nunca foi cadastrado: o telefone é a chave, não a ficha.
+///
+/// `telefone` é a CHAVE do telefone (DDD + oito últimos dígitos, ver
+/// assistente/telefone.ts), e não um resumo (hash) dela. Resumo de telefone
+/// não esconde nada — são uns dez bilhões de números possíveis, que se
+/// recalculam em segundos —, e resumo com chave secreta perderia a lista
+/// inteira no dia em que a chave mudasse: a loja voltaria a mandar oferta a
+/// quem pediu para parar. A chave é o mínimo que cumpre o pedido da pessoa, e
+/// fica mesmo depois da anonimização — é o que impede de escrever de novo
+/// para quem pediu para ser esquecido.
+model OptOutWhatsapp {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  telefone String
+  /// parar (a pessoa mandou PARAR) | manual (a loja anotou o número) |
+  /// cliente (a ficha foi marcada "não aceita") | anonimizado (a ficha foi apagada)
+  origem   String
+  em       DateTime @default(now())
+
+  @@unique([orgId, telefone])
+  @@index([orgId, em])
+  @@map("optout_whatsapp")
 }
 
 /// Um turno de caixa: abre, movimenta, fecha.
@@ -1538,6 +1597,22 @@ model Agente {
   /// ainda no endereço antigo, derivado do slug com WEBHOOK_SEGREDO.
   webhookTokenHash String? @map("webhook_token_hash")
 
+  // ── o WhatsApp OFICIAL (Meta, Cloud API) ─────────────────
+  // A loja conecta pelo "Cadastro incorporado" da Meta (Embedded Signup) na
+  // tela do assistente; o Norte troca o código por um token de negócio, que
+  // é segredo da loja e fica CIFRADO como os do Z-API. Os ids não são
+  // segredo: dizem QUAL conta e QUAL número, e é pelo id do número que o
+  // webhook da Meta descobre de que empresa é a mensagem (ver
+  // src/servidor/assistente/meta.ts e a função org_do_numero_meta no rls.sql).
+  /// A conta do WhatsApp Business (WABA) da loja. Os modelos moram nela.
+  metaWabaId         String?   @map("meta_waba_id")
+  /// O id do NÚMERO na Cloud API. Único: um número fala por uma empresa só.
+  metaPhoneNumberId  String?   @unique @map("meta_phone_number_id")
+  metaTokenCifrado   String?   @map("meta_token_cifrado")
+  /// O número como a tela mostra, já mascarado: "(71) 9····-1234".
+  metaNumeroExibicao String?   @map("meta_numero_exibicao")
+  metaConectadoEm    DateTime? @map("meta_conectado_em")
+
   // ── cérebro ──────────────────────────────────────────────
   modelo String @default("claude-sonnet-5")
 
@@ -1572,7 +1647,7 @@ model Agente {
 enum CanalAgente {
   NENHUM /// ainda não conectado — o agente existe e não fala com ninguém
   ZAPI /// não oficial, entra no mesmo dia lendo um QR code
-  META /// oficial, exige verificação do Meta Business
+  META /// oficial (Cloud API, pelo Cadastro incorporado da Meta) — ver src/servidor/assistente/meta.ts
   PROPRIO /// a conexão do próprio Norte, pelo QR Code (conector/, Baileys) — sem Z-API no meio
 }
 

@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { lerOrgParaCampanha, porQueNao } from '@/servidor/campanhas/acesso'
 import { contatosDentro, lerParaEditor } from '@/servidor/campanhas/admin'
+import { modelosAprovados } from '@/servidor/assistente/meta-conexao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Aviso } from '@/ui/base'
@@ -37,6 +38,9 @@ export default async function EditorDeCampanha({ params }: { params: Promise<{ e
   const dados = await lerParaEditor(sessao, id)
   if (!dados) notFound()
   const dentro = await contatosDentro(sessao, id)
+  // Só no WhatsApp oficial: os modelos aprovados que um bloco de mensagem
+  // pode usar fora da janela de 24 horas. Meta fora do ar = lista vazia.
+  const modelos = await modelosAprovados(sessao, { tentativas: 1, prazoMs: 5_000 })
 
   return (
     <Estrutura
@@ -50,7 +54,7 @@ export default async function EditorDeCampanha({ params }: { params: Promise<{ e
     >
       <Editor
         slug={slug}
-        inicial={dados}
+        inicial={{ ...dados, modelos }}
         dentro={dentro.map((d) => ({
           ...d,
           desde: d.desde.toISOString(),

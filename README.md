@@ -12,6 +12,7 @@ Atende do balcão de bairro à rede com dezenas de unidades.
 | `docs/plano-completo.html` | Os 13 módulos e as 6 fases de construção |
 | `docs/decisoes.html` | As decisões em página navegável |
 | `docs/clickup-traduzido.html` | Pesquisa do ClickUp traduzida para o nosso produto |
+| `docs/meta/roteiro-videos-revisao.md` | Roteiro dos dois vídeos da revisão do app na Meta (WhatsApp oficial) |
 
 ## Começar a trabalhar
 
@@ -261,6 +262,132 @@ WantedBy=multi-user.target
 `systemctl daemon-reload && systemctl enable --now norte-conector`, e o log com
 `journalctl -u norte-conector -f`. O Caddy do passo 6 vale igual.
 
+
+## WhatsApp oficial (Meta)
+
+O terceiro jeito de a loja ligar o WhatsApp, e o único sem risco de bloqueio
+por "aparelho não oficial": a **API oficial da Meta (WhatsApp Cloud API)**, com
+o Norte como **Tech Provider**. Cada loja conecta o **próprio** número pela tela
+**Assistente › Conexão**, num botão que abre o *Cadastro incorporado* da Meta
+(Embedded Signup v4): ela entra com o Facebook da loja, escolhe (ou cria) a
+conta do WhatsApp Business e o número, e volta conectada. A cobrança das
+mensagens é da Meta, direto na conta da loja.
+
+Tudo está pronto do lado do Norte e **desligado por variável**: sem as quatro
+primeiras abaixo, a tela diz *"A conexão oficial ainda não está ligada neste
+servidor"*, o webhook responde 404 e nada mais muda (QR Code e Z-API seguem
+como estão). Com elas, o botão da Meta vira o caminho principal e QR/Z-API vão
+para "Outras formas de conectar".
+
+```
+ loja ─► tela Conexão ─► janela da Meta (FB.login + config_id) ─► código + ids
+                                                                   │
+ Norte (servidor): troca o código pelo token ─► inscreve o app na conta (subscribed_apps)
+                   ─► registra o número (PIN) ─► cria os modelos norte_* ─► canal = META
+ Meta ──X-Hub-Signature-256──► /api/whatsapp-meta ─► o mesmo processarMensagem de sempre
+```
+
+**Onde está o código.** `src/servidor/assistente/meta-regras.ts` (regras puras:
+assinatura, leitura do webhook, janela, erros, modelos), `meta.ts` (cliente da
+Graph API e o `CanalMeta`), `meta-webhook.ts` (a porta), `meta-conexao.ts`
+(conectar, desconectar, modelos da loja), `meta-cadastro.ts` (o recado do
+cadastro, lido no navegador). Tela: `src/app/[empresa]/agente/ConexaoMeta.tsx`
+e `src/app/[empresa]/campanhas/modelos/`. Testes: `tests/whatsapp-meta*.test.ts`.
+
+**O que muda para a loja no oficial:**
+
+- **Janela de 24 horas.** Texto livre só sai para quem escreveu à loja nas
+  últimas 24 h (a janela é calculada das mensagens gravadas). Fora dela, só
+  **modelo aprovado**. O canal oficial recusa o texto antes de chamar a Meta.
+- **Rotinas (relatório 8h/20h, avisos):** quando a dona está fora da janela
+  — o caso comum —, saem pelos modelos de utilidade `norte_relatorio_dia` e
+  `norte_aviso`, que o Norte cria na conta da loja ao conectar (e no botão
+  "Recriar modelos").
+- **Campanhas:** o bloco de mensagem ganhou "Fora da janela de 24 horas,
+  mandar o modelo". Sem modelo, a pessoa sai da campanha naquele bloco
+  (motivo `janela_fechada`, contado na lista de campanhas).
+- **Modelos da loja:** Campanhas › Modelos — criar (marketing ou utilidade,
+  pt_BR, variáveis `{{1}}` com exemplo, título de texto ou imagem, até 3
+  botões de resposta rápida), ver a situação (aprovado, em análise, recusado
+  e o motivo) e apagar.
+- **Coexistência:** quem já usa o número no app WhatsApp Business marca a
+  caixa antes de conectar; a equipe segue respondendo pelo celular, e o que
+  ela manda de lá chega como eco (`smb_message_echoes`) e cala o automático
+  por 24 h, como no QR Code.
+
+**A empresa de cada mensagem.** O webhook é um endereço só para todas as lojas;
+quem diz de quem é a mensagem é o `phone_number_id`. A busca atravessa empresas
+e por isso passa pela portaria, numa função `SECURITY DEFINER`
+(`org_do_numero_meta`, em `prisma/sql/rls.sql`) que só aceita o id exato e só o
+papel `app_portaria` pode chamar — o `app_norte` continua sem leitura nenhuma
+entre empresas. **Depois de migrar, rode `npm run preparar -- --producao`**
+(ou reaplique o `rls.sql`) para a função existir em produção.
+
+### As variáveis
+
+| Variável | O quê |
+|---|---|
+| `META_APP_ID` | Id do app (painel da Meta › Configurações do app › Básico) |
+| `META_APP_SECRET` | Chave secreta do app. Assina o webhook e troca o código — só no servidor |
+| `META_CONFIG_ID` | Id da configuração do Cadastro incorporado (Facebook Login for Business › Configurações) |
+| `META_WEBHOOK_VERIFY_TOKEN` | Texto aleatório (16+ caracteres), o mesmo colado no painel do webhook |
+| `META_GRAPH_VERSION` | Opcional; padrão `v25.0` (a dos exemplos atuais da Meta; a `v26.0` também serve) |
+| `NORTE_CIFRA` | Já existente — obrigatória: cifra o token de cada loja |
+| `NORTE_URL` | Já existente — as fotos das campanhas vão por link assinado |
+
+A política de segurança (`src/proxy.ts`) abre os domínios da Meta
+(`connect.facebook.net`, `*.facebook.com`, `graph.facebook.com`) **só na tela
+`/<empresa>/agente`**, e só lá troca `Cross-Origin-Opener-Policy` para
+`same-origin-allow-popups` (sem isso a janela do cadastro não consegue devolver
+os ids). O resto do sistema continua sem script de fora.
+
+### O que fazer no painel da Meta, depois da verificação da empresa
+
+1. **Criar o app** em developers.facebook.com › Meus apps › Criar app ›
+   tipo **Empresa (Business)**, caso de uso **WhatsApp**, ligado ao portfólio
+   empresarial do Norte (o que foi verificado).
+2. **Configurações do app › Básico:** nome, ícone, e-mail, categoria, e os
+   links da **Política de privacidade** (`https://<domínio>/privacidade`),
+   **Termos** (`https://<domínio>/termos`) e **Exclusão de dados**
+   (`https://<domínio>/exclusao-de-dados`). Copie o **ID do app** →
+   `META_APP_ID` e a **Chave secreta** → `META_APP_SECRET`.
+3. **WhatsApp › Configuração › Webhook:** URL de retorno
+   `https://<domínio>/api/whatsapp-meta` e o token de verificação
+   (`META_WEBHOOK_VERIFY_TOKEN`) — **com as variáveis já no ar**, porque a Meta
+   confere na hora (GET com o desafio). Em "Campos do webhook", assinar:
+   `messages`, `message_template_status_update`, `account_update`,
+   `smb_message_echoes`, `smb_app_state_sync`, `history` (os dois últimos são
+   exigidos na coexistência; o Norte recebe e descarta), e se quiser
+   `template_category_update` e `phone_number_quality_update` (só vão para o log).
+4. **Facebook Login for Business › Configurações › Criar configuração:**
+   escolha o modelo **"WhatsApp Embedded Signup"** (variação de login do
+   cadastro incorporado), produtos **WhatsApp Cloud API** (e, para quem usa o
+   app no mesmo número, a opção de **WhatsApp Business app / coexistência**).
+   Copie o **ID da configuração** → `META_CONFIG_ID`.
+5. **Facebook Login for Business › Configurações (do produto):** ligar
+   *Login OAuth do cliente*, *Login OAuth da Web*, *Forçar HTTPS*, *Login
+   OAuth do navegador incorporado*, *Modo estrito para URIs de redirecionamento*
+   e **Login com o SDK do JavaScript**; em **Domínios permitidos para o SDK do
+   JavaScript** e em **URIs de redirecionamento do OAuth válidos**, pôr
+   `https://<domínio>/`.
+6. **Pôr as variáveis no Render** (render.yaml já lista, `sync: false`),
+   fazer o deploy, e só então salvar o webhook do passo 3.
+7. **Testar em modo de desenvolvimento:** com o app ainda não publicado, só
+   quem tem papel no app (administrador/desenvolvedor/testador) consegue fazer
+   o cadastro. Conecte um número de teste, mande "oi" do seu celular, clique em
+   "Enviar mensagem de teste para mim", crie um modelo em Campanhas › Modelos.
+8. **Revisão do app (App Review):** pedir **Acesso avançado** a
+   `whatsapp_business_messaging` e `whatsapp_business_management`, cada uma
+   com um vídeo — o roteiro está em `docs/meta/roteiro-videos-revisao.md`.
+9. Aprovado: **publicar o app** (modo Ao vivo). Por padrão a Meta deixa um
+   Tech Provider cadastrar 10 empresas novas por semana; depois da revisão, 200.
+
+**O que só dá para conferir com o app de verdade** (os testes cobrem a lógica
+com a Meta de mentira): a janela do cadastro abrindo e devolvendo código e ids
+no domínio real; a troca do código; a inscrição do app e o registro do número;
+a aprovação dos modelos `norte_*` pela Meta; a entrega real (texto, foto por
+link assinado, modelo) e os status no webhook; a coexistência com o app
+WhatsApp Business; o upload da imagem de título de modelo.
 
 ## Estado
 

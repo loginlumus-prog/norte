@@ -37,7 +37,8 @@ import { previsaoDeRuptura, type LinhaRuptura } from '../ruptura'
 import { aVencer } from '../financeiro'
 import { mostrar } from '../dinheiro'
 import { pode, type Sessao } from '../permissao'
-import type { Canal } from './canal'
+import type { Canal, ModeloParaEnvio } from './canal'
+import { modeloDeAviso, modeloDoRelatorio } from './meta-regras'
 import {
   abrirConversa,
   carregarContexto,
@@ -229,25 +230,32 @@ export async function rodarNaEmpresa(
     if (!(await reivindicar(orgId, agente.id, GATILHO[rotina], agora))) continue
     saida.rodou = true
 
-    const mensagens: { para: Destinatario; texto: string }[] = []
+    // `modelo`: o que sai no WhatsApp oficial quando a dona não escreve para
+    // o número da loja há mais de 24 horas — o caso comum às 8h. Nos outros
+    // canais ele é ignorado (ver `enviarOuModelo` em canal.ts).
+    const mensagens: { para: Destinatario; texto: string; modelo: ModeloParaEnvio }[] = []
     if (rotina === 'relatorio_manha' || rotina === 'relatorio_noite') {
+      const quando = rotina === 'relatorio_manha' ? 'manha' : 'noite'
       for (const d of donos) {
-        const texto = await relatorio(d, rotina === 'relatorio_manha' ? 'manha' : 'noite', agora, agente.poderes.includes('ver.resumo'))
-        if (texto) mensagens.push({ para: d, texto })
+        const texto = await relatorio(d, quando, agora, agente.poderes.includes('ver.resumo'))
+        if (texto) mensagens.push({ para: d, texto, modelo: modeloDoRelatorio(d.nome, quando, texto) })
       }
     } else if (rotina === 'ruptura') {
       const r = await ruptura(orgId, ctx.org, agente.poderes, donos[0]!.sessao)
       saida.propostas += r.propostas
-      if (r.texto) for (const d of donos) mensagens.push({ para: d, texto: r.texto })
+      if (r.texto) for (const d of donos) mensagens.push({ para: d, texto: r.texto, modelo: modeloDeAviso(ctx.org.nome, r.texto) })
     } else if (rotina === 'cliente_sumido') {
       const texto = await clienteSumido(orgId, donos[0]!.sessao, await diasDoGatilho(orgId, agente.id))
-      if (texto) for (const d of donos) mensagens.push({ para: d, texto })
+      if (texto) for (const d of donos) mensagens.push({ para: d, texto, modelo: modeloDeAviso(ctx.org.nome, texto) })
     }
 
     for (const m of mensagens) {
       const conversa = await abrirConversa(orgId, agente.id, m.para.telefone, { nome: m.para.nome, daEquipe: true })
-      const s = await enviarEGravar(canal, agente, conversa, m.texto)
+      const s = await enviarEGravar(canal, agente, conversa, m.texto, m.modelo)
       if (s.enviada) saida.enviadas++
+      else if (s.motivo === 'janela_fechada' || s.detalhe) {
+        console.warn(`[rotinas] ${orgId}: ${rotina} não saiu (${s.motivo})`)
+      }
     }
   }
   return saida

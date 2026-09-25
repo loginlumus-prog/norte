@@ -30,6 +30,7 @@ import {
 import { apagarSessaoWhatsapp } from './proprio'
 import { montarEnderecoDoWebhook, novoTokenDoWebhook, temSegredoWebhook } from './webhook'
 import { abrirConversa, enviarEGravar } from './contexto'
+import { modeloDeAviso } from './meta-regras'
 import { chaveTelefone, mascarar } from './telefone'
 import { DIAS_SUMIDO } from './rotinas'
 
@@ -94,7 +95,8 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
   const enderecoProprio = !!agente?.webhookTokenHash
   const segredoWebhook = enderecoProprio || temSegredoWebhook()
   const noQr = agente?.canal === 'PROPRIO'
-  const conectado = agente?.canal === 'ZAPI' || noQr
+  const naMeta = agente?.canal === 'META'
+  const conectado = agente?.canal === 'ZAPI' || noQr || naMeta
   const situacao: EstadoConexao['situacao'] = !agente
     ? 'sem_agente'
     : !chaveIA
@@ -103,8 +105,9 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
         ? 'sem_canal'
         : !conectado
           ? 'desconectado'
-          : // o endereço do webhook só conta no Z-API; o QR entra assinado pelo conector
-            !noQr && !segredoWebhook
+          : // o endereço do webhook só conta no Z-API; o QR entra assinado pelo
+            // conector, e a Meta assinada com a chave do app
+            agente.canal === 'ZAPI' && !segredoWebhook
             ? 'sem_webhook'
             : !agente.ativo
               ? 'desligado'
@@ -513,11 +516,11 @@ export async function desconectarCanal(sessao: Sessao) {
  */
 export async function mensagemDeTeste(sessao: Sessao): Promise<{ ok: true; recado: string } | { ok: false; erro: string }> {
   exigir(sessao, 'agente.configurar')
-  const { agente, eu, slug } = await comoOrg(sessao.orgId, async (db) => {
+  const { agente, eu, slug, loja } = await comoOrg(sessao.orgId, async (db) => {
     const agente = await db.agente.findUnique({ where: { orgId: sessao.orgId } })
     const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { telefone: true, nome: true } })
-    const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { slug: true } })
-    return { agente, eu, slug: org.slug }
+    const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { slug: true, nome: true } })
+    return { agente, eu, slug: org.slug, loja: org.nome }
   })
   if (!agente) return { ok: false, erro: 'Crie o assistente antes de testar.' }
   if (!eu?.telefone || !chaveTelefone(eu.telefone)) {
@@ -528,27 +531,36 @@ export async function mensagemDeTeste(sessao: Sessao): Promise<{ ok: true; recad
   // que o botão existe para provar.
   const { canal, origem } = escolherCanal({ id: sessao.orgId, slug }, agente)
   const conversa = await abrirConversa(sessao.orgId, agente.id, eu.telefone, { nome: eu.nome, daEquipe: true })
-  const s = await enviarEGravar(
-    canal,
-    agente,
-    conversa,
-    `Oi, ${eu.nome.split(' ')[0]}! Aqui é ${agente.nome}, o assistente da loja. Se esta mensagem chegou, a conexão está funcionando.`,
-  )
+  const texto = `Oi, ${eu.nome.split(' ')[0]}! Aqui é ${agente.nome}, o assistente da loja. Se esta mensagem chegou, a conexão está funcionando.`
+  // No WhatsApp oficial, se você não escreveu para o número da loja nas
+  // últimas 24 horas, o teste sai pelo modelo `norte_aviso` — que é também o
+  // que prova que os modelos do Norte já foram aprovados.
+  const s = await enviarEGravar(canal, agente, conversa, texto, modeloDeAviso(loja, texto))
   if (!s.enviada) {
     return {
       ok: false,
       erro:
         s.motivo === 'teto_mensagens'
           ? 'Ele já mandou o máximo de mensagens de hoje.'
-          : origem === 'qr'
-            ? 'O WhatsApp conectado pelo QR Code não conseguiu mandar. Confira se ele aparece como conectado aqui em cima.'
-            : 'O canal recusou o envio. Confira a instância no Z-API.',
+          : origem === 'meta'
+            ? `O WhatsApp oficial não mandou. ${s.detalhe ?? ''} Se o modelo "norte_aviso" ainda está em análise na Meta, mande um "oi" do seu WhatsApp para o número da loja e teste de novo — dentro das 24 horas não precisa de modelo.`.replace(/\s+/g, ' ')
+            : origem === 'qr'
+              ? 'O WhatsApp conectado pelo QR Code não conseguiu mandar. Confira se ele aparece como conectado aqui em cima.'
+              : 'O canal recusou o envio. Confira a instância no Z-API.',
     }
   }
   return {
     ok: true,
     recado: canal.real
-      ? `Mensagem enviada para ${mascarar(eu.telefone)}${origem === 'qr' ? ', pelo WhatsApp conectado por QR Code' : origem === 'propria' ? ', pela linha desta loja' : ''}.`
+      ? `Mensagem enviada para ${mascarar(eu.telefone)}${
+          origem === 'meta'
+            ? `, pelo WhatsApp oficial${s.porModelo ? ' (como modelo aprovado, porque a janela de 24 horas com você estava fechada)' : ''}`
+            : origem === 'qr'
+              ? ', pelo WhatsApp conectado por QR Code'
+              : origem === 'propria'
+                ? ', pela linha desta loja'
+                : ''
+        }.`
       : 'Esta conta ainda não tem linha do WhatsApp: a mensagem ficou só no histórico abaixo, nada saiu de verdade.',
   }
 }

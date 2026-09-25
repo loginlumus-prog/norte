@@ -16,15 +16,23 @@
 // página recebe "guardado, termina em …ab12" e nada além; o campo fica vazio
 // sempre, e vazio quer dizer "manter o que está guardado".
 //
-// ── o QR Code vem primeiro ───────────────────────────────────
-// O caminho principal é ler um QR com o celular da loja, como no WhatsApp
-// Web: sem conta em fornecedor, sem token para colar. O Z-API continua lá,
-// fechado em "Outras formas de conectar" — aberto só para quem já usa.
+// ── o oficial vem primeiro (quando o servidor tem a Meta) ────
+// Com o app da Meta configurado no servidor, o caminho principal é o
+// WhatsApp OFICIAL, pelo Cadastro incorporado da Meta (./ConexaoMeta.tsx):
+// sem risco de bloqueio por aparelho não oficial. QR Code e Z-API ficam em
+// "Outras formas de conectar".
+//
+// Sem a Meta no servidor, o principal é ler um QR com o celular da loja, como
+// no WhatsApp Web: sem conta em fornecedor, sem token para colar. O Z-API
+// continua lá, fechado em "Outras formas de conectar" — aberto só para quem
+// já usa. E o bloco da Meta diz, numa linha, que ela ainda não está ligada.
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Situacao } from '@/ui/base'
 import type { CredencialNaTela, EstadoConexao, QrNaTela } from '@/servidor/assistente/conexao'
+import type { EstadoMeta } from '@/servidor/assistente/meta-conexao'
+import { ConexaoMeta } from './ConexaoMeta'
 import {
   apagarLinha,
   conectar,
@@ -52,7 +60,7 @@ const FRASE: Record<EstadoConexao['situacao'], { nivel: 'bom' | 'atencao' | 'cri
   sem_canal: {
     nivel: 'critico',
     titulo: 'Sem WhatsApp conectado',
-    texto: 'Ainda não há um WhatsApp ligado a esta conta. As conversas ficam só no histórico; nada sai para o WhatsApp. Conecte pelo QR Code logo abaixo.',
+    texto: 'Ainda não há um WhatsApp ligado a esta conta. As conversas ficam só no histórico; nada sai para o WhatsApp. Conecte o WhatsApp da loja logo abaixo.',
   },
   desconectado: {
     nivel: 'atencao',
@@ -82,7 +90,7 @@ function guardado(c: CredencialNaTela): string {
   return c.final ? `guardado ✓ (termina em …${c.final})` : 'guardado, mas não abre com a chave atual — cole de novo'
 }
 
-export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao }) {
+export function Conexao({ slug, estado, meta }: { slug: string; estado: EstadoConexao; meta: EstadoMeta }) {
   const [resposta, setResposta] = useState<EstadoConexaoAcao>({})
   const [qual, setQual] = useState<string | null>(null)
   const [trocando, setTrocando] = useState(false)
@@ -108,6 +116,10 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
   const temLinha = estado.linha.instancia !== null || estado.linha.token.guardado
   // Quem já está no Z-API (ou tem linha guardada) vê essa parte aberta.
   const usaZapi = estado.canalLigado === 'ZAPI' || temLinha || estado.origemCanal === 'global'
+  // Com a Meta no servidor, o QR também vai para "Outras formas" — e abre
+  // sozinho para quem já está nele.
+  const oficialPrimeiro = meta.disponivel
+  const outrasAbertas = usaZapi || (oficialPrimeiro && estado.canalLigado === 'PROPRIO')
 
   return (
     <Cartao titulo="Conexão">
@@ -123,7 +135,9 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
           <li><Situacao nivel={estado.chaveIA ? 'bom' : 'critico'}>inteligência artificial</Situacao></li>
           <li>
             <Situacao nivel={estado.canalReal ? 'bom' : 'critico'}>
-              {estado.origemCanal === 'qr'
+              {estado.origemCanal === 'meta'
+                ? 'WhatsApp oficial (Meta)'
+                : estado.origemCanal === 'qr'
                 ? 'WhatsApp pelo QR Code'
                 : estado.origemCanal === 'propria'
                   ? 'linha própria do WhatsApp'
@@ -132,7 +146,7 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
                     : 'linha do WhatsApp'}
             </Situacao>
           </li>
-          {estado.canalLigado !== 'PROPRIO' && (
+          {estado.canalLigado !== 'PROPRIO' && estado.canalLigado !== 'META' && (
             <li><Situacao nivel={estado.segredoWebhook ? 'bom' : 'critico'}>entrada protegida</Situacao></li>
           )}
           <li><Situacao nivel={estado.conectado ? 'bom' : 'atencao'}>{estado.conectado ? 'conectado' : 'desconectado'}</Situacao></li>
@@ -160,8 +174,10 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
           </Aviso>
         )}
 
-        {/* ── o caminho principal: o QR Code ── */}
-        {temAgente && <ConexaoQr slug={slug} estado={estado} />}
+        {/* ── o caminho principal: o oficial (com a Meta no servidor) ou o QR Code ── */}
+        {temAgente && oficialPrimeiro && <ConexaoMeta slug={slug} meta={meta} />}
+        {temAgente && !oficialPrimeiro && <ConexaoQr slug={slug} estado={estado} />}
+        {temAgente && !oficialPrimeiro && <ConexaoMeta slug={slug} meta={meta} />}
 
         <div className="flex flex-col gap-1.5">
           <div>
@@ -183,11 +199,12 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
 
         {/* ── as outras formas: Z-API ── */}
         {temAgente && (
-          <details className="group rounded-norte border border-borda" open={usaZapi}>
+          <details className="group rounded-norte border border-borda" open={outrasAbertas}>
             <summary className="cursor-pointer px-3 py-2.5 text-sm font-semibold text-tinta select-none">
-              Outras formas de conectar (Z-API)
+              {oficialPrimeiro ? 'Outras formas de conectar (QR Code e Z-API)' : 'Outras formas de conectar (Z-API)'}
             </summary>
             <div className="flex flex-col gap-3 border-t border-borda p-3">
+        {oficialPrimeiro && <ConexaoQr slug={slug} estado={estado} />}
         {/* ── a linha própria no Z-API ── */}
         {temAgente && (
           <form
@@ -322,10 +339,11 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
             </Botao>
           )}
         </div>
-        {estado.canalLigado === 'PROPRIO' && (
+        {(estado.canalLigado === 'PROPRIO' || estado.canalLigado === 'META') && (
           <p className="text-xs text-tinta-3">
-            Hoje esta conta fala pelo WhatsApp conectado por QR Code. Conectar pelo Z-API passa a
-            valer no lugar dele.
+            Hoje esta conta fala pelo{' '}
+            {estado.canalLigado === 'META' ? 'WhatsApp oficial (Meta)' : 'WhatsApp conectado por QR Code'}. Conectar
+            pelo Z-API passa a valer no lugar dele.
           </p>
         )}
             </div>

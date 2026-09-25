@@ -14,7 +14,7 @@ import { custoEmCentavos, cobrancaEmCentavos, type Tokens } from '../custo-ia'
 import { inicioDeHojeEmSP } from '../dia'
 import { chaveTelefone, paraEnvio, soDigitos } from './telefone'
 import type { Interlocutor, Loja } from './regras'
-import type { Canal } from './canal'
+import { enviarOuModelo, type Canal, type ModeloParaEnvio } from './canal'
 
 // ─────────────────────────────────────────────────────────────
 // A EMPRESA
@@ -267,7 +267,14 @@ export async function mensagensEnviadasHoje(orgId: string): Promise<number> {
   )
 }
 
-export type Saida = { enviada: boolean; motivo?: 'teto_mensagens' | 'canal' | 'sem_numero' }
+export type Saida = {
+  enviada: boolean
+  motivo?: 'teto_mensagens' | 'canal' | 'sem_numero' | 'janela_fechada'
+  /** Saiu como modelo aprovado (WhatsApp oficial, fora da janela de 24 h). */
+  porModelo?: boolean
+  /** A frase do canal quando ele recusou — já sem segredo, pronta para a tela. */
+  detalhe?: string
+}
 
 /**
  * A única porta de saída: confere o teto, manda pelo canal e grava.
@@ -275,12 +282,18 @@ export type Saida = { enviada: boolean; motivo?: 'teto_mensagens' | 'canal' | 's
  * Grava DEPOIS de mandar, e só se saiu: o histórico é o que o assistente
  * "lembra" na próxima mensagem, e lembrar de ter dito o que não chegou faz
  * ele continuar uma conversa que a pessoa nunca viu.
+ *
+ * `modelo`: o modelo aprovado que sai no lugar do texto se o canal for o
+ * WhatsApp oficial e a janela de 24 horas com esse número estiver fechada
+ * (ver `enviarOuModelo`). O histórico guarda o TEXTO — é o mesmo conteúdo, e
+ * é o que o assistente precisa lembrar quando a dona responder.
  */
 export async function enviarEGravar(
   canal: Canal,
   agente: Pick<Agente, 'id' | 'orgId' | 'mensagensDia'>,
   conversa: { id: string; telefone: string },
   texto: string,
+  modelo?: ModeloParaEnvio | null,
 ): Promise<Saida> {
   const jaForam = await mensagensEnviadasHoje(agente.orgId)
   if (jaForam >= agente.mensagensDia) {
@@ -288,8 +301,10 @@ export async function enviarEGravar(
     return { enviada: false, motivo: 'teto_mensagens' }
   }
 
-  const r = await canal.enviar(conversa.telefone, texto)
-  if (!r.ok) return { enviada: false, motivo: 'canal' }
+  const r = await enviarOuModelo(canal, conversa.telefone, texto, modelo)
+  if (!r.ok) {
+    return { enviada: false, motivo: r.codigo === 'janela_fechada' ? 'janela_fechada' : 'canal', detalhe: r.motivo }
+  }
 
   await comoOrg(agente.orgId, async (db) => {
     await db.mensagemAgente.create({
@@ -297,7 +312,7 @@ export async function enviarEGravar(
     })
     await db.conversaAgente.update({ where: { id: conversa.id }, data: { ultimaEm: new Date() } })
   })
-  return { enviada: true }
+  return r.porModelo ? { enviada: true, porModelo: true } : { enviada: true }
 }
 
 // ─────────────────────────────────────────────────────────────

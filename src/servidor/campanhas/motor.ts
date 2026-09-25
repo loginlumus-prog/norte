@@ -28,6 +28,7 @@ import {
   type DadosMidia,
   type DadosPassar,
   type Grafo,
+  type ModeloDoBloco,
   type MotivoFim,
   type No,
   type Status,
@@ -41,6 +42,7 @@ import {
   interpolar,
   proximo,
   rotearCondicao,
+  variaveisDoModelo,
 } from './grafo'
 import { proximaAbertura, type Horario } from './horario'
 
@@ -62,13 +64,22 @@ export type Evento =
   | { tipo: 'resposta'; texto: string }
   | { tipo: 'acordar' }
 
-/** O que aconteceu com uma mensagem que o motor tentou mandar. */
-export type Envio = 'ok' | 'limite' | 'falha'
+/**
+ * O que aconteceu com uma mensagem que o motor tentou mandar.
+ * 'janela' = WhatsApp oficial, 24 horas sem a pessoa escrever, e sem modelo
+ * aprovado para mandar no lugar: a execução termina ('janela_fechada').
+ */
+export type Envio = 'ok' | 'limite' | 'falha' | 'janela'
 
 export type Deps = {
   agora: () => Date
   dormir: (ms: number) => Promise<void>
-  enviarTexto: (texto: string) => Promise<Envio>
+  /**
+   * `modelo`: o modelo aprovado do bloco, com as variáveis JÁ preenchidas
+   * para esta pessoa. Só é usado se a janela de 24 horas fechou (WhatsApp
+   * oficial); nos outros canais ele é ignorado.
+   */
+  enviarTexto: (texto: string, modelo?: ModeloDoBloco | null) => Promise<Envio>
   enviarMidia: (d: DadosMidia, legenda: string) => Promise<Envio>
   /** Avisa a equipe. Devolve quantas mensagens saíram para ela. */
   passarParaPessoa: (d: DadosPassar, vars: Vars) => Promise<number>
@@ -205,6 +216,12 @@ async function mandar(
     return null
   }
   if (r === 'limite') return { tipo: 'fim', status: 'erro', motivo: 'limite' }
+  if (r === 'janela') {
+    // Tentar de novo não adianta: a janela só reabre quando a PESSOA escrever,
+    // e aí é outra conversa. Fica no diário, e a execução termina.
+    await deps.registrar({ nodeId: no.id, tipo: no.tipo, saida: 'janela_fechada' })
+    return { tipo: 'fim', status: 'erro', motivo: 'janela_fechada' }
+  }
   const falhas = Number(e.vars._falhas ?? 0) + 1
   if (falhas >= TENTATIVAS) {
     delete e.vars._falhas
@@ -238,8 +255,11 @@ async function executar(no: No, e: EstadoExecucao, deps: Deps): Promise<Passo> {
         await deps.dormir(seg * 1000)
       }
       delete e.vars._digitado
+      const modelo = no.dados.modelo
+        ? { nome: no.dados.modelo.nome, idioma: no.dados.modelo.idioma, variaveis: variaveisDoModelo(no.dados.modelo, e.vars) }
+        : null
       if (texto) {
-        const falhou = await mandar(no, e, deps, () => deps.enviarTexto(texto))
+        const falhou = await mandar(no, e, deps, () => deps.enviarTexto(texto, modelo))
         if (falhou) return falhou
       }
       await deps.registrar({ nodeId: no.id, tipo: no.tipo, saida: 'saida', enviadas: texto ? 1 : 0 })

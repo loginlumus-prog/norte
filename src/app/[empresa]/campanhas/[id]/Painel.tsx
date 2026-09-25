@@ -18,6 +18,7 @@ import {
   type UnidadeTempo,
 } from '@/servidor/campanhas/tipos'
 import type { Pendencia } from '@/servidor/campanhas/grafo'
+import type { ModeloAprovado } from '@/servidor/campanhas/admin'
 import { ACEITA, MB, conferirArquivo } from '@/servidor/campanhas/midia-regras'
 import { subirMidiaAcao } from '../acoes'
 
@@ -93,6 +94,7 @@ export function PainelDoBloco({
   midias,
   aoSubirMidia,
   horario,
+  modelos,
   pendencias,
 }: {
   slug: string
@@ -106,6 +108,8 @@ export function PainelDoBloco({
   midias: MidiaNaTela[]
   aoSubirMidia: (m: MidiaNaTela) => void
   horario: { texto: string | null; entendido: boolean }
+  /** Nulo: a loja não está no WhatsApp oficial (sem janela, sem modelo). */
+  modelos: ModeloAprovado[] | null
   pendencias: Pendencia[]
 }) {
   return (
@@ -134,6 +138,7 @@ export function PainelDoBloco({
         midias={midias}
         aoSubirMidia={aoSubirMidia}
         horario={horario}
+        modelos={modelos}
       />
     </div>
   )
@@ -150,13 +155,14 @@ function Formulario(p: {
   midias: MidiaNaTela[]
   aoSubirMidia: (m: MidiaNaTela) => void
   horario: { texto: string | null; entendido: boolean }
+  modelos: ModeloAprovado[] | null
 }) {
   const { no } = p
   switch (no.tipo) {
     case 'inicio':
       return <FormInicio g={p.gatilho} aoMudar={p.aoMudarGatilho} />
     case 'mensagem':
-      return <FormMensagem d={no.dados} aoMudar={p.aoMudar} />
+      return <FormMensagem slug={p.slug} d={no.dados} aoMudar={p.aoMudar} modelos={p.modelos} />
     case 'midia':
       return <FormMidia slug={p.slug} d={no.dados} aoMudar={p.aoMudar} midias={p.midias} aoSubir={p.aoSubirMidia} />
     case 'intervalo': {
@@ -449,7 +455,17 @@ function FormInicio({ g, aoMudar }: { g: Gatilho; aoMudar: (g: Gatilho) => void 
   )
 }
 
-function FormMensagem({ d, aoMudar }: { d: DadosPorTipo['mensagem']; aoMudar: (d: DadosPorTipo['mensagem']) => void }) {
+function FormMensagem({
+  slug,
+  d,
+  aoMudar,
+  modelos,
+}: {
+  slug: string
+  d: DadosPorTipo['mensagem']
+  aoMudar: (d: DadosPorTipo['mensagem']) => void
+  modelos: ModeloAprovado[] | null
+}) {
   const refs = useRef<(HTMLTextAreaElement | null)[]>([])
   const [foco, setFoco] = useState(0)
   const mudarTexto = (i: number, t: string) => aoMudar({ ...d, textos: d.textos.map((x, j) => (j === i ? t : x)) })
@@ -505,6 +521,83 @@ function FormMensagem({ d, aoMudar }: { d: DadosPorTipo['mensagem']; aoMudar: (d
           className="accent-[var(--marca)]"
         />
       </Rotulo>
+      {modelos !== null && <ModeloForaDaJanela slug={slug} d={d} aoMudar={aoMudar} modelos={modelos} />}
+    </div>
+  )
+}
+
+/**
+ * Só no WhatsApp oficial. Depois de 24 horas sem a pessoa escrever, a Meta
+ * não entrega o texto livre deste bloco; com um modelo aprovado escolhido
+ * aqui, ele sai no lugar. Sem modelo, a pessoa sai da campanha nesse ponto
+ * (e a lista de campanhas mostra quantos pararam assim).
+ */
+function ModeloForaDaJanela({
+  slug,
+  d,
+  aoMudar,
+  modelos,
+}: {
+  slug: string
+  d: DadosPorTipo['mensagem']
+  aoMudar: (d: DadosPorTipo['mensagem']) => void
+  modelos: ModeloAprovado[]
+}) {
+  const atual = d.modelo ?? null
+  const chave = atual ? `${atual.nome}|${atual.idioma}` : ''
+  const escolhido = modelos.find((m) => `${m.nome}|${m.idioma}` === chave) ?? null
+  const escolher = (valor: string) => {
+    if (!valor) return aoMudar({ textos: d.textos, digitandoSeg: d.digitandoSeg })
+    const m = modelos.find((x) => `${x.nome}|${x.idioma}` === valor)
+    if (!m) return
+    const variaveis = Array.from({ length: m.variaveis }, (_, i) => atual?.variaveis[i] ?? (i === 0 ? '{primeiro_nome}' : ''))
+    aoMudar({ ...d, modelo: { nome: m.nome, idioma: m.idioma, variaveis } })
+  }
+  // Modelo que saiu da lista (apagado, pausado): as variáveis continuam na tela.
+  const n = escolhido ? escolhido.variaveis : (atual?.variaveis.length ?? 0)
+  return (
+    <div className="flex flex-col gap-3 rounded-norte border border-borda p-3">
+      <Rotulo
+        titulo="Fora da janela de 24 horas, mandar o modelo"
+        dica="WhatsApp oficial: se a pessoa não escreve há mais de 24 horas, a Meta só entrega modelo aprovado. Sem modelo, a pessoa sai da campanha neste bloco."
+      >
+        <select value={chave} onChange={(e) => escolher(e.target.value)} className={campo}>
+          <option value="">Nenhum (sai da campanha)</option>
+          {atual && !escolhido && (
+            <option value={chave}>
+              {atual.nome} ({atual.idioma}) — não está aprovado agora
+            </option>
+          )}
+          {modelos.map((m) => (
+            <option key={`${m.nome}|${m.idioma}`} value={`${m.nome}|${m.idioma}`}>
+              {m.nome} ({m.idioma})
+            </option>
+          ))}
+        </select>
+      </Rotulo>
+      {modelos.length === 0 && (
+        <p className="text-xs text-tinta-3">
+          Nenhum modelo aprovado ainda.{' '}
+          <a href={`/${slug}/campanhas/modelos`} className="font-medium text-marca underline-offset-2 hover:underline">
+            Criar um modelo
+          </a>
+        </p>
+      )}
+      {escolhido && <p className="rounded-norte bg-superficie-2 px-3 py-2 text-xs whitespace-pre-wrap text-tinta-2">{escolhido.corpo}</p>}
+      {atual &&
+        Array.from({ length: n }, (_, i) => (
+          <Rotulo key={i} titulo={`Variável {{${i + 1}}}`} dica={i === 0 ? 'Aceita {primeiro_nome}, {nome} e {resposta}.' : undefined}>
+            <input
+              value={atual.variaveis[i] ?? ''}
+              maxLength={200}
+              onChange={(e) => {
+                const variaveis = Array.from({ length: n }, (_, j) => (j === i ? e.target.value : (atual.variaveis[j] ?? '')))
+                aoMudar({ ...d, modelo: { ...atual, variaveis } })
+              }}
+              className={campo}
+            />
+          </Rotulo>
+        ))}
     </div>
   )
 }

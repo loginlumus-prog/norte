@@ -24,7 +24,8 @@ import { randomUUID } from 'node:crypto'
 import type { CampanhaExecucao } from '@prisma/client'
 import { comoOrg } from '../banco'
 import { inicioDeHojeEmSP } from '../dia'
-import type { Canal } from '../assistente/canal'
+import { enviarOuModelo, type Canal, type Envio as EnvioDoCanal } from '../assistente/canal'
+import { modeloDeAviso } from '../assistente/meta-regras'
 import { paraEnvio, soDigitos } from '../assistente/telefone'
 import {
   AJUSTES_PADRAO,
@@ -44,6 +45,7 @@ import { rodar, type Deps, type Envio, type EstadoExecucao, type Evento, type Re
 import { esperaMinima, podeEnviar } from './freios'
 import { urlDaMidia } from './midia'
 import { humanoAteDoTelefone, humanoNoComando, marcarComHumano } from './humano'
+import { estaNaLista, podeReceberOfertas } from '../ofertas'
 
 /**
  * O relógio de verdade, trocável nos testes: o "digitando" de dois segundos
@@ -246,8 +248,17 @@ async function rodarTravada(
     return true
   }
 
-  const depois = (ok: boolean): Envio => {
-    if (!ok) return 'falha'
+  const depois = (r: EnvioDoCanal): Envio => {
+    if (!r.ok) {
+      // WhatsApp oficial fora da janela de 24 horas: tentar de novo daqui a
+      // dois minutos não muda nada — a execução termina, e o motivo aparece
+      // nos números da campanha.
+      if (r.codigo === 'janela_fechada') {
+        console.warn(`[campanhas] ${orgId}: janela de 24 h fechada na execução ${c.exec.id}; sem modelo aprovado (ou sem aceite de ofertas para o modelo), a execução termina`)
+        return 'janela'
+      }
+      return 'falha'
+    }
     ultimoEnvio = ctx.agora ?? new Date()
     return 'ok'
   }
@@ -256,17 +267,27 @@ async function rodarTravada(
     agora,
     dormir: relogio.dormir,
     horario,
-    async enviarTexto(texto) {
+    async enviarTexto(texto, modelo) {
       if (!(await liberar())) return 'limite'
-      const r = await ctx.canal.enviar(envio, texto)
-      return depois(r.ok)
+      // Com modelo aprovado no bloco, fora da janela sai o modelo; sem, o
+      // canal oficial recusa e a execução termina ('janela_fechada').
+      //
+      // O MODELO é a mensagem que a loja começa: a pessoa não escreve há mais
+      // de 24 horas. Aí já não é resposta ao pedido dela — é oferta começada
+      // pela loja, e oferta começada pela loja só sai para quem ACEITOU e não
+      // saiu da lista (ver ../ofertas.ts). Sem isso, o modelo não vai junto:
+      // o texto é recusado fora da janela e a execução termina como sem
+      // modelo. O teste do dono passa (o número é dele).
+      const modeloQuePode = modelo && (c.exec.teste || (await podeReceberOfertas(orgId, chave))) ? modelo : null
+      const r = await enviarOuModelo(ctx.canal, envio, texto, modeloQuePode)
+      return depois(r)
     },
     async enviarMidia(d: DadosMidia, legenda: string) {
       if (!(await liberar())) return 'limite'
       const url = d.midiaId ? urlDaMidia(orgId, d.midiaId, agora()) : null
       if (ctx.canal.enviarMidia && url && d.tipo) {
         const r = await ctx.canal.enviarMidia(envio, { tipo: d.tipo, url, legenda: legenda || undefined, comoGravado: d.comoGravado })
-        return depois(r.ok)
+        return depois(r)
       }
       // Canal sem mídia (ou servidor sem NORTE_URL): vai a legenda, e o log diz.
       console.warn(
@@ -274,7 +295,7 @@ async function rodarTravada(
       )
       if (!legenda) return 'ok'
       const r = await ctx.canal.enviar(envio, legenda)
-      return depois(r.ok)
+      return depois(r)
     },
     async passarParaPessoa(d: DadosPassar, vars: Vars) {
       const pessoas = await comoOrg(orgId, (db) =>
@@ -289,6 +310,7 @@ async function rodarTravada(
         }),
       )
       if (pessoas.length === 0) console.warn(`[campanhas] ${orgId}: ninguém com telefone para receber o contato`)
+      const loja = await comoOrg(orgId, (db) => db.org.findUnique({ where: { id: orgId }, select: { nome: true } }))
       const texto = textoParaEquipe({
         campanha: c.campanha.nome,
         nome: typeof vars.nome === 'string' ? vars.nome : null,
@@ -299,7 +321,9 @@ async function rodarTravada(
       for (const p of pessoas) {
         const numero = paraEnvio(p.telefone ?? '')
         if (!numero) continue
-        const r = await ctx.canal.enviar(numero, texto)
+        // No WhatsApp oficial a pessoa da equipe raramente está dentro da
+        // janela de 24 horas: fora dela, o aviso sai pelo modelo `norte_aviso`.
+        const r = await enviarOuModelo(ctx.canal, numero, texto, modeloDeAviso(loja?.nome ?? 'loja', texto))
         if (r.ok) saiu++
       }
       // O mesmo carimbo de quando a loja escreve pelo celular: por 24 horas
@@ -420,6 +444,10 @@ export async function iniciar(
   if (!campanha) return null
   // Pausada não recebe ninguém — nem por "Ir para outra campanha". O teste passa.
   if (!campanha.ativa && !opcoes.teste) return null
+  // Quem pediu para não receber oferta não entra — por nenhum caminho: nem a
+  // palavra-chave (a entrada já confere), nem "Ir para outra campanha", nem
+  // um recurso novo que chame isto direto. A volta é só pelo VOLTAR.
+  if (!opcoes.teste && (await estaNaLista(orgId, contato.chave))) return null
   const inicio = inicioDo(lerGrafo(campanha.grafo))
   if (!inicio) return null
 

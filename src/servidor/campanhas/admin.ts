@@ -74,6 +74,8 @@ export type LinhaCampanha = {
   dentro: number
   paraPessoa: number
   concluiram: number
+  /** WhatsApp oficial: pararam porque a janela de 24 h fechou e o bloco não tinha modelo aprovado. */
+  janelaFechada: number
 }
 
 /** As campanhas da empresa com os números de cada uma — contados, nunca guardados. */
@@ -100,6 +102,7 @@ export async function listarCampanhas(sessao: Sessao): Promise<LinhaCampanha[]> 
         dentro: soma((g) => (STATUS_VIVOS as readonly string[]).includes(g.status)),
         paraPessoa: soma((g) => g.motivoFim === 'humano'),
         concluiram: soma((g) => g.status === 'concluida' && g.motivoFim === 'fim'),
+        janelaFechada: soma((g) => g.motivoFim === 'janela_fechada'),
       }
     })
   })
@@ -190,7 +193,15 @@ export type ParaEditor = {
   midias: { id: string; nome: string; tipo: string; tamanho: number; previa: string | null }[]
   horario: { texto: string | null; entendido: boolean }
   meuTelefone: string | null
+  /**
+   * Os modelos APROVADOS na conta da Meta — só quando a loja está no WhatsApp
+   * oficial (nulo nos outros canais: lá não existe janela, e o campo nem
+   * aparece). Lidos ao vivo pela página, não por esta função.
+   */
+  modelos?: ModeloAprovado[] | null
 }
+
+export type ModeloAprovado = { nome: string; idioma: string; variaveis: number; corpo: string }
 
 export async function lerParaEditor(sessao: Sessao, id: string): Promise<ParaEditor | null> {
   exigir(sessao, 'agente.configurar')

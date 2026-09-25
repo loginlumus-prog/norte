@@ -11,6 +11,7 @@ import {
   type Aresta,
   type DadosPorTipo,
   type Grafo,
+  type ModeloDoBloco,
   type No,
   type TipoNo,
   type UnidadeTempo,
@@ -82,6 +83,38 @@ const numero = (v: unknown, min: number, max: number, padrao: number) => {
 const id = (v: unknown) => (typeof v === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(v) ? v : null)
 const unidade = (v: unknown): UnidadeTempo => (v === 'min' || v === 'h' || v === 'd' ? v : 'h')
 
+/** Nome de modelo na Meta: minúsculas, números e sublinhado. */
+export const FORMATO_NOME_MODELO = /^[a-z0-9_]{1,512}$/
+/** Idioma de modelo: "pt_BR", "en_US", "es"... */
+export const FORMATO_IDIOMA = /^[a-z]{2,3}(_[A-Z]{2})?$/
+
+/** O modelo aprovado de um bloco de mensagem, limpo — ou nulo se não serve. */
+export function lerModeloDoBloco(bruto: unknown): ModeloDoBloco | null {
+  if (!bruto || typeof bruto !== 'object') return null
+  const o = bruto as Record<string, unknown>
+  const nome = typeof o.nome === 'string' ? o.nome.trim() : ''
+  const idioma = typeof o.idioma === 'string' ? o.idioma.trim() : ''
+  if (!FORMATO_NOME_MODELO.test(nome) || !FORMATO_IDIOMA.test(idioma)) return null
+  const variaveis = Array.isArray(o.variaveis) ? o.variaveis.map((v) => texto(v, 200)).slice(0, 20) : []
+  return { nome, idioma, variaveis }
+}
+
+/**
+ * O que vai em cada variável do modelo para ESTA pessoa: os coringas
+ * trocados pelo que o roteiro sabe dela.
+ *
+ * A Meta recusa variável vazia (o envio inteiro volta com erro). Então o que
+ * ficou vazio vira uma palavra neutra: "cliente" quando a variável era o nome
+ * da pessoa (o caso comum: "Oi, {primeiro_nome}!"), e um traço no resto.
+ */
+export function variaveisDoModelo(m: ModeloDoBloco, vars: Vars): string[] {
+  return m.variaveis.map((v) => {
+    const valor = interpolar(v, vars)
+    if (valor) return valor
+    return /\{(primeiro_nome|nome)\}/.test(v) ? 'cliente' : '-'
+  })
+}
+
 /** Dados padrão de cada bloco — o que nasce quando a loja clica na paleta. */
 export function dadosPadrao<T extends TipoNo>(tipo: T): DadosPorTipo[T] {
   const d: { [K in TipoNo]: DadosPorTipo[K] } = {
@@ -111,7 +144,13 @@ function lerDados(tipo: TipoNo, bruto: unknown): DadosPorTipo[TipoNo] {
       return {}
     case 'mensagem': {
       const textos = Array.isArray(b.textos) ? b.textos.map((t) => texto(t, 4000)).slice(0, 5) : ['']
-      return { textos: textos.length ? textos : [''], digitandoSeg: Math.round(numero(b.digitandoSeg, 0, DIGITANDO_MAX_SEG, 2)) }
+      const modelo = lerModeloDoBloco(b.modelo)
+      return {
+        textos: textos.length ? textos : [''],
+        digitandoSeg: Math.round(numero(b.digitandoSeg, 0, DIGITANDO_MAX_SEG, 2)),
+        // só aparece quando existe: desenho antigo continua igual, byte a byte
+        ...(modelo ? { modelo } : {}),
+      }
     }
     case 'midia': {
       const t = b.tipo === 'imagem' || b.tipo === 'video' || b.tipo === 'audio' ? b.tipo : null

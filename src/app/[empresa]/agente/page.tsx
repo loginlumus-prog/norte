@@ -22,6 +22,7 @@ import {
   conversasRecentes,
   ROTINAS_NA_TELA,
 } from '@/servidor/assistente/conexao'
+import { estadoMeta } from '@/servidor/assistente/meta-conexao'
 import { plural } from '@/ui/texto'
 import { moduloLigado } from '@/servidor/modulos'
 import { ORDEM, doPlano, planoLibera } from '@/servidor/planos'
@@ -176,6 +177,7 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
   // abre a sua transação, e três de uma vez disputariam o pool pequeno do
   // plano grátis sem ganhar nada visível.
   const conexao = await estadoDaConexao(sessao)
+  const meta = await estadoMeta(sessao)
   const gatilhos = agente ? await gatilhosDaTela(sessao) : []
   const conversas = agente ? await conversasRecentes(sessao) : []
   const saldo = bal.trouxe - bal.custou
@@ -300,7 +302,7 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
       {/* A conexão vem antes do formulário: "ele está funcionando?" é a
           pergunta de quem abre a tela, e a resposta cabe numa frase. */}
       <Secao titulo="No WhatsApp">
-        <Conexao slug={slug} estado={conexao} />
+        <Conexao slug={slug} estado={conexao} meta={meta} />
         {agente && <Rotinas slug={slug} rotinas={ROTINAS_NA_TELA} itens={gatilhos} />}
         {agente && <Conversas itens={conversas} nome={agente.nome} />}
       </Secao>

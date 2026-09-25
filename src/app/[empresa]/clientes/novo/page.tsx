@@ -7,6 +7,7 @@ import { MENU } from '@/ui/menu'
 import { Secao } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor } from '../Editor'
+import { ofertasNaTela } from '../ofertasNaTela'
 
 export default async function NovoCliente({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
@@ -16,6 +17,7 @@ export default async function NovoCliente({ params }: { params: Promise<{ empres
   // O botão que leva até aqui já está escondido; endereço colado no navegador
   // não passa pelo botão.
   if (!pode(sessao, 'cliente.editar')) notFound()
+  const ofertas = await ofertasNaTela(sessao, empresa.nome)
 
   return (
     <Estrutura
@@ -27,7 +29,7 @@ export default async function NovoCliente({ params }: { params: Promise<{ empres
       titulo="Novo cliente"
     >
       <Secao titulo="Cadastro">
-        <Editor slug={slug} />
+        <Editor slug={slug} ofertas={ofertas} />
       </Secao>
     </Estrutura>
   )

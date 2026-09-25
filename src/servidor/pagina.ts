@@ -16,6 +16,7 @@
 // corte para agora, e o cookie antigo morre na próxima tela que abrir.
 
 import { redirect, notFound } from 'next/navigation'
+import { headers } from 'next/headers'
 import { acharOrgPorSlug, comoOrg } from './banco'
 import { lerSessao } from './sessao'
 import { sinal } from './presenca'
@@ -63,7 +64,131 @@ export async function sessaoViva(slugEmpresa: string): Promise<Sessao | null> {
   // vaga.
   void sinal(sessao.orgId, sessao.usuarioId).catch(() => {})
 
+  // ── o nosso suporte deixa rastro ─────────────────────────
+  // Toda tela, ação e planilha aberta com acesso de SUPORTE vira linha no
+  // livro de auditoria DA LOJA, que ela lê na tela Auditoria. Aqui, e não em
+  // cada tela, porque este é o único lugar por onde tudo passa — tela nova
+  // entra sozinha. E falha FECHADA: se a linha não pôde ser gravada, o
+  // suporte não entra. Acesso nosso sem registro é justamente o que o
+  // contrato com a loja diz que não existe.
+  if (ehAcessoDeSuporte(sessao)) {
+    try {
+      const h = await headers()
+      // O proxy (src/proxy.ts) carimba o caminho da requisição. Pré-carga de
+      // link não passa pelo proxy: fica registrada assim mesmo, sem caminho.
+      const caminho = h.get(CABECALHO_CAMINHO) ?? `/${slugEmpresa} (pré-carregamento)`
+      await registrarAcessoDeSuporte(sessao, {
+        caminho,
+        tipo: h.has('next-action') ? 'acao' : 'tela',
+        sessaoNasceu: doCookie.nasceu,
+      })
+    } catch (e) {
+      console.error('[suporte] o acesso não pôde ser registrado; entrada recusada:', e instanceof Error ? e.message : e)
+      return null
+    }
+  }
+
   return sessao
+}
+
+// ─────────────────────────────────────────────────────────────
+// O REGISTRO DO SUPORTE
+// ─────────────────────────────────────────────────────────────
+
+/** O cabeçalho em que o proxy carimba o caminho da requisição. */
+export const CABECALHO_CAMINHO = 'x-norte-caminho'
+
+/** Uma linha por tela (ou ação) a cada tanto, por sessão — senão cada clique vira linha. */
+export const INTERVALO_REGISTRO_SUPORTE_MS = 10 * 60_000
+
+/** A sessão está usando um acesso de SUPORTE (nosso) que ainda vale? */
+export function ehAcessoDeSuporte(sessao: Sessao, agora = new Date()): boolean {
+  return sessao.acessos.some((a) => a.papel === 'SUPORTE' && (!a.expiraEm || a.expiraEm > agora))
+}
+
+/**
+ * O caminho, pronto para o livro: sem `?` nem `#` (a busca da tela pode ter
+ * o nome de um cliente dentro, e o livro não se apaga) e com teto.
+ */
+export function caminhoParaLivro(bruto: string): string {
+  const semBusca = bruto.split(/[?#]/)[0] ?? ''
+  return (semBusca || '/').slice(0, 200)
+}
+
+// Quem já foi registrado, e quando. Economiza a consulta ao livro na tela
+// seguinte; a verdade continua sendo o livro (vale entre servidores).
+const vistos = (globalThis as unknown as { __suporteVisto?: Map<string, number> }).__suporteVisto ??= new Map()
+
+/**
+ * Grava "o suporte do Norte abriu /exemplo/clientes" no livro da loja — no
+ * máximo uma linha por tela (e por tipo: abrir × agir) a cada
+ * INTERVALO_REGISTRO_SUPORTE_MS, por sessão. Leva o MOTIVO do acesso (o que
+ * foi escrito ao conceder o SUPORTE) e o prazo. Nunca leva dado pessoal: só
+ * o caminho, sem a busca.
+ *
+ * Devolve se gravou. Exportada para o teste (tests/lgpd-banco.test.ts).
+ */
+export async function registrarAcessoDeSuporte(
+  sessao: Sessao,
+  p: { caminho: string; tipo: 'tela' | 'acao'; sessaoNasceu: Date },
+  agora = new Date(),
+): Promise<boolean> {
+  const caminho = caminhoParaLivro(p.caminho)
+  const marca = p.sessaoNasceu.toISOString()
+  const chave = `${sessao.orgId}|${sessao.usuarioId}|${marca}|${p.tipo}|${caminho}`
+  const ultimo = vistos.get(chave)
+  if (ultimo !== undefined && agora.getTime() - ultimo < INTERVALO_REGISTRO_SUPORTE_MS) return false
+  // Marca ANTES de gravar: a tela e o layout dela chegam aqui no mesmo
+  // instante, e sem isto os dois gravariam.
+  vistos.set(chave, agora.getTime())
+  if (vistos.size > 5000) vistos.clear()
+
+  try {
+    return await comoOrg(sessao.orgId, async (db) => {
+      const desde = new Date(agora.getTime() - INTERVALO_REGISTRO_SUPORTE_MS)
+      const ja = await db.auditoria.findFirst({
+        where: {
+          acao: 'suporte.acessou',
+          usuarioId: sessao.usuarioId,
+          alvoTipo: p.tipo,
+          alvoNome: caminho,
+          criadoEm: { gt: desde },
+          depois: { path: ['sessao'], equals: marca },
+        },
+        select: { criadoEm: true },
+      })
+      if (ja) {
+        // Outro servidor (ou uma reinicialização) já registrou: a memória
+        // passa a contar a partir da linha que existe.
+        vistos.set(chave, ja.criadoEm.getTime())
+        return false
+      }
+      const acesso = await db.acesso.findFirst({
+        where: { usuarioId: sessao.usuarioId, papel: 'SUPORTE' },
+        orderBy: { criadoEm: 'desc' },
+        select: { motivo: true, expiraEm: true },
+      })
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          autor: 'PESSOA',
+          acao: 'suporte.acessou',
+          alvoTipo: p.tipo,
+          alvoNome: caminho,
+          motivo: acesso?.motivo?.slice(0, 300) ?? 'sem motivo registrado',
+          depois: { sessao: marca, tipo: p.tipo, expiraEm: acesso?.expiraEm?.toISOString() ?? null },
+          criadoEm: agora,
+        },
+      })
+      return true
+    })
+  } catch (e) {
+    // Não gravou: esquece a marca, para a próxima tentar de novo.
+    vistos.delete(chave)
+    throw e
+  }
 }
 
 /** Para Server Action: ou tem sessão viva, ou levanta. */

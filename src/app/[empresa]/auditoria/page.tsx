@@ -28,6 +28,12 @@ const quando = (d: Date) =>
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(d)
 
+/**
+ * Linha do NOSSO suporte (ver `registrarAcessoDeSuporte` em pagina.ts): o
+ * alvo é o caminho aberto, e o motivo é o do acesso concedido.
+ */
+const ehDoSuporte = (l: LinhaDoLivro) => l.acao.startsWith('suporte.')
+
 /** Para onde a linha leva, quando o alvo tem tela. */
 function linkDoAlvo(slug: string, l: LinhaDoLivro): string | null {
   if (!l.alvoId) return null
@@ -88,6 +94,7 @@ export default async function AuditoriaPagina({
 
   const pessoas = new Set(linhas.map((l) => l.quem)).size
   const doAgente = linhas.filter((l) => l.autor === 'AGENTE').length
+  const doSuporte = linhas.filter(ehDoSuporte).length
 
   return (
     <Estrutura
@@ -113,6 +120,11 @@ export default async function AuditoriaPagina({
             { rotulo: 'registros', um: 'registro', quantos: linhas.length, nivel: 'neutro' },
             { rotulo: 'pessoas diferentes', um: 'pessoa', quantos: pessoas, nivel: 'bom' },
             { rotulo: 'feitos pelo assistente', um: 'feito pelo assistente', quantos: doAgente, nivel: 'atencao' },
+            // Só aparece quando houve: acesso nosso é exceção, e a loja
+            // precisa ver de longe que ele aconteceu.
+            ...(doSuporte
+              ? [{ rotulo: 'acessos do suporte do Norte', um: 'acesso do suporte do Norte', quantos: doSuporte, nivel: 'critico' as const }]
+              : []),
           ]}
         />
 
@@ -151,6 +163,11 @@ export default async function AuditoriaPagina({
               celula: (l: LinhaDoLivro) => (
                 <span className="flex flex-col">
                   <span className="truncate font-medium text-tinta">{l.quem}</span>
+                  {ehDoSuporte(l) && (
+                    <span className="pt-0.5">
+                      <Situacao nivel="atencao">suporte do Norte</Situacao>
+                    </span>
+                  )}
                   {l.autor !== 'PESSOA' && (
                     <span className="text-[11px] text-tinta-3">
                       {l.autor === 'AGENTE' ? 'assistente' : 'sistema'}
@@ -178,6 +195,9 @@ export default async function AuditoriaPagina({
                             </Link>
                           ) : (
                             <span className="font-medium">{l.alvoNome}</span>
+                          )}
+                          {ehDoSuporte(l) && (
+                            <span className="text-tinta-3"> ({l.alvoTipo === 'acao' ? 'ação' : 'tela'})</span>
                           )}
                         </>
                       )}

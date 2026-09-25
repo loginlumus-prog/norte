@@ -124,6 +124,32 @@ services:
       # legenda.
       - key: NORTE_URL
         sync: false
+      # ── o WhatsApp OFICIAL (Meta, Cloud API) ─────────────────
+      # O Norte como "Tech Provider" da Meta: cada loja conecta o PRÓPRIO
+      # número pelo Cadastro incorporado, na tela Assistente › Conexão. Sem as
+      # quatro primeiras, a tela diz "A conexão oficial ainda não está ligada
+      # neste servidor" e nada mais muda. Passo a passo no README, seção
+      # "WhatsApp oficial (Meta)". NORTE_CIFRA (acima) é obrigatória: ela
+      # cifra o token de cada loja.
+      #
+      # O id do app (developers.facebook.com › seu app › Configurações do app › Básico).
+      - key: META_APP_ID
+        sync: false
+      # A chave secreta do mesmo lugar. Assina o webhook e troca o código do
+      # cadastro pelo token da loja — nunca vai para o navegador.
+      - key: META_APP_SECRET
+        sync: false
+      # O id da configuração do Cadastro incorporado (Facebook Login for
+      # Business › Configurações › "WhatsApp Embedded Signup").
+      - key: META_CONFIG_ID
+        sync: false
+      # Um texto aleatório de 16+ caracteres, o MESMO colado no painel da Meta
+      # em WhatsApp › Configuração › Webhook › "Token de verificação".
+      - key: META_WEBHOOK_VERIFY_TOKEN
+        sync: false
+      # Opcional. A versão da Graph API (padrão v25.0). Trocar é só mudar aqui.
+      - key: META_GRAPH_VERSION
+        sync: false
 
   # ── o relógio do assistente ──────────────────────────────────
   # Com o conector na VPS e ROTINAS_SEGREDO configurado lá, ELE é o relógio:

@@ -917,11 +917,38 @@ export const GUIA: Entrada[] = [
         ],
         capacidade: 'cliente.ver',
       },
+      {
+        titulo: 'Anotar se a pessoa aceita ofertas no WhatsApp',
+        passos: [
+          'Na ficha (ou no cadastro novo), "Ofertas no WhatsApp" mostra a pergunta pronta, com o nome da loja: faça do jeito que está escrito.',
+          'Só marque "Aceitou" se a pessoa disser sim, e escolha como ela respondeu (balcão, ficha em papel, site, WhatsApp, telefone). Fica gravado com a data e o seu nome, e o livro de auditoria guarda a versão do texto.',
+          '"Ainda não perguntei" não é aceite: sem "Aceitou", a loja não começa conversa de oferta com a pessoa. Responder quando ela escreve continua valendo.',
+          '"Não aceitou" põe o número na lista de quem não recebe ofertas e tira a pessoa de qualquer campanha.',
+          'Quem mandou PARAR no WhatsApp não pode ser marcado "Aceitou" pela loja: só volta se a própria pessoa mandar VOLTAR.',
+          '"Sem ofertas", no alto da lista de clientes, mostra quem não recebe (cadastrado ou não). Lá dá para anotar um número que pediu por telefone ou no balcão, e tirar o que a loja anotou por engano.',
+        ],
+        capacidade: 'cliente.editar',
+      },
+      {
+        titulo: 'Anonimizar um cliente que pediu para apagar os dados',
+        passos: [
+          'Só quem configura a empresa (o dono). Na ficha, embaixo, "Dados pessoais" › "Anonimizar este cliente".',
+          'A janela diz o que some — nome, WhatsApp, e-mail, CPF, endereço, aniversário, observações, as conversas do WhatsApp e o que a pessoa respondeu nas campanhas — e o que fica sem nome: vendas, parcelas, vales e pontos, que a lei manda guardar.',
+          'Digite ANONIMIZAR e confirme. Não tem volta.',
+          'O número entra na lista de quem não recebe ofertas, para ninguém escrever de novo, e o livro de auditoria registra quem fez e quando, sem os dados da pessoa.',
+          'Com parcela do crediário em aberto ou encomenda por entregar, não dá: receba, entregue ou cancele antes.',
+        ],
+        capacidade: 'empresa.configurar',
+      },
     ],
     perguntas: [
       {
         p: 'Posso apagar um cliente?',
-        r: 'Não se apaga: desmarque "Cliente ativo" no cadastro. Ele some da busca do balcão e continua no histórico de tudo que comprou.',
+        r: 'Para tirar da busca do balcão, desmarque "Cliente ativo": ele continua no histórico. Se a PESSOA pediu para apagar os dados dela (direito dela pela LGPD), o dono usa "Anonimizar este cliente" na ficha: some tudo que a identifica, e as vendas ficam sem nome.',
+      },
+      {
+        p: 'Posso mandar oferta para todo cliente cadastrado?',
+        r: 'Não. Oferta que a loja começa só vai para quem aceitou ("Aceitou" na ficha) e não está na lista "Sem ofertas". Cadastro não é aceite. Quem escreve para a loja pode receber resposta sempre.',
       },
       {
         p: 'Para que serve o aniversário?',
@@ -932,7 +959,7 @@ export const GUIA: Entrada[] = [
         r: 'As observações ("o que a equipe precisa lembrar") e o histórico de compras — última compra, o que costuma levar, há quanto tempo sumiu.',
       },
     ],
-    palavras: ['cadastro de cliente', 'cadastrar cliente', 'freguês', 'whatsapp', 'telefone', 'cpf', 'aniversário', 'aniversariante', 'pontos', 'fidelidade', 'sumido', 'sumiu', 'histórico de compras', 'planilha', 'contato'],
+    palavras: ['cadastro de cliente', 'cadastrar cliente', 'freguês', 'whatsapp', 'telefone', 'cpf', 'aniversário', 'aniversariante', 'pontos', 'fidelidade', 'sumido', 'sumiu', 'histórico de compras', 'planilha', 'contato', 'lgpd', 'consentimento', 'aceite', 'ofertas', 'apagar dados', 'excluir cliente', 'anonimizar', 'descadastrar', 'parar'],
   },
 
   // ── Equipe ──
@@ -1429,7 +1456,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Quem está dentro, e as regras de saída',
         passos: [
           'Na aba "Dentro agora", veja em que bloco cada pessoa está e até quando espera; "Tirar" encerra a campanha dela.',
-          'Quem escreve só "parar", "sair", "cancelar" ou "não quero" sai na hora, sem receber mais nada.',
+          'Quem escreve só "parar", "sair", "cancelar" ou "não quero" sai na hora, e recebe UMA confirmação ("Pronto, você não recebe mais ofertas por aqui. Se quiser voltar, é só mandar VOLTAR.") — daí em diante, nenhuma campanha começa para esse número.',
           'Quem escreve a frase de OUTRA campanha ativa troca para ela, se a regra de reentrada da outra deixar.',
           'Quando alguém da loja escreve para a pessoa pelo celular, ou um bloco passa para uma pessoa, as campanhas ficam 24 horas sem falar com aquele número.',
           'Não dá para apagar campanha com gente dentro, nem campanha para a qual outra leva.',
@@ -1457,10 +1484,14 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'A campanha responde qualquer mensagem do cliente?',
-        r: 'Não. Ela só age com a frase de entrada, com a resposta a um "Esperar resposta" (ou durante uma espera marcada para seguir quando a pessoa escrever) e com "parar". O resto fica para alguém da loja responder no WhatsApp.',
+        r: 'Não. Ela só age com a frase de entrada, com a resposta a um "Esperar resposta" (ou durante uma espera marcada para seguir quando a pessoa escrever), com "parar" e com "voltar". O resto fica para alguém da loja responder no WhatsApp.',
+      },
+      {
+        p: 'O que acontece quando alguém manda PARAR? E se quiser voltar?',
+        r: 'PARAR (ou "pare", "sair", "stop"; dentro de uma campanha também "cancelar" e "não quero") tira a pessoa da campanha e põe o número na lista "Sem ofertas" (Clientes) PARA SEMPRE, com uma confirmação só. Nem a frase de entrada abre campanha para ela de novo — a frase pode estar num cartaz ou numa mensagem encaminhada, e isso não prova que ela mudou de ideia. Ela volta mandando VOLTAR: sai da lista, recebe a confirmação, e a ficha dela fica "Aceitou", pelo WhatsApp, com data e hora. A loja não consegue desfazer um PARAR pela tela.',
       },
     ],
-    palavras: ['campanha', 'campanhas', 'roteiro', 'fluxo', 'funil', 'automação', 'palavra-chave', 'gatilho', 'frase', 'anúncio', 'disparo', 'manychat', 'sequência', 'mensagem automática', 'teste a/b'],
+    palavras: ['campanha', 'campanhas', 'roteiro', 'fluxo', 'funil', 'automação', 'palavra-chave', 'gatilho', 'frase', 'anúncio', 'disparo', 'manychat', 'sequência', 'mensagem automática', 'teste a/b', 'parar', 'voltar', 'descadastrar', 'sair da lista', 'opt-out'],
   },
 
   // ── Auditoria ──
@@ -1476,7 +1507,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Achar quem fez algo',
         passos: [
           'Busque pelo nome de quem fez, pelo nome do alvo (produto, cliente) ou pelo motivo escrito.',
-          'Fichas por assunto: vendas, caixa, produtos e estoque, clientes, equipe e acessos, tarefas, empresa.',
+          'Fichas por assunto: vendas, caixa, produtos e estoque, clientes (inclusive aceite de ofertas e anonimização), equipe e acessos, tarefas, empresa, suporte do Norte.',
           'Período e loja no alto.',
           'O alvo que tem tela vira link: venda, produto, cliente, caixa, equipe.',
         ],
@@ -1495,7 +1526,9 @@ export const GUIA: Entrada[] = [
         titulo: 'O que o suporte fez',
         passos: [
           'O acesso de suporte (nosso) é só leitura, com prazo e motivo obrigatórios.',
-          'Tudo que ele fizer aparece aqui como qualquer pessoa — a tira "pessoas diferentes" conta ele também.',
+          'Cada tela que ele abre, cada ação que tenta e cada planilha que baixa vira uma linha "acesso do suporte do Norte", com a etiqueta "suporte do Norte", o endereço aberto (sem o que foi digitado na busca), se foi tela ou ação, e o motivo do acesso.',
+          'A mesma tela aberta de novo em menos de 10 minutos não repete a linha. Se a linha não puder ser gravada, o suporte não entra.',
+          'A ficha "suporte do Norte" mostra só esses acessos, e a tira do alto conta quantos houve no período.',
           'Mostra os 500 mais recentes por consulta; aperte o período ou o filtro para o resto.',
         ],
         capacidade: 'auditoria.ver',
@@ -1508,7 +1541,7 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'Dá para apagar uma linha errada?',
-        r: 'Não. O banco recusa editar e apagar o livro, inclusive para nós. Se algo foi feito errado, o conserto entra como uma linha nova (cancelar a venda, corrigir o estoque com motivo).',
+        r: 'Não. O banco recusa editar e apagar o livro, inclusive para nós. Se algo foi feito errado, o conserto entra como uma linha nova (cancelar a venda, corrigir o estoque com motivo). A única exceção é a anonimização de um cliente a pedido dele: nas linhas sobre ele, o nome vira "Cliente anonimizado" e os dados pessoais saem — o que foi feito, por quem, quando e o valor continuam.',
       },
     ],
     palavras: ['livro', 'histórico', 'quem fez', 'quem mexeu', 'registro', 'log', 'rastro', 'alteração', 'rastreabilidade', 'segurança'],

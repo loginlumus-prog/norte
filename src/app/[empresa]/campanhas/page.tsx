@@ -71,7 +71,10 @@ export default async function Campanhas({ params }: { params: Promise<{ empresa:
       <p className="max-w-3xl text-sm text-tinta-2">
         Quem escreve a <b className="text-tinta">frase</b> de uma campanha no WhatsApp da loja (ou chega pelo anúncio dela)
         entra num roteiro que você desenha, com começo e fim. Depois do fim, nada mais é enviado. Mensagem que não abre nem
-        continua campanha fica para alguém da loja responder.
+        continua campanha fica para alguém da loja responder.{' '}
+        <Link href={`/${slug}/campanhas/modelos`} className="font-medium text-marca underline-offset-2 hover:underline">
+          Modelos de mensagem (WhatsApp oficial)
+        </Link>
       </p>
 
       <Cartao titulo="Nova campanha" caixa>
@@ -123,6 +126,9 @@ function Linha({ slug, c }: { slug: string; c: LinhaCampanha }) {
     ['dentro agora', c.dentro],
     ['passaram para pessoa', c.paraPessoa],
     ['concluíram', c.concluiram],
+    // Só aparece quando aconteceu: é coisa do WhatsApp oficial, e a solução
+    // é pôr um modelo aprovado no bloco (ou encurtar a espera).
+    ...(c.janelaFechada > 0 ? ([['pararam fora da janela de 24 h', c.janelaFechada]] as [string, number][]) : []),
   ]
   return (
     <li className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">

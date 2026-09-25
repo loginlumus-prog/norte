@@ -13,9 +13,18 @@
 // os dígitos, as três viram a mesma linha — e é isso que impede a loja de ter
 // o mesmo cliente cadastrado quatro vezes com dívidas separadas.
 
+import type { ConsentimentoOfertas } from '@prisma/client'
 import { comoOrg } from './banco'
 import { exigir, textoDaBusca, unidadesQuePodem, type Sessao } from './permissao'
 import { situacaoDosClientes } from './crediario'
+import { chaveTelefone } from './assistente/telefone'
+import {
+  conferirAceite,
+  ehOrigemAceite,
+  gravarAceite,
+  type MudancaDeAceite,
+  type OrigemAceite,
+} from './ofertas'
 
 /** Só os dígitos. É o que faz a busca e a checagem de repetido funcionarem. */
 export const soDigitos = (v: string) => v.replace(/\D/g, '')
@@ -70,6 +79,25 @@ export type ResultadoCliente =
   | { ok: true; clienteId: string }
   | { ok: false; motivo: string; jaExiste?: { id: string; nome: string } }
 
+/**
+ * O que a ficha mandou sobre as ofertas no WhatsApp. `valor` é a bolinha
+ * escolhida; só vira gravação quando MUDA o que a ficha já tinha — salvar a
+ * ficha por outro motivo não "aceita de novo" nem mexe na data do aceite.
+ */
+export type AceiteNaFicha = { valor: ConsentimentoOfertas; origem: string | null }
+
+/** A mudança que o aceite da ficha pede, ou nula (nada mudou / não é mudança gravável). */
+export function mudancaDeAceite(atual: ConsentimentoOfertas, pedido: AceiteNaFicha | null | undefined):
+  | { ok: true; mudanca: MudancaDeAceite | null }
+  | { ok: false; motivo: string } {
+  if (!pedido || pedido.valor === atual || pedido.valor === 'NAO_PERGUNTADO') return { ok: true, mudanca: null }
+  // Como a pessoa respondeu é parte da prova (LGPD art. 8º, § 2º): sem ele,
+  // "aceitou" é palavra da loja contra a do cliente.
+  const origem: OrigemAceite | null = ehOrigemAceite(pedido.origem) ? pedido.origem : null
+  if (!origem) return { ok: false, motivo: 'Diga como a pessoa respondeu sobre as ofertas (no balcão, por telefone...).' }
+  return { ok: true, mudanca: { ofertas: pedido.valor, origem } }
+}
+
 async function limpar(dados: DadosCliente) {
   const telefone = dados.telefone ? soDigitos(dados.telefone) : null
   const documento = dados.documento ? soDigitos(dados.documento) : null
@@ -92,6 +120,8 @@ async function limpar(dados: DadosCliente) {
 export async function criarCliente(
   sessao: Sessao,
   dados: DadosCliente,
+  aceite?: AceiteNaFicha | null,
+  agora = new Date(),
 ): Promise<ResultadoCliente> {
   exigir(sessao, 'cliente.editar')
 
@@ -100,8 +130,16 @@ export async function criarCliente(
   if (c.documento && !cpfValido(c.documento)) {
     return { ok: false, motivo: 'Esse CPF não confere. Confira os números.' }
   }
+  const m = mudancaDeAceite('NAO_PERGUNTADO', aceite)
+  if (!m.ok) return m
+  const chave = chaveTelefone(c.telefone)
 
   return comoOrg(sessao.orgId, async (db) => {
+    if (m.mudanca) {
+      const recusa = await conferirAceite(db, sessao.orgId, chave, m.mudanca)
+      if (recusa) return { ok: false as const, motivo: recusa }
+    }
+
     // Repetido é AVISO, não erro: homônimo existe, e travar o cadastro no
     // balcão faz a vendedora desistir e vender sem cliente. A tela mostra
     // quem já existe e deixa a pessoa decidir.
@@ -132,6 +170,8 @@ export async function criarCliente(
       },
     })
 
+    if (m.mudanca) await gravarAceite(db, sessao, { id: criado.id, nome: c.nome }, chave, m.mudanca, agora)
+
     return { ok: true as const, clienteId: criado.id }
   })
 }
@@ -140,6 +180,8 @@ export async function editarCliente(
   sessao: Sessao,
   clienteId: string,
   dados: DadosCliente & { ativo?: boolean },
+  aceite?: AceiteNaFicha | null,
+  agora = new Date(),
 ): Promise<ResultadoCliente> {
   exigir(sessao, 'cliente.editar')
 
@@ -148,13 +190,24 @@ export async function editarCliente(
   if (c.documento && !cpfValido(c.documento)) {
     return { ok: false, motivo: 'Esse CPF não confere. Confira os números.' }
   }
+  const chave = chaveTelefone(c.telefone)
 
   return comoOrg(sessao.orgId, async (db) => {
     const antes = await db.cliente.findUnique({
       where: { id: clienteId },
-      select: { nome: true, telefone: true },
+      select: { nome: true, telefone: true, ofertasWhatsapp: true, anonimizadoEm: true },
     })
     if (!antes) return { ok: false as const, motivo: 'Cliente não encontrado.' }
+    // Anonimizada é anonimizada: escrever um nome de novo aqui desfaria o
+    // pedido do titular. Quem voltou a comprar é cadastro novo.
+    if (antes.anonimizadoEm) return { ok: false as const, motivo: 'Este cadastro foi anonimizado e não se edita mais.' }
+
+    const m = mudancaDeAceite(antes.ofertasWhatsapp, aceite)
+    if (!m.ok) return m
+    if (m.mudanca) {
+      const recusa = await conferirAceite(db, sessao.orgId, chave, m.mudanca)
+      if (recusa) return { ok: false as const, motivo: recusa }
+    }
 
     if (c.telefone && c.telefone !== antes.telefone) {
       const igual = await db.cliente.findFirst({
@@ -183,6 +236,8 @@ export async function editarCliente(
         antes: { nome: antes.nome, telefone: antes.telefone },
       },
     })
+
+    if (m.mudanca) await gravarAceite(db, sessao, { id: clienteId, nome: c.nome }, chave, m.mudanca, agora)
 
     return { ok: true as const, clienteId }
   })
@@ -356,6 +411,8 @@ export async function acharCliente(sessao: Sessao, clienteId: string) {
         nascimento: true, endereco: true, numero: true, bairro: true,
         cidade: true, estado: true, cep: true, observacoes: true, ativo: true,
         pontos: true,
+        ofertasWhatsapp: true, ofertasEm: true, ofertasOrigem: true, ofertasPor: true,
+        anonimizadoEm: true,
         // O extrato de pontos. Sem ele, "eu tinha 400" nao tem resposta — e
         // quem juntou nao tem comprovante nenhum em casa.
         movimentosPontos: {

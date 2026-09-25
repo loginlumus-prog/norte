@@ -40,6 +40,17 @@ export const ACOES: Record<string, string> = {
   'estoque.transferiu': 'transferiu estoque entre lojas',
   'cliente.criou': 'cadastrou um cliente',
   'cliente.alterou': 'alterou um cliente',
+  'cliente.ofertas.aceitou': 'registrou que o cliente aceita ofertas no WhatsApp',
+  'cliente.ofertas.recusou': 'registrou que o cliente não quer ofertas no WhatsApp',
+  'cliente.anonimizou': 'anonimizou um cliente (pedido do titular)',
+  'ofertas.parou': 'um contato mandou PARAR e saiu das ofertas',
+  'ofertas.voltou': 'um contato mandou VOLTAR e voltou às ofertas',
+  'ofertas.anotou': 'pôs um número na lista de quem não recebe ofertas',
+  'ofertas.tirou': 'tirou um número da lista de quem não recebe ofertas',
+  // O acesso do NOSSO suporte (papel SUPORTE, com prazo e motivo): uma linha
+  // por tela ou ação, no máximo uma a cada 10 minutos por tela — ver
+  // `registrarAcessoDeSuporte` em pagina.ts.
+  'suporte.acessou': 'acesso do suporte do Norte',
   'crediario.recebeu': 'recebeu uma parcela',
   'equipe.papel.alterou': 'mudou o acesso de alguém',
   'equipe.meta': 'definiu meta e comissão',
@@ -105,10 +116,11 @@ export const ASSUNTOS: { chave: string; rotulo: string; prefixos: string[] }[] =
   { chave: 'venda', rotulo: 'vendas e encomendas', prefixos: ['venda.', 'encomenda.'] },
   { chave: 'caixa', rotulo: 'caixa', prefixos: ['caixa.'] },
   { chave: 'produto', rotulo: 'produtos e estoque', prefixos: ['produto.', 'estoque.'] },
-  { chave: 'cliente', rotulo: 'clientes', prefixos: ['cliente.', 'crediario.', 'pontos.'] },
+  { chave: 'cliente', rotulo: 'clientes', prefixos: ['cliente.', 'crediario.', 'pontos.', 'ofertas.'] },
   { chave: 'equipe', rotulo: 'equipe e acessos', prefixos: ['equipe.', 'convite.', 'sessao.', 'vaga.'] },
   { chave: 'tarefa', rotulo: 'tarefas', prefixos: ['tarefa.', 'quadro.'] },
   { chave: 'empresa', rotulo: 'empresa e lojas', prefixos: ['empresa.', 'unidade.', 'plano.', 'agente.', 'campanha.', 'financeiro.'] },
+  { chave: 'suporte', rotulo: 'suporte do Norte', prefixos: ['suporte.'] },
 ]
 
 export type FiltroAuditoria = {

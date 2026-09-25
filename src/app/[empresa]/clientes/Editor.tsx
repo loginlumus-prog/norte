@@ -12,10 +12,28 @@
 // ele que o assistente fala, é por ele que a cobrança sai, e é ele que
 // impede a mesma pessoa de virar quatro cadastros.
 
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import Link from 'next/link'
-import { Botao, Campo, Marcar, Aviso, Cartao } from '@/ui/base'
+import { Botao, Campo, Marcar, Aviso, Cartao, Selecao } from '@/ui/base'
 import { criar, editar, type EstadoCliente } from './acoes'
+
+/**
+ * As ofertas no WhatsApp, como a ficha mostra. Os textos vêm prontos do
+ * servidor (src/servidor/ofertas.ts): a versão do texto que a pessoa ouviu é
+ * a que vai para o livro, e ela mora num lugar só.
+ */
+export type OfertasNaTela = {
+  atual: 'SIM' | 'NAO' | 'NAO_PERGUNTADO'
+  /** "Aceitou em 25/09/2026, no balcão, anotado por Ana." — nulo se ninguém perguntou. */
+  resumo: string | null
+  /** O que perguntar, com o nome da loja. */
+  pergunta: string
+  /** O que a bolinha "Aceitou" quer dizer. */
+  textoAceite: string
+  origens: { valor: string; titulo: string }[]
+  /** O número está na lista de quem não recebe? A frase, e se só a pessoa tira. */
+  lista: { frase: string; soAPessoa: boolean } | null
+}
 
 export type ClienteNaTela = {
   id: string
@@ -34,9 +52,12 @@ export type ClienteNaTela = {
   ativo: boolean
 }
 
-export function Editor({ slug, cliente }: { slug: string; cliente?: ClienteNaTela }) {
+export function Editor({ slug, cliente, ofertas }: { slug: string; cliente?: ClienteNaTela; ofertas: OfertasNaTela }) {
   const acao = cliente ? editar.bind(null, slug, cliente.id) : criar.bind(null, slug)
   const [estado, agir, pendente] = useActionState<EstadoCliente, FormData>(acao, {})
+  const [escolha, setEscolha] = useState(ofertas.atual)
+  // "Aceitou" por cima de um PARAR não existe: só a pessoa desfaz, mandando VOLTAR.
+  const simTravado = !!ofertas.lista?.soAPessoa
 
   return (
     <form action={agir} className="flex max-w-3xl flex-col gap-5">
@@ -127,6 +148,71 @@ export function Editor({ slug, cliente }: { slug: string; cliente?: ClienteNaTel
             O que a equipe precisa lembrar. O assistente também lê isto.
           </span>
         </label>
+      </Cartao>
+
+      <Cartao titulo="Ofertas no WhatsApp">
+        {/* O texto da pergunta, na tela, do lado da escolha: consentimento
+            que ninguém leu não é "informado" (LGPD art. 8º). */}
+        <div className="flex flex-col gap-1 rounded-norte border border-borda bg-superficie-2 px-3 py-2.5 text-sm">
+          <span className="text-xs font-semibold text-tinta-3">Pergunte com estas palavras</span>
+          <span className="text-tinta">“{ofertas.pergunta}”</span>
+          <span className="text-xs text-tinta-3">
+            Só marque &quot;aceitou&quot; se a pessoa disser sim. Sem aceite, a loja não começa conversa de oferta com ela
+            — responder quando ela escreve continua valendo.
+          </span>
+        </div>
+        {ofertas.resumo && <p className="text-sm text-tinta-2">{ofertas.resumo}</p>}
+        {ofertas.lista && (
+          <Aviso nivel="atencao">
+            {ofertas.lista.frase}
+            {ofertas.lista.soAPessoa
+              ? ' Só volta a receber se a própria pessoa mandar VOLTAR para o WhatsApp da loja.'
+              : ''}
+          </Aviso>
+        )}
+        <div role="radiogroup" aria-label="A pessoa aceita receber ofertas no WhatsApp?" className="grid gap-2 sm:grid-cols-3">
+          {ofertas.atual === 'NAO_PERGUNTADO' && (
+            <Marcar
+              type="radio"
+              name="ofertas"
+              value="NAO_PERGUNTADO"
+              checked={escolha === 'NAO_PERGUNTADO'}
+              onChange={() => setEscolha('NAO_PERGUNTADO')}
+              titulo="Ainda não perguntei"
+              resumo="Não é aceite. Nenhuma oferta começa por conta da loja."
+            />
+          )}
+          <Marcar
+            type="radio"
+            name="ofertas"
+            value="SIM"
+            checked={escolha === 'SIM'}
+            onChange={() => setEscolha('SIM')}
+            disabled={simTravado && ofertas.atual !== 'SIM'}
+            titulo="Aceitou"
+            resumo={ofertas.textoAceite}
+          />
+          <Marcar
+            type="radio"
+            name="ofertas"
+            value="NAO"
+            checked={escolha === 'NAO'}
+            onChange={() => setEscolha('NAO')}
+            titulo="Não aceitou"
+            resumo="O número entra na lista de quem não recebe ofertas, e sai de qualquer campanha."
+          />
+        </div>
+        {escolha !== ofertas.atual && escolha !== 'NAO_PERGUNTADO' && (
+          <div className="max-w-xs">
+            <Selecao
+              rotulo="Como a pessoa respondeu"
+              name="ofertasOrigem"
+              defaultValue="balcao"
+              opcoes={ofertas.origens}
+              dica="Fica gravado com a data e o seu nome — é a prova do aceite."
+            />
+          </div>
+        )}
       </Cartao>
 
       {cliente && (

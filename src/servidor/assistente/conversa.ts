@@ -51,6 +51,7 @@ import {
 } from '../ia'
 import { receberDeCliente, testeVivo } from '../campanhas/entrada'
 import type { Canal } from './canal'
+import { modeloDeAviso } from './meta-regras'
 import {
   abrirConversa,
   acharInterlocutor,
@@ -432,6 +433,7 @@ async function recusarSemIA(
     // O dono que acabou de mandar a mensagem já recebeu o motivo acima.
     if (mesmoTelefone(dono.telefone, conversa.telefone)) continue
     const c = await abrirConversa(ctx.org.id, agente.id, dono.telefone, { nome: dono.nome, daEquipe: true })
-    await enviarEGravar(canal, agente, c, aviso)
+    // No WhatsApp oficial, o outro dono quase nunca está na janela de 24 h.
+    await enviarEGravar(canal, agente, c, aviso, modeloDeAviso(ctx.org.nome, aviso))
   }
 }

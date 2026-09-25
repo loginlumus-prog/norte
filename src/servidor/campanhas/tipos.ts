@@ -68,6 +68,25 @@ export type DadosMensagem = {
   textos: string[]
   /** "digitando..." antes de mandar, de 0 a 15 segundos. */
   digitandoSeg: number
+  /**
+   * Só vale no WhatsApp OFICIAL (Meta): o modelo aprovado que sai no lugar do
+   * texto quando a janela de 24 horas com a pessoa já fechou. Sem ele, fora
+   * da janela a execução termina ('janela_fechada') — a Meta recusa texto
+   * livre para quem não escreveu nas últimas 24 horas.
+   */
+  modelo?: ModeloDoBloco | null
+}
+
+/**
+ * Um modelo aprovado na conta da Meta, e o que vai em cada variável dele.
+ * `variaveis[0]` é o {{1}} do corpo, e assim por diante; cada uma aceita os
+ * coringas do texto ({primeiro_nome}, {nome}, {resposta}).
+ */
+export type ModeloDoBloco = {
+  nome: string
+  /** "pt_BR" — o idioma com que o modelo foi aprovado. */
+  idioma: string
+  variaveis: string[]
 }
 export type TipoMidia = 'imagem' | 'video' | 'audio'
 export type DadosMidia = {
@@ -154,6 +173,7 @@ export type MotivoFim =
   | 'conectou' // pulou para outra campanha
   | 'outro_fluxo' // a pessoa escreveu a frase de outra campanha
   | 'parou' // a pessoa pediu para parar
+  | 'sem_ofertas' // o número entrou na lista de quem não recebe oferta (ficha "não aceita", a loja anotou, anonimização)
   | 'removido' // alguém da loja tirou da campanha
   | 'pausada' // a campanha foi pausada com a pessoa dentro
   | 'teste' // um teste novo no mesmo número
@@ -161,6 +181,7 @@ export type MotivoFim =
   | 'passos' // passou do teto de passos sem esperar nada (laço)
   | 'limite' // teto de mensagens do dia
   | 'falha_envio' // o canal recusou
+  | 'janela_fechada' // WhatsApp oficial: passou das 24 h sem a pessoa escrever, e o bloco não tinha modelo aprovado
 
 /** O que o roteiro guarda de cada pessoa. `_` na frente = uso interno do motor. */
 export type Vars = {
@@ -241,6 +262,7 @@ export const ROTULO_MOTIVO: Record<MotivoFim, string> = {
   conectou: 'foi para outra campanha',
   outro_fluxo: 'entrou em outra campanha',
   parou: 'pediu para parar',
+  sem_ofertas: 'não recebe mais ofertas',
   removido: 'tirado pela loja',
   pausada: 'campanha pausada',
   teste: 'teste substituído',
@@ -248,6 +270,7 @@ export const ROTULO_MOTIVO: Record<MotivoFim, string> = {
   passos: 'roteiro em laço',
   limite: 'teto de mensagens do dia',
   falha_envio: 'o WhatsApp recusou',
+  janela_fechada: 'passou da janela de 24 horas',
 }
 
 export const MS_UNIDADE: Record<UnidadeTempo, number> = {
