@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { fecharSessao } from '@/servidor/sessao'
 import { sessaoViva, exigirSessao } from '@/servidor/pagina'
 import { liberarVaga, sinal } from '@/servidor/presenca'
-import { comoOrg } from '@/servidor/banco'
+import { acharOrgPorSlug, comoOrg } from '@/servidor/banco'
 import { conferirSenha } from '@/servidor/senha'
 import { pode, CAPACIDADES } from '@/servidor/permissao'
 import {
@@ -110,7 +110,14 @@ export async function perguntarAoGuiaAcao(
   if (p.length > 500) return { modo: 'erro', texto: 'Pergunta longa demais. Resuma em até 500 letras.' }
   const tela = String(telaAtual ?? '').slice(0, 120)
 
-  if (!temChaveIA()) return { modo: 'manual', respostas: buscarNoGuia(p, tela) }
+  // Pelo manual, só as telas que esta pessoa abre — a mesma régua da busca
+  // do navegador (ver `telaAbre`). A empresa vem da portaria: os módulos
+  // ligados decidem se Crediário e Encomendas existem para ela.
+  if (!temChaveIA()) {
+    const empresa = await acharOrgPorSlug(slug)
+    const quem = { capacidades: CAPACIDADES.filter((c) => pode(sessao, c)), modulos: empresa?.modulos ?? [] }
+    return { modo: 'manual', respostas: buscarNoGuia(p, tela, quem) }
+  }
 
   if (!contarPergunta(sessao.orgId)) {
     return { modo: 'erro', texto: 'O guia já respondeu muitas perguntas hoje. Use a busca ao lado — ela funciona sempre.' }

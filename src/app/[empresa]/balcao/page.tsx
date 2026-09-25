@@ -45,7 +45,7 @@ export default async function BalcaoPagina({
   const conf = await comoOrg(sessao.orgId, (db) =>
     db.org.findUnique({
       where: { id: sessao.orgId },
-      select: { pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true, balcaoGrade: true, plano: true },
+      select: { pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true, balcaoGrade: true, plano: true, ramo: true },
     }),
   )
   // O programa que o PLANO libera: sem isso a tela prometeria "ganha X pontos"
@@ -63,6 +63,10 @@ export default async function BalcaoPagina({
     : null
   const ramoDaLoja = loja?.ramo && loja.ramo in RAMOS ? RAMOS[loja.ramo as keyof typeof RAMOS] : null
   const usaGrade = ramoDaLoja ? ramoDaLoja.balcao === 'grade' : (conf?.balcaoGrade ?? false)
+  // O ramo que vale para os ATALHOS do balcão simples (teclas de peso,
+  // complementos): o da loja, senão o da empresa. Não muda regra de venda —
+  // ver ramo.ts.
+  const ramo = loja?.ramo && loja.ramo in RAMOS ? loja.ramo : conf?.ramo && conf.ramo in RAMOS ? conf.ramo : null
 
   const caixa = unidadeId ? await caixaAberto(sessao, unidadeId) : null
   const conferencia = caixa ? await conferirCaixa(sessao, caixa.id) : null
@@ -133,6 +137,7 @@ export default async function BalcaoPagina({
           usuarioId={sessao.usuarioId}
           caixaId={caixa.id}
           unidadeNome={unidadeNome}
+          ramo={ramo}
           programa={programa}
           vendedores={vendedores}
           podeAvulso={podeAvulso}

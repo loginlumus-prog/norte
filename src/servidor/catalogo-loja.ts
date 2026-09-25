@@ -66,6 +66,84 @@ export function normalizarVendidoEm(marcadas: readonly string[], lojasAtivas: re
   return validas.sort()
 }
 
+// ─────────────────────────────────────────────────────────────
+// QUEM PODE DECIDIR SOBRE O PRODUTO
+// ─────────────────────────────────────────────────────────────
+//
+// ── o defeito que isto fecha ─────────────────────────────────
+// O cadastro é um só para a empresa inteira. O gerente da loja Centro abria
+// a camiseta vendida em TODAS as lojas, baixava o preço, desmarcava o
+// Shopping — e o balcão do Shopping mudava sem ninguém de lá ter decidido.
+// A capacidade `produto.preco` dele vale na loja dele; o produto não é só
+// dela.
+//
+// ── a regra ──────────────────────────────────────────────────
+// Mexer no que vale para todas as lojas onde o produto é vendido — preço,
+// custo, "Vendido em", medida, situação e grade — exige alcançar CADA uma
+// dessas lojas. `vendidoEm` vazio quer dizer "todas, inclusive as que
+// abrirem", e isso só quem responde pela empresa inteira alcança (o dono).
+// Nome, marca, descrição, categoria e prazo continuam com quem edita produto.
+
+/** Onde a pessoa pode isso: 'todas' (acesso sem loja) ou a lista das lojas dela. */
+export type Alcance = 'todas' | readonly string[]
+
+/** O que as duas capacidades alcançam juntas — a ficha pede as duas. */
+export function alcanceComum(a: Alcance, b: Alcance): Alcance {
+  if (a === 'todas') return b
+  if (b === 'todas') return a
+  return a.filter((u) => b.includes(u))
+}
+
+/** Esta loja está ao alcance? */
+export function alcancaLoja(alcance: Alcance, unidadeId: string): boolean {
+  return alcance === 'todas' || alcance.includes(unidadeId)
+}
+
+/**
+ * Quem tem este alcance pode decidir por TODAS as lojas onde o produto é
+ * vendido? Vazio = todas, inclusive as futuras: só a empresa inteira alcança.
+ */
+export function alcancaOProduto(alcance: Alcance, vendidoEm: readonly string[] | null | undefined): boolean {
+  if (alcance === 'todas') return true
+  if (!vendidoEm || vendidoEm.length === 0) return false
+  return vendidoEm.every((u) => alcance.includes(u))
+}
+
+const mesmaLista = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i])
+
+/**
+ * O "Vendido em" que a ficha pede, para quem NÃO responde pela empresa
+ * inteira.
+ *
+ * As lojas fora do alcance ficam como estavam — a tela as mostra travadas, e
+ * o que o navegador mandar sobre elas é ignorado. Nunca vira vazio ("todas"):
+ * vazio incluiria as lojas que abrirem depois, e essas ninguém de uma loja só
+ * alcança. Se o conjunto final é o mesmo de antes, devolve o valor de antes
+ * intacto — assim "vendido em todas" continua vazio quando o gerente só
+ * corrigiu o nome.
+ *
+ * `antes` nulo = produto novo.
+ */
+export function vendidoEmDoGerente(
+  marcadas: readonly string[],
+  antes: readonly string[] | null,
+  lojasAtivas: readonly string[],
+  alcance: readonly string[],
+): string[] {
+  const escolhidas = lojasAtivas.filter((u) =>
+    alcance.includes(u) ? marcadas.includes(u) : antes !== null && vendidoNaLoja(antes, u),
+  )
+  if (antes !== null) {
+    const antesEfetivo = lojasAtivas.filter((u) => vendidoNaLoja(antes, u))
+    if (mesmaLista(escolhidas, antesEfetivo)) return [...antes]
+    // Loja fechada que estava na lista continua nela: não é desta pessoa tirar.
+    const fechadas = antes.filter((u) => !lojasAtivas.includes(u))
+    return [...escolhidas, ...fechadas].sort()
+  }
+  return escolhidas.sort()
+}
+
 const chaveDoNome = (s: string) =>
   s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
 

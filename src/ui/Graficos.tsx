@@ -165,7 +165,8 @@ export function BarrasH({
   cor = 'var(--marca)',
   vazio = 'Nada no período.',
 }: {
-  itens: { rotulo: string; valor: number; detalhe?: string; cor?: string }[]
+  /** `texto` troca o número mostrado (a barra continua medindo `valor`). */
+  itens: { rotulo: string; valor: number; texto?: string; detalhe?: string; cor?: string }[]
   formato?: Formato
   cor?: string
   vazio?: string
@@ -178,7 +179,7 @@ export function BarrasH({
         <li key={i.rotulo} className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-3">
             <span className="truncate text-sm text-tinta" title={i.rotulo}>{i.rotulo}</span>
-            <span className="numero shrink-0 text-sm font-semibold text-tinta">{formatar(formato)(i.valor)}</span>
+            <span className="numero shrink-0 text-sm font-semibold text-tinta">{i.texto ?? formatar(formato)(i.valor)}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-superficie-2">

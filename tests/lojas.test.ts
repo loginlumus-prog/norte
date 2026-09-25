@@ -99,3 +99,53 @@ describe('o que conta como falta na loja', () => {
     expect(contaComoFalta({ quantidade: 0, unidadeId: SORVETE, ehDeposito: false }, [])).toBe(true)
   })
 })
+
+// ─────────────────────────────────────────────────────────────
+// Auditoria de 25/09: o gerente decide só pelas lojas dele
+// ─────────────────────────────────────────────────────────────
+
+import { alcancaOProduto, alcanceComum, vendidoEmDoGerente } from '../src/servidor/catalogo-loja'
+
+describe('quem alcança o produto', () => {
+  it('vendido em todas (vazio) só a empresa inteira alcança — "todas" inclui a loja que abrir amanhã', () => {
+    expect(alcancaOProduto('todas', [])).toBe(true)
+    expect(alcancaOProduto(['a', 'b'], [])).toBe(false)
+  })
+
+  it('lista explícita: precisa alcançar cada loja dela', () => {
+    expect(alcancaOProduto(['a'], ['a'])).toBe(true)
+    expect(alcancaOProduto(['a'], ['a', 'b'])).toBe(false)
+    expect(alcancaOProduto(['a', 'b'], ['b'])).toBe(true)
+  })
+
+  it('a ficha pede editar E mexer em preço: vale o que as duas alcançam juntas', () => {
+    expect(alcanceComum('todas', ['a'])).toEqual(['a'])
+    expect(alcanceComum(['a', 'b'], ['b', 'c'])).toEqual(['b'])
+    expect(alcanceComum('todas', 'todas')).toBe('todas')
+  })
+})
+
+describe('o "Vendido em" do gerente', () => {
+  const LOJAS = ['a', 'b', 'c']
+
+  it('produto novo nasce só nas lojas dele, mesmo que o navegador mande outras marcadas', () => {
+    expect(vendidoEmDoGerente(['a', 'b', 'c'], null, LOJAS, ['a'])).toEqual(['a'])
+  })
+
+  it('nunca vira vazio ("todas"), mesmo marcando todas as que ele alcança', () => {
+    expect(vendidoEmDoGerente(['a', 'b', 'c'], null, LOJAS, ['a', 'b', 'c'])).toEqual(['a', 'b', 'c'])
+  })
+
+  it('as lojas fora do alcance ficam como estavam', () => {
+    // produto em a e b; o gerente de a desmarca a e tenta marcar c
+    expect(vendidoEmDoGerente(['c'], ['a', 'b'], LOJAS, ['a'])).toEqual(['b'])
+  })
+
+  it('sem mudança de verdade, devolve o valor de antes intacto (vazio continua vazio)', () => {
+    expect(vendidoEmDoGerente(['a'], [], LOJAS, ['a'])).toEqual([])
+  })
+
+  it('loja fechada que estava na lista não é tirada por quem não cuida dela', () => {
+    expect(vendidoEmDoGerente([], ['a', 'z'], LOJAS, ['a'])).toEqual(['z'])
+  })
+})

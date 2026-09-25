@@ -29,6 +29,7 @@ import {
 } from './planos'
 import { mostrar } from './dinheiro'
 import { diaEmSP } from './dia'
+import { plural } from './texto'
 
 export type Uso = { unidades: number; usuarios: number }
 
@@ -175,7 +176,10 @@ export async function assinaturaDe(sessao: Sessao): Promise<Assinatura> {
     if (org.situacao === 'TESTE' && diasDeTeste !== null) {
       alertas.push(
         diasDeTeste <= 3
-          ? { nivel: 'critico', texto: `O teste acaba em ${Math.max(diasDeTeste, 0)} dia(s).` }
+          ? {
+              nivel: 'critico',
+              texto: diasDeTeste <= 0 ? 'O teste acaba hoje.' : `O teste acaba em ${plural(diasDeTeste, 'dia', 'dias')}.`,
+            }
           : { nivel: 'atencao', texto: `Teste até o fim: faltam ${diasDeTeste} dias.` },
       )
     }
@@ -194,7 +198,7 @@ export async function assinaturaDe(sessao: Sessao): Promise<Assinatura> {
       alertas.push({
         nivel: 'atencao',
         texto: `Crédito de IA baixo: ${mostrar(saldoCent)}${
-          credito.diasQueDura !== null ? `, cerca de ${credito.diasQueDura} dia(s)` : ''
+          credito.diasQueDura !== null ? `, cerca de ${plural(credito.diasQueDura, 'dia', 'dias')}` : ''
         }.`,
       })
     }

@@ -558,7 +558,7 @@ export const RECURSOS: Recurso[] = [
     destaque: true,
   },
   {
-    titulo: 'Escala e presença da equipe',
+    titulo: 'Turnos de caixa por pessoa: quem abriu, quanto tempo, quanto vendeu',
     grupo: 'Equipe',
     em: DE_REDE,
   },

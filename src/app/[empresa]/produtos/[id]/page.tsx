@@ -6,7 +6,8 @@ import { acharProduto, eixosDaEmpresa, comoVende, estoqueDoProduto } from '@/ser
 import { listarMovimentos, ROTULO_MOVIMENTO } from '@/servidor/estoque'
 import { comoOrg } from '@/servidor/banco'
 import { RAMOS, type Ramo } from '@/servidor/modulos'
-import { pode } from '@/servidor/permissao'
+import { pode, unidadesQuePodem } from '@/servidor/permissao'
+import { alcanceComum, alcancaLoja, alcancaOProduto } from '@/servidor/catalogo-loja'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, cx } from '@/ui/base'
@@ -89,6 +90,10 @@ export default async function FichaProduto({
 
   const valorDe = new Map(eixos.flatMap((e) => e.opcoes.map((o) => [o.id, o] as const)))
 
+  // Até onde vai quem abriu a ficha. O gerente da loja Centro edita o que só
+  // o Centro vende; o que também sai em outra loja ele lê, e corrige o nome.
+  const alcance = alcanceComum(unidadesQuePodem(sessao, 'produto.editar'), unidadesQuePodem(sessao, 'produto.preco'))
+
   const naTela: ProdutoNaTela = {
     id: produto.id,
     nome: produto.nome,
@@ -105,6 +110,7 @@ export default async function FichaProduto({
     ativo: produto.ativo,
     marcadas,
     comHistorico: produto.variacoes.length,
+    travado: !alcancaOProduto(alcance, produto.vendidoEm),
   }
 
   // As lojas que têm balcão — para a pergunta "Vendido em". Depósito não
@@ -115,7 +121,13 @@ export default async function FichaProduto({
       orderBy: { nome: 'asc' },
       select: { id: true, nome: true, ramo: true },
     }),
-  ).then((us) => us.map((u) => ({ ...u, ramo: u.ramo && u.ramo in RAMOS ? RAMOS[u.ramo as Ramo].titulo : null })))
+  ).then((us) =>
+    us.map((u) => ({
+      ...u,
+      ramo: u.ramo && u.ramo in RAMOS ? RAMOS[u.ramo as Ramo].titulo : null,
+      podeMarcar: alcancaLoja(alcance, u.id),
+    })),
+  )
 
   return (
     <Estrutura

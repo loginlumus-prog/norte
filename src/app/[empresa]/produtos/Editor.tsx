@@ -45,6 +45,12 @@ export type ProdutoNaTela = {
   marcadas: Record<string, string[]>
   /** Combinações que já têm venda ou movimento — não somem, desativam. */
   comHistorico: number
+  /**
+   * Vendido em lojas que quem abre a ficha não cuida: preço, custo, lojas,
+   * medida, situação e grade ficam só para ler (o servidor recusa de todo
+   * jeito — ver `alcancaOProduto`). Nome, marca, descrição e prazo seguem.
+   */
+  travado?: boolean
 }
 
 const MEDIDAS = [
@@ -69,14 +75,19 @@ export function Editor({
   slug: string
   eixos: EixoNaTela[]
   categorias: { id: string; nome: string }[]
-  /** As lojas abertas que vendem (depósito não). Com uma só, a pergunta nem aparece. */
-  lojas?: { id: string; nome: string; ramo: string | null }[]
+  /**
+   * As lojas abertas que vendem (depósito não). Com uma só, a pergunta nem
+   * aparece. `podeMarcar` falso = loja que a pessoa não cuida: aparece, mas
+   * travada — ligar ou desligar o produto lá é de quem responde por ela.
+   */
+  lojas?: { id: string; nome: string; ramo: string | null; podeMarcar?: boolean }[]
   /** Produto novo: por categoria, as lojas do ramo dela. Vazio = todas. */
   sugestao?: Record<string, string[]>
   /** Ausente = cadastro novo. */
   produto?: ProdutoNaTela
 }) {
   const idsDosEixos = useMemo(() => eixos.map((e) => e.id), [eixos])
+  const travado = produto?.travado === true
 
   const acao = produto
     ? editar.bind(null, slug, produto.id, idsDosEixos)
@@ -88,8 +99,12 @@ export function Editor({
   // "Vendido em" controlado: no cadastro novo, escolher a categoria já marca
   // as lojas do ramo dela (o picolé só na sorveteria). A pessoa ainda pode
   // mudar à mão depois — trocar de categoria de novo refaz a sugestão.
+  // No cadastro novo, loja travada nasce desmarcada: o produto do gerente
+  // nasce só nas lojas dele, e a tela precisa dizer isso antes de salvar.
   const vendeEmTodas = (ids: string[]) =>
-    Object.fromEntries(lojas.map((l) => [l.id, ids.length === 0 || ids.includes(l.id)]))
+    Object.fromEntries(
+      lojas.map((l) => [l.id, (ids.length === 0 || ids.includes(l.id)) && (!!produto || l.podeMarcar !== false)]),
+    )
   const [vendeEm, setVendeEm] = useState<Record<string, boolean>>(() =>
     vendeEmTodas(produto?.vendidoEm ?? []),
   )
@@ -142,13 +157,24 @@ export function Editor({
           />
           <Selecao
             rotulo="Como se conta"
-            name="medida"
+            name={travado ? undefined : 'medida'}
             defaultValue={produto?.medida ?? 'UN'}
             opcoes={MEDIDAS}
+            disabled={travado}
             dica="Sorvete a granel vende em quilo; blusa vende em unidade."
           />
+          {/* Campo travado não vai no formulário; o valor de hoje vai escondido. */}
+          {travado && <input type="hidden" name="medida" value={produto?.medida ?? 'UN'} />}
         </div>
       </Cartao>
+
+      {travado && (
+        <Aviso nivel="neutro">
+          Este produto também é vendido em lojas que você não cuida. Você pode corrigir nome,
+          marca, categoria e prazo; preço, custo, lojas, medida, situação e grade ficam com
+          quem responde por todas elas.
+        </Aviso>
+      )}
 
       <Cartao titulo="Quanto custa">
         <p className="mb-3 text-sm text-tinta-2">
@@ -156,12 +182,13 @@ export function Editor({
           iguais a ele.
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Campo rotulo="À vista" name="precoVista" required defaultValue={produto?.precoVista ?? ''} placeholder="49,90" inputMode="decimal" />
-          <Campo rotulo="No cartão" name="precoCartao" defaultValue={produto?.precoCartao ?? ''} placeholder="54,90" inputMode="decimal" />
-          <Campo rotulo="No crediário" name="precoCrediario" defaultValue={produto?.precoCrediario ?? ''} placeholder="59,90" inputMode="decimal" />
+          <Campo rotulo="À vista" name="precoVista" required readOnly={travado} defaultValue={produto?.precoVista ?? ''} placeholder="49,90" inputMode="decimal" />
+          <Campo rotulo="No cartão" name="precoCartao" readOnly={travado} defaultValue={produto?.precoCartao ?? ''} placeholder="54,90" inputMode="decimal" />
+          <Campo rotulo="No crediário" name="precoCrediario" readOnly={travado} defaultValue={produto?.precoCrediario ?? ''} placeholder="59,90" inputMode="decimal" />
           <Campo
             rotulo="Custo"
             name="custo"
+            readOnly={travado}
             defaultValue={produto?.custo ?? ''}
             placeholder="22,00"
             inputMode="decimal"
@@ -191,7 +218,8 @@ export function Editor({
           que abrirem depois; desmarcar é tirar do balcão daquela loja. */}
       {lojas.length > 1 && (
         <Cartao titulo="Vendido em">
-          <input type="hidden" name="temLojas" value="1" />
+          {/* Travado, a pergunta não vai: o servidor mantém as lojas como estão. */}
+          {!travado && <input type="hidden" name="temLojas" value="1" />}
           <p className="text-xs text-tinta-3">
             O balcão de cada loja só mostra o que está marcado aqui. Com todas marcadas, a loja
             que você abrir depois também vende este produto.
@@ -210,10 +238,16 @@ export function Editor({
                 titulo={l.nome}
                 resumo={l.ramo ?? undefined}
                 checked={vendeEm[l.id] ?? true}
+                disabled={travado || l.podeMarcar === false}
                 onChange={(e) => setVendeEm((v) => ({ ...v, [l.id]: e.target.checked }))}
               />
             ))}
           </div>
+          {!travado && lojas.some((l) => l.podeMarcar === false) && (
+            <p className="text-xs text-tinta-3">
+              As lojas travadas não são suas: ligar ou desligar o produto nelas é de quem cuida delas.
+            </p>
+          )}
         </Cartao>
       )}
 
@@ -233,6 +267,7 @@ export function Editor({
           </Aviso>
         ) : (
           <>
+            {travado && <input type="hidden" name="gradeTravada" value="1" />}
             <p className="mb-3 text-sm text-tinta-2">
               Marque só o que este produto tem de verdade. Cada combinação vira um item
               contado separado no estoque, com o próprio código de etiqueta.
@@ -268,6 +303,7 @@ export function Editor({
                             <input
                               type="checkbox"
                               name={`opcao_${e.id}_${o.id}`}
+                              disabled={travado}
                               defaultChecked={ligada}
                               onChange={(ev) => alterna(e.id, o.id, ev.currentTarget.checked)}
                               className="size-3.5 accent-[var(--marca)]"
@@ -313,11 +349,14 @@ export function Editor({
       {produto && (
         <Cartao titulo="Situação">
           <Marcar
-            name="ativo"
+            name={travado ? undefined : 'ativo'}
+            id="produto-ativo"
             defaultChecked={produto.ativo}
+            disabled={travado}
             titulo="Produto à venda"
             resumo="Desmarcado, ele some do balcão e da lista — e continua em todo relatório antigo."
           />
+          {travado && produto.ativo && <input type="hidden" name="ativo" value="on" />}
         </Cartao>
       )}
 

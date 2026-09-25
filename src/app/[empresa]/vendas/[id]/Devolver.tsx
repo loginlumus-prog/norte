@@ -47,8 +47,23 @@ export function Devolver({
     return (
       <div className="flex flex-col gap-2 rounded-norte border border-bom-borda bg-bom-fundo px-4 py-3">
         <p className="text-sm font-bold text-bom">
-          Devolução registrada: {brl(estado.ok.valor)}. O estoque voltou.
+          {estado.ok.abatido > 0 && estado.ok.valor <= 0
+            ? `Devolução registrada: ${brl(estado.ok.abatido)} abatido do crediário. O estoque voltou.`
+            : `Devolução registrada: ${brl(estado.ok.valor)}. O estoque voltou.`}
         </p>
+        {/* Venda no crediário ainda em aberto: a devolução apaga primeiro o
+            que a pessoa deve DESTA venda, e só o que sobra vai para ela. Sem
+            esta linha a tela dizia "R$ 0,00" — e parecia que nada tinha
+            acontecido com a dívida. */}
+        {estado.ok.abatido > 0 && (
+          <p className="text-[13px] text-tinta-2">
+            Abatido da dívida desta venda no crediário: {brl(estado.ok.abatido)} — as parcelas em
+            aberto diminuíram.
+            {estado.ok.valor > 0
+              ? ` O restante, ${brl(estado.ok.valor)}, vai para a pessoa.`
+              : ' Não sai dinheiro do caixa.'}
+          </p>
+        )}
         {estado.ok.vale && (
           <div className="flex flex-col gap-1">
             <p className="text-[13px] text-tinta-2">

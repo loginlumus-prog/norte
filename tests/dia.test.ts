@@ -52,3 +52,21 @@ describe('coluna `date` escrita para gente', () => {
     expect(mostrarDiaDaColuna(vencimento, 'longo')).toBe('10/10/2026')
   })
 })
+
+// ─────────────────────────────────────────────────────────────
+// O "hoje" do teto de IA e do teto da conversa (agente.ts, conversa.ts)
+// ─────────────────────────────────────────────────────────────
+
+import { inicioDeHojeEmSP } from '../src/servidor/dia'
+
+describe('o começo de HOJE em São Paulo', () => {
+  it('às 22h30 da loja, hoje ainda começou à meia-noite dela — não às 21h, que era a meia-noite UTC', () => {
+    // `setHours(0, 0, 0, 0)` num servidor em UTC dava 2026-09-17T00:00Z (21h
+    // do dia 16 em SP): o gasto das 21h às 22h30 sumia do teto do dia.
+    expect(inicioDeHojeEmSP(new Date('2026-09-16T22:30:00-03:00')).toISOString()).toBe('2026-09-16T03:00:00.000Z')
+  })
+
+  it('logo depois da meia-noite da loja, já é o dia novo', () => {
+    expect(inicioDeHojeEmSP(new Date('2026-09-17T00:05:00-03:00')).toISOString()).toBe('2026-09-17T03:00:00.000Z')
+  })
+})

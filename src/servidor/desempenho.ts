@@ -30,7 +30,8 @@
 
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, PODERES, soAsQuePode, unidadesQuePodem, type Papel, type Sessao } from './permissao'
-import { mesChave, metasDoMes, type MetaDaPessoa } from './metas'
+import { metasDoMes, type MetaDaPessoa } from './metas'
+import { diaEmSP, inicioDoDiaEmSP } from './dia'
 
 // ─────────────────────────────────────────────────────────────
 // A CONTA
@@ -140,17 +141,34 @@ export function NIVEL(estrelas: number): 'bom' | 'atencao' | 'critico' {
  * ninguém entrou num mês que não começou, e zero tira a presença da conta.
  */
 export function diasDoMesAte(hoje: Date, mes: string): number {
-  const atual = mesChave(hoje)
+  // O dia e o mês de São Paulo: com o relógio da máquina em UTC, às 22h do
+  // dia 30 já era dia 1º do mês seguinte, e o mês corrente virava "passado".
+  const dia = diaEmSP(hoje)
+  const atual = dia.slice(0, 7)
   if (mes > atual) return 0
-  if (mes === atual) return Math.min(hoje.getDate(), TETO_DIAS)
-  const [a, m] = mes.split('-').map(Number)
-  return Math.min(new Date(a!, m!, 0).getDate(), TETO_DIAS)
+  if (mes === atual) return Math.min(Number(dia.slice(8, 10)), TETO_DIAS)
+  return Math.min(diasNoMes(mes), TETO_DIAS)
 }
+
+/** Quantos dias tem o mês "AAAA-MM". Conta em UTC: não depende do fuso. */
+const diasNoMes = (mes: string) => {
+  const [a, m] = mes.split('-').map(Number)
+  return new Date(Date.UTC(a!, m!, 0)).getUTCDate()
+}
+
+/** "AAAA-MM" somado de `n` meses. Aritmética de calendário, sem relógio. */
+const somarMeses = (mes: string, n: number) => {
+  const [a, m] = mes.split('-').map(Number)
+  const d = new Date(Date.UTC(a!, m! - 1 + n, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+/** O mês de agora, no calendário de São Paulo. */
+export const mesEmSP = (agora: Date = new Date()) => diaEmSP(agora).slice(0, 7)
 
 /** Os últimos `n` meses terminando em `mes`: ("2026-09", 3) → jul, ago, set. */
 export function ultimosMeses(mes: string, n: number): string[] {
-  const [a, m] = mes.split('-').map(Number)
-  return Array.from({ length: n }, (_, i) => mesChave(new Date(a!, m! - n + i, 1)))
+  return Array.from({ length: n }, (_, i) => somarMeses(mes, i - n + 1))
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -181,22 +199,24 @@ const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) => PODERE
  * A auditoria e a tarefa gravam em UTC; "hoje" e "que dia foi" se decidem em
  * São Paulo, como o painel já faz (ver o comentário de fuso em painel.ts).
  */
-function hojeEmSaoPaulo(agora: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(agora)
-}
+const hojeEmSaoPaulo = (agora: Date): string => diaEmSP(agora)
 
 type Janela = { de: Date; ate: Date; deDia: string; ateDia: string }
 
-/** A MESMA janela de `metasDoMes`, para o realizado bater com a seção de metas. */
-function janelaDoMes(mes: string): Janela {
-  const [a, m] = mes.split('-').map(Number)
-  const ate = new Date(a!, m!, 1)
-  return { de: new Date(a!, m! - 1, 1), ate, deDia: `${mes}-01`, ateDia: `${mesChave(ate)}-01` }
+/**
+ * A MESMA janela de `metasDoMes`, para o realizado bater com a seção de
+ * metas: da meia-noite de São Paulo do dia 1º à do 1º do mês seguinte. Já foi
+ * a meia-noite da máquina — que, em UTC, abria o mês às 21h do último dia do
+ * anterior e deixava a meta e a nota contando vendas diferentes.
+ */
+export function janelaDoMes(mes: string): Janela {
+  const seguinte = somarMeses(mes, 1)
+  return {
+    de: inicioDoDiaEmSP(`${mes}-01`),
+    ate: inicioDoDiaEmSP(`${seguinte}-01`),
+    deDia: `${mes}-01`,
+    ateDia: `${seguinte}-01`,
+  }
 }
 
 type LinhaTarefa = {
@@ -449,7 +469,7 @@ export async function tendencia(
   usuarioId: string,
   meses = 3,
   opcoes: Opcoes,
-  mes = mesChave(new Date()),
+  mes = mesEmSP(),
 ): Promise<{ mes: string; estrelas: number | null }[]> {
   const t = await tendenciaDaEquipe(sessao, mes, meses, opcoes)
   return t.meses.map((m, i) => ({ mes: m, estrelas: t.porPessoa[usuarioId]?.[i] ?? null }))

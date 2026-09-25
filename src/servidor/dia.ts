@@ -66,6 +66,15 @@ export function inicioDoDiaEmSP(dia: string): Date {
   return new Date(`${dia}T00:00:00.000-03:00`)
 }
 
+/**
+ * O instante em que HOJE começou em São Paulo. É o `setHours(0, 0, 0, 0)`
+ * que não depende da máquina: aquele, num servidor em UTC, começava o dia da
+ * loja às 21h da véspera.
+ */
+export function inicioDeHojeEmSP(agora: Date = new Date()): Date {
+  return inicioDoDiaEmSP(diaEmSP(agora))
+}
+
 /** O primeiro dia do mês de `dia` ('2026-09-25' → '2026-09-01'). */
 export function primeiroDoMes(dia: string): string {
   return `${dia.slice(0, 7)}-01`

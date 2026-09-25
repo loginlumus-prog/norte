@@ -744,6 +744,7 @@ function Grupo({
   lib,
   teto,
   slug,
+  verPlanos,
   rodar,
 }: {
   quadro: QuadroNaTela
@@ -755,6 +756,7 @@ function Grupo({
   lib: Liberacoes
   teto: Veredito
   slug: string
+  verPlanos: boolean
   rodar: Rodar
 }) {
   const cabecalho = 'sticky top-0 z-10 border-b border-borda bg-superficie-2 px-2 py-1.5 text-left text-[11px] font-semibold tracking-wide text-tinta-3 uppercase'
@@ -762,7 +764,7 @@ function Grupo({
     <th scope="col" className={cabecalho}>
       <span className="flex items-center gap-1.5">
         {titulo}
-        {chave && !aberto && <Cadeado chave={chave} slug={slug} />}
+        {chave && !aberto && <Cadeado chave={chave} slug={slug} verPlanos={verPlanos} />}
       </span>
     </th>
   )
@@ -827,8 +829,11 @@ export function Quadro({
   pessoas,
   situacoes,
   teto,
+  verPlanos = true,
 }: {
   slug: string
+  /** Quem olha abre os planos? Sem isso, o cadeado da coluna não é link. */
+  verPlanos?: boolean
   quadro: QuadroNaTela
   podeGerir: boolean
   liberacoes: Liberacoes
@@ -938,6 +943,7 @@ export function Quadro({
           lib={liberacoes}
           teto={teto}
           slug={slug}
+          verPlanos={verPlanos}
           rodar={rodar}
         />
       ))}

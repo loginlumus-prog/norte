@@ -221,3 +221,11 @@ describe('o cabeçalho do dia', () => {
     expect(mesmoDiaPassado(em(28))).toBe('segunda passada')
   })
 })
+
+describe('o tempo do caixa esquecido, como a tela do caixa diz', () => {
+  const frase = (c: Contagens) => montarPendencias(c, 'loja').map((p) => limpo(p.frase))
+  it('286 horas são 11 dias — e não "286 horas" no painel e "11 dias" no caixa', () => {
+    expect(frase({ caixasEsquecidos: { quantos: 1, horas: 286 } })).toEqual(['Caixa aberto há 11 dias'])
+    expect(frase({ caixasEsquecidos: { quantos: 1, horas: 25 } })).toEqual(['Caixa aberto há 1 dia'])
+  })
+})

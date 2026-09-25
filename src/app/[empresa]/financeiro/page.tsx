@@ -60,6 +60,17 @@ export default async function Financeiro({
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'financeiro.ver')
   const podeLancar = pode(sessao, 'financeiro.lancar')
+  // Configurações só abre para quem configura a empresa. Para o financeiro e
+  // o contador, o nome da tela vai como texto: link que cai em "este endereço
+  // não abre" parece sistema quebrado.
+  const podeConfigurar = pode(sessao, 'empresa.configurar')
+  const configuracoes = podeConfigurar ? (
+    <Link href={`/${slug}/configuracoes`} className="font-medium text-marca underline-offset-2 hover:underline">
+      Configurações
+    </Link>
+  ) : (
+    <b className="font-medium text-tinta-2">Configurações</b>
+  )
 
   // Mês do relatório: o corrente, ou o que veio no endereço (YYYY-MM).
   const agora = new Date()
@@ -503,19 +514,12 @@ export default async function Financeiro({
             {dre.taxasCalculadas > 0 ? (
               <>
                 {' '}As taxas de cartão e Pix ({brl(dre.taxasCalculadas)}) são calculadas venda a venda
-                com o que está em{' '}
-                <Link href={`/${slug}/configuracoes`} className="font-medium text-marca underline-offset-2 hover:underline">
-                  Configurações
-                </Link>
-                .
+                com o que está em {configuracoes}.
               </>
             ) : (
               <>
-                {' '}A taxa da maquininha ainda não entra: escreva as suas em{' '}
-                <Link href={`/${slug}/configuracoes`} className="font-medium text-marca underline-offset-2 hover:underline">
-                  Configurações
-                </Link>{' '}
-                e o resultado passa a descontá-la sozinho.
+                {' '}A taxa da maquininha ainda não entra: {podeConfigurar ? 'escreva as suas' : 'quem configura a empresa escreve as taxas'} em{' '}
+                {configuracoes} e o resultado passa a descontá-la sozinho.
               </>
             )}
           </p>

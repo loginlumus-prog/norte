@@ -147,8 +147,11 @@ export async function semearExemplo(cliente: Client, passo: (t: string) => void)
 
   // Depois do financeiro de propósito: a proposta de compra do agente aponta
   // para uma categoria financeira, e ela precisa existir antes.
-  const nRec = await semearAgente(cliente, 'org-exemplo-a')
-  if (nRec) passo(`assistente "Aurora" com ${nRec} recibos e uma proposta esperando...`)
+  // Sem recibo escrito à mão: o "Trouxe de volta" do exemplo sai da mesma
+  // conta das empresas de verdade (ver `exemplo-agente.ts`).
+  if (await semearAgente(cliente, 'org-exemplo-a')) {
+    passo('assistente "Aurora", com uma reposição já confirmada e uma proposta esperando...')
+  }
 
   // O saldo de credito nasce da CONTA, nao de um numero escrito na mao.
   // Escrever "1240" aqui e depois semear consumo por fora quebra a identidade

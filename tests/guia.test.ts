@@ -203,3 +203,46 @@ describe('a IA', () => {
     expect(fetchFalso).not.toHaveBeenCalled()
   })
 })
+
+// ─────────────────────────────────────────────────────────────
+// Auditoria de 25/09: a busca não manda ninguém para uma parede
+// ─────────────────────────────────────────────────────────────
+
+import { telaAbre, type QuemLe } from '../src/servidor/guia'
+import { PODERES } from '../src/servidor/permissao'
+
+describe('o guia só mostra as telas que a pessoa abre', () => {
+  const BALCAO: QuemLe = { capacidades: PODERES.BALCAO, modulos: [] }
+  const DONO: QuemLe = { capacidades: PODERES.DONO, modulos: ['crediario', 'encomenda', 'agente'] }
+
+  it('toda tela com página própria diz quem a abre (menos painel e entrar, que são de todos)', () => {
+    const semRegua = GUIA.filter((e) => !e.abre).map((e) => e.chave)
+    expect(semRegua.sort()).toEqual(['entrar', 'painel'])
+  })
+
+  it('a balconista procura "planos" e não recebe Assinatura — ela cairia no "este endereço não abre"', () => {
+    const achou = buscarNoGuia('planos assinatura mensalidade', undefined, BALCAO).map((r) => r.entrada.chave)
+    expect(achou).not.toContain('assinatura')
+    expect(buscarNoGuia('planos assinatura mensalidade', undefined, DONO).map((r) => r.entrada.chave)).toContain('assinatura')
+  })
+
+  it('nenhum resultado da balconista é tela que ela não abre', () => {
+    for (const pergunta of ['caixa', 'preço', 'relatório', 'equipe', 'configurar', 'fiado', 'auditoria', 'financeiro']) {
+      for (const r of buscarNoGuia(pergunta, undefined, BALCAO)) {
+        expect(telaAbre(r.entrada, BALCAO), `${pergunta} → ${r.entrada.chave}`).toBe(true)
+      }
+    }
+  })
+
+  it('crediário desligado some da busca até para o dono', () => {
+    const semFiado: QuemLe = { ...DONO, modulos: [] }
+    expect(buscarNoGuia('fiado crediário', undefined, semFiado).map((r) => r.entrada.chave)).not.toContain('crediario')
+    expect(buscarNoGuia('fiado crediário', undefined, DONO).map((r) => r.entrada.chave)).toContain('crediario')
+  })
+
+  it('assinatura abre também para o financeiro — a fatura é conta a pagar', () => {
+    const assinatura = GUIA.find((e) => e.chave === 'assinatura')!
+    expect(telaAbre(assinatura, { capacidades: PODERES.FINANCEIRO, modulos: [] })).toBe(true)
+    expect(telaAbre(assinatura, { capacidades: PODERES.BALCAO, modulos: [] })).toBe(false)
+  })
+})

@@ -21,7 +21,9 @@
 // que decide o que aparece em vermelho, e é o que tem teste.
 
 import { comoOrg } from './banco'
-import { exigir, pode, type Sessao } from './permissao'
+import { exigir, pode, type Capacidade, type Sessao } from './permissao'
+import { plural } from './texto'
+import { diaEmSP, inicioDoDiaEmSP } from './dia'
 import { montarDRE, aVencer, type DRE } from './financeiro'
 import { listarCaixas } from './caixa'
 import { resumoCrediario } from './crediario'
@@ -38,8 +40,12 @@ export type ItemDoFechamento = {
   /** Por que isso importa para o resultado do mês. */
   porque: string
   situacao: Situacao
-  /** Para onde ir resolver. */
-  onde?: { texto: string; href: string }
+  /**
+   * Para onde ir resolver. Sem `href` quando quem olha não abre aquela tela:
+   * aí vira frase dizendo quem resolve — link que dá "este endereço não
+   * abre" parece sistema quebrado.
+   */
+  onde?: { texto: string; href?: string }
 }
 
 /**
@@ -80,8 +86,8 @@ export function conferir(f: FatosDoMes, slug: string): ItemDoFechamento[] {
       titulo: 'Todo caixa do mês foi fechado',
       detalhe:
         f.caixasAbertos === 0
-          ? `${f.turnosFechados} turno(s) fechado(s)`
-          : `${f.caixasAbertos} caixa(s) ainda aberto(s)`,
+          ? `${plural(f.turnosFechados, 'turno fechado', 'turnos fechados')}`
+          : `${plural(f.caixasAbertos, 'caixa ainda aberto', 'caixas ainda abertos')}`,
       porque:
         'Caixa aberto não tem conferência de gaveta. O que faltou naquele turno não aparece em lugar nenhum, e o resultado do mês fica otimista.',
       situacao: f.caixasAbertos === 0 ? 'ok' : 'pendente',
@@ -113,7 +119,7 @@ export function conferir(f: FatosDoMes, slug: string): ItemDoFechamento[] {
       detalhe:
         f.contasVencidas === 0
           ? 'nenhuma conta vencida em aberto'
-          : `${f.contasVencidas} vencida(s), somando ${brl(f.valorVencido)}`,
+          : `${plural(f.contasVencidas, 'vencida', 'vencidas')}, somando ${brl(f.valorVencido)}`,
       porque:
         'Conta vencida corre juro e multa enquanto fica parada, e some do resultado do mês em que era para ter sido paga.',
       situacao: f.contasVencidas === 0 ? 'ok' : 'pendente',
@@ -147,7 +153,7 @@ export function conferir(f: FatosDoMes, slug: string): ItemDoFechamento[] {
       detalhe:
         f.parcelasVencidas === 0
           ? 'nenhuma parcela vencida'
-          : `${f.parcelasVencidas} parcela(s) vencida(s), somando ${brl(f.valorParcelasVencidas)}`,
+          : `${plural(f.parcelasVencidas, 'parcela vencida', 'parcelas vencidas')}, somando ${brl(f.valorParcelasVencidas)}`,
       porque:
         'Parcela vencida é venda que já saiu do estoque e ainda não virou dinheiro. Quanto mais velha, menos se recebe.',
       situacao: f.parcelasVencidas === 0 ? 'ok' : 'atencao',
@@ -186,10 +192,48 @@ export type Fechamento = {
   pendentes: number
 }
 
-/** Início e fim (exclusivo) de "AAAA-MM". */
+/**
+ * Início e fim (exclusivo) de "AAAA-MM", à meia-noite de São Paulo.
+ *
+ * Já foi a meia-noite da máquina: num servidor em UTC o mês começava às 21h
+ * do último dia do anterior, e a venda da noite de 31/08 entrava no
+ * fechamento de setembro.
+ */
 export function janelaDoMes(mes: string) {
   const [a, m] = mes.split('-').map(Number)
-  return { de: new Date(a!, m! - 1, 1), ate: new Date(a!, m!, 1) }
+  const seguinte = new Date(Date.UTC(a!, m!, 1)).toISOString().slice(0, 7)
+  return { de: inicioDoDiaEmSP(`${mes}-01`), ate: inicioDoDiaEmSP(`${seguinte}-01`) }
+}
+
+/** O mês "AAAA-MM" somado de `n`. Aritmética de calendário, sem relógio. */
+export function outroMes(mes: string, n: number): string {
+  const [a, m] = mes.split('-').map(Number)
+  return new Date(Date.UTC(a!, m! - 1 + n, 1)).toISOString().slice(0, 7)
+}
+
+/** O mês de agora no calendário de São Paulo. */
+export const mesDeAgora = (agora: Date = new Date()) => diaEmSP(agora).slice(0, 7)
+
+// Quem abre cada tela para onde o fechamento aponta — a mesma régua que a
+// própria tela usa para não abrir.
+const QUEM_ABRE: { fim: string; capacidade: Capacidade; tela: string; quem: string }[] = [
+  { fim: '/caixa', capacidade: 'caixa.ver', tela: 'Caixa', quem: 'quem cuida do caixa' },
+  { fim: '/configuracoes', capacidade: 'empresa.configurar', tela: 'Configurações', quem: 'quem configura a empresa' },
+  { fim: '/crediario', capacidade: 'crediario.ver', tela: 'Crediário', quem: 'quem cuida do crediário' },
+  { fim: '/financeiro', capacidade: 'financeiro.ver', tela: 'Financeiro', quem: 'quem cuida do financeiro' },
+]
+
+/**
+ * Tira o link das linhas que apontam para tela que esta pessoa não abre, e
+ * diz no lugar quem resolve. Pura.
+ */
+export function soOQueAbre(itens: ItemDoFechamento[], podeAbrir: (c: Capacidade) => boolean): ItemDoFechamento[] {
+  return itens.map((i) => {
+    if (!i.onde?.href) return i
+    const alvo = QUEM_ABRE.find((q) => i.onde!.href!.split('?')[0]!.endsWith(q.fim))
+    if (!alvo || podeAbrir(alvo.capacidade)) return i
+    return { ...i, onde: { texto: `Isso se resolve em ${alvo.tela}, com ${alvo.quem}.` } }
+  })
 }
 
 export async function montarFechamento(
@@ -243,7 +287,7 @@ export async function montarFechamento(
   // linha que a tela do financeiro mostra em negrito.
   const receita = dre.linhas.find((l) => l.chave === 'bruta')?.valor ?? 0
 
-  const itens = conferir(
+  const itens = soOQueAbre(conferir(
     {
       caixasAbertos: turnos.length - fechados.length,
       diferencaGaveta: fechados.reduce((s, t) => s + Math.abs(t.diferenca ?? 0), 0),
@@ -258,7 +302,7 @@ export async function montarFechamento(
       resultado: dre.resultado,
     },
     slug,
-  )
+  ), (c) => pode(sessao, c))
 
   return {
     mes,

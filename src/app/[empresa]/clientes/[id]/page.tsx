@@ -16,7 +16,7 @@ import { Numero, Secao, brl } from '@/ui/painel'
 import { BarrasMeses, BarrasH } from '@/ui/Graficos'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ClienteNaTela } from '../Editor'
-import { plural } from '@/ui/texto'
+import { plural, quantidade } from '@/ui/texto'
 
 // A ficha do cliente.
 //
@@ -141,10 +141,13 @@ export default async function FichaCliente({
             </Cartao>
             <Cartao caixa titulo="O que mais leva">
               <BarrasH
+                // A barra mede as VEZES (o que se compara entre quilo e
+                // peça); o número é a quantidade com a medida dela.
                 itens={favoritos.map((f) => ({
                   rotulo: f.descricao,
-                  valor: f.quantidade,
-                  detalhe: `${f.vezes}× · ${brl(f.total)}`,
+                  valor: f.vezes,
+                  texto: quantidade(f.quantidade, f.medida),
+                  detalhe: `${plural(f.vezes, 'compra', 'compras')} · ${brl(f.total)}`,
                 }))}
                 formato="un"
               />

@@ -42,6 +42,7 @@ export function BalcaoSimples({
   usuarioId,
   caixaId,
   unidadeNome,
+  ramo = null,
   programa,
   vendedores,
   podeAvulso,
@@ -54,6 +55,8 @@ export function BalcaoSimples({
   usuarioId: string
   caixaId: string | null
   unidadeNome: string
+  /** O ramo da loja: muda os atalhos (teclas de peso, complementos), nunca a regra. */
+  ramo?: string | null
   programa: Programa
   vendedores: Vendedor[] | null
   podeAvulso: boolean
@@ -231,6 +234,7 @@ export function BalcaoSimples({
           slug={slug}
           unidadeId={unidadeId}
           unidadeNome={unidadeNome}
+          ramo={ramo}
           telaCheia={telaCheia}
           aoTelaCheia={trocarTelaCheia}
           barra={barra}

@@ -4,13 +4,13 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { eixosDaEmpresa } from '@/servidor/produto'
 import { comoOrg } from '@/servidor/banco'
 import { RAMOS, type Ramo } from '@/servidor/modulos'
-import { pode } from '@/servidor/permissao'
+import { pode, unidadesQuePodem } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Secao } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor } from '../Editor'
-import { lojasSugeridas } from '@/servidor/catalogo-loja'
+import { alcanceComum, alcancaLoja, lojasSugeridas } from '@/servidor/catalogo-loja'
 
 export default async function NovoProduto({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
@@ -43,9 +43,13 @@ export default async function NovoProduto({ params }: { params: Promise<{ empres
     }),
     await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { ramo: true } }),
   ] as const)
+  // O gerente cadastra para as lojas DELE: as outras aparecem travadas, e o
+  // produto dele nunca nasce "em todas" (ver `vendidoEmDoGerente`).
+  const alcance = alcanceComum(unidadesQuePodem(sessao, 'produto.editar'), unidadesQuePodem(sessao, 'produto.preco'))
   const lojasQueVendem = lojasCruas.map((u) => ({
     ...u,
     ramo: u.ramo && u.ramo in RAMOS ? RAMOS[u.ramo as Ramo].titulo : null,
+    podeMarcar: alcancaLoja(alcance, u.id),
   }))
 
   // Cada categoria que é de um ramo sugere as lojas daquele ramo: o picolé

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
+import { podeVerPlanos } from '@/servidor/permissao'
 import { planoDaEmpresa } from '@/servidor/relatorios'
 import { liberado } from '@/servidor/planos'
 import {
@@ -192,6 +193,7 @@ export default async function Precos({
         chave="precos.margem"
         plano={plano}
         slug={slug}
+        verPlanos={podeVerPlanos(sessao)}
         resumo="Cada produto com margem, markup e a distância até o alvo — para acertar o preço antes de o mês fechar no vermelho."
       >
         <div className="flex flex-col gap-6">
@@ -241,7 +243,7 @@ export default async function Precos({
               temSugestao ? undefined : (
                 <span className="flex items-center gap-2 text-xs text-tinta-3">
                   preço sugerido
-                  <Cadeado chave="precos.sugestao" slug={slug} />
+                  <Cadeado chave="precos.sugestao" slug={slug} verPlanos={podeVerPlanos(sessao)} />
                 </span>
               )
             }

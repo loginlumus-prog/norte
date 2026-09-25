@@ -2,7 +2,7 @@ import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
-import { pode } from '@/servidor/permissao'
+import { pode, podeVerPlanos } from '@/servidor/permissao'
 import { planoDaEmpresa } from '@/servidor/relatorios'
 import { liberado } from '@/servidor/planos'
 import {
@@ -221,6 +221,7 @@ export default async function TelaTarefas({
             cores={CORES_DE_QUADRO}
             gruposPadrao={GRUPOS_PADRAO}
             modelos={MODELOS_NA_TELA}
+            verPlanos={podeVerPlanos(sessao)}
           />
         </Secao>
       )}
@@ -236,7 +237,7 @@ export default async function TelaTarefas({
           {minhas && naTela.tarefas.length === 0 && (
             <Aviso nivel="neutro">Nenhuma tarefa sua neste quadro. Clique em “Minhas tarefas” de novo para ver todas.</Aviso>
           )}
-          <Quadro slug={slug} quadro={naTela} podeGerir={podeGerir} liberacoes={lib} pessoas={pessoas} situacoes={SITUACOES_NA_TELA} teto={cabeTarefa} />
+          <Quadro slug={slug} verPlanos={podeVerPlanos(sessao)} quadro={naTela} podeGerir={podeGerir} liberacoes={lib} pessoas={pessoas} situacoes={SITUACOES_NA_TELA} teto={cabeTarefa} />
         </>
       )}
 
@@ -249,7 +250,7 @@ export default async function TelaTarefas({
           titulo="Loja a loja"
           resumo="Cada loja com o que tem a fazer, o que venceu e o que fez no mês — sem trocar de loja para descobrir qual está deixando a lista acumular."
         >
-          <Trancado chave="tarefas.rede" plano={plano} slug={slug} resumo="Todas as lojas numa olhada, com as tarefas vencidas de cada uma pelo nome.">
+          <Trancado chave="tarefas.rede" plano={plano} slug={slug} verPlanos={podeVerPlanos(sessao)} resumo="Todas as lojas numa olhada, com as tarefas vencidas de cada uma pelo nome.">
             <LojaALoja lojas={redeAberta ? rede : AMOSTRA_DA_REDE} slug={slug} />
           </Trancado>
         </Secao>

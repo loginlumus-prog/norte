@@ -16,9 +16,11 @@
 // continua no histórico e no relatório.
 
 import { comoOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, unidadesQuePodem, type Capacidade, type Sessao } from './permissao'
 import type { BancoDaOrg } from './banco'
 import { Prisma, type Medida } from '@prisma/client'
+import { alcancaOProduto } from './catalogo-loja'
+import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
 
 export type EixoEscolhido = {
   eixoId: string
@@ -136,6 +138,13 @@ export async function criarProduto(
   if (!nome) return { ok: false, motivo: 'O produto precisa de um nome.' }
   if (dados.precoVista <= 0) return { ok: false, motivo: 'O preço à vista precisa ser maior que zero.' }
 
+  // O gerente cadastra o que a loja DELE vende. Produto que nasce em loja
+  // alheia — ou em todas (vazio) — decide preço por quem não estava lá.
+  const lojas = dados.vendidoEm ?? []
+  if (!alcancaOProduto(alcanceDe(sessao, 'produto.editar'), lojas) || !alcancaOProduto(alcanceDe(sessao, 'produto.preco'), lojas)) {
+    return { ok: false, motivo: MOTIVO_FORA_DO_ALCANCE }
+  }
+
   const usados = eixos.filter((e) => e.opcaoIds.length > 0)
 
   return comoOrg(sessao.orgId, async (db) => {
@@ -230,17 +239,13 @@ export async function editarProduto(
 ): Promise<ResultadoProduto> {
   exigir(sessao, 'produto.editar')
 
-  const mexeuNoPreco =
-    dados.precoVista !== undefined ||
-    dados.precoCartao !== undefined ||
-    dados.precoCrediario !== undefined ||
-    dados.custo !== undefined
-  if (mexeuNoPreco) exigir(sessao, 'produto.preco')
-
   return comoOrg(sessao.orgId, async (db) => {
     const antes = await db.produto.findUnique({
       where: { id: produtoId },
-      select: { nome: true, precoVista: true, precoCartao: true, precoCrediario: true, custo: true, ativo: true },
+      select: {
+        nome: true, precoVista: true, precoCartao: true, precoCrediario: true, custo: true, ativo: true,
+        medida: true, vendidoEm: true,
+      },
     })
     if (!antes) return { ok: false as const, motivo: 'Produto não encontrado.' }
 
@@ -249,6 +254,35 @@ export async function editarProduto(
     }
     if (dados.precoVista !== undefined && dados.precoVista <= 0) {
       return { ok: false as const, motivo: 'O preço à vista precisa ser maior que zero.' }
+    }
+
+    // O que MUDOU de fato, e não o que veio no formulário. A ficha manda
+    // todos os campos a cada "Salvar": contar presença como mudança travaria
+    // o gerente de corrigir o nome de uma peça vendida em todas as lojas, e
+    // escreveria "alterou o preço" no livro sem o preço ter mudado.
+    const mexeuNoPreco =
+      mudou(dados.precoVista, antes.precoVista) ||
+      mudou(dados.precoCartao, antes.precoCartao) ||
+      mudou(dados.precoCrediario, antes.precoCrediario) ||
+      mudou(dados.custo, antes.custo)
+    const mexeuNoVendidoEm = dados.vendidoEm !== undefined && !mesmasLojas(dados.vendidoEm, antes.vendidoEm)
+    const mexeuNoResto =
+      mexeuNoVendidoEm ||
+      (dados.ativo !== undefined && dados.ativo !== antes.ativo) ||
+      (dados.medida !== undefined && dados.medida !== antes.medida)
+
+    if (mexeuNoPreco) exigir(sessao, 'produto.preco')
+    // Preço, custo, lojas, medida e situação valem em TODA loja onde o
+    // produto é vendido: quem decide precisa alcançar cada uma — antes e
+    // depois da mudança (tirar uma loja também é decidir por ela).
+    if (mexeuNoPreco && !alcancaOProduto(alcanceDe(sessao, 'produto.preco'), antes.vendidoEm)) {
+      return { ok: false as const, motivo: MOTIVO_FORA_DO_ALCANCE }
+    }
+    if (mexeuNoResto && !alcancaOProduto(alcanceDe(sessao, 'produto.editar'), antes.vendidoEm)) {
+      return { ok: false as const, motivo: MOTIVO_FORA_DO_ALCANCE }
+    }
+    if (mexeuNoVendidoEm && !alcancaOProduto(alcanceDe(sessao, 'produto.editar'), dados.vendidoEm)) {
+      return { ok: false as const, motivo: MOTIVO_FORA_DO_ALCANCE }
     }
 
     await db.produto.update({
@@ -291,6 +325,25 @@ export async function editarProduto(
   })
 }
 
+/** Frase única para o "não é seu para decidir": a tela e o teste usam a mesma. */
+export const MOTIVO_FORA_DO_ALCANCE =
+  'Este produto também é vendido em lojas que você não cuida. Preço, custo, lojas, medida, situação e grade dele ficam com quem responde por todas elas.'
+
+function alcanceDe(sessao: Sessao, capacidade: Capacidade) {
+  return unidadesQuePodem(sessao, capacidade)
+}
+
+/** O campo veio e é diferente do que está gravado? Dinheiro compara em centavos. */
+function mudou(novo: number | null | undefined, antigo: unknown): boolean {
+  if (novo === undefined) return false
+  const a = antigo == null ? null : Math.round(Number(antigo) * 100)
+  const n = novo == null ? null : Math.round(novo * 100)
+  return a !== n
+}
+
+const mesmasLojas = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|')
+
 // ─────────────────────────────────────────────────────────────
 // MEXER NA GRADE DEPOIS
 // ─────────────────────────────────────────────────────────────
@@ -329,7 +382,7 @@ export async function ajustarGrade(
   return comoOrg(sessao.orgId, async (db) => {
     const produto = await db.produto.findUnique({
       where: { id: produtoId },
-      select: { nome: true },
+      select: { nome: true, vendidoEm: true, eixos: { orderBy: { ordem: 'asc' }, select: { eixoId: true } } },
     })
     if (!produto) throw new Error('Produto não encontrado.')
 
@@ -352,8 +405,20 @@ export async function ajustarGrade(
 
     const r: MudancaGrade = { criadas: 0, desativadas: 0, reativadas: 0, apagadas: 0 }
 
-    // ── o que entra ──
+    // ── muda alguma coisa? ──
+    // A conta vem ANTES de escrever: grade que não muda não pede alcance
+    // nenhum (é o "Salvar" de quem só corrigiu o nome), e grade que muda vale
+    // para o balcão de toda loja que vende o produto.
     const novas = queridas.filter((c) => !existente.has(chave(c)))
+    const voltam = queridas.filter((c) => existente.get(chave(c))?.ativa === false)
+    const saem = [...existente].filter(([k, v]) => !chavesQueridas.has(k) && (v.ativa || (v._count.vendaItens === 0 && v._count.movimentos === 0)))
+    const eixosIguais = produto.eixos.map((e) => e.eixoId).join('|') === usados.map((e) => e.eixoId).join('|')
+    if (novas.length === 0 && voltam.length === 0 && saem.length === 0 && eixosIguais) return r
+    if (!alcancaOProduto(alcanceDe(sessao, 'produto.editar'), produto.vendidoEm)) {
+      throw new Error(MOTIVO_FORA_DO_ALCANCE)
+    }
+
+    // ── o que entra ──
     const codigos = await proximosCodigos(db, prefixoDe(produto.nome), novas.length)
     for (const [i, opcoes] of novas.entries()) {
       await db.variacao.create({
@@ -467,10 +532,11 @@ export type ComoVende = {
  */
 export async function comoVende(sessao: Sessao, produtoId: string, unidadeIds?: string[]): Promise<ComoVende> {
   exigir(sessao, 'produto.ver')
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0)
-  const de90 = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 89)
-  const de30 = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 29)
+  // Os dias são os de São Paulo, como o `to_char` da consulta: com o relógio
+  // da máquina, num servidor em UTC a venda das 22h caía no dia seguinte.
+  const hoje = diaEmSP()
+  const de90 = inicioDoDiaEmSP(somarDias(hoje, -89))
+  const chave30 = somarDias(hoje, -29)
 
   return comoOrg(sessao.orgId, async (db) => {
     const linhas = await db.$queryRaw<{ dia: string; total: string; quantidade: string; custo: string }[]>`
@@ -492,7 +558,6 @@ export async function comoVende(sessao: Sessao, produtoId: string, unidadeIds?: 
     })
 
     const porDia = linhas.map((l) => ({ dia: l.dia, total: Number(l.total), quantidade: Number(l.quantidade) }))
-    const chave30 = `${de30.getFullYear()}-${String(de30.getMonth() + 1).padStart(2, '0')}-${String(de30.getDate()).padStart(2, '0')}`
     const d30 = linhas.filter((l) => l.dia >= chave30)
     return {
       porDia,

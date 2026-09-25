@@ -25,7 +25,7 @@
 import Link from 'next/link'
 import { resumoDaBarra } from '@/servidor/assinatura'
 import type { ReactNode } from 'react'
-import { pode, type Capacidade, type Sessao } from '@/servidor/permissao'
+import { CAPACIDADES, pode, type Capacidade, type Sessao } from '@/servidor/permissao'
 import { moduloLigado, type Modulo } from '@/servidor/modulos'
 import { sairAcao } from '@/app/[empresa]/acoes'
 import { TRANCA_MIN, AVISO_SEG } from '@/servidor/presenca'
@@ -424,7 +424,14 @@ export async function Estrutura({
       {/* Trinta minutos parada, a tela tranca e pede a senha. Mora aqui
           porque aqui é por onde toda tela passa — ver Tranca.tsx. */}
       <Tranca slug={empresa.slug} nome={sessao.nome} trancaMin={TRANCA_MIN} avisoSeg={AVISO_SEG} />
-      <Guia slug={empresa.slug} empresa={empresa.nome} nome={sessao.nome} />
+      {/* O Guia recebe o que esta pessoa abre: a busca não lista tela que
+          daria "este endereço não abre" para ela. */}
+      <Guia
+        slug={empresa.slug}
+        empresa={empresa.nome}
+        nome={sessao.nome}
+        quem={{ capacidades: CAPACIDADES.filter((c) => pode(sessao, c)), modulos: empresa.modulos }}
+      />
     </div>
   )
 }

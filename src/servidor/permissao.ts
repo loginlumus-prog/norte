@@ -275,6 +275,18 @@ export function soAsQuePode(
   return pedidas.filter((u) => pode(sessao, capacidade, u, agora))
 }
 
+/**
+ * Abre a tela de Assinatura (os planos e a fatura)?
+ *
+ * Ela abre para quem configura a empresa E para quem cuida do dinheiro —
+ * a fatura é conta a pagar. Todo link para os planos (o cadeado, o rodapé do
+ * Guia, "ver os planos") pergunta isto antes de aparecer: para a balconista,
+ * o link caía no "este endereço não abre", que parece sistema quebrado.
+ */
+export function podeVerPlanos(sessao: Sessao, agora = new Date()): boolean {
+  return pode(sessao, 'empresa.configurar', undefined, agora) || pode(sessao, 'financeiro.ver', undefined, agora)
+}
+
 /** Levanta erro em vez de devolver false. Para usar no começo de uma ação. */
 export function exigir(
   sessao: Sessao,

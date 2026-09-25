@@ -67,7 +67,7 @@ export function LojaALoja({ lojas, slug }: { lojas: LojaNoQuadro[]; slug: string
 export const AMOSTRA_DA_REDE: LojaNoQuadro[] = [
   {
     unidadeId: 'amostra-1', nome: 'Loja Centro', aFazer: 6, emAndamento: 2, paradas: 0, atrasadas: 1, feitasNoMes: 23,
-    vencidas: [{ id: 'a1', titulo: 'Trocar a vitrine de inverno', prazo: new Date(2026, 8, 12), quadroNome: 'Campanha', responsavelNome: 'Carla' }],
+    vencidas: [{ id: 'a1', titulo: 'Trocar a vitrine de inverno', prazo: new Date("2026-09-12T15:00:00Z"), quadroNome: 'Campanha', responsavelNome: 'Carla' }],
   },
   {
     unidadeId: 'amostra-2', nome: 'Loja Shopping', aFazer: 4, emAndamento: 3, paradas: 1, atrasadas: 0, feitasNoMes: 31, vencidas: [],
@@ -75,8 +75,8 @@ export const AMOSTRA_DA_REDE: LojaNoQuadro[] = [
   {
     unidadeId: 'amostra-3', nome: 'Loja Bairro', aFazer: 9, emAndamento: 1, paradas: 2, atrasadas: 3, feitasNoMes: 8,
     vencidas: [
-      { id: 'a2', titulo: 'Contar o estoque de fundo', prazo: new Date(2026, 8, 5), quadroNome: 'Inventário do mês', responsavelNome: null },
-      { id: 'a3', titulo: 'Etiquetar a mercadoria nova', prazo: new Date(2026, 8, 9), quadroNome: 'Chegada de mercadoria', responsavelNome: 'Marcos' },
+      { id: 'a2', titulo: 'Contar o estoque de fundo', prazo: new Date("2026-09-05T15:00:00Z"), quadroNome: 'Inventário do mês', responsavelNome: null },
+      { id: 'a3', titulo: 'Etiquetar a mercadoria nova', prazo: new Date("2026-09-09T15:00:00Z"), quadroNome: 'Chegada de mercadoria', responsavelNome: 'Marcos' },
     ],
   },
 ]

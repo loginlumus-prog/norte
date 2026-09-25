@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
-import { pode } from '@/servidor/permissao'
+import { pode, podeVerPlanos } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
 import { conferirSaldos, listarMovimentos, ROTULO_MOVIMENTO, type MovimentoNaLista } from '@/servidor/estoque'
 import { janela, lerPeriodo } from '@/servidor/periodo'
@@ -490,6 +490,7 @@ export default async function TelaEstoque({
           chave="ruptura.previsao"
           plano={plano}
           slug={slug}
+          verPlanos={podeVerPlanos(sessao)}
           resumo="Diz quantos dias o saldo aguenta no ritmo de venda, e quando pedir para a peça não faltar."
         >
           {vaiFaltar.length === 0 ? (

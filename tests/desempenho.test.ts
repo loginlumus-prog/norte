@@ -5,7 +5,7 @@
 // conversa difícil na loja. Por isso cada regra tem o seu caso aqui.
 
 import { describe, it, expect } from 'vitest'
-import { estrelas, NIVEL, PESOS, TETO_DIAS, diasDoMesAte, semDados, ultimosMeses, type Insumos } from '../src/servidor/desempenho'
+import { estrelas, NIVEL, PESOS, TETO_DIAS, diasDoMesAte, janelaDoMes, semDados, ultimosMeses, type Insumos } from '../src/servidor/desempenho'
 
 const so = (parte: Partial<Insumos>): Insumos => ({ meta: null, tarefas: null, presenca: null, ...parte })
 
@@ -232,25 +232,44 @@ describe('o nível', () => {
 })
 
 describe('quantos dias do mês contam', () => {
+  // "Hoje" é um instante lido no calendário de São Paulo, não no da máquina.
+  const emSP = (dia: string, hora = '12:00') => new Date(`${dia}T${hora}:00-03:00`)
+
   it('no mês corrente, os dias corridos até hoje', () => {
-    expect(diasDoMesAte(new Date(2026, 8, 16), '2026-09')).toBe(16)
-    expect(diasDoMesAte(new Date(2026, 8, 1), '2026-09')).toBe(1)
+    expect(diasDoMesAte(emSP('2026-09-16'), '2026-09')).toBe(16)
+    expect(diasDoMesAte(emSP('2026-09-01'), '2026-09')).toBe(1)
+  })
+
+  it('às 22h30 do dia 1º em São Paulo o mês ainda é o dia 1º — com o servidor em UTC já seria o dia 2', () => {
+    expect(diasDoMesAte(emSP('2026-09-01', '22:30'), '2026-09')).toBe(1)
+    // e às 22h30 do dia 31/08 ainda é agosto: setembro é futuro
+    expect(diasDoMesAte(emSP('2026-08-31', '22:30'), '2026-09')).toBe(0)
   })
 
   it('com teto de 26, mesmo no dia 30', () => {
     expect(TETO_DIAS).toBe(26)
-    expect(diasDoMesAte(new Date(2026, 8, 30), '2026-09')).toBe(26)
+    expect(diasDoMesAte(emSP('2026-09-30'), '2026-09')).toBe(26)
   })
 
   it('mês passado conta inteiro, também com teto', () => {
-    expect(diasDoMesAte(new Date(2026, 8, 16), '2026-08')).toBe(26)
-    expect(diasDoMesAte(new Date(2026, 8, 16), '2026-02')).toBe(26)
-    expect(diasDoMesAte(new Date(2027, 0, 5), '2026-12')).toBe(26)
+    expect(diasDoMesAte(emSP('2026-09-16'), '2026-08')).toBe(26)
+    expect(diasDoMesAte(emSP('2026-09-16'), '2026-02')).toBe(26)
+    expect(diasDoMesAte(emSP('2027-01-05'), '2026-12')).toBe(26)
   })
 
   it('mês futuro é zero: ninguém entrou ainda', () => {
-    expect(diasDoMesAte(new Date(2026, 8, 16), '2026-10')).toBe(0)
-    expect(diasDoMesAte(new Date(2026, 8, 16), '2027-01')).toBe(0)
+    expect(diasDoMesAte(emSP('2026-09-16'), '2026-10')).toBe(0)
+    expect(diasDoMesAte(emSP('2026-09-16'), '2027-01')).toBe(0)
+  })
+})
+
+describe('a janela do mês', () => {
+  it('abre e fecha à meia-noite de São Paulo — a mesma janela das metas', () => {
+    const j = janelaDoMes('2026-09')
+    expect(j.de.toISOString()).toBe('2026-09-01T03:00:00.000Z')
+    expect(j.ate.toISOString()).toBe('2026-10-01T03:00:00.000Z')
+    expect([j.deDia, j.ateDia]).toEqual(['2026-09-01', '2026-10-01'])
+    expect(janelaDoMes('2026-12').ateDia).toBe('2027-01-01')
   })
 })
 

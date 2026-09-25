@@ -369,7 +369,9 @@ describe('caixa', () => {
   // mesmo tempo) é o que o `updateMany where aberto` fecha — e o PGlite, com
   // um backend só, não reproduz duas transações simultâneas.
   it('fechar duas vezes o mesmo turno: o segundo é recusado e o livro tem um fechamento', async () => {
-    await db.exec(`insert into caixas (id, org_id, unidade_id, aberto_por, saldo_abertura) values ('cx-dup', 'org-a', 'uni-a2', 'X', 0)`)
+    // Na Sorveteria, que não tem caixa aberto: a loja só pode ter UM aberto
+    // (índice caixas_um_aberto_por_unidade), e o Shopping já tem o cx-a2.
+    await db.exec(`insert into caixas (id, org_id, unidade_id, aberto_por, saldo_abertura) values ('cx-dup', 'org-a', 'uni-a3', 'X', 0)`)
     await m.caixa.fecharCaixa(DONA, 'cx-dup', 0)
     await expect(m.caixa.fecharCaixa(DONA, 'cx-dup', 0)).rejects.toThrow(/fechado/)
     expect(await linha(`select id from auditoria where acao = 'caixa.fechou' and alvo_id = 'cx-dup'`)).toHaveLength(1)

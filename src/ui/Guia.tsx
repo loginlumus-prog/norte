@@ -29,14 +29,27 @@ import {
   buscarNoGuia,
   entradaDaTela,
   rotuloDoPlano,
+  telaAbre,
   NOME_DA_CAPACIDADE,
   type Passo,
+  type QuemLe,
   type ResultadoBusca,
 } from '@/servidor/guia'
 import { Simbolo } from './Marca'
 import { Aviso, Botao, Campo, cx } from './base'
 
-export function Guia({ slug, empresa, nome }: { slug: string; empresa: string; nome: string }) {
+export function Guia({
+  slug,
+  empresa,
+  nome,
+  quem,
+}: {
+  slug: string
+  empresa: string
+  nome: string
+  /** O que esta pessoa abre. A busca e os links só mostram as telas dela. */
+  quem: QuemLe
+}) {
   const [aberto, setAberto] = useState(false)
   const [termo, setTermo] = useState('')
   const [pergunta, setPergunta] = useState('')
@@ -52,9 +65,10 @@ export function Guia({ slug, empresa, nome }: { slug: string; empresa: string; n
 
   // A busca, a cada tecla, sem ir ao servidor.
   const achados = useMemo(
-    () => (termo.trim().length >= 2 ? buscarNoGuia(termo, semSlug) : []),
-    [termo, semSlug],
+    () => (termo.trim().length >= 2 ? buscarNoGuia(termo, semSlug, quem) : []),
+    [termo, semSlug, quem],
   )
+  const abrePlanos = telaAbre({ abre: ['empresa.configurar', 'financeiro.ver'] }, quem)
 
   useEffect(() => {
     if (!aberto) return
@@ -255,15 +269,17 @@ export function Guia({ slug, empresa, nome }: { slug: string; empresa: string; n
               </section>
             </div>
 
-            <footer className="border-t border-borda px-4 py-3 text-xs">
-              <Link
-                href={`/${slug}/assinatura`}
-                onClick={() => setAberto(false)}
-                className="font-medium text-marca underline-offset-2 hover:underline"
-              >
-                Os planos e o que cada um abre →
-              </Link>
-            </footer>
+            {abrePlanos && (
+              <footer className="border-t border-borda px-4 py-3 text-xs">
+                <Link
+                  href={`/${slug}/assinatura`}
+                  onClick={() => setAberto(false)}
+                  className="font-medium text-marca underline-offset-2 hover:underline"
+                >
+                  Os planos e o que cada um abre →
+                </Link>
+              </footer>
+            )}
           </div>
         </>
       )}

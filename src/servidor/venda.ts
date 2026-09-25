@@ -56,6 +56,7 @@ import {
 import type { FormaPagamento } from '@prisma/client'
 import { PLANOS, planoLibera } from './planos'
 import { diaEmSP, inicioDoDiaEmSP, primeiroDoMes } from './dia'
+import { plural } from './texto'
 
 export type ItemDaVenda = {
   /** Nulo = item avulso, fora do catálogo. Aí `avulso` é obrigatório. */
@@ -685,7 +686,7 @@ export async function registrarVenda(
         motivo:
           [
             abatidoCent > 0 ? `desconto ${(Math.round(percentual * 10) / 10).toFixed(1)}%` : null,
-            avulsos.length > 0 ? `${avulsos.length} item(ns) avulso(s)` : null,
+            avulsos.length > 0 ? plural(avulsos.length, 'item avulso', 'itens avulsos') : null,
             vendedor.id !== sessao.usuarioId ? `vendedor: ${vendedor.nome}` : null,
             tabela !== 'vista' ? `preço ${ROTULO_TABELA[tabela]}` : null,
             fiado.length > 0 ? `crediário em ${fiado[0]!.parcelas ?? 1}×` : null,
@@ -1098,7 +1099,7 @@ export async function cancelarVenda(
     // apagar é seguro: não leva dinheiro de ninguém junto.
     if (v.parcelas.length > 0) {
       await db.parcela.deleteMany({ where: { vendaId: v.id } })
-      notas.push(`${v.parcelas.length} parcela(s) do crediário canceladas`)
+      notas.push(`${plural(v.parcelas.length, 'parcela do crediário cancelada', 'parcelas do crediário canceladas')}`)
     }
 
     // ── 3. a marca ──

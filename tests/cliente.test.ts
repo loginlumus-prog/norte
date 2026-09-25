@@ -63,3 +63,28 @@ describe('CPF', () => {
     expect(cpfValido('529.98A.247-25')).toBe(false)
   })
 })
+
+// ─────────────────────────────────────────────────────────────
+// Quantidade com a medida e tempo falado (ui/texto.ts)
+// ─────────────────────────────────────────────────────────────
+
+import { duracao, quantidade } from '../src/ui/texto'
+
+describe('quantidade com a medida', () => {
+  it('sorvete a granel em quilo, camiseta em unidade', () => {
+    expect(quantidade(1.857, 'KG')).toBe('1,857 kg')
+    expect(quantidade(3, 'UN')).toBe('3 un')
+    expect(quantidade(2, 'PAR')).toBe('2 par')
+    expect(quantidade(4, null)).toBe('4 un')
+  })
+})
+
+describe('duração falada', () => {
+  it('minutos, horas, dias', () => {
+    expect(duracao(40)).toBe('40 min')
+    expect(duracao(60)).toBe('1 hora')
+    expect(duracao(14 * 60)).toBe('14 horas')
+    expect(duracao(286 * 60)).toBe('11 dias')
+    expect(duracao(24 * 60)).toBe('1 dia')
+  })
+})

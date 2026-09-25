@@ -11,7 +11,7 @@ import { type ComModulos } from './modulos'
 import { centavos, reais } from './dinheiro'
 import { lancar } from './financeiro'
 import { mexerEstoque } from './estoque'
-import type { TipoRecibo } from '@prisma/client'
+import { Prisma, type TipoRecibo } from '@prisma/client'
 import { custoEmCentavos, cobrancaEmCentavos } from './custo-ia'
 import {
   PODERES,
@@ -22,6 +22,7 @@ import {
   type Poder,
 } from './poderes'
 import { garantirCreditoDoMes } from './assinatura'
+import { inicioDeHojeEmSP } from './dia'
 
 export * from './poderes'
 export * from './custo-ia'
@@ -302,9 +303,10 @@ async function executar(
         vencimento: new Date(String(dados.vencimento)),
         fornecedor: String(dados.fornecedor ?? ''),
       })
-      // Compra feita antes de acabar é ruptura evitada — e o valor do recibo
-      // não é o da compra: gastar não é ganhar. Quem emite recibo de ruptura
-      // é o gatilho, quando a peça volta a vender.
+      // Compra feita antes de acabar PODE ser ruptura evitada — mas o valor do
+      // recibo não é o da compra: gastar não é ganhar. Aqui ainda não há o que
+      // medir; quem emite é `apurarRecibos`, trinta dias depois, com o que a
+      // reposição de fato vendeu além do saldo que havia no aviso.
       return undefined
     }
 
@@ -355,6 +357,177 @@ export async function emitirRecibo(
       },
     }),
   )
+}
+
+// ─────────────────────────────────────────────────────────────
+// APURAR — o recibo que se mede, e só ele
+// ─────────────────────────────────────────────────────────────
+//
+// ── por que isto existe ──────────────────────────────────────
+// A tela "Trouxe de volta" lia `recibos_agente`, e o único jeito de uma linha
+// nascer ali era `executar` devolver um recibo — o que nenhum poder fazia.
+// Em empresa de verdade o número era sempre R$ 0; só a empresa de exemplo
+// mostrava valor, e era valor escrito à mão.
+//
+// ── a regra: recibo é conta, não palpite ─────────────────────
+// Só vira recibo o que tem conta que qualquer pessoa refaz com o extrato na
+// mão. Hoje isso existe para UM caso: a reposição proposta pela rotina de
+// "vai faltar" e confirmada por alguém da loja.
+//
+//   saldo no aviso  = o que havia na prateleira quando o assistente avisou
+//   vendido         = o que saiu da variação nos 30 dias depois do sim,
+//                     tirando o que voltou em devolução
+//   além do saldo   = vendido − saldo no aviso: sem reposição, não existiria
+//   unidades        = o menor entre "além do saldo", o que foi pedido e o
+//                     que de fato ENTROU no estoque nesses 30 dias
+//   valor           = unidades × margem média por unidade dessas vendas
+//                     (preço cobrado − custo gravado na venda)
+//
+// Margem, e não faturamento: a loja teria gastado o custo de qualquer jeito
+// para ter a peça. Sem entrada registrada, sem venda além do saldo, ou sem
+// custo nas vendas, não há recibo — e zero honesto vale mais que um número
+// bonito que a dona não consegue conferir.
+//
+// Os outros tipos do enum (cobrança recuperada, cliente que voltou, peça
+// encalhada, diferença de caixa) ficam sem emissor até existir um poder que
+// faça a coisa E uma conta que separe o que o assistente fez do que teria
+// acontecido sem ele.
+
+/** Quantos dias depois do sim a reposição é medida. */
+export const JANELA_RECIBO_DIAS = 30
+
+/** Proposta confirmada há mais que isto não é mais apurada (a janela fechou há muito). */
+const APURA_ATE_DIAS = 90
+
+export type ContaDaReposicao = {
+  /** Saldo somado das lojas no momento do aviso. */
+  saldoNaProposta: number
+  /** Quanto a proposta pedia. */
+  pedido: number
+  /** Quanto entrou de fato (movimento ENTRADA) na janela. */
+  entrou: number
+  /** Vendido na janela, líquido de devolução. */
+  vendido: number
+  /** Das vendas com custo gravado: quantidade e margem em reais. */
+  comCusto: { quantidade: number; margem: number }
+}
+
+/** A conta do recibo de reposição. Pura: é aqui que "honesto" é provado. */
+export function valorDaReposicao(c: ContaDaReposicao): { unidades: number; valor: number } {
+  const alem = Math.max(0, c.vendido - Math.max(0, c.saldoNaProposta))
+  const unidades = Math.min(alem, Math.max(0, c.pedido), Math.max(0, c.entrou))
+  if (unidades <= 0 || c.comCusto.quantidade <= 0) return { unidades: 0, valor: 0 }
+  const porUnidade = c.comCusto.margem / c.comCusto.quantidade
+  const valor = Math.round(unidades * porUnidade * 100) / 100
+  return valor > 0 ? { unidades, valor } : { unidades: 0, valor: 0 }
+}
+
+type DadosReposicao = {
+  variacaoId?: unknown
+  quantidade?: unknown
+  saldoNaProposta?: unknown
+  unidadeIds?: unknown
+  descricao?: unknown
+}
+
+const qtdTexto = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+
+/**
+ * Emite os recibos que já dá para medir. Idempotente: roda na rotina das 9h
+ * e quando a tela do assistente abre, e cada proposta vira no máximo UM
+ * recibo — a trava por proposta segura as duas chamadas ao mesmo tempo.
+ *
+ * Devolve quantos recibos nasceram agora.
+ */
+export async function apurarRecibos(orgId: string, agora: Date = new Date()): Promise<number> {
+  const fechouAte = new Date(agora.getTime() - JANELA_RECIBO_DIAS * 864e5)
+  const desde = new Date(agora.getTime() - APURA_ATE_DIAS * 864e5)
+
+  const candidatas = await comoOrg(orgId, async (db) => {
+    const propostas = await db.propostaAgente.findMany({
+      where: { poder: 'pedir.compra', situacao: 'CONFIRMADA', respondidaEm: { lte: fechouAte, gte: desde } },
+      select: { id: true, agenteId: true, dados: true, respondidaEm: true },
+    })
+    if (propostas.length === 0) return []
+    const feitos = await db.reciboAgente.findMany({
+      where: { alvoTipo: 'proposta', alvoId: { in: propostas.map((p) => p.id) } },
+      select: { alvoId: true },
+    })
+    const ja = new Set(feitos.map((f) => f.alvoId))
+    return propostas.filter((p) => !ja.has(p.id))
+  })
+
+  let emitidos = 0
+  for (const p of candidatas) {
+    const d = (p.dados ?? {}) as DadosReposicao
+    // Só a proposta da rotina de "vai faltar" carrega o saldo do aviso. A de
+    // conversa ("registra uma compra de 500") não diz de que peça nem de que
+    // saldo partiu — não há conta a fazer, então não há recibo.
+    if (typeof d.variacaoId !== 'string' || typeof d.saldoNaProposta !== 'number' || !p.respondidaEm) continue
+    const variacaoId = d.variacaoId
+    const saldoNaProposta = d.saldoNaProposta
+    const pedido = Number(d.quantidade ?? 0)
+    const unidades = Array.isArray(d.unidadeIds) ? d.unidadeIds.filter((u): u is string => typeof u === 'string') : null
+    const de = p.respondidaEm
+    const ate = new Date(de.getTime() + JANELA_RECIBO_DIAS * 864e5)
+
+    const nasceu = await comoOrg(orgId, async (db) => {
+      await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`recibo:proposta:${p.id}`}))`
+      const existe = await db.reciboAgente.findFirst({ where: { alvoTipo: 'proposta', alvoId: p.id }, select: { id: true } })
+      if (existe) return false
+
+      const filtroLoja = unidades ? Prisma.sql`and v.unidade_id = any(${unidades})` : Prisma.empty
+      const [venda] = await db.$queryRaw<{ vendido: string | null; q_custo: string | null; margem: string | null }[]>`
+        select sum(l.q) as vendido,
+               sum(l.q) filter (where l.custo is not null) as q_custo,
+               sum(l.t - l.q * l.custo) filter (where l.custo is not null) as margem
+          from (select i.quantidade - coalesce(dv.q, 0) as q,
+                       i.total - coalesce(dv.v, 0) as t,
+                       i.custo_unit as custo
+                  from venda_itens i
+                  join vendas v on v.id = i.venda_id
+                  left join (select venda_item_id, sum(quantidade) as q, sum(valor) as v
+                               from devolucao_itens group by 1) dv on dv.venda_item_id = i.id
+                 where i.variacao_id = ${variacaoId} and v.situacao = 'CONCLUIDA'
+                   and v.criada_em >= ${de} and v.criada_em < ${ate}
+                   ${filtroLoja}) l
+      `
+      const filtroMov = unidades ? Prisma.sql`and m.unidade_id = any(${unidades})` : Prisma.empty
+      const [entrada] = await db.$queryRaw<{ entrou: string | null }[]>`
+        select sum(m.quantidade) as entrou
+          from movimentos_estoque m
+         where m.variacao_id = ${variacaoId} and m.tipo = 'ENTRADA'
+           and m.criado_em >= ${de} and m.criado_em < ${ate}
+           ${filtroMov}
+      `
+      const conta = valorDaReposicao({
+        saldoNaProposta,
+        pedido,
+        entrou: Number(entrada?.entrou ?? 0),
+        vendido: Number(venda?.vendido ?? 0),
+        comCusto: { quantidade: Number(venda?.q_custo ?? 0), margem: Number(venda?.margem ?? 0) },
+      })
+      if (conta.valor <= 0) return false
+
+      const oque = typeof d.descricao === 'string' ? d.descricao.replace(/^Reposição:\s*/, '') : 'item'
+      await db.reciboAgente.create({
+        data: {
+          orgId,
+          agenteId: p.agenteId,
+          tipo: 'RUPTURA_EVITADA',
+          valor: conta.valor,
+          descricao:
+            `Reposição de ${oque}: ${qtdTexto(conta.unidades)} vendido${conta.unidades === 1 ? '' : 's'} ` +
+            `em ${JANELA_RECIBO_DIAS} dias além do saldo de ${qtdTexto(saldoNaProposta)} no aviso — a margem dessas vendas.`,
+          alvoTipo: 'proposta',
+          alvoId: p.id,
+        },
+      })
+      return true
+    })
+    if (nasceu) emitidos++
+  }
+  return emitidos
 }
 
 export type Balanco = {
@@ -457,7 +630,7 @@ export type VeredictoIA = {
   recado: string
 }
 
-export async function podeGastarHoje(orgId: string): Promise<VeredictoIA> {
+export async function podeGastarHoje(orgId: string, agora: Date = new Date()): Promise<VeredictoIA> {
   const agente = await acharAgente(orgId)
   if (!agente) {
     return {
@@ -471,8 +644,10 @@ export async function podeGastarHoje(orgId: string): Promise<VeredictoIA> {
   // que o plano já garante.
   await garantirCreditoDoMes(orgId)
 
-  const inicio = new Date()
-  inicio.setHours(0, 0, 0, 0)
+  // "Hoje" é o dia de São Paulo. Com `setHours(0)`, num servidor em UTC o
+  // teto virava à meia-noite de Greenwich — 21h da loja — e o gasto das 22h30
+  // contava num "amanhã" que ainda não tinha começado.
+  const inicio = inicioDeHojeEmSP(agora)
 
   // Em série, e não em Promise.all: dentro de uma transação as duas consultas
   // correm na MESMA conexão, então disparar juntas não ganha tempo nenhum — o

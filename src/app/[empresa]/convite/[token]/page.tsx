@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import { Marca } from '@/ui/Marca'
@@ -53,6 +54,15 @@ export default async function AceitarConvite({
           </header>
 
           <Formulario slug={slug} token={token} />
+
+          {/* Quem já tem conta (aceitou antes, ou abriu o link de novo) não
+              precisa de outra: a porta de entrar é esta. */}
+          <p className="text-center text-sm text-tinta-3">
+            Já tem acesso?{' '}
+            <Link href={`/${slug}/entrar`} className="font-medium text-marca underline-offset-2 hover:underline">
+              Entrar
+            </Link>
+          </p>
         </div>
       </div>
     </main>

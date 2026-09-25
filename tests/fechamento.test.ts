@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { conferir, janelaDoMes, type FatosDoMes } from '../src/servidor/fechamento'
+import { conferir, janelaDoMes, mesDeAgora, outroMes, soOQueAbre, type FatosDoMes } from '../src/servidor/fechamento'
 
 // Um mês limpo: tudo fechado, tudo pago, taxa escrita, resultado positivo.
 const LIMPO: FatosDoMes = {
@@ -91,18 +91,48 @@ describe('o resultado', () => {
 })
 
 describe('a janela do mês', () => {
-  it('vai do dia 1 ao dia 1 do mês seguinte', () => {
+  it('vai da meia-noite de São Paulo do dia 1 à do dia 1 do mês seguinte — seja qual for o fuso do servidor', () => {
     const { de, ate } = janelaDoMes('2026-09')
-    expect(de.getFullYear()).toBe(2026)
-    expect(de.getMonth()).toBe(8)
-    expect(de.getDate()).toBe(1)
-    expect(ate.getMonth()).toBe(9)
-    expect(ate.getDate()).toBe(1)
+    expect(de.toISOString()).toBe('2026-09-01T03:00:00.000Z')
+    expect(ate.toISOString()).toBe('2026-10-01T03:00:00.000Z')
+  })
+
+  it('a venda das 22h30 do último dia fica no mês dela', () => {
+    const venda = new Date('2026-08-31T22:30:00-03:00')
+    const ago = janelaDoMes('2026-08')
+    expect(venda >= ago.de && venda < ago.ate).toBe(true)
+    expect(venda >= janelaDoMes('2026-09').de).toBe(false)
   })
 
   it('vira o ano em dezembro', () => {
     const { ate } = janelaDoMes('2026-12')
-    expect(ate.getFullYear()).toBe(2027)
-    expect(ate.getMonth()).toBe(0)
+    expect(ate.toISOString()).toBe('2027-01-01T03:00:00.000Z')
+    expect(outroMes('2026-12', 1)).toBe('2027-01')
+    expect(outroMes('2026-01', -1)).toBe('2025-12')
+  })
+
+  it('o mês de agora é o de São Paulo', () => {
+    expect(mesDeAgora(new Date('2026-09-30T22:30:00-03:00'))).toBe('2026-09')
+  })
+})
+
+describe('texto e caminho de cada linha', () => {
+  it('singular e plural de verdade, sem "(s)"', () => {
+    const itens = com({ caixasAbertos: 1, contasVencidas: 2, valorVencido: 10, parcelasVencidas: 1 })
+    expect(achar(itens, 'caixas').detalhe).toBe('1 caixa ainda aberto')
+    expect(achar(itens, 'contas').detalhe).toMatch(/^2 vencidas, somando/)
+    expect(achar(itens, 'crediario').detalhe).toMatch(/^1 parcela vencida,/)
+    expect(itens.map((i) => i.detalhe).join(' ')).not.toMatch(/\(s\)/)
+  })
+
+  it('quem não abre a tela de destino recebe a frase de quem resolve, e não um link que dá 404', () => {
+    const itens = com({ caixasAbertos: 1, recebeuEmMaquina: true, temTaxa: false })
+    // o contador lê o financeiro e mais nada
+    const doContador = soOQueAbre(itens, (c) => c === 'financeiro.ver')
+    expect(achar(doContador, 'caixas').onde).toEqual({ texto: 'Isso se resolve em Caixa, com quem cuida do caixa.' })
+    expect(achar(doContador, 'taxa').onde?.href).toBeUndefined()
+    expect(achar(doContador, 'resultado').onde?.href).toBe('/loja/financeiro')
+    // a dona abre tudo
+    expect(achar(soOQueAbre(itens, () => true), 'taxa').onde?.href).toBe('/loja/configuracoes')
   })
 })

@@ -20,11 +20,11 @@
 // tela não mentir que gravou tudo.
 
 import { comoOrg } from './banco'
-import { exigir, pode, type Sessao } from './permissao'
+import { exigir, pode, unidadesQuePodem, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, multiplicar, reais } from './dinheiro'
 import { colunaDoDia, diaEmSP } from './dia'
-import { vendidoNaLoja } from './catalogo-loja'
+import { alcancaOProduto, vendidoNaLoja } from './catalogo-loja'
 
 export type ItemEntrada = {
   variacaoId: string
@@ -103,6 +103,7 @@ export async function registrarEntrada(
       where: { id: { in: itens.map((i) => i.variacaoId) } },
       select: { id: true, produtoId: true, produto: { select: { nome: true, vendidoEm: true } } },
     })
+    const produtoDaVariacao = new Map(variacoes.map((v) => [v.id, v.produto]))
     if (variacoes.length !== new Set(itens.map((i) => i.variacaoId)).size) {
       return { ok: false as const, motivo: 'Um dos itens não existe nesta empresa.' }
     }
@@ -154,16 +155,29 @@ export async function registrarEntrada(
     let custosAtualizados = 0
     if (podeCusto) {
       const jaFeitos = new Set<string>()
+      // O custo é do produto, e o produto pode ser vendido em lojas que quem
+      // dá a entrada não cuida: a margem de lá mudaria sem ninguém de lá ter
+      // decidido. A mercadoria entra; o custo fica como estava — e a tela diz.
+      const alcance = unidadesQuePodem(sessao, 'produto.preco')
+      const deOutros = new Set<string>()
       for (const i of itens) {
         if (i.custoUnit == null) continue
         const produtoId = produtoDe.get(i.variacaoId)
         if (!produtoId || jaFeitos.has(produtoId)) continue
+        const produto = produtoDaVariacao.get(i.variacaoId)
+        if (produto && !alcancaOProduto(alcance, produto.vendidoEm)) {
+          deOutros.add(produto.nome)
+          continue
+        }
         await db.produto.update({
           where: { id: produtoId },
           data: { custo: reais(centavos(i.custoUnit)) },
         })
         jaFeitos.add(produtoId)
         custosAtualizados++
+      }
+      if (deOutros.size > 0) {
+        naoFeito.push(`o custo de ${[...deOutros].join(', ')} (vendido também em lojas que você não cuida)`)
       }
     }
 

@@ -204,9 +204,12 @@ export function Desempenho({
   pessoas,
   tendencia,
   lojas,
+  verPlanos = true,
 }: {
   slug: string
   plano: Plano
+  /** Quem olha abre os planos? Sem isso, o trancado diz quem troca de plano. */
+  verPlanos?: boolean
   pessoas: PessoaComNota[]
   /** Só chega quando o plano abre o completo. */
   tendencia: Tendencia | null
@@ -219,6 +222,7 @@ export function Desempenho({
         chave="desempenho.basico"
         plano={plano}
         slug={slug}
+        verPlanos={verPlanos}
         resumo="Uma nota de 0 a 5 por pessoa, todo mês, com a conta aberta: meta batida, tarefa no prazo e dias presente."
       >
         <Corpo pessoas={AMOSTRA} />
@@ -237,6 +241,7 @@ export function Desempenho({
           chave="desempenho.completo"
           plano={plano}
           slug={slug}
+          verPlanos={verPlanos}
           resumo="Os três últimos meses de cada pessoa lado a lado, e a média de estrelas de cada loja da rede."
         >
           <div className="grid gap-3 sm:grid-cols-2">

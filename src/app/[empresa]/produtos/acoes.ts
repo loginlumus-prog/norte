@@ -8,9 +8,10 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { criarProduto, editarProduto, ajustarGrade, type EixoEscolhido } from '@/servidor/produto'
-import { SemPermissao } from '@/servidor/permissao'
+import { SemPermissao, unidadesQuePodem, type Sessao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
-import { normalizarVendidoEm } from '@/servidor/catalogo-loja'
+import { alcanceComum, normalizarVendidoEm, vendidoEmDoGerente } from '@/servidor/catalogo-loja'
+import { palavra, plural } from '@/ui/texto'
 import type { Medida } from '@prisma/client'
 
 export type EstadoProduto = { erro?: string; ok?: string }
@@ -70,24 +71,47 @@ function eixosDoFormulario(form: FormData, eixosDaEmpresa: string[]): EixoEscolh
 /**
  * As lojas marcadas em "Vendido em".
  *
- * `undefined` = o formulário não tinha a pergunta (empresa de uma loja só) e
- * nada muda. O que veio marcado é conferido contra as lojas abertas DESTA
- * empresa — o nome do campo vem do navegador — e todas marcadas vira vazio,
- * que quer dizer "todas, inclusive as que abrirem depois".
+ * `undefined` = nada muda. O que veio marcado é conferido contra as lojas
+ * abertas DESTA empresa — o nome do campo vem do navegador — e todas
+ * marcadas vira vazio, que quer dizer "todas, inclusive as que abrirem
+ * depois".
+ *
+ * Para quem cuida só de algumas lojas (o gerente), a conta é outra: as lojas
+ * fora do alcance dele ficam como estavam, e o resultado nunca vira vazio —
+ * ver `vendidoEmDoGerente`. Na empresa de uma loja só a pergunta nem aparece
+ * na tela, e o produto novo do gerente nasce na loja dele.
+ *
+ * `antes` nulo = produto novo.
  */
 async function vendidoEmDo(
   form: FormData,
-  orgId: string,
+  sessao: Sessao,
+  antes: string[] | null,
 ): Promise<{ valor?: string[]; erro?: string }> {
-  if (form.get('temLojas') !== '1') return {}
-  const marcadas = [...form.keys()]
-    .filter((k) => k.startsWith('vendidoEm_'))
-    .map((k) => k.slice('vendidoEm_'.length))
-  if (marcadas.length === 0) return { erro: 'Marque pelo menos uma loja onde o produto é vendido.' }
-  const lojas = await comoOrg(orgId, (db) =>
-    db.unidade.findMany({ where: { ativa: true, ehDeposito: false }, select: { id: true } }),
-  )
-  return { valor: normalizarVendidoEm(marcadas, lojas.map((l) => l.id)) }
+  const alcance = alcanceComum(unidadesQuePodem(sessao, 'produto.editar'), unidadesQuePodem(sessao, 'produto.preco'))
+  const temPergunta = form.get('temLojas') === '1'
+  if (!temPergunta && alcance === 'todas') return {}
+
+  const lojas = (
+    await comoOrg(sessao.orgId, (db) =>
+      db.unidade.findMany({ where: { ativa: true, ehDeposito: false }, select: { id: true } }),
+    )
+  ).map((l) => l.id)
+
+  const marcadas = temPergunta
+    ? [...form.keys()].filter((k) => k.startsWith('vendidoEm_')).map((k) => k.slice('vendidoEm_'.length))
+    : lojas // sem a pergunta na tela: "todas as que a pessoa alcança"
+
+  if (alcance === 'todas') {
+    if (marcadas.length === 0) return { erro: 'Marque pelo menos uma loja onde o produto é vendido.' }
+    return { valor: normalizarVendidoEm(marcadas, lojas) }
+  }
+
+  // Sem a pergunta e com produto que já existe: o gerente não mexeu em loja.
+  if (!temPergunta && antes !== null) return {}
+  const valor = vendidoEmDoGerente(marcadas, antes, lojas, alcance)
+  if (valor.length === 0) return { erro: 'Marque pelo menos uma das suas lojas onde o produto é vendido.' }
+  return { valor }
 }
 
 export async function criar(
@@ -102,7 +126,7 @@ export async function criar(
   if (vista == null || vista <= 0) return { erro: 'Informe o preço à vista.' }
   const reposicao = prazo(form)
   if ('erro' in reposicao) return { erro: reposicao.erro }
-  const vendido = await vendidoEmDo(form, sessao.orgId)
+  const vendido = await vendidoEmDo(form, sessao, null)
   if (vendido.erro) return { erro: vendido.erro }
 
   const medidaBruta = String(form.get('medida') ?? 'UN') as Medida
@@ -153,7 +177,11 @@ export async function editar(
   if (vista == null || vista <= 0) return { erro: 'Informe o preço à vista.' }
   const reposicao = prazo(form)
   if ('erro' in reposicao) return { erro: reposicao.erro }
-  const vendido = await vendidoEmDo(form, sessao.orgId)
+  const atual = await comoOrg(sessao.orgId, (db) =>
+    db.produto.findUnique({ where: { id: produtoId }, select: { vendidoEm: true } }),
+  )
+  if (!atual) return { erro: 'Produto não encontrado.' }
+  const vendido = await vendidoEmDo(form, sessao, atual.vendidoEm)
   if (vendido.erro) return { erro: vendido.erro }
 
   const medidaBruta = String(form.get('medida') ?? 'UN') as Medida
@@ -176,7 +204,13 @@ export async function editar(
     })
     if (!r.ok) return { erro: r.motivo }
 
-    const g = await ajustarGrade(sessao, produtoId, eixosDoFormulario(form, eixosDaEmpresa))
+    // Grade travada (produto de lojas que a pessoa não cuida): a tela mostra
+    // as opções sem campo, e aí o formulário chegaria "sem nada marcado".
+    // `ajustarGrade` recusaria de qualquer jeito; pular é não gritar à toa.
+    const g =
+      form.get('gradeTravada') === '1'
+        ? { criadas: 0, reativadas: 0, desativadas: 0, apagadas: 0 }
+        : await ajustarGrade(sessao, produtoId, eixosDoFormulario(form, eixosDaEmpresa))
 
     revalidatePath(`/${slug}/produtos`)
     revalidatePath(`/${slug}/produtos/${produtoId}`)
@@ -185,10 +219,10 @@ export async function editar(
     // criar dez variações sem a pessoa perceber, e desativar as que tinham
     // venda. Ela precisa ver o número.
     const partes = [
-      g.criadas && `${g.criadas} variação(ões) nova(s)`,
-      g.reativadas && `${g.reativadas} reativada(s)`,
-      g.desativadas && `${g.desativadas} desativada(s) (tinham histórico)`,
-      g.apagadas && `${g.apagadas} removida(s)`,
+      g.criadas && `${plural(g.criadas, 'variação nova', 'variações novas')}`,
+      g.reativadas && `${plural(g.reativadas, 'reativada', 'reativadas')}`,
+      g.desativadas && `${plural(g.desativadas, 'desativada', 'desativadas')} (${palavra(g.desativadas, 'tinha', 'tinham')} histórico)`,
+      g.apagadas && `${plural(g.apagadas, 'removida', 'removidas')}`,
     ].filter(Boolean)
 
     return { ok: partes.length > 0 ? `Salvo. ${partes.join(', ')}.` : 'Salvo.' }

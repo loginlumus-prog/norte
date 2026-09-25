@@ -166,3 +166,41 @@ export function partesDaDescricao(descricao: string): { nome: string; detalhe: s
   if (i < 0) return { nome: descricao, detalhe: null }
   return { nome: descricao.slice(0, i), detalhe: descricao.slice(i + 3) }
 }
+
+export type MatrizDaGrade = {
+  /** O primeiro eixo (Tamanho): uma linha por opção. */
+  linhas: Eixo
+  /** O segundo eixo (Cor): uma coluna por opção. */
+  colunas: Eixo
+  /** A peça de cada cruzamento; nulo onde a combinação não existe. */
+  celulas: (VariacaoNaVitrine | null)[][]
+}
+
+/**
+ * A grade de duas dimensões — tamanho nas linhas, cor nas colunas — com a peça
+ * de cada cruzamento.
+ *
+ * É o jeito que a loja de roupa lê o estoque há décadas (a "grade" do
+ * caderno): de uma olhada se vê que acabou o M preto e sobrou o M azul, antes
+ * de tocar em nada. Só existe com DOIS eixos: com um, os botões já são a
+ * grade; com três, a tabela não cabe numa folha de celular.
+ */
+export function matrizDaGrade(variacoes: VariacaoNaVitrine[]): MatrizDaGrade | null {
+  const eixos = eixosDe(variacoes)
+  if (eixos.length !== 2) return null
+  // A cor vai nas colunas, com a bolinha no cabeçalho, e o tamanho nas
+  // linhas — é como a grade de caderno se lê, seja qual for a ordem em que a
+  // empresa cadastrou os eixos.
+  const temCor = (e: Eixo) => e.opcoes.some((o) => o.hex)
+  const [a, b] = eixos as [Eixo, Eixo]
+  const [linhas, colunas] = temCor(a) && !temCor(b) ? [b, a] : [a, b]
+  return {
+    linhas,
+    colunas,
+    celulas: linhas.opcoes.map((l) =>
+      colunas.opcoes.map(
+        (c) => variacoes.find((v) => combina(v, { [linhas.nome]: l.valor, [colunas.nome]: c.valor })) ?? null,
+      ),
+    ),
+  }
+}

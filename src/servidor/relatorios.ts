@@ -170,6 +170,8 @@ export type LinhaAbc = {
   produtoId: string
   nome: string
   marca: string
+  /** 'UN', 'KG'… — "saiu 1,8" só quer dizer algo com a medida junto. */
+  medida: string
   quantidade: number
   receita: number
   margem: number
@@ -244,9 +246,9 @@ export async function curvaAbc(
     // produto, não se recompra, e entraria na lista como um nome digitado uma
     // vez só.
     const linhas = await db.$queryRaw<
-      { produto_id: string; nome: string; marca: string | null; quantidade: string; receita: string; custo: string }[]
+      { produto_id: string; nome: string; marca: string | null; medida: string; quantidade: string; receita: string; custo: string }[]
     >`
-      select p.id as produto_id, p.nome, p.marca,
+      select p.id as produto_id, p.nome, p.marca, p.medida::text as medida,
              sum(i.quantidade) as quantidade,
              sum(i.total) as receita,
              sum(coalesce(i.custo_unit, 0) * i.quantidade) as custo
@@ -256,7 +258,7 @@ export async function curvaAbc(
         join produtos p on p.id = vr.produto_id
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
          and v.criada_em >= ${de} and v.criada_em < ${ate}
-       group by 1, 2, 3
+       group by 1, 2, 3, 4
        order by receita desc
     `
 
@@ -265,6 +267,7 @@ export async function curvaAbc(
         produtoId: l.produto_id,
         nome: l.nome,
         marca: l.marca ?? '',
+        medida: l.medida,
         quantidade: n(l.quantidade),
         receita: n(l.receita),
         margem: n(l.receita) - n(l.custo),
@@ -279,6 +282,8 @@ export type ParadoNaPrateleira = {
   produtoId: string
   nome: string
   marca: string
+  /** A medida do produto: "tem 12" é peça, "tem 4,5" é quilo. */
+  medida: string
   quantidade: number
   /** O que a loja pagou pelo que está parado. */
   valor: number
@@ -314,9 +319,9 @@ export async function dinheiroParado(
     // pessoa escolheu para ler. Olhando 7 dias, a loja inteira pareceria
     // parada — e o número perderia o sentido que ele tem.
     const linhas = await db.$queryRaw<
-      { produto_id: string; nome: string; marca: string | null; quantidade: string; valor: string; ultima: Date | null }[]
+      { produto_id: string; nome: string; marca: string | null; medida: string; quantidade: string; valor: string; ultima: Date | null }[]
     >`
-      select p.id as produto_id, p.nome, p.marca,
+      select p.id as produto_id, p.nome, p.marca, p.medida::text as medida,
              sum(e.quantidade) as quantidade,
              sum(e.quantidade * coalesce(p.custo, 0)) as valor,
              max(x.ultima) as ultima
@@ -332,7 +337,7 @@ export async function dinheiroParado(
              and v.situacao = 'CONCLUIDA'
         ) x on true
        where e.unidade_id = any(${uni}) and e.quantidade > 0
-       group by 1, 2, 3
+       group by 1, 2, 3, 4
       having max(x.ultima) is null or max(x.ultima) < ${corte}
        order by valor desc
     `
@@ -342,6 +347,7 @@ export async function dinheiroParado(
       produtoId: l.produto_id,
       nome: l.nome,
       marca: l.marca ?? '',
+      medida: l.medida,
       quantidade: n(l.quantidade),
       valor: n(l.valor),
       diasParado: l.ultima ? Math.floor((agora - new Date(l.ultima).getTime()) / 86400000) : null,

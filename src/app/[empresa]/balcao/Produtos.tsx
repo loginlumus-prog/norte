@@ -20,6 +20,10 @@
 //    escrito. O servidor recusaria a venda no fim; aqui ela nem começa.
 // 5. O TOQUE RESPONDE. O cartão pisca a borda e ganha a bolinha com quantos
 //    já estão no pedido: quem tocou sabe que entrou sem olhar para o lado.
+// 6. O RAMO MUDA OS ATALHOS, NÃO A REGRA (ver ramo.ts). Na sorveteria, o copo
+//    de açaí puxa os complementos para um toque; o peso tem as teclas do
+//    tamanho de copo da casa; a loja de roupa vê a grade inteira, tamanho por
+//    cor, com o saldo de cada peça. A venda por baixo é a mesma.
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Botao, Situacao, cx } from '@/ui/base'
@@ -42,6 +46,16 @@ import {
   type VariacaoNaVitrine,
 } from './vitrine'
 import { Folha } from './Folha'
+import { LerBalanca } from './Balanca'
+import {
+  digitarNoPeso,
+  ehComplemento,
+  numeroNoCampo,
+  pedeComplemento,
+  pesoNoCampo,
+  teclasDePeso,
+} from './ramo'
+import { matrizDaGrade } from './vitrine'
 
 type Categoria = { id: string; nome: string; quantos: number }
 
@@ -53,6 +67,8 @@ type Escolha = {
   /** Nulo quando a peça já está decidida (veio da busca, ou o produto não varia). */
   variacoes: VariacaoNaVitrine[] | null
   peca: Achado | null
+  /** A categoria do produto — é ela que diz se o item pede complemento. */
+  categoriaId: string | null
 }
 
 /** O tom da categoria como estilo: fundo claro da cor, letra forte da mesma cor. */
@@ -66,6 +82,7 @@ export function Produtos({
   slug,
   unidadeId,
   unidadeNome,
+  ramo = null,
   telaCheia,
   aoTelaCheia,
   barra,
@@ -74,6 +91,8 @@ export function Produtos({
   slug: string
   unidadeId: string
   unidadeNome: string
+  /** O ramo da loja: teclas de peso e complementos (ver ramo.ts). */
+  ramo?: string | null
   /** A barra do caixa, numa linha, no topo da coluna dos produtos. */
   barra?: ReactNode
   telaCheia: boolean
@@ -90,6 +109,10 @@ export function Produtos({
   const [maisIndo, setMaisIndo] = useState(false)
   const [escolha, setEscolha] = useState<Escolha | null>(null)
   const [piscou, setPiscou] = useState<string | null>(null)
+  // Os complementos da loja (a aba "Complementos"), e o item que acabou de
+  // entrar e pede um — "Vai granola no açaí?".
+  const [complementos, setComplementos] = useState<{ chave: string; produtos: ProdutoNaVitrine[] } | null>(null)
+  const [sugestao, setSugestao] = useState<string | null>(null)
 
   // A loja entra na chave: trocar de loja no seletor é trocar de catálogo
   // (cada loja só vende o que é dela), e a vitrine velha não pode ficar na
@@ -146,6 +169,34 @@ export function Produtos({
     tomDe(p.categoriaId ? (indiceDaCategoria.get(p.categoriaId) ?? -1) : -1)
   const nomeDaCategoria = (id: string | null) => categorias?.find((c) => c.id === id)?.nome ?? null
 
+  // ── complementos ───────────────────────────────────────────
+  // Só na sorveteria, e só se a loja tem a aba de complementos com produto
+  // (é uma consulta a mais, uma vez por loja). Sem a aba, nada aparece: a
+  // sugestão sai do cadastro da loja, não de uma lista nossa.
+  const abaComplemento = ramo === 'sorveteria' ? categorias?.find((c) => ehComplemento(c.nome)) : undefined
+  const idComplemento = abaComplemento?.id ?? null
+  const chaveComplemento = idComplemento ? `${unidadeId}:${idComplemento}` : null
+  useEffect(() => {
+    if (!idComplemento) return
+    let vivo = true
+    const k = `${unidadeId}:${idComplemento}`
+    vitrine(slug, unidadeId, idComplemento, 0)
+      .then((r) => {
+        if (vivo) setComplementos({ chave: k, produtos: r.produtos })
+      })
+      // Sem complementos a venda segue igual: a sugestão só não aparece.
+      .catch(() => {})
+    return () => {
+      vivo = false
+    }
+  }, [slug, unidadeId, idComplemento])
+  const complementosDaLoja = complementos && complementos.chave === chaveComplemento ? complementos.produtos : []
+
+  // O pedido esvaziou (venda concluída, "Limpar"): a sugestão era daquele pedido.
+  useEffect(() => {
+    if (v.carrinho.length === 0) setSugestao(null)
+  }, [v.carrinho.length])
+
   // Quantos de cada peça já estão no pedido — para a bolinha do cartão.
   const noPedido = useMemo(() => {
     const m = new Map<string, number>()
@@ -153,20 +204,27 @@ export function Produtos({
     return m
   }, [v.carrinho])
 
-  function lancar(a: Achado, quantidade?: number, marca?: string) {
+  function lancar(a: Achado, quantidade?: number, marca?: string, origem?: { categoriaId: string | null; nome: string }) {
     v.lancar(a, quantidade)
     setPiscou(marca ?? a.id)
+    // O copo entrou: os complementos sobem para um toque. Complemento que
+    // entra não mexe na sugestão — a pessoa pode querer granola E leite
+    // condensado.
+    if (origem && complementosDaLoja.length > 0 && pedeComplemento(ramo, nomeDaCategoria(origem.categoriaId), origem.nome)) {
+      setSugestao(origem.nome)
+    }
   }
 
   function tocarProduto(p: ProdutoNaVitrine) {
     const [unica] = p.variacoes
     const tom = tomDoProduto(p)
+    const categoriaId = p.categoriaId
     if (p.variacoes.length === 1 && unica) {
-      if (fracionado(p.medida)) setEscolha({ titulo: p.nome, tom, medida: p.medida, variacoes: null, peca: unica })
-      else lancar(unica, 1, p.id)
+      if (fracionado(p.medida)) setEscolha({ titulo: p.nome, tom, medida: p.medida, variacoes: null, peca: unica, categoriaId })
+      else lancar(unica, 1, p.id, { categoriaId, nome: p.nome })
       return
     }
-    setEscolha({ titulo: p.nome, tom, medida: p.medida, variacoes: p.variacoes, peca: null })
+    setEscolha({ titulo: p.nome, tom, medida: p.medida, variacoes: p.variacoes, peca: null, categoriaId })
   }
 
   function tocarAchado(a: Achado) {
@@ -176,7 +234,7 @@ export function Produtos({
       return
     }
     if (fracionado(a.medida)) {
-      setEscolha({ titulo: a.descricao, tom: tomDe(-1), medida: a.medida, variacoes: null, peca: a })
+      setEscolha({ titulo: a.descricao, tom: tomDe(-1), medida: a.medida, variacoes: null, peca: a, categoriaId: null })
       return
     }
     lancar(a, 1)
@@ -312,6 +370,67 @@ export function Produtos({
         </div>
       )}
 
+      {/* ── os complementos ──
+          Logo abaixo das abas, no caminho do olho, e só depois de o copo
+          entrar. Tocar num complemento lança (e pergunta o peso, se for a
+          quilo); o ✕ dispensa. Some sozinho quando o pedido esvazia. */}
+      {sugestao && !buscando && complementosDaLoja.length > 0 && (
+        <div
+          role="group"
+          aria-label={`Complementos para ${sugestao}`}
+          className="flex flex-col gap-2 rounded-2xl border border-marca/30 bg-marca-suave p-3 pl-4"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-sm font-semibold text-tinta">
+              Vai complemento no {sugestao}?
+            </span>
+            <button
+              type="button"
+              onClick={() => setSugestao(null)}
+              className="-my-1 flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-tinta-2 hover:bg-superficie hover:text-tinta"
+            >
+              Sem complemento
+              <svg aria-hidden width="12" height="12" viewBox="0 0 16 16" fill="none">
+                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {complementosDaLoja.map((p) => {
+              const saldo = saldoTotal(p.variacoes)
+              const unica = p.variacoes.length === 1 ? p.variacoes[0] : undefined
+              const qtd = p.variacoes.reduce((s, x) => s + (noPedido.get(x.id) ?? 0), 0)
+              const preco = unica
+                ? precoDe({ ...unica, quantidade: 1 }, v.conta.tabela)
+                : faixaDePreco(p.variacoes, v.conta.tabela).de
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={saldo <= 0}
+                  onClick={() => tocarProduto(p)}
+                  className={cx(
+                    'flex min-h-11 shrink-0 touch-manipulation items-center gap-2 rounded-full border bg-superficie px-4 text-sm font-semibold whitespace-nowrap text-tinta transition',
+                    'border-borda hover:border-marca/50 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45',
+                    qtd > 0 && 'border-marca',
+                  )}
+                >
+                  {p.nome}
+                  <span className="numero text-xs font-medium text-tinta-3">
+                    {saldo <= 0 ? 'acabou' : `+${brl(preco)}`}
+                  </span>
+                  {qtd > 0 && (
+                    <span className="numero flex h-5 min-w-5 items-center justify-center rounded-full bg-marca px-1.5 text-[11px] font-bold text-marca-tinta">
+                      {Number.isInteger(qtd) ? qtd : qtd.toLocaleString('pt-BR')}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── os cartões ── */}
       <div className="relative min-h-0 flex-1 lg:overflow-y-auto lg:pr-1 lg:pb-2">
         {buscando ? (
@@ -431,10 +550,11 @@ export function Produtos({
         <EscolhaFolha
           key={`${escolha.titulo}-${escolha.peca?.id ?? ''}`}
           escolha={escolha}
+          ramo={ramo}
           tabela={v.conta.tabela}
           aoFechar={() => setEscolha(null)}
           aoLancar={(peca, q) => {
-            lancar(peca, q)
+            lancar(peca, q, undefined, { categoriaId: escolha.categoriaId, nome: escolha.titulo })
             if (buscando) v.setTermo('')
             setEscolha(null)
           }}
@@ -560,11 +680,13 @@ function Cartao({
  */
 function EscolhaFolha({
   escolha,
+  ramo,
   tabela,
   aoFechar,
   aoLancar,
 }: {
   escolha: Escolha
+  ramo: string | null
   tabela: Venda['conta']['tabela']
   aoFechar: () => void
   aoLancar: (peca: Achado, quantidade: number) => void
@@ -579,6 +701,24 @@ function EscolhaFolha({
   const un = UNIDADE[escolha.medida] ?? escolha.medida.toLowerCase()
   const quantidade = Number(quanto.replace(',', '.'))
   const quantoOk = quantidade > 0 && Number.isFinite(quantidade)
+  const teclas = pedeQuanto ? teclasDePeso(ramo, escolha.medida) : []
+  const pesa = escolha.medida === 'KG' || escolha.medida === 'G'
+
+  // Tela de toque (tablet, celular): o teclado grande no lugar do teclado do
+  // sistema, que cobre metade da folha e esconde o "Adicionar". Descoberto
+  // depois de montar — o servidor não sabe que tela é esta.
+  const [toque, setToque] = useState(false)
+  useEffect(() => {
+    try {
+      setToque(window.matchMedia('(pointer: coarse)').matches)
+    } catch {}
+  }, [])
+
+  // A grade tamanho × cor, quando o produto tem os dois eixos e ela cabe na
+  // folha. Mais que seis colunas não cabe num celular em pé: aí ficam os
+  // botões por eixo, que quebram linha.
+  const matriz = useMemo(() => (pedeQuanto ? null : matrizDaGrade(variacoes)), [pedeQuanto, variacoes])
+  const usaMatriz = !!matriz && matriz.colunas.opcoes.length <= 6 && matriz.linhas.opcoes.length <= 12
 
   function escolher(eixo: string, valor: string) {
     // Tocar de novo no que está marcado desmarca. É a saída de quem escolheu
@@ -619,7 +759,7 @@ function EscolhaFolha({
       aberta
       aoFechar={aoFechar}
       titulo={escolha.titulo}
-      larga={eixos.some((e) => e.opcoes.length > 6)}
+      larga={eixos.some((e) => e.opcoes.length > 6) || (!!matriz && usaMatriz && matriz.colunas.opcoes.length > 3)}
       icone={
         <span
           aria-hidden
@@ -660,8 +800,84 @@ function EscolhaFolha({
       }
     >
       <div className="flex flex-col gap-5">
+        {/* A grade inteira: linha é o primeiro eixo, coluna o segundo, e cada
+            cruzamento diz quanto tem. Um toque escolhe os dois de uma vez. */}
+        {matriz && usaMatriz && (
+          <div className="-mx-1 overflow-x-auto px-1">
+            <table className="w-full border-separate border-spacing-1.5 text-center">
+              <caption className="sr-only">
+                Saldo na loja por {matriz.linhas.nome.toLowerCase()} e {matriz.colunas.nome.toLowerCase()}
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col" className="w-14 text-left text-xs font-semibold tracking-wide text-tinta-3 uppercase">
+                    {matriz.linhas.nome}
+                  </th>
+                  {matriz.colunas.opcoes.map((c) => (
+                    <th key={c.valor} scope="col" className="px-1 pb-1 text-sm font-semibold text-tinta-2">
+                      <span className="inline-flex items-center gap-1.5">
+                        {c.hex && (
+                          <span aria-hidden className="size-3 shrink-0 rounded-full border border-borda" style={{ background: c.hex }} />
+                        )}
+                        {c.valor}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {matriz.linhas.opcoes.map((l, i) => (
+                  <tr key={l.valor}>
+                    <th scope="row" className="text-left text-base font-bold text-tinta">
+                      {l.valor}
+                    </th>
+                    {(matriz.celulas[i] ?? []).map((x, j) => {
+                      const c = matriz.colunas.opcoes[j]!
+                      if (!x) {
+                        return (
+                          <td key={c.valor} className="text-sm text-tinta-3">
+                            <span aria-hidden>—</span>
+                            <span className="sr-only">não existe</span>
+                          </td>
+                        )
+                      }
+                      const marcada = escolhas[matriz.linhas.nome] === l.valor && escolhas[matriz.colunas.nome] === c.valor
+                      const acabou = x.saldo <= 0
+                      return (
+                        <td key={c.valor} className="p-0">
+                          <button
+                            type="button"
+                            disabled={acabou}
+                            aria-pressed={marcada}
+                            aria-label={`${l.valor} ${c.valor}: ${acabou ? 'acabou' : `${x.saldo} na loja`}`}
+                            onClick={() => setEscolhas({ [matriz.linhas.nome]: l.valor, [matriz.colunas.nome]: c.valor })}
+                            className={cx(
+                              'numero flex min-h-12 w-full min-w-12 items-center justify-center rounded-lg border-2 px-1 text-base font-bold transition-colors',
+                              marcada
+                                ? 'border-marca bg-marca-suave text-tinta'
+                                : acabou
+                                  ? 'cursor-not-allowed border-dashed border-borda text-xs font-semibold text-critico'
+                                  : x.saldo <= 2
+                                    ? 'border-borda bg-superficie text-atencao hover:border-marca/50'
+                                    : 'border-borda bg-superficie text-tinta hover:border-marca/50',
+                            )}
+                          >
+                            {acabou ? 'acabou' : x.saldo.toLocaleString('pt-BR')}
+                          </button>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="px-1 text-xs text-tinta-3">O número é quanto tem nesta loja. Toque para escolher.</p>
+          </div>
+        )}
+
         {/* A escolha da variação — some quando ela já está feita e falta o peso. */}
         {!(pedeQuanto && peca) &&
+          !usaMatriz &&
           eixos.map((e) => (
             <fieldset key={e.nome} className="flex flex-col gap-2">
               <legend className="mb-2 text-sm font-semibold tracking-wide text-tinta-2 uppercase">{e.nome}</legend>
@@ -755,6 +971,9 @@ function EscolhaFolha({
               <span className="flex items-center gap-3 rounded-2xl border-2 border-borda bg-superficie px-4 focus-within:border-marca">
                 <input
                   data-foco-inicial
+                  // No toque, o teclado grande de baixo é o teclado: o do
+                  // sistema subiria por cima do "Adicionar".
+                  inputMode={toque ? 'none' : 'decimal'}
                   value={quanto}
                   onChange={(e) => setQuanto(e.target.value.replace(/[^\d.,]/g, ''))}
                   onKeyDown={(e) => {
@@ -763,7 +982,6 @@ function EscolhaFolha({
                       adicionar()
                     }
                   }}
-                  inputMode="decimal"
                   autoComplete="off"
                   placeholder={escolha.medida === 'KG' ? '0,350' : '0'}
                   aria-label={`Quantidade em ${un}`}
@@ -772,6 +990,63 @@ function EscolhaFolha({
                 <span className="text-xl font-semibold text-tinta-3">{un}</span>
               </span>
             </label>
+
+            {/* Os tamanhos da casa, num toque: o copo de 300 g da sorveteria,
+                o quarto de quilo da padaria. Põe no campo — não lança: o
+                "Adicionar" continua sendo a decisão. */}
+            {teclas.length > 0 && (
+              <div role="group" aria-label="Pesos prontos" className="grid grid-cols-4 gap-2">
+                {teclas.map((t) => {
+                  const valor = numeroNoCampo(t.valor)
+                  return (
+                    <button
+                      key={t.rotulo}
+                      type="button"
+                      aria-pressed={quanto === valor}
+                      onClick={() => setQuanto(valor)}
+                      className={cx(
+                        'numero min-h-12 touch-manipulation rounded-xl border-2 px-1 text-base font-semibold transition-colors',
+                        quanto === valor
+                          ? 'border-marca bg-marca-suave text-tinta'
+                          : 'border-borda bg-superficie text-tinta hover:border-marca/50 hover:bg-superficie-2',
+                      )}
+                    >
+                      {t.rotulo}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {toque && (
+              <div role="group" aria-label="Teclado" className="grid grid-cols-3 gap-2">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', 'apagar'].map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setQuanto((q) => digitarNoPeso(q, k))}
+                    aria-label={k === 'apagar' ? 'Apagar' : k === ',' ? 'Vírgula' : k}
+                    className="numero flex min-h-14 touch-manipulation items-center justify-center rounded-xl bg-superficie-2 text-2xl font-bold text-tinta select-none active:scale-[0.97] active:bg-superficie-3"
+                  >
+                    {k === 'apagar' ? (
+                      <svg aria-hidden viewBox="0 0 24 24" className="size-6" fill="none">
+                        <path
+                          d="M9 6h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5-6 5-6ZM12 10l4 4M16 10l-4 4"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : (
+                      k
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {pesa && <LerBalanca aoPesar={(kg) => setQuanto(pesoNoCampo(kg, escolha.medida))} />}
             {achada.saldo <= 0 && <Situacao nivel="critico">acabou nesta loja</Situacao>}
           </div>
         )}

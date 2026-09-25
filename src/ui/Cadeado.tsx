@@ -18,6 +18,13 @@
 //
 // Nenhuma das duas tem estado nem efeito: servem tanto em página de servidor
 // quanto dentro de componente de cliente.
+//
+// ── e o link, só para quem abre os planos ────────────────────
+// A tela de Assinatura abre para quem configura a empresa ou cuida do
+// dinheiro (`podeVerPlanos`). Para a balconista, o cadeado que levava até lá
+// caía em "este endereço não abre" — trancado que parece QUEBRADO, o que a
+// regra acima proíbe. Com `verPlanos` falso, o cadeado continua dizendo o
+// plano, sem link, e o bloco diz quem troca de plano.
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
@@ -48,26 +55,37 @@ export function IconeCadeado({ className }: { className?: string }) {
 export function Cadeado({
   chave,
   slug,
+  verPlanos = true,
   className,
 }: {
   chave: Liberacao
   slug: string
+  /** Quem olha abre a tela de Assinatura? Sem isso, etiqueta sem link. */
+  verPlanos?: boolean
   className?: string
 }) {
   const p = planoQueAbre(chave)
-  return (
-    <Link
-      href={`/${slug}/assinatura`}
-      title={`${LIBERACOES[chave].titulo}: ${doPlano(p.codigo)} para cima`}
-      className={cx(
-        'inline-flex items-center gap-1 rounded-full border border-borda bg-superficie-2 px-1.5 py-0.5',
-        'text-[10px] font-semibold whitespace-nowrap text-tinta-3 hover:border-marca/40 hover:text-tinta',
-        className,
-      )}
-    >
+  const titulo = `${LIBERACOES[chave].titulo}: ${doPlano(p.codigo)} para cima`
+  const classe = cx(
+    'inline-flex items-center gap-1 rounded-full border border-borda bg-superficie-2 px-1.5 py-0.5',
+    'text-[10px] font-semibold whitespace-nowrap text-tinta-3',
+    verPlanos && 'hover:border-marca/40 hover:text-tinta',
+    className,
+  )
+  const miolo = (
+    <>
       <IconeCadeado className="size-3 shrink-0" />
       {doPlano(p.codigo)} para cima
+    </>
+  )
+  return verPlanos ? (
+    <Link href={`/${slug}/assinatura`} title={titulo} className={classe}>
+      {miolo}
     </Link>
+  ) : (
+    <span title={titulo} className={classe}>
+      {miolo}
+    </span>
   )
 }
 
@@ -83,11 +101,14 @@ export function Trancado({
   plano,
   slug,
   resumo,
+  verPlanos = true,
   children,
 }: {
   chave: Liberacao
   plano: Plano
   slug: string
+  /** Quem olha abre a tela de Assinatura? Sem isso, o convite diz quem troca de plano. */
+  verPlanos?: boolean
   /** Uma frase sobre o que a pessoa ganharia. Opcional. */
   resumo?: string
   /** O EXEMPLO. Amostra, nunca dado real do plano de cima. */
@@ -126,12 +147,16 @@ export function Trancado({
             {titulo} é {doPlano(p.codigo)} para cima
           </p>
           {resumo && <p className="text-xs leading-relaxed text-tinta-2">{resumo}</p>}
-          <Link
-            href={`/${slug}/assinatura`}
-            className="botao-marca mt-1 rounded-norte px-4 py-2 text-xs font-semibold text-marca-tinta"
-          >
-            Ver os planos
-          </Link>
+          {verPlanos ? (
+            <Link
+              href={`/${slug}/assinatura`}
+              className="botao-marca mt-1 rounded-norte px-4 py-2 text-xs font-semibold text-marca-tinta"
+            >
+              Ver os planos
+            </Link>
+          ) : (
+            <p className="text-xs text-tinta-3">Quem responde pela empresa troca de plano em Assinatura.</p>
+          )}
         </div>
       </div>
     </div>

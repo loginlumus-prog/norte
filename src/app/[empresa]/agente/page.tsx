@@ -1,9 +1,10 @@
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
-import { acharAgente, balanco, podeGastarHoje } from '@/servidor/agente'
+import Link from 'next/link'
+import { acharAgente, apurarRecibos, balanco, podeGastarHoje } from '@/servidor/agente'
 import { PODERES_SUGERIDOS } from '@/servidor/poderes'
 import { comoOrg } from '@/servidor/banco'
-import { pode } from '@/servidor/permissao'
+import { pode, podeVerPlanos } from '@/servidor/permissao'
 import { reais } from '@/servidor/dinheiro'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
@@ -22,6 +23,9 @@ import {
   ROTINAS_NA_TELA,
 } from '@/servidor/assistente/conexao'
 import { plural } from '@/ui/texto'
+import { moduloLigado } from '@/servidor/modulos'
+import { ORDEM, doPlano, planoLibera } from '@/servidor/planos'
+import { diaEmSP, inicioDoDiaEmSP, primeiroDoMes, somarDias } from '@/servidor/dia'
 
 // O agente, numa tela só.
 //
@@ -50,9 +54,78 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'agente.configurar' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
+  // ── o assistente existe nesta empresa? ──
+  // Duas chaves, e as duas precisam estar ligadas: o PLANO tem de incluir o
+  // assistente, e a empresa tem de ter ligado o módulo. Antes a tela abria
+  // inteira com as duas desligadas — dava para configurar, ver "esperando
+  // você" e ligar a chave do formulário, e nada disso funcionava, porque a
+  // rotina e o WhatsApp conferem as duas (ver `empresaApta`).
+  const { plano } = await comoOrg(sessao.orgId, (db) =>
+    db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { plano: true } }),
+  )
+  if (!planoLibera(plano, 'agente') || !moduloLigado(empresa, 'agente')) {
+    const doPlanoDela = planoLibera(plano, 'agente')
+    const quemAbre = ORDEM.find((p) => planoLibera(p, 'agente'))
+    return (
+      <Estrutura
+        empresa={empresa}
+        sessao={sessao}
+        itens={MENU(slug)}
+        ativo={`/${slug}/agente`}
+        tema={tema}
+        titulo="Assistente"
+      >
+        <Cartao titulo={doPlanoDela ? 'O assistente está desligado' : 'O assistente não faz parte do seu plano'}>
+          <div className="flex flex-col gap-3 text-sm text-tinta-2">
+            <p>
+              O assistente responde pelo WhatsApp, manda o relatório do dia e avisa o que vai
+              faltar — com a proposta de reposição para você confirmar.
+            </p>
+            {doPlanoDela ? (
+              <p>
+                Seu plano inclui o assistente, mas ele não está ligado nesta empresa. Para ligar:{' '}
+                {pode(sessao, 'empresa.configurar') ? (
+                  <Link href={`/${slug}/configuracoes`} className="font-medium text-marca underline-offset-2 hover:underline">
+                    Configurações › O que sua empresa usa
+                  </Link>
+                ) : (
+                  <b className="text-tinta">Configurações › O que sua empresa usa</b>
+                )}
+                , marque &quot;Agente no WhatsApp&quot; e salve.
+              </p>
+            ) : (
+              <p>
+                Ele existe {quemAbre ? `${doPlano(quemAbre)} para cima` : 'em planos acima do seu'}.{' '}
+                {podeVerPlanos(sessao) ? (
+                  <Link href={`/${slug}/assinatura`} className="font-medium text-marca underline-offset-2 hover:underline">
+                    Ver os planos em Assinatura
+                  </Link>
+                ) : (
+                  'Quem responde pela empresa troca de plano em Assinatura.'
+                )}
+              </p>
+            )}
+          </div>
+        </Cartao>
+      </Estrutura>
+    )
+  }
+
+  // O mês é o de São Paulo: na virada, às 21h do último dia, o relógio da
+  // máquina em UTC já mostrava o balanço do mês seguinte — zerado.
   const agora = new Date()
-  const de = new Date(agora.getFullYear(), agora.getMonth(), 1)
-  const ate = new Date(agora.getFullYear(), agora.getMonth() + 1, 0, 23, 59, 59)
+  const mesSP = primeiroDoMes(diaEmSP(agora))
+  const de = inicioDoDiaEmSP(mesSP)
+  const ate = new Date(inicioDoDiaEmSP(primeiroDoMes(somarDias(mesSP, 32))).getTime() - 1)
+
+  // Os recibos que já dá para medir nascem antes do balanço ser lido — a
+  // conta está em `apurarRecibos`, e ela é idempotente. Falha aqui não tira a
+  // tela do ar: o recibo espera a próxima visita ou a rotina das 9h.
+  try {
+    await apurarRecibos(sessao.orgId, agora)
+  } catch (e) {
+    console.error('[agente] apurar recibos:', e instanceof Error ? e.message : e)
+  }
 
   const [agente, bal, gasto] = await Promise.all([
     acharAgente(sessao.orgId),
@@ -254,6 +327,6 @@ const ROTULO: Record<string, string> = {
   COBRANCA_RECUPERADA: 'Crediário atrasado que voltou',
   CLIENTE_VOLTOU: 'Cliente sumido que comprou de novo',
   ESTOQUE_DESTRAVADO: 'Peça encalhada que saiu',
-  RUPTURA_EVITADA: 'Reposição feita antes de acabar',
+  RUPTURA_EVITADA: 'Margem do que a reposição proposta vendeu',
   DIVERGENCIA_ACHADA: 'Diferença de caixa que ninguém tinha visto',
 }

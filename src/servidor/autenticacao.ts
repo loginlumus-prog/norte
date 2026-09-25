@@ -13,14 +13,15 @@
 // 2. E-mail errado e senha errada devolvem exatamente o mesmo motivo. Quem
 //    tenta não descobre qual dos dois errou.
 //
-// 3. Tentativa é contada antes de a senha ser conferida (`limite.ts`). Sem
+// 3. Tentativa é contada antes de a senha ser conferida (`limite.ts`), no
+//    mesmo passo atômico que decide se ela pode acontecer. Sem
 //    isso, as duas defesas acima só fazem o ataque demorar mais — elas não o
 //    impedem. Quem tem tempo e uma lista de senhas comuns entra.
 
 import { comoOrg, acharOrgPorSlug } from './banco'
 import { ocuparVaga, type Ocupante } from './presenca'
 import { conferirSenha, precisaTrocar, HASH_ISCA } from './senha'
-import { conferirFreio, registrarTentativa } from './limite'
+import { reservarTentativa, concluirTentativa } from './limite'
 import type { Sessao, Papel } from './permissao'
 
 export type Entrada =
@@ -79,10 +80,15 @@ export async function entrar(
   // O freio vem ANTES de conferir a senha, e vale mesmo que a senha esteja
   // certa. Conferir primeiro e frear depois só faria o ataque demorar: o
   // atacante continuaria descobrindo qual senha funciona.
-  const freio = await conferirFreio(org.id, alvo, ip)
+  //
+  // E a tentativa já sai daqui CONTADA (como erro, até a senha provar o
+  // contrário): conferir numa transação e anotar em outra deixava vinte
+  // tentativas simultâneas passarem juntas pelo freio de cinco.
+  const freio = await reservarTentativa(org.id, alvo, ip)
   if (freio.bloqueado) {
     return { ok: false, motivo: 'muitas_tentativas', esperarMin: freio.esperarMin }
   }
+  const tentativa = freio.tentativaId
 
   const achado = await comoOrg(org.id, async (db) => {
     const usuario = await db.usuario.findUnique({
@@ -105,7 +111,7 @@ export async function entrar(
   if (!achado || !senhaBate || !achado.usuario.ativo) {
     // Conta desativada responde igual a senha errada: quem saiu da empresa
     // não precisa saber que o cadastro dele ainda existe.
-    await registrarTentativa(org.id, alvo, ip, false)
+    await concluirTentativa(org.id, tentativa, false)
     return { ok: false, motivo: 'credenciais' }
   }
 
@@ -115,7 +121,7 @@ export async function entrar(
     .map((a) => ({ papel: a.papel as Papel, unidadeId: a.unidadeId, expiraEm: a.expiraEm }))
 
   if (acessos.length === 0) {
-    await registrarTentativa(org.id, alvo, ip, false)
+    await concluirTentativa(org.id, tentativa, false)
     return { ok: false, motivo: 'sem_acesso' }
   }
 
@@ -147,11 +153,11 @@ export async function entrar(
     // Não é tentativa errada: a senha estava certa. Registrar como erro faria
     // o freio de força bruta punir quem não fez nada de errado — e a loja
     // cheia viraria loja travada.
-    await registrarTentativa(org.id, alvo, ip, true)
+    await concluirTentativa(org.id, tentativa, true)
     return { ok: false, motivo: 'sem_vaga', ocupantes: vaga.ocupantes }
   }
 
-  await registrarTentativa(org.id, alvo, ip, true)
+  await concluirTentativa(org.id, tentativa, true)
   await registrarEntrada(sessao)
 
   return {

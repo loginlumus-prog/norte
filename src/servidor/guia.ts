@@ -44,6 +44,15 @@ export type Entrada = {
   perguntas: { p: string; r: string }[]
   /** Sinônimos e palavras que a pessoa usa e a tela não: 'fiado' para crediário, 'PDV' para balcão. */
   palavras: string[]
+  /**
+   * Quem ABRE a tela: basta uma destas capacidades. Ausente = todo mundo que
+   * entrou. É a mesma régua da própria página (`exigirEntrada` ou o
+   * `notFound` dela) — o Guia não mostra, na busca, tela que leva a pessoa
+   * ao "este endereço não abre".
+   */
+  abre?: Capacidade[]
+  /** O módulo que precisa estar ligado para a tela existir. */
+  modulo?: string
 }
 
 /**
@@ -107,7 +116,7 @@ export const GUIA: Entrada[] = [
     titulo: 'Painel',
     caminho: '',
     oQueE:
-      'A primeira tela do dia, em dois modos. No SIMPLES: quanto vendeu hoje (comparado com o mesmo dia da semana passada até a mesma hora), o que precisa de você agora — o que acabou, conta vencida ou que vence hoje, fiado vencido, tarefa atrasada, caixa esquecido aberto, proposta do assistente —, atalhos para o que se faz mais e os mais vendidos da semana. No AVANÇADO: o resumo do período escolhido, com todos os gráficos — movimento por dia e por hora, formas de pagamento, categorias, parados, estoque, crediário, equipe e clientes. Exige a permissão de ler relatório — quem só vende cai direto no Balcão.',
+      'A primeira tela do dia, em dois modos. No SIMPLES: quanto vendeu hoje (comparado com o mesmo dia da semana passada até a mesma hora), o que precisa de você agora — o que acabou, conta vencida ou que vence hoje, fiado vencido, tarefa atrasada, caixa esquecido aberto, proposta do assistente —, atalhos para o que se faz mais e os mais vendidos da semana. Nos dois modos, o bloco "Hoje na sua…" muda com o RAMO da loja: grade quebrada na loja de roupa, sabores na sorveteria, encomendas e produção na padaria, o que repor na mercearia. No AVANÇADO: o resumo do período escolhido, com todos os gráficos — movimento por dia e por hora, formas de pagamento, categorias, parados, estoque, crediário, equipe e clientes. Exige a permissão de ler relatório — quem só vende cai direto no Balcão.',
     comoFazer: [
       {
         titulo: 'Trocar entre o modo simples e o avançado',
@@ -165,6 +174,19 @@ export const GUIA: Entrada[] = [
         ],
         plano: 'BALCAO',
       },
+      {
+        titulo: 'Ler o bloco do seu ramo ("Hoje na sua…")',
+        passos: [
+          'O bloco segue o ramo de CADA loja (Lojas › o ramo dela; sem ramo, vale o da empresa). Em "Todas as unidades", cada ramo ganha o seu bloco, com as lojas dele — até três ramos. Depósito não entra.',
+          'Roupa, calçado e bijuteria: "Grade quebrada" lista, loja por loja, a peça em que acabou o que vendia no último mês e sobrou o resto da grade ("acabou M e G · sobrou PP e GG"), e diz se outra loja tem a peça para transferir. Ao lado, o tamanho (ou numeração) que mais saiu em 7 dias.',
+          'Sorveteria: quilos vendidos hoje, vendas e a hora de pico; "O que está acabando" (acabou e vendia, sobra menos que um dia médio de venda, ou está no mínimo da loja) e o que mais saiu hoje, primeiro o que vai a peso.',
+          'Padaria, lanchonete, floricultura e serviço: as encomendas atrasadas, de hoje e de amanhã (com o módulo Encomenda); a produção do dia pela MÉDIA DO MESMO DIA DA SEMANA — "média das últimas 4 quartas", ou de menos quartas se a loja vende há menos tempo — com o que já saiu hoje; e as horas fortes desse dia.',
+          'Mercearia, pet shop, papelaria, autopeças, construção, brinquedos e distribuidora: "Repor logo" — no plano Direção, pelo ritmo de venda e o prazo do fornecedor (a mesma conta do "Vai faltar"); nos outros, o que está no mínimo cadastrado — e o que mais gira em 7 dias contra os 7 anteriores.',
+          'O que mostra saldo só aparece para quem pode ver o estoque; as encomendas, para quem vê vendas. Os links levam ao Estoque ou às Encomendas já na loja certa.',
+          'É conta do que foi vendido, contado e anotado — não é previsão. Sem histórico, o bloco diz que ainda não há média, em vez de inventar uma.',
+        ],
+        capacidade: 'relatorio.ver',
+      },
     ],
     perguntas: [
       {
@@ -184,7 +206,7 @@ export const GUIA: Entrada[] = [
         r: 'Num cartão do Painel e na tela Equipe, do plano Assistente para cima: de 0 a 5 estrelas por pessoa e mês, somando meta batida, tarefas no prazo e dias presente.',
       },
     ],
-    palavras: ['dashboard', 'início', 'resumo', 'faturamento', 'ticket médio', 'margem', 'gráfico', 'visão geral', 'quanto vendi', 'comparação'],
+    palavras: ['dashboard', 'início', 'resumo', 'faturamento', 'ticket médio', 'margem', 'gráfico', 'visão geral', 'quanto vendi', 'comparação', 'ramo', 'grade quebrada', 'sabor', 'produção do dia', 'repor'],
   },
 
   // ── Balcão ──
@@ -192,6 +214,7 @@ export const GUIA: Entrada[] = [
     chave: 'balcao',
     titulo: 'Balcão',
     caminho: '/balcao',
+    abre: ['venda.criar'],
     oQueE:
       'Onde a venda acontece. Precisa de caixa aberto na loja, e só mostra o que ESTA loja vende. Tem duas caras, conforme o modo do aparelho: no simples, cartões grandes de produto à esquerda e o pedido à direita, com "Concluir venda"; no avançado, a busca por etiqueta, código ou nome e a tabela do pedido. A venda é a mesma nos dois: cliente e vendedor, desconto, pontos, e o pagamento em Dinheiro, Pix, Débito, Crédito, crediário em parcelas e vale de troca. O troco aparece grande antes de confirmar.',
     comoFazer: [
@@ -200,7 +223,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Com o aparelho no modo simples, o balcão mostra os produtos em cartões, com as categorias em abas no alto ("Todos" primeiro). A busca e o leitor continuam valendo: bipe a etiqueta ou digite o nome.',
           'Toque no cartão para pôr no pedido; tocar de novo soma mais um. A bolinha no cartão diz quantos já estão no pedido. "Esta acabou" não lança.',
-          'Produto com grade (tamanho, cor, sabor) abre a folha para escolher a opção. Produto em quilo pergunta "Quanto pesou?".',
+          'Produto com grade (tamanho, cor, sabor) abre a folha para escolher a opção — com tamanho E cor, a grade inteira com o saldo de cada peça. Produto em quilo pergunta "Quanto pesou?" (ver "Vender por peso").',
           'No pedido, − e + mudam a quantidade, e ✕ tira o item. "Limpar" zera o pedido — toque de novo para confirmar.',
           'Em "Como vai pagar?", toque na forma. Em dinheiro, digite o recebido ou toque numa nota pronta ("Exato", 50, 100…). "Concluir venda" (ou F10) mostra "Venda concluída", com o troco para devolver em destaque.',
           'Cliente (Alt+N), quem vendeu (Alt+F), desconto na venda, item avulso e observação ficam em "Mais opções" — e o botão mostra quantas estão valendo, para ninguém esquecer um desconto ligado.',
@@ -256,23 +279,28 @@ export const GUIA: Entrada[] = [
         ],
       },
       {
-        titulo: 'Vender no crediário (fiado)',
+        titulo: 'Vender no crediário, com pontos ou vale de troca',
         passos: [
-          'Só com o módulo Crediário ligado, e só com cliente escolhido — fiado é dívida com nome.',
-          'Escolha em quantas vezes (até o máximo de Configurações) e clique em "Crediário".',
-          'O total passa para a tabela "no crediário", e as parcelas nascem a cada N dias contando de hoje.',
-          'Receber as parcelas depois é na tela Crediário.',
-        ],
-        capacidade: 'venda.criar',
-      },
-      {
-        titulo: 'Usar pontos e vale de troca',
-        passos: [
-          'Com o programa de pontos ligado e o cliente escolhido, aparece "Tem X pontos — dá R$ Y de desconto — usar" quando ele passou do mínimo.',
+          'Crediário (fiado): só com o módulo ligado e com cliente escolhido — fiado é dívida com nome. Escolha em quantas vezes (até o máximo de Configurações) e clique em "Crediário".',
+          'No crediário o total passa para a tabela "no crediário", e as parcelas nascem a cada N dias contando de hoje. Receber depois é na tela Crediário.',
+          'Pontos: com o programa ligado e o cliente escolhido, aparece "Tem X pontos — dá R$ Y de desconto — usar" quando ele passou do mínimo.',
           'Os pontos abatem do valor já com desconto e nunca passam do total da venda. O ✕ desfaz.',
           '"+ vale de troca": digite o código do papel (VT-XXXXXX) e "Usar". A tela mostra o saldo e de quem é, e o vale entra como pagamento até o que falta.',
           'Vale vencido (90 dias) ou já usado é recusado. O mesmo vale não entra duas vezes na mesma venda.',
         ],
+        capacidade: 'venda.criar',
+      },
+      {
+        titulo: 'Vender por peso, e o que muda com o ramo da loja',
+        passos: [
+          'No modo simples, produto em quilo (ou litro, metro) abre "Quanto pesou?". As teclas prontas põem o peso no campo — na sorveteria 200 g, 300 g, 500 g e 1 kg; na padaria 100 g, 250 g, 500 g e 1 kg — e "Adicionar" mostra quanto dá antes de entrar.',
+          'Em tablet e celular aparece o teclado grande (com vírgula e apagar) no lugar do teclado do sistema.',
+          '"Ler da balança" só aparece no Chrome ou Edge do computador, com a balança ligada por cabo serial ou USB-serial: na primeira vez o navegador pergunta a porta. Lê só peso ESTÁVEL (Toledo, Filizola e as que mandam "ST,GS"), a 9600 bauds.',
+          'Se a balança não responde, o peso está mexendo ou a porta está ocupada, a tela diz e o campo continua para digitar — a venda nunca para por causa dela. Não substitui balança homologada que imprime etiqueta.',
+          'Na sorveteria, depois de lançar açaí, sorvete de massa ou milk-shake, os produtos da aba "Complementos" sobem num toque ("Vai complemento?"). "Sem complemento" dispensa; a aba continua lá.',
+          'Pesar de novo o mesmo item substitui o peso — não soma.',
+        ],
+        capacidade: 'venda.criar',
       },
     ],
     perguntas: [
@@ -293,7 +321,7 @@ export const GUIA: Entrada[] = [
         r: 'Depois de fechar, clique em "imprimir comprovante" no recado verde. Também na ficha da venda (Vendas › abrir › Comprovante). É a via do cliente em papel de 80 mm — não é nota fiscal.',
       },
     ],
-    palavras: ['pdv', 'venda', 'vender', 'frente de caixa', 'carrinho', 'pagamento', 'troco', 'desconto', 'código de barras', 'leitor', 'bipar', 'atalho', 'teclado', 'f10', 'item avulso', 'grade de botões', 'pix', 'cartão', 'dinheiro'],
+    palavras: ['pdv', 'venda', 'vender', 'frente de caixa', 'carrinho', 'pagamento', 'troco', 'desconto', 'código de barras', 'leitor', 'bipar', 'atalho', 'teclado', 'f10', 'item avulso', 'grade de botões', 'pix', 'cartão', 'dinheiro', 'balança', 'peso', 'quilo', 'complemento', 'açaí'],
   },
 
   // ── Vendas ──
@@ -301,6 +329,7 @@ export const GUIA: Entrada[] = [
     chave: 'vendas',
     titulo: 'Vendas',
     caminho: '/vendas',
+    abre: ['venda.ver'],
     oQueE:
       'Tudo que já foi vendido: total e ticket do período, canceladas, e a lista com número, hora, cliente, itens, pagamento e quem vendeu. Busca por número da venda ou nome do cliente; filtros por vendedor, forma de pagamento e situação; planilha com uma linha por item. Cada venda abre numa ficha — e é lá que se devolve, troca ou cancela.',
     comoFazer: [
@@ -380,6 +409,7 @@ export const GUIA: Entrada[] = [
     chave: 'caixa',
     titulo: 'Caixa',
     caminho: '/caixa',
+    abre: ['caixa.ver'],
     oQueE:
       'O histórico dos turnos de caixa: quem abriu, quem fechou, quanto vendeu e a diferença da gaveta (falta ou sobra), com a conta de cada turno e as sangrias e suprimentos. Abrir, sangrar, suprir e fechar acontece no Balcão; aqui se confere. Caixa aberto há mais de um dia fica em âmbar, com o link para fechar.',
     comoFazer: [
@@ -445,6 +475,8 @@ export const GUIA: Entrada[] = [
     chave: 'crediario',
     titulo: 'Crediário',
     caminho: '/crediario',
+    abre: ['crediario.ver'],
+    modulo: 'crediario',
     oQueE:
       'Quem deve, quanto e desde quando — e receber. A tela abre nas parcelas em aberto, vencidas primeiro, com o juro de atraso já sugerido. Só existe com o módulo Crediário ligado (plano Direção). Vender fiado é escolher a forma Crediário no Balcão, com cliente.',
     comoFazer: [
@@ -509,6 +541,8 @@ export const GUIA: Entrada[] = [
     chave: 'encomendas',
     titulo: 'Encomendas',
     caminho: '/encomendas',
+    abre: ['venda.ver'],
+    modulo: 'encomenda',
     oQueE:
       'O pedido que sai depois: o bolo para sábado às 15h, o buquê para as 16h, a peça que o cliente paga metade hoje e busca na semana que vem. A lista abre pelo que vence primeiro, em faixas — Atrasadas (passou da hora e não saiu), Hoje, Amanhã, Esta semana (os próximos dias) e Depois — com hora, cliente e WhatsApp, valor, sinal, o que falta pagar e se é retirada ou entrega. Só existe com o módulo Encomenda ligado em Configurações › Módulos (planos pagos). O sinal entra no Financeiro na hora, como receita; o que falta é recebido no Balcão, como venda.',
     comoFazer: [
@@ -588,6 +622,7 @@ export const GUIA: Entrada[] = [
     chave: 'produtos',
     titulo: 'Produtos',
     caminho: '/produtos',
+    abre: ['produto.ver'],
     oQueE:
       'O catálogo: cada produto com nome, marca, categoria, medida (unidade, quilo, par…), os três preços (à vista, no cartão, no crediário), custo, prazo de reposição e a grade de variações (cor × tamanho…), cada combinação com o próprio código de etiqueta. A lista mostra estoque, margem, quanto vendeu em 30 dias e pendências de cadastro. Daqui saem as etiquetas e a planilha.',
     comoFazer: [
@@ -610,6 +645,7 @@ export const GUIA: Entrada[] = [
           'No produto NOVO, a categoria sugere as lojas: categoria do ramo sorveteria (Picolé, Açaí) já vem marcada só na sorveteria. É sugestão — marque e desmarque antes de salvar.',
           'Desmarque a loja que NÃO vende: a sorveteria não mostra camisa no balcão, a loja de roupa não mostra picolé.',
           'A regra vale no servidor também: produto de outra loja é recusado na venda mesmo que alguém bipe o código de cabeça.',
+          'O gerente de uma loja só marca e desmarca as lojas que ele cuida; as outras aparecem travadas. Produto novo cadastrado por ele nasce só nas lojas dele — "em todas" (inclusive as que abrirem depois) é decisão de quem responde pela empresa inteira.',
           '"Salvar". A lista de Lojas mostra quantos produtos são só de cada uma.',
         ],
         capacidade: 'produto.editar',
@@ -619,6 +655,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Abra o produto ("editar" na lista). A ficha mostra como ele vende — 30 e 90 dias, margem, última venda — antes dos campos.',
           'Mexer em preço exige permissão própria; quem só edita descrição não muda preço.',
+          'Preço, custo, lojas, medida, situação e grade valem em toda loja onde o produto é vendido. Por isso só muda quem cuida de TODAS essas lojas: o gerente do Centro muda o que só o Centro vende; no produto vendido também em outra loja (ou em todas), esses campos aparecem travados e ele corrige nome, marca, categoria e prazo. A entrada de mercadoria dele também não reescreve o custo desse produto — a tela avisa.',
           'Desmarcar uma opção que já tem venda não apaga nada: aquela combinação sai do balcão e continua no histórico, com o saldo que tiver.',
           '"Salvar" diz o que mudou na grade: quantas variações novas, reativadas, desativadas.',
           '"Produto à venda" desmarcado tira o produto do balcão e da lista, e mantém todo relatório antigo.',
@@ -681,6 +718,7 @@ export const GUIA: Entrada[] = [
     chave: 'estoque',
     titulo: 'Estoque',
     caminho: '/estoque',
+    abre: ['estoque.ver'],
     oQueE:
       'O que tem em cada loja, o que acabou e o que está no mínimo — e tudo que entrou, saiu, foi corrigido ou transferido, com quem e quando. Entrada de mercadoria com custo e conta a pagar, correção pelo que foi contado, transferência entre lojas, a planilha do balanço e, na Direção, a previsão "Vai faltar".',
     comoFazer: [
@@ -769,6 +807,7 @@ export const GUIA: Entrada[] = [
     chave: 'precos',
     titulo: 'Preços',
     caminho: '/precos',
+    abre: ['produto.preco'],
     oQueE:
       'Custo contra preço, item a item: margem (o que sobra do preço), markup (quanto se põe sobre o custo) e o preço sugerido para a margem alvo. Lista o que está abaixo do custo, abaixo do alvo e sem custo, e quanto cada item saiu em 30 dias. O preço se muda na ficha do produto. Exige a permissão de mexer em preço; margem e markup são do Balcão para cima, preço sugerido do Assistente.',
     comoFazer: [
@@ -826,6 +865,7 @@ export const GUIA: Entrada[] = [
     chave: 'clientes',
     titulo: 'Clientes',
     caminho: '/clientes',
+    abre: ['cliente.ver'],
     oQueE:
       'Quem compra: nome, WhatsApp, quanto gastou, quantas compras, há quanto tempo não vem, pontos e dívida no crediário. Filtros por quem some há 60+ dias, quem nunca comprou, cadastrados há 30 dias, aniversariantes do mês, com pontos, devendo. A ficha mostra as compras mês a mês, o que a pessoa mais leva, vales de troca, parcelas e o extrato de pontos.',
     comoFazer: [
@@ -900,6 +940,7 @@ export const GUIA: Entrada[] = [
     chave: 'equipe',
     titulo: 'Equipe',
     caminho: '/equipe',
+    abre: ['equipe.ver'],
     oQueE:
       'Quem tem acesso, com que papel e em qual loja; os convites esperando; metas e comissão por vendedor (módulo Metas); e o desempenho em estrelas (plano Assistente para cima). Tirar o acesso não apaga a pessoa: a venda que ela fez e as linhas dela no livro continuam com o nome dela.',
     comoFazer: [
@@ -979,6 +1020,7 @@ export const GUIA: Entrada[] = [
     chave: 'tarefas',
     titulo: 'Tarefas',
     caminho: '/tarefas',
+    abre: ['tarefa.ver'],
     oQueE:
       'Quadros de tarefas por loja ou da empresa, com grupos ("Esta semana", "Este mês"…). Cada tarefa tem título, responsável, situação (A fazer / Em andamento / Parado / Feito), linha do tempo, prazo e prioridade em cinco estrelas. Quem só vê o quadro dá baixa nas próprias tarefas; criar quadro e atribuir tarefa é de quem gere.',
     comoFazer: [
@@ -1045,6 +1087,7 @@ export const GUIA: Entrada[] = [
     chave: 'financeiro',
     titulo: 'Financeiro',
     caminho: '/financeiro',
+    abre: ['financeiro.ver'],
     oQueE:
       'As contas a pagar (vencidas, hoje, próximos 15 dias), os lançamentos do mês com busca e filtros, e o resultado do mês — o DRE: receita das vendas, devoluções, custo da mercadoria vendida, despesas por grupo, taxas de maquininha e o que sobrou. Venda não vira lançamento: o DRE puxa direto das vendas. As contas que se repetem (aluguel, internet, contador) se cadastram uma vez e o lançamento de cada mês nasce sozinho. Fechar o mês, guiado, fica no botão do alto.',
     comoFazer: [
@@ -1135,6 +1178,7 @@ export const GUIA: Entrada[] = [
     chave: 'fechamento',
     titulo: 'Fechamento do mês',
     caminho: '/financeiro/fechamento',
+    abre: ['financeiro.ver'],
     oQueE:
       'A lista do que conferir antes de dar o mês por fechado — a que a contadora faria por telefone —, com o número de cada pendência e o link para onde se resolve: todo caixa fechado, gaveta batendo, contas pagas, taxa da maquininha no cálculo, fiado cobrado (se a loja usa crediário) e o resultado. Não tranca nada: lançamento atrasado continua entrando, e o número se refaz.',
     comoFazer: [
@@ -1188,6 +1232,7 @@ export const GUIA: Entrada[] = [
     chave: 'analise',
     titulo: 'Análise',
     caminho: '/analise',
+    abre: ['relatorio.ver'],
     oQueE:
       'Três leituras que o Painel não dá, do plano Direção para cima: as lojas lado a lado (vendas, o que entrou, margem, ticket, sem saída); a curva ABC dos produtos; o dinheiro parado — estoque que não vende há 30 dias ou mais; e a escala dos turnos de caixa. Sem seletor de loja, de propósito: compara tudo que você pode ver.',
     comoFazer: [
@@ -1207,7 +1252,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Os produtos ordenados pelo que trouxeram no período.',
           'A = os que formam os primeiros 80% do faturamento — nunca podem faltar. B = até 95%. C = a cauda: cada um sozinho não paga a prateleira que ocupa.',
-          'Colunas: saiu, entrou, margem, fatia e acumulado. Clique no produto para abrir a ficha.',
+          'Colunas: saiu (com a medida — quilo é quilo, peça é peça), entrou, margem, fatia e acumulado. Quem edita produto clica no nome para abrir a ficha; para os outros, o nome é só texto.',
           'Item avulso não entra: não tem produto e não se recompra. Mostra os 60 primeiros.',
         ],
         plano: 'REDE',
@@ -1222,8 +1267,9 @@ export const GUIA: Entrada[] = [
         plano: 'REDE',
       },
       {
-        titulo: 'Escala e presença',
+        titulo: 'Turnos de caixa (a escala)',
         passos: [
+          'É o que existe hoje de escala: os turnos de CAIXA, não um ponto eletrônico. Não há registro de entrada e saída de quem não abre o caixa; os dias em que cada pessoa entrou no sistema aparecem só na nota de Desempenho, em Equipe.',
           'Cada turno de caixa do período: quem abriu, a loja, quando, quanto tempo ficou, vendas, o que saiu e o que faltou ou sobrou na gaveta.',
           'Pede a permissão de ver o caixa além da de relatório — o contador lê o resultado e não vê quem abriu a gaveta.',
           'Diferença de R$ 20 ou mais fica vermelha.',
@@ -1242,7 +1288,7 @@ export const GUIA: Entrada[] = [
         r: 'Sim, e a comparação entre lojas também. O dinheiro parado não: é sempre 30 dias sem venda.',
       },
     ],
-    palavras: ['relatório', 'relatórios', 'comparar lojas', 'entre lojas', 'curva abc', 'abc', 'dinheiro parado', 'encalhado', 'escala', 'presença', 'turnos', 'direção', 'rede', 'filial'],
+    palavras: ['relatório', 'relatórios', 'comparar lojas', 'entre lojas', 'curva abc', 'abc', 'dinheiro parado', 'encalhado', 'escala', 'turnos', 'turno de caixa', 'direção', 'rede', 'filial'],
   },
 
   // ── Assistente ──
@@ -1250,8 +1296,9 @@ export const GUIA: Entrada[] = [
     chave: 'agente',
     titulo: 'Assistente',
     caminho: '/agente',
+    abre: ['agente.configurar'],
     oQueE:
-      'O agente da loja: nome, jeito de falar, o manual (o que ele sabe de cor), os poderes (o que pode consultar e o que pode propor), os tetos (valor máximo de uma proposta, desconto máximo, gasto de IA por dia, mensagens por dia) e a chave de ligar. Em cima, o balanço do mês — o que ele trouxe contra o que custou — e as propostas esperando o seu sim. Módulo Agente, plano Assistente para cima.',
+      'O agente da loja: nome, jeito de falar, o manual (o que ele sabe de cor), os poderes (o que pode consultar e o que pode propor), os tetos (valor máximo de uma proposta, desconto máximo, gasto de IA por dia, mensagens por dia) e a chave de ligar. Em cima, o balanço do mês — o que ele trouxe contra o que custou — e as propostas esperando o seu sim. Módulo Agente, plano Assistente para cima: com o plano sem o assistente, ou com o módulo desligado, a tela diz só isso e o caminho — ligar em Configurações › O que sua empresa usa, ou trocar de plano em Assinatura.',
     comoFazer: [
       {
         titulo: 'Criar ou ajustar o assistente',
@@ -1277,7 +1324,8 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Ler o balanço e o gasto do dia',
         passos: [
-          '"Trouxe de volta": a soma dos recibos — crediário atrasado que voltou, cliente sumido que comprou, peça encalhada que saiu, reposição antes de acabar, diferença de caixa achada.',
+          '"Trouxe de volta": a soma dos recibos. Hoje nasce recibo de UM jeito, e só com conta que dá para refazer: a reposição que ele propôs no aviso de "vai faltar" e alguém confirmou. Trinta dias depois do sim, conta-se o que aquela peça vendeu além do saldo que havia no aviso — limitado ao que foi pedido e ao que de fato entrou no estoque — e o recibo é a margem dessas vendas (preço cobrado menos custo). Sem entrada, sem venda além do saldo ou sem custo, não há recibo.',
+          'Enquanto nada disso aconteceu, a tela mostra só o custo de IA e o crédito — sem "Trouxe de volta" em zero.',
           '"Custou de IA": só o que ele consumiu. A mensalidade paga o sistema inteiro e não entra aqui.',
           'Embaixo, quanto ele gastou hoje contra o teto do dia. Passou do teto, ele para de responder até amanhã.',
         ],
@@ -1314,6 +1362,7 @@ export const GUIA: Entrada[] = [
     chave: 'auditoria',
     titulo: 'Auditoria',
     caminho: '/auditoria',
+    abre: ['auditoria.ver'],
     oQueE:
       'O livro de tudo que mexeu no sistema: quem fez, o que fez, quando, em qual loja, com valor e motivo — venda, caixa, produto, estoque, cliente, crediário, equipe, tarefas, empresa, plano, assistente e financeiro. Não se edita nem se apaga, nem por nós.',
     comoFazer: [
@@ -1364,6 +1413,7 @@ export const GUIA: Entrada[] = [
     chave: 'lojas',
     titulo: 'Lojas',
     caminho: '/lojas',
+    abre: ['empresa.configurar'],
     oQueE:
       'As lojas da empresa: abrir uma nova com o ramo dela, editar nome, endereço, telefone, CNPJ e horário, marcar depósito, fechar e reabrir. Cada loja tem o próprio estoque, caixa e balcão. Em cima, quantas lojas o plano comporta e quantas estão abertas.',
     comoFazer: [
@@ -1418,6 +1468,7 @@ export const GUIA: Entrada[] = [
     chave: 'assinatura',
     titulo: 'Assinatura',
     caminho: '/assinatura',
+    abre: ['empresa.configurar', 'financeiro.ver'],
     oQueE:
       'O plano da empresa e o uso: lojas, pessoas cadastradas (à vontade), quantas podem estar dentro ao mesmo tempo (é isso que o plano limita), o crédito de IA e quanto dura. Recarga de crédito; trocar de plano vendo antes o preço, o que ganha, o que perde e o que impede; e a comparação item por item.',
     comoFazer: [
@@ -1482,6 +1533,7 @@ export const GUIA: Entrada[] = [
     chave: 'configuracoes',
     titulo: 'Configurações',
     caminho: '/configuracoes',
+    abre: ['empresa.configurar'],
     oQueE:
       'O que a empresa usa: os módulos (crediário, nota fiscal, mais de uma unidade, agente no WhatsApp, metas e comissão, encomenda) e o jeito de vender no balcão (botões ou etiqueta); o programa de pontos; as taxas de maquininha e Pix; as regras do crediário; e os dados da empresa. Só quem configura a empresa mexe.',
     comoFazer: [
@@ -1557,6 +1609,7 @@ export const GUIA: Entrada[] = [
     chave: 'comecar',
     titulo: 'Começar',
     caminho: '/comecar',
+    abre: ['empresa.configurar'],
     oQueE:
       'O cadastro inicial, no primeiro acesso: nome da empresa, razão social, CNPJ, regime, ramo (que prepara eixos de variação, categorias, medida e o manual do assistente), contato, a primeira unidade, como você trabalha, os módulos e o nome do assistente. Leva dois minutos, e tudo muda depois em Configurações.',
     comoFazer: [
@@ -1569,6 +1622,7 @@ export const GUIA: Entrada[] = [
           'Marque os módulos que a empresa usa. O que ficar desmarcado não aparece no sistema, e liga depois em Configurações.',
           'Com o módulo do agente marcado, dê um nome ao assistente e escolha a cor da marca.',
           '"Começar a usar".',
+          'Entrou com a conta errada? "Sair", no alto da tela, volta para a tela de entrar.',
         ],
         capacidade: 'empresa.configurar',
       },
@@ -1769,7 +1823,26 @@ function indexar(): Indexada[] {
 }
 
 /**
- * As cinco telas que melhor respondem à pergunta.
+ * Quem está lendo o Guia: as capacidades que tem (em alguma loja) e os
+ * módulos que a empresa ligou. Vem pronto do servidor — o Guia roda no
+ * navegador e não tem a sessão.
+ */
+export type QuemLe = { capacidades: readonly Capacidade[]; modulos: readonly string[] }
+
+/**
+ * Esta pessoa abre esta tela? A régua é a da própria página. Pura.
+ *
+ * Sem isto, a busca da balconista por "planos" levava a Assinatura, e o
+ * clique caía em "este endereço não abre" — ajuda que manda para uma parede.
+ */
+export function telaAbre(e: Pick<Entrada, 'abre' | 'modulo'>, quem: QuemLe): boolean {
+  if (e.modulo && !quem.modulos.includes(e.modulo)) return false
+  return !e.abre || e.abre.some((c) => quem.capacidades.includes(c))
+}
+
+/**
+ * As cinco telas que melhor respondem à pergunta — só as que `quem` abre,
+ * quando `quem` vem.
  *
  * Pontua por onde a palavra casou: título da tela e sinônimos valem 3,
  * título de um como-fazer vale 2, o corpo (passos e perguntas) vale 1 — uma
@@ -1777,13 +1850,14 @@ function indexar(): Indexada[] {
  * só por repetir. A tela em que a pessoa está ganha 2, se casou com algo:
  * quem pergunta "como corrijo o saldo" dentro do Estoque quer o Estoque.
  */
-export function buscarNoGuia(pergunta: string, telaAtual?: string): ResultadoBusca[] {
+export function buscarNoGuia(pergunta: string, telaAtual?: string, quem?: QuemLe): ResultadoBusca[] {
   const tokens = tokenizar(pergunta)
   if (tokens.length === 0) return []
   const atual = telaAtual === undefined ? undefined : entradaDaTela(telaAtual)
 
   const resultados: ResultadoBusca[] = []
   for (const i of indexar()) {
+    if (quem && !telaAbre(i.entrada, quem)) continue
     let pontos = 0
     const casadosNoTitulo = new Set<number>()
     const casadosNoCorpo = new Set<number>()

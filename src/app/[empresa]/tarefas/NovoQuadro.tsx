@@ -41,8 +41,11 @@ export function NovoQuadro({
   cores,
   gruposPadrao,
   modelos,
+  verPlanos = true,
 }: {
   slug: string
+  /** Quem olha abre os planos? Sem isso, o trancado diz quem troca de plano. */
+  verPlanos?: boolean
   plano: Plano
   unidades: UnidadeVisivel[]
   unidadeAtual: string | null
@@ -106,7 +109,7 @@ export function NovoQuadro({
   )
 
   const modelosTrancados = (resumo: string) => (
-    <Trancado chave="tarefas.modelos" plano={plano} slug={slug} resumo={resumo}>
+    <Trancado chave="tarefas.modelos" plano={plano} slug={slug} resumo={resumo} verPlanos={verPlanos}>
       {cartoes}
     </Trancado>
   )

@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { unidadesVisiveis } from '@/servidor/unidade'
-import { montarFechamento } from '@/servidor/fechamento'
-import { mesChave, mesValido } from '@/servidor/metas'
+import { mesDeAgora, montarFechamento, outroMes } from '@/servidor/fechamento'
+import { mesValido } from '@/servidor/metas'
 import { moduloLigado } from '@/servidor/modulos'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
@@ -35,11 +35,8 @@ const ROTULO: Record<string, string> = {
   pendente: 'falta',
 }
 
-/** O mês anterior ao de hoje: é ele que se fecha, não o que está correndo. */
-function mesPassado(): string {
-  const d = new Date()
-  return mesChave(new Date(d.getFullYear(), d.getMonth() - 1, 1))
-}
+/** O mês anterior ao de hoje, em São Paulo: é ele que se fecha, não o que está correndo. */
+const mesPassado = (): string => outroMes(mesDeAgora(), -1)
 
 export default async function FechamentoDoMes({
   params,
@@ -63,11 +60,10 @@ export default async function FechamentoDoMes({
     moduloLigado(empresa, 'crediario'),
   )
 
-  const [ano, num] = mes.split('-').map(Number)
-  const anterior = mesChave(new Date(ano!, num! - 2, 1))
-  const seguinte = mesChave(new Date(ano!, num!, 1))
+  const anterior = outroMes(mes, -1)
+  const seguinte = outroMes(mes, 1)
   // Não dá para fechar um mês que ainda não terminou.
-  const passouDoFim = seguinte > mesChave(new Date())
+  const passouDoFim = seguinte > mesDeAgora()
 
   return (
     <Estrutura
@@ -147,14 +143,18 @@ export default async function FechamentoDoMes({
                     </span>
                   </div>
                   <p className="max-w-prose pl-4 text-xs text-tinta-3">{i.porque}</p>
-                  {i.onde && (
-                    <Link
-                      href={i.onde.href}
-                      className="pl-4 text-xs font-semibold text-marca underline-offset-2 hover:underline"
-                    >
-                      {i.onde.texto} →
-                    </Link>
-                  )}
+                  {i.onde &&
+                    (i.onde.href ? (
+                      <Link
+                        href={i.onde.href}
+                        className="pl-4 text-xs font-semibold text-marca underline-offset-2 hover:underline"
+                      >
+                        {i.onde.texto} →
+                      </Link>
+                    ) : (
+                      // Tela que esta pessoa não abre: a frase diz quem resolve.
+                      <p className="pl-4 text-xs text-tinta-3">{i.onde.texto}</p>
+                    ))}
                 </li>
               )
             })}

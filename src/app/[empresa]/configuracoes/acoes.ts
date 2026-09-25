@@ -10,6 +10,7 @@ import { comoOrg } from '@/servidor/banco'
 import { salvarConfigCrediario } from '@/servidor/crediario'
 import { salvarTaxas, FORMAS_COM_TAXA } from '@/servidor/taxas'
 import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
+import { plural } from '@/ui/texto'
 
 export type EstadoTaxas = { erro?: string; ok?: string }
 
@@ -121,7 +122,7 @@ export async function salvarPontos(
         // O livro guarda o desenho do programa, não só "mexeu": é o que
         // permite responder depois por que o saldo de alguém rendeu diferente.
         motivo: ativo
-          ? `${porReal} ponto(s)/R$, ponto vale R$ ${pontoVale}, mínimo ${minimo}`
+          ? `${plural(porReal, 'ponto', 'pontos')}/R$, ponto vale R$ ${pontoVale}, mínimo ${minimo}`
           : 'desligou',
       },
     })

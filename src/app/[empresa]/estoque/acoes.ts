@@ -10,6 +10,7 @@ import { comoOrg } from '@/servidor/banco'
 import { mexerEstoque, transferir } from '@/servidor/estoque'
 import { colunaDoDia } from '@/servidor/dia'
 import { registrarEntrada, definirMinimo, type ItemEntrada } from '@/servidor/entrada'
+import { plural } from '@/ui/texto'
 
 /** Tirar de uma loja e pôr na outra. A trava inteira está em `transferir`. */
 export async function transferirAcao(
@@ -144,8 +145,8 @@ export async function darEntrada(
     revalidatePath(`/${slug}/produtos`)
     if (r.contaLancada) revalidatePath(`/${slug}/financeiro`)
 
-    const partes = [`${r.itens} item(ns) no estoque`]
-    if (r.custosAtualizados > 0) partes.push(`custo de ${r.custosAtualizados} produto(s) atualizado`)
+    const partes = [`${plural(r.itens, 'item', 'itens')} no estoque`]
+    if (r.custosAtualizados > 0) partes.push(`custo de ${plural(r.custosAtualizados, 'produto atualizado', 'produtos atualizados')}`)
     if (r.contaLancada) partes.push('conta a pagar lançada')
 
     return {

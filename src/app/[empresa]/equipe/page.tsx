@@ -3,7 +3,7 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { listarEquipe } from '@/servidor/equipe'
 import { listarConvites } from '@/servidor/convite'
 import { comoOrg } from '@/servidor/banco'
-import { pode, podeConceder, unidadesQuePodem, type Papel } from '@/servidor/permissao'
+import { pode, podeConceder, podeVerPlanos, unidadesQuePodem, type Papel } from '@/servidor/permissao'
 import { planoDaEmpresa } from '@/servidor/relatorios'
 import { liberado } from '@/servidor/planos'
 import {
@@ -168,7 +168,7 @@ export default async function TelaEquipe({
         resumo="Uma nota de 0 a 5 por pessoa: meta, tarefas no prazo e dias em que entrou no sistema. A conta fica aberta na linha."
         acao={<SetasDoMes slug={slug} anterior={mesAnterior} seguinte={mesSeguinte} />}
       >
-        <Desempenho slug={slug} plano={plano} pessoas={notas?.pessoas ?? []} tendencia={tendencia} lojas={porLoja} />
+        <Desempenho slug={slug} verPlanos={podeVerPlanos(sessao)} plano={plano} pessoas={notas?.pessoas ?? []} tendencia={tendencia} lojas={porLoja} />
       </Secao>
 
       <Secao titulo="Equipe">

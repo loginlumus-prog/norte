@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { unidadesVisiveis } from '@/servidor/unidade'
 import { janela, lerPeriodo } from '@/servidor/periodo'
-import { pode } from '@/servidor/permissao'
+import { pode, podeVerPlanos } from '@/servidor/permissao'
 import {
   compararLojas,
   curvaAbc,
@@ -22,7 +22,7 @@ import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import { Tabela, type Coluna } from '@/ui/Tabela'
 import { BarrasH } from '@/ui/Graficos'
 import type { Tema } from '@/ui/TrocaTema'
-import { palavra, plural } from '@/ui/texto'
+import { palavra, plural, quantidade } from '@/ui/texto'
 
 // A análise.
 //
@@ -71,6 +71,9 @@ export default async function Analise({
   // A escala pede `caixa.ver` além de `relatorio.ver` — o contador lê o
   // resultado da empresa e não precisa saber quem abriu a gaveta.
   const verEscala = pode(sessao, 'caixa.ver')
+  // A ficha do produto exige editar produto. O contador e o financeiro leem
+  // a análise e não abrem a ficha: para eles o nome vai sem link.
+  const abreFicha = pode(sessao, 'produto.editar')
 
   const lojas = liberado ? await compararLojas(sessao, ids, j.de, j.ate) : []
   const abc = liberado ? await curvaAbc(sessao, ids, j.de, j.ate) : []
@@ -120,14 +123,11 @@ export default async function Analise({
     {
       chave: 'nome',
       titulo: 'Produto',
-      celula: (l) => (
-        <Link href={`/${slug}/produtos/${l.produtoId}`} className="font-medium text-tinta hover:underline">
-          {l.nome}
-          {l.marca && <span className="ml-1.5 text-xs font-normal text-tinta-3">{l.marca}</span>}
-        </Link>
-      ),
+      celula: (l) => <NomeDoProduto slug={slug} ficha={abreFicha} produtoId={l.produtoId} nome={l.nome} marca={l.marca} />,
     },
-    { chave: 'qtd', titulo: 'Saiu', numero: true, celula: (l) => l.quantidade.toLocaleString('pt-BR') },
+    // Com a medida: o sorvete sai em quilo e a camiseta em peça, e a coluna
+    // somava os dois como se fossem a mesma coisa.
+    { chave: 'qtd', titulo: 'Saiu', numero: true, celula: (l) => quantidade(l.quantidade, l.medida) },
     { chave: 'receita', titulo: 'Entrou', numero: true, celula: (l) => brl(l.receita) },
     { chave: 'margem', titulo: 'Margem', numero: true, celula: (l) => brl(l.margem) },
     {
@@ -148,14 +148,9 @@ export default async function Analise({
     {
       chave: 'nome',
       titulo: 'Produto',
-      celula: (l) => (
-        <Link href={`/${slug}/produtos/${l.produtoId}`} className="font-medium text-tinta hover:underline">
-          {l.nome}
-          {l.marca && <span className="ml-1.5 text-xs font-normal text-tinta-3">{l.marca}</span>}
-        </Link>
-      ),
+      celula: (l) => <NomeDoProduto slug={slug} ficha={abreFicha} produtoId={l.produtoId} nome={l.nome} marca={l.marca} />,
     },
-    { chave: 'qtd', titulo: 'Tem', numero: true, celula: (l) => l.quantidade.toLocaleString('pt-BR') },
+    { chave: 'qtd', titulo: 'Tem', numero: true, celula: (l) => quantidade(l.quantidade, l.medida) },
     { chave: 'valor', titulo: 'Custou', numero: true, celula: (l) => brl(l.valor) },
     {
       chave: 'dias',
@@ -233,12 +228,16 @@ export default async function Analise({
             <p className="text-sm text-tinta-3">
               Seu plano hoje é {PLANOS[plano].artigo} {PLANOS[plano].titulo}.
             </p>
-            <Link
-              href={`/${slug}/assinatura`}
-              className="botao-marca mx-auto rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
-            >
-              Ver planos
-            </Link>
+            {podeVerPlanos(sessao) ? (
+              <Link
+                href={`/${slug}/assinatura`}
+                className="botao-marca mx-auto rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
+              >
+                Ver planos
+              </Link>
+            ) : (
+              <p className="text-xs text-tinta-3">Quem responde pela empresa troca de plano em Assinatura.</p>
+            )}
           </div>
         </Cartao>
       ) : (
@@ -357,10 +356,12 @@ export default async function Analise({
             )}
           </Secao>
 
-          {/* ── escala e presença ── */}
+          {/* ── turnos de caixa ──
+              Não é "presença": ponto de quem não abre caixa não existe aqui
+              (os dias em que cada um entrou estão no Desempenho, em Equipe). */}
           {verEscala && (
             <Secao
-              titulo={`Escala e presença · ${j.rotulo.toLowerCase()}`}
+              titulo={`Turnos de caixa · ${j.rotulo.toLowerCase()}`}
               resumo="Cada turno de caixa: quem abriu, quanto tempo ficou, quanto saiu naquele turno e o que faltou ou sobrou na gaveta no fechamento."
             >
               {turnos.length === 0 ? (
@@ -373,5 +374,22 @@ export default async function Analise({
         </>
       )}
     </Estrutura>
+  )
+}
+
+/** O nome do produto: link para a ficha só para quem abre a ficha. */
+function NomeDoProduto(p: { slug: string; ficha: boolean; produtoId: string; nome: string; marca: string }) {
+  const conteudo = (
+    <>
+      {p.nome}
+      {p.marca && <span className="ml-1.5 text-xs font-normal text-tinta-3">{p.marca}</span>}
+    </>
+  )
+  return p.ficha ? (
+    <Link href={`/${p.slug}/produtos/${p.produtoId}`} className="font-medium text-tinta hover:underline">
+      {conteudo}
+    </Link>
+  ) : (
+    <span className="font-medium text-tinta">{conteudo}</span>
   )
 }

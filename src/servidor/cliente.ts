@@ -314,19 +314,32 @@ export async function comprasPorMes(sessao: Sessao, clienteId: string, meses = 1
   })
 }
 
-/** O que a pessoa mais leva. Cinco itens, por quantidade. */
+/**
+ * O que a pessoa mais leva. Cinco itens, pelas vezes que levou.
+ *
+ * Com a MEDIDA de cada um: o sorvete a granel sai em quilo, e sem ela a
+ * ficha mostrava "1,857 un". E a ordem é por vezes, não por quantidade —
+ * 1,8 kg e 3 camisetas não se comparam, mas "levou em 6 compras" sim.
+ */
 export async function favoritosDoCliente(sessao: Sessao, clienteId: string) {
   exigir(sessao, 'cliente.ver')
   const lojas = lojasDasCompras(sessao)
   return comoOrg(sessao.orgId, async (db) => {
-    const linhas = await db.$queryRaw<{ descricao: string; quantidade: string; total: string; vezes: number }[]>`
-      select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total, count(distinct v.id)::int as vezes
+    const linhas = await db.$queryRaw<{ descricao: string; medida: string; quantidade: string; total: string; vezes: number }[]>`
+      select i.descricao, i.medida::text as medida, sum(i.quantidade) as quantidade, sum(i.total) as total,
+             count(distinct v.id)::int as vezes
         from venda_itens i join vendas v on v.id = i.venda_id
        where v.cliente_id = ${clienteId} and v.situacao = 'CONCLUIDA'
          and (${lojas === null} or v.unidade_id = any(${lojas ?? ['-']}))
-       group by 1 order by 2 desc limit 5
+       group by 1, 2 order by vezes desc, total desc limit 5
     `
-    return linhas.map((l) => ({ descricao: l.descricao, quantidade: Number(l.quantidade), total: Number(l.total), vezes: l.vezes }))
+    return linhas.map((l) => ({
+      descricao: l.descricao,
+      medida: l.medida,
+      quantidade: Number(l.quantidade),
+      total: Number(l.total),
+      vezes: l.vezes,
+    }))
   })
 }
 

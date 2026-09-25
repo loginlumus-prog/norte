@@ -30,6 +30,7 @@ import { comoOrg } from './banco'
 import { exigir, pode, type Capacidade, type Sessao } from './permissao'
 import { moduloLigado, type ComModulos } from './modulos'
 import { diaEmSP } from './dia'
+import { duracao } from './texto'
 
 const HORA = 36e5
 
@@ -194,7 +195,9 @@ export function montarPendencias(c: Contagens, slug: string, unidadeId: string |
       nivel: 'atencao',
       frase:
         k.quantos === 1
-          ? `Caixa aberto há ${plural(k.horas, 'hora', 'horas')}`
+          ? // Em dias depois de 24h, como a tela do caixa: "há 286 horas" e
+            // "há 11 dias" para o mesmo caixa eram duas contas diferentes.
+            `Caixa aberto há ${duracao(k.horas * 60)}`
           : `${plural(k.quantos, 'caixa', 'caixas')} abertos há mais de ${CAIXA_ESQUECIDO_HORAS} horas`,
       detalhe: 'Alguém esqueceu de fechar — e a gaveta fica sem conferência.',
       href: link('caixa'),

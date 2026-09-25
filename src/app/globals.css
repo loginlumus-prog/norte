@@ -864,3 +864,201 @@ th.numero {
 @media (prefers-reduced-motion: reduce) {
   .entra { animation: none; }
 }
+
+/* ── página de venda: vida ───────────────────────────────────
+   O topo que se mexe e o sistema por dentro que se clica
+   (`ui/venda/Vitrine.tsx`, `ui/venda/Palco.tsx`, `ui/venda/demo/`).
+
+   As mesmas três regras do resto da página, e elas não se negociam:
+   • parado, tudo está no lugar e legível — nada espera JavaScript para
+     aparecer. O que roda na carga (as palavras do título) é CSS puro, sem
+     esperar observador nenhum;
+   • o que roda em laço PARA quando ninguém vê: o `Palco` põe `data-parado`
+     quando o topo sai da tela ou a aba vai para trás;
+   • `prefers-reduced-motion` zera tudo pelo bloco lá de cima, e os laços de
+     JavaScript nem começam (ver `ui/venda/vivo.ts`). */
+
+/* O título entra palavra por palavra, na carga. Sobe um pouco e desembaça:
+   é o que faz a primeira dobra parecer acordar, e não piscar. */
+@keyframes palavra-sobe {
+  from { opacity: 0; transform: translateY(0.32em); filter: blur(6px); }
+}
+.palavra {
+  display: inline-block;
+  animation: palavra-sobe .7s cubic-bezier(.2,.7,.2,1) both;
+  animation-delay: calc(var(--i, 0) * 60ms + 60ms);
+}
+
+/* "numa tela só": a cor corre do azul-marinho do título para a marca, e de
+   tempos em tempos passa um fio de sol por cima. Luz, não enfeite — e o fio
+   só atravessa, não fica. */
+@keyframes luz-passa {
+  0%       { background-position: 130% 0, 0 0; }
+  38%, 100% { background-position: -30% 0, 0 0; }
+}
+.texto-luz {
+  display: inline-block;
+  background-image:
+    linear-gradient(100deg, transparent 42%, color-mix(in srgb, var(--sol) 85%, var(--titulo)) 50%, transparent 58%),
+    linear-gradient(90deg, var(--titulo) 0%, var(--marca) 100%);
+  background-size: 260% 100%, 100% 100%;
+  background-position: 130% 0, 0 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation:
+    palavra-sobe .7s cubic-bezier(.2,.7,.2,1) both,
+    luz-passa 9s cubic-bezier(.45,0,.2,1) 2.2s infinite;
+  animation-delay: calc(var(--i, 0) * 60ms + 60ms), 2.2s;
+  /* O recorte come o pé do "ç" e do "j" sem um respiro embaixo. */
+  padding-bottom: 0.08em;
+}
+@media (forced-colors: active) {
+  .texto-luz { background: none; -webkit-text-fill-color: currentColor; color: CanvasText; }
+}
+
+/* A luz do topo: três manchas de cor em gradiente radial, andando devagar
+   em ritmos que nunca batem. Sem `filter: blur` — gradiente já nasce macio e
+   custa um décimo para a placa de vídeo. */
+.luz-palco {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.luz-palco i {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+.luz-palco i:nth-child(1) {
+  width: 64rem; height: 34rem; left: 50%; top: -14rem; margin-left: -32rem;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--marca) 16%, transparent), transparent);
+  animation: luz-um 22s ease-in-out infinite alternate;
+}
+.luz-palco i:nth-child(2) {
+  width: 38rem; height: 30rem; right: -10rem; top: 6rem;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--sol) 11%, transparent), transparent);
+  animation: luz-dois 27s ease-in-out infinite alternate;
+}
+.luz-palco i:nth-child(3) {
+  width: 46rem; height: 34rem; left: -14rem; top: 26rem;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--marca) 12%, transparent), transparent);
+  animation: luz-tres 31s ease-in-out infinite alternate;
+}
+@keyframes luz-um   { to { transform: translate3d(6%, 8%, 0) scale(1.12); } }
+@keyframes luz-dois { to { transform: translate3d(-18%, 14%, 0) scale(0.9); } }
+@keyframes luz-tres { to { transform: translate3d(16%, -10%, 0) scale(1.1); } }
+
+/* O halo embaixo da vitrine: duas manchas de luz, a da marca e a do sol,
+   trocando de força devagar atrás da janela. É o que dá profundidade sem
+   desenhar nada. Só `transform` e `opacity` — a placa de vídeo compõe, e o
+   navegador não repinta nada a cada quadro. */
+.halo-vitrine {
+  position: absolute;
+  inset: 4% 2% -6%;
+  z-index: -1;
+  pointer-events: none;
+}
+.halo-vitrine::before,
+.halo-vitrine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  will-change: transform, opacity;
+}
+.halo-vitrine::before {
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--marca) 30%, transparent), transparent);
+  transform: translateX(-16%);
+  animation: halo-a 9s ease-in-out infinite alternate;
+}
+.halo-vitrine::after {
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--sol) 18%, transparent), transparent);
+  transform: translateX(20%);
+  animation: halo-b 11s ease-in-out infinite alternate;
+}
+@keyframes halo-a { to { transform: translateX(-4%) scale(1.08); opacity: .55; } }
+@keyframes halo-b { to { transform: translateX(8%) scale(.9); opacity: .5; } }
+
+/* Parado = fora da tela, aba de trás, ou a pessoa apertou pausa. */
+[data-parado] .luz-palco i,
+[data-parado] .halo-vitrine::before,
+[data-parado] .halo-vitrine::after,
+[data-parado] .pulsa {
+  animation-play-state: paused;
+}
+/* No título, só o fio de sol congela. A ENTRADA continua: parada no meio,
+   ela deixaria "numa tela só" invisível até o JavaScript acordar. */
+[data-parado] .texto-luz { animation-play-state: running, paused; }
+
+/* O resto do topo chega na carga, CSS puro, em escada. Não espera
+   observador: o topo já está na tela quando a página abre. */
+.chega {
+  animation: surgir .6s cubic-bezier(.2,.7,.3,1) both;
+  animation-delay: var(--d, 0s);
+}
+@keyframes janela-sobe {
+  from { opacity: 0; transform: translateY(28px) scale(.985); }
+}
+.janela-sobe { animation: janela-sobe .9s cubic-bezier(.2,.7,.2,1) .25s both; }
+
+/* O ponto verde de "acontecendo agora". */
+.pulsa-bom { --pulso-cor: color-mix(in srgb, var(--bom-vivo) 45%, transparent); }
+
+/* O que acabou de acontecer pousa: entra subindo e crescendo um tico. Roda
+   quando o elemento é montado — o servidor já manda o primeiro na tela, e a
+   entrada dele é CSS puro. */
+@keyframes pousar {
+  from { opacity: 0; transform: translateY(8px) scale(.97); }
+}
+.pousa { animation: pousar .45s cubic-bezier(.2,.8,.3,1) both; }
+
+/* O número que mudou acende e apaga — o olho acha o que mexeu. */
+@keyframes tique {
+  0%   { background-color: color-mix(in srgb, var(--bom-vivo) 22%, transparent); }
+  100% { background-color: transparent; }
+}
+.tique { animation: tique 1.2s ease-out both; border-radius: 6px; }
+
+@keyframes tique-marca {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--marca) 40%, transparent); }
+  60%  { box-shadow: 0 0 0 6px transparent; }
+}
+.tique-marca { animation: tique-marca .9s ease-out; }
+
+/* O botão sendo apertado na proposta da vitrine. */
+@keyframes apertar {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(.92); box-shadow: 0 0 0 4px color-mix(in srgb, var(--marca) 35%, transparent); }
+  100% { transform: scale(1); }
+}
+.aperta { animation: apertar .6s cubic-bezier(.3,.7,.3,1) both; }
+
+/* A virada do roteiro: o painel volta ao começo do dia sem pular. */
+@keyframes virar-dia {
+  from { opacity: .25; }
+}
+.vira-dia { animation: virar-dia .6s ease-out both; }
+
+/* As colunas do gráfico vivo sobem por escala — sem repintar layout. */
+.coluna-viva {
+  transform-origin: bottom center;
+  transition: transform .8s cubic-bezier(.2,.7,.2,1);
+}
+
+/* A tela que a pessoa escolheu no sistema por dentro. */
+.tela-entra { animation: surgir .32s cubic-bezier(.2,.7,.3,1) both; }
+
+/* A dica do gráfico: flutua sobre a coluna, sem empurrar nada. */
+.dica-grafico {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}

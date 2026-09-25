@@ -28,6 +28,7 @@ import type { Plano, SituacaoTarefa } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, SemPermissao, unidadesQuePodem, PODERES, type Papel, type Sessao } from './permissao'
 import { liberado, PLANOS, TAREFAS_ABERTAS_NO_GRATIS } from './planos'
+import { colunaDoDia, diaDaColuna, diaEmSP, inicioDoDiaEmSP, mostrarDiaDaColuna, primeiroDoMes } from './dia'
 
 export type { SituacaoTarefa }
 
@@ -84,38 +85,39 @@ export const situacaoValida = (s: unknown): s is SituacaoTarefa =>
 // aqui compara por DIA. As duas funções abaixo são o único lugar em que uma
 // data vira texto e texto vira data — fora daqui, ninguém faz `split('-')`.
 
+// ── o fuso ───────────────────────────────────────────────────
+// Prazo e início são colunas `date`, e aqui elas vivem do jeito que o banco
+// as devolve: meia-noite UTC do dia (ver `dia.ts`). Já foram meia-noite LOCAL
+// da máquina — o que só dava certo com o servidor no fuso da loja: num
+// servidor em UTC, às 22h30 de São Paulo o "hoje" local já era amanhã, e a
+// tarefa para hoje aparecia atrasada ainda com a loja aberta. "Hoje" agora é
+// sempre o dia de São Paulo (`diaEmSP`), e o dia de uma data sem hora é a
+// parte de data dela em UTC. Nenhuma conta aqui lê o relógio da máquina.
+
 /**
- * "2026-09-16" → a meia-noite LOCAL desse dia. Qualquer outra coisa → null.
+ * "2026-09-16" → o valor da coluna `date` desse dia. Qualquer outra coisa → null.
  *
- * O `new Date('2026-09-16')` puro seria meia-noite UTC, que no Brasil é
- * 21h do dia ANTERIOR — e a tarefa "para sexta" apareceria na quinta. Montar
- * pelos componentes evita isso. E a volta (dia igual ao pedido) é o que barra
- * "2026-02-30", que o JavaScript aceitaria calado como 2 de março.
+ * A volta (dia igual ao pedido) é o que barra "2026-02-30", que o JavaScript
+ * aceitaria calado como 2 de março.
  */
 export function dataSemHora(texto: string | null | undefined): Date | null {
   if (!texto || !/^\d{4}-\d{2}-\d{2}$/.test(texto)) return null
-  const [a, m, d] = texto.split('-').map(Number) as [number, number, number]
-  const data = new Date(a, m - 1, d)
-  if (data.getFullYear() !== a || data.getMonth() !== m - 1 || data.getDate() !== d) return null
+  const data = colunaDoDia(texto)
+  if (Number.isNaN(data.getTime()) || diaDaColuna(data) !== texto) return null
   return data
 }
 
-/** A chave do dia, "2026-09-16", pelo relógio local. Compara como texto. */
+/** A chave do dia de uma data sem hora, "2026-09-16". Compara como texto. */
 export function chaveDoDia(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return diaDaColuna(d)
 }
 
-/**
- * Uma coluna DATE lida pelo Prisma volta como meia-noite UTC. Aqui ela vira a
- * meia-noite LOCAL do mesmo dia, para todo o resto do módulo comparar com
- * `chaveDoDia` sem pensar em fuso.
- */
-const doBanco = (d: Date | null): Date | null =>
-  d ? new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) : null
+/** Uma coluna DATE lida pelo Prisma já está no formato do módulo. */
+const doBanco = (d: Date | null): Date | null => d
 
 /** "16/09" para a coluna de prazo. */
 export function diaCurto(d: Date): string {
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+  return mostrarDiaDaColuna(d)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -132,7 +134,7 @@ export function diaCurto(d: Date): string {
  */
 export function atrasada(prazo: Date | null, situacao: SituacaoTarefa, hoje: Date): boolean {
   if (!prazo || situacao === 'FEITO') return false
-  return chaveDoDia(prazo) < chaveDoDia(hoje)
+  return chaveDoDia(prazo) < diaEmSP(hoje)
 }
 
 export type Resumo = {
@@ -561,7 +563,8 @@ export type LojaNoQuadro = {
 export async function tarefasDaRede(sessao: Sessao, unidadeIds: string[]): Promise<LojaNoQuadro[]> {
   exigir(sessao, 'tarefa.ver')
   const hoje = new Date()
-  const inicioDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+  // "Feita no mês" é o mês de São Paulo, como o resto do módulo.
+  const inicioDoMes = inicioDoDiaEmSP(primeiroDoMes(diaEmSP(hoje)))
 
   return comoOrg(sessao.orgId, async (db) => {
     const quadros = await db.quadro.findMany({

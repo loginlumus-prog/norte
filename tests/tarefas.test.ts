@@ -31,20 +31,22 @@ import { TAREFAS_ABERTAS_NO_GRATIS } from '../src/servidor/planos'
 // que decidem o que a balconista pode tocar, o que o Grátis deixa criar e o
 // que aparece em vermelho — e todas são baratas de testar até o fim.
 
-const dia = (a: number, m: number, d: number) => new Date(a, m - 1, d)
-const HOJE = dia(2026, 9, 16)
+// O prazo é coluna `date`: chega do banco como meia-noite UTC do dia. E
+// "hoje" é um INSTANTE, lido no calendário de São Paulo — nenhum dos dois
+// depende do fuso da máquina que roda o teste.
+const dia = (a: number, m: number, d: number) => new Date(Date.UTC(a, m - 1, d))
+const emSP = (iso: string) => new Date(`${iso}-03:00`)
+const HOJE = emSP('2026-09-16T12:00:00')
 
 // ─────────────────────────────────────────────────────────────
 // DATAS SEM HORA
 // ─────────────────────────────────────────────────────────────
 
 describe('data sem hora', () => {
-  it('lê "AAAA-MM-DD" como meia-noite local', () => {
-    const d = dataSemHora('2026-09-16')!
-    expect(d.getFullYear()).toBe(2026)
-    expect(d.getMonth()).toBe(8)
-    expect(d.getDate()).toBe(16)
-    expect(d.getHours()).toBe(0)
+  it('lê "AAAA-MM-DD" como o valor da coluna date daquele dia', () => {
+    // Meia-noite UTC: é o que o Prisma grava e devolve para `@db.Date`, seja
+    // qual for o fuso do servidor.
+    expect(dataSemHora('2026-09-16')!.toISOString()).toBe('2026-09-16T00:00:00.000Z')
   })
 
   it('recusa o que não é uma data de verdade', () => {
@@ -71,8 +73,8 @@ describe('data sem hora', () => {
   })
 
   it('a chave do dia ignora a hora e compara como texto', () => {
-    expect(chaveDoDia(new Date(2026, 8, 16, 23, 59))).toBe('2026-09-16')
-    expect(chaveDoDia(new Date(2026, 0, 5))).toBe('2026-01-05')
+    expect(chaveDoDia(new Date('2026-09-16T23:59:00Z'))).toBe('2026-09-16')
+    expect(chaveDoDia(dia(2026, 1, 5))).toBe('2026-01-05')
     expect('2026-09-15' < '2026-09-16').toBe(true)
     expect('2026-12-31' < '2027-01-01').toBe(true)
   })
@@ -97,11 +99,19 @@ describe('atrasada', () => {
   it('o prazo de hoje ainda não é atraso — a loja fecha às 19h', () => {
     expect(atrasada(dia(2026, 9, 16), 'A_FAZER', HOJE)).toBe(false)
     // nem com a hora do dia já avançada
-    expect(atrasada(dia(2026, 9, 16), 'A_FAZER', new Date(2026, 8, 16, 18, 50))).toBe(false)
+    expect(atrasada(dia(2026, 9, 16), 'A_FAZER', emSP('2026-09-16T18:50:00'))).toBe(false)
+  })
+
+  it('às 22h30 de São Paulo ainda é hoje — mesmo com o servidor em UTC, onde já é amanhã', () => {
+    // O defeito: com o relógio da máquina em UTC, 22h30 em São Paulo é 01h30
+    // do dia 17, e a tarefa para o dia 16 aparecia atrasada com a loja aberta.
+    const noite = emSP('2026-09-16T22:30:00')
+    expect(noite.toISOString().slice(0, 10)).toBe('2026-09-17')
+    expect(atrasada(dia(2026, 9, 16), 'A_FAZER', noite)).toBe(false)
   })
 
   it('vira atraso na virada do dia, não da hora', () => {
-    expect(atrasada(dia(2026, 9, 16), 'A_FAZER', new Date(2026, 8, 17, 0, 1))).toBe(true)
+    expect(atrasada(dia(2026, 9, 16), 'A_FAZER', emSP('2026-09-17T00:01:00'))).toBe(true)
   })
 
   it('prazo no futuro não é atraso', () => {
@@ -119,8 +129,8 @@ describe('atrasada', () => {
   })
 
   it('compara por dia mesmo quando o prazo tem hora sobrando', () => {
-    expect(atrasada(new Date(2026, 8, 16, 23, 0), 'A_FAZER', new Date(2026, 8, 16, 8, 0))).toBe(false)
-    expect(atrasada(new Date(2026, 8, 15, 23, 59), 'A_FAZER', new Date(2026, 8, 16, 0, 0))).toBe(true)
+    expect(atrasada(new Date('2026-09-16T23:00:00Z'), 'A_FAZER', emSP('2026-09-16T08:00:00'))).toBe(false)
+    expect(atrasada(new Date('2026-09-15T23:59:00Z'), 'A_FAZER', emSP('2026-09-16T00:00:00'))).toBe(true)
   })
 })
 
@@ -508,13 +518,15 @@ describe('isolamento de quadros e tarefas entre empresas', () => {
         tx.query(`insert into tarefas (id, org_id, quadro_id, grupo, titulo, situacao, prioridade, progresso, ordem, quem, criado_em, atualizado_em)
                   values ('invasora', 'org-b', 'qua-b1', '', 'Invasora', 'A_FAZER', 0, 0, 9, 'Ana', now(), now())`),
       ),
-    ).rejects.toThrow(/row-level security|violates/i)
+    // Quem recusa primeiro é o gatilho de FK entre empresas (roda antes do
+    // WITH CHECK do RLS); qualquer um dos dois serve — o que importa é recusar.
+    ).rejects.toThrow(/row-level security|violates|outra empresa/i)
   })
 
   it('A não move a própria tarefa para dentro de B', async () => {
     await expect(
       comoApp(db, 'org-a', (tx) => tx.query(`update tarefas set org_id = 'org-b' where id = 'tar-a1'`)),
-    ).rejects.toThrow(/row-level security|violates/i)
+    ).rejects.toThrow(/row-level security|violates|outra empresa/i)
   })
 
   it('B, por sua vez, vê só o dele — e o que A vê mais o que B vê é o total', async () => {

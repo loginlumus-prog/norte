@@ -23,6 +23,7 @@
 
 import type { Plano } from '@prisma/client'
 import { liberado } from './planos'
+import { plural } from './texto'
 
 export type Programa = {
   ativo: boolean
@@ -92,7 +93,7 @@ export function oferecer(saldo: number, aPagarCent: number, p: Programa): Oferta
     return {
       ...vazio,
       pode: false,
-      recado: `Tem ${saldo} ponto(s). Precisa de ${p.minimo} para usar.`,
+      recado: `Tem ${plural(saldo, 'ponto', 'pontos')}. Precisa de ${p.minimo} para usar.`,
     }
   }
   if (aPagarCent <= 0) {
