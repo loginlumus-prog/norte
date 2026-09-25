@@ -28,6 +28,22 @@
 // plano este item existe" — que é uma linha de texto e é a MESMA pergunta que
 // a pessoa tem na cabeça: "o crediário está no Rede ou não?".
 //
+// ── e onde a forma troca ──────────────────────────────────────
+// Trocava em 768px, e a tabela de verdade tinha `min-w-[60rem]` dentro de uma
+// caixa que rolava de lado. Entre 768 e ~960px ela não cabia, a caixa rolava
+// — e os textos `sr-only` ("tem", "não tem"), que são `position: absolute`,
+// escapavam da caixa (ela não era posicionada) e esticavam a PÁGINA inteira
+// de lado. Dois consertos juntos:
+//   • a tabela só aparece de 1024px para cima, onde as seis colunas cabem
+//     sem largura mínima nenhuma (`table-fixed`, e o detalhe quebra linha em
+//     vez de empurrar a coluna); abaixo disso vale a lista, em duas colunas
+//     a partir de 768px;
+//   • a caixa da tabela é `relative`, então nenhum `sr-only` lá dentro
+//     alcança a página, e não rola de lado — não tem o que rolar.
+//
+// Sem caixa que rola, o cabeçalho com o nome dos planos pode GRUDAR no topo
+// enquanto a pessoa desce as 30 linhas: é a coluna que ela esquece primeiro.
+//
 // Isso só funciona porque a tabela é uma ESCADA: todo recurso, quando existe,
 // existe do plano X para cima. `aPartirDe` confere isso em vez de supor — e se
 // um dia alguém montar um recurso fora da escada, ele cai no caminho de baixo
@@ -36,8 +52,10 @@
 import { PLANOS, RECURSOS, GRUPOS, RECOMENDADO, temRecurso, ORDEM } from '@/servidor/planos'
 import type { Plano } from '@prisma/client'
 
+// Sem centavos: preço de plano é número redondo, e "R$ 1.500,00/mês" numa
+// coluna estreita de cabeçalho quebra linha à toa.
 const brl = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
 
 /**
  * O primeiro plano da escada que tem este recurso — ou `null` quando os planos
@@ -56,8 +74,8 @@ function aPartirDe(em: readonly Plano[]): Plano | null {
 export function CompararPlanos() {
   return (
     <>
-      {/* ── celular: uma linha por item ── */}
-      <dl className="flex flex-col md:hidden">
+      {/* ── celular e tablet: uma linha por item ── */}
+      <dl className="flex flex-col md:grid md:grid-cols-2 md:gap-x-10 lg:hidden">
         {GRUPOS.map((grupo) => (
           <div key={grupo} className="flex flex-col">
             <p className="pt-7 pb-1 text-[10px] font-bold tracking-[0.16em] text-tinta-3 uppercase">
@@ -106,16 +124,16 @@ export function CompararPlanos() {
         ))}
       </dl>
 
-      {/* ── daqui para cima, a tabela de verdade ── */}
-      <div className="hidden overflow-x-auto md:block">
-      <table className="w-full min-w-[60rem] border-collapse text-sm">
+      {/* ── de 1024px para cima, a tabela de verdade ── */}
+      <div className="relative hidden lg:block">
+      <table className="w-full table-fixed border-collapse text-sm">
         <caption className="sr-only">O que cada plano do Norte inclui, item por item.</caption>
 
         <thead>
           <tr>
             <th
               scope="col"
-              className="w-[30%] px-3 pb-3 text-left text-xs font-medium text-tinta-3"
+              className="sticky top-16 z-10 w-[28%] bg-fundo px-3 pt-3 pb-3 text-left align-bottom text-xs font-medium text-tinta-3"
             >
               O que está incluído
             </th>
@@ -124,14 +142,19 @@ export function CompararPlanos() {
                 key={p}
                 scope="col"
                 className={
-                  'px-3 pb-3 text-center align-bottom ' +
-                  (p === RECOMENDADO ? 'rounded-t-norte bg-superficie-2' : '')
+                  'sticky top-16 z-10 border-b border-borda px-3 pt-3 pb-3 text-center align-bottom ' +
+                  (p === RECOMENDADO ? 'rounded-t-norte bg-marca-suave' : 'bg-fundo')
                 }
               >
                 <span className="flex flex-col gap-0.5">
                   <span className="text-[15px] font-bold tracking-tight text-tinta">
                     {PLANOS[p].titulo}
                   </span>
+                  {p === RECOMENDADO && (
+                    <span className="text-[10px] font-bold tracking-[0.1em] text-marca uppercase">
+                      recomendado
+                    </span>
+                  )}
                   <span className="numero text-xs text-tinta-3">
                     {PLANOS[p].mensal !== null ? `${brl(PLANOS[p].mensal!)}/mês` : 'sob consulta'}
                   </span>
@@ -174,14 +197,17 @@ export function CompararPlanos() {
                       key={p}
                       className={
                         'px-3 py-2.5 text-center ' +
-                        (p === RECOMENDADO ? 'bg-superficie-2' : '')
+                        (p === RECOMENDADO ? 'bg-marca-suave/50' : '')
                       }
                     >
                       {/* Número quando é quantitativo; símbolo quando é sim ou
                           não. E o texto invisível vai junto: quem não distingue
                           cor e o leitor de tela leem a mesma coisa. */}
                       {detalhe && tem ? (
-                        <span className="numero text-xs font-semibold text-tinta">{detalhe}</span>
+                        // Sem `numero`: ele trava a quebra de linha, e "3 (+R$ 40
+                        // cada)" numa coluna estreita precisa poder quebrar em
+                        // vez de alargar a tabela.
+                        <span className="text-xs font-semibold text-tinta tabular-nums">{detalhe}</span>
                       ) : tem ? (
                         <>
                           <span aria-hidden className="text-bom">

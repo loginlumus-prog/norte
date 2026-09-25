@@ -15,15 +15,26 @@
 // título ao lado confirma o que o desenho já disse.
 //
 // Duas famílias, e a diferença é onde aparecem:
-//   • as SEIS DORES — a grade "O que resolve";
-//   • os OITO MÓDULOS — o diagrama "Um sistema só", nos grupos do menu real
-//     (`ui/menu.ts`): Vender, Catálogo, Pessoas, Dinheiro e a Empresa em
-//     quatro (Assistente, Auditoria, Assinatura, Configurações).
+//   • as DORES — o bento "O que resolve";
+//   • os MÓDULOS — o painel "Produto" da barra do topo, nos grupos do menu
+//     real (`ui/menu.ts`): Vender, Catálogo, Pessoas, Dinheiro e a Empresa
+//     (Assistente, Auditoria, Assinatura, Configurações);
+//   • a SEGURANÇA — as cinco garantias, cada uma com a mecânica dela;
+//   • os de INTERFACE — seta, menu, fechar, visto — numa grade de 24, que é
+//     onde peça de navegação mora.
 //
 // Nenhuma cor aqui: quem pinta é a classe de quem chama (`text-marca`,
 // `text-tinta-3`), e assim o mesmo desenho serve a papel e a azul-noite.
 
 type Props = { tamanho?: number; className?: string }
+
+// ── o traço acompanha o tamanho ──────────────────────────────
+// A grade é de 48 e o traço 1.6 foi desenhado para ser visto a 40px, onde ele
+// sai com ~1,3px na tela. No menu do topo o mesmo desenho aparece a 24px, e
+// ali 1.6 vira 0,8px — some no branco. Então o traço engrossa na grade na
+// mesma proporção em que o ícone encolhe, e sai com ~1,3px em qualquer
+// tamanho. Acima de 40px ele fica em 1.6, que é o desenho original.
+const traco = (tamanho: number) => Math.max(1.6, 64 / tamanho)
 
 const base = (tamanho: number, className?: string) => ({
   width: tamanho,
@@ -31,7 +42,7 @@ const base = (tamanho: number, className?: string) => ({
   viewBox: '0 0 48 48',
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 1.6,
+  strokeWidth: traco(tamanho),
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
   className,
@@ -197,7 +208,7 @@ export function IconeAssistente({ tamanho = 40, className }: Props) {
           lendo como 1.6 depois da escala. */}
       <g transform="translate(12.8 8.3) scale(0.7)">
         <path d="M16 4 L22.5 20.5 L16 17.4 L9.5 20.5 Z" fill="currentColor" stroke="none" />
-        <path d="M16 17.4 L22.5 20.5 L16 28 L9.5 20.5 Z" strokeWidth={1.6 / 0.7} />
+        <path d="M16 17.4 L22.5 20.5 L16 28 L9.5 20.5 Z" strokeWidth={traco(tamanho) / 0.7} />
       </g>
     </svg>
   )
@@ -234,6 +245,171 @@ export function IconeConfiguracoes({ tamanho = 40, className }: Props) {
       <circle cx="30" cy="14" r="3.2" fill="currentColor" stroke="none" />
       <circle cx="17" cy="24" r="3.2" fill="currentColor" stroke="none" />
       <circle cx="26" cy="34" r="3.2" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Mais duas dores: o fiado e o fechamento do mês
+   ═══════════════════════════════════════════════════════════ */
+
+/** Fiado: o carnê — três parcelas, uma já paga (o visto), duas em aberto. */
+export function IconeFiado({ tamanho = 40, className }: Props) {
+  return (
+    <svg {...base(tamanho, className)}>
+      <rect x="8" y="9" width="32" height="30" rx="3" />
+      <path d="M8 17 H40" opacity="0.5" />
+      <path d="M14 24.5 L16.5 27 L21 22.5" />
+      <path d="M26 25 H34" opacity="0.6" />
+      <circle cx="17.5" cy="33" r="1.4" fill="currentColor" stroke="none" opacity="0.6" />
+      <path d="M26 33 H34" opacity="0.6" />
+    </svg>
+  )
+}
+
+/** Fechamento do mês: a folha do calendário, e o visto de mês conferido. */
+export function IconeFechamento({ tamanho = 40, className }: Props) {
+  return (
+    <svg {...base(tamanho, className)}>
+      <rect x="7" y="10" width="34" height="30" rx="3" />
+      <path d="M7 18 H41" />
+      <path d="M15 6 V13 M33 6 V13" />
+      <path d="M17 29 L22 34 L31 24" />
+    </svg>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════
+   As cinco garantias de segurança
+   ═══════════════════════════════════════════════════════════ */
+
+/** Isolamento: duas paredes seguidas, e o dado da empresa atrás das duas. */
+export function IconeParedes({ tamanho = 40, className }: Props) {
+  return (
+    <svg {...base(tamanho, className)}>
+      <path d="M13 8 V40 M21 8 V40" />
+      <path d="M13 16 H21 M13 24 H21 M13 32 H21" opacity="0.5" />
+      <ellipse cx="34" cy="16" rx="7" ry="3" />
+      <path d="M27 16 V31 c0 1.7 3.1 3 7 3 s7 -1.3 7 -3 V16" />
+      <path d="M27 23.5 c0 1.7 3.1 3 7 3 s7 -1.3 7 -3" opacity="0.6" />
+      <path d="M5 24 H9.5 M7.5 21.5 L10 24 L7.5 26.5" opacity="0.6" />
+    </svg>
+  )
+}
+
+/** Acesso cortado: a pessoa, e o traço que atravessa na hora. */
+export function IconeCorte({ tamanho = 40, className }: Props) {
+  return (
+    <svg {...base(tamanho, className)}>
+      <circle cx="22" cy="16" r="6" />
+      <path d="M9 40 c0-8.5 5.8-13 13-13 c3.5 0 6.6 1 8.8 3" />
+      <circle cx="35" cy="34" r="7" />
+      <path d="M30 39 L40 29" />
+    </svg>
+  )
+}
+
+/** Freio de senha: o cadeado, e o relógio da espera depois do erro. */
+export function IconeFreio({ tamanho = 40, className }: Props) {
+  return (
+    <svg {...base(tamanho, className)}>
+      <rect x="6" y="21" width="22" height="18" rx="3" />
+      <path d="M11 21 V15 a6 6 0 0 1 12 0 V21" />
+      <circle cx="17" cy="30" r="2" fill="currentColor" stroke="none" />
+      <circle cx="35.5" cy="15" r="7.5" />
+      <path d="M35.5 11 V15 L38.5 17" />
+    </svg>
+  )
+}
+
+/** A tela que tranca: o monitor, e o cadeado no meio dele. */
+export function IconeTranca({ tamanho = 40, className }: Props) {
+  return (
+    <svg {...base(tamanho, className)}>
+      <rect x="5" y="8" width="38" height="26" rx="3" />
+      <path d="M18 41 H30 M24 34 V41" opacity="0.6" />
+      <rect x="18.5" y="20" width="11" height="8.5" rx="1.5" />
+      <path d="M21 20 V17.5 a3 3 0 0 1 6 0 V20" />
+    </svg>
+  )
+}
+
+/** A ajuda em toda tela: o balão com o ponto de interrogação. */
+export function IconeGuia({ tamanho = 40, className }: Props) {
+  return (
+    <svg {...base(tamanho, className)}>
+      <circle cx="24" cy="24" r="17" />
+      <path d="M19 19.5 a5 5 0 1 1 7 4.6 c-1.3.6 -2 1.6 -2 3 V28.5" />
+      <circle cx="24" cy="34" r="1.6" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Interface — grade de 24, traço fixo
+   ═══════════════════════════════════════════════════════════
+   Seta, menu, fechar e visto são peça de navegação: moram dentro de botão,
+   a 14–20px, e precisam de traço firme em vez de desenho. Grade própria de
+   24 para não herdar a compensação de traço dos ícones de 48. */
+
+const interface24 = (tamanho: number, className?: string) => ({
+  width: tamanho,
+  height: tamanho,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  className,
+  'aria-hidden': true,
+  focusable: 'false' as const,
+})
+
+export function IconeAbaixo({ tamanho = 16, className }: Props) {
+  return (
+    <svg {...interface24(tamanho, className)}>
+      <path d="M6 9 L12 15 L18 9" />
+    </svg>
+  )
+}
+
+export function IconeAdiante({ tamanho = 16, className }: Props) {
+  return (
+    <svg {...interface24(tamanho, className)}>
+      <path d="M5 12 H19 M13 6 L19 12 L13 18" />
+    </svg>
+  )
+}
+
+export function IconeMenu({ tamanho = 20, className }: Props) {
+  return (
+    <svg {...interface24(tamanho, className)}>
+      <path d="M4 7 H20 M4 12 H20 M4 17 H20" />
+    </svg>
+  )
+}
+
+export function IconeFechar({ tamanho = 20, className }: Props) {
+  return (
+    <svg {...interface24(tamanho, className)}>
+      <path d="M6 6 L18 18 M18 6 L6 18" />
+    </svg>
+  )
+}
+
+export function IconeVisto({ tamanho = 16, className }: Props) {
+  return (
+    <svg {...interface24(tamanho, className)}>
+      <path d="M5 12.5 L10 17.5 L19 7.5" />
+    </svg>
+  )
+}
+
+export function IconeMais({ tamanho = 16, className }: Props) {
+  return (
+    <svg {...interface24(tamanho, className)}>
+      <path d="M12 5 V19 M5 12 H19" />
     </svg>
   )
 }

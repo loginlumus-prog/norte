@@ -727,3 +727,133 @@ th.numero {
   }
 
 }
+
+/* ── página de venda ─────────────────────────────────────────
+   Tudo que só a página de venda (`app/page.tsx` e `ui/venda/`) usa. Fica no
+   fim, num bloco só, para quem mexe no sistema nunca precisar ler isto — e
+   para a página nunca redefinir uma ficha que o sistema usa.
+
+   As regras de movimento são as mesmas do bloco dos banners, lá em cima:
+   tudo pende de `[data-entrou]` (o elemento já está no estado FINAL antes e
+   depois), roda uma vez, entre 300 e 600ms, e o `prefers-reduced-motion` do
+   bloco de cima zera duração e atraso daqui também. */
+
+/* A sombra da vitrine do topo. Mais longa que a `--sombra-alta`: é a única
+   peça da página que precisa parecer flutuar sobre o papel inteiro. No claro
+   leva um sopro do azul da marca; no escuro, sombra colorida some — fica só
+   o preto. */
+:root {
+  --sombra-vitrine:
+    0 1px 2px rgb(16 24 40 / 0.04),
+    0 24px 60px -28px rgb(16 24 40 / 0.28),
+    0 48px 120px -48px rgb(31 79 216 / 0.28);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema='claro']) {
+    --sombra-vitrine: 0 2px 6px rgb(0 0 0 / 0.5), 0 40px 100px -40px rgb(0 0 0 / 0.95);
+  }
+}
+:root[data-tema='escuro'] {
+  --sombra-vitrine: 0 2px 6px rgb(0 0 0 / 0.5), 0 40px 100px -40px rgb(0 0 0 / 0.95);
+}
+
+/* O fundo do topo: papel com um halo azul muito leve vindo de cima e uma
+   grade fina que se dissolve para baixo. É o que tira o branco de "folha em
+   branco" sem pintar a página de azul — e tudo em ficha, então no escuro o
+   halo continua sendo a marca e a grade continua sendo a borda. */
+.fundo-topo {
+  background:
+    radial-gradient(64rem 30rem at 50% -6%, color-mix(in srgb, var(--marca) 11%, transparent) 0%, transparent 70%),
+    radial-gradient(34rem 22rem at 88% 22%, color-mix(in srgb, var(--sol) 7%, transparent) 0%, transparent 70%),
+    var(--superficie);
+}
+.grade-fundo {
+  background-image:
+    linear-gradient(var(--borda-suave) 1px, transparent 1px),
+    linear-gradient(90deg, var(--borda-suave) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 30%, transparent 75%);
+}
+
+/* A coluna do gráfico cresce de baixo. `scaleY` não repinta layout. */
+@keyframes crescer-coluna {
+  from { transform: scaleY(0); }
+}
+[data-entrou] .sobe {
+  transform-origin: bottom center;
+  animation: crescer-coluna .5s cubic-bezier(.2,.7,.3,1) both;
+}
+
+/* A linha da semana se revela da esquerda para a direita. */
+@keyframes revelar {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+[data-entrou] .revela { animation: revelar .6s cubic-bezier(.4,0,.2,1) both; }
+
+/* A situação que muda: "Em andamento" sai, "Feito" entra.
+   Os dois ocupam a MESMA célula de grade, então a troca não empurra nada.
+   Parado — sem JavaScript, antes de entrar na tela, ou com menos movimento
+   — só o estado final aparece: o "antes" é transitório, nunca conteúdo. */
+.vira { display: inline-grid; }
+.vira > * { grid-area: 1 / 1; }
+.vira-antes { opacity: 0; }
+@keyframes vira-sai {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(-6px); }
+}
+@keyframes vira-entra {
+  from { opacity: 0; transform: translateY(6px); }
+}
+[data-entrou] .vira-antes {
+  animation: vira-sai .35s ease-in both;
+  animation-delay: var(--vira, 1.4s);
+}
+[data-entrou] .vira-depois {
+  animation: vira-entra .4s cubic-bezier(.2,.7,.3,1) both;
+  animation-delay: var(--vira, 1.4s);
+}
+
+/* A aba que a pessoa escolheu entra subindo. Só depois do primeiro clique
+   (o componente põe a classe): na carga da página a primeira aba já está lá,
+   parada. */
+.aba-entra { animation: surgir .35s cubic-bezier(.2,.7,.3,1) both; }
+
+/* O painel "Produto" e a gaveta do celular: descem 6px enquanto aparecem.
+   Roda cada vez que o `hidden` sai, porque sair de `display: none` recomeça
+   a animação. */
+@keyframes descer-painel {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+.abre-painel { animation: descer-painel .3s cubic-bezier(.2,.7,.3,1) both; }
+
+/* As perguntas abrem deslizando. É melhoria progressiva: navegador sem
+   `::details-content` abre na hora, como sempre abriu — e o <details>
+   continua funcionando sem JavaScript nenhum. */
+.perguntas { interpolate-size: allow-keywords; }
+.perguntas details::details-content {
+  height: 0;
+  overflow: clip;
+  transition: height .3s cubic-bezier(.2,.7,.3,1), content-visibility .3s allow-discrete;
+}
+.perguntas details[open]::details-content { height: auto; }
+
+/* A conversa do assistente em papel claro.
+   Os três pontinhos e o cursor foram desenhados para o azul-noite (branco e
+   dourado claro). Sobre papel, branco some e dourado claro não passa em
+   contraste — aqui eles viram a tinta fraca e a marca. */
+.conversa-clara .pensando i { background: var(--tinta-3); }
+.conversa-clara .cursor-digita { color: var(--marca); }
+
+/* O papel de parede da conversa: pontinhos na cor da borda. Diz "janela de
+   conversa" sem desenhar o aplicativo de ninguém. */
+.papel-conversa {
+  background-image: radial-gradient(color-mix(in srgb, var(--tinta-3) 20%, transparent) 1px, transparent 1.2px);
+  background-size: 14px 14px;
+}
+
+/* A fileira de abas rola de lado no celular sem mostrar barra de rolagem —
+   a última aba cortada na borda já diz que tem mais. */
+.sem-barra { scrollbar-width: none; }
+.sem-barra::-webkit-scrollbar { display: none; }

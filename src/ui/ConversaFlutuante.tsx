@@ -12,14 +12,23 @@
 //      moldura, sem barra de celular, sem cabeçalho de aplicativo.
 //   2. INDENTAÇÃO DESIGUAL. Conversa de verdade não é uma coluna alinhada:
 //      cada bolha entra um pouco diferente, e é isso que dá ritmo.
-//   3. SANGRIA. A última passa da borda direita e é cortada pela seção — o
-//      olho entende que a conversa continua fora da tela.
-//   4. VIDRO COM CORPO. O fundo é uma aurora com movimento de cor e, atrás,
-//      a foto da lojista. Bolha translúcida demais perde contraste em cima
-//      da pele clara; aqui o fundo é o próprio azul-noite a 78%.
+//   3. RESPIRO DESIGUAL. O recuo de cada lado varia de balão para balão.
+//   4. OS DOIS PAPÉIS DE TODA CONVERSA: o dele à esquerda, o seu à direita,
+//      em cores diferentes — sem precisar de nome em cada balão.
 //   5. ELA ACONTECE. Um balão de cada vez, com "digitando" antes da fala do
 //      assistente e o texto sendo escrito na frente de quem está lendo. É o
 //      que separa "conversa" de "lista de mensagens".
+//
+// ── em 24/09 virou papel claro ───────────────────────────────
+// A página inteira ficou branca, e a conversa saiu da aurora escura. O que
+// valia continua valendo — nenhuma moldura de celular, indentação desigual,
+// um balão de cada vez —, mas o fundo passou a ser o papel de parede de
+// pontinhos da seção (`.papel-conversa`) e os balões viraram os dois papéis
+// de qualquer conversa: o dele branco com borda, o seu no verde claro da
+// situação "bom". Tudo em ficha, então o tema escuro acompanha sozinho.
+//
+// A sangria da última bolha saiu junto: ela existia para romper a borda da
+// aurora; dentro de um painel claro ela só cortaria texto.
 //
 // ── por que máquina de estados, e não CSS ────────────────────
 // A versão anterior escalonava com `animation-delay`: as bolhas APARECIAM em
@@ -53,28 +62,25 @@ const FALAS: Fala[] = [
   {
     de: 'agente',
     texto: 'Bom dia! A Camiseta canelada Preto · G tem 2 peças e vende 9 por semana. Acaba quinta.',
-    recuo: 'ml-0',
+    recuo: 'mr-8',
   },
-  { de: 'dono', texto: 'pede 20 pro fornecedor', recuo: 'mr-4' },
+  { de: 'dono', texto: 'pede 20 pro fornecedor', recuo: 'ml-10' },
   {
     de: 'agente',
     texto: 'Anotei a compra: 20 un × R$ 22,40 = R$ 448,00, vencimento em 30 dias. Confirma?',
-    recuo: 'ml-6',
+    recuo: 'mr-4',
   },
-  { de: 'dono', texto: 'confirmo', recuo: 'mr-0' },
+  { de: 'dono', texto: 'confirmo', recuo: 'ml-16' },
   {
     de: 'agente',
     texto: 'Pronto. Entrou em contas a pagar e avisei o Carlos no balcão.',
-    destaque: 'Esse mês eu já recuperei R$ 1.240 de crediário atrasado.',
-    // Sangra: passa da borda direita da seção e é cortada — o que sugere que a
-    // conversa continua fora do quadro, em vez de terminar ali.
-    //
-    // Só a partir de `sm`. No celular a seção inteira tem a largura da tela, e
-    // a sangria deixava de ser efeito para virar defeito: os 40px saíam pela
-    // direita e COMIAM O FIM DA FRASE — "avisei o Carlos no balcão" terminava
-    // fora da tela, e a frase de maior valor da conversa ("já recuperei
-    // R$ 1.240") era justamente a mais cortada.
-    recuo: 'ml-3 sm:-mr-10',
+    // O destaque é um dos recibos que a tela do assistente soma de verdade
+    // ("reposição antes de acabar"). Já foi "recuperei R$ 1.240 de crediário
+    // atrasado" — e cobrar crediário é poder que ainda não existe
+    // (`servidor/poderes.ts`, `disponivel: false`). Frase de exemplo também
+    // promete.
+    destaque: 'Esse mês já foram 4 reposições antes de a peça acabar.',
+    recuo: 'mr-2',
   },
 ]
 
@@ -169,15 +175,15 @@ export function ConversaFlutuante() {
   const pensando = animando && n < FALAS.length && fase === 'pensa'
 
   return (
-    <div ref={bloco} className="relative">
+    <div ref={bloco} className="conversa-clara relative">
       {/* O nome flutua acima da conversa, sem barra de aplicativo em volta. */}
       <div className="mb-4 flex items-center gap-2.5">
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-bom-vivo text-sm font-bold text-white shadow-[0_0_24px_-4px_var(--bom-vivo)]">
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-bom-vivo text-sm font-bold text-white shadow-norte">
           A
         </span>
         <span className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold text-nav-tinta">Aurora</span>
-          <span className="text-[11px] text-nav-tinta-2">assistente da sua loja</span>
+          <span className="text-sm font-semibold text-tinta">Aurora</span>
+          <span className="text-[11.5px] text-tinta-3">assistente da sua loja · no WhatsApp</span>
         </span>
       </div>
 
@@ -206,10 +212,7 @@ export function ConversaFlutuante() {
 
         {pensando && (
           <div className={`flex justify-start ${FALAS[n]!.recuo}`}>
-            <div
-              className="balao-entra rounded-2xl rounded-bl-md px-4 py-3.5 backdrop-blur-xl"
-              style={VIDRO.agente}
-            >
+            <div className="balao-entra rounded-2xl rounded-bl-md border border-borda bg-superficie px-4 py-3.5 shadow-norte">
               <span className="pensando" role="status" aria-label="Aurora está digitando">
                 <i />
                 <i />
@@ -220,29 +223,11 @@ export function ConversaFlutuante() {
         )}
       </div>
 
-      <p className="mt-4 text-[11px] text-nav-tinta-2">
+      <p className="mt-4 text-[11.5px] text-tinta-3">
         “Aurora” é só um exemplo — quem dá o nome é você.
       </p>
     </div>
   )
-}
-
-// O fundo precisa de CORPO, não só de desfoque.
-//
-// A versão anterior era branco a 7% com blur médio: sobre o azul liso
-// funcionava, e sobre a FOTO da lojista parou de funcionar — a pele clara e a
-// blusa branca subiam o fundo atrás do texto e o contraste caía para menos de
-// 3:1. Desfoque não resolve contraste: borra a imagem, mas mantém a
-// luminosidade média dela. Quem resolve é opacidade.
-const VIDRO: Record<'agente' | 'dono', React.CSSProperties> = {
-  agente: {
-    background: 'color-mix(in srgb, var(--nav) 78%, rgb(0 0 0 / 0.5))',
-    border: '1px solid rgb(255 255 255 / 0.09)',
-  },
-  dono: {
-    background: 'color-mix(in srgb, var(--bom) 62%, rgb(6 12 26 / 0.86))',
-    border: '1px solid rgb(255 255 255 / 0.09)',
-  },
 }
 
 function Balao({
@@ -262,19 +247,18 @@ function Balao({
     <div className={`flex ${dele ? 'justify-end' : 'justify-start'} ${f.recuo}`}>
       <div
         className={
-          'balao-entra max-w-[27rem] rounded-2xl px-4 py-2.5 backdrop-blur-xl ' +
+          'balao-entra max-w-[26rem] rounded-2xl border px-4 py-2.5 shadow-norte ' +
           (dele
-            ? 'rounded-br-md text-right shadow-[0_10px_36px_-10px_rgb(0_0_0/0.6)]'
-            : 'rounded-bl-md shadow-[0_10px_36px_-10px_rgb(0_0_0/0.7)]')
+            ? 'rounded-br-md border-bom-borda bg-bom-fundo text-right'
+            : 'rounded-bl-md border-borda bg-superficie')
         }
-        style={dele ? VIDRO.dono : VIDRO.agente}
       >
-        <p className="text-[13px] leading-relaxed text-white">
+        <p className="text-[13.5px] leading-relaxed text-tinta">
           {texto}
           {escrevendo && destaque === undefined && <span className="cursor-digita">|</span>}
         </p>
         {destaque !== undefined && (
-          <p className="mt-1.5 border-t border-white/12 pt-1.5 text-[13px] leading-relaxed font-semibold text-sol-claro">
+          <p className="mt-1.5 border-t border-borda-suave pt-1.5 text-[13px] leading-relaxed font-semibold text-bom">
             {destaque}
             {escrevendo && <span className="cursor-digita">|</span>}
           </p>

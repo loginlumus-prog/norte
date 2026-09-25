@@ -1,61 +1,161 @@
 import type { Metadata } from 'next'
-import type { ComponentType } from 'react'
-import Image from 'next/image'
+import type { ComponentType, ReactNode } from 'react'
 import type { Plano } from '@prisma/client'
 import {
   PLANOS as LIMITES,
   PLANOS_COM_PRECO,
   RECOMENDADO,
+  RECURSOS,
+  ORDEM,
   doPlano,
   planoQueAbre,
   type Limite,
 } from '@/servidor/planos'
+import { PODERES, TODOS_PODERES } from '@/servidor/poderes'
 import { Marca, Simbolo } from '@/ui/Marca'
-import { ConversaFlutuante } from '@/ui/ConversaFlutuante'
-import { Digitando } from '@/ui/Digitando'
-import { CompararPlanos } from '@/ui/CompararPlanos'
-import { TrocaTema } from '@/ui/TrocaTema'
-import { CenaViva } from '@/ui/CenaViva'
 import { AoEntrar } from '@/ui/AoEntrar'
-import { QuadroVivo } from '@/ui/QuadroVivo'
-import { Modulos } from '@/ui/Modulos'
+import { ConversaFlutuante } from '@/ui/ConversaFlutuante'
+import { CompararPlanos } from '@/ui/CompararPlanos'
+import { Estrelas } from '@/ui/Estrelas'
+import { BarraTopo } from '@/ui/venda/BarraTopo'
+import { Vitrine } from '@/ui/venda/Vitrine'
+import { Ramos } from '@/ui/venda/Ramos'
+import { AbasProduto, type Aba } from '@/ui/venda/AbasProduto'
+import { SimplesAvancado } from '@/ui/venda/SimplesAvancado'
 import {
+  TelaAnalise,
+  TelaAssistente,
+  TelaBalcao,
+  TelaEquipe,
+  TelaEstoque,
+  TelaFinanceiro,
+} from '@/ui/venda/Telas'
+import { Avatar, Barra, Pilula, reais as reaisCentavos } from '@/ui/venda/Pecas'
+import { COMECAR, ENTRAR, mailto } from '@/ui/venda/mapa'
+import {
+  IconeAbaixo,
+  IconeAdiante,
+  IconeAssistente,
+  IconeAuditoria,
   IconeControle,
-  IconeEquipes,
+  IconeCorte,
+  IconeDinheiro,
   IconeExcesso,
+  IconeFechamento,
+  IconeFiado,
+  IconeFreio,
+  IconeGuia,
+  IconeMais,
+  IconeParedes,
+  IconePessoas,
   IconePreco,
   IconeRuptura,
-  IconeTempo,
+  IconeTranca,
+  IconeVender,
+  IconeVisto,
 } from '@/ui/Icones'
 
 // A página de venda.
 //
 // Ela existe para uma pessoa que nunca ouviu falar da gente decidir, em dois
-// minutos, se vale a conversa. Por isso a ordem é: o que é → por que dói →
-// o que faz → o que só a gente faz → quanto custa → e as dúvidas que travam
-// a assinatura.
+// minutos, se vale a conversa. A ordem responde as perguntas na ordem em que
+// elas aparecem na cabeça de quem chega:
 //
-// Três coisas que NÃO estão aqui, de propósito:
+//   1. o que é isto?            → o topo, com o produto grande logo embaixo
+//   2. serve para o meu ramo?   → as fichas dos ramos, lidas da tabela real
+//   3. como é por dentro?       → as abas, uma tela por módulo
+//   4. vou conseguir usar?      → simples ou avançado
+//   5. o que só vocês têm?      → o assistente, e o controle sobre ele
+//   6. resolve o que me dói?    → o bento das dores, cada uma com a tela
+//   7. meu dado fica seguro?    → as cinco garantias
+//   8. quanto custa?            → os planos e a tabela item por item
+//   9. e se…?                   → as dúvidas
 //
+// ── em 24/09 ela virou branca ────────────────────────────────
+// O dono achou a versão anterior amadora e pediu "tema branco, muito
+// moderna, fácil de navegar", olhando Monday e ClickUp. O que mudou de
+// desenho, e por quê:
+//
+// • O topo deixou de ser uma cena desenhada sobre azul-noite e passou a ser
+//   o PRODUTO, grande, em HTML (`ui/venda/Vitrine.tsx`). Quem chega quer
+//   saber o que é; um painel legível responde, uma ilustração sugere.
+// • A aurora escura saiu de todas as seções. Azul-noite sobrou só onde é
+//   detalhe: o azulejo do símbolo e o bloco pequeno das duas paredes.
+// • A barra ganhou o painel "Produto", com os grupos do menu real — é o
+//   mapa do sistema inteiro a um clique, em vez de oito âncoras soltas.
+// • As telas viraram abas: seis seções de texto-e-figura seguidas cansam;
+//   uma área onde a pessoa escolhe o que ver, não.
+//
+// ── três coisas que NÃO estão aqui, de propósito ─────────────
 // • Logo de cliente e depoimento. Não temos ainda. Inventar isso é o tipo de
 //   mentira que o primeiro cliente descobre na primeira conversa.
 // • Número de mercado ("+30% de vendas"). Não medimos. Promessa que a gente
 //   não sabe cumprir vira pedido de reembolso no segundo mês.
-// • "Grátis para sempre". Cada cliente custa uma instância de WhatsApp desde
-//   o primeiro dia, mesmo parado.
+// • "O mais pedido" no plano do meio. Estava no selo — e sem cliente nenhum
+//   não existe "mais pedido". O selo agora diz o que é verdade: é o plano
+//   que a gente RECOMENDA (`RECOMENDADO` em `servidor/planos.ts`).
+//
+// ── e o "grátis para sempre", que antes estava nessa lista ───
+// Ele saía porque cada cliente custava uma instância de WhatsApp desde o
+// primeiro dia. Isso deixou de ser verdade: o Grátis não tem assistente
+// (`modulos: []`, `creditoMensal: 0`), não custa instância nenhuma, e a
+// tabela de planos diz "sem prazo para acabar". O que tem limite é o volume
+// (`tetoVendasMes`), e a página diz o número.
+//
+// ── de onde vem cada número ──────────────────────────────────
+// Preço, cota e crédito: `servidor/planos.ts`. Em que plano cada tela abre:
+// `RECURSOS` e `LIBERACOES`, pelo mesmo arquivo. O que o assistente faz:
+// `servidor/poderes.ts`. O que cada ramo semeia: `servidor/modulos.ts`.
+// Nenhum desses aparece digitado à mão aqui — número repetido é o jeito de
+// a página passar a prometer o que o sistema não entrega.
 
 export const metadata: Metadata = {
-  title: 'Norte — gestão da empresa, do balcão ao WhatsApp',
+  title: 'Norte — gestão da empresa, do balcão ao fim do mês',
   description:
-    'Sistema de gestão para comércio: produto, estoque, balcão, caixa, tarefas da equipe e o resultado do mês. Com um assistente de IA no WhatsApp que você batiza e que conhece a sua operação.',
+    'Sistema de gestão para comércio: balcão e caixa, produto com grade, estoque por loja, financeiro com DRE, tarefas e desempenho da equipe. Modo simples para o balcão e avançado para o dono, e um assistente que propõe e espera o seu sim.',
 }
 
-// O texto de venda de cada plano.
-//
-// Só o que é TEXTO mora aqui. Preço, cota de loja, cota de gente e crédito
-// mensal vêm de `servidor/planos.ts`, que é a mesma fonte que a tela de
-// assinatura consulta para barrar a criação da sexta loja. Número repetido à
-// mão é como a página passa a prometer o que o sistema não entrega.
+/* ═══════════════════════════════════════════════════════════
+   Os números, lidos da tabela
+   ═══════════════════════════════════════════════════════════ */
+
+const reais = (v: number) =>
+  new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 0,
+  }).format(v)
+
+const MENOR_MENSAL = Math.min(...PLANOS_COM_PRECO.map((p) => LIMITES[p].mensal!))
+
+/** "Do Balcão", "Da Direção" — o `doPlano` com maiúscula, para começo de frase. */
+const DoPlano = (p: Plano) => doPlano(p).replace(/^d/, 'D')
+
+/**
+ * Em que plano um recurso da tabela existe, dito em uma frase.
+ *
+ * Recebe o TÍTULO exato da linha em `RECURSOS`. Se alguém renomear a linha
+ * lá e esquecer aqui, a página quebra na hora de montar — e é de propósito:
+ * quebrar no build é melhor que mentir no ar.
+ */
+function desde(titulo: string): string {
+  const r = RECURSOS.find((x) => x.titulo === titulo)
+  if (!r) throw new Error(`A página de venda cita "${titulo}", que não existe em RECURSOS.`)
+  if (r.em.length === ORDEM.length) return 'Em todos os planos, inclusive o Grátis'
+  const primeiro = ORDEM.find((p) => r.em.includes(p))!
+  return `${DoPlano(primeiro)} para cima`
+}
+
+/* ═══════════════════════════════════════════════════════════
+   O texto de venda de cada plano
+   ═══════════════════════════════════════════════════════════
+   Só o que é TEXTO mora aqui. Preço, cota de loja, cota de gente e crédito
+   mensal vêm de `servidor/planos.ts`, que é a mesma fonte que a tela de
+   assinatura consulta para barrar a criação da sexta loja.
+
+   O sufixo " · em breve" vira etiqueta. Toda linha que corresponde a um
+   recurso com `quando: 'breve'` na tabela TEM que levar o sufixo — hoje, a
+   nota fiscal e a análise do negócio. */
 const CARTOES: Record<
   Plano,
   {
@@ -70,79 +170,66 @@ const CARTOES: Record<
   GRATIS: {
     conta: null,
     nota: 'sem prazo para acabar e sem cartão',
-    itens: [
-      'Produtos com as variações da sua loja',
-      'Estoque com histórico de cada movimento',
-      'Balcão, caixa e fechamento do turno',
-      'Clientes e histórico de compra',
-      // O quadro existe no Grátis de propósito (ver RECURSOS): é a tela que a
-      // equipe abre todo dia, e é onde quem paga zero vê, com nome e cadeado,
-      // o que o plano de cima abre.
-      'Um quadro de tarefas da equipe',
-      'Um relatório simples do mês',
-    ],
-    fora: [
-      'Nota fiscal',
-      'Assistente no WhatsApp',
-      'DRE e financeiro completo',
-      'Mais de uma pessoa por vez',
-    ],
+    itens: [],
+    fora: [],
   },
   BALCAO: {
     conta: null,
     nota: 'o WhatsApp continua sendo você',
     itens: [
       'Tudo do Grátis, sem teto de vendas',
-      'Nota fiscal no balcão',
-      'Financeiro e o DRE do mês',
       'Até três lojas, cada uma com seu estoque',
+      'Financeiro e o DRE do mês',
+      'Fechamento de mês guiado',
       'Quadros de tarefas com responsável, prazo e prioridade',
       'Preços: margem e markup item a item',
       'Equipe sem limite de cadastro, com permissão por pessoa',
-      'Fechamento de mês guiado',
+      // Estava sem a etiqueta — e a tabela marca a nota fiscal como
+      // "em breve" desde 24/09 (depende de emissor contratado e do
+      // certificado A1 de cada loja). Sem a etiqueta, o cartão prometia o que
+      // a tabela logo abaixo desmentia.
+      'Nota fiscal no balcão · em breve',
     ],
-    fora: ['Assistente no WhatsApp', 'Desempenho da equipe em estrelas', 'Crediário próprio'],
+    fora: ['Assistente', 'Desempenho da equipe em estrelas', 'Crediário próprio'],
   },
   BALCAO_AGENTE: {
-    // "R$ 120 de crédito" não diz nada para quem nunca comprou token. O número
+    // "R$ 100 de crédito" não diz nada para quem nunca comprou token. O número
     // sai do custo medido por conversa, com cache e roteamento de modelo.
     conta: '~1.650 conversas no WhatsApp',
     nota: 'renovado todo mês · compra mais quando quiser',
     itens: [
       'Tudo do Balcão, e até cinco lojas',
-      'Assistente no WhatsApp, com o nome que você der',
-      // "Aviso de peça acabando" é o assistente falando; a PREVISÃO de ruptura
-      // contra o prazo do fornecedor é a tela de Estoque, e é da Direção para
-      // cima — por isso ela está em `fora`, com outro nome, para não parecer
-      // a mesma coisa dita duas vezes.
-      'Cobrança de atraso, aviso de peça acabando, relatório 2× por dia',
+      'Assistente com o nome que você der',
+      // Dizia "cobrança de atraso": cobrar crediário é poder que ainda não
+      // existe (`servidor/poderes.ts`), e o crediário nem é deste plano.
+      'Aviso de peça acabando e relatório de manhã e à noite',
       'Linha do tempo, modelos de quadro e desempenho da equipe em estrelas',
+      'Metas e comissão por vendedor',
       'Preço sugerido para a margem alvo',
-      'Análise básica: o que aconteceu no dia e no mês · em breve',
-      'Teto de valor e de desconto que você define',
+      'Teto de valor e de gasto que você define',
       'Toda ação do assistente assinada no livro',
+      'Análise básica: o que aconteceu no dia e no mês · em breve',
     ],
     fora: [
-      'Análise profunda do negócio',
       'Previsão de ruptura contra o prazo do fornecedor',
+      'Curva ABC e comparação entre lojas',
       'Crediário próprio',
-      'Lojas sem limite',
     ],
   },
   REDE: {
-    selo: 'O mais pedido',
+    // Era "O mais pedido". Sem cliente, não existe "mais pedido" — ver o topo.
+    selo: 'Recomendado',
     conta: '~5.000 conversas no WhatsApp',
     nota: 'renovado todo mês · compra mais quando quiser',
     itens: [
       'Tudo do Assistente, sem limite de loja nem de gente',
-      'Análise profunda: onde está perdendo, onde está ganhando, e o que fazer · em breve',
-      'Previsão de ruptura com prazo de reposição: quantos dias o saldo aguenta, e até quando pedir',
-      'Quadro da rede inteira e desempenho completo da equipe, loja a loja',
+      'Previsão de ruptura: quantos dias o saldo aguenta, e até quando pedir',
       'Comparação entre lojas: venda, margem e estoque parado lado a lado',
-      'Curva ABC e dinheiro parado: o que sustenta e o que come o capital',
+      'Curva ABC e dinheiro parado',
+      'Crediário próprio, com juros e parcelas',
+      'Quadro da rede inteira e desempenho completo, loja a loja',
       'Escala e presença: quem abriu o caixa, a que horas, e quanto vendeu',
-      'Crediário próprio, com juros e cobrança',
-      'Cada gerente vê só a loja dele',
+      'Análise profunda: onde está perdendo e o que fazer · em breve',
     ],
     fora: [],
   },
@@ -156,81 +243,381 @@ const CARTOES: Record<
 
 const CORPORATIVO_EXTRAS: [string, string][] = [
   ['Site, tráfego e condução', 'A gente entra junto na operação, não só entrega o sistema.'],
-  ['Login único da empresa', 'SSO, ambiente dedicado e acordo de nível de serviço.'],
-  ['Gerente de conta', 'Uma pessoa nossa que conhece a sua operação pelo nome.'],
+  ['Atendimento direto', 'Uma pessoa nossa que conhece a sua operação pelo nome.'],
+  ['Crédito sob medida', 'O volume de conversa de uma rede grande não cabe em número de tabela.'],
 ]
-
-const reais = (v: number) =>
-  new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    maximumFractionDigits: 0,
-  }).format(v)
 
 const cotaLojas = (l: Limite) =>
   l.unidades === null ? 'Sem limite' : l.unidades === 1 ? '1 loja' : `Até ${l.unidades}`
 
 // O número que se paga não é quanta gente existe, é quanta gente fica dentro
 // ao mesmo tempo. Cadastrar a equipe toda é de graça em qualquer plano — e
-// dizer isso na tabela é o que evita a pergunta na hora da venda.
+// dizer isso no cartão é o que evita a pergunta na hora da venda.
 const cotaGente = (l: Limite) =>
   l.vagas === null ? 'Sem limite' : l.vagas === 1 ? '1 por vez' : `${l.vagas} ao mesmo tempo`
 
-
-const FAZ = [
+/* ═══════════════════════════════════════════════════════════
+   As abas do produto
+   ═══════════════════════════════════════════════════════════
+   Três frases por tela, cada uma dizendo uma coisa que a tela FAZ — conferida
+   contra o manual (`servidor/guia.ts`). A última linha diz em que plano, lida
+   da tabela. */
+const ABAS: Aba[] = [
   {
-    t: 'Produtos',
-    d: 'Você nomeia os eixos: Cor e Tamanho na roupa, Numeração na sapataria, Sabor na sorveteria. Vende por unidade, por quilo, por litro ou por par.',
+    id: 'balcao',
+    titulo: 'Balcão',
+    icone: <IconeVender tamanho={18} />,
+    chamada: 'Vender rápido, e fechar o caixa sem susto.',
+    frases: [
+      'Bipe a etiqueta e o Enter lança. Quem não etiqueta — sorveteria, lanchonete, floricultura — vende tocando em botões grandes.',
+      'Várias formas de pagamento na mesma venda, troco grande na tela, e três preços por produto: à vista, no cartão e no crediário.',
+      'O caixa abre, sangra e fecha conferindo a gaveta. A diferença vai para o livro — inclusive quando é zero.',
+    ],
+    plano: `${desde('Balcão, caixa e sangria')}.`,
+    tela: <TelaBalcao />,
   },
   {
-    t: 'Estoque',
-    d: 'Cada loja com o saldo dela. A conta acontece dentro do banco, então duas vendas ao mesmo tempo nunca perdem uma baixa. E o histórico é a verdade: o sistema acusa se o saldo divergir.',
+    id: 'estoque',
+    titulo: 'Estoque',
+    icone: <IconeControle tamanho={18} />,
+    chamada: 'Cada loja com o seu saldo, e o aviso antes de faltar.',
+    frases: [
+      'Cada loja com o saldo dela. Transferir sai de uma e entra na outra na mesma operação.',
+      '“Vai faltar”: quantos dias o saldo aguenta no ritmo dos últimos 30 dias, contra o prazo de reposição — e até quando pedir.',
+      'O histórico é a verdade: se o saldo divergir da soma dos movimentos, o sistema acusa em vez de esconder.',
+    ],
+    plano: `Estoque: ${desde('Estoque, entrada de mercadoria e balanço').toLowerCase()}. “Vai faltar”: ${desde('Previsão de ruptura com prazo de reposição').toLowerCase()}.`,
+    tela: <TelaEstoque />,
   },
   {
-    t: 'Preços',
-    d: 'Margem e markup item a item, e o preço que a margem alvo pediria. O que está abaixo do custo aparece numa lista — antes de virar prejuízo no DRE.',
+    id: 'financeiro',
+    titulo: 'Financeiro',
+    icone: <IconeFechamento tamanho={18} />,
+    chamada: 'Saber quanto sobrou, e não só quanto vendeu.',
+    frases: [
+      'Contas a pagar avisando o que venceu, o que vence hoje e o que vem nos próximos 15 dias.',
+      'O resultado do mês puxa direto das vendas, com o custo de cada peça e a taxa da maquininha descontados venda a venda.',
+      'O fechamento guiado diz o que falta conferir — caixa, gaveta, contas, taxa, fiado — antes de o número do mês valer.',
+    ],
+    plano: `${desde('Financeiro com DRE do mês')}.`,
+    tela: <TelaFinanceiro />,
   },
   {
-    t: 'Balcão',
-    d: 'Bipa a etiqueta, Enter lança. Pagamento dividido em várias formas, troco calculado, e o caixa fecha conferindo a gaveta.',
+    id: 'equipe',
+    titulo: 'Equipe e tarefas',
+    icone: <IconePessoas tamanho={18} />,
+    chamada: 'A equipe no mesmo quadro, e o mês em estrelas.',
+    frases: [
+      'O quadro no jeito que a equipe já conhece: grupos, situação colorida, responsável, prazo e linha do tempo.',
+      'Meta e comissão por vendedor, contando o vendido já sem as devoluções.',
+      'De 0 a 5 estrelas por pessoa e por mês: meta batida, tarefa no prazo e dias presente.',
+    ],
+    plano: `Quadro de tarefas: ${desde('Quadro de tarefas da equipe').toLowerCase()}. Estrelas: ${desde('Desempenho da equipe em estrelas').toLowerCase()}.`,
+    tela: <TelaEquipe />,
   },
   {
-    t: 'Financeiro',
-    d: 'Contas a pagar avisando o que venceu, despesa lançada em dois cliques e o DRE mensal no formato que o seu contador reconhece.',
+    id: 'assistente',
+    titulo: 'Assistente',
+    icone: <IconeAssistente tamanho={18} />,
+    chamada: 'Um assistente que age — e que pede antes.',
+    frases: [
+      'Você dá o nome, o jeito de falar e o manual da loja. Ele conta como foi o dia e consulta estoque, caixa e contas.',
+      'Para agir — registrar uma compra, lançar uma conta, corrigir o estoque — ele monta a proposta com o número e espera o seu sim.',
+      'Os tetos moram no banco: valor máximo, desconto máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
+    ],
+    plano: `${desde('Assistente no WhatsApp')}.`,
+    tela: <TelaAssistente />,
   },
   {
-    t: 'Equipe',
-    d: 'Permissão por pessoa e por loja. O gerente da loja 3 não vê o caixa da 5, e ninguém concede um cargo que ele mesmo não tem.',
-  },
-  {
-    t: 'Tarefas',
-    d: 'O quadro da equipe: quem está com o quê, o que parou e o que já foi feito. Modelos prontos para abertura, fechamento, inventário e chegada de mercadoria.',
-  },
-  {
-    t: 'Livro de auditoria',
-    d: 'Quem mexeu, no quê, quando, de quanto para quanto. O livro só recebe: não tem como reescrever nem apagar — nem por nós.',
+    id: 'analise',
+    titulo: 'Análise',
+    icone: <IconeDinheiro tamanho={18} />,
+    chamada: 'Onde o dinheiro está parado, e qual loja puxa a rede.',
+    frases: [
+      'As lojas lado a lado: vendas, o que entrou, margem, ticket e o que ficou sem saída.',
+      'A curva ABC separa o que sustenta a loja do que só ocupa prateleira.',
+      'O dinheiro parado em reais, a preço de custo — o que não vende há 90 dias e o que nunca vendeu são as candidatas a promoção.',
+    ],
+    plano: `${desde('Curva ABC e dinheiro parado')}.`,
+    tela: <TelaAnalise />,
   },
 ]
 
-const PERGUNTAS = [
+/* ═══════════════════════════════════════════════════════════
+   O assistente
+   ═══════════════════════════════════════════════════════════
+   O que ele faz sai de `PODERES`, a lista FECHADA que o próprio agente
+   recebe. O que ainda não foi construído (`disponivel: false`) aparece com
+   a etiqueta — e não some, porque é o que a pessoa vai ver apagado na tela
+   dele. */
+const CONSULTA = TODOS_PODERES.filter((k) => !PODERES[k].escreve).map((k) => PODERES[k])
+const AGE = TODOS_PODERES.filter((k) => PODERES[k].escreve).map((k) => PODERES[k])
+
+// "Gain full control", no desenho das referências — mas com o que é NOSSO:
+// cada cartão é uma trava que existe no código, e a miniatura embaixo é a
+// peça da tela onde a trava aparece.
+const CONTROLE: { t: string; d: string; peca: ReactNode }[] = [
+  {
+    t: 'Ele propõe. Uma pessoa confirma.',
+    d: 'Mexeu em dinheiro, preço ou estoque, vira proposta com o número dentro. Vale 24 horas; depois disso o estoque já é outro, e ele propõe de novo.',
+    peca: (
+      <div className="flex flex-col gap-2 rounded-lg border border-borda bg-superficie p-3">
+        <p className="text-[12px] leading-snug text-tinta">
+          Registrar a compra de 20 un. · <b className="numero">{reaisCentavos(448)}</b>
+        </p>
+        <span className="flex gap-1.5 text-[11px] font-semibold">
+          <span className="rounded-md border border-borda px-2.5 py-0.5 text-tinta-2">Não</span>
+          <span className="rounded-md bg-marca px-2.5 py-0.5 text-marca-tinta">Confirmar</span>
+        </span>
+      </div>
+    ),
+  },
+  {
+    t: 'Teto é número no banco.',
+    d: 'Instrução de texto decide o jeito de falar, nunca o que ele pode. E o teto é conferido de novo no servidor, na hora do sim.',
+    peca: (
+      <dl className="flex flex-col rounded-lg border border-borda bg-superficie px-3 py-1.5 text-[12px]">
+        {[
+          ['Valor máximo de uma proposta', reais(1000)],
+          ['Desconto máximo', '10%'],
+        ].map(([t, v]) => (
+          <div key={t} className="flex justify-between gap-2 border-t border-borda-suave py-1.5 first:border-t-0">
+            <dt className="text-tinta-2">{t}</dt>
+            <dd className="numero font-semibold text-tinta">{v}</dd>
+          </div>
+        ))}
+      </dl>
+    ),
+  },
+  {
+    t: 'Tudo no livro, com antes e depois.',
+    d: 'O que ele propôs e alguém confirmou aparece no nome de quem confirmou, com “assistente” embaixo. O livro não se apaga — nem por nós.',
+    peca: (
+      <div className="flex flex-col gap-1.5 rounded-lg border border-borda bg-superficie p-3 text-[12px]">
+        <span className="flex items-center gap-2">
+          <Avatar iniciais="MC" />
+          <b className="text-tinta">Marina</b>
+          <span className="ml-auto text-[10.5px] text-tinta-3">hoje, 10:42</span>
+        </span>
+        <span className="text-tinta-2">
+          Compra registrada · <b className="numero text-tinta">{reaisCentavos(448)}</b>
+        </span>
+        <span className="text-[10.5px] font-semibold text-marca">proposta do assistente</span>
+      </div>
+    ),
+  },
+  {
+    t: 'Gasto de IA com teto por dia.',
+    d: 'Passou do teto do dia, ele para de responder até amanhã. E a tela mostra o que ele trouxe de volta contra o que custou.',
+    peca: (
+      <div className="flex flex-col gap-2 rounded-lg border border-borda bg-superficie p-3 text-[12px]">
+        <span className="flex justify-between">
+          <span className="text-tinta-2">Gasto de IA hoje</span>
+          <span className="numero font-semibold text-tinta">
+            {reaisCentavos(1.84)} de {reaisCentavos(5)}
+          </span>
+        </span>
+        <Barra valor={37} tom="bom" />
+      </div>
+    ),
+  },
+]
+
+/* ═══════════════════════════════════════════════════════════
+   As dores, e a tela que resolve cada uma
+   ═══════════════════════════════════════════════════════════
+   São as dores de qualquer loja, não as de um fornecedor. O que é nosso é a
+   resposta: cada cartão termina com a tela onde o número aparece e o plano
+   em que ela abre — lido da tabela. Tela que não existe não entra. */
+type Dor = {
+  Icone: ComponentType<{ tamanho?: number; className?: string }>
+  t: string
+  d: string
+  tela: string
+  plano: string
+  peca?: ReactNode
+  classe: string
+}
+
+const DORES: Dor[] = [
+  {
+    Icone: IconeRuptura,
+    t: 'A peça que acabou sem ninguém ver',
+    d: 'Quantos dias o saldo aguenta no ritmo de venda, contra o prazo que o fornecedor leva — e o último dia para pedir e a peça chegar antes de faltar.',
+    tela: 'Estoque › Vai faltar',
+    plano: desde('Previsão de ruptura com prazo de reposição'),
+    classe: 'lg:col-span-2',
+    peca: (
+      <ul className="flex flex-col gap-1.5">
+        {(
+          [
+            ['Camiseta canelada · Preto · G', 'dura 2 dias · prazo 7', 'Pedir hoje', 'critico'],
+            ['Tênis casual · 38', 'dura 9 dias · prazo 7', 'Pedir até 26 set', 'atencao'],
+          ] as const
+        ).map(([n, d, p, tom]) => (
+          <li
+            key={n}
+            className="flex items-center justify-between gap-3 rounded-lg border border-borda bg-superficie px-3 py-2"
+          >
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-[12.5px] font-semibold text-tinta">{n}</span>
+              <span className="numero text-[11px] text-tinta-3">{d}</span>
+            </span>
+            <Pilula tom={tom}>{p}</Pilula>
+          </li>
+        ))}
+      </ul>
+    ),
+  },
+  {
+    Icone: IconeExcesso,
+    t: 'Dinheiro parado na prateleira',
+    d: 'A curva ABC separa o que sustenta a loja do que só ocupa espaço, e o parado aparece em reais, a preço de custo.',
+    tela: 'Análise',
+    plano: desde('Curva ABC e dinheiro parado'),
+    classe: '',
+    peca: (
+      <div className="flex h-6 overflow-hidden rounded-md text-[10px] font-bold">
+        <span className="grid w-[62%] place-items-center bg-marca text-marca-tinta">A</span>
+        <span className="grid w-[23%] place-items-center bg-marca/45 text-tinta">B</span>
+        <span className="grid w-[15%] place-items-center bg-atencao-fundo text-atencao">C</span>
+      </div>
+    ),
+  },
+  {
+    Icone: IconePreco,
+    t: 'Preço no chute',
+    d: 'Margem e markup item a item, e o preço que a margem alvo pede. O que está abaixo do custo vem numa lista, antes de virar prejuízo.',
+    tela: 'Preços',
+    // Esta tela abre em dois degraus (`LIBERACOES`): a margem num plano, a
+    // sugestão no seguinte. Os dois nomes vêm da escada.
+    plano: `Margem ${doPlano(planoQueAbre('precos.margem').codigo)} para cima; preço sugerido ${doPlano(planoQueAbre('precos.sugestao').codigo)}`,
+    classe: '',
+  },
+  {
+    Icone: IconeFiado,
+    t: 'O fiado no caderno',
+    d: 'Crediário com parcelas, juros e a ficha de quem deve, quanto e há quantos dias — e a venda fiada só sai com cliente escolhido.',
+    tela: 'Crediário',
+    plano: desde('Crediário próprio, com juros e cobrança'),
+    classe: '',
+  },
+  {
+    Icone: IconePessoas,
+    t: '“De quem era isso?”',
+    d: 'O quadro diz quem está com o quê e o que parou; as estrelas do mês dizem quem entregou, com número e não impressão.',
+    tela: 'Tarefas e Equipe',
+    plano: `Quadro ${desde('Quadro de tarefas da equipe').toLowerCase()}`,
+    classe: '',
+    peca: (
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-borda bg-superficie px-3 py-2">
+        <span className="flex items-center gap-2 text-[12.5px] font-semibold text-tinta">
+          <Avatar iniciais="MC" /> Marina
+        </span>
+        <Estrelas valor={4.5} tamanho="sm" />
+      </div>
+    ),
+  },
+  {
+    Icone: IconeFechamento,
+    t: 'O fim do mês no susto',
+    d: 'O fechamento guiado confere caixa, gaveta, contas, taxa da maquininha e fiado — e o resultado do mês sai no formato que o contador reconhece.',
+    tela: 'Financeiro › Fechar o mês',
+    plano: desde('Fechamento de mês guiado'),
+    classe: 'lg:col-span-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center lg:gap-10',
+    peca: (
+      <ul className="grid gap-1.5 text-[12.5px] sm:grid-cols-2">
+        {[
+          ['Nenhum caixa aberto', true],
+          ['Gaveta batendo', true],
+          ['Taxa da maquininha no cálculo', true],
+          ['Contas vencidas: 1', false],
+        ].map(([t, ok]) => (
+          <li
+            key={t as string}
+            className="flex items-center gap-2 rounded-lg border border-borda bg-superficie px-3 py-2"
+          >
+            <span
+              className={
+                'grid size-4 shrink-0 place-items-center rounded-full ' +
+                (ok ? 'bg-bom-fundo text-bom' : 'bg-atencao-fundo text-atencao')
+              }
+            >
+              {ok ? <IconeVisto tamanho={10} /> : <span className="text-[9px] font-bold">!</span>}
+            </span>
+            <span className="text-tinta">{t as string}</span>
+          </li>
+        ))}
+      </ul>
+    ),
+  },
+]
+
+/* ═══════════════════════════════════════════════════════════
+   Segurança
+   ═══════════════════════════════════════════════════════════ */
+const SEGURANCA: {
+  Icone: ComponentType<{ tamanho?: number; className?: string }>
+  t: string
+  d: string
+}[] = [
+  {
+    Icone: IconeParedes,
+    t: 'Duas paredes entre empresas',
+    d: 'A aplicação só fala com o banco já presa à sua empresa. E o Postgres, por baixo, se recusa a devolver linha de outra — para o dia em que a primeira falhar.',
+  },
+  {
+    Icone: IconeAuditoria,
+    t: 'O livro não se apaga',
+    d: 'Quem mexeu, no quê, quando, de quanto para quanto. O banco recusa editar e apagar — inclusive para nós.',
+  },
+  {
+    Icone: IconeCorte,
+    t: 'Tirou o acesso, acabou na hora',
+    d: 'Desativou alguém no meio do expediente? A próxima tela que ele abrir já pede login. Não espera sessão vencer.',
+  },
+  {
+    Icone: IconeFreio,
+    t: 'Porta com freio',
+    d: 'Senha errada repetida trava a tentativa por alguns minutos, por conta e por origem. Lista de senhas comuns não passa.',
+  },
+  {
+    Icone: IconeTranca,
+    t: 'A tela que tranca',
+    d: 'Trinta minutos parada, ela pede a senha de novo — sem perder a venda que estava no balcão.',
+  },
+]
+
+/* ═══════════════════════════════════════════════════════════
+   Dúvidas
+   ═══════════════════════════════════════════════════════════ */
+const PERGUNTAS: { p: string; r: string }[] = [
   {
     p: 'Eu não vendo fiado. Vou ter que ver crediário na tela?',
     r: 'Não. No cadastro inicial você diz o que a sua empresa usa, e o que não usa some — do menu, dos relatórios e do que o assistente sabe fazer. Ligar depois é uma chave em Configurações.',
   },
   {
+    p: 'A moça do balcão vai se perder em tanta tela?',
+    r: 'Não precisa ver: o modo simples esconde as telas de análise do menu, abre o painel pelo que precisa de atenção hoje e vende por botões grandes. O modo é do aparelho — o computador do balcão fica no simples, o notebook do dono no avançado. E em toda tela o Guia do Norte explica o que ela faz.',
+  },
+  {
+    p: 'O assistente já responde no WhatsApp?',
+    r: `A configuração dele — nome, jeito de falar, manual da loja, poderes e tetos — e as propostas esperando o seu sim já estão no sistema. A conexão com o WhatsApp está sendo ligada agora; a data a gente só fala quando estiver no ar. Ele entra ${doPlano('BALCAO_AGENTE')} para cima.`,
+  },
+  {
     p: 'O assistente pode dar desconto sozinho? Mexer no meu preço?',
-    r: 'Só até onde você deixar, e nunca sozinho em nada que envolve dinheiro, preço ou estoque: ele propõe e uma pessoa confirma. O teto é número no banco, não instrução de texto — texto quem manda mensagem consegue tentar sobrescrever.',
+    r: 'Sozinho, nunca: tudo que mexe em dinheiro, preço ou estoque vira proposta que uma pessoa confirma. Oferecer desconto ainda está em construção — e quando chegar, o teto de desconto é número no banco, não instrução de texto. Texto quem manda mensagem consegue tentar sobrescrever.',
   },
   {
-    p: 'Tenho 12 lojas. Cada uma com o estoque dela?',
-    r: 'Sim, e o consolidado num clique. O dono vê todas; o gerente de cada loja vê só a dele — inclusive se colar na barra de endereço o código de outra.',
-  },
-  {
+    // Dizia "Sim, do Balcão para cima". A nota fiscal está marcada "em breve"
+    // na tabela desde 24/09 — responder "sim" aqui era a mentira mais cara da
+    // página, porque é a pergunta que decide a assinatura de muita loja.
     p: 'Emite nota fiscal?',
-    // Dizia "Rede e Corporativo, e opcional no Balcão": o plano nem se chama
-    // mais Rede, e a nota fiscal é de todo plano pago — a tabela item por
-    // item confere. O nome vem da tabela para não envelhecer de novo.
-    r: `Sim, ${doPlano('BALCAO')} para cima. Você precisa do certificado digital A1 e da classificação fiscal dos produtos — é trabalho do seu contador, e é o que mais atrasa a entrada.`,
+    r: `Ainda não — está marcada como “em breve” na tabela de planos. Ela depende de um emissor contratado e do certificado digital A1 de cada loja, e quando entrar vem em todo plano pago, ${doPlano('BALCAO')} para cima. Até lá, o comprovante do balcão é a via do cliente, não nota.`,
+  },
+  {
+    p: 'Tenho várias lojas. Cada uma com o estoque dela?',
+    r: 'Sim, e o consolidado num clique. O dono vê todas; o gerente de cada loja vê só a dele — inclusive se colar na barra de endereço o código de outra.',
   },
   {
     p: 'E os meus dados ficam misturados com os de outra empresa?',
@@ -238,1087 +625,720 @@ const PERGUNTAS = [
   },
   {
     p: 'Quanto tempo para começar a usar?',
-    r: 'O cadastro inicial leva alguns minutos e o sistema já abre com as categorias e os eixos do seu ramo prontos. Cadastrar o catálogo é o que dá trabalho — e é onde a gente ajuda.',
+    r: 'O cadastro inicial leva uns dois minutos, e o sistema já abre com as variações, as categorias e o jeito de vender do seu ramo. Cadastrar o catálogo é o que dá trabalho — e é onde a gente ajuda.',
   },
 ]
 
-// A régua de fatos do topo. Cada um destes é provado mais embaixo na própria
-// página — preço de tabela na seção de planos, "de 1 a 40 lojas" em para quem
-// é, e o teto do assistente na seção dele. Nenhum número de mercado: a gente
-// não mediu, e promessa que não se cumpre vira pedido de reembolso no segundo
-// mês.
-//
-// ── o "a partir de" vem da tabela ────────────────────────────
-// Estava escrito à mão "R$ 349" — e o plano de R$ 349 não existe mais: o
-// menor plano pago hoje é o Balcão, a R$ 100. É exatamente o número que a
-// régua não pode errar, então ele passa a ser lido do mesmo lugar que a tela
-// de assinatura lê. E a segunda linha dizia "loja extra tem preço de tabela",
-// mas nenhum plano vende loja extra (`porUnidadeExtra` é null em todos); o
-// que tem preço de tabela é a PESSOA a mais dentro ao mesmo tempo.
-const MENOR_MENSAL = Math.min(...PLANOS_COM_PRECO.map((p) => LIMITES[p].mensal!))
-
-const PROVAS: [string, string][] = [
-  [
-    `A partir de ${reais(MENOR_MENSAL)} por mês`,
-    'Sem taxa de implantação escondida, e pessoa a mais tem preço de tabela.',
-  ],
-  [
-    'De uma loja a quarenta',
-    'A mesma tela cresce junto. Não existe migrar, nem “versão para redes”, nem contratar de novo.',
-  ],
-  [
-    'O assistente é seu',
-    'Você dá o nome e a personalidade. O teto do que ele faz sozinho é número no banco.',
-  ],
-]
-
-// Os cinco ramos da fileira, no mesmo traço do topo. "Serve para o seu ramo
-// também" é mais rápido de mostrar do que de explicar — e desenho mostra
-// isso melhor que foto, porque foto de loja é sempre a loja de alguém.
-//
-// Os cinco arquivos foram levados à MESMA proporção (1,24:1) na origem: sem
-// isso, dentro de caixas iguais, uma cena apareceria grande e a vizinha
-// minúscula. O rótulo é HTML embaixo da arte — modelo de imagem escreve
-// garrancho.
-//
-// A linha embaixo do rótulo não é slogan: é o que MUDA no sistema quando a
-// empresa escolhe aquele ramo. Eixo de variação, unidade de medida, módulo
-// sugerido — tudo já existe em `src/servidor/modulos.ts`. Frase que promete
-// função inexistente é a mais cara de escrever.
-const RAMOS = [
-  { nome: 'cena-moda', rotulo: 'Moda', linha: 'Cor e Tamanho na mesma peça — um cadastro, não trinta.' },
-  { nome: 'cena-calcados', rotulo: 'Calçados', linha: 'Numeração do 34 ao 40, e o par que falta aparece.' },
-  { nome: 'cena-sorveteria', rotulo: 'Sorveteria', linha: 'Sabor vira eixo, e a venda sai por quilo.' },
-  { nome: 'cena-lanchonete', rotulo: 'Lanchonete', linha: 'Encomenda anotada no balcão, com retirada marcada.' },
-  { nome: 'cena-deposito', rotulo: 'Distribuição', linha: 'Cada depósito com estoque e caixa próprios.' },
-]
-
-const QUEM: [string, string][] = [
-  [
-    'A mesma tela serve a uma loja e a quarenta',
-    'Quem começa com uma loja não descobre nem que existe o conceito de unidade: o seletor de loja só aparece quando nasce a segunda. E a arquitetura não tem teto — a mesma tabela que guarda a loja única guarda a rede inteira.',
-  ],
-  [
-    'Você nomeia os eixos do seu ramo',
-    'Cor e Tamanho na roupa, Numeração na sapataria, Sabor na sorveteria. Vende por unidade, por quilo, por litro ou por par.',
-  ],
-  [
-    'Depósito conta como loja',
-    'Cada unidade tem estoque e caixa próprios, e o painel soma tudo num clique. O gerente da loja 3 não vê o caixa da 5.',
-  ],
-]
-
-
-const DOR: [string, string][] = [
-  [
-    'Você sabe quanto vendeu.',
-    'Sabe quanto SOBROU? Faturamento não é lucro, e a conta que separa os dois é a que quase ninguém faz todo mês.',
-  ],
-  [
-    'O sistema diz que tem 4.',
-    'A prateleira tem 2. Quando o estoque para de bater, ele deixa de servir para decidir compra — e vira número que ninguém olha.',
-  ],
-  [
-    'Alguém está atrasado.',
-    'Quem lembra de cobrar? A conversa que traz o dinheiro de volta é chata, é repetitiva, e é sempre a primeira a ficar para amanhã.',
-  ],
-]
-
-// As seis dores do varejo, e a TELA do Norte onde cada uma é resolvida.
-//
-// A referência que o dono gostou lista dores parecidas — porque são as dores
-// de qualquer loja, não as de um fornecedor. O que é nosso aqui é a resposta:
-// cada cartão termina com o nome da tela onde o número aparece, e não com uma
-// promessa de consultoria. Tela que não existe não entra — a previsão de
-// ruptura só entrou no dia em que deixou de ser "em breve".
-//
-// O ícone vem de `ui/Icones.tsx`, desenhado à mão para dizer a mecânica da
-// dor (a pilha que tomba, o vão na prateleira) e não a palavra.
-const RESOLVE: {
-  Icone: ComponentType<{ tamanho?: number; className?: string }>
-  t: string
-  d: string
-  tela: string
-}[] = [
-  {
-    Icone: IconeExcesso,
-    t: 'Estoque em excesso',
-    d: 'A curva ABC separa o que sustenta a loja do que só ocupa prateleira, e o dinheiro parado aparece em reais.',
-    tela: 'Análise',
-  },
-  {
-    Icone: IconeRuptura,
-    t: 'Ruptura',
-    d: 'Quantos dias o saldo aguenta no ritmo de venda, contra o prazo que o fornecedor leva — e até quando pedir.',
-    tela: 'Estoque',
-  },
-  {
-    Icone: IconePreco,
-    t: 'Precificação',
-    d: 'Margem, markup e o preço que a margem alvo pede, item a item. O que está abaixo do custo ou do alvo vem em lista.',
-    tela: 'Preços',
-  },
-  {
-    Icone: IconeTempo,
-    t: 'Tempo e produtividade',
-    d: 'O quadro diz quem está com o quê e o que parou; as estrelas do mês dizem quem entregou.',
-    tela: 'Tarefas e Equipe',
-  },
-  {
-    Icone: IconeControle,
-    t: 'Controle geral de estoque',
-    d: 'Entrada, transferência, balanço e conferência, loja a loja. O histórico é a verdade: se o saldo divergir, ele acusa.',
-    tela: 'Estoque',
-  },
-  {
-    Icone: IconeEquipes,
-    t: 'Integração das equipes',
-    d: 'Tarefa por loja, permissão por pessoa, e o assistente respondendo no WhatsApp com o que o sistema sabe.',
-    tela: 'Tarefas, Equipe e Assistente',
-  },
-]
-
-// O que a pessoa vê no quadro — as três perguntas que hoje são respondidas
-// no grupo de WhatsApp da loja, tarde e de memória.
-const EQUIPE: [string, string][] = [
-  [
-    'Quem está com o quê',
-    'Cada tarefa tem nome, responsável e prazo. A pergunta "de quem era isso?" deixa de existir no grupo da loja.',
-  ],
-  [
-    'O que parou, antes do fim do dia',
-    'O que travou aparece na cor dele, com a palavra junto, e o prazo está em toda linha. Não precisa abrir nada para ver onde a semana emperrou.',
-  ],
-  [
-    'Quem entregou, no fim do mês',
-    'Tarefa no prazo, meta batida e presença viram estrelas por pessoa. A conversa de desempenho passa a ter número, não impressão.',
-  ],
-]
-
-// A escada do quadro, lida de `LIBERACOES`: em que plano cada pedaço abre.
-// Escrita à mão, esta frase é a primeira a mentir no dia em que um pedaço
-// mudar de plano — e é justamente ela que a pessoa confere contra o cartão.
-const ESCADA_TAREFAS =
-  `Um quadro no ${LIMITES.GRATIS.titulo}. ` +
-  `Responsável, prazo e prioridade ${doPlano(planoQueAbre('tarefas.responsavel').codigo)} para cima; ` +
-  `linha do tempo e modelos prontos ${doPlano(planoQueAbre('tarefas.linhaDoTempo').codigo)} para cima; ` +
-  `o quadro da rede inteira, ${doPlano(planoQueAbre('tarefas.rede').codigo)}.`
-
-// O rodízio da faixa do assistente.
-//
-// A primeira versão tinha o rótulo "Você define" e uma lista solta embaixo —
-// e metade da lista não era definição, era coisa que ELE faz. Frase pela
-// metade num rodízio vira promessa torta.
-//
-// Agora cada linha traz o próprio sujeito, e elas se alternam de propósito:
-// uma que você regula, uma que ele executa. É a divisão de trabalho do
-// produto inteiro dita em oito frases — e nenhuma delas é recurso inventado
-// para encher a lista.
-const NA_PRATICA = [
-  'Você dá o nome e a personalidade dele',
-  'Ele avisa qual peça vai faltar antes de faltar',
-  'Você define o teto de desconto que ele pode dar',
-  'Ele cobra quem atrasou, sem você precisar pedir',
-  'Você diz quanto ele pode gastar de IA por dia',
-  'Ele manda o relatório do dia na hora que você marcar',
-  'Você escolhe o que ele enxerga do seu estoque',
-  'Ele lança a compra no financeiro depois que você confirma',
-]
-
-const REGRAS_AGENTE: [string, string][] = [
-  [
-    'Mexeu em dinheiro, preço ou estoque: ele propõe, você confirma.',
-    'Nada de descobrir depois que o robô resolveu dar 40%.',
-  ],
-  [
-    'Teto em tudo, e o teto é número no banco.',
-    'Desconto máximo, valor máximo de link, gasto de IA por dia. Instrução de texto define personalidade — nunca permissão.',
-  ],
-  [
-    'Toda ação vai para o livro, com antes e depois.',
-    'Inclusive as nossas, quando entramos para dar suporte.',
-  ],
-]
-
-const SEGURANCA: [string, string][] = [
-  [
-    'Duas paredes',
-    'A aplicação só fala com o banco já presa à sua empresa. E o Postgres, por baixo, se recusa a devolver linha de outra. A segunda existe para o dia em que a primeira falhar.',
-  ],
-  [
-    'O livro não se apaga',
-    'A auditoria só recebe. Sem alterar, sem excluir — e a tentativa levanta erro em vez de falhar em silêncio.',
-  ],
-  [
-    'Tirou o acesso, acabou na hora',
-    'Desativou alguém no meio do expediente? A tela seguinte que ele abrir já pede login. Não espera cookie expirar.',
-  ],
-  [
-    'Porta com freio',
-    'Erro de senha repetido trava a tentativa por alguns minutos, por conta e por origem. Lista de senhas comuns rodando a noite inteira não passa.',
-  ],
+// Os ramos do rodapé: os cinco mais comuns, cada um abrindo a própria ficha.
+const RAMOS_RODAPE: [string, string][] = [
+  ['Moda', 'roupa'],
+  ['Calçados', 'calcados'],
+  ['Sorveteria e açaí', 'sorveteria'],
+  ['Lanchonete', 'lanchonete'],
+  ['Distribuidora', 'distribuidora'],
 ]
 
 export default function Inicio() {
   return (
-    <div className="flex min-h-dvh flex-col bg-superficie">
-      {/* ── barra ── */}
-      <header className="sticky top-0 z-20 border-b border-borda bg-superficie/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
-          <Marca tamanho={28} id="topo" />
-          <nav className="hidden items-center gap-6 text-sm font-medium text-tinta-2 sm:flex">
-            <a href="#faz" className="hover:text-tinta">
-              O que faz
-            </a>
-            <a href="#agente" className="hover:text-tinta">
-              O assistente
-            </a>
-            <a href="#modulos" className="hover:text-tinta">
-              Módulos
-            </a>
-            <a href="#planos" className="hover:text-tinta">
-              Planos
-            </a>
-          </nav>
-          {/* Entrar e Comecar sao coisas diferentes e nao podem ter o mesmo
-              peso: quem ja e cliente procura "entrar" e nao pode competir com
-              a chamada de venda. Texto simples para um, botao solido escuro
-              para o outro. */}
-          <div className="flex items-center gap-3 sm:gap-4">
-            {/* A troca de tema mora aqui e não só dentro do sistema: quem chega
-                pela página de venda também trabalha em sala clara ou escura, e
-                descobrir que o produto tem os dois temas ANTES de assinar é
-                argumento de venda, não configuração escondida.
+    <div className="flex min-h-dvh flex-col bg-superficie text-base">
+      {/* O primeiro Tab de quem navega por teclado pula a barra inteira. */}
+      <a
+        href="#conteudo"
+        className="sr-only z-50 rounded-md bg-marca px-4 py-2 text-sm font-semibold text-marca-tinta focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+      >
+        Pular para o conteúdo
+      </a>
 
-                Sem `inicial`: ele lê o cookie sozinho depois de montar, e esta
-                página não precisa saber que o cookie existe. */}
-            <TrocaTema tom="papel" />
-            <a href="/exemplo/entrar" className="text-sm font-medium text-tinta-2 hover:text-tinta">
-              Entrar
-            </a>
-            <a
-              href="#planos"
-              className="rounded-norte bg-tinta px-4 py-2 text-sm font-semibold text-superficie hover:opacity-90"
-            >
-              Começar
-            </a>
-          </div>
-        </div>
-      </header>
+      <BarraTopo />
 
-      {/* ── topo ──
-          ── por que desenho, e não foto ──
-          Foto de loja é sempre a loja de ALGUÉM: quem vende sapato olha uma
-          arara de roupa e entende "não é para mim". Desenho vetorial plano é
-          universal — a pessoa vê o balcão, a prateleira e a maquininha, e
-          preenche o resto com o próprio negócio.
-
-          ── e por que UMA cena, e não o ramo dela ──
-          O topo não responde "para quem é" — isso é a seção seguinte, e lá os
-          ramos aparecem um a um. Aqui a pergunta é "o que é isto", e a
-          resposta é o universo inteiro numa imagem: a dona no balcão e, em
-          volta dela, os cartões do que o sistema faz — venda, estoque,
-          conversa no WhatsApp, resultado, dinheiro girando.
-
-          ── o fundo ──
-          A mesma aurora da seção do assistente, com dois brilhos que derivam
-          por cima. O recorte da cena é transparente de propósito: é o que
-          deixa a luz do fundo passar por baixo do desenho, em vez de o desenho
-          tapar a luz com um retângulo de tinta.
-
-          ── e nenhum texto dentro da arte ──
-          Modelo de imagem escreve garrancho, e a primeira tentativa do projeto
-          voltou com duas linhas de letra embaralhada. Por isso os cartões
-          flutuantes têm só forma: barra, bolha, caixa, etiqueta. A imagem é
-          cena; a palavra é HTML. */}
-      <section className="aurora emenda-base relative isolate overflow-hidden">
-        <span aria-hidden className="brilhos pointer-events-none absolute inset-0 z-0" />
-
-        <div className="relative z-10 mx-auto max-w-6xl px-5 py-16 md:py-20">
-          <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.05fr] lg:gap-8">
-            <div className="flex max-w-2xl flex-col items-start gap-6">
-              <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
-                Gestão + assistente de IA no WhatsApp
-              </span>
-              <h1 className="text-[clamp(2.5rem,6vw,4.25rem)] leading-[0.96] !text-nav-tinta text-balance">
-                A empresa inteira
-                <br />
-                numa tela só.
+      <main id="conteudo">
+        {/* ── o topo ──────────────────────────────────────────────
+            Centrado, curto e com o produto logo embaixo. Título de duas
+            linhas, uma frase, dois botões e a letra miúda que tira o medo
+            ("grátis, sem cartão"). A pílula de cima é a novidade de verdade
+            desta semana — o modo simples — e leva até ela. */}
+        <section id="topo" className="fundo-topo relative isolate overflow-x-clip">
+          <div aria-hidden className="grade-fundo pointer-events-none absolute inset-0 -z-10" />
+          <div className="mx-auto max-w-6xl px-4 pt-12 pb-16 sm:px-6 md:pt-20 md:pb-24">
+            <AoEntrar className="mx-auto flex max-w-3xl flex-col items-center text-center">
+              <a
+                href="#modos"
+                className="surge group inline-flex items-center gap-2 rounded-full border border-borda bg-superficie py-1 pr-3 pl-1 text-[13px] font-medium text-tinta-2 shadow-norte hover:border-tinta-3"
+              >
+                <span className="rounded-full bg-marca-suave px-2 py-0.5 text-[11px] font-bold text-marca">
+                  Novo
+                </span>
+                <span className="sm:hidden">Modo simples e avançado</span>
+                <span className="hidden sm:inline">Modo simples para o balcão, avançado para o dono</span>
+                <IconeAdiante tamanho={13} className="transition-transform group-hover:translate-x-0.5" />
+              </a>
+              <h1
+                className="surge mt-6 text-[2.5rem] leading-[1.02] text-balance sm:text-[3.4rem] lg:text-[4rem]"
+                style={{ animationDelay: '0.06s' }}
+              >
+                Do balcão ao fim do mês, numa tela só.
               </h1>
-              <p className="max-w-xl leading-relaxed text-nav-tinta-2 md:text-lg">
-                Produto, estoque, balcão, caixa e o resultado do mês. E um assistente que você
-                batiza, que conhece o seu estoque de verdade e responde por você — dentro dos
-                limites que você define.
+              <p
+                className="surge mt-5 max-w-2xl text-lg leading-relaxed text-balance text-tinta-2 sm:text-xl"
+                style={{ animationDelay: '0.12s' }}
+              >
+                Venda, estoque, dinheiro e equipe. E um assistente que pede antes de agir.
               </p>
-              <div className="flex flex-wrap items-center gap-3">
+              <div
+                className="surge mt-8 flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center"
+                style={{ animationDelay: '0.18s' }}
+              >
                 <a
-                  href="#planos"
-                  className="botao-marca rounded-norte px-6 py-3 text-sm font-semibold text-marca-tinta"
+                  href={COMECAR}
+                  className="botao-marca rounded-norte px-7 py-3.5 text-center text-[15px] font-semibold text-marca-tinta"
                 >
-                  Ver os planos
+                  Começar grátis
                 </a>
                 <a
-                  href="#faz"
-                  className="rounded-norte border border-white/25 px-6 py-3 text-sm font-semibold text-nav-tinta backdrop-blur-sm hover:bg-white/10"
+                  href="#produto"
+                  className="flex items-center justify-center gap-2 rounded-norte border border-borda bg-superficie px-7 py-3.5 text-[15px] font-semibold text-tinta hover:bg-superficie-2"
                 >
                   Ver o sistema por dentro
+                  <IconeAbaixo tamanho={14} className="text-tinta-3" />
                 </a>
               </div>
-            </div>
+              <p className="surge mt-4 text-sm text-tinta-3" style={{ animationDelay: '0.24s' }}>
+                Grátis para sempre no plano de uma loja · sem cartão
+              </p>
+            </AoEntrar>
 
-            {/* A cena sangra um pouco para fora da coluna à direita — a mesma
-                sangria que a conversa do assistente usa.
-
-                É VÍDEO, com fundo transparente: o gráfico sobe, os pontinhos
-                andam pelas linhas pontilhadas, ela pisca e digita. O laço fecha
-                sem emenda porque o último quadro É o primeiro — foi assim que o
-                vídeo foi pedido ao gerador, e não um corte esperto aqui.
-
-                Nada de pulso, nada de escala: o movimento é dentro do desenho.
-                A cena não se mexe na página, o que acontece acontece dentro
-                dela. */}
-            <div
-              aria-hidden
-              className="relative aspect-[927/609] w-full lg:-mr-[12%] lg:w-[118%]"
-            >
-              <CenaViva
-                nome="cena-sistema"
-                jaAVista
-                className="absolute inset-0 h-full w-full object-contain object-bottom"
-              />
+            <div className="mt-12 md:mt-16">
+              <Vitrine />
             </div>
           </div>
+        </section>
 
-          {/* A RÉGUA DE FATOS.
-              Mesma anatomia da grade de "o que todo cliente tem": fio em cima,
-              uma linha forte, uma linha explicando. Aqui ela é sobre azul, e
-              por isso o fio é branco a 20% em vez da borda do tema.
-
-              Os três são coisas que a própria página prova mais embaixo —
-              preço de tabela, a mesma tela de 1 a 40 lojas, e o teto do
-              assistente sendo número no banco. Nenhum número de mercado. */}
-          <div className="mt-14 grid gap-x-10 gap-y-7 sm:grid-cols-3 md:mt-16">
-            {PROVAS.map(([t, d]) => (
-              <div key={t} className="flex flex-col gap-1.5 border-t border-white/20 pt-4">
-                <p className="text-[15px] leading-snug font-bold text-nav-tinta">{t}</p>
-                <p className="text-sm leading-relaxed text-nav-tinta-2">{d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── a dor ──
-          Ganhou olho, título e resumo como todas as outras: solta embaixo do
-          topo, sem cabeçalho, a grade parecia legenda da foto de cima. */}
-      <section className="bg-superficie">
-        <div className="mx-auto max-w-6xl px-5 py-16">
-          <Titulo
-            olho="O problema"
-            titulo="Sistema quase todo mundo tem. Resposta é que é raro."
-            resumo="São três perguntas simples — e hoje as três só têm resposta no fim do mês, no susto, com o caderno do lado."
-          />
-          <div className="mt-9 grid gap-x-8 gap-y-7 sm:grid-cols-3">
-            {DOR.map(([t, d]) => (
-              <div key={t} className="flex flex-col gap-2 border-t border-borda pt-4">
-                <h3 className="text-base font-bold">{t}</h3>
-                <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── o que resolve ──
-          As seis dores, cada uma com a tela que responde. Vem logo depois de
-          "O problema" porque é a resposta dele: três perguntas sem resposta
-          em cima, seis lugares onde a resposta aparece embaixo.
-
-          ── fio em cima, e não cartão com borda ──
-          A referência usa seis caixas com sombra. Aqui a grade é a mesma das
-          vizinhas — fio em cima, título forte, texto — pelo motivo que a
-          página inteira repete: caixa dentro de caixa vira caixote, e seis
-          caixotes numa fileira é catálogo de plugin. O que separa esta grade
-          das outras é o ícone, que dá a cada dor uma forma antes da palavra.
-
-          Fundo trocado (`bg-fundo`) para a página respirar entre três grades
-          de fio seguidas: papel, fundo, papel. */}
-      <section className="bg-fundo">
-        <div className="mx-auto max-w-6xl px-5 py-16">
-          <Titulo
-            olho="O que resolve"
-            titulo="Seis dores do varejo, e onde cada uma é resolvida"
-            resumo="Cada uma termina com o nome da tela onde o número aparece. Não é promessa de consultoria: é o lugar onde você vai olhar."
-          />
-          {/* `cascata`: os seis entram um atrás do outro, 60ms entre eles. É a
-              única animação da seção, e roda uma vez. */}
-          <AoEntrar className="cascata mt-9 grid grid-cols-2 gap-x-6 gap-y-9 lg:grid-cols-3">
-            {RESOLVE.map(({ Icone, t, d, tela }) => (
-              <div key={t} className="flex flex-col gap-3 border-t border-borda pt-4">
-                <Icone tamanho={40} className="text-marca" />
-                <h3 className="text-base font-bold">{t}</h3>
-                <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
-                <p className="mt-auto text-xs text-tinta-3">
-                  Na tela <span className="font-semibold text-tinta-2">{tela}</span>
-                </p>
-              </div>
-            ))}
-          </AoEntrar>
-        </div>
-      </section>
-
-      {/* ── para quem é ──
-          ── o que estava aqui antes ──
-          Um bento de três cartões com fundo, canto arredondado e a foto presa
-          dentro de cada um. Era caixote — a coisa que a página inteira passou
-          a evitar — e ainda empilhava caixote dentro de caixote: um mosaico de
-          três fotos dentro de um cartão dentro da grade.
-
-          ── o que ficou ──
-          A mesma ideia em três tempos, no desenho do resto da página:
-
-            1. Olho, título e resumo, como em toda seção daqui para baixo.
-            2. UMA fileira de cinco ramos desenhados, que faz "não é só loja
-               de roupa" ser entendido antes de qualquer texto ser lido.
-            3. A explicação embaixo, em três itens abertos separados por fio —
-               exatamente a grade que a pessoa reencontra em "o que todo
-               cliente tem".
-
-          A arte deixou de ser foto e passou a ser o mesmo desenho do topo:
-          quem vende sapato olha uma fotografia de arara de roupa e entende
-          "não é para mim". Desenho é universal — a pessoa vê o balcão e a
-          prateleira, e preenche o resto com o próprio negócio. */}
-      <section className="bg-superficie">
-        <div className="mx-auto max-w-6xl px-5 py-16">
-          <Titulo
-            olho="Para quem é"
-            titulo="Comércio que vende no balcão e no WhatsApp"
-            resumo="De uma loja de bairro à rede com dezenas de unidades — e não só loja de roupa."
-          />
-
-        {/* A FILEIRA DE RAMOS.
-            Cinco cenas no mesmo traço do topo — moda, calçados, sorveteria,
-            lanchonete e depósito. É a resposta visual para "não é só loja de
-            roupa", e ela chega antes de qualquer texto ser lido.
-
-            ── caixinhas, e não uma faixa só ──
-            Emendadas, as cinco viravam um mural: o olho lia uma cena comprida
-            e confusa em vez de cinco negócios diferentes. Separadas por 6px
-            elas continuam lendo como conjunto — perto o bastante para ser uma
-            fileira, longe o bastante para cada uma ser um lugar.
-
-            ── e por que todas as artes têm a MESMA proporção ──
-            Caixa igual com arte de proporção diferente dá uma cena grande e
-            outra minúscula do lado. Os cinco arquivos foram levados a 1,24:1
-            na origem (a lanchonete cortada, as outras com margem transparente)
-            — então dentro da caixa as cinco ocupam exatamente o mesmo lugar.
-
-            ── por que a arte encosta EM CIMA ──
-            Antes a caixa era mais alta que a arte e a arte encostava embaixo,
-            deixando uma faixa vazia no topo. A intenção era dar ar ao abajur;
-            o efeito foi outro — a cena parecia afundada na caixa, e a faixa
-            lia como erro de carregamento, não como respiro.
-
-            Agora a caixa tem a proporção EXATA da arte (1,24:1), então a cena
-            preenche de borda a borda e o fio do abajur é cortado no topo, que
-            é como quadro de cena funciona: o que sai do quadro sugere que o
-            lugar continua. O ar que a arte perdeu virou a linha de texto — que
-            informa, enquanto a faixa vazia não informava nada. */}
-        <div className="mt-9 grid grid-cols-2 gap-1.5 lg:grid-cols-5">
-          {RAMOS.map((r) => (
-            <div
-              key={r.rotulo}
-              className="aurora flex flex-col overflow-hidden rounded-norte last:col-span-2 lg:last:col-span-1"
-            >
-              <div className="relative aspect-[124/100] w-full">
-                <CenaViva
-                  nome={r.nome}
-                  className="absolute inset-0 h-full w-full object-cover object-top"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5 px-3.5 pt-2.5 pb-3.5">
-                <span className="text-[11px] font-bold tracking-[0.16em] text-nav-tinta uppercase">
-                  {r.rotulo}
-                </span>
-                <p className="text-[12.5px] leading-snug text-nav-tinta-2">{r.linha}</p>
-              </div>
+        {/* ── feito para o seu ramo ─────────────────────────────── */}
+        <section id="ramos" className="scroll-mt-16 border-t border-borda-suave bg-superficie">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
+            <Titulo
+              olho="Para quem é"
+              titulo="Feito para o seu ramo desde o primeiro dia"
+              resumo="Escolha o ramo no cadastro e o Norte já abre com as variações, a medida, as categorias e o jeito de vender de quem é do ramo. Toque num deles para ver o que muda."
+            />
+            <div className="mt-10">
+              <Ramos />
             </div>
-          ))}
-        </div>
 
-          <div className="mt-10 grid gap-x-8 gap-y-7 sm:grid-cols-3">
-            {QUEM.map(([t, d]) => (
-              <div key={t} className="flex flex-col gap-2 border-t border-borda pt-4">
-                <h3 className="text-base font-bold">{t}</h3>
-                <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
-              </div>
-            ))}
+            <AoEntrar className="cascata mt-12 grid gap-x-8 gap-y-6 sm:grid-cols-3">
+              {(
+                [
+                  [
+                    'De uma loja à rede inteira',
+                    'Quem tem uma loja nem vê o seletor de loja: ele só aparece quando nasce a segunda. A mesma tela serve às duas.',
+                  ],
+                  [
+                    'Depósito conta como loja',
+                    'Cada unidade com estoque e caixa próprios, e o painel soma tudo num clique.',
+                  ],
+                  [
+                    'Cada gerente na sua loja',
+                    'O gerente da loja 3 não vê o caixa da 5, e ninguém concede um cargo que ele mesmo não tem.',
+                  ],
+                ] as const
+              ).map(([t, d]) => (
+                <div key={t} className="flex flex-col gap-1.5 border-t border-borda pt-4">
+                  <h3 className="text-lg">{t}</h3>
+                  <p className="text-[15px] leading-relaxed text-tinta-2">{d}</p>
+                </div>
+              ))}
+            </AoEntrar>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── o que faz ── */}
-      <section id="faz" className="scroll-mt-16 bg-fundo">
-        <div className="mx-auto max-w-6xl px-5 py-16">
-          <Titulo
-            olho="O núcleo"
-            titulo="O que todo cliente tem, no primeiro dia"
-            resumo="Sem módulo pago escondido no meio do caminho. O que muda de plano é quantas lojas, o assistente — e quanto de cada tela está aberto, sempre com nome e cadeado."
-          />
-          {/* Oito itens, quatro por fileira. Com três colunas sobrava uma
-              fileira de dois e um buraco no fim; com quatro, duas fileiras
-              cheias — e o texto de cada item ainda cabe em `max-w-6xl`. */}
-          <div className="mt-9 grid gap-x-6 gap-y-7 sm:grid-cols-2 lg:grid-cols-4">
-            {FAZ.map((f) => (
-              <div
-                key={f.t}
-                className="flex flex-col gap-2 border-t border-borda pt-4"
-              >
-                <h3 className="text-base font-bold">{f.t}</h3>
-                <p className="text-sm leading-relaxed text-tinta-2">{f.d}</p>
-              </div>
-            ))}
+        {/* ── o sistema por dentro ──────────────────────────────── */}
+        <section id="produto" className="scroll-mt-16 bg-superficie">
+          <div className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 md:pb-24">
+            <Titulo
+              centro
+              olho="O sistema por dentro"
+              titulo="Uma tela para cada parte da loja"
+              resumo="Escolha uma. Cada tela abaixo é a do sistema, com números de exemplo."
+            />
+            <div className="mt-10">
+              <AbasProduto abas={ABAS} />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── a equipe ──
-          Texto à esquerda, o quadro à direita — a mesma anatomia da seção do
-          assistente, mas sobre papel. O quadro é desenhado em HTML com as
-          peças da interface (ver `ui/QuadroVivo.tsx`), sem moldura de janela,
-          e sangra 40px pela direita da coluna em `lg`. A seção tem
-          `overflow-hidden` para essa sangria nunca virar rolagem horizontal
-          na faixa em que a coluna encosta na borda da tela. */}
-      <section id="equipe" className="scroll-mt-16 overflow-hidden bg-superficie">
-        <div className="mx-auto max-w-6xl px-5 py-16">
-          <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.15fr] lg:gap-12">
+        {/* ── simples ou avançado ───────────────────────────────── */}
+        <section id="modos" className="scroll-mt-16 bg-fundo">
+          <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-20 sm:px-6 md:py-24 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
             <div className="flex flex-col gap-6">
               <Titulo
-                olho="A equipe"
-                titulo="A equipe no mesmo quadro"
-                resumo="Abertura e fechamento da loja, inventário, campanha, chegada de mercadoria: quadros prontos para começar, e cada pessoa dá baixa no que é dela."
+                olho="Fácil de verdade"
+                titulo="Simples para o balcão. Avançado para o dono."
+                resumo="A mesma ferramenta é aberta por duas pessoas muito diferentes. Uma chave decide quanto do sistema aparece de uma vez."
               />
-              <ul className="flex flex-col gap-3">
-                {EQUIPE.map(([t, d]) => (
-                  <li key={t} className="flex gap-2.5">
-                    <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-marca" />
+              <ul className="flex flex-col gap-4">
+                {(
+                  [
+                    [
+                      'O simples mostra o essencial',
+                      'O menu esconde Caixa, Preços, Análise e Auditoria; o painel abre pelo que precisa de você hoje; o balcão vende por botões grandes.',
+                    ],
+                    [
+                      'O modo é do aparelho, não da pessoa',
+                      'O computador do balcão fica no simples para sempre, seja quem for que sentar. O notebook do dono fica no avançado.',
+                    ],
+                    [
+                      'Nenhum dos dois tira permissão',
+                      'O modo decide o que se vê primeiro, nunca o que se pode. E quem ninguém configurou começa no simples.',
+                    ],
+                  ] as const
+                ).map(([t, d]) => (
+                  <li key={t} className="flex gap-3">
+                    <span className="mt-1 grid size-5 shrink-0 place-items-center rounded-full bg-marca-suave text-marca">
+                      <IconeVisto tamanho={12} />
+                    </span>
                     <span className="flex flex-col gap-0.5">
-                      <span className="text-sm font-semibold text-tinta">{t}</span>
-                      <span className="text-sm leading-relaxed text-tinta-2">{d}</span>
+                      <span className="text-base font-semibold text-tinta">{t}</span>
+                      <span className="text-[15px] leading-relaxed text-tinta-2">{d}</span>
                     </span>
                   </li>
                 ))}
               </ul>
-              <p className="max-w-lg text-xs leading-relaxed text-tinta-3">{ESCADA_TAREFAS}</p>
-            </div>
-
-            <QuadroVivo />
-          </div>
-        </div>
-      </section>
-
-      {/* ── o agente ──
-          Fundo de aurora sangrando a seção, texto à esquerda no lado escuro e
-          a conversa FLUTUANDO à direita — sem painel, sem moldura de celular,
-          sem borda. A versão anterior era uma janelinha branca dentro de uma
-          moldura escura dentro da seção: três degraus de caixa, e parecia
-          print colado num slide.
-
-          As bolhas agora pousam direto no fundo, com vidro fosco, indentação
-          desigual e a última sangrando pela borda direita. É o que faz a cena
-          parecer conversa acontecendo, e não captura de tela. */}
-      <section
-        id="agente"
-        className="aurora emenda-topo emenda-base relative isolate scroll-mt-16 overflow-hidden"
-        style={
-          // As vizinhas de cima e de baixo são de papel (`bg-superficie`): a
-          // equipe antes, os módulos depois. A costura dissolve na cor delas.
-          {
-            '--emenda': 'var(--superficie)',
-            '--emenda-base': 'var(--superficie)',
-          } as React.CSSProperties
-        }
-      >
-
-        {/* A LOJISTA RECORTADA, saindo pela borda direita.
-            É o movimento que faltava: foto sem fundo pode sair da grade — ser
-            cortada pela borda da tela e ficar atrás de um elemento e na
-            frente de outro. Foto retangular nunca faz isso, porque retângulo
-            obedece a grade.
-
-            ── os dois cortes, e por que só um deles serve ──
-            Ela é maior que a seção, então alguma coisa dela vai ser cortada.
-            Cortar em CIMA (ancorar embaixo) come a cabeça — e cabeça cortada
-            não parece profundidade, parece imagem mal encaixada. Ancorada no
-            TOPO, o rosto fica inteiro e quem sai do quadro é a perna, que é
-            como uma pessoa realmente sai de um enquadramento.
-
-            ── e por que boa parte dela fica FORA da tela ──
-            O translate-x empurra mais de um terço da largura dela para fora
-            da direita. Silhueta que cabe inteira no canto vira adesivo
-            colado; passando da borda, o olho completa o corpo que não vê e
-            entende que ela está NA FRENTE do plano da tela. Foi por isso que
-            a seção ganhou altura (py-40): é o que deixa ela grande e ainda
-            assim mostrar até a coxa antes do corte.
-
-            Só a partir de 1280px: em tela menor não existe a margem fora da
-            coluna de conteúdo, e ela passaria por cima da conversa. */}
-        {/* O halo atrás dela. Sem ele, o recorte encosta no fundo escuro e
-            some pelas bordas — com ele, a silhueta se destaca e o olho lê
-            "está na frente", que é a sensação de profundidade. */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute top-0 right-0 z-0 hidden h-[52rem] w-[38rem] translate-x-[28%] xl:block 2xl:h-[56rem]"
-          style={{
-            background:
-              'radial-gradient(22rem 26rem at 52% 62%, color-mix(in srgb, var(--marca) 34%, transparent) 0%, transparent 72%)',
-          }}
-        />
-        <Image
-          src="/img/lojista-recorte.png"
-          alt=""
-          aria-hidden
-          width={1328}
-          height={1760}
-          sizes="(max-width: 1536px) 50vw, 45vw"
-          quality={90}
-          className="pointer-events-none absolute top-6 right-0 z-0 hidden h-[62rem] w-auto max-w-none translate-x-[40%] object-contain object-top drop-shadow-[0_40px_90px_rgb(0_0_0/0.75)] xl:block 2xl:h-[66rem] 2xl:translate-x-[34%]"
-        />
-
-        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 pt-24 md:grid-cols-[1fr_1.05fr] md:pt-40">
-          <div className="flex flex-col gap-5">
-            <span className="text-xs font-bold tracking-[0.14em] text-sol-claro uppercase">
-              O que só o Norte faz
-            </span>
-            <h2 className="text-[clamp(2rem,4.4vw,3rem)] leading-[1.02] !text-nav-tinta text-balance">
-              Um assistente que <em className="text-sol-claro not-italic">age</em>, não um robô
-              que responde.
-            </h2>
-            <p className="max-w-lg leading-relaxed text-nav-tinta-2">
-              Ele não é um chat com respostas prontas: ele lê o seu estoque, o seu caixa e as
-              suas contas, e faz coisa que dá dinheiro. Você dá o nome, a personalidade e o
-              que ele pode fazer.
-            </p>
-            <ul className="flex flex-col gap-3 pt-1">
-              {[
-                ['Mexeu em dinheiro, preço ou estoque: ele propõe, você confirma.', 'Nada de descobrir depois que o robô resolveu dar 40%.'],
-                ['Teto em tudo, e o teto é número no banco.', 'Desconto máximo, valor de proposta, gasto de IA por dia.'],
-                ['Toda ação vai para o livro, com antes e depois.', 'Inclusive as nossas, quando entramos para dar suporte.'],
-              ].map(([t, d]) => (
-                <li key={t} className="flex gap-2.5">
-                  <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-sol-claro" />
-                  <span className="flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold text-nav-tinta">{t}</span>
-                    <span className="text-sm text-nav-tinta-2">{d}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <ConversaFlutuante />
-        </div>
-
-        {/* A FAIXA DO "NA PRÁTICA".
-            A lista do que o assistente faz e do que a loja regula nele é longa
-            demais para caber numa linha, e escolher três seria mentir por
-            omissão. Então a linha se reescreve: cada volta mostra outra, e o
-            que a peça diz é "tem mais coisa aqui do que cabe na tela".
-
-            As frases alternam sujeito — uma "você", uma "ele" — porque é
-            exatamente essa a divisão de trabalho que a seção inteira defende.
-
-            É o ÚNICO laço infinito da página, e é de propósito: aqui a
-            repetição é o conteúdo. Todo o resto se mexe uma vez só. */}
-        <div className="relative z-10 mx-auto max-w-6xl px-5 pt-14 pb-24 md:pb-40">
-          <div className="flex flex-col gap-2 border-t border-white/15 pt-6 sm:flex-row sm:items-baseline sm:gap-6">
-            <span className="shrink-0 text-[11px] font-bold tracking-[0.16em] text-sol-claro uppercase">
-              Na prática
-            </span>
-            <Digitando
-              itens={NA_PRATICA}
-              className="min-h-[1.6em] text-lg leading-snug font-semibold tracking-tight text-nav-tinta sm:text-xl"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* ── um sistema só ──
-          O diagrama: o Norte no centro e os oito módulos em volta, ligados a
-          ele — nunca entre si. É a prova visual de "sem trocar de sistema":
-          os módulos não se integram, eles leem a mesma base. Vem logo antes
-          dos planos porque é a última pergunta antes do preço: "e o que mais
-          eu vou precisar contratar?" — nada.
-
-          Texto à esquerda e a roda à direita em `lg`, porque a roda tem
-          largura fixa (40rem, ver `ui/Modulos.tsx`) e centrada sozinha num
-          contêiner de 72rem ficaria boiando. */}
-      <section id="modulos" className="scroll-mt-16 bg-superficie">
-        <div className="mx-auto max-w-6xl px-5 py-16">
-          <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,40rem)] lg:gap-14">
-            <Titulo
-              olho="Módulos"
-              titulo="Do balcão ao resultado do mês, sem trocar de sistema"
-              resumo="Venda, catálogo, gente e dinheiro leem a mesma base — e o assistente também. O que a sua empresa não usa some do menu, e volta com uma chave em Configurações."
-            />
-            <Modulos />
-          </div>
-        </div>
-      </section>
-
-      {/* ── planos ──
-          ── por que três cartões e não quatro ──
-          O Corporativo não é o irmão maior dos outros: não tem preço de
-          tabela, não se assina sozinho e o que se compra nele é trabalho
-          nosso, não assento no sistema. Enfiado como quarta coluna, ele
-          espremia os três que a pessoa realmente compara e ainda mentia sobre
-          o próprio formato. Fora da grade, cada cartão respira e ele fica com
-          a faixa larga que o tipo de contrato dele pede.
-
-          ── e por que o número vem do servidor ──
-          Preço, cota de loja, cota de gente e crédito mensal saem de
-          `servidor/planos.ts` — a MESMA fonte que a tela de assinatura lê para
-          barrar a criação da sexta loja. Repetir o número aqui à mão é como
-          divergência começa, e divergir aqui é prometer na venda o que o
-          sistema não entrega. Aqui em cima fica só o que é texto de venda: as
-          balas e a tradução de crédito em conversa. */}
-      <section id="planos" className="scroll-mt-16 bg-fundo">
-        <div className="mx-auto max-w-6xl px-5 py-16">
-          <Titulo
-            olho="Planos"
-            titulo="Preço por tamanho de operação"
-            resumo="Sem taxa de implantação escondida. Pessoa a mais tem preço de tabela, não “fale com o comercial”."
-          />
-
-          {/* ── O GRÁTIS FICA FORA DA GRADE, e é decisão de desenho ──
-              Quatro cartões de peso tão diferente numa fileira só achatam os
-              pagos: o olho compara R$ 0 com R$ 1.500 e para de comparar o que
-              importa, que é entre os pagos. Numa faixa própria, mais quieta,
-              ele continua achável — e quem está comparando preço segue
-              comparando os três que disputam de verdade. */}
-          <div className="mt-9 flex flex-col gap-4 rounded-norte border border-borda bg-superficie p-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-col gap-1.5">
-              <div className="flex flex-wrap items-baseline gap-x-3">
-                <h3 className="text-lg font-bold">{LIMITES.GRATIS.titulo}</h3>
-                <span className="numero text-sm font-semibold text-bom">
-                  R$ 0 — sem prazo e sem cartão
+              <p className="flex items-start gap-3 rounded-xl border border-borda bg-superficie p-4 text-[14px] leading-relaxed text-tinta-2">
+                <IconeGuia tamanho={24} className="mt-0.5 shrink-0 text-marca" />
+                <span>
+                  <b className="text-tinta">E o Guia do Norte em toda tela.</b> A ajuda sabe o
+                  sistema inteiro: o que a tela faz, o passo a passo e as perguntas de quem está
+                  nela — sem sair do lugar.
                 </span>
-              </div>
-              <p className="max-w-xl text-sm leading-relaxed text-tinta-2">
-                Uma loja, uma pessoa por vez, até {LIMITES.GRATIS.tetoVendasMes} vendas no mês.
-                Produto, estoque, balcão, cliente e um quadro de tarefas funcionam igual — o que
-                fica de fora é nota fiscal, assistente e o financeiro completo. É onde a loja pequena pode ficar, não
-                uma demonstração com prazo.
               </p>
             </div>
-            <a
-              href="#falar"
-              className="shrink-0 rounded-norte border border-borda px-5 py-2.5 text-center text-sm font-semibold text-tinta hover:bg-superficie-2"
-            >
-              Começar de graça
-            </a>
+            <SimplesAvancado />
           </div>
+        </section>
 
-          <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {PLANOS_COM_PRECO.map((codigo) => {
-              const l = LIMITES[codigo]
-              const c = CARTOES[codigo]
-              const eleito = codigo === RECOMENDADO
-              return (
-                <div
-                  key={codigo}
-                  className={
-                    'relative flex flex-col rounded-norte p-6 ' +
-                    (eleito
-                      ? 'bg-superficie-2 shadow-norte-alta ring-1 ring-marca/35 lg:-my-3 lg:pt-9'
-                      : 'bg-superficie shadow-norte ring-1 ring-borda')
-                  }
-                >
-                  {eleito && (
-                    <span className="absolute top-4 right-4 rounded-full bg-marca px-2.5 py-1 text-[10px] font-bold tracking-[0.1em] text-marca-tinta uppercase">
-                      {c.selo}
-                    </span>
-                  )}
-
-                  <h3 className="pr-24 text-xl font-bold tracking-tight">{l.titulo}</h3>
-                  <p className="mt-2 max-w-[34ch] text-sm leading-relaxed text-tinta-2">
-                    {l.resumo}
-                  </p>
-
-                  <p className="mt-7 flex items-baseline gap-1.5">
-                    <span className="numero text-[2.6rem] leading-none font-extrabold tracking-[-0.03em] text-tinta">
-                      {reais(l.mensal!)}
-                    </span>
-                    <span className="text-sm text-tinta-3">/mês</span>
-                  </p>
-                  <p className="mt-2 text-xs text-tinta-3">
-                    {l.porUnidadeExtra
-                      ? `+ ${reais(l.porUnidadeExtra)} por loja além da ${l.unidades}ª`
-                      : 'Sem taxa de implantação'}
-                  </p>
-
-                  <a
-                    href="#falar"
-                    className={
-                      'mt-5 rounded-norte px-4 py-2.5 text-center text-sm font-semibold ' +
-                      (eleito
-                        ? 'botao-marca text-marca-tinta'
-                        : 'border border-borda text-tinta hover:bg-superficie-2')
-                    }
-                  >
-                    Começar o teste
-                  </a>
-
-                  {/* A FICHA. Três linhas de rótulo à esquerda e número à
-                      direita — é o que a pessoa procura quando já entendeu o
-                      plano e quer saber se cabe na operação dela. Antes isso
-                      estava dissolvido no meio das balas, e cota de loja
-                      escondida numa lista de quinze linhas é a informação que
-                      ninguém acha. */}
-                  <dl className="mt-7">
-                    <Ficha rotulo="Lojas" valor={cotaLojas(l)} />
-                    <Ficha rotulo="Pessoas" valor={cotaGente(l)} />
-                    <Ficha
-                      rotulo="Crédito de IA"
-                      valor={l.creditoMensal ? `${reais(l.creditoMensal)}/mês` : 'Sem assistente'}
-                      nota={c.conta}
-                      rodape={c.nota}
-                    />
-                  </dl>
-
-                  <ul className="mt-6 flex flex-1 flex-col gap-2 border-t border-borda-suave pt-4">
-                    {/* O sufixo " · em breve" vira etiqueta em vez de texto
-                        corrido. Marcar o que ainda nao existe nao enfraquece a
-                        lista: quem assina por uma linha que nao encontra
-                        depois cancela, e esse cancelamento vem com reclamacao
-                        publica junto. Marcado, vira expectativa. */}
-                    {c.itens.map((x) => {
-                      const breve = x.endsWith(' · em breve')
-                      const texto = breve ? x.slice(0, -' · em breve'.length) : x
-                      return (
-                        <li key={x} className="flex gap-2 text-[13px] leading-snug text-tinta-2">
-                          <span
-                            aria-hidden
-                            className={
-                              'mt-px shrink-0 text-[11px] ' + (breve ? 'text-tinta-3' : 'text-bom')
-                            }
-                          >
-                            ✓
-                          </span>
-                          <span>
-                            {texto}
-                            {breve && (
-                              <span className="ml-1.5 rounded-full bg-superficie-2 px-1.5 py-0.5 align-middle text-[9px] font-bold tracking-wide text-tinta-3 uppercase">
-                                em breve
-                              </span>
-                            )}
-                          </span>
-                        </li>
-                      )
-                    })}
-                    {/* O que NÃO tem, agrupado no fim. Esconder o que falta é o
-                        que faz o cliente descobrir depois de assinar — e
-                        mostrar aumenta a confiança na lista inteira. */}
-                    {c.fora.map((x) => (
-                      <li
-                        key={x}
-                        className="flex gap-2 text-[13px] leading-snug text-tinta-3 line-through decoration-tinta-3/40"
-                      >
-                        <span
-                          aria-hidden
-                          className="mt-px shrink-0 text-[11px] no-underline opacity-50"
-                        >
-                          ✕
-                        </span>
-                        {x}
-                      </li>
-                    ))}
-                  </ul>
+        {/* ── o assistente ──────────────────────────────────────────
+            O diferencial. Em cima, o que ele faz (da lista fechada de
+            poderes) e a conversa acontecendo; embaixo, o controle — as
+            quatro travas, cada uma com a peça da tela onde ela aparece. */}
+        <section id="assistente" className="scroll-mt-16 bg-superficie">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
+            <div className="grid items-start gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
+              <div className="flex flex-col gap-8">
+                <Titulo
+                  olho="O diferencial"
+                  titulo="Um assistente que age. E que pede antes."
+                  resumo="Ele não é um chat de respostas prontas: lê o seu estoque, o seu caixa e as suas contas de verdade. Você dá o nome, o jeito de falar — e decide, em número, até onde ele vai."
+                />
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <ListaPoderes titulo="Consulta sozinho" poderes={CONSULTA} />
+                  <ListaPoderes titulo="Propõe, e você confirma" poderes={AGE} />
                 </div>
-              )
-            })}
-          </div>
+                <p className="text-[13px] leading-relaxed text-tinta-3">
+                  A configuração dele e as propostas já funcionam dentro do sistema; a conexão
+                  com o WhatsApp está sendo ligada agora. {desde('Assistente no WhatsApp')}.
+                </p>
+              </div>
 
-          {/* O CORPORATIVO, em faixa larga.
-              Aqui o que se contrata é a condução do negócio junto com o
-              sistema, e por isso o lado direito não tem preço: tem o crédito
-              que já vem e o convite para conversar. */}
-          <div className="mt-5 flex flex-col gap-8 overflow-hidden rounded-norte bg-nav p-7 md:flex-row md:items-center md:justify-between md:p-9">
-            <div className="max-w-2xl">
-              <span className="text-[11px] font-bold tracking-[0.16em] text-sol-claro uppercase">
-                Para rede grande
-              </span>
-              <h3 className="mt-2 text-2xl font-bold tracking-tight !text-white">Corporativo</h3>
-              <p className="mt-2 max-w-[58ch] text-sm leading-relaxed text-white/65">
-                {LIMITES.CORPORATIVO.resumo}
+              <div className="papel-conversa rounded-3xl border border-borda-suave bg-fundo p-5 sm:p-7 lg:sticky lg:top-24">
+                <ConversaFlutuante />
+              </div>
+            </div>
+
+            <div className="mt-20">
+              <h3 className="text-center text-[1.75rem] leading-tight sm:text-[2rem]">
+                O controle é seu, e é número.
+              </h3>
+              <p className="mx-auto mt-3 max-w-2xl text-center text-base leading-relaxed text-tinta-2">
+                Personalidade é texto; permissão não. As quatro travas moram no banco, onde
+                mensagem nenhuma alcança.
               </p>
-              <div className="mt-6 grid gap-x-8 gap-y-4 sm:grid-cols-3">
-                {CORPORATIVO_EXTRAS.map(([t, d]) => (
-                  <div key={t} className="flex flex-col gap-1 border-t border-white/20 pt-3">
-                    <p className="text-[13px] font-bold text-white">{t}</p>
-                    <p className="text-xs leading-relaxed text-white/60">{d}</p>
+              <AoEntrar className="cascata mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {CONTROLE.map((c) => (
+                  <div
+                    key={c.t}
+                    className="flex flex-col gap-4 rounded-2xl border border-borda-suave bg-fundo p-5"
+                  >
+                    <div className="flex flex-col gap-2">
+                      <h4 className="font-display text-lg leading-snug font-bold text-titulo">{c.t}</h4>
+                      <p className="text-[14px] leading-relaxed text-tinta-2">{c.d}</p>
+                    </div>
+                    <div className="mt-auto">{c.peca}</div>
+                  </div>
+                ))}
+              </AoEntrar>
+            </div>
+          </div>
+        </section>
+
+        {/* ── o que resolve ───────────────────────────────────────
+            Bento: a dor com mais mecânica para mostrar ganha o cartão largo
+            (a ruptura, com a lista de "pedir até"), as do meio ficam em
+            fileira, e o fechamento do mês — a dor que junta todas as outras
+            — fecha a grade na largura inteira. Cada cartão termina com a
+            tela e o plano. */}
+        <section id="resolve" className="scroll-mt-16 bg-fundo">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
+            <Titulo
+              olho="O que resolve"
+              titulo="As dores do varejo, e onde cada uma é resolvida"
+              resumo="Cada uma termina com o nome da tela onde o número aparece. Não é promessa de consultoria: é o lugar onde você vai olhar."
+            />
+            <AoEntrar className="cascata mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {DORES.map((d) => (
+                <article
+                  key={d.t}
+                  className={'flex flex-col gap-5 rounded-2xl border border-borda bg-superficie p-6 shadow-norte ' + d.classe}
+                >
+                  <div className="flex flex-col gap-3">
+                    <span className="grid size-11 place-items-center rounded-xl bg-marca-suave text-marca">
+                      <d.Icone tamanho={28} />
+                    </span>
+                    <h3 className="text-xl leading-snug">{d.t}</h3>
+                    <p className="text-[15px] leading-relaxed text-tinta-2">{d.d}</p>
+                    <p className="text-[13px] text-tinta-3">
+                      Na tela <span className="font-semibold text-tinta-2">{d.tela}</span> · {d.plano}
+                    </p>
+                  </div>
+                  {d.peca && <div className="mt-auto">{d.peca}</div>}
+                </article>
+              ))}
+            </AoEntrar>
+          </div>
+        </section>
+
+        {/* ── segurança ───────────────────────────────────────────
+            O único bloco azul-noite da página é aqui, e pequeno: o desenho
+            das duas paredes. É detalhe, não seção — e o azul-noite é a cor do
+            "por baixo", que é exatamente o que o desenho mostra. */}
+        <section id="seguranca" className="scroll-mt-16 bg-superficie">
+          <div className="mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:px-6 md:py-24 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
+            <div className="flex flex-col gap-8">
+              <Titulo
+                olho="Segurança"
+                titulo="O que a gente faz para o seu dado não virar problema"
+                resumo="Isto costuma ficar escondido no contrato. Fica aqui porque é o que separa sistema de várias empresas feito direito de sistema de uma empresa adaptado às pressas."
+              />
+              <div className="nav-fundo flex flex-col gap-4 rounded-2xl p-6 text-[13px]" aria-hidden>
+                <span className="text-[11px] font-bold tracking-[0.14em] text-sol-claro uppercase">
+                  Duas paredes
+                </span>
+                {[
+                  ['Sua empresa', 'o pedido chega'],
+                  ['A aplicação', 'só fala com o banco já presa à sua empresa'],
+                  ['O Postgres', 'recusa devolver linha de outra empresa'],
+                ].map(([t, d], i) => (
+                  <div key={t} className="flex items-center gap-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-nav-3 font-bold text-nav-tinta">
+                      {i + 1}
+                    </span>
+                    <span className="flex flex-col leading-snug">
+                      <span className="font-semibold text-nav-tinta">{t}</span>
+                      <span className="text-nav-tinta-2">{d}</span>
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
+            <AoEntrar className="cascata flex flex-col">
+              {SEGURANCA.map(({ Icone, t, d }) => (
+                <div key={t} className="flex gap-4 border-t border-borda py-5 first:border-t-0 first:pt-0">
+                  <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-borda text-marca">
+                    <Icone tamanho={26} />
+                  </span>
+                  <span className="flex flex-col gap-1">
+                    <h3 className="text-lg">{t}</h3>
+                    <span className="text-[15px] leading-relaxed text-tinta-2">{d}</span>
+                  </span>
+                </div>
+              ))}
+            </AoEntrar>
+          </div>
+        </section>
 
-            <div className="flex shrink-0 flex-col gap-3 md:w-56 md:items-end md:text-right">
-              <p className="text-2xl leading-none font-extrabold tracking-tight !text-white">
-                Sob consulta
-              </p>
-              {/* Sem número de crédito aqui, e é de propósito: o volume de
-                  conversa de um cliente Corporativo não se parece com o de
-                  outro. Um número de tabela viraria promessa feita antes de
-                  alguém olhar a operação — que é o mesmo motivo de o preço
-                  ser sob consulta. */}
-              <p className="text-xs leading-relaxed text-white/60">
-                Sem limite de loja nem de gente, com{' '}
-                <span className="font-semibold text-sol-claro">
-                  crédito de IA dimensionado para a sua operação
-                </span>{' '}
-                e o resto combinado no contrato.
-              </p>
+        {/* ── planos ──────────────────────────────────────────────
+            ── o Grátis e o Corporativo em faixas próprias ──
+            Quatro cartões de peso tão diferente numa fileira achatam os
+            pagos: o olho compara R$ 0 com R$ 1.500 e para de comparar o que
+            importa. O Grátis fica numa faixa quieta em cima; o Corporativo,
+            que não tem preço de tabela nem se assina sozinho, numa faixa
+            larga embaixo. Os três do meio são os que disputam de verdade.
+
+            ── e por que o número vem do servidor ──
+            A MESMA fonte que a tela de assinatura lê para barrar a sexta
+            loja. Divergir aqui é prometer na venda o que o sistema não
+            entrega. */}
+        <section id="planos" className="scroll-mt-16 bg-fundo">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
+            <Titulo
+              centro
+              olho="Planos"
+              titulo="Preço por tamanho de operação"
+              resumo={`A partir de ${reais(MENOR_MENSAL)} por mês, sem taxa de implantação. Pessoa a mais tem preço de tabela, não “fale com o comercial”.`}
+            />
+
+            <div className="mx-auto mt-10 flex max-w-2xl flex-col gap-4 rounded-2xl border border-borda bg-superficie p-6 sm:flex-row sm:items-center sm:justify-between lg:max-w-none">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-baseline gap-x-3">
+                  <h3 className="text-xl">{LIMITES.GRATIS.titulo}</h3>
+                  <span className="numero text-sm font-semibold text-bom">
+                    R$ 0 · {CARTOES.GRATIS.nota}
+                  </span>
+                </div>
+                <p className="max-w-2xl text-[15px] leading-relaxed text-tinta-2">
+                  Uma loja, uma pessoa por vez, até {LIMITES.GRATIS.tetoVendasMes} vendas no mês.
+                  Balcão, caixa, produto, estoque, cliente e um quadro de tarefas funcionam igual. É
+                  onde a loja pequena pode ficar — não uma demonstração com prazo.
+                </p>
+              </div>
               <a
-                href="#falar"
-                className="botao-marca mt-1 rounded-norte px-6 py-3 text-center text-sm font-semibold text-marca-tinta"
+                href={mailto('Quero começar no plano Grátis')}
+                className="shrink-0 rounded-norte border border-borda px-5 py-2.5 text-center text-sm font-semibold text-tinta hover:bg-superficie-2"
               >
-                Falar com a gente
+                Começar de graça
               </a>
             </div>
-          </div>
 
-          {/* Dizia "nota fiscal entra como opcional no Balcão" — e a tabela
-              logo abaixo mostra nota fiscal em todo plano pago. A letra miúda
-              agora diz a única coisa que é adicional de verdade, com o número
-              lido do plano: a vaga a mais. */}
-          <p className="mt-5 text-xs text-tinta-3">
-            Valores mensais, por empresa. Pessoa a mais dentro ao mesmo tempo custa{' '}
-            {reais(LIMITES.BALCAO.porVagaExtra!)} por mês no {LIMITES.BALCAO.titulo} e no{' '}
-            {LIMITES.BALCAO_AGENTE.titulo}; {LIMITES.REDE.artigo === 'a' ? 'a' : 'o'}{' '}
-            {LIMITES.REDE.titulo} não tem teto.
-          </p>
+            <AoEntrar className="cascata mx-auto mt-5 grid max-w-2xl gap-5 lg:max-w-none lg:grid-cols-3 lg:items-stretch">
+              {PLANOS_COM_PRECO.map((codigo) => {
+                const l = LIMITES[codigo]
+                const c = CARTOES[codigo]
+                const eleito = codigo === RECOMENDADO
+                return (
+                  <div
+                    key={codigo}
+                    className={
+                      'relative flex flex-col rounded-2xl bg-superficie p-6 ' +
+                      (eleito ? 'shadow-norte-alta ring-2 ring-marca' : 'shadow-norte ring-1 ring-borda')
+                    }
+                  >
+                    {eleito && c.selo && (
+                      <span className="absolute -top-3 left-6 rounded-full bg-marca px-3 py-1 text-[11px] font-bold tracking-[0.08em] text-marca-tinta uppercase">
+                        {c.selo}
+                      </span>
+                    )}
+                    <h3 className="text-2xl">{l.titulo}</h3>
+                    <p className="mt-2 min-h-[3em] text-[14px] leading-relaxed text-tinta-2">{l.resumo}</p>
 
-          {/* A tabela item por item. Cartão vende, tabela decide: quem está
-              com o cartão do meio quase escolhido tem UMA pergunta específica
-              ("o crediário está no Rede ou não?"), e procurar isso em quatro
-              listas de bala é onde a pessoa desiste e vai perguntar no
-              WhatsApp. Ela responde sem ninguém do outro lado. */}
-          <div className="mt-14">
-            <h3 className="mb-1 text-2xl leading-tight">Item por item</h3>
-            <p className="mb-6 max-w-[56ch] text-sm text-tinta-2">
-              Tudo que muda de um plano para o outro, sem asterisco. O que não está aqui está
-              em todos.
-            </p>
-            <CompararPlanos />
-          </div>
-        </div>
-      </section>
+                    <p className="mt-6 flex items-baseline gap-1.5">
+                      <span className="numero font-display text-[2.75rem] leading-none font-bold tracking-[-0.03em] text-titulo">
+                        {reais(l.mensal!)}
+                      </span>
+                      <span className="text-sm text-tinta-3">/mês</span>
+                    </p>
+                    <p className="mt-2 text-xs text-tinta-3">
+                      {l.porVagaExtra
+                        ? `+ ${reais(l.porVagaExtra)} por pessoa a mais dentro ao mesmo tempo`
+                        : 'Sem taxa de implantação'}
+                    </p>
 
-      {/* ── segurança ── */}
-      <section className="bg-superficie">
-        <div className="mx-auto max-w-6xl px-5 py-16">
-          <Titulo
-            olho="Segurança"
-            titulo="O que a gente faz para o seu dado não virar problema"
-            resumo="Isto costuma ficar escondido no contrato. Fica aqui porque é o que diferencia sistema multi-empresa feito direito de sistema de um cliente adaptado às pressas."
-          />
-          <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {SEGURANCA.map(([t, d]) => (
-              <div key={t} className="flex flex-col gap-2 rounded-norte bg-fundo p-5">
-                <h3 className="text-base font-bold">{t}</h3>
-                <p className="text-sm leading-relaxed text-tinta-2">{d}</p>
+                    <a
+                      href={mailto(`Quero o plano ${l.titulo}`)}
+                      className={
+                        'mt-5 rounded-norte px-4 py-2.5 text-center text-sm font-semibold ' +
+                        (eleito
+                          ? 'botao-marca text-marca-tinta'
+                          : 'border border-borda text-tinta hover:bg-superficie-2')
+                      }
+                    >
+                      Quero {l.artigo} {l.titulo}
+                    </a>
+
+                    <dl className="mt-6">
+                      <Ficha rotulo="Lojas" valor={cotaLojas(l)} />
+                      <Ficha rotulo="Pessoas dentro" valor={cotaGente(l)} />
+                      <Ficha
+                        rotulo="Crédito de IA"
+                        valor={l.creditoMensal ? `${reais(l.creditoMensal)}/mês` : 'Sem assistente'}
+                        nota={c.conta}
+                        rodape={c.nota}
+                      />
+                    </dl>
+
+                    <ul className="mt-5 flex flex-1 flex-col gap-2 border-t border-borda-suave pt-4">
+                      {c.itens.map((x) => {
+                        const breve = x.endsWith(' · em breve')
+                        const texto = breve ? x.slice(0, -' · em breve'.length) : x
+                        return (
+                          <li key={x} className="flex gap-2 text-[13.5px] leading-snug text-tinta-2">
+                            <IconeVisto
+                              tamanho={14}
+                              className={'mt-0.5 shrink-0 ' + (breve ? 'text-tinta-3' : 'text-bom')}
+                            />
+                            <span>
+                              {texto}
+                              {breve && <EmBreve />}
+                            </span>
+                          </li>
+                        )
+                      })}
+                      {/* O que NÃO tem, no fim. Esconder o que falta é o que
+                          faz o cliente descobrir depois de assinar. */}
+                      {c.fora.map((x) => (
+                        <li
+                          key={x}
+                          className="flex gap-2 text-[13.5px] leading-snug text-tinta-3 line-through decoration-tinta-3/40"
+                        >
+                          <IconeMais tamanho={14} className="mt-0.5 shrink-0 rotate-45 opacity-60" />
+                          {x}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )
+              })}
+            </AoEntrar>
+
+            {/* O Corporativo, em faixa larga e clara. O que se contrata aqui
+                é a condução do negócio junto com o sistema — por isso o lado
+                direito não tem preço: tem o convite para conversar. */}
+            <div className="mx-auto mt-5 flex max-w-2xl flex-col gap-8 rounded-2xl border border-borda bg-superficie p-6 sm:p-8 lg:max-w-none lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-2xl">
+                <span className="flex items-center gap-2 text-[11px] font-bold tracking-[0.14em] text-marca uppercase">
+                  <Simbolo tamanho={18} id="corporativo-sol" /> Para rede grande
+                </span>
+                <h3 className="mt-2 text-2xl">{LIMITES.CORPORATIVO.titulo}</h3>
+                <p className="mt-2 max-w-[60ch] text-[15px] leading-relaxed text-tinta-2">
+                  {LIMITES.CORPORATIVO.resumo}
+                </p>
+                <div className="mt-6 grid gap-x-8 gap-y-4 sm:grid-cols-3">
+                  {CORPORATIVO_EXTRAS.map(([t, d]) => (
+                    <div key={t} className="flex flex-col gap-1 border-t border-borda pt-3">
+                      <p className="text-[14px] font-bold text-tinta">{t}</p>
+                      <p className="text-[13px] leading-relaxed text-tinta-2">{d}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+              <div className="flex shrink-0 flex-col gap-3 lg:w-56 lg:items-end lg:text-right">
+                <p className="font-display text-2xl leading-none font-bold text-titulo">Sob consulta</p>
+                <p className="text-[13px] leading-relaxed text-tinta-2">
+                  Sem limite de loja nem de gente, com {CARTOES.CORPORATIVO.conta}.
+                </p>
+                <a
+                  href={mailto('Quero conversar sobre o Corporativo')}
+                  className="rounded-norte border border-borda px-6 py-3 text-center text-sm font-semibold text-tinta hover:bg-superficie-2"
+                >
+                  Falar com a gente
+                </a>
+              </div>
+            </div>
 
-      {/* ── perguntas ── */}
-      <section className="bg-fundo">
-        <div className="mx-auto max-w-3xl px-5 py-16">
-          <Titulo olho="Dúvidas" titulo="O que costumam perguntar antes de assinar" />
-          <div className="mt-8 flex flex-col gap-3">
-            {PERGUNTAS.map((q) => (
-              <details
-                key={q.p}
-                className="group border-b border-borda py-4"
-              >
-                <summary className="cursor-pointer list-none text-sm font-bold text-tinta">
-                  <span className="flex items-center justify-between gap-4">
+            <p className="mt-5 text-center text-xs text-tinta-3">
+              Valores mensais, por empresa. Cadastrar a equipe é livre em todo plano; o que se paga
+              é quanta gente fica dentro ao mesmo tempo. {LIMITES.REDE.artigo === 'a' ? 'A' : 'O'}{' '}
+              {LIMITES.REDE.titulo} não tem teto.
+            </p>
+
+            {/* A tabela item por item. Cartão vende, tabela decide: quem está
+                com um cartão quase escolhido tem UMA pergunta específica, e
+                ela responde sem ninguém do outro lado. */}
+            <div className="mt-20">
+              <h3 className="text-[1.75rem] leading-tight sm:text-[2rem]">Item por item</h3>
+              <p className="mt-2 mb-6 max-w-[60ch] text-[15px] text-tinta-2">
+                Tudo que muda de um plano para o outro, sem asterisco. O que ainda não existe está
+                marcado “em breve”.
+              </p>
+              <CompararPlanos />
+            </div>
+          </div>
+        </section>
+
+        {/* ── dúvidas ─────────────────────────────────────────────
+            `<details>` de verdade: abre sem JavaScript, o leitor de tela
+            anuncia aberto e fechado, e o Ctrl+F do navegador acha texto
+            dentro da resposta fechada. A abertura desliza onde o navegador
+            sabe animar altura (ver `.perguntas` no globals). */}
+        <section id="duvidas" className="scroll-mt-16 bg-superficie">
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 md:py-24 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] lg:gap-16">
+            <div className="flex flex-col gap-5">
+              <Titulo olho="Dúvidas" titulo="O que costumam perguntar antes de assinar" />
+              <p className="text-[15px] leading-relaxed text-tinta-2">
+                Não achou a sua?{' '}
+                <a href={mailto('Tenho uma dúvida sobre o Norte')} className="font-semibold text-marca underline-offset-4 hover:underline">
+                  Escreva para a gente
+                </a>
+                .
+              </p>
+            </div>
+            <div className="perguntas flex flex-col">
+              {PERGUNTAS.map((q) => (
+                <details key={q.p} className="group border-b border-borda">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-md py-5 text-left text-base font-semibold text-tinta [&::-webkit-details-marker]:hidden">
                     {q.p}
                     <span
                       aria-hidden
-                      className="shrink-0 text-tinta-3 transition-transform group-open:rotate-45"
+                      className="grid size-7 shrink-0 place-items-center rounded-full border border-borda text-tinta-2 transition-transform duration-300 group-open:rotate-45"
                     >
-                      +
+                      <IconeMais tamanho={14} />
                     </span>
-                  </span>
-                </summary>
-                <p className="mt-3 text-sm leading-relaxed text-tinta-2">{q.r}</p>
-              </details>
-            ))}
+                  </summary>
+                  <p className="pb-5 text-[15px] leading-relaxed text-tinta-2">{q.r}</p>
+                </details>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── fechamento ── */}
-      <section
-        id="falar"
-        className="emenda-topo relative scroll-mt-16 overflow-hidden bg-nav"
-        style={{ '--emenda': 'var(--fundo)' } as React.CSSProperties}
-      >
-        <div className="mx-auto flex max-w-3xl flex-col items-center gap-5 px-5 py-16 text-center">
-          <Simbolo tamanho={44} nu id="fim" />
-          <h2 className="text-3xl font-extrabold tracking-[-0.02em] text-nav-tinta md:text-4xl">
-            Comece pelo que dói mais.
-          </h2>
-          <p className="max-w-xl leading-relaxed text-nav-tinta-2">
-            A gente monta o seu ambiente, sobe o seu catálogo junto com você e liga o
-            assistente com o nome que você escolher. Em duas semanas você já sabe se vale.
-          </p>
-          <a
-            href="mailto:contato@usenorte.com.br?subject=Quero%20testar%20o%20Norte"
-            className="botao-marca rounded-norte px-6 py-3 text-sm font-semibold text-marca-tinta"
-          >
-            Falar com a gente
-          </a>
-        </div>
-      </section>
+        {/* ── o fechamento ────────────────────────────────────────
+            Grande e claro: um painel no azul mais suave da marca, com o
+            símbolo e uma frase. O botão principal abre um e-mail — e o texto
+            diz isso antes do clique, porque ainda não existe cadastro
+            sozinho: a gente monta o ambiente junto. */}
+        <section id="comecar" className="scroll-mt-16 bg-superficie">
+          <div className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 md:pb-24">
+            <div className="relative isolate overflow-hidden rounded-3xl border border-borda bg-marca-suave px-6 py-14 text-center sm:px-12 md:py-20">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 -z-10"
+                style={{
+                  background:
+                    'radial-gradient(40rem 20rem at 50% 0%, color-mix(in srgb, var(--superficie) 70%, transparent), transparent 70%), radial-gradient(30rem 18rem at 100% 100%, color-mix(in srgb, var(--sol) 12%, transparent), transparent 70%)',
+                }}
+              />
+              <Simbolo tamanho={52} id="fim-sol" className="mx-auto" />
+              <h2 className="mx-auto mt-6 max-w-2xl text-[2.25rem] leading-[1.05] text-balance sm:text-[3rem]">
+                Comece pelo que dói mais.
+              </h2>
+              <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-tinta-2">
+                A gente monta o seu ambiente, sobe o catálogo junto com você e liga o assistente com
+                o nome que você escolher. Em duas semanas você sabe se vale.
+              </p>
+              <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+                <a
+                  href={mailto('Quero começar no Norte')}
+                  className="botao-marca rounded-norte px-7 py-3.5 text-[15px] font-semibold text-marca-tinta"
+                >
+                  Começar grátis
+                </a>
+                <a
+                  href="#planos"
+                  className="rounded-norte border border-borda bg-superficie px-7 py-3.5 text-[15px] font-semibold text-tinta hover:bg-superficie-2"
+                >
+                  Ver os planos
+                </a>
+              </div>
+              <p className="mt-4 text-sm text-tinta-3">
+                Grátis para sempre no plano de uma loja · sem cartão · o botão abre um e-mail para
+                a gente
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
 
-      <footer className="border-t border-borda bg-superficie">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-8 sm:flex-row sm:items-center sm:justify-between">
-          <Marca tamanho={22} id="rodape" />
-          <div className="flex flex-col gap-3 sm:items-end">
-            <p className="text-xs text-tinta-3">
-              Cada empresa entra pelo próprio endereço. Recebeu um convite? Use o link que chegou
-              para você.
+      {/* ── o rodapé ──
+          Só link que existe: âncora desta página, termos, privacidade e a
+          entrada. Termos e privacidade moram aqui porque é onde quem procura
+          procura — e quem não acha desconfia, com razão. */}
+      <footer className="border-t border-borda bg-fundo">
+        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,1fr))]">
+          <div className="flex flex-col gap-4">
+            <Marca tamanho={26} id="rodape-sol" />
+            <p className="max-w-xs text-sm leading-relaxed text-tinta-2">
+              Gestão da empresa, do balcão ao fim do mês. Cada empresa entra pelo próprio endereço;
+              recebeu um convite? Use o link que chegou para você.
             </p>
-            {/* Termos e privacidade no rodapé, e não escondidos numa página de
-                ajuda: quem procura isso antes de assinar procura no rodapé, e
-                quem não acha desconfia — com razão. */}
-            <nav className="flex gap-5 text-xs text-tinta-3">
-              <a href="/termos" className="hover:text-tinta-2">
-                Termos de uso
-              </a>
-              <a href="/privacidade" className="hover:text-tinta-2">
-                Privacidade
-              </a>
-            </nav>
           </div>
+          <Coluna
+            titulo="Produto"
+            links={[
+              ...ABAS.map((a) => ({ nome: a.titulo, href: `#tela-${a.id}` })),
+              { nome: 'Simples ou avançado', href: '#modos' },
+              { nome: 'Segurança', href: '#seguranca' },
+            ]}
+          />
+          <Coluna
+            titulo="Para quem é"
+            links={RAMOS_RODAPE.map(([nome, id]) => ({ nome, href: `#ramo-${id}` }))}
+          />
+          <Coluna
+            titulo="Empresa"
+            links={[
+              { nome: 'Planos', href: '#planos' },
+              { nome: 'Dúvidas', href: '#duvidas' },
+              { nome: 'Falar com a gente', href: mailto('Contato pelo site') },
+              { nome: 'Entrar', href: ENTRAR },
+            ]}
+          />
+          <Coluna
+            titulo="Legal"
+            links={[
+              { nome: 'Termos de uso', href: '/termos' },
+              { nome: 'Privacidade', href: '/privacidade' },
+            ]}
+          />
+        </div>
+        <div className="border-t border-borda-suave">
+          <p className="mx-auto max-w-6xl px-4 py-6 text-xs text-tinta-3 sm:px-6">
+            © {new Date().getFullYear()} Norte. Os números das telas desta página são de exemplo.
+          </p>
         </div>
       </footer>
     </div>
   )
 }
 
-function Titulo({ olho, titulo, resumo }: { olho: string; titulo: string; resumo?: string }) {
+/* ═══════════════════════════════════════════════════════════
+   Peças da página
+   ═══════════════════════════════════════════════════════════ */
+
+function Titulo({
+  olho,
+  titulo,
+  resumo,
+  centro = false,
+}: {
+  olho: string
+  titulo: string
+  resumo?: string
+  centro?: boolean
+}) {
   return (
-    <div className="flex max-w-2xl flex-col gap-2.5">
-      <span className="text-xs font-bold tracking-[0.14em] text-marca uppercase">{olho}</span>
-      <h2 className="text-3xl leading-tight font-extrabold tracking-[-0.02em] text-balance">
+    <div className={'flex max-w-2xl flex-col gap-3 ' + (centro ? 'mx-auto items-center text-center' : '')}>
+      <span className="text-[13px] font-bold tracking-[0.12em] text-marca uppercase">{olho}</span>
+      <h2 className="text-[2rem] leading-[1.08] text-balance sm:text-[2.5rem] lg:text-[2.75rem]">
         {titulo}
       </h2>
-      {resumo && <p className="leading-relaxed text-tinta-2">{resumo}</p>}
+      {resumo && <p className="text-[17px] leading-relaxed text-tinta-2 sm:text-lg">{resumo}</p>}
+    </div>
+  )
+}
+
+function EmBreve() {
+  return (
+    <span className="ml-1.5 inline-block rounded-full bg-superficie-2 px-1.5 py-0.5 align-middle text-[9.5px] font-bold tracking-wide whitespace-nowrap text-tinta-3 uppercase">
+      em breve
+    </span>
+  )
+}
+
+function ListaPoderes({
+  titulo,
+  poderes,
+}: {
+  titulo: string
+  poderes: { titulo: string; resumo: string; disponivel: boolean }[]
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[12px] font-bold tracking-[0.12em] text-tinta-3 uppercase">{titulo}</p>
+      <ul className="flex flex-col gap-3">
+        {poderes.map((p) => (
+          <li key={p.titulo} className="flex gap-2.5">
+            <IconeVisto
+              tamanho={15}
+              className={'mt-1 shrink-0 ' + (p.disponivel ? 'text-bom' : 'text-tinta-3')}
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className={'text-[15px] font-semibold ' + (p.disponivel ? 'text-tinta' : 'text-tinta-2')}>
+                {p.titulo}
+                {!p.disponivel && <EmBreve />}
+              </span>
+              <span className="text-[13.5px] leading-snug text-tinta-2">{p.resumo}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -1327,9 +1347,7 @@ function Titulo({ olho, titulo, resumo }: { olho: string; titulo: string; resumo
  * Uma linha da ficha do plano: rótulo à esquerda, número à direita.
  *
  * É `<dl>` de verdade porque é exatamente isso — termo e definição. Leitor de
- * tela anuncia "Lojas, até 5"; num par de divs ele leria "até 5" solto. A
- * tradução e a letra miúda entram como um SEGUNDO `<dd>` do mesmo termo, que
- * é HTML válido e diz a coisa certa: são duas definições do mesmo item.
+ * tela anuncia "Lojas, até 5"; num par de divs ele leria "até 5" solto.
  */
 function Ficha({
   rotulo,
@@ -1339,9 +1357,7 @@ function Ficha({
 }: {
   rotulo: string
   valor: string
-  /** A tradução do número, quando ela existe. Ex.: "~5.800 conversas". */
   nota?: string | null
-  /** A letra miúda de baixo. Ex.: "renovado todo mês". */
   rodape?: string
 }) {
   return (
@@ -1350,11 +1366,9 @@ function Ficha({
       <dd className="numero ml-auto text-[13px] font-bold text-tinta">{valor}</dd>
       {(nota || rodape) && (
         <dd className="w-full">
-          {nota && <span className="numero block pt-1 text-[11px] font-semibold text-bom">{nota}</span>}
+          {nota && <span className="numero block pt-1 text-[11.5px] font-semibold text-bom">{nota}</span>}
           {rodape && (
-            <span className="block pt-0.5 text-right text-[11px] leading-snug text-tinta-3">
-              {rodape}
-            </span>
+            <span className="block pt-0.5 text-right text-[11px] leading-snug text-tinta-3">{rodape}</span>
           )}
         </dd>
       )}
@@ -1362,14 +1376,19 @@ function Ficha({
   )
 }
 
-
-/**
- * O painel, desenhado à mão em HTML.
- *
- * Não é captura de tela: captura envelhece na primeira mudança de cor e sai
- * borrada em tela de retina. Desenhado, ele acompanha o tema e continua nítido
- * em qualquer densidade. Os números são os do ambiente de exemplo — não são de
- * cliente nenhum.
- */
-
-/** Uma conversa de exemplo — o assistente propondo, e a dona confirmando. */
+function Coluna({ titulo, links }: { titulo: string; links: { nome: string; href: string }[] }) {
+  return (
+    <nav aria-label={titulo} className="flex flex-col gap-3">
+      <p className="text-[12px] font-bold tracking-[0.12em] text-tinta uppercase">{titulo}</p>
+      <ul className="flex flex-col gap-2">
+        {links.map((l) => (
+          <li key={l.href + l.nome}>
+            <a href={l.href} className="text-sm text-tinta-2 hover:text-marca">
+              {l.nome}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
