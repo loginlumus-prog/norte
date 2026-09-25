@@ -24,15 +24,19 @@ import { useId, useState } from 'react'
 import { cx } from './base'
 
 /** A ordem fixa das cores de série. A nona série vira "Outros". */
+// As quatro primeiras são as que quase toda rosca usa, e precisam ser
+// quatro MATIZES: o âmbar de atenção vinha logo depois do laranja do sol, e
+// "Crédito" e "Débito" saíam da mesma cor. O cinza entra em quarto — é o
+// mais distante de todos os outros.
 export const PALETA = [
   'var(--marca)',
   'var(--bom-vivo)',
   'var(--sol)',
+  'var(--tinta-3)',
+  'var(--marca-forte)',
   'var(--atencao-vivo)',
   'var(--critico-vivo)',
-  'var(--marca-forte)',
   'var(--bom)',
-  'var(--tinta-3)',
 ] as const
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -96,7 +100,11 @@ export function Rosca({
   const emCima = aceso !== null ? mostradas[aceso] : null
 
   return (
-    <div className="flex flex-wrap items-center gap-4">
+    // A legenda precisa de uns 13rem para nome E valor caberem na linha; com
+    // menos que isso (o celular), ela desce para baixo da rosca, que fica no
+    // meio. Espremida ao lado, o nome sumia inteiro no `truncate` e sobrava
+    // uma coluna de valores sem dono.
+    <div className="flex flex-wrap items-center justify-center gap-4">
       <svg viewBox="0 0 100 100" className="size-36 shrink-0" role="img" aria-label={`Total ${formatar(formato)(total)}`}>
         <circle cx="50" cy="50" r={R} fill="none" stroke="var(--superficie-2)" strokeWidth="12" />
         {arcos.map((a) => (
@@ -125,7 +133,7 @@ export function Rosca({
 
       {/* A legenda é a tabela do gráfico: nome, valor exato e a fatia. Quem
           não distingue as cores lê a mesma coisa. */}
-      <ul className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+      <ul className="flex min-w-[13rem] flex-1 flex-col gap-1 text-sm">
         {arcos.map((a) => (
           <li
             key={a.i}
@@ -204,13 +212,12 @@ export function BarrasMeses({
   altura?: number
 }) {
   const [aceso, setAceso] = useState<number | null>(null)
-  const maior = Math.max(...series.flatMap((s) => s.valores), 1)
-  // Três linhas de grade, em números redondos: o eixo serve para ler
-  // ordem de grandeza, não para medir com régua.
-  const passo = passoRedondo(maior / 3)
-  const topo = Math.ceil(maior / passo) * passo
-  const linhas = Array.from({ length: Math.round(topo / passo) + 1 }, (_, i) => i * passo)
+  const { topo, linhas } = eixo(Math.max(...series.flatMap((s) => s.valores), 1))
   const g = aceso !== null ? aceso : null
+  // Rótulo em todo grupo só enquanto cabe. Com as 13 horas de uma loja no
+  // celular, "10h11h12h" encosta um no outro e nenhum se lê — um sim, um não
+  // continua dizendo onde se está, e a hora exata aparece no balão.
+  const salto = rotulos.length > 14 ? 2 : 1
 
   return (
     <div className="flex flex-col gap-2">
@@ -225,7 +232,7 @@ export function BarrasMeses({
               </span>
             ))}
           </div>
-        ) : (
+        ) : series.length > 1 ? (
           <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-tinta-2">
             {series.map((s) => (
               <li key={s.nome} className="flex items-center gap-1.5">
@@ -234,24 +241,16 @@ export function BarrasMeses({
               </li>
             ))}
           </ul>
+        ) : (
+          // Uma série só não tem legenda — o título já diz o que é.
+          <span className="text-xs text-tinta-3">Passe o mouse numa barra para ver o valor.</span>
         )}
       </div>
 
       <div className="flex gap-2">
-        <div className="numero flex shrink-0 flex-col-reverse justify-between text-[10px] text-tinta-3" style={{ height: altura }}>
-          {linhas.map((l) => (
-            <span key={l}>{curto(l)}</span>
-          ))}
-        </div>
+        <Eixo linhas={linhas} altura={altura} />
         <div className="relative flex flex-1 items-end gap-2" style={{ height: altura }} onMouseLeave={() => setAceso(null)}>
-          {linhas.map((l) => (
-            <div
-              key={l}
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 border-t border-dashed border-borda-suave"
-              style={{ bottom: `${(l / topo) * 100}%` }}
-            />
-          ))}
+          <Grade linhas={linhas} topo={topo} />
           {rotulos.map((r, gi) => (
             <button
               type="button"
@@ -281,10 +280,12 @@ export function BarrasMeses({
           ))}
         </div>
       </div>
-      <div className="flex gap-2 pl-8">
-        {rotulos.map((r) => (
-          <span key={r} className="flex-1 text-center text-[10px] text-tinta-3">
-            {r}
+      <div className="flex gap-2 pl-10">
+        {rotulos.map((r, i) => (
+          // Sem `overflow-hidden`: com rótulo um sim, um não, o "10h" pode
+          // transbordar a coluna estreita para os lados — o vizinho está vazio.
+          <span key={r} className="numero flex min-w-0 flex-1 justify-center text-[10px] text-tinta-3">
+            {i % salto === 0 ? r : ''}
           </span>
         ))}
       </div>
@@ -309,11 +310,14 @@ export function Linhas({
   const [aceso, setAceso] = useState<number | null>(null)
   const id = useId()
   const n = rotulos.length
-  const maior = Math.max(...series.flatMap((s) => s.valores), 1)
+  // O mesmo eixo redondo das barras. Antes as três linhas de grade ficavam
+  // em 25/50/75% da altura, sem número nenhum — grade que não diz quanto
+  // vale é só listra.
+  const { topo, linhas } = eixo(Math.max(...series.flatMap((s) => s.valores), 1))
   const W = 100
   const H = 40
   const x = (i: number) => (n > 1 ? (i / (n - 1)) * W : W / 2)
-  const y = (v: number) => H - (v / maior) * (H - 2) - 1
+  const y = (v: number) => H - (v / topo) * H
   const caminho = (vals: number[]) => vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(' ')
 
   if (n === 0) return <p className="py-6 text-center text-sm text-tinta-3">Sem dado no período.</p>
@@ -344,17 +348,17 @@ export function Linhas({
           )
         )}
       </div>
-      <div className="relative" style={{ height: altura }} onMouseLeave={() => setAceso(null)}>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-hidden>
+      <div className="flex gap-2">
+      <Eixo linhas={linhas} altura={altura} />
+      <div className="relative min-w-0 flex-1" style={{ height: altura }} onMouseLeave={() => setAceso(null)}>
+        <Grade linhas={linhas} topo={topo} />
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
           <defs>
             <linearGradient id={`${id}-area`} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0" stopColor={series[0]?.cor} stopOpacity="0.28" />
-              <stop offset="1" stopColor={series[0]?.cor} stopOpacity="0.02" />
+              <stop offset="0" stopColor={series[0]?.cor} stopOpacity="0.22" />
+              <stop offset="1" stopColor={series[0]?.cor} stopOpacity="0" />
             </linearGradient>
           </defs>
-          {[0.25, 0.5, 0.75].map((f) => (
-            <line key={f} x1="0" x2={W} y1={H * f} y2={H * f} stroke="var(--borda-suave)" strokeWidth="0.3" strokeDasharray="1 1" />
-          ))}
           {series[0] && n > 1 && (
             <path d={`${caminho(series[0].valores)} L${W},${H} L0,${H} Z`} fill={`url(#${id}-area)`} />
           )}
@@ -373,7 +377,7 @@ export function Linhas({
             />
           ))}
           {aceso !== null && (
-            <line x1={x(aceso)} x2={x(aceso)} y1="0" y2={H} stroke="var(--tinta-3)" strokeWidth="0.3" />
+            <line x1={x(aceso)} x2={x(aceso)} y1="0" y2={H} stroke="var(--tinta-3)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           )}
         </svg>
         {/* Marcadores em HTML para não esticarem com o SVG. */}
@@ -401,7 +405,8 @@ export function Linhas({
           ))}
         </div>
       </div>
-      <div className="flex justify-between text-[10px] text-tinta-3">
+      </div>
+      <div className="numero flex justify-between pl-10 text-[10px] text-tinta-3">
         <span>{rotulos[0]}</span>
         {n > 2 && <span>{rotulos[Math.floor((n - 1) / 2)]}</span>}
         <span>{rotulos[n - 1]}</span>
@@ -442,11 +447,29 @@ export function Calor({
             <b className="numero text-tinta">{formatar(formato)(v)}</b>
           </span>
         ) : (
-          <span className="text-tinta-3">Mais escuro, mais movimento. Passe o mouse para ver o valor.</span>
+          <span className="text-tinta-3">Passe o mouse numa casa para ver o valor.</span>
         )}
+        {/* A escala, que antes era uma frase ("mais escuro, mais
+            movimento") — e no tema escuro a casa cheia é a mais CLARA. */}
+        <span aria-hidden className="ml-auto flex shrink-0 items-center gap-1 pl-3 text-[10px] text-tinta-3">
+          menos
+          {[0, 0.33, 0.66, 1].map((f) => (
+            <span
+              key={f}
+              className="size-2.5 rounded-[2px]"
+              style={{
+                background: f === 0 ? 'var(--superficie-2)' : `color-mix(in srgb, ${cor} ${Math.round(14 + 86 * f)}%, var(--superficie))`,
+              }}
+            />
+          ))}
+          mais
+        </span>
       </div>
-      <div className="overflow-x-auto">
-        <div className="grid gap-px" style={{ gridTemplateColumns: `2.2rem repeat(${colunas.length}, minmax(1.1rem, 1fr))` }} onMouseLeave={() => setAceso(null)}>
+      {/* `relative` na caixa que rola: sem ele, qualquer filho posicionado
+          (um `sr-only`, um balão) se ancora fora dela e estica a PÁGINA de
+          lado no celular, em vez de rolar aqui dentro. */}
+      <div className="relative overflow-x-auto">
+        <div className="grid gap-[3px]" style={{ gridTemplateColumns: `2.2rem repeat(${colunas.length}, minmax(1.1rem, 1fr))` }} onMouseLeave={() => setAceso(null)}>
           <span />
           {colunas.map((c) => (
             <span key={c} className="numero text-center text-[9px] text-tinta-3">
@@ -467,9 +490,15 @@ export function Calor({
                     onBlur={() => setAceso(null)}
                     aria-label={`${l} ${c}h: ${formatar(formato)(val)}`}
                     className={cx('h-5 rounded-[3px] border', aceso?.l === li && aceso?.c === ci ? 'border-tinta' : 'border-transparent')}
+                    // A cor é MISTURADA com a superfície, e não apagada com
+                    // opacidade: opacidade deixa o fundo da página vazar, e
+                    // no tema branco a casa vazia sumia no papel. Casa sem
+                    // venda é cinza de superfície — "zero" tem de se ver.
                     style={{
-                      background: cor,
-                      opacity: val > 0 ? 0.15 + 0.85 * (val / maior) : 0.05,
+                      background:
+                        val > 0
+                          ? `color-mix(in srgb, ${cor} ${Math.round(14 + 86 * (val / maior))}%, var(--superficie))`
+                          : 'var(--superficie-2)',
                     }}
                   />
                 )
@@ -483,6 +512,51 @@ export function Calor({
 }
 
 /* ── ajudantes ────────────────────────────────────────────── */
+
+/**
+ * Três ou quatro linhas de grade em números redondos: o eixo serve para ler
+ * ordem de grandeza, não para medir com régua.
+ */
+function eixo(maior: number): { topo: number; linhas: number[] } {
+  const passo = passoRedondo(maior / 3)
+  const topo = Math.ceil(maior / passo) * passo
+  return { topo, linhas: Array.from({ length: Math.round(topo / passo) + 1 }, (_, i) => i * passo) }
+}
+
+/** Os números do eixo, à esquerda. Largura fixa, para o rótulo de baixo alinhar. */
+function Eixo({ linhas, altura }: { linhas: number[]; altura: number }) {
+  return (
+    <div
+      aria-hidden
+      className="numero flex w-8 shrink-0 flex-col-reverse justify-between text-right text-[10px] leading-none text-tinta-3"
+      style={{ height: altura }}
+    >
+      {linhas.map((l) => (
+        <span key={l} className="-my-[3px]">{curto(l)}</span>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * A grade atrás do desenho. Fio CHEIO e suave, não tracejado: no papel
+ * branco, o tracejado cintila e disputa com a série; a linha de base (o
+ * zero) é a única mais firme, porque é o chão de onde as barras nascem.
+ */
+function Grade({ linhas, topo }: { linhas: number[]; topo: number }) {
+  return (
+    <>
+      {linhas.map((l) => (
+        <div
+          key={l}
+          aria-hidden
+          className={cx('pointer-events-none absolute inset-x-0 border-t', l === 0 ? 'border-borda' : 'border-borda-suave')}
+          style={{ bottom: `${(l / topo) * 100}%` }}
+        />
+      ))}
+    </>
+  )
+}
 
 /** "R$ 12,3k" para eixo; inteiro pequeno fica inteiro. */
 function curto(v: number): string {

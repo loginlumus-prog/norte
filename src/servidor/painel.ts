@@ -19,8 +19,8 @@
 
 import { comoOrg } from './banco'
 import type { Plano } from '@prisma/client'
-import type { Sessao } from './permissao'
-import type { Janela } from './periodo'
+import { exigir, type Sessao } from './permissao'
+import { janela, type Janela } from './periodo'
 
 const DIA = 864e5
 
@@ -77,6 +77,7 @@ export async function resumoDoPainel(
   unidadeIds: string[],
   j: Janela,
 ): Promise<Resumo> {
+  exigir(sessao, 'relatorio.ver')
   if (unidadeIds.length === 0) return vazio()
 
   // "Parado ha mais de 30 dias" NAO segue o filtro: e uma definicao do
@@ -315,6 +316,125 @@ export async function resumoDoPainel(
         pessoas: n(identificacao[0]?.pessoas),
         recorrentes: n(recorrentes[0]?.n),
       },
+    }
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
+// O DIA DE HOJE — o painel simples
+// ─────────────────────────────────────────────────────────────
+//
+// O simples não escolhe período: é sempre hoje. E a comparação NÃO é com
+// ontem. É com o mesmo dia da semana passada, até a MESMA HORA — por dois
+// motivos que aparecem no primeiro sábado de uso:
+//
+//   1. Comércio tem semana. Sábado contra sexta é sempre "subiu", segunda
+//      contra domingo é sempre "caiu", e a seta vira previsão do calendário
+//      em vez de notícia. Quarta contra quarta é a mesma freguesia.
+//   2. O dia ainda não acabou. Às 10h, o dia de hoje contra o dia inteiro de
+//      ontem é queda de 80% todo santo dia — e seta vermelha toda manhã
+//      ensina a não olhar a seta. Até a mesma hora, a conta é justa desde a
+//      primeira venda.
+//
+// O dia inteiro da semana passada vem junto, separado: é o "quanto dá para
+// fazer hoje", a meta que ninguém precisou escrever.
+
+export type ResumoDeHoje = {
+  plano: Plano
+  hoje: { total: number; vendas: number; ticket: number; ultima: Date | null }
+  /** O mesmo dia da semana passada: até esta hora, e inteiro. */
+  semanaPassada: { ateAgora: number; vendasAteAgora: number; diaInteiro: number }
+  /** Reais por hora (0-23), no relógio de São Paulo. */
+  porHora: number[]
+  porHoraSemanaPassada: number[]
+  /** Os cinco que mais venderam nos últimos 7 dias, em reais. */
+  maisVendidos: { descricao: string; quantidade: number; total: number }[]
+}
+
+export async function resumoDeHoje(
+  sessao: Sessao,
+  unidadeIds: string[],
+  agora: Date = new Date(),
+): Promise<ResumoDeHoje> {
+  exigir(sessao, 'relatorio.ver')
+
+  const j = janela('hoje', agora)
+  const semana = janela('7d', agora)
+  // Dias de calendário, não 7 × 24h — mesma regra de `periodo.ts`.
+  const dePassada = new Date(j.de.getFullYear(), j.de.getMonth(), j.de.getDate() - 7)
+  const atePassada = new Date(j.de.getFullYear(), j.de.getMonth(), j.de.getDate() - 6)
+  const agoraPassada = new Date(
+    dePassada.getFullYear(), dePassada.getMonth(), dePassada.getDate(),
+    agora.getHours(), agora.getMinutes(), agora.getSeconds(),
+  )
+
+  const zerado = (): number[] => Array.from({ length: 24 }, () => 0)
+  if (unidadeIds.length === 0) {
+    return {
+      plano: 'GRATIS',
+      hoje: { total: 0, vendas: 0, ticket: 0, ultima: null },
+      semanaPassada: { ateAgora: 0, vendasAteAgora: 0, diaInteiro: 0 },
+      porHora: zerado(), porHoraSemanaPassada: zerado(), maisVendidos: [],
+    }
+  }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const uni = unidadeIds
+    const conta = (de: Date, ate: Date) =>
+      db.venda.aggregate({
+        where: { unidadeId: { in: uni }, situacao: 'CONCLUIDA', criadaEm: { gte: de, lt: ate } },
+        _sum: { total: true }, _count: true, _max: { criadaEm: true },
+      })
+    const horaSql = (de: Date, ate: Date) => db.$queryRaw<{ hora: number; total: string }[]>`
+      select extract(hour from (v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo'))::int as hora,
+             sum(v.total) as total
+        from vendas v
+       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${de} and v.criada_em < ${ate}
+       group by 1
+    `
+    const porHoras = (linhas: { hora: number; total: string }[]) => {
+      const h = zerado()
+      for (const l of linhas) if (l.hora >= 0 && l.hora < 24) h[l.hora] = n(l.total)
+      return h
+    }
+
+    const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { plano: true } })
+    const hoje = await conta(j.de, j.ate)
+    const ateAgora = await conta(dePassada, agoraPassada)
+    const diaInteiro = await conta(dePassada, atePassada)
+    const porHora = await horaSql(j.de, j.ate)
+    const porHoraPassada = await horaSql(dePassada, atePassada)
+    // Sete dias e não hoje: às 10h a lista de hoje tem dois itens e muda a
+    // cada venda. A da semana é a que diz o que repor e o que pôr na vitrine.
+    const maisVendidos = await db.$queryRaw<{ descricao: string; quantidade: string; total: string }[]>`
+      select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total
+        from venda_itens i
+        join vendas v on v.id = i.venda_id
+       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${semana.de} and v.criada_em < ${semana.ate}
+       group by 1 order by 3 desc limit 5
+    `
+
+    const total = n(hoje._sum.total)
+    return {
+      plano: org.plano,
+      hoje: {
+        total,
+        vendas: hoje._count,
+        ticket: hoje._count ? total / hoje._count : 0,
+        ultima: hoje._max.criadaEm ?? null,
+      },
+      semanaPassada: {
+        ateAgora: n(ateAgora._sum.total),
+        vendasAteAgora: ateAgora._count,
+        diaInteiro: n(diaInteiro._sum.total),
+      },
+      porHora: porHoras(porHora),
+      porHoraSemanaPassada: porHoras(porHoraPassada),
+      maisVendidos: maisVendidos.map((i) => ({
+        descricao: i.descricao, quantidade: n(i.quantidade), total: n(i.total),
+      })),
     }
   })
 }

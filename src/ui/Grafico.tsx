@@ -78,7 +78,7 @@ export function GraficoDias({ dados }: { dados: DiaDoGrafico[] }) {
       </div>
 
       <div
-        className="relative flex h-24 items-end gap-px"
+        className="relative flex h-24 items-end gap-px border-b border-borda"
         onMouseLeave={() => setEmCima(null)}
         role="img"
         aria-label={`Venda por dia. Maior dia ${brl(maior)}, média ${brl(media)}.`}

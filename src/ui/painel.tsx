@@ -17,9 +17,10 @@
 // ler exatamente a mesma coisa.
 
 import type { ReactNode } from 'react'
-import { Traco } from './Traco'
+import Link from 'next/link'
 import { GraficoDias } from './Grafico'
 import { cx } from './base'
+import type { Pendencia } from '@/servidor/pendencias'
 
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -36,6 +37,7 @@ export function Numero({
   comparacao,
   nivel,
   principal = false,
+  celula = false,
 }: {
   rotulo: string
   valor: string
@@ -49,12 +51,18 @@ export function Numero({
    *
    * Quatro fichas com o mesmo peso não são hierarquia, são uma fileira: o
    * olho não sabe onde pousar e a tela inteira lê como formulário. UM por
-   * faixa vem no azul-noite, com o desenho do sol atrás — os outros ficam de
-   * apoio, e é o contraste entre eles que faz a tela ter cara de painel.
+   * faixa vem maior, em azul-marinho, com a régua da marca no topo — os
+   * outros ficam de apoio, e é o contraste entre eles que faz a tela ter
+   * cara de painel.
    *
    * Um por faixa. Dois destaques é a mesma fileira de novo, com mais tinta.
    */
   principal?: boolean
+  /**
+   * Uma célula da `Faixa`: fundo de superfície e sem o fio da esquerda,
+   * porque quem separa as células é a própria faixa.
+   */
+  celula?: boolean
 }) {
   const c = comparacao
   const subiu = c ? c.pct >= 0 : false
@@ -66,25 +74,36 @@ export function Numero({
     : ''
 
   if (principal) {
+    // ── por que saiu do azul-noite ─────────────────────────────
+    // Com a barra lateral branca, o bloco escuro virou a única mancha
+    // pesada da tela: um buraco no papel, e o olho caía nele antes de ler o
+    // número. E com o relevo desenhado atrás, o número dividia o bloco com
+    // uma ilustração. No painel simples ainda disputava com o botão azul de
+    // Vender — dois blocos fortes são dois "principais".
+    //
+    // Agora o destaque vem do que é do NÚMERO: o tamanho, o azul-marinho do
+    // título e uma régua da marca no topo, sobre o mesmo papel das outras
+    // fichas, só que tingido de marca bem de leve. Tudo ficha — a mesma
+    // conta vale no escuro, onde o tingido vira um azul fundo e o número, o
+    // azul-claro do título.
     return (
-      <div className="nav-fundo realce-alto relative flex flex-col gap-0.5 overflow-hidden rounded-norte p-3.5">
-        {/* O relevo na beira de baixo. Ele e uma linha de horizonte, e
-            horizonte embaixo de um numero le como base — a bussola, que e
-            redonda e centrada, competia com o valor pelo meio da ficha. */}
-        <Traco
-          arte="relevo"
-          sobre="escuro"
-          opacidade={0.22}
-          className="pointer-events-none absolute inset-x-0 -bottom-2 w-full max-w-none"
-        />
-        <span className="relative text-xs font-medium text-nav-tinta-2">{rotulo}</span>
-        <span className="numero relative text-3xl font-bold tracking-tight text-nav-tinta">
+      <div className="realce relative flex min-w-0 flex-col justify-center gap-1 overflow-hidden rounded-norte border border-marca/30 bg-superficie bg-linear-to-b from-marca/8 to-transparent px-4 pt-4 pb-3.5">
+        <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-marca" />
+        <span className="text-xs font-semibold text-marca">{rotulo}</span>
+        <span className="numero text-[32px] leading-none font-bold tracking-[-0.03em] text-titulo">
           {valor}
         </span>
-        <span className="relative flex flex-wrap items-baseline gap-x-2 text-xs">
-          {detalhe && <span className="text-nav-tinta-2">{detalhe}</span>}
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          {detalhe && <span className="text-tinta-2">{detalhe}</span>}
           {c && Number.isFinite(c.pct) && (
-            <span className={cx('font-semibold', subiu ? 'text-bom-vivo' : 'text-critico-vivo')}>
+            // Etiqueta com fundo, e não só texto colorido: é a única cor
+            // forte do bloco, e tem de se ver de longe. Seta E sinal junto.
+            <span
+              className={cx(
+                'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-semibold',
+                subiu ? 'bg-bom-fundo text-bom' : 'bg-critico-fundo text-critico',
+              )}
+            >
               {subiu ? '▲' : '▼'} {Math.abs(c.pct).toFixed(0)}% {c.contra}
             </span>
           )}
@@ -112,13 +131,29 @@ export function Numero({
     : ''
   void faixa
 
+  // Na célula, o celular lê em LINHA: rótulo e detalhe à esquerda, o valor
+  // à direita. Empilhadas, três fichas de 90px de altura empurravam o "Precisa
+  // de você" para a segunda tela; em linha, cabem numa mão. Do `sm` para cima
+  // volta a ser coluna, que é como o número lê bem lado a lado.
   return (
-    <div className="flex flex-col gap-0.5 border-borda px-4 py-1 sm:border-l">
+    <div
+      className={cx(
+        'min-w-0',
+        celula
+          ? 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 bg-superficie px-4 py-3 sm:flex sm:flex-col sm:items-stretch sm:justify-center sm:py-3.5'
+          : 'flex flex-col gap-0.5 border-borda px-4 py-1 sm:border-l',
+      )}
+    >
       <span className="flex items-center gap-1.5 text-xs font-medium text-tinta-3">
         {ponto && <span aria-hidden className={cx('size-1.5 shrink-0 rounded-full', ponto)} />}
         {rotulo}
       </span>
-      <span className="numero text-[26px] leading-tight font-bold tracking-tight text-tinta">
+      <span
+        className={cx(
+          'numero leading-tight font-bold tracking-tight text-tinta',
+          celula ? 'row-span-2 text-right text-[22px] sm:text-left sm:text-[26px]' : 'text-[26px]',
+        )}
+      >
         {valor}
       </span>
       <span className="flex flex-wrap items-baseline gap-x-2 text-xs">
@@ -225,6 +260,204 @@ export function Secao({
       </header>
       {children}
     </section>
+  )
+}
+
+/* ── Faixa de números ─────────────────────────────────────── */
+
+// As classes vão inteiras aqui, e não montadas com `${n}`: o Tailwind lê o
+// arquivo como texto, e classe montada em tempo de execução não existe no CSS.
+const COLUNAS_FAIXA = {
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+} as const
+const AO_LADO_DO_PRINCIPAL = {
+  2: 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]',
+  3: 'lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)]',
+  4: 'lg:grid-cols-[minmax(0,1fr)_minmax(0,4fr)]',
+} as const
+
+/**
+ * A fileira de números de uma seção: o principal (se houver) e, ao lado, uma
+ * régua branca com os de apoio.
+ *
+ * No tema branco, número solto direto no cinza do fundo parecia rascunho —
+ * sem papel embaixo, o olho não sabe onde a seção começa. A régua é UM papel
+ * só para todos os apoios, dividido por fios de 1px (é o `gap-px` sobre o
+ * fundo de borda que desenha os fios), então continua lendo como uma fileira
+ * de números, e não como quatro caixinhas.
+ *
+ * Cada principal ocupa a mesma largura de uma célula, para a linha de base
+ * dos números cair na mesma altura de ponta a ponta.
+ */
+export function Faixa({
+  principal,
+  colunas,
+  children,
+}: {
+  principal?: ReactNode
+  /** Quantas células de apoio vão dentro. */
+  colunas: 2 | 3 | 4
+  children: ReactNode
+}) {
+  const regua = (
+    <div
+      className={cx(
+        'realce grid min-w-0 gap-px overflow-hidden rounded-norte border border-borda bg-borda',
+        'grid-cols-1 sm:grid-cols-2',
+        // Número ímpar de células em duas colunas deixaria um buraco cinza
+        // no fim: a última se estica para fechar a linha.
+        'sm:[&>*:last-child:nth-child(odd)]:col-span-2 lg:[&>*:last-child:nth-child(odd)]:col-span-1',
+        COLUNAS_FAIXA[colunas],
+      )}
+    >
+      {children}
+    </div>
+  )
+  if (!principal) return regua
+  return (
+    <div className={cx('grid gap-3', AO_LADO_DO_PRINCIPAL[colunas])}>
+      {principal}
+      {regua}
+    </div>
+  )
+}
+
+/* ── Bloco ────────────────────────────────────────────────── */
+
+/**
+ * O papel de um gráfico ou de uma lista no painel.
+ *
+ * O `Cartao` sem caixa funciona nas telas de trabalho, onde a página é o
+ * papel. O painel é diferente: é uma mesa com várias peças, cada uma
+ * respondendo UMA pergunta — e no tema branco, com o fundo cinza-claro, peça
+ * sem papel embaixo se mistura com a vizinha. Aqui toda peça é um objeto, e
+ * por isso ganha a caixa que o `Cartao` guarda para objetos.
+ *
+ * O título fica DENTRO do papel, em cima, e o detalhe (o recorte: "hoje
+ * contra quarta passada") logo embaixo, miúdo. O cabeçalho cinza do
+ * `Cartao caixa` saiu: em papel branco, uma faixa cinza no topo é um segundo
+ * papel, e dois papéis empilhados é ruído.
+ */
+export function Bloco({
+  titulo,
+  detalhe,
+  acao,
+  className,
+  children,
+}: {
+  titulo?: string
+  detalhe?: string
+  acao?: ReactNode
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <section
+      className={cx(
+        'realce flex min-w-0 flex-col gap-4 rounded-norte border border-borda bg-superficie p-4 sm:p-5',
+        className,
+      )}
+    >
+      {(titulo || acao) && (
+        <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            {titulo && <h3 className="text-[15px] leading-snug font-bold tracking-tight">{titulo}</h3>}
+            {detalhe && <p className="text-xs text-tinta-3">{detalhe}</p>}
+          </div>
+          {acao}
+        </header>
+      )}
+      {children}
+    </section>
+  )
+}
+
+/* ── Precisa de você ──────────────────────────────────────── */
+
+/**
+ * A lista do "Precisa de você". A linha INTEIRA é o link — no celular o dedo
+ * erra o botãozinho, e a pessoa quer resolver, não mirar. O "Ver" continua
+ * desenhado porque é ele que diz que a linha é clicável.
+ *
+ * Sem ícone: o nível é uma PALAVRA na cor dele ("Urgente", "Atenção") em
+ * cima da frase, e um fio da mesma cor na beira. A palavra é o que garante
+ * que quem não distingue vermelho de âmbar — e o leitor de tela — leia o
+ * mesmo que os outros veem; o fio é o que se vê de longe.
+ */
+export function Pendencias({ itens }: { itens: Pendencia[] }) {
+  if (itens.length === 0) {
+    return (
+      <div className="flex flex-col gap-0.5 rounded-norte border border-bom-borda bg-bom-fundo px-4 py-4">
+        <span className="text-sm font-bold text-bom">✓ Tudo em dia</span>
+        <span className="text-xs text-tinta-2">Nada acabou, nada venceu, ninguém está esperando você.</span>
+      </div>
+    )
+  }
+  return (
+    <ul className="-mx-2 flex flex-col">
+      {itens.map((p) => (
+        <li key={p.chave} className="border-b border-borda-suave last:border-b-0">
+          <Link
+            href={p.href}
+            className="group flex items-center gap-3 rounded-norte px-2 py-2.5 transition-colors hover:bg-superficie-2"
+          >
+            <span
+              aria-hidden
+              className={cx('w-[3px] shrink-0 self-stretch rounded-full', p.nivel === 'critico' ? 'bg-critico-vivo' : 'bg-atencao-vivo')}
+            />
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span
+                className={cx(
+                  'text-[10px] leading-none font-bold tracking-[0.06em] uppercase',
+                  p.nivel === 'critico' ? 'text-critico' : 'text-atencao',
+                )}
+              >
+                {p.nivel === 'critico' ? 'Urgente' : 'Atenção'}
+              </span>
+              <span className="text-sm leading-snug font-semibold text-tinta">{p.frase}</span>
+              <span className="text-xs leading-snug text-tinta-2">{p.detalhe}</span>
+            </span>
+            <span
+              aria-hidden
+              className="shrink-0 rounded-norte border border-borda bg-superficie px-2.5 py-1 text-xs font-semibold text-marca transition-colors group-hover:border-marca/40 group-hover:bg-marca-suave"
+            >
+              Ver →
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * A mesma lista, em uma linha de etiquetas — para o avançado, que já tem
+ * muito o que mostrar e só precisa AVISAR. Quando não há nada, não ocupa
+ * lugar: o "tudo em dia" é do simples, que tem espaço para comemorar.
+ */
+export function PendenciasCurtas({ itens }: { itens: Pendencia[] }) {
+  if (itens.length === 0) return null
+  return (
+    <nav aria-label="Precisa de você" className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-semibold text-tinta-2">Precisa de você:</span>
+      {itens.map((p) => (
+        <Link
+          key={p.chave}
+          href={p.href}
+          className={cx(
+            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors',
+            p.nivel === 'critico'
+              ? 'border-critico-borda bg-critico-fundo text-critico hover:border-critico-vivo'
+              : 'border-atencao-borda bg-atencao-fundo text-atencao hover:border-atencao-vivo',
+          )}
+        >
+          <span aria-hidden className={cx('size-1.5 rounded-full', p.nivel === 'critico' ? 'bg-critico-vivo' : 'bg-atencao-vivo')} />
+          {p.frase}
+        </Link>
+      ))}
+    </nav>
   )
 }
 
