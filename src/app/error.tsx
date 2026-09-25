@@ -1,7 +1,6 @@
 'use client'
 
 import { Marca } from '@/ui/Marca'
-import { Traco } from '@/ui/Traco'
 
 // A tela de quando alguma coisa quebra do lado do servidor.
 //
@@ -24,13 +23,7 @@ export default function Quebrou({
   reset: () => void
 }) {
   return (
-    <main className="relative flex min-h-dvh bg-superficie flex-col items-center justify-center gap-6 overflow-hidden p-6 text-center">
-      <Traco
-        arte="bussola"
-        sobre="tema"
-        opacidade={0.07}
-        className="pointer-events-none absolute top-1/2 left-1/2 w-[46rem] max-w-none -translate-x-1/2 -translate-y-1/2"
-      />
+    <main className="relative flex min-h-dvh bg-fundo flex-col items-center justify-center gap-6 overflow-hidden p-6 text-center">
       <div className="relative">
         <Marca tamanho={30} />
       </div>

@@ -27,7 +27,6 @@ import { useActionState } from 'react'
 import type { Plano } from '@prisma/client'
 import { MODULOS, type Modulo } from '@/servidor/modulos'
 import { PLANOS, RECOMENDADO, RECURSOS, temRecurso, type Mudanca } from '@/servidor/planos'
-import { SELO } from '@/ui/SeloPlano'
 import { Botao, Aviso } from '@/ui/base'
 import { trocar, type EstadoAssinatura } from './acoes'
 
@@ -77,7 +76,6 @@ export function Planos({
       <div className="grid items-stretch gap-3 lg:grid-cols-2 xl:grid-cols-4">
         {opcoes.map((m) => {
           const p = PLANOS[m.para]
-          const Selo = SELO[m.para]
           const eOAtual = m.para === atual
           const eRecomendado = m.para === RECOMENDADO
           const sobConsulta = p.mensal === null
@@ -111,10 +109,9 @@ export function Planos({
               )}
 
               <div className="flex flex-col gap-1.5 pr-24">
-                <div className="flex items-center gap-2">
-                  <Selo tamanho={22} className="shrink-0 text-tinta-3" />
-                  <h3 className="text-lg font-bold tracking-tight">{p.titulo}</h3>
-                </div>
+                {/* Sem o selo desenhado desde 25/09: o dono tirou todo desenho
+                    decorativo do sistema. O nome do plano basta. */}
+                <h3 className="text-lg font-bold tracking-tight">{p.titulo}</h3>
                 <p className="text-xs leading-relaxed text-tinta-2">{p.resumo}</p>
               </div>
 
