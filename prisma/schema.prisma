@@ -200,6 +200,7 @@ model Org {
   mensagens      MensagemAgente[]
   quadros        Quadro[]
   tarefas        Tarefa[]
+  encomendas     Encomenda[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -249,6 +250,7 @@ model Unidade {
   parcelas    Parcela[]
   lancamentos Lancamento[]
   quadros     Quadro[]
+  encomendas  Encomenda[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -826,6 +828,7 @@ model Cliente {
   movimentosPontos MovimentoPontos[]
   vales  Vale[]
   parcelas Parcela[]
+  encomendas Encomenda[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   conversas ConversaAgente[]
@@ -1892,4 +1895,65 @@ enum SituacaoTarefa {
   EM_ANDAMENTO
   PARADO
   FEITO
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENCOMENDA — o pedido que sai depois
+// ─────────────────────────────────────────────────────────────
+//
+// Bolo para sábado, buquê para as 16h, a peça que o cliente paga metade hoje e
+// busca na semana que vem. Não é venda ainda: não baixa estoque nem entra no
+// caixa. O SINAL, quando existe, é dinheiro que já entrou e fica anotado aqui;
+// na entrega, a encomenda vira venda no balcão pelo que falta.
+//
+// A data é o que não pode falhar — por isso ela tem hora, ao contrário da
+// tarefa, e a lista abre pelo que vence primeiro.
+
+model Encomenda {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  /// O cliente do cadastro, quando existe. Nome e telefone ficam gravados
+  /// junto (fotografia), porque encomenda de balcão muitas vezes é de quem
+  /// nunca foi cadastrado.
+  clienteId String?  @map("cliente_id")
+  cliente   Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  clienteNome String  @map("cliente_nome")
+  telefone    String?
+
+  /// O que é: "Bolo de chocolate 2 kg, escrito Parabéns Ana".
+  descricao String
+  valor     Decimal @default(0) @db.Decimal(12, 2)
+  sinal     Decimal @default(0) @db.Decimal(12, 2)
+
+  /// Quando o cliente busca ou quando a loja entrega.
+  para    DateTime
+  entrega Boolean  @default(false)
+  endereco String?
+
+  situacao SituacaoEncomenda @default(ABERTA)
+  observacao String?
+
+  /// Carimbada quando vira ENTREGUE.
+  concluidaEm DateTime? @map("concluida_em")
+
+  quem String
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@index([orgId, unidadeId, para])
+  @@index([orgId, situacao])
+  @@map("encomendas")
+}
+
+enum SituacaoEncomenda {
+  ABERTA
+  PRONTA
+  ENTREGUE
+  CANCELADA
 }

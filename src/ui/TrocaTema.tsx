@@ -30,13 +30,20 @@ const OPCOES: { valor: Tema; titulo: string; icone: string }[] = [
 ]
 
 /** Sobre o azul-noite da barra, ou sobre o papel da página de venda. */
-type Tom = 'nav' | 'papel'
+type Tom = 'nav' | 'papel' | 'lado'
 
 const TOM: Record<Tom, { caixa: string; ativo: string; parado: string }> = {
   nav: {
     caixa: 'border-nav-borda bg-nav-2',
     ativo: 'bg-nav-tinta text-nav',
     parado: 'text-nav-tinta-2 hover:bg-nav-3 hover:text-nav-tinta',
+  },
+  // A barra lateral: branca no claro, azul-noite no escuro. Segue as fichas
+  // dela em vez de fixar um dos dois lados.
+  lado: {
+    caixa: 'border-lado-borda bg-lado-2',
+    ativo: 'bg-lado text-lado-ativo shadow-norte',
+    parado: 'text-lado-tinta-2 hover:text-lado-tinta',
   },
   papel: {
     caixa: 'border-borda bg-superficie-2',

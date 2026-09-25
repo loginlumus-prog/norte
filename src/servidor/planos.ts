@@ -470,7 +470,16 @@ export const RECURSOS: Recurso[] = [
   { titulo: 'Estoque, entrada de mercadoria e balanço', grupo: 'Operação', em: TODOS_OS_PLANOS },
   { titulo: 'Ficha do cliente com histórico', grupo: 'Operação', em: TODOS_OS_PLANOS },
   { titulo: 'Programa de pontos', grupo: 'Operação', em: PAGOS },
-  { titulo: 'Nota fiscal (NFC-e e NF-e)', grupo: 'Operação', em: PAGOS, destaque: true },
+  {
+    // "Em breve" desde 24/09, e não por esquecimento: nota fiscal depende de
+    // um emissor contratado (Focus ou Nuvem Fiscal) e do certificado A1 de
+    // cada loja, e nenhum dos dois existe ainda. Vender o que não emite é o
+    // cancelamento com reclamação pública que este campo existe para evitar.
+    titulo: 'Nota fiscal (NFC-e e NF-e)',
+    grupo: 'Operação',
+    em: PAGOS,
+    quando: 'breve',
+  },
   { titulo: 'Encomenda e entrega', grupo: 'Operação', em: PAGOS },
   {
     // Deixou de ser "em breve" em 16/09: o prazo mora no PRODUTO (dias que o

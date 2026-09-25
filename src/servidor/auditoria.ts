@@ -51,6 +51,14 @@ export const ACOES: Record<string, string> = {
   'tarefa.moveu': 'mudou a situação de uma tarefa',
   'tarefa.concluiu': 'concluiu uma tarefa',
   'tarefa.apagou': 'apagou uma tarefa',
+  'encomenda.criou': 'anotou uma encomenda',
+  'encomenda.alterou': 'alterou uma encomenda',
+  'encomenda.pronta': 'marcou uma encomenda como pronta',
+  'encomenda.entregou': 'entregou uma encomenda',
+  'encomenda.cancelou': 'cancelou uma encomenda',
+  'financeiro.recorrente.criou': 'cadastrou uma conta recorrente',
+  'financeiro.recorrente.alterou': 'alterou uma conta recorrente',
+  'financeiro.recorrente.gerou': 'gerou as contas recorrentes do mês',
   'equipe.desativou': 'desativou uma conta',
   'equipe.reativou': 'reativou uma conta',
   'convite.criou': 'convidou alguém',
@@ -73,7 +81,7 @@ export const ACOES: Record<string, string> = {
  * quem procura "gente" quer convite e sessão junto com equipe.
  */
 export const ASSUNTOS: { chave: string; rotulo: string; prefixos: string[] }[] = [
-  { chave: 'venda', rotulo: 'vendas', prefixos: ['venda.'] },
+  { chave: 'venda', rotulo: 'vendas e encomendas', prefixos: ['venda.', 'encomenda.'] },
   { chave: 'caixa', rotulo: 'caixa', prefixos: ['caixa.'] },
   { chave: 'produto', rotulo: 'produtos e estoque', prefixos: ['produto.', 'estoque.'] },
   { chave: 'cliente', rotulo: 'clientes', prefixos: ['cliente.', 'crediario.', 'pontos.'] },

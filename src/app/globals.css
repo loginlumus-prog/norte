@@ -19,7 +19,16 @@
    verdade não é cinza — é quente. Livro, cartão de visita, nota fiscal: todos
    puxam para o creme.
 
-   Então o neutro agora é PAPEL QUENTE, e o par disso é o azul-noite da barra.
+   ── em 24/09 virou branco ──
+   O dono pediu "tema branco, premium, 2026", olhando Monday e ClickUp. O
+   papel quente lia como documento; branco com cinza frio lê como ferramenta
+   de trabalho. A temperatura que sai do fundo volta no azul-marinho do
+   título e no bloco principal de cada painel. A barra lateral ganhou fichas
+   próprias (`--lado-*`): branca no claro, azul-noite no escuro.
+
+   (O que vem abaixo é a razão do papel quente, e fica como registro.)
+
+   Então o neutro era PAPEL QUENTE, e o par disso era o azul-noite da barra.
    Creme e azul-marinho é combinação de papelaria boa, e é ela que faz a tela
    parecer produto em vez de formulário — sem gastar cor nenhuma das que
    significam alguma coisa.
@@ -46,21 +55,33 @@
 :root {
   /* NEUTROS — papel quente. É papel, não é cor: puxa para o creme o
      suficiente para a tela ter temperatura, e de longe nem se percebe. */
-  --fundo: #f6f4f0;
-  --superficie: #fffefc;
-  --superficie-2: #f1eee8;
-  --superficie-3: #e5e1d8;
-  --tinta: #191713;
+  --fundo: #f6f7f9;
+  --superficie: #ffffff;
+  --superficie-2: #f2f4f7;
+  --superficie-3: #e6e9ef;
+  --tinta: #111827;
   /* O TÍTULO NÃO É A COR DO TEXTO.
      Descoberta que rende mais por menos: título em quase-preto neutro parece
      renderizado; título numa cor escura ESCOLHIDA parece impresso. Aqui é o
      azul-noite da barra, escurecido o bastante para passar em contraste sobre
      papel. Custa uma ficha e muda a tela inteira. */
-  --titulo: #14265c;
-  --tinta-2: #55514a;
-  --tinta-3: #8a857c;
-  --borda: #e4e0d7;
-  --borda-suave: #efece5;
+  --titulo: #0f1f4d;
+  --tinta-2: #4b5563;
+  --tinta-3: #8a93a3;
+  --borda: #e4e7ec;
+  --borda-suave: #eef0f4;
+
+  /* LATERAL — a barra do sistema. No claro ela é BRANCA: é o que o pedido de
+     24/09 chamou de "tema branco", e é o desenho de toda ferramenta de
+     trabalho de 2026 (Monday, ClickUp, Linear): a navegação clara e quieta, e
+     a cor gasta só no que é ação. No escuro ela continua azul-noite. */
+  --lado: #ffffff;
+  --lado-2: #f2f4f7;
+  --lado-3: #eaf0fe;
+  --lado-tinta: #111827;
+  --lado-tinta-2: #5b6474;
+  --lado-borda: #e7eaf0;
+  --lado-ativo: #1f4fd8;
 
   /* BARRA — o azul-noite da lateral, e o azulejo do símbolo. */
   --nav: #101f4a;
@@ -112,8 +133,8 @@
      • alta: o que flutua (busca aberta, proposta esperando)
      • realce: o fio de luz na borda de cima, que é o que separa "retângulo
        com sombra" de "objeto com espessura" */
-  --sombra: 0 1px 2px rgb(35 28 18 / 0.05), 0 6px 16px -10px rgb(35 28 18 / 0.2);
-  --sombra-alta: 0 2px 4px rgb(35 28 18 / 0.06), 0 18px 40px -18px rgb(35 28 18 / 0.32);
+  --sombra: 0 1px 2px rgb(16 24 40 / 0.04), 0 4px 14px -8px rgb(16 24 40 / 0.14);
+  --sombra-alta: 0 2px 4px rgb(16 24 40 / 0.05), 0 20px 44px -18px rgb(16 24 40 / 0.26);
   --realce: inset 0 1px 0 rgb(255 255 255 / 0.7);
 
   --anel: #1f4fd8;
@@ -142,6 +163,13 @@
     --nav-tinta-2: #98a7cd;
     --nav-borda: #1a2645;
     --nav-fundo: linear-gradient(168deg, #101b3d 0%, #0b1430 45%, #070e24 100%);
+    --lado: #0b1430;
+    --lado-2: #16224a;
+    --lado-3: #1e2d5e;
+    --lado-tinta: #ffffff;
+    --lado-tinta-2: #98a7cd;
+    --lado-borda: #1a2645;
+    --lado-ativo: #ffffff;
 
     --marca: #6b95ff;
     --marca-forte: #93b2ff;
@@ -197,6 +225,13 @@
   --nav-tinta-2: #98a7cd;
   --nav-borda: #1a2645;
   --nav-fundo: linear-gradient(168deg, #101b3d 0%, #0b1430 45%, #070e24 100%);
+  --lado: #0b1430;
+  --lado-2: #16224a;
+  --lado-3: #1e2d5e;
+  --lado-tinta: #ffffff;
+  --lado-tinta-2: #98a7cd;
+  --lado-borda: #1a2645;
+  --lado-ativo: #ffffff;
 
   --marca: #6b95ff;
   --marca-forte: #93b2ff;
@@ -265,6 +300,13 @@
   --color-nav-tinta: var(--nav-tinta);
   --color-nav-tinta-2: var(--nav-tinta-2);
   --color-nav-borda: var(--nav-borda);
+  --color-lado: var(--lado);
+  --color-lado-2: var(--lado-2);
+  --color-lado-3: var(--lado-3);
+  --color-lado-tinta: var(--lado-tinta);
+  --color-lado-tinta-2: var(--lado-tinta-2);
+  --color-lado-borda: var(--lado-borda);
+  --color-lado-ativo: var(--lado-ativo);
   --color-sol: var(--sol);
   --color-sol-claro: var(--sol-claro);
   --color-anel: var(--anel);

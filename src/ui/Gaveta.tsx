@@ -53,7 +53,7 @@ export function Gaveta({ children, rotulo }: { children: ReactNode; rotulo: stri
         aria-label={`Abrir o menu — ${rotulo}`}
         aria-expanded={aberta}
         aria-controls="gaveta-menu"
-        className="flex size-9 shrink-0 items-center justify-center rounded-norte text-nav-tinta hover:bg-nav-2"
+        className="flex size-9 shrink-0 items-center justify-center rounded-norte text-lado-tinta hover:bg-lado-2"
       >
         {/* Três traços. Desenhados aqui para não depender de fonte de ícone. */}
         <svg aria-hidden width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -78,18 +78,18 @@ export function Gaveta({ children, rotulo }: { children: ReactNode; rotulo: stri
         aria-label="Menu"
         aria-hidden={!aberta}
         className={cx(
-          'nav-fundo fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col gap-0.5 overflow-y-auto p-2.5',
+          'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col gap-0.5 overflow-y-auto border-r border-lado-borda bg-lado p-2.5 shadow-norte-alta',
           'transition-transform duration-200 ease-out md:hidden',
           aberta ? 'translate-x-0' : '-translate-x-full',
         )}
       >
         <div className="flex items-center justify-between px-1.5 pt-1 pb-2">
-          <span className="text-[15px] font-extrabold tracking-[-0.035em] text-nav-tinta">Menu</span>
+          <span className="text-[15px] font-extrabold tracking-[-0.035em] text-lado-tinta">Menu</span>
           <button
             type="button"
             onClick={() => setAberta(false)}
             aria-label="Fechar o menu"
-            className="flex size-8 items-center justify-center rounded-norte text-nav-tinta-2 hover:bg-nav-2 hover:text-nav-tinta"
+            className="flex size-8 items-center justify-center rounded-norte text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta"
           >
             <svg aria-hidden width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
