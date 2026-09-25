@@ -22,7 +22,7 @@ describe('o que cada perfil vê no menu', () => {
   it('o dono vê tudo', () => {
     expect(visiveis('DONO')).toEqual([
       'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Produtos', 'Estoque', 'Preços', 'Clientes', 'Equipe',
-      'Tarefas', 'Financeiro', 'Análise', 'Assistente', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
+      'Tarefas', 'Financeiro', 'Análise', 'Assistente', 'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
     ])
   })
 
@@ -48,6 +48,7 @@ describe('o que cada perfil vê no menu', () => {
     expect(v).not.toContain('Assinatura')
     expect(v).not.toContain('Configurações')
     expect(v).not.toContain('Assistente')
+    expect(v).not.toContain('Campanhas')
   })
 
   it('o contador só olha o dinheiro', () => {
@@ -68,6 +69,8 @@ describe('o que cada perfil vê no menu', () => {
   it('módulo desligado some do menu de todo mundo', () => {
     expect(visiveis('DONO', [])).not.toContain('Crediário')
     expect(visiveis('DONO', [])).not.toContain('Assistente')
+    // Campanha sai pelo número do assistente: sem o módulo, some junto.
+    expect(visiveis('DONO', [])).not.toContain('Campanhas')
     expect(visiveis('BALCAO', [])).not.toContain('Crediário')
     expect(visiveis('DONO', [])).not.toContain('Encomendas')
   })

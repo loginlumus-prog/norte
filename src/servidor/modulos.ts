@@ -34,8 +34,8 @@ export const MODULOS = {
   },
   agente: {
     titulo: 'Agente no WhatsApp',
-    resumo: 'Perguntar pelo WhatsApp e receber relatório sozinho.',
-    pergunta: 'Quer um assistente atendendo pelo WhatsApp?',
+    resumo: 'Perguntar pelo WhatsApp, receber relatório sozinho e rodar campanhas para clientes.',
+    pergunta: 'Quer um assistente no WhatsApp para você e a equipe?',
   },
   metas: {
     titulo: 'Metas e comissão',

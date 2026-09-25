@@ -7,9 +7,13 @@
 // enxerga o que ela enxergaria na tela, e a regra de quem vê o quê continua
 // morando num lugar só.
 //
-// A exceção é `consultar.produto`, que serve o cliente — e cliente não tem
-// sessão. Ela é uma consulta própria, pequena, e devolve só o que a vitrine
-// devolveria: nome, preço, tem ou não tem. Quantidade não sai.
+// Quem fala é sempre alguém da EQUIPE: mensagem de cliente não chega ao
+// modelo (ver `conversa.ts`), então aqui não existe caminho "de cliente".
+//
+// A exceção de forma é `consultar.produto`: uma consulta própria, pequena,
+// que devolve o que a vitrine devolveria — nome, preço, tem ou não tem. É a
+// resposta pronta para quem da equipe precisa responder rápido a um cliente;
+// quem quer o saldo de cada loja usa `ver.estoque`.
 //
 // ── escrever: nunca ──────────────────────────────────────────
 // A ferramenta de escrita monta a PROPOSTA (`propor` em agente.ts, que confere
@@ -28,7 +32,9 @@ import { mostrar } from '../dinheiro'
 import { pode, type Sessao } from '../permissao'
 import type { ComModulos } from '../modulos'
 import { unidadesVisiveis } from './contexto'
-import type { Interlocutor } from './regras'
+import { buscarNoGuia } from '../guia'
+import { CAPACIDADES } from '../permissao'
+import type { Equipe } from './regras'
 
 export type ResultadoFerramenta = { texto: string; erro?: boolean; propostaId?: string }
 
@@ -44,39 +50,39 @@ const numero = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v 
 
 /**
  * Executa a ferramenta que o modelo pediu. O chamador já conferiu que ela
- * estava na mesa desta conversa; aqui confere de novo o que depende de quem
+ * estava na mesa desta conversa; aqui confere de novo a capacidade de quem
  * fala, porque conferir duas vezes é barato e esquecer uma vez não é.
  */
 export async function executarFerramenta(
   orgId: string,
   empresa: ComModulos,
-  quem: Interlocutor,
+  quem: Equipe,
   poder: ChavePoder,
   entrada: Record<string, unknown>,
 ): Promise<ResultadoFerramenta> {
   const p: Poder = PODERES[poder]
-  if (quem.tipo === 'cliente' && !p.paraCliente) return falha('Ferramenta indisponível nesta conversa.')
-  if (quem.tipo === 'equipe' && !pode(quem.sessao, p.exige)) {
-    return falha('Esta pessoa não tem permissão para isso.')
-  }
+  if (p.semIA) return falha('Ferramenta indisponível nesta conversa.')
+  if (!p.sempre && !pode(quem.sessao, p.exige)) return falha('Esta pessoa não tem permissão para isso.')
 
   try {
     switch (poder) {
       case 'ver.resumo':
-        return await verResumo(sessaoDe(quem), str(entrada.periodo, 20))
+        return await verResumo(quem.sessao, str(entrada.periodo, 20))
       case 'ver.estoque':
-        return await verEstoque(sessaoDe(quem), str(entrada.busca, 60))
+        return await verEstoque(quem.sessao, str(entrada.busca, 60))
       case 'ver.caixa':
-        return await verCaixa(sessaoDe(quem))
+        return await verCaixa(quem.sessao)
       case 'ver.contas':
-        return await verContas(sessaoDe(quem))
+        return await verContas(quem.sessao)
       case 'consultar.produto':
         return await consultarProduto(orgId, str(entrada.busca, 60))
+      case 'explicar.sistema':
+        return explicarSistema(empresa, quem.sessao, str(entrada.pergunta, 300))
       case 'lancar.despesa':
       case 'pedir.compra':
         return await proporLancamento(orgId, empresa, poder, entrada)
       case 'ajustar.estoque':
-        return await proporAjuste(orgId, empresa, sessaoDe(quem), entrada)
+        return await proporAjuste(orgId, empresa, quem.sessao, entrada)
       default:
         return falha('Ferramenta indisponível nesta conversa.')
     }
@@ -89,10 +95,6 @@ export async function executarFerramenta(
   }
 }
 
-function sessaoDe(quem: Interlocutor): Sessao {
-  if (quem.tipo !== 'equipe') throw new PoderNegado('sessao', 'conversa de cliente')
-  return quem.sessao
-}
 
 // ─────────────────────────────────────────────────────────────
 // LER
@@ -218,9 +220,8 @@ async function verContas(sessao: Sessao): Promise<ResultadoFerramenta> {
  * A vitrine: nome, preço, tem ou não tem.
  *
  * "Tem" é saldo em loja de verdade — depósito não conta, porque o cliente
- * que ouve "tem" vai até a loja. E a quantidade não sai daqui nem para o
- * modelo: o que não está no resultado da ferramenta, o modelo não tem como
- * contar a ninguém.
+ * a quem a equipe repassa o "tem" vai até a loja. A quantidade por loja é
+ * `ver.estoque`, que confere as lojas que a pessoa enxerga.
  */
 async function consultarProduto(orgId: string, busca: string): Promise<ResultadoFerramenta> {
   if (busca.length < 2) return falha('Diga o nome ou o código da peça.')
@@ -381,4 +382,33 @@ async function proporAjuste(
     texto: `Proposta criada e esperando confirmação na tela do assistente: ${resumo} O estoque ainda não mudou.`,
     propostaId: proposta.id,
   }
+}
+
+/**
+ * O Guia, para quem pergunta pelo WhatsApp. As três telas que melhor
+ * respondem, com os passos — filtradas pelo que ESTA pessoa abre, igual à
+ * busca do Guia na tela. Não lê dado da loja: é o manual.
+ */
+export function explicarSistema(empresa: ComModulos, sessao: Sessao, pergunta: string): ResultadoFerramenta {
+  if (!pergunta) return falha('Diga qual é a dúvida.')
+  const quem = { capacidades: CAPACIDADES.filter((c) => pode(sessao, c)), modulos: empresa.modulos }
+  const achados = buscarNoGuia(pergunta, undefined, quem).slice(0, 3)
+  if (achados.length === 0) {
+    return json({ achou: false, recado: 'O Guia não tem isso. Diga que não sabe e sugira perguntar ao suporte do Norte.' })
+  }
+  // Encolhe até caber, em vez de cortar o JSON no meio (JSON cortado é
+  // lixo para o modelo): menos passos por tela, depois menos telas.
+  for (const [telas, comoFazer] of [[3, 2], [2, 2], [2, 1], [1, 1]] as const) {
+    const texto = JSON.stringify({
+      achou: true,
+      telas: achados.slice(0, telas).map((a) => ({
+        tela: a.entrada.titulo,
+        oQueE: a.entrada.oQueE.slice(0, 300),
+        comoFazer: a.passos.slice(0, comoFazer).map((c) => ({ titulo: c.titulo, passos: c.passos })),
+      })),
+    })
+    if (texto.length <= MAXIMO_RESULTADO) return { texto }
+  }
+  const a = achados[0]!
+  return json({ achou: true, telas: [{ tela: a.entrada.titulo, oQueE: a.entrada.oQueE.slice(0, 300) }] })
 }

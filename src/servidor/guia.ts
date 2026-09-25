@@ -873,7 +873,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Cadastrar um cliente',
         passos: [
           '"+ Novo cliente" — ou no próprio Balcão, com nome e WhatsApp, sem sair da venda.',
-          'Só o nome é obrigatório. O WhatsApp é o que mais importa: é por ele que sai a mensagem de cobrança (você manda, pelo botão da ficha) e que o assistente fala, e é ele que impede a mesma pessoa de virar quatro cadastros.',
+          'Só o nome é obrigatório. O WhatsApp é o que mais importa: é por ele que sai a mensagem de cobrança (você manda, pelo botão da ficha) e que as campanhas falam com a pessoa, e é ele que impede a mesma pessoa de virar quatro cadastros.',
           'CPF só para nota fiscal e crediário; o sistema confere os dígitos. Endereço só se você entrega ou emite nota.',
           'Telefone já usado avisa quem já o tem e leva à ficha dela.',
           '"Observações" é o que a equipe precisa lembrar — o assistente também lê.',
@@ -1298,16 +1298,37 @@ export const GUIA: Entrada[] = [
     caminho: '/agente',
     abre: ['agente.configurar'],
     oQueE:
-      'O agente da loja: nome, jeito de falar, o manual (o que ele sabe de cor), os poderes (o que pode consultar e o que pode propor), os tetos (valor máximo de uma proposta, desconto máximo, gasto de IA por dia, mensagens por dia) e a chave de ligar. Em cima, o balanço do mês — o que ele trouxe contra o que custou — e as propostas esperando o seu sim. Módulo Agente, plano Assistente para cima: com o plano sem o assistente, ou com o módulo desligado, a tela diz só isso e o caminho — ligar em Configurações › O que sua empresa usa, ou trocar de plano em Assinatura.',
+      'O agente da loja, que conversa pelo WhatsApp com você e a equipe — e nunca solto com cliente: com cliente existem só as campanhas (roteiro com começo e fim, que a pessoa dispara com a palavra-chave ou pelo anúncio) e, se você ligar, um recado fixo; o resto quem responde é a loja, no próprio WhatsApp. Nesta tela: nome, jeito de falar, o manual (o que ele sabe de cor), os poderes (o que pode consultar e o que pode propor), o recado automático, os tetos (valor máximo de uma proposta, desconto máximo, gasto de IA por dia, mensagens por dia) e a chave de ligar. Em cima, o balanço do mês — o que ele trouxe contra o que custou — e as propostas esperando o seu sim. Módulo Agente, plano Assistente para cima: com o plano sem o assistente, ou com o módulo desligado, a tela diz só isso e o caminho — ligar em Configurações › O que sua empresa usa, ou trocar de plano em Assinatura.',
     comoFazer: [
       {
         titulo: 'Criar ou ajustar o assistente',
         passos: [
-          'Nome (até 40 letras), primeira frase e "Como ele fala". Isso decide o JEITO dele, e só isso — texto nunca dá permissão.',
-          'O manual da loja: horário, troca, formas de pagamento, e o que fazer quando não souber a resposta. Isto ele não descobre sozinho.',
+          'Nome (até 40 letras) e "Jeito de falar". Isso decide o JEITO dele, e só isso — texto nunca dá permissão.',
+          'O manual da loja: horário, troca, formas de pagamento, prazos de fornecedor — o que ele precisa saber para responder você e a equipe. Isto ele não descobre sozinho.',
           'Marque os poderes: Consultar não muda nada no sistema; Agir sempre monta uma proposta com o número e espera o seu sim.',
           'Até onde ele vai: valor máximo de uma proposta, desconto máximo (%), gasto de IA por dia (R$) e mensagens por dia. Esses números moram no banco; nenhuma mensagem muda.',
           '"Deixar funcionando" e "Salvar". Cada mudança de poder ou teto vai para o livro de auditoria com antes e depois.',
+        ],
+        capacidade: 'agente.configurar',
+      },
+      {
+        titulo: 'Conectar o WhatsApp da loja pelo QR Code',
+        passos: [
+          'Em "Conexão", "Conectar pelo QR Code". Um código aparece na tela.',
+          'No celular da loja: WhatsApp › Aparelhos conectados › Conectar um aparelho, e aponte a câmera para o código.',
+          'Em alguns segundos a tela mostra "Conectado", com o final do número. Mande a mensagem de teste para conferir.',
+          'Use um número da loja, não o pessoal. Mensagem em massa para quem não pediu pode bloquear o número — o Norte só responde a quem chamou.',
+          'Para parar, "Desconectar" — ou tire o Norte em Aparelhos conectados, no próprio celular. O Z-API continua em "Outras formas de conectar".',
+        ],
+        capacidade: 'agente.configurar',
+      },
+      {
+        titulo: 'Ligar o recado automático para cliente',
+        passos: [
+          'Em "Quando um cliente escreve", marque "Mandar um recado automático" e escreva a frase — por exemplo "Oi! Recebemos sua mensagem e já vamos te atender por aqui."',
+          'Ele sai só para quem escreve fora de uma campanha, no máximo uma vez a cada 12 horas por pessoa, e nunca se alguém da loja escreveu para ela pelo celular nas últimas 24 horas.',
+          'É uma frase fixa: sai sem IA, sem gastar crédito e sem ninguém ler antes. Não prometa o que a loja não faz.',
+          '"Salvar". Ele vem desligado; para desligar, desmarque e salve.',
         ],
         capacidade: 'agente.configurar',
       },
@@ -1335,7 +1356,8 @@ export const GUIA: Entrada[] = [
         titulo: 'O crédito de IA',
         passos: [
           'Vem no plano: R$ 100 por mês no Assistente, R$ 300 na Direção, combinado em contrato no Corporativo.',
-          'Cada conversa desconta da carteira. Acabou, o assistente para até recarregar.',
+          'Cada conversa dele com a equipe desconta da carteira. Campanha e recado automático não usam IA e não gastam crédito.',
+          'Acabou o crédito, ele para de responder a equipe até recarregar.',
           'Recarregar e ver o extrato é em Assinatura › Crédito do assistente.',
         ],
       },
@@ -1343,7 +1365,11 @@ export const GUIA: Entrada[] = [
     perguntas: [
       {
         p: 'O assistente já responde no WhatsApp?',
-        r: 'O canal do WhatsApp ainda não está conectado — é o próximo passo, e depende de contratar o canal. A configuração feita aqui já vale para quando ele ligar.',
+        r: 'Depois que você conectar o WhatsApp da loja em "Conexão": o jeito principal é o QR Code, lido com o celular da loja, sem contratar nada à parte; quem já usa Z-API cola a instância em "Outras formas de conectar". Conectado, ele conversa com você e a equipe e, com cliente, só roda as campanhas e o recado automático. Até conectar, as conversas ficam só no histórico da tela.',
+      },
+      {
+        p: 'O assistente responde os meus clientes?',
+        r: 'Não em conversa solta. Quem manda a palavra-chave de uma campanha, ou chega pelo anúncio dela, segue o roteiro da campanha, do começo ao fim. Qualquer outra mensagem de cliente fica para alguém da loja responder no WhatsApp — o assistente não lê, não responde e não gasta nada com ela. Se quiser, ligue o recado automático: uma frase fixa avisando que a loja já vai responder.',
       },
       {
         p: 'Por que alguns poderes aparecem apagados?',
@@ -1354,7 +1380,87 @@ export const GUIA: Entrada[] = [
         r: 'Não. Os poderes são uma lista fechada, os tetos moram no banco e são conferidos no servidor depois da resposta, e toda ação que mexe em dinheiro, preço ou estoque vira proposta que uma pessoa confirma.',
       },
     ],
-    palavras: ['assistente', 'agente', 'inteligência artificial', 'whatsapp', 'robô', 'bot', 'proposta', 'propostas', 'poderes', 'teto', 'crédito de ia', 'personalidade', 'manual da loja', 'chatbot'],
+    palavras: ['assistente', 'agente', 'inteligência artificial', 'whatsapp', 'robô', 'bot', 'proposta', 'propostas', 'poderes', 'teto', 'crédito de ia', 'personalidade', 'manual da loja', 'chatbot', 'recado automático', 'resposta automática', 'atendimento'],
+  },
+
+  // ── Campanhas ──
+  {
+    chave: 'campanhas',
+    titulo: 'Campanhas',
+    caminho: '/campanhas',
+    abre: ['agente.configurar'],
+    modulo: 'agente',
+    oQueE:
+      'Roteiros de WhatsApp para clientes, com começo e fim. A pessoa entra numa campanha escrevendo uma frase ("quero o catálogo") em qualquer parte da mensagem, ou chegando pelo anúncio de clique para WhatsApp cujo id você cadastrou. Daí ela recebe o que você desenhou — mensagem, foto, vídeo ou áudio, espera, pergunta, desvio pela resposta — e no fim para: depois do fim nada mais é enviado. Não há inteligência artificial em nenhum passo; tudo o que sai foi escrito por você. Mensagem que não abre nem continua campanha fica para alguém da loja responder. Na lista, cada campanha mostra quantos entraram, quantos estão dentro agora, quantos passaram para uma pessoa e quantos concluíram (o seu teste não conta). Sai pelo mesmo número do assistente: plano Assistente para cima, com o módulo "Agente no WhatsApp" ligado.',
+    comoFazer: [
+      {
+        titulo: 'Criar e desenhar uma campanha',
+        passos: [
+          'Em "Nova campanha", dê um nome e clique em "Criar e desenhar". Ela nasce pausada, com Início → Mensagem → Fim.',
+          'Clique no bloco Início e escreva as frases de entrada, uma por linha. Frase com menos de 3 letras é ignorada; acento e maiúscula não importam.',
+          'Para acrescentar, escolha um bloco no desenho e clique num tipo na faixa de cima: o novo entra logo abaixo, já ligado.',
+          'Para desviar, puxe a bolinha de uma saída ("respondeu", "não respondeu", um caminho da condição) até outro bloco.',
+          'Clique num bloco para mudar o que ele faz no painel ao lado. "Salvar" grava; sair com mudança não salva pede confirmação.',
+        ],
+        capacidade: 'agente.configurar',
+        plano: 'campanhas',
+      },
+      {
+        titulo: 'Os blocos',
+        passos: [
+          'Mensagem: o texto, com {primeiro_nome}, {nome} e {resposta}; variações opcionais (cada pessoa recebe sempre a mesma) e uma pausa antes de mandar.',
+          'Foto, vídeo ou áudio: imagem até 5 MB, vídeo e áudio até 16 MB; o áudio pode ir como nota de voz.',
+          'Esperar um tempo (minutos, horas, dias; opcional só com a loja aberta, pelo horário em Lojas) e Esperar resposta (com prazo; saídas "respondeu" e "não respondeu").',
+          'Se a resposta tiver…: um caminho por grupo de palavras, e "qualquer outra coisa". Dividir (A/B): reparte pelos pesos, a mesma pessoa sempre no mesmo caminho.',
+          'Passar para uma pessoa: avisa os donos (ou quem você escolher, com telefone em Equipe) com o nome e o WhatsApp do contato, e encerra. Ir para outra campanha: termina esta e começa a outra. Fim: uma última mensagem, opcional.',
+        ],
+      },
+      {
+        titulo: 'Ativar, testar e pausar',
+        passos: [
+          '"Pendências" lista o que impede ativar: bloco solto, mensagem vazia, condição sem palavra, arquivo faltando, campanha que leva para si mesma, círculo sem espera.',
+          '"Testar com meu número" começa a campanha no telefone do seu cadastro em Equipe, mesmo pausada, e não conta nos números.',
+          '"Ativar" confere tudo de novo, inclusive se outra campanha ativa já usa a mesma frase ou o mesmo anúncio — duas não podem.',
+          '"Pausar": ninguém novo entra, e quem está dentro fica parado no bloco em que estava até você reativar.',
+        ],
+        capacidade: 'agente.configurar',
+      },
+      {
+        titulo: 'Quem está dentro, e as regras de saída',
+        passos: [
+          'Na aba "Dentro agora", veja em que bloco cada pessoa está e até quando espera; "Tirar" encerra a campanha dela.',
+          'Quem escreve só "parar", "sair", "cancelar" ou "não quero" sai na hora, sem receber mais nada.',
+          'Quem escreve a frase de OUTRA campanha ativa troca para ela, se a regra de reentrada da outra deixar.',
+          'Quando alguém da loja escreve para a pessoa pelo celular, ou um bloco passa para uma pessoa, as campanhas ficam 24 horas sem falar com aquele número.',
+          'Não dá para apagar campanha com gente dentro, nem campanha para a qual outra leva.',
+        ],
+        capacidade: 'agente.configurar',
+      },
+      {
+        titulo: 'Os limites contra bloqueio',
+        passos: [
+          'Em "Limites contra bloqueio do número": mensagens por pessoa por dia (padrão 15), da empresa por dia (padrão 1000) e segundos entre duas mensagens para a mesma pessoa (padrão 2).',
+          'Chegou no limite, a campanha daquela pessoa para — o número da loja vale mais que o roteiro.',
+          'A campanha só fala com quem escreveu primeiro: ela começa sempre por uma mensagem da própria pessoa.',
+        ],
+        capacidade: 'agente.configurar',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'O cliente pode entrar duas vezes na mesma campanha?',
+        r: 'Depende do Início: "uma vez por pessoa" (o padrão), "depois de alguns dias" ou "sempre que escrever a frase". O teste do dono não conta.',
+      },
+      {
+        p: 'E se eu mudar a campanha com gente dentro?',
+        r: 'Campanha ativa só grava sem pendência. Quem está dentro segue do bloco em que está, já com o desenho novo; se o bloco dela foi apagado, a campanha dela termina.',
+      },
+      {
+        p: 'A campanha responde qualquer mensagem do cliente?',
+        r: 'Não. Ela só age com a frase de entrada, com a resposta a um "Esperar resposta" (ou durante uma espera marcada para seguir quando a pessoa escrever) e com "parar". O resto fica para alguém da loja responder no WhatsApp.',
+      },
+    ],
+    palavras: ['campanha', 'campanhas', 'roteiro', 'fluxo', 'funil', 'automação', 'palavra-chave', 'gatilho', 'frase', 'anúncio', 'disparo', 'manychat', 'sequência', 'mensagem automática', 'teste a/b'],
   },
 
   // ── Auditoria ──
@@ -1422,7 +1528,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Em "Abrir outra loja", dê o nome e escolha o RAMO desta loja — pode ser diferente do da empresa (uma sorveteria numa empresa de roupa).',
           'Se for só estoque, marque "É um depósito": ele recebe e transfere mercadoria, mas não tem balcão.',
-          'Endereço, contato e horário são opcionais; o assistente responde com o horário.',
+          'Endereço, contato e horário são opcionais.',
           '"Abrir a loja". Ela nasce com as categorias e os eixos do ramo que ainda não existiam na empresa (ex.: Picolé, Massa, Açaí e o eixo Sabor), sem mexer no que já existe.',
           'Depois, na ficha de cada produto, diga em "Vendido em" se ele é vendido na loja nova.',
         ],
@@ -1903,9 +2009,9 @@ export function buscarNoGuia(pergunta: string, telaAtual?: string, quem?: QuemLe
  * O manual inteiro como texto, para virar contexto de IA.
  *
  * É o que a ação `perguntarAoGuiaAcao` manda como sistema quando há chave.
- * E é o mesmo texto que, no futuro, o agente do WhatsApp pode receber para
- * explicar o sistema a quem pergunta por lá — hoje não está ligado; fica
- * anotado para não nascer um segundo manual.
+ * Pelo WhatsApp o assistente não recebe o manual inteiro (seria conta grande
+ * a cada mensagem): ele usa a ferramenta `explicar.sistema`, que roda a
+ * mesma `buscarNoGuia` filtrada pelo que a pessoa abre.
  */
 export function manualComoTexto(): string {
   const partes: string[] = ['# Guia do Norte — o manual do sistema', '']

@@ -14,3 +14,7 @@ src/generated/
 
 # quadros e clipes de trabalho da animacao (o que vale entra em public/video)
 .video/
+
+# o conector do WhatsApp: segredo local e a lista de empresas conectadas
+conector/.env
+conector/dados/

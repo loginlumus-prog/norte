@@ -165,7 +165,7 @@ const CARTOES: Record<
   },
   BALCAO: {
     conta: null,
-    nota: 'o WhatsApp continua sendo você',
+    nota: 'sem o assistente no WhatsApp',
     itens: [
       'Tudo do Grátis, sem teto de vendas',
       'Até três lojas, cada uma com seu estoque',
@@ -185,14 +185,15 @@ const CARTOES: Record<
   BALCAO_AGENTE: {
     // "R$ 100 de crédito" não diz nada para quem nunca comprou token. O número
     // sai do custo medido por conversa, com cache e roteamento de modelo.
-    conta: '~1.650 conversas no WhatsApp',
+    conta: '~1.650 conversas com o assistente',
     // Dizia "renovado todo mês": não existe rotina que devolva o crédito na
     // virada do mês (`recarregarCredito` só é chamada pela recarga). A recarga
     // existe, pela tela de Assinatura.
     nota: 'recarga quando quiser',
     itens: [
       'Tudo do Balcão, e até cinco lojas',
-      'Assistente com o nome que você der',
+      'Assistente com o nome que você der, que conversa com você e a equipe',
+      'Campanhas no WhatsApp para clientes: roteiro fixo, com começo e fim',
       // Dizia "cobrança de atraso": cobrar crediário é poder que ainda não
       // existe (`servidor/poderes.ts`), e o crediário nem é deste plano.
       'Aviso de peça acabando e relatório de manhã e à noite',
@@ -212,7 +213,7 @@ const CARTOES: Record<
   REDE: {
     // Era "O mais pedido". Sem cliente, não existe "mais pedido" — ver o topo.
     selo: 'Recomendado',
-    conta: '~5.000 conversas no WhatsApp',
+    conta: '~5.000 conversas com o assistente',
     nota: 'recarga quando quiser',
     itens: [
       'Tudo do Assistente, sem limite de loja nem de gente',
@@ -323,7 +324,7 @@ const TEXTOS: Record<TelaId, TextoTela> = {
   assistente: {
     chamada: 'Um assistente que age — e que pede antes.',
     frases: [
-      'Você dá o nome, o jeito de falar e o manual da loja. Ele conta como foi o dia e consulta estoque, caixa e contas.',
+      'Ele conversa com você e a equipe: conta como foi o dia e consulta estoque, caixa e contas. Com cliente, só campanha de roteiro fixo — o resto quem responde é a loja.',
       'Para agir — registrar uma compra, lançar uma conta, somar ao estoque a peça que apareceu — ele monta a proposta com o número e espera o seu sim, na tela.',
       'Os tetos moram no banco: valor máximo, desconto máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
     ],
@@ -350,13 +351,13 @@ const TELAS_RODAPE: [string, TelaId][] = [
    recebe. O que ainda não foi construído (`disponivel: false`) aparece com
    a etiqueta — e não some, porque é o que a pessoa vai ver apagado na tela
    dele. */
-const CONSULTA = TODOS_PODERES.filter((k) => !PODERES[k].escreve).map((k) => PODERES[k])
-const AGE = TODOS_PODERES.filter((k) => PODERES[k].escreve).map((k) => PODERES[k])
-// O que ele consulta sozinho na tela do exemplo: os de dentro da loja (o
-// que responde CLIENTE fica de fora, que lá é outra conversa).
-const CONSULTA_EXEMPLO = TODOS_PODERES.filter((k) => !PODERES[k].escreve && !('paraCliente' in PODERES[k])).map(
-  (k) => ({ titulo: PODERES[k].titulo, disponivel: PODERES[k].disponivel as boolean }),
-)
+// Só os poderes da conversa com a equipe: o recado fixo ao cliente
+// (`semIA`) não é algo que ele "consulta" nem "propõe".
+const DO_MODELO = TODOS_PODERES.filter((k) => !('semIA' in PODERES[k]))
+const CONSULTA = DO_MODELO.filter((k) => !PODERES[k].escreve).map((k) => PODERES[k])
+const AGE = DO_MODELO.filter((k) => PODERES[k].escreve).map((k) => PODERES[k])
+// O que ele consulta sozinho, na tela do exemplo.
+const CONSULTA_EXEMPLO = CONSULTA.map((p) => ({ titulo: p.titulo, disponivel: p.disponivel as boolean }))
 
 // "Gain full control", no desenho das referências — mas com o que é NOSSO:
 // cada cartão é uma trava que existe no código, e a miniatura embaixo é a
@@ -619,6 +620,10 @@ const PERGUNTAS: { p: string; r: string }[] = [
     r: `A configuração dele — nome, jeito de falar, manual da loja, poderes e tetos — e as propostas esperando o seu sim já estão no sistema. A conversa pelo WhatsApp também já existe, e a conexão do número é montada junto com a nossa equipe — hoje uma loja de cada vez. Quando der para ligar o número de toda loja, a gente avisa; antes disso, não promete data. Ele entra ${doPlano('BALCAO_AGENTE')} para cima.`,
   },
   {
+    p: 'O assistente responde os meus clientes?',
+    r: 'Não em conversa solta. Com cliente ele roda as campanhas — roteiro fixo, com começo e fim, que começa quando a pessoa manda a palavra-chave ou chega pelo anúncio. Qualquer outra mensagem fica para alguém da loja responder no WhatsApp, sem IA e sem custo. Se quiser, você liga um recado fixo avisando que a loja já vai responder. Com você e a equipe, sim: relatório de manhã e à noite, aviso do que vai faltar, propostas para confirmar na tela e resposta ao que vocês perguntarem.',
+  },
+  {
     p: 'O assistente pode dar desconto sozinho? Mexer no meu preço?',
     r: 'Sozinho, nunca: tudo que mexe em dinheiro, preço ou estoque vira proposta que uma pessoa confirma. Oferecer desconto ainda está em construção — e quando chegar, o teto de desconto é número no banco, não instrução de texto. Texto quem manda mensagem consegue tentar sobrescrever.',
   },
@@ -853,7 +858,7 @@ export default function Inicio() {
                 <Titulo
                   olho="O diferencial"
                   titulo="Um assistente que age. E que pede antes."
-                  resumo="Ele não é um chat de respostas prontas: lê o seu estoque, o seu caixa e as suas contas de verdade. Você dá o nome, o jeito de falar — e decide, em número, até onde ele vai."
+                  resumo="Ele não é um chat de respostas prontas: lê o seu estoque, o seu caixa e as suas contas de verdade, e conversa com você e a sua equipe. Você dá o nome, o jeito de falar — e decide, em número, até onde ele vai."
                 />
                 <div className="grid gap-6 sm:grid-cols-2">
                   <ListaPoderes titulo="Consulta sozinho" poderes={CONSULTA} />

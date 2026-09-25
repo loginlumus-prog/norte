@@ -196,6 +196,26 @@ begin
   end loop;
 end $$;
 
+-- ── a sessão do WhatsApp por QR Code (sessoes_whatsapp) ──────
+-- Entra na varredura acima como qualquer tabela com org_id: org_isolada,
+-- RLS ligado e forçado. Não ganha política especial, e é de propósito: quem a
+-- lê e grava é a API interna do conector (src/app/api/whatsapp-proprio), SEMPRE
+-- dentro do comoOrg da empresa do endereço — a assinatura HMAC diz que o
+-- pedido veio do conector, e o RLS garante que ele só enxerga a sessão
+-- daquela empresa. O conteúdo ainda vai cifrado com a empresa no contexto:
+-- copiada para a linha de outra empresa, a sessão não abre.
+
+-- ── campanhas (campanhas, campanha_execucoes, campanha_passos,
+--    campanha_ajustes, midias) ─────────────────────────────────
+-- Todas têm org_id e entram na varredura do começo: org_isolada, RLS ligado e
+-- forçado. As FKs entre elas (execução → campanha, passo → execução e →
+-- campanha) têm org_id dos dois lados, e o gatilho zz_fk_mesma_empresa acima
+-- as descobre sozinho no catálogo: um passo não aponta para execução de outra
+-- empresa. Nenhuma política especial, e é de propósito: até a entrega da
+-- mídia ao fornecedor do WhatsApp (/api/midia, sem sessão) lê dentro do
+-- comoOrg da empresa que está ASSINADA no endereço — a assinatura prova de
+-- quem é o pedido; o RLS garante que só aquela empresa é lida.
+
 -- ── a tabela orgs se filtra pelo próprio id ──────────────────
 alter table public.orgs enable row level security;
 alter table public.orgs force row level security;

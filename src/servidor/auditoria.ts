@@ -88,6 +88,12 @@ export const ACOES: Record<string, string> = {
   'agente.canal.desconectou': 'desconectou o WhatsApp do assistente',
   'agente.webhook.mostrou': 'viu o endereço do webhook do assistente',
   'agente.rotinas': 'ligou ou desligou rotinas do assistente',
+  'campanha.criou': 'criou uma campanha de WhatsApp',
+  'campanha.alterou': 'alterou uma campanha de WhatsApp',
+  'campanha.ativou': 'ativou uma campanha de WhatsApp',
+  'campanha.pausou': 'pausou uma campanha de WhatsApp',
+  'campanha.apagou': 'apagou uma campanha de WhatsApp',
+  'campanha.testou': 'testou uma campanha no próprio número',
 }
 
 /**
@@ -102,7 +108,7 @@ export const ASSUNTOS: { chave: string; rotulo: string; prefixos: string[] }[] =
   { chave: 'cliente', rotulo: 'clientes', prefixos: ['cliente.', 'crediario.', 'pontos.'] },
   { chave: 'equipe', rotulo: 'equipe e acessos', prefixos: ['equipe.', 'convite.', 'sessao.', 'vaga.'] },
   { chave: 'tarefa', rotulo: 'tarefas', prefixos: ['tarefa.', 'quadro.'] },
-  { chave: 'empresa', rotulo: 'empresa e lojas', prefixos: ['empresa.', 'unidade.', 'plano.', 'agente.', 'financeiro.'] },
+  { chave: 'empresa', rotulo: 'empresa e lojas', prefixos: ['empresa.', 'unidade.', 'plano.', 'agente.', 'campanha.', 'financeiro.'] },
 ]
 
 export type FiltroAuditoria = {

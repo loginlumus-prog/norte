@@ -1,6 +1,6 @@
 // As travas do assistente que NÃO precisam de banco: quem é quem pelo
-// telefone, o que vai para a mesa do modelo, o que o sistema diz, a porta do
-// webhook, o relógio das rotinas.
+// telefone, o que vai para a mesa do modelo, o que o sistema diz, o recado
+// fixo ao cliente, a porta do webhook, o relógio das rotinas.
 //
 // O que precisa de banco (o laço inteiro, a idempotência, o isolamento entre
 // empresas) está em `assistente-fluxo.test.ts`.
@@ -14,8 +14,16 @@ import {
   poderDaFerramenta,
   nomeDaFerramenta,
   REGRAS_DO_NORTE,
-  type Interlocutor,
+  type Equipe,
+  type PerfilAgente,
 } from '../src/servidor/assistente/regras'
+import {
+  decidirRecado,
+  recadoDe,
+  humanoAteDepoisDe,
+  PODER_RECADO,
+  MAXIMO_RECADO,
+} from '../src/servidor/assistente/recado'
 import { rotinasDaHora, relogioSP, autorizado, textoDoRelatorio, quantoRepor } from '../src/servidor/assistente/rotinas'
 import { conferirToken, tokenDoWebhook, lerZapi, receberWebhook } from '../src/servidor/assistente/webhook'
 import { CanalFalso, CanalZapi } from '../src/servidor/assistente/canal'
@@ -31,9 +39,8 @@ const sessao = (papel: Sessao['acessos'][number]['papel']): Sessao => ({
   nome: 'Fulana',
   acessos: [{ papel, unidadeId: papel === 'DONO' ? null : 'uni-1' }],
 })
-const DONO: Interlocutor = { tipo: 'equipe', sessao: sessao('DONO'), nome: 'Ana' }
-const BALCAO: Interlocutor = { tipo: 'equipe', sessao: sessao('BALCAO'), nome: 'Beto' }
-const CLIENTE: Interlocutor = { tipo: 'cliente', nome: 'Carla' }
+const DONO: Equipe = { tipo: 'equipe', sessao: sessao('DONO'), nome: 'Ana' }
+const BALCAO: Equipe = { tipo: 'equipe', sessao: sessao('BALCAO'), nome: 'Beto' }
 
 // ─────────────────────────────────────────────────────────────
 
@@ -67,16 +74,23 @@ describe('telefone: dono × cliente', () => {
 describe('o que vai para a mesa do modelo', () => {
   it('poder desligado na empresa não vira ferramenta', () => {
     const so = poderesDaConversa({ ...TUDO, poderes: ['ver.estoque'] }, LOJA, DONO)
-    expect(so).toEqual(['ver.estoque'])
+    expect(so).toEqual(['ver.estoque', 'explicar.sistema'])
     const nomes = ferramentasParaModelo(so).map((f) => f.name)
     expect(nomes).not.toContain('ver_resumo')
     expect(nomes).not.toContain('lancar_despesa')
   })
 
-  it('cliente não recebe ferramenta de faturamento, caixa, contas nem escrita', () => {
-    const doCliente = poderesDaConversa(TUDO, LOJA, CLIENTE)
-    expect(doCliente).toEqual(['consultar.produto'])
-    for (const p of doCliente) expect((PODERES[p] as { paraCliente?: boolean }).paraCliente).toBe(true)
+  it('o recado fixo ao cliente nunca vai para a mesa do modelo, nem ligado', () => {
+    for (const quem of [DONO, BALCAO]) {
+      const mesa = poderesDaConversa(TUDO, LOJA, quem)
+      expect(mesa).not.toContain(PODER_RECADO)
+      expect(ferramentasParaModelo(mesa).map((f) => f.name)).not.toContain('recado_automatico')
+    }
+  })
+
+  it('a consulta de preço é da equipe — quem tem produto.ver', () => {
+    expect(poderesDaConversa(TUDO, LOJA, DONO)).toContain('consultar.produto')
+    expect(poderesDaConversa(TUDO, LOJA, BALCAO)).toContain('consultar.produto')
   })
 
   it('o balconista não ganha pelo WhatsApp o que não abre na tela', () => {
@@ -125,15 +139,64 @@ describe('o sistema', () => {
 
   it('a parte estável não muda com quem fala nem com a hora — senão o cache nunca acerta', () => {
     const a = montarSistema({ nome: 'Nina' }, loja, DONO)
-    const b = montarSistema({ nome: 'Nina' }, loja, CLIENTE)
+    const b = montarSistema({ nome: 'Nina' }, loja, BALCAO)
     expect(a[0]!.texto).toBe(b[0]!.texto)
     expect(a[1]!.texto).not.toBe(b[1]!.texto)
     expect(a[1]!.cache).toBeFalsy()
     expect(a[0]!.texto).not.toMatch(/\d{2}:\d{2}/)
   })
 
-  it('conversa de cliente carrega a regra 7 explícita', () => {
-    expect(montarSistema({ nome: 'Nina' }, loja, CLIENTE)[1]!.texto).toMatch(/CLIENTE/)
+  it('ele sabe que conversa só com a equipe, e não existe texto "de cliente"', () => {
+    const [estavel, conversa] = montarSistema({ nome: 'Nina' }, loja, DONO)
+    expect(estavel!.texto).toMatch(/SÓ com a equipe/)
+    expect(estavel!.texto).toMatch(/campanhas/)
+    expect(conversa!.texto).toMatch(/da equipe da loja/)
+    expect(REGRAS_DO_NORTE).not.toMatch(/Com CLIENTE/)
+  })
+
+  it('o recado fixo (a saudação do banco) não entra no sistema do modelo', () => {
+    const agente = { nome: 'Nina', saudacao: 'RECADO-QUE-SO-O-CLIENTE-VE' } as PerfilAgente
+    const tudo = montarSistema(agente, loja, DONO)
+      .map((b) => b.texto)
+      .join('\n')
+    expect(tudo).not.toMatch(/RECADO-QUE-SO-O-CLIENTE-VE/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+
+describe('o recado fixo ao cliente', () => {
+  const agora = new Date('2026-09-25T15:00:00Z')
+  const horas = (h: number) => new Date(agora.getTime() + h * 3600_000)
+  const base = { recado: 'Oi! Já vamos te atender por aqui.', humanoAte: null, ultimaNossa: null, agora }
+
+  it('vem desligado: sem a chave, ou com a chave e sem texto, não há recado', () => {
+    expect(recadoDe({ poderes: [], saudacao: 'Oi!' })).toBeNull()
+    expect(recadoDe({ poderes: [PODER_RECADO], saudacao: '   ' })).toBeNull()
+    expect(recadoDe({ poderes: [PODER_RECADO], saudacao: null })).toBeNull()
+    expect(recadoDe({ poderes: [PODER_RECADO], saudacao: ' Oi! ' })).toBe('Oi!')
+    expect(recadoDe({ poderes: [PODER_RECADO], saudacao: 'x'.repeat(900) })).toHaveLength(MAXIMO_RECADO)
+    expect(decidirRecado({ ...base, recado: null })).toEqual({ manda: false, motivo: 'recado_desligado' })
+  })
+
+  it('ligado, sai para quem ainda não ouviu nada', () => {
+    expect(decidirRecado(base)).toEqual({ manda: true, texto: base.recado })
+  })
+
+  it('no máximo um a cada 12 horas por pessoa', () => {
+    expect(decidirRecado({ ...base, ultimaNossa: horas(-1) })).toEqual({ manda: false, motivo: 'recado_recente' })
+    expect(decidirRecado({ ...base, ultimaNossa: horas(-11.9) })).toMatchObject({ manda: false })
+    expect(decidirRecado({ ...base, ultimaNossa: horas(-12) })).toMatchObject({ manda: true })
+  })
+
+  it('alguém da loja escreveu nas últimas 24 horas: calado', () => {
+    // A marca é empurrada 24 h à frente a cada mensagem que sai do celular da loja.
+    const escreveuHa = (h: number) => humanoAteDepoisDe(horas(-h))
+    expect(decidirRecado({ ...base, humanoAte: escreveuHa(1) })).toEqual({ manda: false, motivo: 'humano' })
+    expect(decidirRecado({ ...base, humanoAte: escreveuHa(23.9) })).toMatchObject({ manda: false, motivo: 'humano' })
+    expect(decidirRecado({ ...base, humanoAte: escreveuHa(24) })).toMatchObject({ manda: true })
+    // e vale mesmo que o último recado tenha sido há muito tempo
+    expect(decidirRecado({ ...base, humanoAte: escreveuHa(2), ultimaNossa: horas(-48) })).toMatchObject({ motivo: 'humano' })
   })
 })
 

@@ -33,8 +33,9 @@ export default function Termos() {
     >
       <Secao n={1} titulo="Quem é quem">
         <p>
-          <b>Norte</b> é um sistema de gestão para comércio, com um assistente que atende no
-          WhatsApp. Ele é operado por{' '}
+          <b>Norte</b> é um sistema de gestão para comércio, com um assistente no WhatsApp que
+          conversa com você e a sua equipe e roda campanhas de roteiro fixo para os seus
+          clientes. Ele é operado por{' '}
           {EMPRESA.razaoSocial ? (
             <b>
               {EMPRESA.razaoSocial}, CNPJ {EMPRESA.cnpj}

@@ -196,6 +196,7 @@ model Org {
   recorrentes    Recorrente[]
   tentativas     TentativaLogin[]
   agente         Agente?
+  sessaoWhatsapp    SessaoWhatsapp?
   gatilhos       GatilhoAgente[]
   propostas      PropostaAgente[]
   recibos        ReciboAgente[]
@@ -205,6 +206,11 @@ model Org {
   quadros        Quadro[]
   tarefas        Tarefa[]
   encomendas     Encomenda[]
+  campanhas         Campanha[]
+  campanhaExecucoes CampanhaExecucao[]
+  campanhaPassos    CampanhaPasso[]
+  campanhaAjustes   CampanhaAjustes?
+  midias            Midia[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -1567,6 +1573,34 @@ enum CanalAgente {
   NENHUM /// ainda não conectado — o agente existe e não fala com ninguém
   ZAPI /// não oficial, entra no mesmo dia lendo um QR code
   META /// oficial, exige verificação do Meta Business
+  PROPRIO /// a conexão do próprio Norte, pelo QR Code (conector/, Baileys) — sem Z-API no meio
+}
+
+/// A sessão do WhatsApp conectado pelo QR Code (o "aparelho conectado" que o
+/// conector do Norte é, para o celular da loja).
+///
+/// Com ela, o conector reconecta sozinho depois de reiniciar, sem pedir QR de
+/// novo — e com ela, quem a tiver FALA pelo WhatsApp da loja. Por isso mora
+/// aqui, CIFRADA (AES-256-GCM, chave NORTE_CIFRA, presa à empresa e ao campo —
+/// ver src/servidor/cifra.ts), e não num arquivo no disco do conector. O
+/// conector nem tem a chave: ele entrega e recebe o pacote pela API interna
+/// assinada (src/app/api/whatsapp-proprio/[orgId]/sessao).
+model SessaoWhatsapp {
+  id    String @id @default(cuid())
+  orgId String @unique @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// O estado de autenticação inteiro do Baileys (credenciais + chaves do
+  /// Signal), comprimido e cifrado. Nunca em texto.
+  dadosCifrados String @map("dados_cifrados")
+  /// Carimbo (ms) de quando o conector gerou este pacote. Gravação com
+  /// carimbo mais velho que o guardado é recusada: um pedido repetido, ou
+  /// fora de ordem, não volta a sessão para trás.
+  versao        BigInt
+
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@map("sessoes_whatsapp")
 }
 
 /// O que faz o agente agir sozinho, sem ninguém perguntar.
@@ -2004,4 +2038,190 @@ enum SituacaoEncomenda {
   PRONTA
   ENTREGUE
   CANCELADA
+}
+
+// ═════════════════════════════════════════════════════════════
+// CAMPANHAS — o roteiro de WhatsApp com começo e fim
+// ═════════════════════════════════════════════════════════════
+//
+// Com CLIENTE o assistente não conversa solto. O cliente entra numa campanha
+// por uma frase ("quero o catálogo") ou pelo clique num anúncio, anda por um
+// roteiro que a loja desenhou — mensagem, espera, pergunta, desvio — e no fim
+// para. Depois do fim, nada mais sai. Mensagem que não abre nem continua
+// campanha é da loja: uma pessoa responde no celular dela.
+//
+// Sem IA em nenhum ponto daqui: tudo o que sai foi escrito pela loja.
+// O motor mora em src/servidor/campanhas/.
+
+/// Uma campanha: o gatilho e o desenho do roteiro.
+///
+/// `gatilho` e `grafo` são JSON porque são o documento do editor — lidos e
+/// gravados inteiros, validados no servidor (src/servidor/campanhas/grafo.ts)
+/// antes de gravar. Os números da lista (quantos entraram, quantos estão
+/// dentro) são contados das execuções, nunca guardados aqui: contador
+/// guardado é contador que diverge.
+model Campanha {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome  String
+  /// Pausada = ninguém novo entra, e quem está dentro fica parado no bloco
+  /// em que estava até a campanha voltar (ou alguém da loja tirar a pessoa).
+  ativa Boolean @default(false)
+  /// Só para organizar a lista. Texto livre, opcional.
+  pasta String?
+
+  /// { tipo: 'frase'|'manual', frases: string[], anuncioIds: string[],
+  ///   reentrada: 'nunca'|'depois'|'sempre', reentradaDias?: number }
+  gatilho Json
+  /// { nodes: [...], edges: [...] } — ver src/servidor/campanhas/tipos.ts
+  grafo   Json
+
+  execucoes CampanhaExecucao[]
+  passos    CampanhaPasso[]
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@index([orgId, ativa])
+  @@map("campanhas")
+}
+
+/// Uma pessoa andando por uma campanha.
+///
+/// `telefone` é a CHAVE do telefone (DDD + oito últimos dígitos, ver
+/// assistente/telefone.ts): o mesmo número chega com e sem o 55, com e sem o
+/// nono dígito, e precisa ser a mesma pessoa. `envio` guarda o formato que o
+/// canal espera.
+model CampanhaExecucao {
+  id         String   @id @default(cuid())
+  orgId      String   @map("org_id")
+  org        Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  campanhaId String   @map("campanha_id")
+  campanha   Campanha @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+
+  telefone String
+  envio    String
+  nome     String?
+
+  /// O bloco em que ela está (ou que vai rodar quando acordar).
+  nodeId    String    @map("node_id")
+  /// rodando | esperando | aguardando_resposta | concluida | cancelada | erro
+  status    String    @default("rodando")
+  /// Quando acorda: fim do intervalo, prazo da resposta.
+  proximoEm DateTime? @map("proximo_em")
+  /// { nome, resposta, ... } — o que o roteiro guardou.
+  vars      Json      @default("{}")
+
+  /// Entrou pelo "Testar com meu número": não conta nos números nem na regra
+  /// de reentrada.
+  teste Boolean @default(false)
+
+  /// A trava de quem está rodando esta execução agora. Sem ela, o relógio e
+  /// uma resposta que chega no mesmo segundo andariam o roteiro duas vezes —
+  /// e a pessoa receberia tudo em dobro. Vence sozinha (ver motor).
+  trava   String?
+  travaEm DateTime? @map("trava_em")
+
+  /// A última mensagem que a PESSOA mandou. É a janela das 24 horas.
+  ultimaEntradaEm DateTime? @map("ultima_entrada_em")
+  /// A última que saiu para ela. É o intervalo mínimo entre duas.
+  ultimoEnvioEm   DateTime? @map("ultimo_envio_em")
+
+  iniciadaEm   DateTime  @default(now()) @map("iniciada_em")
+  finalizadaEm DateTime? @map("finalizada_em")
+  /// fim | humano | humano_assumiu | conectou | outro_fluxo | parou | removido |
+  /// pausada | teste | bloco_sumiu | passos | limite | falha_envio
+  motivoFim    String?   @map("motivo_fim")
+
+  passos CampanhaPasso[]
+
+  /// Uma pessoa, no máximo UMA campanha viva por empresa. O motor já encerra
+  /// a anterior antes de abrir outra; este índice é a garantia para quando
+  /// duas mensagens da mesma pessoa chegam juntas.
+  ///
+  /// CUIDADO (igual ao do caixa): o único é PARCIAL. `findUnique` por
+  /// (orgId, telefone) pode devolver uma execução encerrada — a viva se
+  /// procura com `findFirst` e o filtro de status.
+  @@unique([orgId, telefone], map: "campanha_execucoes_uma_viva", where: raw("status in ('rodando', 'esperando', 'aguardando_resposta')"))
+  @@index([orgId, status, proximoEm])
+  @@index([orgId, campanhaId, status])
+  @@index([orgId, telefone, iniciadaEm])
+  @@map("campanha_execucoes")
+}
+
+/// O diário da execução: cada bloco por onde a pessoa passou, e por qual saída.
+/// É daqui que sai o teto de mensagens por contato por dia.
+model CampanhaPasso {
+  id         String           @id @default(cuid())
+  orgId      String           @map("org_id")
+  org        Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  execucaoId String           @map("execucao_id")
+  execucao   CampanhaExecucao @relation(fields: [execucaoId], references: [id], onDelete: Cascade)
+  campanhaId String           @map("campanha_id")
+  campanha   Campanha         @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+
+  nodeId   String  @map("node_id")
+  tipo     String
+  /// A saída tomada ("respondeu", "outro"...) ou o que aconteceu ("limite").
+  saida    String?
+  /// Quantas mensagens este passo mandou PARA A PESSOA.
+  enviadas Int     @default(0)
+  /// Mensagens que saíram para a equipe (passar para pessoa). Não contam no
+  /// teto do contato, contam no da empresa.
+  internas Int     @default(0)
+
+  em DateTime @default(now())
+
+  @@index([orgId, execucaoId, em])
+  @@index([orgId, em])
+  @@map("campanha_passos")
+}
+
+/// Os freios de cada empresa. Linha ausente = os padrões do motor
+/// (src/servidor/campanhas/tipos.ts).
+model CampanhaAjustes {
+  id    String @id @default(cuid())
+  orgId String @unique @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// Mensagens de campanha para UM número por dia (calendário de São Paulo).
+  porContatoDia Int @default(15) @map("por_contato_dia")
+  /// Mensagens de campanha da empresa inteira por dia.
+  porEmpresaDia Int @default(1000) @map("por_empresa_dia")
+  /// Segundos, no mínimo, entre duas mensagens para a mesma pessoa.
+  intervaloSeg  Int @default(2) @map("intervalo_seg")
+
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@map("campanha_ajustes")
+}
+
+/// Imagem, vídeo ou áudio usado em campanha.
+///
+/// Os bytes moram no Postgres, e é de propósito: não há outro lugar para
+/// guardar arquivo neste sistema, e com teto de tamanho (imagem até 5 MB,
+/// áudio e vídeo até 16 MB — o que o WhatsApp aceita) o banco aguenta. O
+/// fornecedor do WhatsApp busca o arquivo por um endereço ASSINADO e com
+/// prazo (/api/midia/...): sem cookie, e sem id adivinhável.
+model Midia {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome    String
+  mime    String
+  /// imagem | video | audio
+  tipo    String
+  tamanho Int
+  /// sha256 em hex: o mesmo arquivo enviado duas vezes vira uma linha só.
+  sha256  String
+  dados   Bytes  @db.ByteA
+
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@unique([orgId, sha256])
+  @@index([orgId, criadaEm])
+  @@map("midias")
 }

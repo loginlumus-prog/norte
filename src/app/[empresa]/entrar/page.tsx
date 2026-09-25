@@ -31,7 +31,7 @@ const CUIDA: { href: string; titulo: string; linha: string }[] = [
   { href: '/x/financeiro', titulo: 'Financeiro', linha: 'Contas, recebimentos e o resultado.' },
   { href: '/x/clientes', titulo: 'Clientes', linha: 'Histórico, fiado e quem sumiu.' },
   { href: '/x/tarefas', titulo: 'Tarefas', linha: 'A equipe no mesmo quadro.' },
-  { href: '/x/agente', titulo: 'Assistente', linha: 'Responde no WhatsApp pela loja.' },
+  { href: '/x/agente', titulo: 'Assistente', linha: 'Relatório, avisos e propostas no WhatsApp.' },
 ]
 
 const GARANTIAS = [

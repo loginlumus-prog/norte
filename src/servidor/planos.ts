@@ -131,10 +131,12 @@ export const PLANOS: Record<Plano, Limite> = {
   BALCAO_AGENTE: {
     // Era "Balcao + Assistente". O "+" fazia o plano ler como ACESSORIO do
     // anterior — alguma coisa que se acrescenta — em vez de degrau proprio. Sem
-    // ele, o nome diz o que muda: aqui alguem passa a atender por voce.
+    // ele, o nome diz o que muda: aqui alguem passa a acompanhar a loja por
+    // voce. Nao "atender": com cliente ele so roda campanha com roteiro, e o
+    // resto quem responde e a loja.
     titulo: 'Assistente',
     artigo: 'o',
-    resumo: 'Até cinco lojas, com o assistente atendendo no WhatsApp e propondo antes de agir.',
+    resumo: 'Até cinco lojas, com o assistente no WhatsApp: relatório, avisos e propostas para você, campanhas para os clientes.',
     unidades: 5,
     vagas: 5,
     mensal: 350,
@@ -708,6 +710,10 @@ export const LIBERACOES = {
   // disto ninguém conferia: o Grátis ligava o programa em Configurações, e o
   // balcão pontuava.
   'pontos.programa': { desde: 'BALCAO', titulo: 'Programa de pontos' },
+  // Campanhas de WhatsApp saem pelo número do assistente: existem onde o
+  // assistente existe. Chave própria para a tela trancar o pedaço com o nome
+  // certo — e para o dia em que o degrau delas for outro.
+  campanhas: { desde: 'BALCAO_AGENTE', titulo: 'Campanhas no WhatsApp' },
 } as const satisfies Record<string, { desde: Plano; titulo: string }>
 
 export type Liberacao = keyof typeof LIBERACOES

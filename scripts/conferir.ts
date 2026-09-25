@@ -758,15 +758,12 @@ secao('Agente')
   ok('a empresa tem assistente', !!agente, agente?.nome ?? 'nenhum')
 
   if (agente && dona.ok && balconista.ok) {
-    // 1. O que vai para o modelo depende de quem está falando.
+    // 1. O modelo só conversa com a equipe, e o que funciona sem IA (o recado
+    //    fixo ao cliente) nunca vira ferramenta.
     const cfg = paraConfig(agente)
-    const paraEquipe = ferramentasDe(cfg, empresa, true)
-    const paraCliente = ferramentasDe(cfg, empresa, false)
-    ok('a equipe recebe mais ferramentas que o cliente',
-       paraEquipe.length > paraCliente.length,
-       `equipe ${paraEquipe.length}, cliente ${paraCliente.length}`)
-    ok('o cliente NAO recebe a ferramenta do faturamento',
-       !paraCliente.includes('ver.resumo'), paraCliente.join(', '))
+    const doModelo = ferramentasDe({ ...cfg, poderes: [...cfg.poderes, 'recado.automatico'] }, empresa)
+    ok('o recado fixo ao cliente NAO vira ferramenta do modelo',
+       !doModelo.includes('recado.automatico'), doModelo.join(', '))
 
     // 2. O teto recusa antes de a proposta existir.
     const teto = agente.valorMaxCent / 100

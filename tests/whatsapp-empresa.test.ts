@@ -6,7 +6,8 @@
 // nele — as duas coisas precisam passar pelo `comoOrg` e pelo RLS.
 //
 // O que está provado aqui:
-//   • a escolha do canal: linha própria > global (só ZAPI_EMPRESA) > mentira
+//   • a escolha do canal: QR Code (canal PROPRIO + conector configurado) >
+//     linha própria > global (só ZAPI_EMPRESA) > mentira
 //   • token cifrado de uma empresa colado na linha de outra não abre
 //   • o token entra e não sai: nem banco, nem tela, nem livro de auditoria
 //   • sem NORTE_CIFRA, nada é guardado, e o recado diz o porquê
@@ -26,11 +27,11 @@ vi.hoisted(() => {
   process.env.POOL_PORTARIA = '1'
   process.env.WEBHOOK_SEGREDO = 'segredo-de-teste-com-mais-de-32-caracteres-ok'
   process.env.ANTHROPIC_API_KEY = 'chave-de-teste'
-  for (const k of ['ZAPI_INSTANCIA', 'ZAPI_TOKEN', 'ZAPI_CLIENT_TOKEN', 'ZAPI_EMPRESA', 'ZAPI_URL', 'NORTE_CIFRA']) delete process.env[k]
+  for (const k of ['ZAPI_INSTANCIA', 'ZAPI_TOKEN', 'ZAPI_CLIENT_TOKEN', 'ZAPI_EMPRESA', 'ZAPI_URL', 'NORTE_CIFRA', 'CONECTOR_URL', 'CONECTOR_SEGREDO']) delete process.env[k]
 })
 
 import { cifrar } from '../src/servidor/cifra'
-import { escolherCanal, canalPara, contextoDoToken, CanalZapi } from '../src/servidor/assistente/canal'
+import { escolherCanal, canalPara, contextoDoToken, CanalZapi, CanalProprio } from '../src/servidor/assistente/canal'
 import {
   receberWebhook,
   tokenDoWebhook,
@@ -38,6 +39,7 @@ import {
   resumoDoToken,
   novoTokenDoWebhook,
   portaAbre,
+  lerZapi,
 } from '../src/servidor/assistente/webhook'
 import {
   estadoDaConexao,
@@ -111,8 +113,14 @@ afterAll(async () => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  for (const k of ['ZAPI_INSTANCIA', 'ZAPI_TOKEN', 'ZAPI_CLIENT_TOKEN', 'ZAPI_EMPRESA', 'NORTE_CIFRA']) delete process.env[k]
+  for (const k of ['ZAPI_INSTANCIA', 'ZAPI_TOKEN', 'ZAPI_CLIENT_TOKEN', 'ZAPI_EMPRESA', 'NORTE_CIFRA', 'CONECTOR_URL', 'CONECTOR_SEGREDO']) delete process.env[k]
 })
+
+const SEGREDO_CONECTOR = 'segredo-do-conector-com-mais-de-32-caracteres'
+const comConector = () => {
+  process.env.CONECTOR_URL = 'http://conector.interno:3200'
+  process.env.CONECTOR_SEGREDO = SEGREDO_CONECTOR
+}
 
 const comChave = () => {
   process.env.NORTE_CIFRA = CHAVE
@@ -152,6 +160,8 @@ const zapi = (messageId: string) => ({
 // A ESCOLHA DO CANAL
 // ─────────────────────────────────────────────────────────────
 
+const linhaVazia = { zapiInstancia: null, zapiTokenCifrado: null, zapiClientTokenCifrado: null }
+
 describe('qual linha cada empresa usa', () => {
   const linhaDaB = () => ({
     zapiInstancia: INSTANCIA_B,
@@ -187,6 +197,50 @@ describe('qual linha cada empresa usa', () => {
     comChave()
     const r = escolherCanal({ id: 'org-a', slug: 'loja-a' }, linhaDaB())
     expect(r.origem).toBe('nenhuma')
+  })
+
+  it('no QR Code (canal PROPRIO) com o conector configurado: o QR ganha de tudo', async () => {
+    comChave()
+    comConector()
+    comGlobal('vizinha-b')
+    const pedidos: { url: string; init: RequestInit }[] = []
+    const buscar = (async (url: string, init: RequestInit) => {
+      pedidos.push({ url, init })
+      return new Response('{"ok":true,"id":"WA-1"}', { status: 200 })
+    }) as unknown as typeof fetch
+    const r = escolherCanal({ id: 'org-b', slug: 'vizinha-b' }, { ...linhaDaB(), canal: 'PROPRIO' }, buscar)
+    expect(r.origem).toBe('qr')
+    expect(r.canal).toBeInstanceOf(CanalProprio)
+    expect(r.canal.real).toBe(true)
+    expect(await r.canal.enviar('(11) 97777-0003', 'oi')).toEqual({ ok: true, id: 'WA-1' })
+    expect(pedidos[0]!.url).toBe('http://conector.interno:3200/sessoes/org-b/enviar')
+    expect((pedidos[0]!.init.headers as Record<string, string>).authorization).toBe(`Bearer ${SEGREDO_CONECTOR}`)
+    expect(JSON.parse(String(pedidos[0]!.init.body))).toEqual({ numero: '5511977770003', texto: 'oi' })
+    // e mídia também sai pelo conector
+    expect(await r.canal.enviarMidia!('(11) 97777-0003', { tipo: 'imagem', url: 'https://norte.app/x.jpg', legenda: 'olha' })).toMatchObject({ ok: true })
+    expect(JSON.parse(String(pedidos[1]!.init.body))).toEqual({ numero: '5511977770003', midia: { tipo: 'imagem', url: 'https://norte.app/x.jpg', legenda: 'olha' } })
+  })
+
+  it('o conector recusou: o motivo dele volta, sem "ok"', async () => {
+    comConector()
+    const buscar = (async () => new Response('{"ok":false,"motivo":"limite diário de envios deste número"}', { status: 429 })) as unknown as typeof fetch
+    const r = escolherCanal({ id: 'org-a', slug: 'loja-a' }, { ...linhaVazia, canal: 'PROPRIO' }, buscar)
+    expect(await r.canal.enviar('(71) 99999-0001', 'oi')).toEqual({ ok: false, motivo: 'limite diário de envios deste número' })
+  })
+
+  it('no QR Code mas SEM conector neste servidor: cai para o Z-API da empresa (e depois para a global)', () => {
+    comChave()
+    comGlobal('vizinha-b')
+    expect(escolherCanal({ id: 'org-b', slug: 'vizinha-b' }, { ...linhaDaB(), canal: 'PROPRIO' }).origem).toBe('propria')
+    expect(escolherCanal({ id: 'org-b', slug: 'vizinha-b' }, { ...linhaVazia, canal: 'PROPRIO' }).origem).toBe('global')
+    expect(escolherCanal({ id: 'org-a', slug: 'loja-a' }, { ...linhaVazia, canal: 'PROPRIO' }).origem).toBe('nenhuma')
+  })
+
+  it('conector configurado, mas a empresa está no Z-API (ou em nenhum): o QR não entra', () => {
+    comChave()
+    comConector()
+    expect(escolherCanal({ id: 'org-b', slug: 'vizinha-b' }, { ...linhaDaB(), canal: 'ZAPI' }).origem).toBe('propria')
+    expect(escolherCanal({ id: 'org-a', slug: 'loja-a' }, { ...linhaVazia, canal: 'NENHUM' }).origem).toBe('nenhuma')
   })
 
   it('com a chave trocada no servidor, a linha própria não abre (e não "tenta assim mesmo")', () => {
@@ -392,5 +446,22 @@ describe('a porta, com o banco', () => {
     expect(deOutra).toEqual({ status: 200 })
     const daPropria = await receberWebhook('loja-a', token, { ...zapi('W-14'), instanceId: 'INSTANCIA-DA-A' }, { canal })
     expect(daPropria.trabalho).toBeDefined()
+  })
+})
+
+describe('o anúncio de onde a pessoa veio, pelo Z-API', () => {
+  const doAnuncio = (ad: Record<string, unknown>) => ({ ...zapi('AD-1'), externalAdReply: ad })
+
+  it('clique para o WhatsApp: o id do anúncio vai junto (externalAdReply na raiz)', () => {
+    expect(lerZapi(doAnuncio({ sourceType: 'ad', sourceId: '23722824350495506', ctwaClid: 'Aff-x' }), null)).toMatchObject({
+      tipo: 'mensagem',
+      anuncioId: '23722824350495506',
+    })
+  })
+
+  it('sem anúncio, ou com fonte que não é anúncio: sem id', () => {
+    expect(lerZapi(zapi('AD-2'), null)).not.toHaveProperty('anuncioId')
+    expect(lerZapi(doAnuncio({ sourceType: 'post', sourceId: '123' }), null)).not.toHaveProperty('anuncioId')
+    expect(lerZapi(doAnuncio({ sourceType: 'ad', sourceId: 'com espaço' }), null)).not.toHaveProperty('anuncioId')
   })
 })

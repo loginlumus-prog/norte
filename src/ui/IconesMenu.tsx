@@ -110,6 +110,14 @@ const D: Record<string, ReactNode> = {
       <path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01" />
     </>
   ),
+  // Campanhas: o megafone — falar para muita gente, com hora marcada.
+  campanhas: (
+    <>
+      <path d="M4 10v4a1 1 0 0 0 1 1h2l6 4.5V4.5L7 9H5a1 1 0 0 0-1 1Z" />
+      <path d="M7 15v3.5a1.5 1.5 0 0 0 3 0V16.3" />
+      <path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a7.5 7.5 0 0 1 0 11" />
+    </>
+  ),
   auditoria: (
     <>
       <path d="M12 3.5 19 6v5.5c0 4.3-2.9 7.8-7 9-4.1-1.2-7-4.7-7-9V6l7-2.5Z" />

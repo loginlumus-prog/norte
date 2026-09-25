@@ -64,6 +64,10 @@ export const MENU = (slug: string): ItemMenu[] => [
 
   // ── empresa ──
   { grupo: 'Empresa', href: `/${slug}/agente`, titulo: 'Assistente', exige: 'agente.configurar', modulo: 'agente' },
+  // O roteiro de WhatsApp para CLIENTES (frase → mensagens → fim). Ao lado do
+  // Assistente porque sai pelo mesmo número e pede o mesmo módulo; o plano
+  // sem campanhas vê a tela trancada, com o plano que abre.
+  { grupo: 'Empresa', href: `/${slug}/campanhas`, titulo: 'Campanhas', exige: 'agente.configurar', modulo: 'agente' },
   // O livro de tudo que mexeu. Ele é escrito por todo canto do sistema desde
   // o primeiro dia e não tinha onde ser lido — o que é o mesmo que não ter.
   { grupo: 'Empresa', href: `/${slug}/auditoria`, titulo: 'Auditoria', exige: 'auditoria.ver', avancado: true },

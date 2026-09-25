@@ -23,6 +23,7 @@ import {
 } from './poderes'
 import { garantirCreditoDoMes } from './assinatura'
 import { inicioDeHojeEmSP } from './dia'
+import { MAXIMO_RECADO } from './assistente/recado'
 
 export * from './poderes'
 export * from './custo-ia'
@@ -34,6 +35,7 @@ export * from './custo-ia'
 export type ConfigAgente = {
   nome: string
   personalidade?: string | null
+  /** O texto do recado fixo ao cliente (ver assistente/recado.ts). */
   saudacao?: string | null
   manual?: string | null
   poderes: string[]
@@ -64,7 +66,7 @@ export async function salvarAgente(sessao: Sessao, cfg: ConfigAgente) {
   const dados = {
     nome: cfg.nome.trim(),
     personalidade: cfg.personalidade?.trim() || null,
-    saudacao: cfg.saudacao?.trim() || null,
+    saudacao: cfg.saudacao?.trim().slice(0, MAXIMO_RECADO) || null,
     manual: cfg.manual?.trim() || null,
     poderes,
     descontoMaxPct: cfg.descontoMaxPct,
@@ -95,10 +97,17 @@ export async function salvarAgente(sessao: Sessao, cfg: ConfigAgente) {
         alvoTipo: 'agente',
         alvoId: agente.id,
         alvoNome: agente.nome,
+        // O recado vai junto: é texto que sai para cliente em nome da loja.
         antes: antes
-          ? { poderes: antes.poderes, teto: Number(antes.descontoMaxPct), valorMax: antes.valorMaxCent, ativo: antes.ativo }
+          ? {
+              poderes: antes.poderes,
+              teto: Number(antes.descontoMaxPct),
+              valorMax: antes.valorMaxCent,
+              ativo: antes.ativo,
+              recado: antes.saudacao,
+            }
           : undefined,
-        depois: { poderes, teto: cfg.descontoMaxPct, valorMax: cfg.valorMaxCent, ativo: cfg.ativo },
+        depois: { poderes, teto: cfg.descontoMaxPct, valorMax: cfg.valorMaxCent, ativo: cfg.ativo, recado: dados.saudacao },
       },
     })
 

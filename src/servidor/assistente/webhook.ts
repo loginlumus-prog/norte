@@ -36,8 +36,7 @@
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { acharOrgPorSlug, comoOrg } from '../banco'
-import { abrirConversa } from './contexto'
-import { processarMensagem, type Dependencias, type Desfecho } from './conversa'
+import { marcarHumano, processarMensagem, type Dependencias, type Desfecho } from './conversa'
 import { escolherCanal, SELECT_LINHA, type Canal } from './canal'
 
 // ─────────────────────────────────────────────────────────────
@@ -116,8 +115,16 @@ export function portaAbre(slug: string, token: string, resumoGuardado: string | 
 // ─────────────────────────────────────────────────────────────
 
 export type Recebida =
-  | { tipo: 'mensagem'; telefone: string; nome: string | null; texto: string; idExterno: string }
-  /** Alguém da loja respondeu pelo próprio celular: o assistente sai da frente. */
+  | {
+      tipo: 'mensagem'
+      telefone: string
+      nome: string | null
+      texto: string
+      idExterno: string
+      /** O anúncio "clique para o WhatsApp" de onde a pessoa veio, se veio de um. */
+      anuncioId?: string | null
+    }
+  /** Alguém da loja escreveu pelo próprio celular: o recado fixo fica calado 24 h. */
   | { tipo: 'humano'; telefone: string }
   | { tipo: 'ignorar'; motivo: string }
 
@@ -135,8 +142,8 @@ const MIDIA: Record<string, string> = {
  * O callback "ao receber" do Z-API, reduzido ao que interessa.
  *
  * Grupo, canal, lista de transmissão, status de entrega: tudo ignorado. O
- * assistente atende conversa de uma pessoa com a loja, e mais nada — num
- * grupo ele responderia a todo mundo, a cada mensagem.
+ * que interessa é conversa de uma pessoa com a loja, e mais nada — num
+ * grupo, campanha e recado sairiam para todo mundo, a cada mensagem.
  */
 export function lerZapi(
   corpo: unknown,
@@ -170,9 +177,12 @@ export function lerZapi(
     (typeof c.chatName === 'string' && c.chatName.trim()) ||
     null
 
+  const anuncio = anuncioDoZapi(c)
+  // só aparece quando existe: quem compara a mensagem inteira não vê campo novo à toa
+  const anuncioId = anuncio ? { anuncioId: anuncio } : {}
   const t = c.text as { message?: unknown } | undefined
   if (t && typeof t.message === 'string' && t.message.trim()) {
-    return { tipo: 'mensagem', telefone, nome, texto: t.message, idExterno }
+    return { tipo: 'mensagem', telefone, nome, texto: t.message, idExterno, ...anuncioId }
   }
   const qual = Object.keys(MIDIA).find((k) => c[k] && typeof c[k] === 'object')
   if (qual) {
@@ -181,18 +191,32 @@ export function lerZapi(
       telefone,
       nome,
       idExterno,
+      ...anuncioId,
       texto: `(a pessoa mandou ${MIDIA[qual]}, que o assistente ainda não consegue abrir — peça para escrever)`,
     }
   }
   return { tipo: 'ignorar', motivo: 'tipo de mensagem não tratado' }
 }
 
+/**
+ * O id do anúncio "clique para o WhatsApp" (Facebook/Instagram). O Z-API manda
+ * na raiz do callback, em `externalAdReply` — `sourceType: "ad"` e o id em
+ * `sourceId` (developer.z-api.io › Webhooks › exemplos › Anúncios). É o mesmo
+ * dado que o conector do QR Code lê do `contextInfo` (conector/src/normalizar.ts).
+ * Sem tipo, aceita; com tipo que não é anúncio (post, por exemplo), não.
+ */
+export function anuncioDoZapi(c: Record<string, unknown>): string | null {
+  const ad = c.externalAdReply
+  if (!ad || typeof ad !== 'object') return null
+  const a = ad as Record<string, unknown>
+  const tipo = typeof a.sourceType === 'string' ? a.sourceType.toLowerCase() : null
+  const id = typeof a.sourceId === 'string' ? a.sourceId.trim() : ''
+  return id && /^[A-Za-z0-9_-]{1,64}$/.test(id) && (tipo === null || tipo === 'ad') ? id : null
+}
+
 // ─────────────────────────────────────────────────────────────
 // A PORTA
 // ─────────────────────────────────────────────────────────────
-
-/** Quanto tempo o assistente fica calado depois que alguém da loja respondeu. */
-const HUMANO_MINUTOS = 30
 
 export type Porta = {
   status: 200 | 401
@@ -240,19 +264,10 @@ export async function receberWebhook(slug: string, token: string, corpo: unknown
       if (agente.canal !== 'ZAPI') return
       const canal = deps.canal ?? escolherCanal(org, agente).canal
 
-      if (r.tipo === 'humano') {
-        const conversa = await abrirConversa(org.id, agente.id, r.telefone, { daEquipe: false })
-        await comoOrg(org.id, (db) =>
-          db.conversaAgente.update({
-            where: { id: conversa.id },
-            data: { humanoAte: new Date(Date.now() + HUMANO_MINUTOS * 60_000) },
-          }),
-        )
-        return
-      }
+      if (r.tipo === 'humano') return marcarHumano(org.id, agente.id, r.telefone)
 
       return processarMensagem(
-        { orgId: org.id, telefone: r.telefone, nome: r.nome, texto: r.texto, idExterno: r.idExterno },
+        { orgId: org.id, telefone: r.telefone, nome: r.nome, texto: r.texto, idExterno: r.idExterno, anuncioId: r.anuncioId ?? null },
         { ...deps, canal },
       )
     },

@@ -95,6 +95,172 @@ troca a conexão por baixo. Se alguém um dia trocar por `SET` de sessão, o
 
 `POOL_MAX` não vai: o padrão (10) é o certo fora do PGlite.
 
+## Conector do WhatsApp (QR Code)
+
+A loja conecta o WhatsApp dela lendo um QR Code na tela **Assistente ›
+Conexão** — como no WhatsApp Web — sem pagar Z-API. Quem segura essa conexão
+é o **conector** (pasta `conector/`): um serviço Node à parte, usando a
+biblioteca aberta [Baileys](https://github.com/WhiskeySockets/Baileys) (MIT),
+com uma conexão por empresa.
+
+Ele é separado do Norte porque o WhatsApp Web é uma conexão **aberta o tempo
+todo**. O Norte pode dormir (Render grátis), reiniciar a cada deploy, rodar em
+várias cópias (Vercel); o conector precisa de **uma máquina pequena, sempre
+ligada**. Não serve Render grátis (dorme depois de 15 min sem visita) nem
+Vercel (não segura conexão).
+
+```
+ celular da loja ──WhatsApp──► CONECTOR (VPS) ──HMAC──► Norte /api/whatsapp-proprio/{empresa}
+                                   ▲                        │
+                                   └──── Bearer ◄───────────┘  (gerar QR, mandar mensagem)
+```
+
+- **A sessão não fica no disco do conector.** As credenciais de cada WhatsApp
+  vão, comprimidas, para o Norte, que cifra com `NORTE_CIFRA` (presas à
+  empresa) e guarda na tabela `sessoes_whatsapp`. No disco do conector fica só
+  `dados/empresas.json`: a lista de ids para religar tudo depois de reiniciar.
+- **Norte → conector:** `Authorization: Bearer <CONECTOR_SEGREDO>`.
+  **Conector → Norte:** assinatura HMAC-SHA256 do pedido inteiro, com o mesmo
+  segredo e carimbo de até 5 minutos.
+- **Ritmo de gente, não de robô:** fila por número, 3 a 8 s sorteados entre
+  envios, "digitando…" antes de cada mensagem, teto por minuto (12), por dia
+  (500) e por contato (6/min). **Não existe envio em massa** — a API só aceita
+  um destino por pedido. Ajustável por variável (ver `conector/.env.exemplo`).
+- **Log sem conteúdo:** nem texto de mensagem, nem número inteiro, nem segredo.
+- **Ele também é o relógio.** Com `ROTINAS_SEGREDO` (o mesmo do Norte) no
+  `.env` do conector, ele acorda as campanhas a cada minuto
+  (`/api/campanhas/tick`) e roda as rotinas do assistente a cada hora
+  (`/api/rotinas`). Assim o cron pago do Render não é necessário.
+
+> **Risco que a loja aceita.** Conectar por QR é o mesmo mecanismo do
+> WhatsApp Web, mas não é a API oficial; os Termos do WhatsApp não preveem
+> automação por ele e o número **pode ser bloqueado**. O que reduz o risco
+> está no comportamento: o assistente só responde a quem chamou, as campanhas
+> só seguem conversas que o cliente começou, e o ritmo acima. Use um número da
+> loja, não o pessoal.
+
+### As variáveis
+
+| Onde | Variável | O quê |
+|---|---|---|
+| Norte | `CONECTOR_URL` | onde o conector escuta, ex.: `https://conector.suaempresa.com.br` |
+| Norte | `CONECTOR_SEGREDO` | 32+ caracteres aleatórios — o **mesmo** nos dois lados |
+| Norte | `NORTE_CIFRA` | já existente; sem ela a sessão não é guardada |
+| conector | `CONECTOR_SEGREDO` | o mesmo do Norte |
+| conector | `NORTE_URL` | o endereço do Norte, ex.: `https://norte.app` (https; http só localhost) |
+| conector | `PORT` | padrão `3200` |
+
+Gerar o segredo: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+
+Sem `CONECTOR_URL`/`CONECTOR_SEGREDO` no Norte, a tela diz "A conexão por QR
+Code ainda não está ligada neste servidor" e o resto funciona igual.
+
+### Rodar no laptop
+
+```bash
+cd conector
+npm install
+cp .env.exemplo .env      # CONECTOR_SEGREDO=<o mesmo do .env.development.local>, NORTE_URL=http://localhost:3000
+npm start                 # escuta em http://localhost:3200
+```
+
+E no `.env.development.local` do Norte: `CONECTOR_URL=http://localhost:3200` e
+o mesmo `CONECTOR_SEGREDO`.
+
+### Pôr no ar numa VPS (passo a passo)
+
+Serve qualquer servidor Linux pequeno e **sempre ligado**: 1 GB de memória
+atende dezenas de lojas. Opções: Hetzner (CX22, ~4 €/mês), Contabo (VPS S),
+ou Oracle Cloud "Always Free" (grátis, mais chato de criar). Escolha Ubuntu
+24.04. Quem cria a conta e a máquina é o dono do Norte; o resto é copiar e
+colar.
+
+**1. Entrar na máquina.** O provedor mostra o IP e a senha (ou pede sua chave
+SSH). No computador: `ssh root@IP-DA-MAQUINA`.
+
+**2. Instalar o Docker e o Caddy** (o Caddy põe HTTPS sozinho):
+
+```bash
+curl -fsSL https://get.docker.com | sh
+apt install -y caddy git
+```
+
+**3. Apontar um endereço para a máquina.** No painel do domínio, crie um
+registro `A`: `conector.suaempresa.com.br` → IP da máquina. (Sem domínio
+próprio, `IP-DA-MAQUINA.sslip.io` também funciona, ex.: `203-0-113-7.sslip.io`.)
+
+**4. Baixar o conector e configurar:**
+
+```bash
+git clone <endereço do repositório do Norte> /opt/norte
+cd /opt/norte/conector
+cp .env.exemplo .env
+nano .env        # CONECTOR_SEGREDO=<o segredo>  NORTE_URL=https://<endereço do Norte>
+chmod 600 .env
+```
+
+**5. Subir o conector** (reinicia sozinho se cair ou se a máquina reiniciar):
+
+```bash
+docker build -t norte-conector .
+docker run -d --name norte-conector --restart unless-stopped \
+  --env-file .env -p 127.0.0.1:3200:3200 -v norte-conector-dados:/app/dados \
+  norte-conector
+docker logs -f norte-conector      # deve aparecer "conector.no_ar"; Ctrl+C sai do log
+```
+
+A porta fica presa ao `127.0.0.1`: da internet, só se chega pelo Caddy.
+
+**6. HTTPS na frente.** Troque todo o conteúdo de `/etc/caddy/Caddyfile` por:
+
+```
+conector.suaempresa.com.br {
+    reverse_proxy 127.0.0.1:3200
+}
+```
+
+e rode `systemctl reload caddy`. Conferir de fora:
+`curl -H "Authorization: Bearer <o segredo>" https://conector.suaempresa.com.br/saude`
+→ `{"ok":true,...}`.
+
+**7. Fechar o resto.** `ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw enable`.
+
+**8. Ligar no Norte.** Na hospedagem do Norte (Render/Vercel), adicionar
+`CONECTOR_URL=https://conector.suaempresa.com.br` e `CONECTOR_SEGREDO` (o
+mesmo). Redeploy. Na tela **Assistente › Conexão**, "Conectar pelo QR Code".
+
+**Atualizar depois:** `cd /opt/norte && git pull && cd conector && docker build -t norte-conector . && docker rm -f norte-conector` e o `docker run` do passo 5 de novo. As lojas
+continuam conectadas: o conector grava a sessão no Norte antes de desligar e
+religa sem QR.
+
+**Sem Docker (systemd):** instale o Node 22 (`curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt install -y nodejs`),
+rode `npm ci --omit=dev` em `/opt/norte/conector`, crie um usuário
+`useradd -r -s /usr/sbin/nologin norte` (`chown -R norte /opt/norte/conector`) e o arquivo
+`/etc/systemd/system/norte-conector.service`:
+
+```ini
+[Unit]
+Description=Norte - conector do WhatsApp
+After=network-online.target
+
+[Service]
+User=norte
+WorkingDirectory=/opt/norte/conector
+EnvironmentFile=/opt/norte/conector/.env
+Environment=HOST=127.0.0.1
+ExecStart=/usr/bin/node --import tsx src/servidor.ts
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`systemctl daemon-reload && systemctl enable --now norte-conector`, e o log com
+`journalctl -u norte-conector -f`. O Caddy do passo 6 vale igual.
+
 
 ## Estado
 
@@ -226,6 +392,10 @@ gatilhos que fazem ele agir sozinho.
 | `src/servidor/poderes.ts` | O catálogo de poderes do agente e as travas. **Puro** |
 | `src/servidor/agente.ts` | Configuração, propor/confirmar, recibo e consumo |
 | `src/servidor/custo-ia.ts` | Quanto custa cada conversa. **Puro** |
+| `src/servidor/assistente/canal.ts` | Por onde a mensagem sai: QR Code > Z-API da empresa > Z-API global > de mentira |
+| `src/servidor/assistente/conector.ts` | O Norte falando com o conector: Bearer para lá, HMAC para cá |
+| `src/servidor/assistente/proprio.ts` | O que o conector entrega (mensagens) e guarda (a sessão cifrada) |
+| `conector/` | O serviço à parte que segura o WhatsApp por QR Code (Baileys). Fora do build do Next |
 | `src/proxy.ts` | Os cabeçalhos de segurança de toda página (CSP com nonce, HSTS…) |
 | `src/ui/Marca.tsx` | O símbolo e o nome. `src/app/icon.svg` é o mesmo desenho |
 | `src/app/page.tsx` | A página de venda (a raiz do site) |

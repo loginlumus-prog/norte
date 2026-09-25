@@ -78,8 +78,10 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
         <Cartao titulo={doPlanoDela ? 'O assistente está desligado' : 'O assistente não faz parte do seu plano'}>
           <div className="flex flex-col gap-3 text-sm text-tinta-2">
             <p>
-              O assistente responde pelo WhatsApp, manda o relatório do dia e avisa o que vai
-              faltar — com a proposta de reposição para você confirmar.
+              O assistente conversa pelo WhatsApp com você e a sua equipe: manda o relatório do
+              dia, avisa o que vai faltar — com a proposta de reposição para você confirmar — e
+              responde o que vocês perguntarem sobre a loja. Com cliente, ele só roda campanhas
+              com roteiro fixo; o resto quem responde é a loja.
             </p>
             {doPlanoDela ? (
               <p>

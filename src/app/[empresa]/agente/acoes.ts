@@ -14,14 +14,18 @@ import { TODOS_PODERES } from '@/servidor/poderes'
 import { centavos } from '@/servidor/dinheiro'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import {
+  acompanharQr,
   apagarLinhaZapi,
   conectarCanal,
+  conectarPeloQr,
+  desconectarPeloQr,
   desconectarCanal,
   gerarEnderecoDoWebhook,
   mensagemDeTeste,
   salvarGatilhos,
   salvarLinhaZapi,
   ROTINAS_NA_TELA,
+  type QrNaTela,
 } from '@/servidor/assistente/conexao'
 
 export type EstadoAgente = { erro?: string; ok?: string }
@@ -159,6 +163,46 @@ export async function desconectar(slug: string): Promise<EstadoConexaoAcao> {
     await desconectarCanal(await exigirSessao(slug))
     revalidatePath(`/${slug}/agente`)
     return { ok: 'Desconectado. O que chegar pelo webhook agora é descartado.' }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+// ── o WhatsApp pelo QR Code ──────────────────────────────────
+// A tela chama `verQr` a cada 2–3 s enquanto espera o celular ler. Cada
+// chamada confere a sessão e `agente.configurar` (lá dentro): o QR é a
+// chave do WhatsApp da loja por um minuto, e só quem configura o assistente
+// vê. `revalidatePath` só quando o canal mudou — a consulta repetida não
+// redesenha a página inteira à toa.
+
+export type QrAcao = QrNaTela | { erro: string }
+
+export async function conectarQr(slug: string): Promise<QrAcao> {
+  try {
+    const r = await conectarPeloQr(await exigirSessao(slug))
+    if (r.mudou) revalidatePath(`/${slug}/agente`)
+    return r
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+export async function verQr(slug: string): Promise<QrAcao> {
+  try {
+    const r = await acompanharQr(await exigirSessao(slug))
+    if (r.mudou) revalidatePath(`/${slug}/agente`)
+    return r
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+export async function desconectarQr(slug: string): Promise<EstadoConexaoAcao> {
+  try {
+    const r = await desconectarPeloQr(await exigirSessao(slug))
+    revalidatePath(`/${slug}/agente`)
+    if (!r.ok) return { erro: r.erro }
+    return { ok: r.aviso ?? 'Desconectado. O Norte saiu dos aparelhos conectados deste WhatsApp.' }
   } catch (e) {
     return { erro: mensagem(e) }
   }

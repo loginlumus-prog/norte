@@ -1,6 +1,7 @@
 // O que a tela do assistente mostra e faz sobre a CONEXÃO: se ele está de
-// fato ligado ao mundo, a linha própria no Z-API, o endereço do webhook, a
-// mensagem de teste, as rotinas e as últimas conversas.
+// fato ligado ao mundo, o WhatsApp conectado pelo QR Code (o caminho
+// principal), a linha própria no Z-API, o endereço do webhook, a mensagem de
+// teste, as rotinas e as últimas conversas.
 //
 // ── segredo entra e não sai ──────────────────────────────────
 // O dono cola aqui o token da instância e o Client-Token do painel do Z-API.
@@ -18,6 +19,15 @@ import { exigir, type Sessao } from '../permissao'
 import { temChaveIA } from '../ia'
 import { cifrar, decifrar, temCifra, SemChaveDeCifra } from '../cifra'
 import { escolherCanal, contextoDoToken, SELECT_LINHA, type OrigemCanal } from './canal'
+import {
+  iniciarNoConector,
+  lerConfigConector,
+  retratoNoConector,
+  sairNoConector,
+  temConector,
+  type EstadoQr,
+} from './conector'
+import { apagarSessaoWhatsapp } from './proprio'
 import { montarEnderecoDoWebhook, novoTokenDoWebhook, temSegredoWebhook } from './webhook'
 import { abrirConversa, enviarEGravar } from './contexto'
 import { chaveTelefone, mascarar } from './telefone'
@@ -53,6 +63,10 @@ export type EstadoConexao = {
   ativo: boolean
   /** O telefone de quem está vendo, mascarado; nulo se não cadastrou. */
   meuTelefone: string | null
+  /** O WhatsApp pelo QR Code: o servidor tem o conector? a empresa está nele? */
+  qr: { disponivel: boolean; ligado: boolean }
+  /** Por onde a porta de entrada está aberta hoje (o `canal` do Agente). */
+  canalLigado: 'NENHUM' | 'ZAPI' | 'META' | 'PROPRIO' | null
 }
 
 /** Os 4 últimos, e só se abrir: o bastante para conferir, pouco para usar. */
@@ -79,7 +93,8 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
   const canalReal = canal.real
   const enderecoProprio = !!agente?.webhookTokenHash
   const segredoWebhook = enderecoProprio || temSegredoWebhook()
-  const conectado = agente?.canal === 'ZAPI'
+  const noQr = agente?.canal === 'PROPRIO'
+  const conectado = agente?.canal === 'ZAPI' || noQr
   const situacao: EstadoConexao['situacao'] = !agente
     ? 'sem_agente'
     : !chaveIA
@@ -88,7 +103,8 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
         ? 'sem_canal'
         : !conectado
           ? 'desconectado'
-          : !segredoWebhook
+          : // o endereço do webhook só conta no Z-API; o QR entra assinado pelo conector
+            !noQr && !segredoWebhook
             ? 'sem_webhook'
             : !agente.ativo
               ? 'desligado'
@@ -111,7 +127,157 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
     conectado,
     ativo: agente?.ativo ?? false,
     meuTelefone: eu?.telefone && chaveTelefone(eu.telefone) ? mascarar(eu.telefone) : null,
+    qr: { disponivel: temConector(), ligado: noQr },
+    canalLigado: agente?.canal ?? null,
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// O WHATSAPP PELO QR CODE
+// ─────────────────────────────────────────────────────────────
+//
+// O caminho principal: o dono clica, o conector (pasta conector/) gera o QR,
+// a tela mostra, o celular lê — e o WhatsApp da loja passa a falar pelo
+// Norte, sem Z-API. A tela pergunta o estado a cada 2–3 s enquanto espera.
+//
+// O `canal` do Agente só vira PROPRIO quando o celular DE FATO conectou (a
+// primeira consulta que vê "conectado"). Pedir um QR e desistir não derruba
+// o que a loja já tinha ligado (o Z-API, por exemplo).
+//
+// Nada de segredo passa por aqui: o QR é uma imagem que vale um minuto e só
+// serve a quem está com o celular da loja na mão; o número volta mascarado.
+
+export type QrNaTela = {
+  estado: EstadoQr | 'sem_conector' | 'fora_do_ar' | 'sem_agente'
+  /** PNG em data URL, só em `aguardando_qr`. */
+  imagem: string | null
+  /** "(71) •••••-1234", só em `conectado`. */
+  numero: string | null
+  motivo: string | null
+  /** O Agente está no QR (canal PROPRIO). */
+  ligado: boolean
+  /** O canal mudou nesta consulta: a página recarrega o resto. */
+  mudou: boolean
+}
+
+const semRetrato = (estado: QrNaTela['estado'], ligado: boolean): QrNaTela => ({
+  estado,
+  imagem: null,
+  numero: null,
+  motivo: null,
+  ligado,
+  mudou: false,
+})
+
+type AgenteDoQr = { id: string; nome: string; canal: 'NENHUM' | 'ZAPI' | 'META' | 'PROPRIO' }
+
+async function agenteDoQr(orgId: string): Promise<AgenteDoQr | null> {
+  return comoOrg(orgId, (db) => db.agente.findUnique({ where: { orgId }, select: { id: true, nome: true, canal: true } }))
+}
+
+/** "Conectar pelo QR Code": pede ao conector para ligar (ou retomar) e devolve o primeiro QR. */
+export async function conectarPeloQr(sessao: Sessao): Promise<QrNaTela> {
+  exigir(sessao, 'agente.configurar')
+  const cfg = lerConfigConector()
+  const agente = await agenteDoQr(sessao.orgId)
+  if (!agente) return semRetrato('sem_agente', false)
+  if (!cfg) return semRetrato('sem_conector', agente.canal === 'PROPRIO')
+  // Fora do comoOrg: a chamada ao conector pode levar segundos, e transação
+  // aberta esperando rede segura uma conexão do banco à toa.
+  const r = await iniciarNoConector(cfg, sessao.orgId)
+  if (!r) return semRetrato('fora_do_ar', agente.canal === 'PROPRIO')
+  return acompanhar(sessao, agente, r)
+}
+
+/** A consulta de 2–3 s da tela. Liga o canal no instante em que o celular conectou. */
+export async function acompanharQr(sessao: Sessao): Promise<QrNaTela> {
+  exigir(sessao, 'agente.configurar')
+  const cfg = lerConfigConector()
+  const agente = await agenteDoQr(sessao.orgId)
+  if (!agente) return semRetrato('sem_agente', false)
+  if (!cfg) return semRetrato('sem_conector', agente.canal === 'PROPRIO')
+  const r = await retratoNoConector(cfg, sessao.orgId)
+  if (!r) return semRetrato('fora_do_ar', agente.canal === 'PROPRIO')
+  return acompanhar(sessao, agente, r)
+}
+
+async function acompanhar(
+  sessao: Sessao,
+  agente: AgenteDoQr,
+  r: { estado: EstadoQr; qr: string | null; numero: string | null; motivo: string | null },
+): Promise<QrNaTela> {
+  let ligado = agente.canal === 'PROPRIO'
+  let mudou = false
+  if (r.estado === 'conectado' && !ligado) {
+    await comoOrg(sessao.orgId, async (db) => {
+      await db.agente.update({ where: { id: agente.id }, data: { canal: 'PROPRIO' } })
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          acao: 'agente.proprio.conectou',
+          alvoTipo: 'agente',
+          alvoId: agente.id,
+          alvoNome: agente.nome,
+          // Só os 4 últimos do número: o bastante para saber QUAL celular.
+          antes: { canal: agente.canal },
+          depois: { canal: 'PROPRIO', final: r.numero ? r.numero.slice(-4) : null },
+        },
+      })
+    })
+    ligado = true
+    mudou = true
+  }
+  return {
+    estado: r.estado,
+    imagem: r.estado === 'aguardando_qr' ? r.qr : null,
+    numero: r.estado === 'conectado' ? r.numero : null,
+    motivo: r.motivo,
+    ligado,
+    mudou,
+  }
+}
+
+/**
+ * "Desconectar": o conector tira o Norte de Aparelhos conectados e apaga a
+ * sessão; o Agente sai do QR. Com o conector fora do ar, a porta fecha do
+ * mesmo jeito (o assistente para de usar o número) e a tela pede para
+ * remover o aparelho pelo celular.
+ */
+export async function desconectarPeloQr(sessao: Sessao): Promise<{ ok: true; aviso?: string } | { ok: false; erro: string }> {
+  exigir(sessao, 'agente.configurar')
+  const agente = await agenteDoQr(sessao.orgId)
+  if (!agente) return { ok: false, erro: 'Crie o assistente antes.' }
+  const cfg = lerConfigConector()
+  const saiu = cfg ? await sairNoConector(cfg, sessao.orgId) : false
+  // A sessão guardada some de qualquer jeito: sem ela, ninguém religa.
+  await apagarSessaoWhatsapp(sessao.orgId)
+  if (agente.canal === 'PROPRIO') {
+    await comoOrg(sessao.orgId, async (db) => {
+      await db.agente.update({ where: { id: agente.id }, data: { canal: 'NENHUM' } })
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          acao: 'agente.proprio.desconectou',
+          alvoTipo: 'agente',
+          alvoId: agente.id,
+          alvoNome: agente.nome,
+          antes: { canal: 'PROPRIO' },
+          depois: { canal: 'NENHUM', conectorConfirmou: saiu },
+        },
+      })
+    })
+  }
+  return saiu
+    ? { ok: true }
+    : {
+        ok: true,
+        aviso:
+          'O assistente parou de usar este WhatsApp, mas o conector não respondeu. No celular, confira em Aparelhos conectados e remova o Norte, se ainda aparecer.',
+      }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -371,13 +537,18 @@ export async function mensagemDeTeste(sessao: Sessao): Promise<{ ok: true; recad
   if (!s.enviada) {
     return {
       ok: false,
-      erro: s.motivo === 'teto_mensagens' ? 'Ele já mandou o máximo de mensagens de hoje.' : 'O canal recusou o envio. Confira a instância no Z-API.',
+      erro:
+        s.motivo === 'teto_mensagens'
+          ? 'Ele já mandou o máximo de mensagens de hoje.'
+          : origem === 'qr'
+            ? 'O WhatsApp conectado pelo QR Code não conseguiu mandar. Confira se ele aparece como conectado aqui em cima.'
+            : 'O canal recusou o envio. Confira a instância no Z-API.',
     }
   }
   return {
     ok: true,
     recado: canal.real
-      ? `Mensagem enviada para ${mascarar(eu.telefone)}${origem === 'propria' ? ', pela linha desta loja' : ''}.`
+      ? `Mensagem enviada para ${mascarar(eu.telefone)}${origem === 'qr' ? ', pelo WhatsApp conectado por QR Code' : origem === 'propria' ? ', pela linha desta loja' : ''}.`
       : 'Esta conta ainda não tem linha do WhatsApp: a mensagem ficou só no histórico abaixo, nada saiu de verdade.',
   }
 }

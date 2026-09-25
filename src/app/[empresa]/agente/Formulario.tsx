@@ -10,15 +10,30 @@
 // fazem sentido depois de a pessoa ter escolhido o que ele faz, e ficam na
 // mesma tela porque separar "o que pode" de "até quanto" em duas telas é como
 // se perde o controle de um agente.
+//
+// ── mensagem de cliente ──────────────────────────────────────
+// O assistente conversa só com a equipe. Com cliente existem as campanhas
+// (tela própria) e, se a loja quiser, UM recado fixo — o cartão "Quando um
+// cliente escreve". Ele é salvo por este mesmo formulário e pela mesma ação
+// (que confere `agente.configurar`): a chave é o poder `recado.automatico` e
+// o texto vai no campo `saudacao` (ver `servidor/assistente/recado.ts`).
 
 import { useActionState, useState } from 'react'
 import { Botao, Campo, Marcar, Aviso, Cartao, cx } from '@/ui/base'
 import { PODERES, TODOS_PODERES, type ChavePoder, type Poder } from '@/servidor/poderes'
+import {
+  HORAS_DE_HUMANO,
+  HORAS_ENTRE_RECADOS,
+  MAXIMO_RECADO,
+  PODER_RECADO,
+  RECADO_PADRAO,
+} from '@/servidor/assistente/recado'
 import { salvar, type EstadoAgente } from './acoes'
 
 export type AgenteNaTela = {
   nome: string
   personalidade: string | null
+  /** O texto do recado fixo ao cliente (ver o topo). */
   saudacao: string | null
   manual: string | null
   poderes: string[]
@@ -29,8 +44,11 @@ export type AgenteNaTela = {
   ativo: boolean
 }
 
-const CONSULTAR = TODOS_PODERES.filter((p) => !(PODERES[p] as Poder).escreve)
-const AGIR = TODOS_PODERES.filter((p) => (PODERES[p] as Poder).escreve)
+// Os poderes do modelo. O que funciona sem IA (o recado) tem cartão próprio.
+// `sempre` não tem chave: explicar o sistema está ligado para todos.
+const DO_MODELO = TODOS_PODERES.filter((p) => !(PODERES[p] as Poder).semIA && !(PODERES[p] as Poder).sempre)
+const CONSULTAR = DO_MODELO.filter((p) => !(PODERES[p] as Poder).escreve)
+const AGIR = DO_MODELO.filter((p) => (PODERES[p] as Poder).escreve)
 
 export function Formulario({
   slug,
@@ -52,6 +70,12 @@ export function Formulario({
 
   const escreveAlgo = AGIR.some((p) => ligados.includes(p))
   const nomeUsado = nome.trim() || 'o assistente'
+  const recadoLigado = ligados.includes(PODER_RECADO)
+  // Desligado, o campo mostra a frase sugerida, e não o que estava guardado:
+  // antes do recado, este campo era a "primeira frase" da conversa com a IA
+  // ("Em que posso ajudar?"), e ligar a chave sem reler mandaria ao cliente a
+  // promessa de um atendimento que não existe.
+  const recadoInicial = agente.poderes.includes(PODER_RECADO) && agente.saudacao ? agente.saudacao : RECADO_PADRAO
 
   return (
     <form action={agir} className="flex max-w-3xl flex-col gap-5">
@@ -69,13 +93,7 @@ export function Formulario({
             defaultValue={agente.nome}
             onChange={(e) => setNome(e.currentTarget.value)}
             placeholder="Aurora"
-            dica="É o nome que o cliente vê no WhatsApp. Ele é da sua loja."
-          />
-          <Campo
-            rotulo="Primeira frase"
-            name="saudacao"
-            defaultValue={agente.saudacao ?? ''}
-            placeholder="Oi! Aqui é a Aurora, da loja. Em que posso ajudar?"
+            dica="É como ele se apresenta para você e para a equipe no WhatsApp."
           />
         </div>
 
@@ -107,13 +125,13 @@ export function Formulario({
               'Abrimos de segunda a sábado, das 9h às 18h.\n' +
               'Troca em até 7 dias com a etiqueta e o comprovante.\n' +
               'Aceitamos Pix, cartão e dinheiro.\n' +
-              'Quando não souber responder, avise que alguém da loja responde em seguida.'
+              'O fornecedor de calçados entrega em 15 dias.'
             }
             className="rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
           />
           <span className="text-xs text-tinta-3">
-            O que {nomeUsado} precisa saber de cor: horário, troca, formas de pagamento, e
-            o que fazer quando não souber a resposta. Isto ele não descobre sozinho.
+            O que {nomeUsado} precisa saber da loja para responder você e a equipe: horário,
+            troca, formas de pagamento, prazos de fornecedor. Isto ele não descobre sozinho.
           </span>
         </label>
       </Cartao>
@@ -123,17 +141,48 @@ export function Formulario({
         titulo="O que o assistente pode fazer"
         acao={
           <span className="numero text-xs font-semibold text-tinta-3">
-            {ligados.length} de {TODOS_PODERES.length}
+            {DO_MODELO.filter((p) => ligados.includes(p)).length} de {DO_MODELO.length}
           </span>
         }
       >
         <p className="mb-3 text-sm text-tinta-2">
-          Consultar não muda nada no sistema. <b>Agir</b> sempre passa por você: ele monta a
-          proposta com o número e espera o seu sim.
+          Isto é o que ele faz na conversa com você e a equipe. Consultar não muda nada no
+          sistema. <b>Agir</b> sempre passa por você: ele monta a proposta com o número e
+          espera o seu sim.
         </p>
 
         <Grupo titulo="Consultar" itens={CONSULTAR} ligados={ligados} modulos={modulos} alterna={alterna} />
         <Grupo titulo="Agir (sempre com a sua confirmação)" itens={AGIR} ligados={ligados} modulos={modulos} alterna={alterna} />
+      </Cartao>
+
+      {/* ── quando um cliente escreve ── */}
+      <Cartao titulo="Quando um cliente escreve">
+        <p className="mb-3 text-sm text-tinta-2">
+          {nomeUsado.charAt(0).toUpperCase() + nomeUsado.slice(1)} não conversa com cliente. Quem
+          manda a palavra-chave de uma campanha, ou chega pelo anúncio dela, segue o roteiro da
+          campanha, do começo ao fim. Qualquer outra mensagem fica para alguém da loja responder
+          no WhatsApp — sem IA e sem custo.
+        </p>
+        <Marcar
+          name={`poder_${PODER_RECADO}`}
+          checked={recadoLigado}
+          onChange={(e) => alterna(PODER_RECADO, e.currentTarget.checked)}
+          titulo="Mandar um recado automático"
+          resumo={`Uma frase fixa, no máximo uma vez a cada ${HORAS_ENTRE_RECADOS} horas por pessoa, e nunca se alguém da loja escreveu para ela nas últimas ${HORAS_DE_HUMANO} horas. Vem desligado.`}
+        />
+        {/* Sempre no formulário, mesmo com a chave desligada: o campo que não
+            vai junto chega vazio no servidor e apagaria o texto guardado. */}
+        <div className={cx('mt-3', !recadoLigado && 'opacity-60')}>
+          <Campo
+            rotulo="O recado"
+            name="saudacao"
+            maxLength={MAXIMO_RECADO}
+            required={recadoLigado}
+            defaultValue={recadoInicial}
+            placeholder={RECADO_PADRAO}
+            dica="Não prometa o que a loja não faz: é exatamente isto que o cliente recebe, sem ninguém ler antes."
+          />
+        </div>
       </Cartao>
 
       {/* ── até onde ── */}
@@ -202,8 +251,8 @@ export function Formulario({
           resumo="Desligado, ele continua configurado e simplesmente não responde nem age."
         />
         <p className="mt-3 text-xs text-tinta-3">
-          O WhatsApp ainda não está conectado — isso é o próximo passo, e depende de
-          contratar o canal. Enquanto isso ele já responde aqui pela tela.
+          O número de WhatsApp em que ele trabalha se conecta em “No WhatsApp”, no alto
+          desta tela.
         </p>
       </Cartao>
 

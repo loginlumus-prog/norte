@@ -15,12 +15,29 @@
 // Os tokens do Z-API seguem a mesma regra, mais dura: entram e NÃO voltam. A
 // página recebe "guardado, termina em …ab12" e nada além; o campo fica vazio
 // sempre, e vazio quer dizer "manter o que está guardado".
+//
+// ── o QR Code vem primeiro ───────────────────────────────────
+// O caminho principal é ler um QR com o celular da loja, como no WhatsApp
+// Web: sem conta em fornecedor, sem token para colar. O Z-API continua lá,
+// fechado em "Outras formas de conectar" — aberto só para quem já usa.
 
-import { useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Situacao } from '@/ui/base'
-import type { CredencialNaTela, EstadoConexao } from '@/servidor/assistente/conexao'
-import { apagarLinha, conectar, desconectar, gerarEndereco, salvarLinha, testar, type EstadoConexaoAcao } from './acoes'
+import type { CredencialNaTela, EstadoConexao, QrNaTela } from '@/servidor/assistente/conexao'
+import {
+  apagarLinha,
+  conectar,
+  conectarQr,
+  desconectar,
+  desconectarQr,
+  gerarEndereco,
+  salvarLinha,
+  testar,
+  verQr,
+  type EstadoConexaoAcao,
+  type QrAcao,
+} from './acoes'
 
 // Em palavras de loja, não de servidor: "chave de IA", "segredo do webhook" e
 // "instância" não dizem nada a quem vende. O Z-API fica nomeado só onde a
@@ -30,17 +47,17 @@ const FRASE: Record<EstadoConexao['situacao'], { nivel: 'bom' | 'atencao' | 'cri
   sem_chave: {
     nivel: 'critico',
     titulo: 'Inteligência artificial desligada',
-    texto: 'O Norte ainda não ligou a inteligência artificial desta conta. Sem ela o assistente não responde nada — só avisa que alguém da loja vai responder. Isto é com o suporte do Norte.',
+    texto: 'O Norte ainda não ligou a inteligência artificial desta conta. Sem ela o assistente não conversa com você e a equipe. Campanhas e o recado automático para cliente não usam IA e seguem funcionando. Isto é com o suporte do Norte.',
   },
   sem_canal: {
     nivel: 'critico',
-    titulo: 'Sem linha do WhatsApp',
-    texto: 'Ainda não há uma linha do WhatsApp (Z-API) ligada a esta conta. As conversas ficam só no histórico; nada sai para o WhatsApp. Cole abaixo os dados da sua instância no Z-API.',
+    titulo: 'Sem WhatsApp conectado',
+    texto: 'Ainda não há um WhatsApp ligado a esta conta. As conversas ficam só no histórico; nada sai para o WhatsApp. Conecte pelo QR Code logo abaixo.',
   },
   desconectado: {
     nivel: 'atencao',
     titulo: 'Desconectado',
-    texto: 'A linha está pronta. Falta conectar: gere o endereço e cole no painel do Z-API.',
+    texto: 'A linha do Z-API está pronta. Falta conectar: gere o endereço e cole no painel do Z-API — ou conecte pelo QR Code.',
   },
   sem_webhook: {
     nivel: 'critico',
@@ -50,9 +67,13 @@ const FRASE: Record<EstadoConexao['situacao'], { nivel: 'bom' | 'atencao' | 'cri
   desligado: {
     nivel: 'atencao',
     titulo: 'Conectado, mas desligado',
-    texto: 'A conexão está feita, mas o assistente está desligado no formulário abaixo. Ligue para ele começar a responder.',
+    texto: 'A conexão está feita, mas o assistente está desligado no formulário abaixo. Ligue para ele começar a trabalhar.',
   },
-  pronto: { nivel: 'bom', titulo: 'Pronto', texto: 'Conectado e ligado. Ele responde no WhatsApp e manda as rotinas marcadas abaixo.' },
+  pronto: {
+    nivel: 'bom',
+    titulo: 'Pronto',
+    texto: 'Conectado e ligado. No WhatsApp, ele conversa com você e a equipe e manda as rotinas marcadas abaixo. Com cliente, só roda as campanhas (roteiro fixo, que a pessoa começa) e o recado automático, se ligado — o resto a loja responde.',
+  },
 }
 
 /** "guardado ✓ (termina em …ab12)" — nunca mais que os 4 últimos. */
@@ -85,6 +106,8 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
   const f = FRASE[estado.situacao]
   const temAgente = estado.situacao !== 'sem_agente'
   const temLinha = estado.linha.instancia !== null || estado.linha.token.guardado
+  // Quem já está no Z-API (ou tem linha guardada) vê essa parte aberta.
+  const usaZapi = estado.canalLigado === 'ZAPI' || temLinha || estado.origemCanal === 'global'
 
   return (
     <Cartao titulo="Conexão">
@@ -100,14 +123,18 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
           <li><Situacao nivel={estado.chaveIA ? 'bom' : 'critico'}>inteligência artificial</Situacao></li>
           <li>
             <Situacao nivel={estado.canalReal ? 'bom' : 'critico'}>
-              {estado.origemCanal === 'propria'
-                ? 'linha própria do WhatsApp'
-                : estado.origemCanal === 'global'
-                  ? 'linha do WhatsApp (do Norte)'
-                  : 'linha do WhatsApp'}
+              {estado.origemCanal === 'qr'
+                ? 'WhatsApp pelo QR Code'
+                : estado.origemCanal === 'propria'
+                  ? 'linha própria do WhatsApp'
+                  : estado.origemCanal === 'global'
+                    ? 'linha do WhatsApp (do Norte)'
+                    : 'linha do WhatsApp'}
             </Situacao>
           </li>
-          <li><Situacao nivel={estado.segredoWebhook ? 'bom' : 'critico'}>entrada protegida</Situacao></li>
+          {estado.canalLigado !== 'PROPRIO' && (
+            <li><Situacao nivel={estado.segredoWebhook ? 'bom' : 'critico'}>entrada protegida</Situacao></li>
+          )}
           <li><Situacao nivel={estado.conectado ? 'bom' : 'atencao'}>{estado.conectado ? 'conectado' : 'desconectado'}</Situacao></li>
           <li><Situacao nivel={estado.rotinasSegredo ? 'bom' : 'atencao'}>horário das rotinas</Situacao></li>
         </ul>
@@ -133,6 +160,34 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
           </Aviso>
         )}
 
+        {/* ── o caminho principal: o QR Code ── */}
+        {temAgente && <ConexaoQr slug={slug} estado={estado} />}
+
+        <div className="flex flex-col gap-1.5">
+          <div>
+            <Botao
+              tom="secundario"
+              disabled={!temAgente}
+              carregando={indo && qual === 'testar'}
+              onClick={() => rodar('testar', () => testar(slug))}
+            >
+              Enviar mensagem de teste para mim
+            </Botao>
+          </div>
+          <p className="text-xs text-tinta-3">
+            {estado.meuTelefone
+              ? `O teste vai para o seu telefone cadastrado, ${estado.meuTelefone}.`
+              : 'Para receber o teste e os relatórios, cadastre o seu telefone com DDD na tela Equipe.'}
+          </p>
+        </div>
+
+        {/* ── as outras formas: Z-API ── */}
+        {temAgente && (
+          <details className="group rounded-norte border border-borda" open={usaZapi}>
+            <summary className="cursor-pointer px-3 py-2.5 text-sm font-semibold text-tinta select-none">
+              Outras formas de conectar (Z-API)
+            </summary>
+            <div className="flex flex-col gap-3 border-t border-borda p-3">
         {/* ── a linha própria no Z-API ── */}
         {temAgente && (
           <form
@@ -257,30 +312,220 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
               Reconectar (mesmo endereço)
             </Botao>
           )}
-          <Botao
-            tom="secundario"
-            disabled={!temAgente}
-            carregando={indo && qual === 'testar'}
-            onClick={() => rodar('testar', () => testar(slug))}
-          >
-            Enviar mensagem de teste para mim
-          </Botao>
-          {estado.conectado && (
+          {estado.canalLigado === 'ZAPI' && (
             <Botao
               tom="discreto"
               carregando={indo && qual === 'desconectar'}
               onClick={() => rodar('desconectar', () => desconectar(slug))}
             >
-              Desconectar
+              Desconectar o Z-API
             </Botao>
           )}
         </div>
-        <p className="text-xs text-tinta-3">
-          {estado.meuTelefone
-            ? `O teste vai para o seu telefone cadastrado, ${estado.meuTelefone}.`
-            : 'Para receber o teste e os relatórios, cadastre o seu telefone com DDD na tela Equipe.'}
-        </p>
+        {estado.canalLigado === 'PROPRIO' && (
+          <p className="text-xs text-tinta-3">
+            Hoje esta conta fala pelo WhatsApp conectado por QR Code. Conectar pelo Z-API passa a
+            valer no lugar dele.
+          </p>
+        )}
+            </div>
+          </details>
+        )}
       </div>
     </Cartao>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// O QR CODE
+// ─────────────────────────────────────────────────────────────
+
+/** Quanto tempo a tela fica perguntando antes de desistir (o QR expira antes). */
+const PERGUNTA_MS = 2_500
+const DESISTE_MS = 3 * 60_000
+
+const esperando = (e: QrNaTela['estado'] | undefined) => e === 'aguardando_qr' || e === 'conectando'
+
+function ConexaoQr({ slug, estado }: { slug: string; estado: EstadoConexao }) {
+  const router = useRouter()
+  const [qr, setQr] = useState<QrNaTela | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [recado, setRecado] = useState<string | null>(null)
+  const [pedindo, setPedindo] = useState(false)
+  const [saindo, setSaindo] = useState(false)
+  const [confirmarSaida, setConfirmarSaida] = useState(false)
+  const desde = useRef(0)
+  const falhasSeguidas = useRef(0)
+
+  // Uma consulta que falha no meio da espera (a rede piscou, o servidor
+  // demorou) não vira aviso vermelho: a próxima, 2,5 s depois, resolve. Só
+  // três falhas seguidas — ou a falha de um clique — aparecem.
+  const receber = useCallback(
+    (r: QrAcao, deFundo = false) => {
+      if ('erro' in r) {
+        falhasSeguidas.current++
+        if (!deFundo || falhasSeguidas.current >= 3) setErro(r.erro)
+        return
+      }
+      falhasSeguidas.current = 0
+      setErro(null)
+      setQr(r)
+      if (r.mudou) router.refresh()
+    },
+    [router],
+  )
+
+  // Ao abrir a tela: como está a conexão agora (uma consulta só).
+  useEffect(() => {
+    if (!estado.qr.disponivel) return
+    let vivo = true
+    void verQr(slug).then((r) => {
+      if (!vivo) return
+      if (!('erro' in r) && esperando(r.estado)) desde.current = Date.now()
+      receber(r, true)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [slug, estado.qr.disponivel, receber])
+
+  // Enquanto espera o celular: pergunta a cada 2,5 s, por até 3 minutos.
+  const aguardando = esperando(qr?.estado)
+  useEffect(() => {
+    if (!aguardando) return
+    const t = setInterval(() => {
+      if (Date.now() - desde.current > DESISTE_MS) {
+        setQr((q) => (q ? { ...q, estado: 'desconectado', imagem: null, motivo: 'O QR Code expirou. Clique para gerar outro.' } : q))
+        return
+      }
+      void verQr(slug).then((r) => receber(r, true))
+    }, PERGUNTA_MS)
+    return () => clearInterval(t)
+  }, [aguardando, slug, receber])
+
+  const pedirQr = async () => {
+    setPedindo(true)
+    setRecado(null)
+    setConfirmarSaida(false)
+    desde.current = Date.now()
+    receber(await conectarQr(slug))
+    setPedindo(false)
+  }
+
+  const sair = async () => {
+    setSaindo(true)
+    const r = await desconectarQr(slug)
+    setSaindo(false)
+    setConfirmarSaida(false)
+    if (r.erro) return setErro(r.erro)
+    setRecado(r.ok ?? null)
+    setQr((q) => (q ? { ...q, estado: 'desconectado', imagem: null, numero: null, motivo: null, ligado: false } : q))
+    router.refresh()
+  }
+
+  const e = qr?.estado
+
+  return (
+    <section className="flex flex-col gap-3 rounded-norte border border-borda p-3" aria-labelledby="qr-titulo">
+      <div className="flex flex-col gap-0.5">
+        <b id="qr-titulo" className="text-sm text-tinta">
+          WhatsApp da loja, pelo QR Code
+        </b>
+        <span className="text-xs text-tinta-3">
+          Como o WhatsApp Web: você lê um código com o celular da loja e o assistente passa a usar
+          esse número. Sem conta em outro serviço, sem token para colar.
+        </span>
+      </div>
+
+      {!estado.qr.disponivel || e === 'sem_conector' ? (
+        <Aviso nivel="atencao">
+          A conexão por QR Code ainda não está ligada neste servidor — fale com o suporte do Norte.
+        </Aviso>
+      ) : (
+        <>
+          {erro && <Aviso nivel="critico">{erro}</Aviso>}
+          {recado && <Aviso nivel="bom">{recado}</Aviso>}
+          {e === 'fora_do_ar' && (
+            <Aviso nivel="critico">
+              O conector do WhatsApp não respondeu agora. Tente de novo em instantes; se continuar,
+              fale com o suporte do Norte.
+            </Aviso>
+          )}
+          {qr?.motivo && (e === 'desconectado' || e === 'expulso') && <Aviso nivel="atencao">{qr.motivo}</Aviso>}
+
+          {e === 'aguardando_qr' && (
+            <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+              {qr?.imagem ? (
+                // O QR precisa de fundo branco e borda clara (a "zona quieta")
+                // para a câmera achar os cantos — inclusive no tema escuro.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={qr.imagem}
+                  alt="QR Code para conectar o WhatsApp da loja"
+                  width={280}
+                  height={280}
+                  className="size-[280px] shrink-0 rounded-norte bg-white p-2 [image-rendering:pixelated]"
+                />
+              ) : (
+                <div className="flex size-[280px] shrink-0 items-center justify-center rounded-norte border border-borda text-sm text-tinta-3">
+                  Gerando o código…
+                </div>
+              )}
+              <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-sm text-tinta">
+                <li>Abra o WhatsApp no celular da loja.</li>
+                <li>
+                  No celular: <b>WhatsApp › Aparelhos conectados › Conectar um aparelho</b> (no
+                  Android, pelos três pontinhos; no iPhone, em Configurações).
+                </li>
+                <li>Aponte a câmera para este código.</li>
+                <li className="list-none text-xs text-tinta-3">
+                  O código se renova sozinho a cada poucos segundos. Esta tela avisa quando conectar.
+                </li>
+              </ol>
+            </div>
+          )}
+
+          {e === 'conectando' && (
+            <p className="text-sm text-tinta-2" role="status">
+              Conectando ao WhatsApp da loja…
+            </p>
+          )}
+
+          {e === 'conectado' && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Situacao nivel="bom">Conectado{qr?.numero ? `: ${qr.numero}` : ''}</Situacao>
+              {!confirmarSaida ? (
+                <Botao tom="discreto" onClick={() => setConfirmarSaida(true)}>
+                  Desconectar
+                </Botao>
+              ) : (
+                <span className="flex flex-wrap items-center gap-2 text-sm">
+                  O assistente para de responder por este número.
+                  <Botao tom="perigo" carregando={saindo} onClick={sair}>
+                    Desconectar mesmo
+                  </Botao>
+                  <Botao tom="discreto" onClick={() => setConfirmarSaida(false)}>
+                    Cancelar
+                  </Botao>
+                </span>
+              )}
+            </div>
+          )}
+
+          {(qr === null || e === 'desconectado' || e === 'expulso' || e === 'fora_do_ar') && (
+            <div>
+              <Botao tom="principal" carregando={pedindo} onClick={pedirQr}>
+                {e === 'expulso' ? 'Conectar de novo pelo QR Code' : 'Conectar pelo QR Code'}
+              </Botao>
+            </div>
+          )}
+        </>
+      )}
+
+      <p className="text-xs text-tinta-3">
+        Use um número da loja. Mensagem em massa para quem não pediu pode bloquear o número — o Norte
+        só responde a quem chamou.
+      </p>
+    </section>
   )
 }

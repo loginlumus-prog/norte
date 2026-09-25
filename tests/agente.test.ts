@@ -60,13 +60,17 @@ describe('o catálogo de poderes', () => {
     }
   })
 
-  it('poder de escrita nunca é liberado para conversa com cliente sem teto', () => {
+  it('o que funciona sem IA não escreve nada no sistema', () => {
+    // O recado fixo ao cliente sai sem ninguém confirmar — então ele não pode
+    // ser um jeito de mexer em dinheiro, preço ou estoque.
     for (const chave of TODOS_PODERES) {
       const p: Poder = PODERES[chave]
-      if (p.escreve && p.paraCliente) {
-        expect(p.teto, `${chave} escreve, fala com cliente e não tem teto`).toBeDefined()
-      }
+      if (p.semIA) expect(p.escreve, `${chave} é sem IA e escreve`).toBe(false)
     }
+  })
+
+  it('o recado ao cliente vem desligado', () => {
+    expect(PODERES_SUGERIDOS).not.toContain('recado.automatico')
   })
 
   it('a sugestão inicial não liga nada que escreva', () => {
@@ -91,43 +95,35 @@ describe('o catálogo de poderes', () => {
 describe('as ferramentas que o modelo recebe', () => {
   it('não recebe poder que a empresa não ligou', () => {
     const so2: AgenteConfig = { ...COM_TUDO, poderes: ['ver.resumo', 'ver.contas'] }
-    expect(ferramentasDe(so2, LOJA, true)).toEqual(['ver.resumo', 'ver.contas'])
+    expect(ferramentasDe(so2, LOJA)).toEqual(['ver.resumo', 'ver.contas', 'explicar.sistema'])
   })
 
   it('não recebe poder de módulo desligado', () => {
     // A loja não vende fiado: a ferramenta de cobrança nem chega à mesa.
     const comCobranca: AgenteConfig = { ...COM_TUDO, poderes: ['ver.resumo', 'cobrar.crediario'] }
-    expect(ferramentasDe(comCobranca, LOJA, true)).not.toContain('cobrar.crediario')
+    expect(ferramentasDe(comCobranca, LOJA)).not.toContain('cobrar.crediario')
   })
 
   it('não recebe poder que ainda não foi construído', () => {
     // Oferecer ao modelo uma ferramenta que não executa é ensiná-lo a
     // prometer coisa que não acontece.
-    for (const chave of ferramentasDe(COM_TUDO, LOJA_COM_FIADO, true)) {
+    for (const chave of ferramentasDe(COM_TUDO, LOJA_COM_FIADO)) {
       expect(PODERES[chave].disponivel).toBe(true)
     }
   })
 
-  it('CLIENTE não recebe as ferramentas da loja', () => {
-    // O dono e o cliente mandam mensagem para o MESMO número. Sem este
-    // filtro, o cliente pergunta "quanto vocês venderam hoje?" e o agente
-    // responde, porque a ferramenta estava na mesa.
-    const doCliente = ferramentasDe(COM_TUDO, LOJA, false)
-    expect(doCliente).not.toContain('ver.resumo')
-    expect(doCliente).not.toContain('ver.caixa')
-    expect(doCliente).not.toContain('ver.contas')
-    expect(doCliente).toContain('consultar.produto')
+  it('o recado fixo ao cliente nunca vira ferramenta, nem ligado', () => {
+    // O modelo só conversa com a equipe (mensagem de cliente nem chega a
+    // ele). O que fala com cliente sai sem IA — e por isso não pode estar na
+    // mesa do modelo.
+    const tudo = ferramentasDe(COM_TUDO, LOJA)
+    expect(COM_TUDO.poderes).toContain('recado.automatico')
+    expect(tudo).not.toContain('recado.automatico')
+    for (const chave of tudo) expect((PODERES[chave] as Poder).semIA).toBeFalsy()
   })
 
-  it('a equipe recebe mais ferramentas que o cliente, sempre', () => {
-    const equipe = ferramentasDe(COM_TUDO, LOJA, true)
-    const cliente = ferramentasDe(COM_TUDO, LOJA, false)
-    expect(equipe.length).toBeGreaterThan(cliente.length)
-    for (const c of cliente) expect(equipe).toContain(c)
-  })
-
-  it('agente sem poder nenhum não recebe ferramenta nenhuma', () => {
-    expect(ferramentasDe({ ...COM_TUDO, poderes: [] }, LOJA, true)).toEqual([])
+  it('agente sem poder nenhum só recebe o Guia', () => {
+    expect(ferramentasDe({ ...COM_TUDO, poderes: [] }, LOJA)).toEqual(['explicar.sistema']) // o Guia fica sempre: não lê dado da loja
   })
 })
 

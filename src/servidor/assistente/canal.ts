@@ -6,11 +6,15 @@
 // que deixa testar o laço inteiro sem mandar mensagem para ninguém.
 //
 // ── qual linha cada empresa usa ──────────────────────────────
-// Uma instância Z-API é UM número de WhatsApp. Então a pergunta "por onde sai
-// a mensagem da empresa X?" tem três respostas, nesta ordem:
+// A pergunta "por onde sai a mensagem da empresa X?" tem quatro respostas,
+// nesta ordem:
 //
-//   1. A LINHA PRÓPRIA dela: instância e tokens que o dono colou na tela do
-//      assistente, guardados no Agente — os tokens cifrados (ver
+//   0. O QR CODE: o WhatsApp da loja conectado direto no Norte, pelo conector
+//      (pasta conector/, ver ./conector.ts) — sem Z-API, sem mensalidade de
+//      terceiro. Vale quando o Agente está em `canal = PROPRIO` (o celular
+//      leu o QR) E este servidor tem o conector configurado.
+//   1. A LINHA PRÓPRIA no Z-API: instância e tokens que o dono colou na tela
+//      do assistente, guardados no Agente — os tokens cifrados (ver
 //      src/servidor/cifra.ts), decifrados só aqui, na hora de montar o canal.
 //   2. A linha GLOBAL do servidor, das variáveis de ambiente — mas SÓ para a
 //      empresa de `ZAPI_EMPRESA` (o piloto, de antes de existir linha
@@ -33,9 +37,11 @@
 // Token não vai para log. Erro do fornecedor vira "falhou (status N)" — o
 // corpo da resposta do Z-API ecoa a URL chamada, e a URL tem o token dentro.
 
+import type { CanalAgente } from '@prisma/client'
 import { paraEnvio } from './telefone'
 import { decifrar } from '../cifra'
 import { comoOrg } from '../banco'
+import { enviarPeloConector, lerConfigConector, type ConfigConector } from './conector'
 
 export type Envio = { ok: true; id?: string } | { ok: false; motivo: string }
 
@@ -45,6 +51,20 @@ export interface Canal {
   /** Falso no canal de mentira: a tela precisa saber que nada sai de verdade. */
   readonly real: boolean
   enviar(numero: string, texto: string): Promise<Envio>
+  /**
+   * Foto, vídeo ou áudio (campanhas). OPCIONAL: canal que não sabe mandar
+   * mídia não implementa, e a campanha manda só a legenda como texto.
+   * `url` é um endereço público e assinado, com prazo (/api/midia/...): o
+   * fornecedor busca o arquivo lá. `comoGravado` = áudio como nota de voz.
+   */
+  enviarMidia?(numero: string, m: MidiaParaEnvio): Promise<Envio>
+}
+
+export type MidiaParaEnvio = {
+  tipo: 'imagem' | 'video' | 'audio'
+  url: string
+  legenda?: string
+  comoGravado?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -156,6 +176,50 @@ export class CanalZapi implements Canal {
 }
 
 // ─────────────────────────────────────────────────────────────
+// O QR CODE (o conector do próprio Norte)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Manda pelo conector (ver ./conector.ts). O ritmo — fila por número,
+ * intervalo sorteado, "digitando…", tetos por minuto e por dia — é do
+ * conector: é lá que ele protege o número da loja, qualquer que seja quem
+ * pediu o envio.
+ */
+export class CanalProprio implements Canal {
+  readonly nome = 'WhatsApp (QR Code)'
+  readonly real = true
+
+  constructor(
+    private readonly orgId: string,
+    private readonly cfg: ConfigConector,
+    private readonly buscar: typeof fetch = fetch,
+  ) {}
+
+  private async pedir(corpo: { numero: string; texto: string } | { numero: string; midia: MidiaParaEnvio }): Promise<Envio> {
+    const r = await enviarPeloConector(this.cfg, this.orgId, corpo, this.buscar)
+    if (!r) return { ok: false, motivo: 'o conector do WhatsApp não respondeu' }
+    const j = (r.json ?? {}) as { ok?: unknown; id?: unknown; motivo?: unknown }
+    if (r.status === 200 && j.ok === true) return { ok: true, id: typeof j.id === 'string' ? j.id : undefined }
+    // O motivo do conector é frase nossa, sem segredo nem número inteiro.
+    const motivo = typeof j.motivo === 'string' ? j.motivo.slice(0, 200) : `o conector recusou (status ${r.status})`
+    console.error(`[canal] o conector recusou o envio da empresa ${this.orgId} (status ${r.status})`)
+    return { ok: false, motivo }
+  }
+
+  async enviar(numero: string, texto: string): Promise<Envio> {
+    const n = paraEnvio(numero)
+    if (!n) return { ok: false, motivo: 'número inválido' }
+    return this.pedir({ numero: n, texto: texto.slice(0, MAXIMO_TEXTO) })
+  }
+
+  async enviarMidia(numero: string, midia: MidiaParaEnvio): Promise<Envio> {
+    const n = paraEnvio(numero)
+    if (!n) return { ok: false, motivo: 'número inválido' }
+    return this.pedir({ numero: n, midia })
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // O CANAL DE MENTIRA
 // ─────────────────────────────────────────────────────────────
 
@@ -194,18 +258,32 @@ function canalFalso(): CanalFalso {
 // A ESCOLHA
 // ─────────────────────────────────────────────────────────────
 
-/** De onde sai a mensagem da empresa. A tela mostra; o teste confere. */
-export type OrigemCanal = 'propria' | 'global' | 'nenhuma'
+/**
+ * De onde sai a mensagem da empresa. A tela mostra; o teste confere.
+ * 'qr' = o WhatsApp conectado pelo QR Code; 'propria' = a instância Z-API da
+ * empresa; 'global' = o Z-API do servidor (só o piloto).
+ */
+export type OrigemCanal = 'qr' | 'propria' | 'global' | 'nenhuma'
+
+/** O que a escolha lê do Agente: a linha do Z-API e, se leu, o canal ligado. */
+export type LinhaDoAgente = LinhaGuardada & { canal?: CanalAgente | null }
 
 /**
- * A regra inteira, sem banco: linha própria > global (só a do piloto) >
- * mentira. Recebe o que já foi lido do Agente.
+ * A regra inteira, sem banco: QR Code > linha própria no Z-API > global (só
+ * a do piloto) > mentira. Recebe o que já foi lido do Agente.
+ *
+ * O QR só vale com o conector configurado AQUI: sem ele, a empresa cai para
+ * o que tiver de Z-API (ou para o de mentira, e a tela diz).
  */
 export function escolherCanal(
   org: { id: string; slug: string },
-  linha: LinhaGuardada | null | undefined,
+  linha: LinhaDoAgente | null | undefined,
   buscar: typeof fetch = fetch,
 ): { canal: Canal; origem: OrigemCanal } {
+  if (linha?.canal === 'PROPRIO') {
+    const conector = lerConfigConector()
+    if (conector) return { canal: new CanalProprio(org.id, conector, buscar), origem: 'qr' }
+  }
   const propria = linhaPropria(org.id, linha)
   if (propria) return { canal: new CanalZapi(propria, buscar), origem: 'propria' }
   const global = lerConfigZapi()
@@ -221,7 +299,8 @@ export function escolherCanal(
  */
 export async function canalPara(org: { id: string; slug: string }): Promise<Canal> {
   const linha = await comoOrg(org.id, (db) =>
-    db.agente.findUnique({ where: { orgId: org.id }, select: SELECT_LINHA }),
+    // o canal ligado entra junto: é ele que diz se a empresa está no QR Code
+    db.agente.findUnique({ where: { orgId: org.id }, select: { ...SELECT_LINHA, canal: true } }),
   )
   return escolherCanal(org, linha).canal
 }

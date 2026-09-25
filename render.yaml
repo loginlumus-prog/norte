@@ -100,13 +100,36 @@ services:
       # cada empresa precisa colar de novo. Guarde num cofre de senhas.
       - key: NORTE_CIFRA
         sync: false
+      # ── o WhatsApp por QR Code (o conector) ──────────────────
+      # O conector (pasta conector/) NÃO roda aqui: ele segura uma conexão
+      # aberta o tempo todo, e o web grátis dorme sem visita. Ele mora numa
+      # VPS pequena, sempre ligada — passo a passo no README, seção "Conector
+      # do WhatsApp". Estas duas dizem ao Norte onde ele está.
+      # O endereço do conector, com https (ex.: https://conector.suaempresa.com.br).
+      - key: CONECTOR_URL
+        sync: false
+      # 32+ caracteres aleatórios, o MESMO configurado no conector. O Norte usa
+      # para mandar nele (Bearer) e para conferir o que ele entrega (HMAC).
+      # node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+      - key: CONECTOR_SEGREDO
+        sync: false
       # O que o relógio abaixo apresenta para rodar as rotinas. Pelo menos 32
       # caracteres aleatórios, e diferente do de cima: um vazado não abre o
       # outro.
       - key: ROTINAS_SEGREDO
         sync: false
+      # O endereço público do Norte, sem barra no fim (ex.: https://norte.app).
+      # É com ele que o Norte monta o link assinado das fotos e vídeos das
+      # campanhas para o WhatsApp buscar; sem ele, a campanha manda só a
+      # legenda.
+      - key: NORTE_URL
+        sync: false
 
   # ── o relógio do assistente ──────────────────────────────────
+  # Com o conector na VPS e ROTINAS_SEGREDO configurado lá, ELE é o relógio:
+  # acorda as campanhas a cada minuto e as rotinas a cada hora (ver
+  # conector/src/relogio.ts). Aí este cron pago é dispensável — pode apagar
+  # o bloco abaixo. Os dois juntos não mandam nada em dobro.
   # Relatório das 8h e das 20h, aviso de ruptura, cliente sumido: nada disso
   # acontece se ninguém bater na porta de hora em hora. Este job só faz isso —
   # um POST — e quem decide o que roda em cada hora é o servidor, no fuso de

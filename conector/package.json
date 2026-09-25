@@ -1,0 +1,26 @@
+{
+  "name": "norte-conector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "O conector de WhatsApp do Norte: uma conexão por QR Code para cada empresa (Baileys).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --import tsx src/servidor.ts",
+    "dev": "node --env-file-if-exists=.env --import tsx --watch src/servidor.ts",
+    "tipos": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "pino": "^9.6.0",
+    "qrcode": "^1.5.4",
+    "tsx": "^4.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^5.9.3"
+  }
+}

@@ -25,7 +25,19 @@ const config: NextConfig = {
   // temporário escrito no código é endereço que ninguém lembra de tirar:
   //
   //   NORTE_ORIGENS="*.trycloudflare.com"
-  ...(origens.length > 0 ? { experimental: { serverActions: { allowedOrigins: origens } } } : {}),
+  experimental: {
+    serverActions: {
+      ...(origens.length > 0 ? { allowedOrigins: origens } : {}),
+      // O vídeo e o áudio de campanha sobem por Server Action, e o WhatsApp
+      // aceita até 16 MB. O padrão do Next é 1 MB. A folga cobre o envelope do
+      // multipart. O teto por TIPO (imagem 5 MB) é conferido lá dentro, antes
+      // de gravar — ver src/servidor/campanhas/midia-regras.ts.
+      bodySizeLimit: '17mb',
+    },
+    // O proxy (src/proxy.ts) guarda uma cópia do corpo de cada pedido, e corta
+    // em 10 MB por padrão — o vídeo de 16 MB chegaria pela metade na ação.
+    proxyClientMaxBodySize: '17mb',
+  },
   // A arte de fundo pesa, e sem isto ela volta pelo fio a cada navegação.
   //
   // O relevo e a carta celeste têm 230 e 250 KB cada um: são vetores traçados,

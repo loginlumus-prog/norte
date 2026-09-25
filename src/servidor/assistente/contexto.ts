@@ -11,6 +11,7 @@ import { planoLibera } from '../planos'
 import { moduloLigado } from '../modulos'
 import { unidadesQuePodem, type Acesso, type Capacidade, type Papel, type Sessao } from '../permissao'
 import { custoEmCentavos, cobrancaEmCentavos, type Tokens } from '../custo-ia'
+import { inicioDeHojeEmSP } from '../dia'
 import { chaveTelefone, paraEnvio, soDigitos } from './telefone'
 import type { Interlocutor, Loja } from './regras'
 import type { Canal } from './canal'
@@ -128,8 +129,8 @@ export async function acharInterlocutor(
 
   // Dois usuários com o mesmo telefone é cadastro errado, e escolher um deles
   // seria escolher QUAIS poderes a mensagem ganha. Na dúvida, é cliente: o
-  // erro que resulta é "ele não me mostrou o faturamento", que aparece na
-  // hora e se conserta na tela Equipe — o contrário não aparece nunca.
+  // erro que resulta é "o assistente não me respondeu", que aparece na hora e
+  // se conserta na tela Equipe — o contrário não aparece nunca.
   const usuarios = achados.usuarios.filter((u) => chaveTelefone(u.telefone) === chave)
   if (usuarios.length > 1) console.warn(`[assistente] ${orgId}: telefone repetido em ${usuarios.length} usuários`)
   const usuario = usuarios.length === 1 ? usuarios[0] : undefined
@@ -210,7 +211,11 @@ export async function abrirConversa(
   orgId: string,
   agenteId: string,
   telefone: string,
-  dados: { nome?: string | null; daEquipe: boolean; clienteId?: string | null },
+  /**
+   * `daEquipe` ausente = não decide (a marca de "alguém da loja escreveu" não
+   * sabe quem está do outro lado; quem decide é o telefone de quem MANDA).
+   */
+  dados: { nome?: string | null; daEquipe?: boolean; clienteId?: string | null },
 ) {
   const chave = chaveTelefone(telefone)
   const candidatas = chave
@@ -233,26 +238,19 @@ export async function abrirConversa(
         agenteId,
         telefone: tel,
         nome: dados.nome ?? null,
-        daEquipe: dados.daEquipe,
+        daEquipe: dados.daEquipe ?? false,
         clienteId: dados.clienteId ?? null,
       },
       // Equipe ou não é decidido A CADA mensagem: quem saiu da empresa ontem
       // continua com a conversa, e hoje ela é conversa de cliente.
       update: {
-        daEquipe: dados.daEquipe,
+        ...(dados.daEquipe === undefined ? {} : { daEquipe: dados.daEquipe }),
         ...(dados.nome ? { nome: dados.nome } : {}),
         ...(dados.clienteId ? { clienteId: dados.clienteId } : {}),
         ultimaEm: new Date(),
       },
     }),
   )
-}
-
-/** 00:00 de hoje no relógio do servidor (TZ=America/Sao_Paulo no Render). */
-const inicioDoDia = () => {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
 }
 
 /**
@@ -265,7 +263,7 @@ const inicioDoDia = () => {
  */
 export async function mensagensEnviadasHoje(orgId: string): Promise<number> {
   return comoOrg(orgId, (db) =>
-    db.mensagemAgente.count({ where: { de: 'AGENTE', criadaEm: { gte: inicioDoDia() } } }),
+    db.mensagemAgente.count({ where: { de: 'AGENTE', criadaEm: { gte: inicioDeHojeEmSP() } } }),
   )
 }
 

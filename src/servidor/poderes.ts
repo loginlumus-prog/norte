@@ -48,8 +48,11 @@ import { reais } from './dinheiro'
  *             ferramenta de cobrança nem oferecida ao modelo.
  * `teto`    — qual número limita. `valor` em centavos, `desconto` em %.
  *
- * E `paraCliente` diz se a ferramenta pode ser usada numa conversa com um
- * CLIENTE. O faturamento do dia não pode nem chegar perto disso.
+ * E `semIA` marca o que o assistente faz SEM modelo nenhum. O modelo conversa
+ * só com a EQUIPE (quem tem o telefone cadastrado num usuário ativo). Com
+ * cliente não existe conversa livre: existem as campanhas — roteiro com
+ * começo e fim, que a própria pessoa dispara — e, se a loja ligar, um recado
+ * fixo. O que fala com cliente, então, nunca vira ferramenta do modelo.
  */
 export type Poder = {
   titulo: string
@@ -58,7 +61,13 @@ export type Poder = {
   escreve: boolean
   modulo?: Modulo
   teto?: 'valor' | 'desconto'
-  paraCliente?: boolean
+  semIA?: boolean
+  /**
+   * Sempre na mesa, para qualquer pessoa da equipe, sem chave na tela e sem
+   * capacidade própria: é só para o que não lê dado da loja nem escreve nada —
+   * explicar o sistema pelo Guia. `exige` fica por forma, e não é conferido.
+   */
+  sempre?: boolean
   /** Falso enquanto a fase que constrói a ação não chegou. */
   disponivel: boolean
 }
@@ -93,12 +102,22 @@ export const PODERES = {
     escreve: false,
     disponivel: true,
   },
+  // O dono pergunta pelo WhatsApp "como eu lanço uma conta recorrente?" e
+  // recebe o passo a passo do Guia — o mesmo manual da tela, filtrado pelo
+  // que ESTA pessoa abre. Não lê dado nenhum da loja, então não pede chave.
+  'explicar.sistema': {
+    titulo: 'Explicar o sistema',
+    resumo: 'Responder "como faço para…?" com o passo a passo do Guia, só com as telas que a pessoa abre.',
+    exige: 'venda.ver',
+    escreve: false,
+    disponivel: true,
+    sempre: true,
+  },
   'consultar.produto': {
-    titulo: 'Responder o cliente sobre uma peça',
-    resumo: 'Preço e se tem — sem dizer QUANTO tem, que é informação da loja.',
+    titulo: 'Consultar o preço de uma peça',
+    resumo: 'Preço à vista e no cartão, e se tem na loja — para a equipe responder rápido quem perguntou.',
     exige: 'produto.ver',
     escreve: false,
-    paraCliente: true,
     disponivel: true,
   },
   'ver.cliente': {
@@ -143,23 +162,38 @@ export const PODERES = {
     disponivel: true,
   },
   'dar.desconto': {
-    titulo: 'Oferecer desconto',
-    resumo: 'Até o teto que você definir, e sempre com a sua confirmação.',
+    titulo: 'Propor desconto',
+    resumo: 'Até o teto que você definir, e sempre com a sua confirmação. Ele não oferece desconto a cliente.',
     exige: 'venda.desconto',
     escreve: true,
     teto: 'desconto',
-    paraCliente: true,
     disponivel: false,
   },
   'cobrar.crediario': {
     titulo: 'Cobrar quem está atrasado',
-    resumo: 'Mensagem de cobrança e link de pagamento, até o valor que você definir.',
+    resumo:
+      'Mensagem de cobrança com texto fixo e link de pagamento, até o valor que você definir — sem conversa livre com o cliente.',
     exige: 'crediario.cobrar',
     escreve: true,
     modulo: 'crediario',
     teto: 'valor',
-    paraCliente: true,
     disponivel: false,
+  },
+
+  // ── com cliente, sem IA ─────────────────────────────────────
+  // Não é ferramenta: o modelo nunca a recebe (`semIA`). Mora no catálogo
+  // porque é uma coisa que o assistente faz e que a loja liga ou desliga — e
+  // a chave ligada fica em `Agente.poderes`, como as outras. O texto do recado
+  // é `Agente.saudacao`. As regras de quando ele sai estão em
+  // `assistente/conversa.ts` (`decidirRecado`).
+  'recado.automatico': {
+    titulo: 'Recado automático para cliente',
+    resumo:
+      'Uma frase fixa que você escreve, no máximo uma vez a cada 12 horas por pessoa — e nunca se alguém da loja falou com ela nas últimas 24 horas. Não usa IA.',
+    exige: 'agente.configurar',
+    escreve: false,
+    semIA: true,
+    disponivel: true,
   },
 } as const satisfies Record<string, Poder>
 
@@ -188,32 +222,27 @@ export type AgenteConfig = {
 }
 
 /**
- * As ferramentas que vão para o modelo nesta conversa.
+ * As ferramentas que podem ir para o modelo.
  *
- * Três filtros, e nenhum deles é opcional:
- *   1. a empresa ligou o poder;
- *   2. o módulo que ele depende está ligado;
- *   3. a ferramenta serve para QUEM está falando.
+ * O modelo só conversa com a EQUIPE — mensagem de cliente nem chega a ele
+ * (ver `assistente/conversa.ts`). Então os filtros são:
+ *   1. o poder existe de verdade e não é dos que funcionam sem IA;
+ *   2. a empresa ligou o poder;
+ *   3. o módulo que ele depende está ligado.
  *
- * O terceiro é o que separa o dono do cliente: os dois mandam mensagem para
- * o mesmo número. Sem ele, um cliente pergunta "quanto vocês venderam hoje?"
- * e o agente responde, porque a ferramenta estava na mesa.
+ * O quarto — a PESSOA da equipe ter a capacidade equivalente — é aplicado
+ * em `assistente/regras.ts`, que sabe quem está falando.
  *
  * E mandar só o necessário não é economia de estilo: cada ferramenta ocupa
  * espaço em toda mensagem da conversa, e ferramenta que ninguém vai usar é
  * superfície de erro paga por token.
  */
-export function ferramentasDe(
-  agente: AgenteConfig,
-  empresa: ComModulos,
-  daEquipe: boolean,
-): ChavePoder[] {
+export function ferramentasDe(agente: AgenteConfig, empresa: ComModulos): ChavePoder[] {
   return TODOS_PODERES.filter((chave) => {
     const p: Poder = PODERES[chave]
-    if (!p.disponivel) return false
-    if (!agente.poderes.includes(chave)) return false
+    if (!p.disponivel || p.semIA) return false
+    if (!p.sempre && !agente.poderes.includes(chave)) return false
     if (p.modulo && !moduloLigado(empresa, p.modulo)) return false
-    if (!daEquipe && !p.paraCliente) return false
     return true
   })
 }

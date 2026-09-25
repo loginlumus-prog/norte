@@ -94,8 +94,9 @@ export default function Privacidade() {
           que está em aberto.
         </p>
         <p>
-          Se o assistente estiver ligado, também as <b>conversas de WhatsApp</b> entre a sua loja e
-          os seus clientes, e o que ele consultou para responder.
+          Se o assistente estiver ligado, também as <b>mensagens de WhatsApp</b> que chegam ao
+          número dele — as da sua equipe com ele, e as dos seus clientes, que alimentam as
+          campanhas e o recado automático —, e o que ele consultou para responder à equipe.
         </p>
         <p>
           A base legal para tudo isso é sua, não nossa: normalmente execução de contrato entre você
@@ -193,10 +194,11 @@ export default function Privacidade() {
           parágrafo próprio em vez de uma nota de rodapé:
         </p>
         <Destaque>
-          Para responder, o assistente manda para o modelo de linguagem — que roda nos{' '}
-          <b>Estados Unidos</b> — o trecho da conversa e apenas os dados que a pergunta exige: o
-          saldo de uma peça, o total de um dia, o nome de um cliente que escreveu. Não é uma cópia
-          do seu banco: é o pedaço necessário para aquela resposta.
+          Para responder a você e à sua equipe, o assistente manda para o modelo de linguagem —
+          que roda nos <b>Estados Unidos</b> — o trecho da conversa e apenas os dados que a
+          pergunta exige: o saldo de uma peça, o total de um dia. Não é uma cópia do seu banco: é o
+          pedaço necessário para aquela resposta. <b>Mensagem de cliente não vai para o modelo</b>:
+          campanha e recado automático têm texto fixo e não usam IA.
         </Destaque>
         <Itens>
           <li>
