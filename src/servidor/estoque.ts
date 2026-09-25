@@ -19,8 +19,9 @@
 // segue. Erro fica para o que é erro mesmo.
 
 import { comoOrg } from './banco'
-import { exigir, pode, type Capacidade, type Sessao } from './permissao'
+import { exigir, pode, textoDaBusca, type Capacidade, type Sessao } from './permissao'
 import type { TipoMovimento } from '@prisma/client'
+import { vendidoNaLoja } from './catalogo-loja'
 
 /** Que permissão cada tipo de movimento exige. */
 const EXIGE: Record<TipoMovimento, Capacidade> = {
@@ -70,7 +71,44 @@ export async function mexerEstoque(
   // já garante que todo tipo tem entrada. O aviso vem de noUncheckedIndexedAccess,
   // que trata toda indexação como possivelmente vazia.
   exigir(sessao, EXIGE[m.tipo]!, m.unidadeId)
-  return comoOrg(sessao.orgId, (db) => mexerEstoqueEm(db, sessao, m))
+  return comoOrg(sessao.orgId, async (db) => {
+    // A variação e a loja vêm da tela. Procurar as duas aqui passa pelo RLS:
+    // id de outra empresa não aparece — e a linha de saldo não nasce
+    // apontando para o produto de outra empresa (a chave estrangeira do
+    // banco não olha o RLS).
+    const v = await db.variacao.findUnique({
+      where: { id: m.variacaoId },
+      select: { codigo: true, produto: { select: { nome: true } } },
+    })
+    const loja = await db.unidade.findUnique({ where: { id: m.unidadeId }, select: { id: true } })
+    if (!v || !loja) throw new Error('Produto ou loja não encontrado nesta empresa.')
+
+    const antes = m.tipo === 'BALANCO' ? await saldoDe(db, m.variacaoId, m.unidadeId) : null
+    const r = await mexerEstoqueEm(db, sessao, m)
+
+    // Correção de saldo é o movimento que MAIS precisa de livro: é onde some
+    // mercadoria sem venda. Venda, entrada e transferência escrevem a linha
+    // delas; o ajuste à mão não escrevia nenhuma — "quem zerou as camisetas
+    // na terça?" não tinha resposta no livro de auditoria.
+    if (r.ok && (m.tipo === 'BALANCO' || m.tipo === 'AJUSTE' || m.tipo === 'PERDA')) {
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          unidadeId: m.unidadeId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          acao: 'estoque.ajustou',
+          alvoTipo: 'variacao',
+          alvoId: m.variacaoId,
+          alvoNome: `${v.produto.nome}${v.codigo ? ` (${v.codigo})` : ''}`,
+          motivo: m.motivo ?? null,
+          antes: antes !== null ? { saldo: antes } : undefined,
+          depois: { saldo: r.saldo, tipo: m.tipo },
+        },
+      })
+    }
+    return r
+  })
 }
 
 /**
@@ -88,6 +126,10 @@ export async function mexerEstoqueEm(
   sessao: Sessao,
   m: Movimento,
 ): Promise<Resultado> {
+  // `NaN < 0` é falso: sem o isFinite, uma quantidade que não é número
+  // passava daqui e gravava `NaN` no saldo — que o Postgres aceita em coluna
+  // numeric, e aí nenhuma conta do estoque fecha mais.
+  if (!Number.isFinite(m.quantidade)) throw new Error('A quantidade precisa ser um número.')
   if (m.quantidade < 0) {
     throw new Error('Quantidade é sempre positiva — o sinal vem do tipo do movimento.')
   }
@@ -205,7 +247,7 @@ export async function listarMovimentos(sessao: Sessao, f: FiltroMovimentos): Pro
   exigir(sessao, 'estoque.ver')
   const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'estoque.ver', u))
   if (permitidas.length === 0) return []
-  const q = f.q?.trim() ?? ''
+  const q = textoDaBusca(f.q)
 
   const variacao = {
     ...(f.produtoId ? { produtoId: f.produtoId } : {}),
@@ -293,14 +335,34 @@ export async function transferir(
   t: { variacaoId: string; deUnidadeId: string; paraUnidadeId: string; quantidade: number; motivo?: string },
 ): Promise<Transferencia> {
   if (t.deUnidadeId === t.paraUnidadeId) return { ok: false, motivo: 'mesma_unidade' }
-  if (!(t.quantidade > 0)) return { ok: false, motivo: 'quantidade' }
+  if (!(t.quantidade > 0) || !Number.isFinite(t.quantidade)) return { ok: false, motivo: 'quantidade' }
   exigir(sessao, 'estoque.ajustar', t.deUnidadeId)
   exigir(sessao, 'estoque.ajustar', t.paraUnidadeId)
 
   return comoOrg(sessao.orgId, async (db) => {
     const de = await db.unidade.findUnique({ where: { id: t.deUnidadeId }, select: { nome: true } })
-    const para = await db.unidade.findUnique({ where: { id: t.paraUnidadeId }, select: { nome: true } })
+    const para = await db.unidade.findUnique({
+      where: { id: t.paraUnidadeId },
+      select: { nome: true, ativa: true, ehDeposito: true },
+    })
     if (!de || !para) throw new Error('Unidade não encontrada nesta empresa.')
+    // Loja fechada não recebe: a mercadoria sumiria de todas as telas, que só
+    // listam loja aberta.
+    if (!para.ativa) throw new Error(`${para.nome} está fechada. Reabra a loja antes de mandar mercadoria para lá.`)
+
+    // Mandar para uma loja que NÃO VENDE o produto é deixar a peça onde o
+    // balcão não pode vendê-la (ver `catalogo-loja.ts`). Depósito é a
+    // exceção: ele não vende nada, e guardar é o trabalho dele.
+    const produto = await db.variacao.findUnique({
+      where: { id: t.variacaoId },
+      select: { produto: { select: { nome: true, vendidoEm: true } } },
+    })
+    if (!produto) throw new Error('Produto não encontrado nesta empresa.')
+    if (!para.ehDeposito && !vendidoNaLoja(produto.produto.vendidoEm, t.paraUnidadeId)) {
+      throw new Error(
+        `${para.nome} não vende ${produto.produto.nome}. Marque a loja na ficha do produto, ou mande para um depósito.`,
+      )
+    }
 
     const saida = await mexerEstoqueEm(db, sessao, {
       variacaoId: t.variacaoId,

@@ -12,7 +12,8 @@
 
 import { NextResponse } from 'next/server'
 import { autorizado, rodarRotinas } from '@/servidor/assistente/rotinas'
-import { canalPadrao } from '@/servidor/assistente/canal'
+import { empresasComAgente } from '@/servidor/assistente/portaria'
+import { canalPadrao, empresaDoZapi, temZapi } from '@/servidor/assistente/canal'
 
 export const maxDuration = 300
 
@@ -20,6 +21,13 @@ export async function POST(request: Request) {
   if (!autorizado(request.headers.get('authorization'), process.env.ROTINAS_SEGREDO)) {
     return NextResponse.json({ ok: false }, { status: 401 })
   }
-  const r = await rodarRotinas(new Date(), { canal: canalPadrao() })
+  // Com o WhatsApp de verdade, só a empresa do piloto recebe rotina: as outras
+  // falariam pelo número dela (ver `ZAPI_EMPRESA` em canal.ts).
+  const r = await rodarRotinas(new Date(), {
+    canal: canalPadrao(),
+    empresas: temZapi()
+      ? async () => (await empresasComAgente()).filter((e) => e.slug === empresaDoZapi())
+      : undefined,
+  })
   return NextResponse.json({ ok: r.falhas === 0, ...r }, { headers: { 'Cache-Control': 'no-store' } })
 }

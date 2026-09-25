@@ -100,8 +100,12 @@ export function Campo({
   const idDica = dica ? `${meuId}-dica` : undefined
   const idErro = erro ? `${meuId}-erro` : undefined
 
+  // `min-w-0` no invólucro e no campo: sem eles, o <input> tem largura
+  // mínima de ~20 letras, e numa grade de três colunas (rua · número ·
+  // complemento) a 768px ele vazava da caixa e a PÁGINA rolava de lado —
+  // Lojas, ao abrir "Endereço", ia de 768 para 924px.
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={meuId} className="text-sm font-medium text-tinta">
         {rotulo}
       </label>
@@ -112,7 +116,7 @@ export function Campo({
         aria-invalid={erro ? true : undefined}
         aria-describedby={cx(idDica, idErro) || undefined}
         className={cx(
-          'rounded-norte border bg-superficie px-3 py-2 text-sm text-tinta',
+          'w-full min-w-0 rounded-norte border bg-superficie px-3 py-2 text-sm text-tinta',
           'placeholder:text-tinta-3',
           erro ? 'border-critico' : 'border-borda',
           className,
@@ -210,12 +214,14 @@ export function Situacao({ nivel = 'neutro', children }: { nivel?: Nivel; childr
   return (
     <span
       className={cx(
-        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold',
+        // Etiqueta não quebra linha: "Em / andamento" em duas linhas vira um
+        // bloco alto no meio da tabela e perde a cara de etiqueta.
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap',
         AVISO[nivel],
       )}
     >
       {/* a bolinha dá o recado de longe; o texto dá para quem não vê a cor */}
-      <span aria-hidden className={cx('size-1.5 rounded-full', bolinha[nivel])} />
+      <span aria-hidden className={cx('size-1.5 shrink-0 rounded-full', bolinha[nivel])} />
       {children}
     </span>
   )
@@ -310,7 +316,7 @@ export function Selecao({
 }) {
   const meuId = id ?? `sel-${resto.name ?? rotulo.toLowerCase().replace(/\W+/g, '-')}`
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={meuId} className="text-sm font-medium text-tinta">
         {rotulo}
       </label>
@@ -318,7 +324,8 @@ export function Selecao({
         {...resto}
         id={meuId}
         className={cx(
-          'rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta',
+          // O mesmo `min-w-0` do `Campo`: opção de nome comprido não estica a grade.
+          'w-full min-w-0 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta',
           className,
         )}
       >
@@ -346,8 +353,8 @@ export function Marcar({
   className,
   // Caixa por padrao, mas serve de bolinha tambem. A diferenca entre "marque
   // quantas quiser" e "escolha uma" e do tipo do input, nao do desenho — o
-  // cartao, a borda verde e o fundo verde sao os mesmos, e e bom que sejam:
-  // duas aparencias para a mesma pergunta so confundem.
+  // cartao, a borda e o fundo sao os mesmos, e e bom que sejam: duas
+  // aparencias para a mesma pergunta so confundem.
   type = 'checkbox',
   ...resto
 }: InputHTMLAttributes<HTMLInputElement> & {
@@ -364,8 +371,12 @@ export function Marcar({
       className={cx(
         'flex cursor-pointer items-start gap-3 rounded-norte border border-borda',
         'bg-superficie p-3 transition-colors hover:bg-superficie-2',
-        // Escolhido tem que se ver de longe: borda verde, fundo verde claro.
-        'has-checked:border-bom-vivo has-checked:bg-bom-fundo',
+        // Escolhido tem que se ver de longe: borda e fundo da MARCA. Já foi
+        // verde — mas verde neste sistema quer dizer "está bom" (estoque,
+        // margem, caixa), e a loja marcada no cadastro lia como situação,
+        // não como escolha. Escolher é ação, e ação é azul, como o período
+        // e os filtros.
+        'has-checked:border-marca has-checked:bg-marca-suave',
         className,
       )}
     >
@@ -373,7 +384,7 @@ export function Marcar({
         {...resto}
         id={meuId}
         type={type}
-        className="mt-0.5 size-4 shrink-0 accent-[var(--bom-vivo)]"
+        className="mt-0.5 size-4 shrink-0 accent-[var(--marca)]"
       />
       <span className="flex flex-col gap-0.5">
         <span className="text-sm font-semibold text-tinta">{titulo}</span>

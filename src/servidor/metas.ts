@@ -14,7 +14,9 @@
 // Puro onde dá (a conta da comissão e a chave do mês), banco no resto.
 
 import { comoOrg } from './banco'
-import { exigir, PODERES, type Papel, type Sessao } from './permissao'
+import { exigir, podeConcederAcesso, PODERES, unidadesQuePodem, type Papel, type Sessao } from './permissao'
+import { inicioDoDiaEmSP } from './dia'
+import { planoLibera } from './planos'
 import { centavos, reais } from './dinheiro'
 
 /** "2026-09" */
@@ -62,10 +64,16 @@ export type MetaDaPessoa = {
 
 const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) => PODERES[p].includes('venda.criar'))
 
-/** Início e fim (exclusivo) de um mês "AAAA-MM", no horário local. */
+/**
+ * Início e fim (exclusivo) de um mês "AAAA-MM", no calendário de São Paulo.
+ *
+ * Era a meia-noite do fuso do SERVIDOR: num servidor em UTC, a venda das 22h
+ * do dia 30 caía no mês seguinte — e a comissão de um mês ia para o outro.
+ */
 function janelaDoMes(mes: string) {
   const [a, m] = mes.split('-').map(Number)
-  return { de: new Date(a!, m! - 1, 1), ate: new Date(a!, m!, 1) }
+  const seguinte = m === 12 ? `${a! + 1}-01` : `${a}-${String(m! + 1).padStart(2, '0')}`
+  return { de: inicioDoDiaEmSP(`${mes}-01`), ate: inicioDoDiaEmSP(`${seguinte}-01`) }
 }
 
 /**
@@ -74,11 +82,26 @@ function janelaDoMes(mes: string) {
  */
 export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPessoa[]> {
   exigir(sessao, 'equipe.ver')
+  if (!mesValido(mes)) return []
   const { de, ate } = janelaDoMes(mes)
+
+  // O gerente da loja 3 vê a equipe e as vendas da loja 3 — não quanto a
+  // vendedora da loja 5 vendeu nem quanto ela ganha de comissão. `null` é o
+  // dono (todas as lojas): nenhum filtro.
+  const alcance = unidadesQuePodem(sessao, 'equipe.ver')
+  const lojas = alcance === 'todas' ? null : alcance
 
   return comoOrg(sessao.orgId, async (db) => {
     const pessoas = await db.usuario.findMany({
-      where: { ativo: true, acessos: { some: { papel: { in: PAPEIS_QUE_VENDEM } } } },
+      where: {
+        ativo: true,
+        acessos: {
+          some: {
+            papel: { in: PAPEIS_QUE_VENDEM },
+            ...(lojas ? { unidadeId: { in: lojas } } : {}),
+          },
+        },
+      },
       orderBy: { nome: 'asc' },
       select: { id: true, nome: true },
     })
@@ -94,6 +117,7 @@ export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPes
         from vendas v
        where v.situacao = 'CONCLUIDA' and v.vendedor_id is not null
          and v.criada_em >= ${de} and v.criada_em < ${ate}
+         and (${lojas === null} or v.unidade_id = any(${lojas ?? ['-']}))
        group by 1
     `
     const devolucoes = await db.$queryRaw<{ vendedor_id: string; total: string }[]>`
@@ -101,6 +125,7 @@ export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPes
         from devolucoes d join vendas v on v.id = d.venda_id
        where v.vendedor_id is not null
          and d.criada_em >= ${de} and d.criada_em < ${ate}
+         and (${lojas === null} or v.unidade_id = any(${lojas ?? ['-']}))
        group by 1
     `
 
@@ -133,6 +158,7 @@ export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPes
 
 /** A meta da própria pessoa, para o balcão dizer "faltam R$ X". */
 export async function minhaMeta(sessao: Sessao, mes: string) {
+  if (!mesValido(mes)) return null
   const { de, ate } = janelaDoMes(mes)
   return comoOrg(sessao.orgId, async (db) => {
     const linha = await db.meta.findFirst({
@@ -169,12 +195,33 @@ export async function salvarMeta(
 ) {
   exigir(sessao, 'equipe.gerir')
   if (!mesValido(m.mes)) throw new Error('Mês inválido.')
+  if (!Number.isFinite(m.valor) || !Number.isFinite(m.comissaoPct)) throw new Error('Meta e comissão precisam ser números.')
+  // A própria comissão, ninguém define: o gerente se dava 50% sobre tudo
+  // que vendeu, e a tela da equipe mostrava o número como se fosse combinado.
+  if (m.usuarioId === sessao.usuarioId) {
+    throw new Error('A sua própria meta e comissão quem define é outra pessoa.')
+  }
   const valor = Math.max(0, m.valor)
   const pct = Math.min(Math.max(m.comissaoPct, 0), 50)
 
   await comoOrg(sessao.orgId, async (db) => {
-    const pessoa = await db.usuario.findUnique({ where: { id: m.usuarioId }, select: { nome: true } })
+    // Metas e comissão são módulo, e módulo do plano (`RECURSOS`): sem ele a
+    // tela nem mostra — e a ação chamada direto também não grava.
+    const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { plano: true, modulos: true } })
+    if (!org.modulos.includes('metas') || !planoLibera(org.plano, 'metas')) {
+      throw new Error('Metas e comissão não estão ligadas nesta empresa.')
+    }
+    const pessoa = await db.usuario.findUnique({
+      where: { id: m.usuarioId },
+      select: { nome: true, acessos: { select: { papel: true, unidadeId: true, expiraEm: true } } },
+    })
     if (!pessoa) throw new Error('Pessoa não encontrada nesta empresa.')
+    // Meta e comissão de alguém é poder SOBRE essa pessoa: a mesma régua de
+    // trocar o papel dela. O gerente da loja 3 não mexe na comissão da
+    // vendedora da loja 5, nem na do outro gerente.
+    if (!pessoa.acessos.every((a) => podeConcederAcesso(sessao, a.papel as Papel, a.unidadeId))) {
+      throw new Error('Você não pode definir a meta desta pessoa.')
+    }
     await db.meta.upsert({
       where: { orgId_usuarioId_mes: { orgId: sessao.orgId, usuarioId: m.usuarioId, mes: m.mes } },
       create: { orgId: sessao.orgId, usuarioId: m.usuarioId, mes: m.mes, valor: reais(centavos(valor)), comissaoPct: pct, quem: sessao.nome },

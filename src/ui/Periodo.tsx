@@ -31,10 +31,14 @@ export function SeletorPeriodo({ atual }: { atual: Periodo }) {
     return `${caminho}?${q.toString()}`
   }
 
+  // No celular, grade de 3 × 2 em vez de fileira que quebra: as seis opções
+  // não cabem em 343px, e a fileira quebrada deixava "Mês passado" sozinho
+  // numa segunda linha, com cara de defeito. Na grade as seis têm a mesma
+  // largura e um alvo de dedo maior. Do `sm` para cima volta a ser fileira.
   return (
     <nav
       aria-label="Período"
-      className="flex flex-wrap items-center gap-0.5 rounded-norte border border-borda bg-superficie p-0.5"
+      className="grid w-full grid-cols-3 gap-0.5 rounded-norte border border-borda bg-superficie p-0.5 sm:flex sm:w-auto sm:flex-wrap sm:items-center"
     >
       {PERIODOS.map((p) => {
         const aceso = p.chave === atual
@@ -44,7 +48,7 @@ export function SeletorPeriodo({ atual }: { atual: Periodo }) {
             href={enderecoDe(p.chave)}
             aria-current={aceso ? 'page' : undefined}
             className={
-              'rounded-[5px] px-2.5 py-1 text-xs font-semibold transition-colors ' +
+              'rounded-[5px] px-2.5 py-1.5 text-center text-xs font-semibold whitespace-nowrap transition-colors sm:py-1 ' +
               (aceso
                 ? 'bg-marca text-marca-tinta'
                 : 'text-tinta-2 hover:bg-superficie-2 hover:text-tinta')

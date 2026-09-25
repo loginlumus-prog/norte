@@ -1,6 +1,8 @@
+import { diaEmSP } from '@/servidor/dia'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
+import { lerModo } from '@/servidor/modo'
 import { listarClientes, mostrarTelefone } from '@/servidor/cliente'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
@@ -10,6 +12,7 @@ import { Tira, brl } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
+import { plural } from '@/ui/texto'
 
 type Quem = 'sumidos' | 'nunca' | 'ativos' | 'novos' | 'aniversario' | 'pontos' | 'devendo'
 type Ordem = 'nome' | 'gastou' | 'recente'
@@ -41,6 +44,10 @@ export default async function Clientes({
   const ordem: Ordem = ordemPedida === 'gastou' || ordemPedida === 'recente' ? ordemPedida : 'nome'
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'cliente.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
+  // No simples ficam os quatro recortes que viram mensagem no WhatsApp
+  // (todos, sumidos, aniversário, devendo); ordenação, planilha e os
+  // recortes de cadastro são do avançado. Filtro já escolhido nunca some.
+  const simples = (await lerModo()) === 'simples'
 
   const clientes = await listarClientes(sessao, q)
   const podeEditar = pode(sessao, 'cliente.editar')
@@ -51,9 +58,12 @@ export default async function Clientes({
   }
   const sumidos = clientes.filter(ehSumido)
   const semCompra = clientes.filter((c) => c.compras === 0)
-  const mesAtual = new Date().getMonth()
+  // O mês de São Paulo, e o mês da coluna `date` lido em UTC: com getMonth()
+  // local, quem nasceu no dia 1º aparecia no mês anterior (a meia-noite UTC
+  // do dia 1º é 21h do último dia do mês em São Paulo).
+  const mesAtual = Number(diaEmSP().slice(5, 7)) - 1
   const trintaDias = Date.now() - 30 * 864e5
-  const aniversariantes = clientes.filter((c) => c.nascimento && c.nascimento.getMonth() === mesAtual)
+  const aniversariantes = clientes.filter((c) => c.nascimento && c.nascimento.getUTCMonth() === mesAtual)
   const comPontos = clientes.filter((c) => c.pontos > 0)
   const devendo = clientes.filter((c) => c.devendo > 0)
   const novos = clientes.filter((c) => c.criadoEm.getTime() >= trintaDias)
@@ -73,7 +83,7 @@ export default async function Clientes({
       : quem === 'nunca' ? c.compras === 0
       : quem === 'ativos' ? c.compras > 0 && !ehSumido(c)
       : quem === 'novos' ? c.criadoEm.getTime() >= trintaDias
-      : quem === 'aniversario' ? !!c.nascimento && c.nascimento.getMonth() === mesAtual
+      : quem === 'aniversario' ? !!c.nascimento && c.nascimento.getUTCMonth() === mesAtual
       : quem === 'pontos' ? c.pontos > 0
       : quem === 'devendo' ? c.devendo > 0
       : true,
@@ -100,13 +110,15 @@ export default async function Clientes({
       titulo="Clientes"
       acao={
         <span className="flex flex-wrap items-center gap-2">
-          <a
-            href={`/${slug}/clientes/exportar${q ? `?q=${encodeURIComponent(q)}` : ''}`}
-            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
-            title="Baixar a lista em planilha"
-          >
-            Planilha
-          </a>
+          {!simples && (
+            <a
+              href={`/${slug}/clientes/exportar${q ? `?q=${encodeURIComponent(q)}` : ''}`}
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+              title="Baixar a lista em planilha"
+            >
+              Planilha
+            </a>
+          )}
           {podeEditar && (
             <Link
               href={`/${slug}/clientes/novo`}
@@ -120,11 +132,11 @@ export default async function Clientes({
     >
       <Tira
         itens={[
-          { rotulo: 'compraram', quantos: clientes.length - semCompra.length, nivel: 'bom' },
-          { rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length, nivel: 'atencao' },
+          { rotulo: 'compraram', um: 'comprou', quantos: clientes.length - semCompra.length, nivel: 'bom' },
+          { rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, um: `sumido há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length, nivel: 'atencao' },
           { rotulo: 'devendo no crediário', quantos: devendo.length, nivel: devendo.some((c) => c.vencido > 0) ? 'critico' : 'atencao' },
           { rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length, nivel: 'bom' },
-          { rotulo: 'nunca compraram', quantos: semCompra.length, nivel: 'neutro' },
+          { rotulo: 'nunca compraram', um: 'nunca comprou', quantos: semCompra.length, nivel: 'neutro' },
         ]}
       />
 
@@ -136,33 +148,35 @@ export default async function Clientes({
           manter={{ quem, ordem: atuais.ordem }}
           limparEm={link({ q: null })}
         />
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <Fichas
-            opcoes={[
-              { valor: null, rotulo: 'todos', quantos: clientes.length },
-              { valor: 'ativos', rotulo: 'compram', quantos: clientes.length - semCompra.length - sumidos.length },
-              { valor: 'sumidos', rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length },
-              { valor: 'novos', rotulo: 'cadastrados há 30 dias', quantos: novos.length },
-              { valor: 'aniversario', rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length },
-              { valor: 'pontos', rotulo: 'com pontos', quantos: comPontos.length },
-              { valor: 'devendo', rotulo: 'devendo', quantos: devendo.length },
-              { valor: 'nunca', rotulo: 'nunca compraram', quantos: semCompra.length },
-            ]}
+            opcoes={(
+              [
+                { valor: null, rotulo: 'todos', quantos: clientes.length },
+                { valor: 'ativos', rotulo: 'compram', quantos: clientes.length - semCompra.length - sumidos.length, avancado: true },
+                { valor: 'sumidos', rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length },
+                { valor: 'novos', rotulo: 'cadastrados há 30 dias', quantos: novos.length, avancado: true },
+                { valor: 'aniversario', rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length },
+                { valor: 'pontos', rotulo: 'com pontos', quantos: comPontos.length, avancado: true },
+                { valor: 'devendo', rotulo: 'devendo', quantos: devendo.length },
+                { valor: 'nunca', rotulo: 'nunca compraram', quantos: semCompra.length, avancado: true },
+              ] as { valor: Quem | null; rotulo: string; quantos: number; avancado?: boolean }[]
+            ).filter((o) => !simples || !o.avancado || o.valor === quem)}
             atual={quem}
             linkDe={(v) => link({ quem: v })}
           />
-          <span className="flex items-center gap-1 text-xs text-tinta-3">
-            ordenar:
-            <Fichas
-              opcoes={[
-                { valor: null, rotulo: 'nome' },
-                { valor: 'gastou', rotulo: 'quem mais gasta' },
-                { valor: 'recente', rotulo: 'compra mais recente' },
-              ]}
-              atual={ordem === 'nome' ? null : ordem}
-              linkDe={(v) => link({ ordem: v })}
-            />
-          </span>
+          {(!simples || ordem !== 'nome') && (
+          <Fichas
+            rotulo="Ordenar por"
+            opcoes={[
+              { valor: null, rotulo: 'nome' },
+              { valor: 'gastou', rotulo: 'quem mais gasta' },
+              { valor: 'recente', rotulo: 'compra mais recente' },
+            ]}
+            atual={ordem === 'nome' ? null : ordem}
+            linkDe={(v) => link({ ordem: v })}
+          />
+          )}
         </div>
       </div>
 
@@ -171,8 +185,8 @@ export default async function Clientes({
           q
             ? `Resultado de “${q}”`
             : quem
-              ? `${listados.length} de ${clientes.length} cliente(s)`
-              : `${clientes.length} cliente(s)`
+              ? `${listados.length} de ${plural(clientes.length, 'cliente', 'clientes')}`
+              : plural(clientes.length, 'cliente', 'clientes')
         }
         acao={
           clientes.length >= 200 ? (
@@ -246,7 +260,7 @@ export default async function Clientes({
                   const d = diasDesde(c.ultimaCompra)
                   if (d === null) return <Situacao nivel="neutro">nunca comprou</Situacao>
                   if (d >= DIAS_SUMIDO) return <Situacao nivel="atencao">há {d} dias</Situacao>
-                  return <Situacao nivel="bom">há {d} dia(s)</Situacao>
+                  return <Situacao nivel="bom">{d === 0 ? 'hoje' : `há ${plural(d, 'dia', 'dias')}`}</Situacao>
                 },
               },
               ...(devendo.length > 0 || comPontos.length > 0

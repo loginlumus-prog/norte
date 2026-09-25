@@ -61,7 +61,7 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
         razaoSocial: true, documento: true, inscricaoEstadual: true, regime: true,
         email: true, telefone: true, whatsapp: true, agenteNome: true, ramo: true,
         pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true,
-        balcaoGrade: true,
+        balcaoGrade: true, plano: true,
       },
     }),
   )
@@ -103,14 +103,14 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
     >
       <Tira
         itens={[
-          { rotulo: 'módulos ligados', quantos: empresa.modulos.length, nivel: 'bom' },
-          { rotulo: 'campos em branco', quantos: campos.length - preenchidos, nivel: 'atencao' },
+          { rotulo: 'módulos ligados', um: 'módulo ligado', quantos: empresa.modulos.length, nivel: 'bom' },
+          { rotulo: 'campos em branco', um: 'campo em branco', quantos: campos.length - preenchidos, nivel: 'atencao' },
         ]}
       />
 
       <Cartao titulo="O que sua empresa usa">
         {pode(sessao, 'empresa.configurar') ? (
-          <Modulos empresa={slug} ligados={empresa.modulos} grade={dados?.balcaoGrade ?? false} />
+          <Modulos empresa={slug} ligados={empresa.modulos} grade={dados?.balcaoGrade ?? false} plano={dados?.plano ?? 'GRATIS'} />
         ) : (
           <Aviso nivel="neutro">Só quem responde pela empresa muda isto.</Aviso>
         )}
@@ -127,9 +127,10 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
               minimo: dados?.pontosMinimo ?? 0,
             }}
             faturamentoMes={Number(faturamento._sum.total ?? 0)}
+            plano={dados?.plano ?? 'GRATIS'}
           />
         ) : (
-          <Aviso nivel="neutro">So quem responde pela empresa muda isto.</Aviso>
+          <Aviso nivel="neutro">Só quem responde pela empresa muda isto.</Aviso>
         )}
       </Cartao>
 

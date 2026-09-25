@@ -36,7 +36,7 @@ const abrev = (mes: string) => (MES_NOME[Number(mes.slice(5)) - 1] ?? '').slice(
 
 /** Uma medida de 0 a 1 com o texto em cima e a barrinha embaixo. */
 function Medida({ nota, texto }: { nota: number | null; texto: string }) {
-  if (nota === null) return <span className="text-xs text-tinta-3">{texto}</span>
+  if (nota === null) return <span className="text-xs whitespace-nowrap text-tinta-3">{texto}</span>
   // A cor da barra segue a mesma régua das estrelas: 0,8 é o que 4 estrelas
   // seriam nesta medida. Uma régua só, senão a linha discorda dela mesma.
   const nivel = NIVEL(nota * 5)
@@ -93,7 +93,7 @@ function Corpo({ pessoas, tendencia }: { pessoas: PessoaComNota[]; tendencia?: T
       titulo: 'Estrelas',
       largura: '9rem',
       celula: (p) =>
-        semDados(p.nota) ? <span className="text-xs text-tinta-3">sem dados no mês</span> : <Estrelas valor={p.nota.estrelas} tamanho="sm" />,
+        semDados(p.nota) ? <span className="text-xs whitespace-nowrap text-tinta-3">sem dados no mês</span> : <Estrelas valor={p.nota.estrelas} tamanho="sm" />,
     },
     { chave: 'meta', titulo: 'Meta', celula: (p) => <Medida nota={p.nota.notas.meta ?? null} texto={textoMeta(p.insumos)} /> },
     { chave: 'tarefas', titulo: 'Tarefas', celula: (p) => <Medida nota={p.nota.notas.tarefas ?? null} texto={textoTarefas(p.insumos)} /> },
@@ -177,15 +177,22 @@ function PorLoja({ lojas }: { lojas: NotaDaLoja[] }) {
 
 /* ── a seção ──────────────────────────────────────────────── */
 
-/** As setas de mês. As mesmas da seção de metas, para o `?mes=` andar junto. */
+/**
+ * As setas de mês. As mesmas da seção de metas, para o `?mes=` andar junto.
+ *
+ * Com o NOME do mês ao lado da seta: "← ago" diz para onde vai; a seta
+ * sozinha era um sinal solto no canto, que quem não é do ramo não lia como
+ * botão. E com borda, que é como todo botão secundário do sistema se parece.
+ */
 export function SetasDoMes({ slug, anterior, seguinte }: { slug: string; anterior: string; seguinte: string }) {
+  const botao = 'inline-flex items-center gap-1 rounded-norte border border-borda bg-superficie px-2.5 py-1.5 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta'
   return (
-    <span className="flex items-center gap-2 text-sm">
-      <Link href={`/${slug}/equipe?mes=${anterior}`} aria-label="Mês anterior" className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
-        ←
+    <span className="flex items-center gap-2">
+      <Link href={`/${slug}/equipe?mes=${anterior}`} aria-label={`Ver ${MES_NOME[Number(anterior.slice(5)) - 1]}`} className={botao}>
+        <span aria-hidden>←</span> {abrev(anterior)}
       </Link>
-      <Link href={`/${slug}/equipe?mes=${seguinte}`} aria-label="Mês seguinte" className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
-        →
+      <Link href={`/${slug}/equipe?mes=${seguinte}`} aria-label={`Ver ${MES_NOME[Number(seguinte.slice(5)) - 1]}`} className={botao}>
+        {abrev(seguinte)} <span aria-hidden>→</span>
       </Link>
     </span>
   )

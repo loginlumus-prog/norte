@@ -218,7 +218,7 @@ export default async function Precos({
             <Numero
               rotulo="Abaixo do alvo"
               valor={String(resumo.abaixoDoAlvo)}
-              detalhe={`produto(s) com margem menor que ${alvo}%`}
+              detalhe={`com margem menor que ${alvo}%`}
               nivel={resumo.abaixoDoAlvo > 0 ? 'atencao' : undefined}
             />
             <Numero

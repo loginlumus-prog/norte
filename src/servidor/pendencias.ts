@@ -29,6 +29,7 @@
 import { comoOrg } from './banco'
 import { exigir, pode, type Capacidade, type Sessao } from './permissao'
 import { moduloLigado, type ComModulos } from './modulos'
+import { diaEmSP } from './dia'
 
 const HORA = 36e5
 
@@ -276,9 +277,6 @@ export function mesmoDiaPassado(agora: Date): string {
 // A CONTAGEM
 // ─────────────────────────────────────────────────────────────
 
-/** "2026-09-24", pelo relógio local — o mesmo que o resto do sistema usa para "hoje". */
-const chaveDoDia = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const n = (v: unknown) => Number(v ?? 0)
 
@@ -304,7 +302,10 @@ export async function pendenciasDoDia(
   const gerirTarefas = pode(sessao, 'tarefa.gerir')
   const verPropostas = moduloLigado(empresa, 'agente') && pode(sessao, 'agente.configurar')
 
-  const hoje = chaveDoDia(agora)
+  // O dia de HOJE no calendário de São Paulo, e não no relógio do servidor:
+  // num servidor em UTC, a partir das 21h a conta que vence amanhã já
+  // aparecia como "vence hoje", e a de hoje como vencida. Ver `dia.ts`.
+  const hoje = diaEmSP(agora)
   const esquecidoDesde = new Date(agora.getTime() - CAIXA_ESQUECIDO_HORAS * HORA)
   const c: Contagens = {}
 
@@ -318,6 +319,12 @@ export async function pendenciasDoDia(
       // sem mínimo cadastrado — produto zerado é zerado. Sem isso, o número
       // daqui e o filtro "acabaram" de lá discordariam, e o "Ver" levaria a
       // uma lista de tamanho diferente do prometido.
+      //
+      // Linha ZERADA de produto que a loja não vende não entra: a sorveteria
+      // que mandou de volta as camisetas do engano ficava com "12 produtos
+      // acabaram" para sempre, avisando falta do que ela nem vende. A mesma
+      // régua vale na tela de Estoque (`contaComoFalta`). Depósito conta
+      // sempre: ele não vende, mas é de onde as lojas repõem.
       const [e] = await db.$queryRaw<{ acabaram: number; minimo: number }[]>`
         select count(*) filter (where s.saldo <= 0)::int as acabaram,
                count(*) filter (where s.saldo > 0 and s.minimo > 0 and s.saldo <= s.minimo)::int as minimo
@@ -327,7 +334,10 @@ export async function pendenciasDoDia(
                   from estoque e
                   join variacoes va on va.id = e.variacao_id
                   join produtos p on p.id = va.produto_id
+                  join unidades u on u.id = e.unidade_id
                  where e.unidade_id = any(${doEstoque}) and va.ativa and p.ativo
+                   and (e.quantidade > 0 or u.eh_deposito
+                        or cardinality(p.vendido_em) = 0 or e.unidade_id = any(p.vendido_em))
                  group by e.variacao_id) s
       `
       c.acabaram = n(e?.acabaram)

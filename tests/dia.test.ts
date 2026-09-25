@@ -25,3 +25,30 @@ describe('o dia no calendário da loja', () => {
     expect('2026-09-30' < '2026-10-01').toBe(true)
   })
 })
+
+// ─────────────────────────────────────────────────────────────
+// Auditoria de 25/09: a régua também para instante e para a tela
+// ─────────────────────────────────────────────────────────────
+
+import { inicioDoDiaEmSP, mostrarDiaDaColuna, primeiroDoMes } from '../src/servidor/dia'
+
+describe('o começo do dia em São Paulo, sem depender do fuso da máquina', () => {
+  it('é 03:00 UTC do próprio dia', () => {
+    expect(inicioDoDiaEmSP('2026-09-01').toISOString()).toBe('2026-09-01T03:00:00.000Z')
+  })
+
+  it('o primeiro do mês de um dia qualquer', () => {
+    expect(primeiroDoMes('2026-09-25')).toBe('2026-09-01')
+  })
+})
+
+describe('coluna `date` escrita para gente', () => {
+  // O vencimento do dia 10 chega como 10/10 00:00 UTC — que em São Paulo é
+  // 09/10 às 21h. A tela mostrava "vence 09/10".
+  it('mostra o dia gravado, não o dia anterior', () => {
+    const vencimento = colunaDoDia('2026-10-10')
+    expect(mostrarDiaDaColuna(vencimento)).toBe('10/10')
+    expect(mostrarDiaDaColuna(vencimento, 'curto')).toBe('10/10/26')
+    expect(mostrarDiaDaColuna(vencimento, 'longo')).toBe('10/10/2026')
+  })
+})

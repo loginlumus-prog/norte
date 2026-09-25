@@ -19,7 +19,7 @@
 
 import { comoOrg } from './banco'
 import type { Plano } from '@prisma/client'
-import { exigir, type Sessao } from './permissao'
+import { exigir, soAsQuePode, type Sessao } from './permissao'
 import { janela, type Janela } from './periodo'
 
 const DIA = 864e5
@@ -78,6 +78,7 @@ export async function resumoDoPainel(
   j: Janela,
 ): Promise<Resumo> {
   exigir(sessao, 'relatorio.ver')
+  unidadeIds = soAsQuePode(sessao, 'relatorio.ver', unidadeIds)
   if (unidadeIds.length === 0) return vazio()
 
   // "Parado ha mais de 30 dias" NAO segue o filtro: e uma definicao do
@@ -357,6 +358,7 @@ export async function resumoDeHoje(
   agora: Date = new Date(),
 ): Promise<ResumoDeHoje> {
   exigir(sessao, 'relatorio.ver')
+  unidadeIds = soAsQuePode(sessao, 'relatorio.ver', unidadeIds)
 
   const j = janela('hoje', agora)
   const semana = janela('7d', agora)

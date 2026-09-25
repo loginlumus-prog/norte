@@ -11,9 +11,21 @@
 // Então a tela responde na hora, em porcento e em reais sobre o faturamento
 // que a loja já tem. É a diferença entre configurar e escolher.
 
+//
+// ── fora do plano ────────────────────────────────────────────
+// O programa é dos planos pagos, e o servidor recusa ligar no Grátis
+// (`salvarPontos`). Então no Grátis a tela não oferece a caixa: mostra o
+// programa trancado, com o plano que abre e o caminho para os planos. Quem
+// DESCEU de plano com o programa ligado ainda vê a caixa — só para desligar,
+// que o servidor aceita em qualquer plano.
+
+import Link from 'next/link'
 import { useActionState, useState } from 'react'
+import type { Plano } from '@prisma/client'
 import { Botao, Campo, Marcar, Aviso, Situacao } from '@/ui/base'
+import { IconeCadeado } from '@/ui/Cadeado'
 import { quantoCusta } from '@/servidor/pontos'
+import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 import { salvarPontos, type EstadoPontos } from './acoes'
 
 const brl = (v: number) =>
@@ -23,20 +35,54 @@ export function Pontos({
   empresa,
   inicial,
   faturamentoMes,
+  plano,
 }: {
   empresa: string
   inicial: { ativo: boolean; porReal: number; pontoVale: number; minimo: number }
   faturamentoMes: number
+  /** O plano de agora: fora dele o programa aparece trancado. */
+  plano: Plano
 }) {
   const [estado, agir, pendente] = useActionState<EstadoPontos, FormData>(salvarPontos, {})
   const [ativo, setAtivo] = useState(inicial.ativo)
-  const [porReal, setPorReal] = useState(String(inicial.porReal))
-  const [vale, setVale] = useState(String(inicial.pontoVale))
+  // Vírgula, não ponto: "0.03" é número de programador, e a dica logo abaixo
+  // fala em "0,03". A ação já aceita os dois.
+  const [porReal, setPorReal] = useState(String(inicial.porReal).replace('.', ','))
+  const [vale, setVale] = useState(String(inicial.pontoVale).replace('.', ','))
+  const num = (v: string) => Number(v.replace(',', '.')) || 0
+  const aberto = liberado(plano, 'pontos.programa')
+  const quemAbre = doPlano(planoQueAbre('pontos.programa').codigo)
+
+  // Fora do plano e desligado: nada a marcar, nada a salvar — só o convite.
+  if (!aberto && !inicial.ativo) {
+    return (
+      <div className="flex items-start gap-3 rounded-norte border border-dashed border-borda bg-superficie-2/60 p-4">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-marca-suave text-marca">
+          <IconeCadeado className="size-4" />
+        </span>
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="text-sm font-semibold text-tinta">
+            O programa de pontos é {quemAbre} para cima
+          </span>
+          <span className="text-xs leading-relaxed text-tinta-2">
+            O cliente junta pontos a cada compra e troca por desconto no balcão — o motivo de
+            ele voltar à sua loja e não à do lado.
+          </span>
+          <Link
+            href={`/${empresa}/assinatura`}
+            className="mt-1 w-fit text-xs font-semibold text-marca underline-offset-2 hover:underline"
+          >
+            Ver os planos
+          </Link>
+        </span>
+      </div>
+    )
+  }
 
   const pct = quantoCusta({
     ativo: true,
-    porReal: Number(porReal) || 0,
-    pontoVale: Number(vale) || 0,
+    porReal: num(porReal),
+    pontoVale: num(vale),
     minimo: 0,
   })
   const porMes = (faturamentoMes * pct) / 100
@@ -47,15 +93,35 @@ export function Pontos({
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
 
+      {!aberto && (
+        <Aviso nivel="atencao">
+          O programa de pontos é {quemAbre} para cima e ficou ligado de um plano anterior. Você
+          pode desligar aqui; para mudar os valores, <Link href={`/${empresa}/assinatura`} className="font-semibold underline">veja os planos</Link>.
+        </Aviso>
+      )}
+
       <Marcar
         name="ativo"
         checked={ativo}
+        // Fora do plano a caixa só DESLIGA: marcar de novo o servidor recusa.
+        disabled={!aberto && !ativo}
         onChange={(e) => setAtivo(e.currentTarget.checked)}
         titulo="Cliente junta pontos comprando"
         resumo="Desligado, nada muda no balcão. Pontos já juntos ficam guardados."
       />
 
-      {ativo && (
+      {/* Desligado, os campos somem da tela mas os valores VÃO junto: a
+          ação grava o que chega, e sem isto desligar zerava o desenho do
+          programa — religar era digitar tudo de novo. */}
+      {!(ativo && aberto) && (
+        <>
+          <input type="hidden" name="porReal" value={porReal} />
+          <input type="hidden" name="pontoVale" value={vale} />
+          <input type="hidden" name="minimo" value={String(inicial.minimo)} />
+        </>
+      )}
+
+      {ativo && aberto && (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
             <Campo

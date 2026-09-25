@@ -18,6 +18,7 @@ import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Lancar, Pagar } from './Lancar'
 import { Recorrentes } from './Recorrentes'
+import { palavra, plural } from '@/ui/texto'
 
 // Vencimento e pagamento são colunas DATE, que chegam como meia-noite UTC do
 // dia. Formatar no fuso do servidor (Brasil, UTC-3) mostrava o dia ANTERIOR —
@@ -45,9 +46,13 @@ export default async function Financeiro({
   }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, mes, q: qBruto, tipo: tipoPedido, situacao: sitPedida, categoria: catPedida } =
+  const { unidade: pedida, mes: mesBruto, q: qBruto, tipo: tipoPedido, situacao: sitPedida, categoria: catPedida } =
     await searchParams
-  const q = (qBruto ?? '').trim()
+  // O mês vem do endereço. `?mes=lixo`, `?mes=2026-13` ou o parâmetro repetido
+  // viravam "Invalid Date" no DRE e a tela de erro no lugar do financeiro;
+  // fora do formato, vale o mês corrente.
+  const mes = typeof mesBruto === 'string' && /^\d{4}-(0?[1-9]|1[0-2])$/.test(mesBruto) ? mesBruto : undefined
+  const q = (typeof qBruto === 'string' ? qBruto : '').trim()
   const tipo: TipoLancamento | null = tipoPedido === 'DESPESA' || tipoPedido === 'RECEITA' ? tipoPedido : null
   const situacaoL: 'aberto' | 'pago' | null = sitPedida === 'aberto' || sitPedida === 'pago' ? sitPedida : null
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'financeiro.ver' })
@@ -129,7 +134,7 @@ export default async function Financeiro({
     i.href === `/${slug}/financeiro` && contas.vencidas.length > 0
       ? {
           ...i,
-          aviso: { quantos: contas.vencidas.length, nivel: 'critico' as const, titulo: 'vencida(s)' },
+          aviso: { quantos: contas.vencidas.length, nivel: 'critico' as const, titulo: palavra(contas.vencidas.length, 'vencida', 'vencidas') },
         }
       : i,
   )
@@ -168,8 +173,8 @@ export default async function Financeiro({
       <Secao titulo="Contas a pagar">
         <Tira
           itens={[
-            { rotulo: 'vencidas', quantos: contas.vencidas.length, nivel: 'critico' },
-            { rotulo: 'vencem hoje', quantos: contas.hoje.length, nivel: 'atencao' },
+            { rotulo: 'vencidas', um: 'vencida', quantos: contas.vencidas.length, nivel: 'critico' },
+            { rotulo: 'vencem hoje', um: 'vence hoje', quantos: contas.hoje.length, nivel: 'atencao' },
             { rotulo: 'próximos 15 dias', quantos: contas.proximas.length, nivel: 'neutro' },
           ]}
         />
@@ -200,21 +205,25 @@ export default async function Financeiro({
           ) : (
             <ul className="flex flex-col">
               {[
-                ...contas.vencidas.map((c) => ({ ...c, nivel: 'critico' as const, quando: `${c.dias}d atrás` })),
+                ...contas.vencidas.map((c) => ({ ...c, nivel: 'critico' as const, quando: `há ${plural(c.dias, 'dia', 'dias')}` })),
                 ...contas.hoje.map((c) => ({ ...c, nivel: 'atencao' as const, quando: 'hoje' })),
-                ...contas.proximas.map((c) => ({ ...c, nivel: 'neutro' as const, quando: `em ${c.dias}d` })),
+                ...contas.proximas.map((c) => ({ ...c, nivel: 'neutro' as const, quando: `em ${plural(c.dias, 'dia', 'dias')}` })),
               ].map((c) => (
+                // No celular a conta ocupa a linha inteira e a etiqueta, o
+                // valor e o "Paguei" descem para baixo dela. Lado a lado,
+                // sobravam 90px para o nome: "Pedido de…", "Manutenç…" —
+                // e a pessoa pagava sem ler o quê.
                 <li
                   key={c.id}
-                  className="flex items-center justify-between gap-3 border-b border-borda-suave py-2 last:border-0"
+                  className="flex flex-col gap-2 border-b border-borda-suave py-2.5 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-2"
                 >
                   <span className="flex min-w-0 flex-col">
-                    <span className="truncate text-sm text-tinta">{c.descricao}</span>
-                    <span className="text-xs text-tinta-3">{dia(c.vencimento)}</span>
+                    <span className="text-sm text-tinta sm:truncate">{c.descricao}</span>
+                    <span className="text-xs text-tinta-3">vence {dia(c.vencimento)}</span>
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <Situacao nivel={c.nivel}>{c.quando}</Situacao>
-                    <span className="numero w-24 text-sm font-semibold text-tinta">
+                    <span className="numero ml-auto text-sm font-semibold text-tinta sm:ml-0 sm:w-24 sm:text-right">
                       {brl(c.valor)}
                     </span>
                     {podeLancar && <Pagar slug={slug} id={c.id} />}
@@ -291,16 +300,29 @@ export default async function Financeiro({
               atual={tipo}
               linkDe={(v) => linkL({ tipo: v })}
             />
-            <Fichas
-              opcoes={[
-                { valor: null, rotulo: 'todas as categorias' },
-                ...categorias
-                  .filter((c) => !tipo || c.tipo === tipo)
-                  .map((c) => ({ valor: c.id, rotulo: c.nome })),
-              ]}
-              atual={categoriaL}
-              linkDe={(v) => linkL({ categoria: v })}
-            />
+            {/* Vinte categorias em fichas soltas eram uma parede de 300px
+                antes da tabela. Fechadas num "Categoria: …", elas ficam a um
+                toque — e sem JavaScript, que <details> abre sozinho. Com uma
+                categoria escolhida, nasce aberto: filtro ativo não se esconde. */}
+            <details open={!!categoriaL} className="group w-full">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-borda px-3 py-1.5 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta [&::-webkit-details-marker]:hidden">
+                Categoria:{' '}
+                <span className="text-tinta">{categorias.find((c) => c.id === categoriaL)?.nome ?? 'todas'}</span>
+                <span aria-hidden className="text-tinta-3 transition-transform group-open:rotate-180">▾</span>
+              </summary>
+              <div className="pt-2">
+                <Fichas
+                  opcoes={[
+                    { valor: null, rotulo: 'todas as categorias' },
+                    ...categorias
+                      .filter((c) => !tipo || c.tipo === tipo)
+                      .map((c) => ({ valor: c.id, rotulo: c.nome })),
+                  ]}
+                  atual={categoriaL}
+                  linkDe={(v) => linkL({ categoria: v })}
+                />
+              </div>
+            </details>
           </div>
         </div>
 
@@ -322,7 +344,6 @@ export default async function Financeiro({
               {
                 chave: 'venc',
                 titulo: 'Vence',
-                largura: '5rem',
                 celula: (l: (typeof lancamentos)[number]) => (
                   <span className="numero text-tinta-2">{dia(l.vencimento)}</span>
                 ),
@@ -331,8 +352,21 @@ export default async function Financeiro({
                 chave: 'desc',
                 titulo: 'Lançamento',
                 celula: (l: (typeof lancamentos)[number]) => (
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate text-tinta">{l.descricao}</span>
+                  // O nome quebra em até duas linhas em vez de esticar a
+                  // tabela: esticada, ela empurrava o VALOR para fora da tela
+                  // do celular. E no celular a situação vem aqui dentro, já
+                  // que a coluna dela some (`escondeNoCelular`).
+                  <span className="flex min-w-40 flex-col gap-0.5">
+                    <span className="line-clamp-2 text-tinta">{l.descricao}</span>
+                    <span className="sm:hidden">
+                      {l.pagoEm ? (
+                        <Situacao nivel="bom">pago {dia(l.pagoEm)}</Situacao>
+                      ) : situacaoDoVencimento(l.vencimento) === 'vencida' ? (
+                        <Situacao nivel="critico">vencido</Situacao>
+                      ) : (
+                        <Situacao nivel="neutro">em aberto</Situacao>
+                      )}
+                    </span>
                     <span className="text-xs text-tinta-3">
                       {/* Etiqueta com texto, não só o símbolo: "↻" sozinho
                           ninguém sabe o que é. */}
@@ -352,6 +386,7 @@ export default async function Financeiro({
                 chave: 'sit',
                 titulo: '',
                 largura: '7rem',
+                escondeNoCelular: true,
                 celula: (l: (typeof lancamentos)[number]) =>
                   l.pagoEm ? (
                     <Situacao nivel="bom">pago {dia(l.pagoEm)}</Situacao>
@@ -365,9 +400,8 @@ export default async function Financeiro({
                 chave: 'valor',
                 titulo: 'Valor',
                 numero: true,
-                largura: '8rem',
                 celula: (l: (typeof lancamentos)[number]) => (
-                  <span className={'numero font-semibold ' + (l.tipo === 'RECEITA' ? 'text-bom' : 'text-tinta')}>
+                  <span className={'numero font-semibold whitespace-nowrap ' + (l.tipo === 'RECEITA' ? 'text-bom' : 'text-tinta')}>
                     {l.tipo === 'RECEITA' ? '+ ' : ''}
                     {brl(l.valor)}
                   </span>

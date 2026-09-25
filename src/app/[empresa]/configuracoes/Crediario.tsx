@@ -31,7 +31,7 @@ export function Crediario({
           rotulo="Juro de atraso, % ao mês"
           name="jurosMes"
           inputMode="decimal"
-          defaultValue={String(inicial.jurosMes)}
+          defaultValue={String(inicial.jurosMes).replace('.', ',')}
           dica="Só sobre parcela vencida, proporcional aos dias. Quem paga em dia não vê juro."
         />
         <Campo

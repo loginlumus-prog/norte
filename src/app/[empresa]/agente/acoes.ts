@@ -8,7 +8,7 @@
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import type { TipoGatilho } from '@prisma/client'
-import { exigirSessao } from '@/servidor/pagina'
+import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { salvarAgente, responderProposta } from '@/servidor/agente'
 import { TODOS_PODERES } from '@/servidor/poderes'
 import { centavos } from '@/servidor/dinheiro'
@@ -53,7 +53,7 @@ export async function salvar(
       ativo: form.get('ativo') === 'on',
     })
   } catch (e) {
-    return { erro: e instanceof Error ? e.message : 'Não deu para salvar.' }
+    return { erro: recadoDoErro(e, 'Não deu para salvar.') }
   }
 
   revalidatePath(`/${slug}/agente`)
@@ -90,7 +90,7 @@ async function baseDoSite(): Promise<string> {
   return `${protocolo}://${host}`
 }
 
-const mensagem = (e: unknown) => (e instanceof Error ? e.message : 'Não deu certo.')
+const mensagem = (e: unknown) => recadoDoErro(e, 'Não deu certo.')
 
 export async function conectar(slug: string): Promise<EstadoConexaoAcao> {
   try {

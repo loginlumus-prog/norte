@@ -21,6 +21,7 @@
 // diferença entre "achar um cliente igual" e "repetir o movimento".
 
 import { useState } from 'react'
+import { plural } from '@/ui/texto'
 
 export type DiaDoGrafico = { dia: string; total: number; vendas: number }
 
@@ -72,7 +73,7 @@ export function GraficoDias({ dados }: { dados: DiaDoGrafico[] }) {
           </div>
         ) : (
           <span className="text-xs text-tinta-3">
-            Passe o mouse num dia para ver o movimento dele.
+            Toque ou passe o mouse num dia para ver o movimento dele.
           </span>
         )}
       </div>
@@ -102,8 +103,11 @@ export function GraficoDias({ dados }: { dados: DiaDoGrafico[] }) {
               key={dia.dia}
               onMouseEnter={() => setEmCima(i)}
               onFocus={() => setEmCima(i)}
+              // O toque também acende: no iPhone o botão tocado não ganha
+              // foco, e o celular não tem mouse para passar por cima.
+              onClick={() => setEmCima(i)}
               onBlur={() => setEmCima(null)}
-              aria-label={`${nomes(dia.dia).longo}: ${brl(dia.total)}, ${dia.vendas} venda(s)`}
+              aria-label={`${nomes(dia.dia).longo}: ${brl(dia.total)}, ${plural(dia.vendas, 'venda', 'vendas')}`}
               // A coluna inteira é o alvo, e ela é transparente: o que se vê
               // continua sendo só a barra.
               className="group relative flex h-full flex-1 cursor-default items-end"

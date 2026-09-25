@@ -150,6 +150,36 @@ export function podeConceder(
   )
 }
 
+/**
+ * Pode dar (ou mexer em) ESTE acesso — este papel, nesta loja ou na empresa
+ * inteira?
+ *
+ * `podeConceder` recebe a loja como opcional, e opcional quer dizer "em
+ * alguma loja". Com o acesso SEM loja (`null` = todas), isso abria a porta:
+ * o gerente da loja 3 dava balcão "para todas as lojas", porque `null` virava
+ * `undefined` e "alguma loja" ele tem. Aqui `null` quer dizer o que quer dizer
+ * no banco: a empresa inteira — e só quem tem acesso à empresa inteira dá.
+ *
+ * É também a régua para mexer em quem JÁ está na equipe: para rebaixar,
+ * desativar ou reativar alguém, é preciso poder conceder cada acesso que a
+ * pessoa tem. Senão o gerente da loja 3 desativava a dona.
+ */
+export function podeConcederAcesso(
+  sessao: Sessao,
+  papel: Papel,
+  unidadeId: string | null,
+  agora = new Date(),
+): boolean {
+  if (unidadeId !== null) return podeConceder(sessao, papel, unidadeId, agora)
+  return sessao.acessos.some(
+    (a) =>
+      valeAgora(a, agora) &&
+      a.unidadeId === null &&
+      concede(a, 'equipe.gerir') &&
+      PODE_CONCEDER[a.papel].includes(papel),
+  )
+}
+
 /** Um acesso concedido: papel, em qual unidade, até quando. */
 export type Acesso = {
   papel: Papel
@@ -228,6 +258,23 @@ export function unidadesQuePodem(
   return [...new Set(validos.map((a) => a.unidadeId!))]
 }
 
+/**
+ * Das lojas pedidas, só as em que a pessoa pode isso.
+ *
+ * Para toda função que recebe uma lista de lojas de quem chama: a lista
+ * costuma vir do endereço (`?unidade=`), e o endereço é do usuário. A tela
+ * já filtra — mas a regra tem de valer também quando a função é chamada de
+ * outro lugar, e é por isso que ela mora aqui e não só na tela.
+ */
+export function soAsQuePode(
+  sessao: Sessao,
+  capacidade: Capacidade,
+  pedidas: readonly string[],
+  agora = new Date(),
+): string[] {
+  return pedidas.filter((u) => pode(sessao, capacidade, u, agora))
+}
+
 /** Levanta erro em vez de devolver false. Para usar no começo de uma ação. */
 export function exigir(
   sessao: Sessao,
@@ -251,4 +298,29 @@ export class SemPermissao extends Error {
     )
     this.name = 'SemPermissao'
   }
+}
+
+/**
+ * O texto de uma busca que veio do endereço, pronto para usar.
+ *
+ * O Next entrega `?q=a&q=b` como LISTA, e `.trim()` numa lista derruba a tela
+ * com erro de servidor. Tipado como texto, o endereço continua sendo do
+ * usuário: aqui qualquer coisa que não seja texto vira busca vazia, e o
+ * tamanho tem teto — ninguém procura um produto com mil letras.
+ */
+export function textoDaBusca(v: unknown): string {
+  return typeof v === 'string' ? v.trim().slice(0, 120) : ''
+}
+
+/**
+ * O número de venda digitado na busca, ou `null`.
+ *
+ * `Venda.numero` é inteiro de 32 bits: "3000000000" passava no teste de só
+ * dígitos e o banco recusava a consulta — tela de erro no lugar de "nada
+ * encontrado".
+ */
+export function numeroDaBusca(q: string): number | null {
+  if (!/^\d{1,10}$/.test(q)) return null
+  const n = Number(q)
+  return n <= 2_147_483_647 ? n : null
 }

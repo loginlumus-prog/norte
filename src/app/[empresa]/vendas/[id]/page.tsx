@@ -1,3 +1,4 @@
+import { mostrarDiaDaColuna } from '@/servidor/dia'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -271,7 +272,7 @@ export default async function FichaVenda({
                 <li key={p.id} className="flex items-center justify-between gap-3 py-2">
                   <span className="text-tinta">
                     {p.numero}/{p.de} · vence{' '}
-                    {new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(p.vencimento)}
+                    {mostrarDiaDaColuna(p.vencimento, 'curto')}
                   </span>
                   <span className="flex items-center gap-3">
                     {p.quitadaEm ? (
@@ -326,7 +327,7 @@ export default async function FichaVenda({
                     <span className="text-tinta-2">
                       {Number(d.vale.saldo) > 0 ? `saldo ${brl(Number(d.vale.saldo))}` : 'vale já usado'}
                       {d.vale.validade &&
-                        ` · vale até ${new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d.vale.validade)}`}
+                        ` · vale até ${mostrarDiaDaColuna(d.vale.validade, 'longo')}`}
                     </span>
                   </span>
                 )}

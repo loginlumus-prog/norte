@@ -293,3 +293,60 @@ describe('desconto acima do teto', () => {
     expect(pode(preso, 'venda.desconto', 'uni-a1')).toBe(false)
   })
 })
+
+// ─────────────────────────────────────────────────────────────
+// Auditoria de 25/09
+// ─────────────────────────────────────────────────────────────
+
+import { podeConcederAcesso, soAsQuePode, textoDaBusca, numeroDaBusca } from '../src/servidor/permissao'
+import { podeMexerEm } from '../src/servidor/equipe'
+
+describe('conceder acesso SEM loja é conceder a empresa inteira', () => {
+  const gerente3 = sessao('g3', [{ papel: 'GERENTE', unidadeId: LOJA_3 }])
+  const dona = sessao('dona', [{ papel: 'DONO', unidadeId: null }])
+
+  // `podeConceder(s, papel, undefined)` quer dizer "em alguma loja" — e o
+  // gerente da loja 3 dava balcão para todas as lojas passando `null`.
+  it('o gerente da loja 3 dá balcão na loja 3, e não "para todas"', () => {
+    expect(podeConcederAcesso(gerente3, 'BALCAO', LOJA_3)).toBe(true)
+    expect(podeConcederAcesso(gerente3, 'BALCAO', LOJA_5)).toBe(false)
+    expect(podeConcederAcesso(gerente3, 'BALCAO', null)).toBe(false)
+  })
+
+  it('a dona dá qualquer papel concedível, em qualquer loja ou em todas', () => {
+    expect(podeConcederAcesso(dona, 'GERENTE', null)).toBe(true)
+    expect(podeConcederAcesso(dona, 'DONO', null)).toBe(true)
+    expect(podeConcederAcesso(dona, 'SUPORTE', null)).toBe(false)
+  })
+
+  it('mexer em alguém exige poder dar CADA acesso que a pessoa tem', () => {
+    const socia = [{ papel: 'DONO' as Papel, unidadeId: null, expiraEm: null }]
+    const gerente5 = [{ papel: 'GERENTE' as Papel, unidadeId: LOJA_5, expiraEm: null }]
+    const balcao3 = [{ papel: 'BALCAO' as Papel, unidadeId: LOJA_3, expiraEm: null }]
+    expect(podeMexerEm(gerente3, socia)).toBe(false)
+    expect(podeMexerEm(gerente3, gerente5)).toBe(false)
+    expect(podeMexerEm(gerente3, balcao3)).toBe(true)
+    expect(podeMexerEm(dona, socia)).toBe(true)
+  })
+})
+
+describe('lojas pedidas por quem chama', () => {
+  it('só ficam as que a pessoa alcança', () => {
+    const g = sessao('g3', [{ papel: 'GERENTE', unidadeId: LOJA_3 }])
+    expect(soAsQuePode(g, 'financeiro.ver', [LOJA_3, LOJA_5])).toEqual([LOJA_3])
+  })
+})
+
+describe('a busca que veio do endereço', () => {
+  it('lista (?q=a&q=b) vira busca vazia em vez de derrubar a tela', () => {
+    expect(textoDaBusca(['a', 'b'])).toBe('')
+    expect(textoDaBusca('  camiseta ')).toBe('camiseta')
+    expect(textoDaBusca(undefined)).toBe('')
+  })
+
+  it('número de venda maior que o inteiro do banco não vira consulta', () => {
+    expect(numeroDaBusca('42')).toBe(42)
+    expect(numeroDaBusca('3000000000')).toBeNull()
+    expect(numeroDaBusca('12a')).toBeNull()
+  })
+})

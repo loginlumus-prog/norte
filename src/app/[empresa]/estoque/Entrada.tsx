@@ -270,7 +270,7 @@ export function Entrada({
 
           {semCusto > 0 && (
             <p className="mt-3 text-xs text-tinta-3">
-              {semCusto} item(ns) sem custo. Sem ele o relatório não consegue calcular a
+              {semCusto} {semCusto === 1 ? 'item' : 'itens'} sem custo. Sem ele o relatório não consegue calcular a
               margem daquela peça — e o total abaixo fica incompleto.
             </p>
           )}
@@ -314,7 +314,7 @@ export function Entrada({
 
           <div className="mt-5 flex items-center justify-between gap-3">
             <span className="text-sm text-tinta-2">
-              {linhas.length} item(ns) ·{' '}
+              {linhas.length} {linhas.length === 1 ? 'item' : 'itens'} ·{' '}
               <b className="numero text-tinta">{brl(total)}</b>
             </span>
             <Botao tom="confirmar" carregando={indo} onClick={enviar}>

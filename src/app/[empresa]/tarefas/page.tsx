@@ -171,7 +171,9 @@ export default async function TelaTarefas({
       itens={menu}
       ativo={`/${slug}/tarefas`}
       tema={tema}
-      titulo={onde.mostrarSeletor ? `Tarefas · ${onde.titulo}` : 'Tarefas'}
+      // Só o nome da tela: a loja já está escrita no seletor ao lado, e
+      // repetida no título ela empurrava os seletores para baixo no celular.
+      titulo="Tarefas"
       acao={
         <Cabecalho
           quadros={quadros.map((q) => ({ id: q.id, nome: q.nome, cor: q.cor, abertas: q.abertas }))}

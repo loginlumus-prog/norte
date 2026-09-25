@@ -6,7 +6,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { exigirSessao } from '@/servidor/pagina'
+import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { criarProduto, editarProduto, ajustarGrade, type EixoEscolhido } from '@/servidor/produto'
 import { SemPermissao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
@@ -129,7 +129,7 @@ export async function criar(
     )
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para cadastrar produto.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para cadastrar.' }
+    return { erro: recadoDoErro(e, 'Não deu para cadastrar.') }
   }
 
   if (!r.ok) return { erro: r.motivo }
@@ -196,6 +196,6 @@ export async function editar(
     if (e instanceof SemPermissao) {
       return { erro: 'Você não tem permissão para essa alteração. O preço exige permissão própria.' }
     }
-    return { erro: e instanceof Error ? e.message : 'Não deu para salvar.' }
+    return { erro: recadoDoErro(e, 'Não deu para salvar.') }
   }
 }

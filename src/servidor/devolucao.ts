@@ -28,8 +28,8 @@
 // do período; é assim que o mês de março não muda quando alguém devolve em
 // abril.
 
-import { diaDaColuna, diaEmSP } from './dia'
-import { comoOrg } from './banco'
+import { colunaDoDia, diaDaColuna, diaEmSP, somarDias } from './dia'
+import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, reais, multiplicar } from './dinheiro'
@@ -71,6 +71,50 @@ export function valorDevolvidoCent(
   return Math.max(0, Math.floor(cheio * fatorPago))
 }
 
+/**
+ * Trava a linha da venda até o fim da transação (`select ... for update`).
+ *
+ * Cancelar e devolver leem a venda, conferem o que ainda pode voltar e só
+ * depois escrevem. Sem a trava, duas dessas ao mesmo tempo — o clique duplo,
+ * ou duas pessoas na mesma venda — conferiam a MESMA fotografia e as duas
+ * passavam: a peça voltava duas vezes ao estoque, e o dinheiro saía duas
+ * vezes da gaveta. Com ela, a segunda espera a primeira e confere o que
+ * sobrou.
+ */
+export async function travarVenda(db: Pick<BancoDaOrg, '$queryRaw'>, vendaId: string) {
+  await db.$queryRaw`select id from vendas where id = ${vendaId} for update`
+}
+
+/**
+ * Quanto da devolução abate o fiado da própria venda, e como fica cada
+ * parcela. Puro, em centavos.
+ *
+ * Peça comprada no crediário e devolvida antes de ser paga não pode virar
+ * dinheiro na mão do cliente nem vale: ele ainda DEVE aquela peça. O valor
+ * devolvido primeiro apaga a dívida em aberto — da última parcela para a
+ * primeira, que é a dívida mais longe de ser paga — e só o que sobrar vai
+ * para o destino escolhido (vale, dinheiro, estorno).
+ *
+ * `parcelas` em qualquer ordem; a conta ordena pelo número.
+ */
+export function abaterDoFiado(
+  parcelas: { id: string; numero: number; valorCent: number; pagoCent: number }[],
+  valorCent: number,
+): { abatidoCent: number; parcelas: { id: string; novoValorCent: number; quitada: boolean }[] } {
+  let resta = Math.max(0, valorCent)
+  const mudadas: { id: string; novoValorCent: number; quitada: boolean }[] = []
+  for (const p of [...parcelas].sort((a, b) => b.numero - a.numero)) {
+    if (resta <= 0) break
+    const aberto = p.valorCent - p.pagoCent
+    if (aberto <= 0) continue
+    const tira = Math.min(aberto, resta)
+    const novoValorCent = p.valorCent - tira
+    mudadas.push({ id: p.id, novoValorCent, quitada: novoValorCent <= p.pagoCent })
+    resta -= tira
+  }
+  return { abatidoCent: Math.max(0, valorCent) - resta, parcelas: mudadas }
+}
+
 export type PedidoDevolucao = {
   vendaId: string
   itens: { vendaItemId: string; quantidade: number }[]
@@ -79,7 +123,15 @@ export type PedidoDevolucao = {
 }
 
 export type ResultadoDevolucao =
-  | { ok: true; devolucaoId: string; valor: number; vale: { codigo: string; validade: Date } | null }
+  | {
+      ok: true
+      devolucaoId: string
+      /** O que vai para o cliente: vale, dinheiro da gaveta ou estorno. */
+      valor: number
+      /** O que abateu o fiado desta venda, antes de sobrar para o cliente. */
+      abatido: number
+      vale: { codigo: string; validade: Date } | null
+    }
   | { ok: false; motivo: 'nao_achada' | 'cancelada' | 'sem_itens' | 'passa_do_vendido' | 'sem_motivo' | 'caixa_fechado' | 'sem_permissao' }
 
 export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<ResultadoDevolucao> {
@@ -89,6 +141,7 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
   if (pedidos.length === 0) return { ok: false, motivo: 'sem_itens' }
 
   return comoOrg(sessao.orgId, async (db) => {
+    await travarVenda(db, p.vendaId)
     const v = await db.venda.findUnique({
       where: { id: p.vendaId },
       select: {
@@ -136,9 +189,24 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
     })
     const valorCent = linhas.reduce((s, l) => s + l.valorCent, 0)
 
+    // ── o fiado desta venda vem primeiro ──
+    // Venda no crediário com parcela em aberto: a peça devolvida ainda não foi
+    // paga. Antes disto a devolução em dinheiro TIRAVA da gaveta o valor de
+    // uma peça que o cliente continuava devendo — e as parcelas seguiam
+    // cobrando. Agora o valor abate a dívida, e só o que sobra vai ao cliente.
+    const emAberto = await db.parcela.findMany({
+      where: { vendaId: v.id, quitadaEm: null },
+      select: { id: true, numero: true, valor: true, pago: true },
+    })
+    const fiado = abaterDoFiado(
+      emAberto.map((x) => ({ id: x.id, numero: x.numero, valorCent: centavos(x.valor), pagoCent: centavos(x.pago) })),
+      valorCent,
+    )
+    const paraClienteCent = valorCent - fiado.abatidoCent
+
     // ── dinheiro sai da gaveta: precisa de gaveta ──
     let caixaId: string | null = null
-    if (p.destino === 'DINHEIRO') {
+    if (p.destino === 'DINHEIRO' && paraClienteCent > 0) {
       const caixa = await db.caixa.findFirst({
         where: { unidadeId: v.unidadeId, aberto: true },
         select: { id: true },
@@ -149,10 +217,11 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
 
     // ── o vale ──
     let vale: { id: string; codigo: string; validade: Date } | null = null
-    if (p.destino === 'VALE') {
-      const validade = new Date()
-      validade.setDate(validade.getDate() + VALE_DIAS)
-      validade.setHours(0, 0, 0, 0)
+    if (p.destino === 'VALE' && paraClienteCent > 0) {
+      // Coluna `date`: o dia, contado no calendário de São Paulo e gravado à
+      // meia-noite UTC, como o banco o devolve. A meia-noite LOCAL gravava o
+      // dia certo só enquanto o servidor estivesse no fuso de São Paulo.
+      const validade = colunaDoDia(somarDias(diaEmSP(), VALE_DIAS))
       // Código sorteado; se bater num que já existe (raro), sorteia de novo.
       for (let tentativa = 0; tentativa < 5; tentativa++) {
         const codigo = gerarCodigoDeVale()
@@ -163,8 +232,8 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
             orgId: sessao.orgId,
             codigo,
             clienteId: v.clienteId,
-            valor: reais(valorCent),
-            saldo: reais(valorCent),
+            valor: reais(paraClienteCent),
+            saldo: reais(paraClienteCent),
             validade,
             quem: sessao.nome,
           },
@@ -213,14 +282,22 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
       })
     }
 
+    // ── a dívida do fiado diminui ──
+    for (const x of fiado.parcelas) {
+      await db.parcela.update({
+        where: { id: x.id },
+        data: { valor: reais(x.novoValorCent), ...(x.quitada ? { quitadaEm: new Date() } : {}) },
+      })
+    }
+
     // ── o dinheiro sai da gaveta ──
-    if (p.destino === 'DINHEIRO' && caixaId) {
+    if (p.destino === 'DINHEIRO' && caixaId && paraClienteCent > 0) {
       await db.caixaMovimento.create({
         data: {
           orgId: sessao.orgId,
           caixaId,
           tipo: 'SANGRIA',
-          valor: reais(valorCent),
+          valor: reais(paraClienteCent),
           motivo: `Devolução da venda ${v.numero}`,
           quem: sessao.nome,
         },
@@ -262,16 +339,23 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
         alvoId: v.id,
         alvoNome: `Venda ${v.numero}`,
         valor: reais(valorCent),
-        motivo: `${motivo} · ${
-          p.destino === 'VALE' ? `vale ${vale!.codigo}` : p.destino === 'DINHEIRO' ? 'em dinheiro' : 'estorno por fora'
-        }`,
+        motivo: [
+          motivo,
+          fiado.abatidoCent > 0 ? `${reais(fiado.abatidoCent).toFixed(2)} abatido do crediário` : null,
+          paraClienteCent > 0
+            ? p.destino === 'VALE' ? `vale ${vale!.codigo}` : p.destino === 'DINHEIRO' ? 'em dinheiro' : 'estorno por fora'
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
       },
     })
 
     return {
       ok: true as const,
       devolucaoId: dev.id,
-      valor: reais(valorCent),
+      valor: reais(paraClienteCent),
+      abatido: reais(fiado.abatidoCent),
       vale: vale ? { codigo: vale.codigo, validade: vale.validade } : null,
     }
   })

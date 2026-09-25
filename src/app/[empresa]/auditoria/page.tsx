@@ -110,9 +110,9 @@ export default async function AuditoriaPagina({
       >
         <Tira
           itens={[
-            { rotulo: 'registros', quantos: linhas.length, nivel: 'neutro' },
-            { rotulo: 'pessoas diferentes', quantos: pessoas, nivel: 'bom' },
-            { rotulo: 'feitos pelo assistente', quantos: doAgente, nivel: 'atencao' },
+            { rotulo: 'registros', um: 'registro', quantos: linhas.length, nivel: 'neutro' },
+            { rotulo: 'pessoas diferentes', um: 'pessoa', quantos: pessoas, nivel: 'bom' },
+            { rotulo: 'feitos pelo assistente', um: 'feito pelo assistente', quantos: doAgente, nivel: 'atencao' },
           ]}
         />
 

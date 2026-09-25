@@ -29,7 +29,7 @@
 // banco só entra para reunir os insumos.
 
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, PODERES, type Papel, type Sessao } from './permissao'
+import { exigir, PODERES, soAsQuePode, unidadesQuePodem, type Papel, type Sessao } from './permissao'
 import { mesChave, metasDoMes, type MetaDaPessoa } from './metas'
 
 // ─────────────────────────────────────────────────────────────
@@ -341,7 +341,13 @@ export async function desempenhoDoMes(
   agora = new Date(),
 ): Promise<NotasDoMes> {
   exigir(sessao, 'equipe.ver')
-  const uni = opcoes.unidadeIds ?? null
+  // Sem lojas pedidas, vale o alcance de quem olha: o gerente da loja 3 não
+  // vê as estrelas (nem as vendas por trás delas) da equipe da loja 5. Com
+  // lojas pedidas, só as que ele alcança — a lista veio de quem chamou.
+  const alcance = unidadesQuePodem(sessao, 'equipe.ver')
+  const uni = opcoes.unidadeIds
+    ? soAsQuePode(sessao, 'equipe.ver', opcoes.unidadeIds)
+    : alcance === 'todas' ? null : alcance
   if (uni && uni.length === 0) return { mes, pessoas: [] }
 
   // As metas vêm de `metasDoMes`, de propósito: é a mesma conta da seção de
@@ -364,7 +370,10 @@ export async function desempenhoDoMes(
     const pessoas = await db.usuario.findMany({
       where: {
         ativo: true,
-        OR: [{ acessos: { some: { papel: { in: PAPEIS_QUE_VENDEM } } } }, { id: { in: comTarefa } }],
+        OR: [
+          { acessos: { some: { papel: { in: PAPEIS_QUE_VENDEM }, ...(uni ? { unidadeId: { in: uni } } : {}) } } },
+          { id: { in: comTarefa } },
+        ],
       },
       select: { id: true, nome: true },
     })

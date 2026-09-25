@@ -12,7 +12,7 @@
 // somá-los faria o caixa "faltar" todo dia o valor das maquininhas — e caixa
 // que falta todo dia é caixa que ninguém confere mais.
 
-import { comoOrg } from './banco'
+import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
 import type { TipoCaixa } from '@prisma/client'
@@ -47,6 +47,12 @@ export async function abrirCaixa(
   saldoAbertura: number,
 ): Promise<Abertura> {
   exigir(sessao, 'caixa.operar', unidadeId)
+  // `NaN` e negativo não são troco de gaveta: o primeiro estourava lá dentro
+  // com o erro cru do conversor de dinheiro; o segundo abria o turno com uma
+  // "falta" que ninguém tirou.
+  if (!Number.isFinite(saldoAbertura) || saldoAbertura < 0) {
+    throw new Error('O troco da abertura precisa ser um valor, zero ou mais.')
+  }
 
   // Confere fora da transação: dois caixas abertos na mesma loja seria um
   // estado sem conserto, e recusar é resposta esperada, não erro.
@@ -55,7 +61,18 @@ export async function abrirCaixa(
     return { ok: false, motivo: 'ja_aberto', caixaId: jaAberto.id, abertoPor: jaAberto.abertoPor }
   }
 
+  // A conferência de cima é a resposta educada; esta é a garantia. Dois
+  // cliques em "Abrir caixa" (ou duas máquinas na mesma loja) passavam juntos
+  // pela conferência e abriam dois turnos — e aí a venda cai num, o dinheiro
+  // é contado no outro, e a gaveta nunca mais bate. A trava por loja faz o
+  // segundo esperar o primeiro e encontrar o caixa já aberto.
   const caixa = await comoOrg(sessao.orgId, async (db) => {
+    await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`abrir-caixa:${unidadeId}`}))`
+    const outro = await db.caixa.findFirst({
+      where: { unidadeId, aberto: true },
+      select: { id: true, abertoPor: true },
+    })
+    if (outro) return { jaAberto: outro }
     const criado = await db.caixa.create({
       data: {
         orgId: sessao.orgId,
@@ -78,10 +95,13 @@ export async function abrirCaixa(
         valor: saldoAbertura,
       },
     })
-    return criado
+    return { criado }
   })
 
-  return { ok: true, caixaId: caixa.id }
+  if ('jaAberto' in caixa && caixa.jaAberto) {
+    return { ok: false, motivo: 'ja_aberto', caixaId: caixa.jaAberto.id, abertoPor: caixa.jaAberto.abertoPor }
+  }
+  return { ok: true, caixaId: caixa.criado!.id }
 }
 
 /** Sangria tira da gaveta; suprimento põe. Motivo é obrigatório nos dois. */
@@ -93,7 +113,8 @@ export async function movimentarCaixa(
   motivo: string,
 ) {
   if (!motivo.trim()) throw new Error('Sangria e suprimento precisam de motivo.')
-  if (valor <= 0) throw new Error('O valor precisa ser maior que zero.')
+  if (!Number.isFinite(valor) || valor <= 0) throw new Error('O valor precisa ser maior que zero.')
+  if (tipo !== 'SANGRIA' && tipo !== 'SUPRIMENTO') throw new Error('Isso não é sangria nem suprimento.')
 
   await comoOrg(sessao.orgId, async (db) => {
     const caixa = await db.caixa.findUnique({
@@ -145,9 +166,25 @@ export type Conferencia = {
   vendas: number
 }
 
-/** Quanto deveria ter na gaveta agora. */
+/**
+ * Quanto deveria ter na gaveta agora.
+ *
+ * Confere a LOJA do caixa: sem isso, qualquer sessão lia a gaveta de
+ * qualquer loja pelo id — quanto entrou em dinheiro, quanto saiu em sangria.
+ */
 export async function conferirCaixa(sessao: Sessao, caixaId: string): Promise<Conferencia> {
+  exigir(sessao, 'caixa.ver')
   return comoOrg(sessao.orgId, async (db) => {
+    const dono = await db.caixa.findUnique({ where: { id: caixaId }, select: { unidadeId: true } })
+    if (!dono) throw new CaixaFechado()
+    exigir(sessao, 'caixa.ver', dono.unidadeId)
+    return conferirEm(db, caixaId)
+  })
+}
+
+/** A conta da gaveta, dentro de uma transação que já está aberta. */
+async function conferirEm(db: BancoDaOrg, caixaId: string): Promise<Conferencia> {
+  {
     const caixa = await db.caixa.findUnique({
       where: { id: caixaId },
       select: { saldoAbertura: true },
@@ -186,7 +223,7 @@ export async function conferirCaixa(sessao: Sessao, caixaId: string): Promise<Co
       porForma: formas.map((f) => ({ forma: f.forma, total: reais(centavos(f.total)) })),
       vendas: totalVendas,
     }
-  })
+  }
 }
 
 export type Fechamento = {
@@ -202,12 +239,12 @@ export async function fecharCaixa(
   saldoContado: number,
   observacoes?: string,
 ): Promise<Fechamento> {
-  const conf = await conferirCaixa(sessao, caixaId)
-  const esperadoC = centavos(conf.esperado)
+  if (!Number.isFinite(saldoContado) || saldoContado < 0) {
+    throw new Error('O contado na gaveta precisa ser um valor, zero ou mais.')
+  }
   const contadoC = centavos(saldoContado)
-  const difC = contadoC - esperadoC
 
-  await comoOrg(sessao.orgId, async (db) => {
+  return comoOrg(sessao.orgId, async (db) => {
     const caixa = await db.caixa.findUnique({
       where: { id: caixaId },
       select: { unidadeId: true, aberto: true },
@@ -215,8 +252,17 @@ export async function fecharCaixa(
     if (!caixa?.aberto) throw new CaixaFechado()
     exigir(sessao, 'caixa.operar', caixa.unidadeId)
 
-    await db.caixa.update({
-      where: { id: caixaId },
+    // O esperado é contado DENTRO da mesma transação do fechamento. Antes ele
+    // vinha de uma leitura anterior, e a venda que entrasse entre a conta e o
+    // fechamento ficava fora do esperado — a gaveta "sobrava" o valor dela.
+    const conf = await conferirEm(db, caixaId)
+    const esperadoC = centavos(conf.esperado)
+    const difC = contadoC - esperadoC
+
+    // Fecha só se ainda estiver aberto. Dois cliques em "Fechar" liam os dois
+    // "aberto", e o livro ganhava dois fechamentos do mesmo turno.
+    const fechou = await db.caixa.updateMany({
+      where: { id: caixaId, aberto: true },
       data: {
         aberto: false,
         fechadoPor: sessao.nome,
@@ -226,6 +272,7 @@ export async function fecharCaixa(
         observacoes,
       },
     })
+    if (fechou.count === 0) throw new CaixaFechado()
 
     // A diferença vai para o livro SEMPRE, inclusive quando é zero: "fechou
     // certo" é informação, e quem confere no fim do mês precisa ver o dia que
@@ -245,9 +292,9 @@ export async function fecharCaixa(
         depois: { contado: reais(contadoC) },
       },
     })
-  })
 
-  return { esperado: reais(esperadoC), contado: reais(contadoC), diferenca: reais(difC) }
+    return { esperado: reais(esperadoC), contado: reais(contadoC), diferenca: reais(difC) }
+  })
 }
 
 export class CaixaFechado extends Error {

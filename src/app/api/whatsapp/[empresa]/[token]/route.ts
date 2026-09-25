@@ -10,7 +10,7 @@
 
 import { after, NextResponse } from 'next/server'
 import { receberWebhook } from '@/servidor/assistente/webhook'
-import { canalPadrao } from '@/servidor/assistente/canal'
+import { canalPara } from '@/servidor/assistente/canal'
 
 
 /** Mensagem de WhatsApp em JSON não passa disto. Corpo maior é outra coisa. */
@@ -34,7 +34,7 @@ export async function POST(
     corpo = null
   }
 
-  const porta = receberWebhook(empresa, token, corpo, { canal: canalPadrao() })
+  const porta = receberWebhook(empresa, token, corpo, { canal: canalPara(empresa) })
   if (porta.trabalho) {
     const trabalho = porta.trabalho
     after(async () => {

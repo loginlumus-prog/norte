@@ -5,9 +5,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
-import { exigirSessao } from '@/servidor/pagina'
+import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { convidar, revogarConvite, EmailJaUsado } from '@/servidor/convite'
-import { mudarAcesso, mudarSituacao } from '@/servidor/equipe'
+import { mudarAcesso, mudarSituacao, mudarTelefone } from '@/servidor/equipe'
 import { salvarMeta, mesValido } from '@/servidor/metas'
 import { SemPermissao, type Papel } from '@/servidor/permissao'
 
@@ -28,7 +28,7 @@ export async function salvarMetaAcao(
     return { ok: 'Salvo.' }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode definir metas.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para salvar.' }
+    return { erro: recadoDoErro(e, 'Não deu para salvar.') }
   }
 }
 
@@ -74,7 +74,7 @@ export async function convidarPessoa(
   } catch (e) {
     if (e instanceof EmailJaUsado) return { erro: e.message }
     if (e instanceof SemPermissao) return { erro: 'Você não pode convidar para esse papel.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para convidar.' }
+    return { erro: recadoDoErro(e, 'Não deu para convidar.') }
   }
 }
 
@@ -86,7 +86,7 @@ export async function revogar(slug: string, conviteId: string): Promise<EstadoEq
     return { ok: 'Convite cancelado.' }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode cancelar convite.' }
-    return { erro: 'Não deu para cancelar.' }
+    return { erro: recadoDoErro(e, 'Não deu para cancelar.') }
   }
 }
 
@@ -106,7 +106,7 @@ export async function trocarPapel(
     return { ok: 'Acesso alterado. A pessoa vai precisar entrar de novo.' }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode mexer nesse acesso.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para alterar.' }
+    return { erro: recadoDoErro(e, 'Não deu para alterar.') }
   }
 }
 
@@ -123,6 +123,24 @@ export async function trocarSituacao(
     return { ok: ativo ? 'Acesso devolvido.' : 'Acesso tirado. Ela sai do sistema na próxima tela.' }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode mexer nesse acesso.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para alterar.' }
+    return { erro: recadoDoErro(e, 'Não deu para alterar.') }
+  }
+}
+
+export async function trocarTelefone(
+  slug: string,
+  usuarioId: string,
+  telefone: string,
+): Promise<EstadoEquipe> {
+  const sessao = await exigirSessao(slug)
+  try {
+    const r = await mudarTelefone(sessao, usuarioId, String(telefone ?? '').slice(0, 30))
+    if (!r.ok) return { erro: r.motivo }
+    revalidatePath(`/${slug}/equipe`)
+    revalidatePath(`/${slug}/agente`)
+    return { ok: telefone.trim() ? 'Telefone salvo. O assistente já reconhece este número.' : 'Telefone apagado.' }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode mexer no telefone desta pessoa.' }
+    return { erro: recadoDoErro(e, 'Não deu para salvar o telefone.') }
   }
 }

@@ -194,7 +194,7 @@ export function Formulario({
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-1 text-sm font-semibold text-tinta">Para quem</legend>
           {cliente ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-norte border border-bom-vivo bg-bom-fundo px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-norte border border-marca/40 bg-marca-suave px-3 py-2">
               <span className="flex min-w-0 flex-col">
                 <span className="truncate text-sm font-semibold text-tinta">{cliente.nome}</span>
                 <span className="text-xs text-tinta-2">do cadastro de clientes</span>

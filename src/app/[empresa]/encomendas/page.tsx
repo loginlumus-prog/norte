@@ -31,6 +31,7 @@ import { Aviso, Cartao, FAIXA, Situacao, Vazio, cx } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { Formulario } from './Formulario'
 import { AcoesEncomenda } from './Linha'
+import { palavra } from '@/ui/texto'
 
 // Encomendas: o que sai depois — bolo para sábado, buquê para as 16h.
 //
@@ -95,7 +96,7 @@ export default async function Encomendas({
   // A bolinha do menu: as atrasadas, em vermelho. É o que precisa de alguém.
   const menu = MENU(slug).map((i) =>
     i.href === `/${slug}/encomendas` && resumo.atrasadas > 0
-      ? { ...i, aviso: { quantos: resumo.atrasadas, nivel: 'critico' as const, titulo: 'atrasada(s)' } }
+      ? { ...i, aviso: { quantos: resumo.atrasadas, nivel: 'critico' as const, titulo: palavra(resumo.atrasadas, 'atrasada', 'atrasadas') } }
       : i,
   )
 
@@ -267,7 +268,9 @@ export default async function Encomendas({
       itens={menu}
       ativo={`/${slug}/encomendas`}
       tema={tema}
-      titulo={onde.mostrarSeletor ? `Encomendas · ${onde.titulo}` : 'Encomendas'}
+      // Só o nome da tela: a loja já está escrita no seletor ao lado, e
+      // repetida no título ela empurrava os seletores para baixo no celular.
+      titulo="Encomendas"
       acao={onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} /> : undefined}
     >
       {/* ── o tamanho do dia ── */}

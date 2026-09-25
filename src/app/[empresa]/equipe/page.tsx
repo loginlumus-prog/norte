@@ -21,7 +21,6 @@ import { Cartao } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { moduloLigado } from '@/servidor/modulos'
 import { metasDoMes, mesChave, mesValido, nomeDoMes } from '@/servidor/metas'
-import Link from 'next/link'
 import { Equipe, type PessoaNaTela, type ConviteNaTela } from './Equipe'
 import { Metas } from './Metas'
 import { Desempenho, SetasDoMes } from './Desempenho'
@@ -99,6 +98,7 @@ export default async function TelaEquipe({
       unidadeId: a?.unidadeId ?? null,
       unidadeNome: a?.unidadeNome ?? null,
       souEu: p.id === sessao.usuarioId,
+      telefone: p.telefone ?? null,
     }
   })
 
@@ -135,16 +135,7 @@ export default async function TelaEquipe({
         <Secao
           titulo={`Metas e comissão · ${nomeDoMes(mes)}`}
           resumo="Quanto cada pessoa vendeu no mês, líquido de devolução, contra a meta dela — e a comissão que isso dá."
-          acao={
-            <span className="flex items-center gap-2 text-sm">
-              <Link href={`/${slug}/equipe?mes=${mesAnterior}`} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
-                ←
-              </Link>
-              <Link href={`/${slug}/equipe?mes=${mesSeguinte}`} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
-                →
-              </Link>
-            </span>
-          }
+          acao={<SetasDoMes slug={slug} anterior={mesAnterior} seguinte={mesSeguinte} />}
         >
           <div className="grid gap-2 sm:grid-cols-3">
             <Numero

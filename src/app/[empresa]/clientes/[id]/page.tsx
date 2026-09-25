@@ -1,3 +1,4 @@
+import { mostrarDiaDaColuna } from '@/servidor/dia'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
@@ -15,6 +16,7 @@ import { Numero, Secao, brl } from '@/ui/painel'
 import { BarrasMeses, BarrasH } from '@/ui/Graficos'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ClienteNaTela } from '../Editor'
+import { plural } from '@/ui/texto'
 
 // A ficha do cliente.
 //
@@ -58,7 +60,7 @@ export default async function FichaCliente({
       ? `https://wa.me/55${telefoneLimpo}?text=${encodeURIComponent(
           `Olá, ${primeiroNome}! Aqui é da ${empresa.nome}. Passando para lembrar ${
             vencidas.length === 1
-              ? `da parcela ${vencidas[0]!.numero}/${vencidas[0]!.de} de ${brl(vencidas[0]!.resta)}, que venceu em ${new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(vencidas[0]!.vencimento)}`
+              ? `da parcela ${vencidas[0]!.numero}/${vencidas[0]!.de} de ${brl(vencidas[0]!.resta)}, que venceu em ${mostrarDiaDaColuna(vencidas[0]!.vencimento)}`
               : `das ${vencidas.length} parcelas em atraso, que somam ${brl(vencidas.reduce((s, p) => s + p.resta, 0))}`
           }. Podemos acertar? Obrigado!`,
         )}`
@@ -109,19 +111,21 @@ export default async function FichaCliente({
         ) : undefined
       }
     >
-      <Secao titulo="O que ela já comprou">
+      {/* Título sem "ela" nem "ele": a ficha é de qualquer cliente, e o
+          sistema não sabe — nem precisa saber — o gênero de ninguém. */}
+      <Secao titulo="Resumo">
         <div className="grid gap-2 sm:grid-cols-3">
           <Numero
             rotulo="Gastou aqui"
             valor={brl(gastou)}
-            detalhe={`${cliente.vendas.length} compra(s)`}
+            detalhe={plural(cliente.vendas.length, 'compra', 'compras')}
             nivel={gastou > 0 ? 'bom' : undefined}
           />
           <Numero rotulo="Ticket médio" valor={brl(ticket)} detalhe="por compra" />
           <Numero
             rotulo="Última compra"
-            valor={dias === null ? '—' : `${dias}d`}
-            detalhe={dias === null ? 'nunca comprou' : 'atrás'}
+            valor={dias === null ? '—' : dias === 0 ? 'hoje' : `há ${plural(dias, 'dia', 'dias')}`}
+            detalhe={dias === null ? 'nunca comprou' : undefined}
             nivel={dias !== null && dias >= 60 ? 'atencao' : undefined}
           />
         </div>
@@ -160,7 +164,7 @@ export default async function FichaCliente({
                         <span className="numero font-mono font-bold text-tinta">{v.codigo}</span>
                         <span className="text-xs text-tinta-3">
                           {v.validade
-                            ? `${v.vencido ? 'venceu' : 'vale até'} ${new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(v.validade)}`
+                            ? `${v.vencido ? 'venceu' : 'vale até'} ${mostrarDiaDaColuna(v.validade, 'longo')}`
                             : 'sem validade'}
                         </span>
                       </span>
@@ -195,7 +199,7 @@ export default async function FichaCliente({
                           Venda {p.vendaNumero} · parcela {p.numero}/{p.de}
                         </span>
                         <span className="text-xs text-tinta-3">
-                          vence {new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(p.vencimento)}
+                          vence {mostrarDiaDaColuna(p.vencimento, 'curto')}
                         </span>
                       </span>
                       <span className="flex items-center gap-2">
@@ -265,7 +269,7 @@ export default async function FichaCliente({
         <Cartao titulo="Compras">
           {cliente.vendas.length === 0 ? (
             <Vazio>
-              Esta pessoa ainda não comprou nada. Escolha ela no balcão na próxima venda e o
+              Esta pessoa ainda não comprou nada. Escolha esta pessoa no balcão na próxima venda e o
               histórico começa aqui.
             </Vazio>
           ) : (
@@ -276,7 +280,9 @@ export default async function FichaCliente({
                   className="flex flex-wrap items-center justify-between gap-3 border-b border-borda-suave py-2.5 last:border-0"
                 >
                   <span className="flex min-w-0 flex-col">
-                    <span className="truncate text-sm text-tinta">
+                    {/* Até duas linhas no celular, em vez de uma cortada: é
+                        a lista do que a pessoa levou, e é ela que se procura. */}
+                    <span className="line-clamp-2 text-sm text-tinta sm:line-clamp-1">
                       {v.itens.map((i) => i.descricao).join(', ')}
                     </span>
                     <span className="text-xs text-tinta-3">

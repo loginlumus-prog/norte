@@ -5,10 +5,12 @@
 // `marcarPago()`, junto da unidade.
 
 import { revalidatePath } from 'next/cache'
-import { exigirSessao } from '@/servidor/pagina'
+import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { lancar, marcarPago } from '@/servidor/financeiro'
 import { alternarRecorrente, criarRecorrente, editarRecorrente, garantirRecorrentes } from '@/servidor/recorrentes'
 import { SemPermissao } from '@/servidor/permissao'
+import { lerDinheiro } from '@/servidor/dinheiro'
+import { colunaDoDia, diaEmSP } from '@/servidor/dia'
 import type { TipoLancamento } from '@prisma/client'
 
 export type EstadoLanc = { erro?: string; ok?: string }
@@ -20,34 +22,47 @@ export async function novoLancamento(
 ): Promise<EstadoLanc> {
   const s = await exigirSessao(slug)
 
-  const valor = Number(String(form.get('valor') ?? '').replace(',', '.'))
-  const descricao = String(form.get('descricao') ?? '')
-  const categoriaId = String(form.get('categoriaId') ?? '')
+  // "1.234,56" é mil duzentos e poucos. Só trocar a vírgula por ponto
+  // recusava o valor escrito do jeito brasileiro, e aceitava "1.234" como
+  // R$ 1,23. Ver `lerDinheiro`.
+  const valor = lerDinheiro(String(form.get('valor') ?? '')) ?? Number.NaN
+  const descricao = String(form.get('descricao') ?? '').slice(0, 200)
+  const categoriaId = String(form.get('categoriaId') ?? '').slice(0, 64)
   const vencimento = String(form.get('vencimento') ?? '')
+  const tipoBruto = String(form.get('tipo') ?? 'DESPESA')
+  const tipo: TipoLancamento | null = tipoBruto === 'DESPESA' || tipoBruto === 'RECEITA' ? tipoBruto : null
 
   if (!descricao.trim()) return { erro: 'Descreva o que é este lançamento.' }
   if (!categoriaId) return { erro: 'Escolha uma categoria.' }
-  if (!valor || valor <= 0) return { erro: 'O valor precisa ser maior que zero.' }
-  if (!vencimento) return { erro: 'Informe a data de vencimento.' }
+  if (!tipo) return { erro: 'Escolha se é despesa ou receita.' }
+  if (Number.isNaN(valor)) return { erro: 'O valor não é um número. Escreva assim: 1.234,56.' }
+  if (valor <= 0) return { erro: 'O valor precisa ser maior que zero.' }
+  // A data vem do campo `date` (AAAA-MM-DD). Qualquer outra coisa virava
+  // "Invalid Date" e o erro cru do banco aparecia na tela.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento) || Number.isNaN(colunaDoDia(vencimento).getTime())) {
+    return { erro: 'Informe a data de vencimento.' }
+  }
 
   const jaPago = form.get('jaPago') === 'on'
 
   try {
     await lancar(s, {
       categoriaId,
-      contaId: String(form.get('contaId') ?? '') || null,
-      unidadeId: String(form.get('unidadeId') ?? '') || null,
-      tipo: (String(form.get('tipo') ?? 'DESPESA') as TipoLancamento),
+      contaId: String(form.get('contaId') ?? '').slice(0, 64) || null,
+      unidadeId: String(form.get('unidadeId') ?? '').slice(0, 64) || null,
+      tipo,
       descricao,
       valor,
-      // 'T12:00' evita o pulo de dia por fuso: a data digitada é a data gravada.
-      vencimento: new Date(`${vencimento}T12:00:00`),
-      pagoEm: jaPago ? new Date(`${vencimento}T12:00:00`) : null,
-      fornecedor: String(form.get('fornecedor') ?? ''),
-      documento: String(form.get('documento') ?? ''),
+      // Coluna `date`: grava o DIA digitado, à meia-noite UTC, que é como o
+      // banco o devolve — ver `servidor/dia.ts`.
+      vencimento: colunaDoDia(vencimento),
+      pagoEm: jaPago ? colunaDoDia(vencimento) : null,
+      fornecedor: String(form.get('fornecedor') ?? '').slice(0, 160),
+      documento: String(form.get('documento') ?? '').slice(0, 80),
     })
   } catch (e) {
-    return { erro: e instanceof Error ? e.message : 'Não deu para lançar.' }
+    if (e instanceof SemPermissao) return { erro: 'Você não pode lançar nesta loja.' }
+    return { erro: recadoDoErro(e, 'Não deu para lançar.') }
   }
 
   revalidatePath(`/${slug}/financeiro`)
@@ -56,7 +71,9 @@ export async function novoLancamento(
 
 export async function pagar(slug: string, id: string) {
   const s = await exigirSessao(slug)
-  await marcarPago(s, id, new Date())
+  // Coluna `date`: o DIA de hoje em São Paulo. `new Date()` depois das 21h já
+  // é amanhã em UTC — e a conta paga no dia 30 caía no mês seguinte.
+  await marcarPago(s, id, colunaDoDia(diaEmSP()))
   revalidatePath(`/${slug}/financeiro`)
 }
 
@@ -75,8 +92,7 @@ export async function salvarRecorrenteAcao(
   const id = String(form.get('id') ?? '')
   if (id && !/^[\w-]{1,64}$/.test(id)) return { erro: 'Conta inválida.', vez }
 
-  const bruto = String(form.get('valor') ?? '').trim()
-  const valor = Number(bruto.includes(',') ? bruto.replace(/\./g, '').replace(',', '.') : bruto)
+  const valor = lerDinheiro(String(form.get('valor') ?? '')) ?? Number.NaN
   const dados = {
     descricao: String(form.get('descricao') ?? '').slice(0, 200),
     categoriaId: String(form.get('categoriaId') ?? '').slice(0, 64),

@@ -112,7 +112,7 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Trocar entre o modo simples e o avançado',
         passos: [
-          'Na barra lateral, embaixo, a chave "Simples | Avançado". No painel também há o atalho "Ver o painel completo" e, no avançado, "Voltar ao simples".',
+          'No alto de toda tela, no cabeçalho, a chave "Simples | Avançado". No painel também há o atalho "Ver o painel completo" e, no avançado, "Voltar ao simples".',
           'O modo é do APARELHO, não da pessoa: o computador do balcão fica no simples para quem sentar; o notebook do dono fica no avançado.',
           'No simples, o menu esconde as telas de análise (Caixa, Preços, Análise, Auditoria) e o balcão vende por botões grandes. Nada é tirado de permissão: a tela aberta por link continua abrindo.',
           'A tela de entrar segue o mesmo modo: no simples é só o formulário.',
@@ -193,16 +193,30 @@ export const GUIA: Entrada[] = [
     titulo: 'Balcão',
     caminho: '/balcao',
     oQueE:
-      'Onde a venda acontece. Precisa de caixa aberto na loja. Busca por etiqueta, código de barras ou nome — ou a grade de botões, para quem não etiqueta —, quantidade antes do item, cliente e vendedor, desconto, pontos, e o pagamento sempre visível ao lado: Dinheiro, Pix, Débito, Crédito, crediário em parcelas e vale de troca. O troco aparece grande antes de confirmar.',
+      'Onde a venda acontece. Precisa de caixa aberto na loja, e só mostra o que ESTA loja vende. Tem duas caras, conforme o modo do aparelho: no simples, cartões grandes de produto à esquerda e o pedido à direita, com "Concluir venda"; no avançado, a busca por etiqueta, código ou nome e a tabela do pedido. A venda é a mesma nos dois: cliente e vendedor, desconto, pontos, e o pagamento em Dinheiro, Pix, Débito, Crédito, crediário em parcelas e vale de troca. O troco aparece grande antes de confirmar.',
     comoFazer: [
       {
-        titulo: 'Lançar itens',
+        titulo: 'Vender no modo simples',
+        passos: [
+          'Com o aparelho no modo simples, o balcão mostra os produtos em cartões, com as categorias em abas no alto ("Todos" primeiro). A busca e o leitor continuam valendo: bipe a etiqueta ou digite o nome.',
+          'Toque no cartão para pôr no pedido; tocar de novo soma mais um. A bolinha no cartão diz quantos já estão no pedido. "Esta acabou" não lança.',
+          'Produto com grade (tamanho, cor, sabor) abre a folha para escolher a opção. Produto em quilo pergunta "Quanto pesou?".',
+          'No pedido, − e + mudam a quantidade, e ✕ tira o item. "Limpar" zera o pedido — toque de novo para confirmar.',
+          'Em "Como vai pagar?", toque na forma. Em dinheiro, digite o recebido ou toque numa nota pronta ("Exato", 50, 100…). "Concluir venda" (ou F10) mostra "Venda concluída", com o troco para devolver em destaque.',
+          'Cliente (Alt+N), quem vendeu (Alt+F), desconto na venda, item avulso e observação ficam em "Mais opções" — e o botão mostra quantas estão valendo, para ninguém esquecer um desconto ligado.',
+          'No celular ou tablet em pé, a barra de baixo mostra itens e total: "Ver pedido e pagar" sobe o pedido. "Tela cheia" tira o menu e o cabeçalho do caminho (o mesmo botão sai dela) e fica lembrado neste aparelho.',
+        ],
+        capacidade: 'venda.criar',
+      },
+      {
+        titulo: 'Lançar itens (modo avançado)',
         passos: [
           'O cursor já está na busca: bipe a etiqueta, ou digite 2 letras ou mais do nome, da marca ou do código.',
           'Enter lança o primeiro resultado; clique lança outro da lista. Código lido pelo leitor vem sempre em primeiro.',
           'Para vários iguais, digite a quantidade no campo × à esquerda ANTES de lançar. "×20" vale só para o próximo item e volta a 1.',
           'Item em quilo: a quantidade é o peso. Lançar de novo o mesmo item substitui o peso — não soma.',
           'Lançou mais do que tem no estoque? A tela avisa na hora, e o servidor recusa de novo ao fechar.',
+          'Bipou um produto que esta loja não vende? A tela avisa, e ele não entra na venda.',
           'Tirar um item: o ✕ na linha. "limpar venda" zera tudo.',
         ],
         capacidade: 'venda.criar',
@@ -226,6 +240,8 @@ export const GUIA: Entrada[] = [
           'Desconto em reais no campo "Desconto". Acima do teto da empresa, só quem tem a permissão de desconto acima do teto consegue fechar.',
           'Crédito cobra o preço "no cartão"; as outras formas, o "à vista". Com formas misturadas vale a tabela mais cara, e a escada dos três totais aparece quando os preços diferem.',
           'Aperte F10 ou "Fechar venda". Sai o recado com o número da venda, os pontos que o cliente ganhou e o link "imprimir comprovante".',
+          'Atalhos: F10 fecha (ou leva às formas, se ainda falta pagar), Ctrl+P volta à busca, Alt+N abre o cliente, Alt+F o vendedor; na busca, Enter lança o primeiro resultado e Esc limpa.',
+          'No plano Grátis, a venda de número 301 do mês é recusada, com o recado do limite: o plano vai até 300 vendas concluídas por mês (a cancelada não conta), e o limite solta no dia 1º.',
         ],
         capacidade: 'venda.criar',
       },
@@ -258,21 +274,11 @@ export const GUIA: Entrada[] = [
           'Vale vencido (90 dias) ou já usado é recusado. O mesmo vale não entra duas vezes na mesma venda.',
         ],
       },
-      {
-        titulo: 'Atalhos de teclado',
-        passos: [
-          'F10: fecha a venda. Se ainda falta pagamento, leva o foco para as formas.',
-          'Ctrl+P: volta para a busca de produto (no balcão, P é de produto).',
-          'Alt+N: abre a busca de cliente.',
-          'Alt+F: vai para o campo Vendedor.',
-          'Enter na busca lança o primeiro resultado; Esc limpa a busca.',
-        ],
-      },
     ],
     perguntas: [
       {
         p: 'Aparece "caixa fechado" e não consigo vender. E agora?',
-        r: 'Toda venda entra num caixa aberto. Quem opera o caixa abre na própria tela do Balcão, informando quanto tem na gaveta. Quem não pode operar o caixa precisa chamar o gerente.',
+        r: 'Toda venda entra no caixa aberto DESTA loja. Quem opera o caixa abre na própria tela do Balcão, informando quanto tem na gaveta. Quem não pode operar o caixa precisa chamar o gerente.',
       },
       {
         p: 'A página recarregou no meio da venda. Perdi tudo?',
@@ -317,6 +323,7 @@ export const GUIA: Entrada[] = [
           'Escolha para onde vai o valor: Vale de troca (qualquer pessoa do balcão), Dinheiro da gaveta ou Estorno por fora (só quem pode cancelar venda).',
           'Escreva o motivo (obrigatório) e "Registrar devolução".',
           'O valor devolvido é o que a pessoa PAGOU pela peça, já com o desconto da venda. O estoque volta, e os pontos voltam na proporção.',
+          'Venda no crediário com parcela em aberto: o valor primeiro abate o que o cliente ainda deve (da última parcela para a primeira). Só o que sobrar vai para o vale, a gaveta ou o estorno.',
           'Com vale, anote o código VT-… para o cliente: ele paga qualquer venda no balcão por 90 dias.',
         ],
         capacidade: 'venda.criar',
@@ -326,8 +333,9 @@ export const GUIA: Entrada[] = [
         passos: [
           'Na ficha da venda, no fim, "Cancelar esta venda".',
           'Escreva o motivo (mínimo 3 letras) e "Confirmar cancelamento".',
-          'O estoque volta e os pontos do cliente voltam. O dinheiro NÃO volta sozinho: Pix ou cartão você devolve por fora, e o motivo é o que explica isso no livro.',
+          'O estoque volta, os pontos do cliente voltam, o vale usado na venda volta a valer e as parcelas do crediário deixam de existir. O dinheiro NÃO volta sozinho: Pix ou cartão você devolve por fora, e o motivo é o que explica isso no livro.',
           'Cancelar é para o engano; devolver é para o dia seguinte. Cancelar desfaz a venda inteira.',
+          'Venda que já teve devolução, ou venda no crediário com parcela já recebida, não se cancela: devolva o que falta.',
         ],
         capacidade: 'venda.cancelar',
       },
@@ -353,7 +361,7 @@ export const GUIA: Entrada[] = [
     perguntas: [
       {
         p: 'Devolver em dinheiro exige o quê?',
-        r: 'Caixa aberto na loja (o dinheiro sai como sangria, para o fechamento bater) e a permissão de cancelar venda. Troca por vale, qualquer pessoa do balcão faz.',
+        r: 'Caixa aberto na loja (o dinheiro sai como sangria, para o fechamento bater) e a permissão de cancelar venda. Troca por vale, qualquer pessoa do balcão faz. Se a venda foi no crediário e ainda tem parcela em aberto, o valor abate a dívida antes — e pode não sair dinheiro nenhum.',
       },
       {
         p: 'A venda com devolução continua "concluída"?',
@@ -599,6 +607,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Só aparece para quem tem mais de uma loja: na ficha do produto, o bloco "Vendido em".',
           'Tudo marcado = vendido em todas, inclusive nas lojas que abrirem depois.',
+          'No produto NOVO, a categoria sugere as lojas: categoria do ramo sorveteria (Picolé, Açaí) já vem marcada só na sorveteria. É sugestão — marque e desmarque antes de salvar.',
           'Desmarque a loja que NÃO vende: a sorveteria não mostra camisa no balcão, a loja de roupa não mostra picolé.',
           'A regra vale no servidor também: produto de outra loja é recusado na venda mesmo que alguém bipe o código de cabeça.',
           '"Salvar". A lista de Lojas mostra quantos produtos são só de cada uma.',
@@ -679,6 +688,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Dar entrada na mercadoria que chegou',
         passos: [
           '"+ Dar entrada". A entrada é sempre EM uma loja: com mais de uma, escolha-a no alto — a tela avisa em qual vai entrar.',
+          'Só entra na loja o que ela vende ("Vendido em", na ficha do produto). Depósito recebe qualquer produto: ele guarda o que as lojas vão vender.',
           'Bipe a etiqueta ou digite o nome; o item entra na lista. Ajuste "Quantas" e "Custo un." — o custo da peça passa a ser este.',
           'Fornecedor e número da nota são opcionais, mas é agora que a informação está fresca.',
           'Marque "Lançar a conta do fornecedor" para criar a conta a pagar com categoria, vencimento e "Já paguei" (exige permissão de lançar no financeiro).',
@@ -692,7 +702,7 @@ export const GUIA: Entrada[] = [
           'Escolha uma loja no alto — no consolidado a coluna "Tem" é a soma, e corrigir não aparece.',
           'Na linha do item, "corrigir": digite o que você CONTOU na prateleira, não a diferença.',
           'Motivo obrigatório ("quebra", "contagem do mês"). A diferença aparece calculada ao lado.',
-          '"Corrigir" grava um movimento de balanço e o novo saldo.',
+          '"Corrigir" grava um movimento de balanço e o novo saldo — e uma linha no livro de Auditoria, com o saldo de antes e o de depois.',
         ],
         capacidade: 'estoque.ajustar',
       },
@@ -700,7 +710,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Transferir entre lojas',
         passos: [
           'Com o módulo Mais de uma unidade e uma loja escolhida, "transferir" aparece na linha do item.',
-          'Quantidade, loja de destino e motivo (opcional).',
+          'Quantidade, loja de destino e motivo (opcional). O destino precisa vender o produto — ou ser um depósito — e estar aberto.',
           '"Transferir": sai como transferência aqui e entra como entrada lá, na mesma operação.',
           'Você precisa poder ajustar o estoque nas duas lojas.',
         ],
@@ -823,7 +833,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Cadastrar um cliente',
         passos: [
           '"+ Novo cliente" — ou no próprio Balcão, com nome e WhatsApp, sem sair da venda.',
-          'Só o nome é obrigatório. O WhatsApp é o que mais importa: é por ele que a cobrança sai e o assistente fala, e é ele que impede a mesma pessoa de virar quatro cadastros.',
+          'Só o nome é obrigatório. O WhatsApp é o que mais importa: é por ele que sai a mensagem de cobrança (você manda, pelo botão da ficha) e que o assistente fala, e é ele que impede a mesma pessoa de virar quatro cadastros.',
           'CPF só para nota fiscal e crediário; o sistema confere os dígitos. Endereço só se você entrega ou emite nota.',
           'Telefone já usado avisa quem já o tem e leva à ficha dela.',
           '"Observações" é o que a equipe precisa lembrar — o assistente também lê.',
@@ -899,7 +909,7 @@ export const GUIA: Entrada[] = [
           '"+ Convidar": e-mail, papel e loja (ou todas as lojas).',
           '"Criar convite". O link aparece UMA vez — copie agora e mande. O sistema guarda só o resumo dele; nem o suporte recupera.',
           'O link vale 7 dias e serve uma vez. A pessoa abre, escolhe a senha e entra já com o papel que você deu.',
-          'Você só concede papéis que pode: o gerente convida balcão; só o dono cria dono, gerente, financeiro e contador.',
+          'Você só concede papéis que pode: o gerente convida balcão, na loja dele; só o dono cria dono, gerente, financeiro e contador, e só quem tem todas as lojas convida para "todas as lojas".',
           'Cadastrar gente é de graça em todo plano. O plano limita quantas ficam dentro ao mesmo tempo.',
         ],
         capacidade: 'equipe.gerir',
@@ -910,6 +920,7 @@ export const GUIA: Entrada[] = [
           'Na linha da pessoa, escolha o papel novo (ou "Sem acesso"). Ela precisará entrar de novo.',
           '"Tirar acesso" desativa a conta: ela sai do sistema na próxima tela que abrir. "Devolver" reativa.',
           'Ninguém muda o próprio acesso, e a empresa nunca fica sem dono — o sistema recusa.',
+          'Mexer em alguém exige poder dar o acesso que ele tem: o gerente troca, tira e devolve o acesso do balcão da loja dele — não o de outro gerente, nem o da dona.',
           'Convite pendente que não serve mais: "Cancelar" em "Convites esperando".',
         ],
         capacidade: 'equipe.gerir',
@@ -929,6 +940,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Com o módulo Metas e comissão ligado, a seção "Metas e comissão" abre no mês atual; as setas trocam o mês.',
           'Na linha da pessoa, digite a meta (R$) e a comissão (%) e "Salvar". A comissão vai de 0 a 50%.',
+          'A própria meta ninguém define — é outra pessoa que define a sua. O gerente define a de quem ele poderia dar o acesso: gente da loja dele, e não outro gerente nem a dona.',
           'Mês sem linha herda a do mês anterior — a tela marca "meta herdada".',
           'O vendido é líquido de devolução. A comissão é a porcentagem sobre o líquido.',
           'A comissão não vira lançamento sozinha: no fechamento da folha, lance em Financeiro na categoria "Comissão".',
@@ -1413,7 +1425,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Entender vagas e cadastro',
         passos: [
           'Cadastrar gente é de graça em todo plano.',
-          'O que se paga é quanta gente fica DENTRO ao mesmo tempo: Grátis 1, Balcão 3 (+R$ 40 por vaga extra), Assistente 5 (+R$ 40), Direção e Corporativo sem limite.',
+          'O que se paga é quanta gente fica DENTRO ao mesmo tempo: Grátis 1, Balcão 3, Assistente 5, Direção e Corporativo sem limite. Plano cheio, a próxima pessoa espera uma vaga soltar — ainda não dá para comprar vaga avulsa pela tela; o caminho é subir de plano.',
           'Quem para 10 minutos sem mexer solta a vaga sozinho. A tela de entrar mostra quem está ocupando e há quanto tempo cada um parou.',
           'Cobrar por vaga, e não por conta, é o que evita senha emprestada — e senha emprestada faz o livro de auditoria mentir.',
         ],
@@ -1440,8 +1452,8 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'O que cada plano abre',
         passos: [
-          'Grátis (R$ 0): 1 loja, 1 pessoa dentro, 300 vendas por mês. Balcão e caixa, produto com grade, estoque, cliente, 1 quadro de tarefas, relatório simples, auditoria.',
-          'Balcão (R$ 100/mês): até 3 lojas, 3 dentro. Tudo do Grátis mais encomenda, programa de pontos, financeiro com DRE, contas a pagar, fechamento de mês, preços (margem e markup), vários quadros com responsável, prazo e prioridade, estoque e caixa por loja.',
+          'Grátis (R$ 0): 1 loja, 1 pessoa dentro, 300 vendas por mês (a partir da 301ª o balcão recusa até o mês virar). Balcão e caixa, produto com grade, estoque, cliente, financeiro com DRE, contas a pagar e recorrentes, fechamento de mês, 1 quadro de tarefas, relatório simples, auditoria.',
+          'Balcão (R$ 100/mês): até 3 lojas, 3 dentro. Tudo do Grátis mais encomenda, programa de pontos, preços (margem e markup), vários quadros com responsável, prazo e prioridade, estoque e caixa por loja.',
           'Assistente (R$ 350/mês): até 5 lojas, 5 dentro. Tudo do Balcão mais o agente no WhatsApp com R$ 100 de crédito de IA, metas e comissão, desempenho básico, preço sugerido, linha do tempo e modelos de quadro.',
           'Direção (R$ 1.500/mês): lojas e pessoas sem limite. Tudo do Assistente mais crediário, análise (lojas, ABC, dinheiro parado, escala), previsão de ruptura, desempenho completo, quadro da rede, R$ 300 de crédito.',
           'Corporativo: sob consulta — a operação inteira com a gente junto, crédito no contrato.',
@@ -1486,6 +1498,7 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Programa de pontos',
         passos: [
+          'É do plano Balcão para cima: no Grátis, ligar é recusado.',
           'Ligue "Cliente junta pontos comprando".',
           'Pontos por R$ 1, quanto vale 1 ponto (em reais), e o mínimo para usar.',
           'A tela mostra na hora quanto isso devolve: em % e em reais sobre o faturamento do último mês. Acima de 5% costuma passar da margem de roupa; acima de 50% o sistema recusa.',
@@ -1598,13 +1611,14 @@ export const GUIA: Entrada[] = [
     titulo: 'Entrar, sair e a tela trancada',
     caminho: '/entrar',
     oQueE:
-      'Cada empresa entra pelo próprio endereço, com e-mail e senha. O plano limita quantas pessoas ficam dentro ao mesmo tempo, e a vaga solta com 10 minutos parada. Trinta minutos sem mexer, a tela tranca e pede a senha de novo — sem perder a venda em andamento. Sair e o tema claro/escuro ficam no rodapé do menu.',
+      'Cada empresa entra pelo próprio endereço, com e-mail e senha. O plano limita quantas pessoas ficam dentro ao mesmo tempo, e a vaga solta com 10 minutos parada. Trinta minutos sem mexer, a tela tranca e pede a senha de novo — sem perder a venda em andamento. Quem só vende entra direto no Balcão; os outros, no Painel. "Sair" fica no rodapé do menu; o tema claro/escuro, no alto da tela.',
     comoFazer: [
       {
         titulo: 'Entrar',
         passos: [
           'Abra o endereço da empresa (/nome-da-empresa) e digite e-mail e senha.',
           'E-mail ou senha errados dão o mesmo recado, de propósito. Errou muitas vezes seguidas, espere alguns minutos.',
+          'Quem só vende (sem acesso ao painel) cai direto no Balcão; os outros, no Painel.',
           'A sessão dura 12 horas, ou até alguém mexer no seu acesso (trocar papel, tirar acesso): aí a sessão morre na próxima tela.',
         ],
       },
@@ -1629,7 +1643,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Sair e trocar o tema',
         passos: [
           '"Sair" fica no rodapé do menu — a barra lateral no computador, o menu ☰ no celular. Sair devolve a vaga na hora.',
-          'Tema: ☀ claro, ☾ escuro, ⌘ do sistema, também no rodapé do menu.',
+          'Tema: ☀ claro ou ☾ escuro, na chave do alto da tela, ao lado de "Simples | Avançado". O padrão é o claro.',
           'A escolha vale por um ano neste navegador, e a página já abre na cor certa.',
         ],
       },
@@ -1645,7 +1659,7 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'O sistema abre claro de dia e escuro de noite sozinho?',
-        r: 'Com o tema "do sistema" (⌘), ele segue o que o seu computador ou celular manda. Claro e escuro fixos ignoram isso.',
+        r: 'Não. O tema é sempre uma escolha: claro (o padrão) ou escuro, na chave do alto da tela. Não segue o computador nem o celular.',
       },
     ],
     palavras: ['login', 'logar', 'senha', 'sair', 'logout', 'tela trancada', 'trancou', 'bloqueou', 'destrancar', 'tema', 'escuro', 'claro', 'modo noturno', 'sessão', 'vaga', 'plano cheio', 'esqueci a senha', 'acesso'],

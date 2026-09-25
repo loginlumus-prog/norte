@@ -64,8 +64,22 @@ describe('quantas lojas cabem', () => {
     expect(r.pode).toBe(false)
     if (!r.pode) {
       expect(r.motivo).toMatch(/3 unidades/)
-      expect(r.sugestao).toBe('REDE')
+      // A quarta loja cabe no Assistente (até cinco) — não precisa da Direção.
+      expect(r.sugestao).toBe('BALCAO_AGENTE')
     }
+  })
+
+  // O caminho é o MENOR plano que cabe. Mandar quem quer a segunda loja no
+  // Grátis para a Direção (R$ 1.500) era sugerir o topo da tabela quando o
+  // Balcão (R$ 100) atende três lojas.
+  it('a sugestão é o menor plano em que a loja nova cabe', () => {
+    const doGratis = podeCriarUnidade('GRATIS', 1)
+    expect(doGratis.pode).toBe(false)
+    if (!doGratis.pode) expect(doGratis.sugestao).toBe('BALCAO')
+
+    const doAssistente = podeCriarUnidade('BALCAO_AGENTE', 5)
+    expect(doAssistente.pode).toBe(false)
+    if (!doAssistente.pode) expect(doAssistente.sugestao).toBe('REDE')
   })
 })
 
@@ -324,15 +338,17 @@ describe('a tabela de comparação não pode divergir dos planos', () => {
     }
   })
 
-  it('o número de vagas na tabela é a cota do plano, com o preço da extra', () => {
+  it('o número de vagas na tabela é a cota do plano, sem vender vaga extra', () => {
+    // A vaga extra não se compra hoje (`ocuparVaga` só olha a cota), então a
+    // tabela não pode anunciar o preço dela.
     const r = acha('Dentro ao mesmo tempo')
     for (const p of ORDEM) {
       const l = PLANOS[p]
       const dito = r.detalhe?.[p] ?? ''
       if (l.vagas === null) expect(dito, p).toBe('à vontade')
       else {
-        expect(dito, p).toContain(String(l.vagas))
-        if (l.porVagaExtra) expect(dito, p).toContain(String(l.porVagaExtra))
+        expect(dito, p).toBe(String(l.vagas))
+        expect(dito, p).not.toContain('R$')
       }
     }
   })

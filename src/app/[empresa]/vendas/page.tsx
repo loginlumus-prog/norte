@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
+import { lerModo } from '@/servidor/modo'
 import { escolherUnidade } from '@/servidor/unidade'
 import { listarVendas } from '@/servidor/venda'
 import { janela, lerPeriodo } from '@/servidor/periodo'
@@ -49,6 +50,11 @@ export default async function Vendas({
   const { unidade: pedida, periodo: pedido, q, situacao: sit, vendedor: vendedorPedido, forma: formaPedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'venda.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
+  // No simples a lista responde "o que vendi e quanto": número, hora,
+  // cliente e total. Itens, forma de pagamento, quem vendeu, os filtros por
+  // pessoa e a planilha são do avançado — e sem elas a tabela cabe inteira
+  // num telefone, sem rolar de lado.
+  const simples = (await lerModo()) === 'simples'
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'venda.ver')
   const j = janela(lerPeriodo(pedido))
@@ -93,13 +99,22 @@ export default async function Vendas({
   }
   const linkExportar = link({}).replace(`/${slug}/vendas?`, `/${slug}/vendas/exportar?`)
 
-  const colunas = [
+  const todasAsColunas = [
     {
       chave: 'n',
       titulo: 'Nº',
-      largura: '5rem',
+      largura: '3.5rem',
+      // O número já abre a venda. O "abrir" mora na última coluna, e no
+      // celular a última coluna fica fora da tela: sem isto, abrir uma venda
+      // pelo telefone era rolar a tabela de lado primeiro.
       celula: (v: (typeof vendas)[number]) => (
-        <span className="numero font-semibold text-tinta">{v.numero}</span>
+        <Link
+          href={`/${slug}/vendas/${v.id}`}
+          className="numero font-semibold text-marca underline-offset-2 hover:underline"
+          aria-label={`Abrir a venda ${v.numero}`}
+        >
+          {v.numero}
+        </Link>
       ),
     },
     {
@@ -107,14 +122,14 @@ export default async function Vendas({
       titulo: 'Quando',
       largura: '8rem',
       celula: (v: (typeof vendas)[number]) => (
-        <span className="numero text-tinta-2">{quando(v.criadaEm)}</span>
+        <span className="numero whitespace-nowrap text-tinta-2">{quando(v.criadaEm)}</span>
       ),
     },
     {
       chave: 'cliente',
       titulo: 'Cliente',
       celula: (v: (typeof vendas)[number]) => (
-        <span className={v.cliente ? 'text-tinta' : 'text-tinta-3'}>{v.cliente ?? 'sem cadastro'}</span>
+        <span className={v.cliente ? 'text-tinta' : 'whitespace-nowrap text-tinta-3'}>{v.cliente ?? 'sem cadastro'}</span>
       ),
     },
     {
@@ -170,6 +185,8 @@ export default async function Vendas({
       ),
     },
   ]
+  const SO_NO_AVANCADO = ['itens', 'forma', 'quem', 'abrir']
+  const colunas = simples ? todasAsColunas.filter((c) => !SO_NO_AVANCADO.includes(c.chave)) : todasAsColunas
 
   return (
     <Estrutura
@@ -180,16 +197,20 @@ export default async function Vendas({
       tema={tema}
       titulo="Vendas"
       acao={
-        <span className="flex flex-wrap items-center gap-2">
-          {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+        // Período antes da loja, como no Painel, no Caixa e na Auditoria: a
+        // mesma chave no mesmo lugar em toda tela, senão a mão erra o clique.
+        <span className="flex flex-wrap items-center justify-end gap-2">
           <SeletorPeriodo atual={j.chave} />
-          <a
-            href={linkExportar}
-            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
-            title="Baixar em planilha: uma linha por item vendido, com os filtros desta tela"
-          >
-            Planilha
-          </a>
+          {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+          {!simples && (
+            <a
+              href={linkExportar}
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+              title="Baixar em planilha: uma linha por item vendido, com os filtros desta tela"
+            >
+              Planilha
+            </a>
+          )}
         </span>
       }
     >
@@ -220,7 +241,7 @@ export default async function Vendas({
           defaultValue={q ?? ''}
           placeholder="Número da venda ou nome do cliente"
           aria-label="Buscar venda"
-          className="min-w-[16rem] flex-1 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
+          className="min-w-[14rem] flex-1 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
         />
         <button
           type="submit"
@@ -237,34 +258,30 @@ export default async function Vendas({
 
       <Tira
         itens={[
-          { rotulo: 'concluídas', quantos: concluidas.length, nivel: 'bom' },
-          { rotulo: 'canceladas', quantos: canceladas.length, nivel: canceladas.length ? 'critico' : 'neutro' },
+          { rotulo: 'concluídas', um: 'concluída', quantos: concluidas.length, nivel: 'bom' },
+          { rotulo: 'canceladas', um: 'cancelada', quantos: canceladas.length, nivel: canceladas.length ? 'critico' : 'neutro' },
         ]}
       />
 
       {/* Quem vendeu e como receberam: os dois recortes que a pergunta do dia
           usa ("o que a Maria vendeu no sábado", "quanto entrou no Pix"). */}
-      {(vendedores.length > 1 || formasUsadas.length > 1 || vendedorId || forma) && (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          {(vendedores.length > 1 || vendedorId) && (
-            <span className="flex items-center gap-1 text-xs text-tinta-3">
-              vendeu:
-              <Fichas
-                opcoes={[{ valor: null, rotulo: 'qualquer pessoa' }, ...vendedores.map(([id, nome]) => ({ valor: id, rotulo: nome }))]}
-                atual={vendedorId}
-                linkDe={(v) => link({ vendedor: v })}
-              />
-            </span>
+      {((!simples && (vendedores.length > 1 || formasUsadas.length > 1)) || vendedorId || forma) && (
+        <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
+          {((!simples && vendedores.length > 1) || vendedorId) && (
+            <Fichas
+              rotulo="Quem vendeu"
+              opcoes={[{ valor: null, rotulo: 'qualquer pessoa' }, ...vendedores.map(([id, nome]) => ({ valor: id, rotulo: nome }))]}
+              atual={vendedorId}
+              linkDe={(v) => link({ vendedor: v })}
+            />
           )}
-          {(formasUsadas.length > 1 || forma) && (
-            <span className="flex items-center gap-1 text-xs text-tinta-3">
-              pagamento:
-              <Fichas
-                opcoes={[{ valor: null, rotulo: 'qualquer' }, ...formasUsadas.map((f) => ({ valor: f, rotulo: FORMA[f] ?? f }))]}
-                atual={forma}
-                linkDe={(v) => link({ forma: v })}
-              />
-            </span>
+          {((!simples && formasUsadas.length > 1) || forma) && (
+            <Fichas
+              rotulo="Pagamento"
+              opcoes={[{ valor: null, rotulo: 'qualquer' }, ...formasUsadas.map((f) => ({ valor: f, rotulo: FORMA[f] ?? f }))]}
+              atual={forma}
+              linkDe={(v) => link({ forma: v })}
+            />
           )}
         </div>
       )}
@@ -283,9 +300,14 @@ export default async function Vendas({
               <Link
                 key={rotulo}
                 href={link({ situacao: valor })}
+                aria-current={situacao === valor ? 'true' : undefined}
                 className={
-                  'rounded-full px-2.5 py-1 font-semibold ' +
-                  (situacao === valor ? 'bg-tinta text-superficie' : 'text-tinta-2 hover:bg-superficie-2')
+                  // O mesmo desenho das `Fichas` (ui/Busca.tsx): um só jeito
+                  // de dizer "escolhido" nos filtros do sistema inteiro.
+                  'rounded-full border px-3 py-1.5 font-semibold ' +
+                  (situacao === valor
+                    ? 'border-marca/40 bg-marca-suave text-marca'
+                    : 'border-transparent text-tinta-2 hover:bg-superficie-2 hover:text-tinta')
                 }
               >
                 {rotulo}

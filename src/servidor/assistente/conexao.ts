@@ -10,7 +10,7 @@ import type { TipoGatilho } from '@prisma/client'
 import { comoOrg } from '../banco'
 import { exigir, type Sessao } from '../permissao'
 import { temChaveIA } from '../ia'
-import { temZapi, canalPadrao } from './canal'
+import { zapiDa, canalPara } from './canal'
 import { enderecoDoWebhook, temSegredoWebhook } from './webhook'
 import { abrirConversa, enviarEGravar } from './contexto'
 import { chaveTelefone, mascarar } from './telefone'
@@ -35,17 +35,18 @@ export type EstadoConexao = {
 
 export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
   exigir(sessao, 'agente.configurar')
-  const { agente, eu } = await comoOrg(sessao.orgId, async (db) => {
+  const { agente, eu, slug } = await comoOrg(sessao.orgId, async (db) => {
     const agente = await db.agente.findUnique({
       where: { orgId: sessao.orgId },
       select: { canal: true, ativo: true },
     })
     const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { telefone: true } })
-    return { agente, eu }
+    const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { slug: true } })
+    return { agente, eu, slug: org.slug }
   })
 
   const chaveIA = temChaveIA()
-  const canalReal = temZapi()
+  const canalReal = zapiDa(slug)
   const segredoWebhook = temSegredoWebhook()
   const conectado = agente?.canal === 'ZAPI'
   const situacao: EstadoConexao['situacao'] = !agente
@@ -153,17 +154,18 @@ export async function desconectarCanal(sessao: Sessao) {
  */
 export async function mensagemDeTeste(sessao: Sessao): Promise<{ ok: true; recado: string } | { ok: false; erro: string }> {
   exigir(sessao, 'agente.configurar')
-  const { agente, eu } = await comoOrg(sessao.orgId, async (db) => {
+  const { agente, eu, slug } = await comoOrg(sessao.orgId, async (db) => {
     const agente = await db.agente.findUnique({ where: { orgId: sessao.orgId } })
     const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { telefone: true, nome: true } })
-    return { agente, eu }
+    const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { slug: true } })
+    return { agente, eu, slug: org.slug }
   })
   if (!agente) return { ok: false, erro: 'Crie o assistente antes de testar.' }
   if (!eu?.telefone || !chaveTelefone(eu.telefone)) {
     return { ok: false, erro: 'Cadastre o seu telefone (com DDD) na tela Equipe para receber o teste.' }
   }
 
-  const canal = canalPadrao()
+  const canal = canalPara(slug)
   const conversa = await abrirConversa(sessao.orgId, agente.id, eu.telefone, { nome: eu.nome, daEquipe: true })
   const s = await enviarEGravar(
     canal,
@@ -233,6 +235,20 @@ export async function salvarGatilhos(
         update: { ativo: g.ativo, dias },
       })
     }
+    // Ligar e desligar rotina muda o que o assistente manda sozinho para a
+    // equipe e para os clientes — é configuração, e configuração vai para o
+    // livro, como as outras do assistente.
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'agente.rotinas',
+        alvoTipo: 'agente',
+        alvoId: agente.id,
+        depois: escolha.filter((g) => validos.has(g.tipo)).map((g) => ({ tipo: g.tipo, ativo: g.ativo, dias: g.dias ?? null })),
+      },
+    })
   })
 }
 

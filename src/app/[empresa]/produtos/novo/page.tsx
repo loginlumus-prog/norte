@@ -10,6 +10,7 @@ import { MENU } from '@/ui/menu'
 import { Secao } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor } from '../Editor'
+import { lojasSugeridas } from '@/servidor/catalogo-loja'
 
 export default async function NovoProduto({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
@@ -34,13 +35,26 @@ export default async function NovoProduto({ params }: { params: Promise<{ empres
 
   // As lojas que têm balcão — para a pergunta "Vendido em". Depósito não
   // vende, então não entra.
-  const lojasQueVendem = await comoOrg(sessao.orgId, (db) =>
-    db.unidade.findMany({
+  const [lojasCruas, org] = await comoOrg(sessao.orgId, async (db) => [
+    await db.unidade.findMany({
       where: { ativa: true, ehDeposito: false },
       orderBy: { nome: 'asc' },
       select: { id: true, nome: true, ramo: true },
     }),
-  ).then((us) => us.map((u) => ({ ...u, ramo: u.ramo && u.ramo in RAMOS ? RAMOS[u.ramo as Ramo].titulo : null })))
+    await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { ramo: true } }),
+  ] as const)
+  const lojasQueVendem = lojasCruas.map((u) => ({
+    ...u,
+    ramo: u.ramo && u.ramo in RAMOS ? RAMOS[u.ramo as Ramo].titulo : null,
+  }))
+
+  // Cada categoria que é de um ramo sugere as lojas daquele ramo: o picolé
+  // novo nasce marcado só na sorveteria. Só no cadastro — na edição vale o
+  // que já foi escolhido.
+  const catRamo = Object.fromEntries(Object.entries(RAMOS).map(([r, p]) => [r, p.categorias]))
+  const sugestao: Record<string, string[]> = Object.fromEntries(
+    categorias.map((c) => [c.id, lojasSugeridas(c.nome, lojasCruas, org.ramo, catRamo)]),
+  )
 
   return (
     <Estrutura
@@ -52,7 +66,13 @@ export default async function NovoProduto({ params }: { params: Promise<{ empres
       titulo="Novo produto"
     >
       <Secao titulo="Cadastro">
-        <Editor slug={slug} eixos={eixos} categorias={categorias} lojas={lojasQueVendem} />
+        <Editor
+          slug={slug}
+          eixos={eixos}
+          categorias={categorias}
+          lojas={lojasQueVendem}
+          sugestao={sugestao}
+        />
       </Secao>
     </Estrutura>
   )

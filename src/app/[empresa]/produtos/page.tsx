@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
+import { lerModo } from '@/servidor/modo'
 import { comoOrg } from '@/servidor/banco'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
@@ -61,6 +62,11 @@ export default async function Produtos({
       : null
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'produto.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
+  // No simples a lista mostra o que o balcão pergunta — tem? quanto custa?
+  // — e esconde o que é de quem cuida do cadastro: margem, marca, pendência,
+  // ordenação, planilha. Filtro já escolhido continua à vista, senão a
+  // pessoa que veio por um link não saberia por que a lista está curta.
+  const simples = (await lerModo()) === 'simples'
 
   // O estoque é por loja. Sem este filtro, a tela somaria o saldo das duas e
   // o balconista da Loja Centro veria peça que está no Shopping.
@@ -240,13 +246,15 @@ export default async function Produtos({
               Etiquetas
             </Link>
           )}
-          <a
-            href={`/${slug}/produtos/exportar${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
-            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
-            title="Baixar o catálogo em planilha"
-          >
-            Planilha
-          </a>
+          {!simples && (
+            <a
+              href={`/${slug}/produtos/exportar${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+              title="Baixar o catálogo em planilha"
+            >
+              Planilha
+            </a>
+          )}
           {podeEditar && (
             <Link
               href={`/${slug}/produtos/novo`}
@@ -263,7 +271,7 @@ export default async function Produtos({
           itens={[
             { rotulo: 'com estoque', quantos: conta.bom, nivel: 'bom' },
             { rotulo: 'no mínimo', quantos: conta.atencao, nivel: 'atencao' },
-            { rotulo: 'acabaram', quantos: conta.critico, nivel: 'critico' },
+            { rotulo: 'acabaram', um: 'acabou', quantos: conta.critico, nivel: 'critico' },
           ]}
         />
       )}
@@ -299,47 +307,43 @@ export default async function Produtos({
             />
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        {(!simples || marca || pendencia || ordem !== 'nome') && (
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
           {/* Marca só vira filtro com poucas marcas: quarenta fichas de marca
               é uma parede, e aí a busca por nome resolve melhor. */}
           {marcas.length > 1 && marcas.length <= 12 && (
-            <span className="flex items-center gap-1 text-xs text-tinta-3">
-              marca:
-              <Fichas
-                opcoes={[{ valor: null, rotulo: 'todas' }, ...marcas.map((m) => ({ valor: m.marca!, rotulo: m.marca! }))]}
-                atual={marca}
-                linkDe={(v) => link({ marca: v })}
-              />
-            </span>
+            <Fichas
+              rotulo="Marca"
+              opcoes={[{ valor: null, rotulo: 'todas' }, ...marcas.map((m) => ({ valor: m.marca!, rotulo: m.marca! }))]}
+              atual={marca}
+              linkDe={(v) => link({ marca: v })}
+            />
           )}
-          <span className="flex items-center gap-1 text-xs text-tinta-3">
-            pendência:
-            <Fichas
-              opcoes={[
-                { valor: null, rotulo: 'nenhuma' },
-                { valor: 'sem-venda', rotulo: 'sem venda em 30 dias', quantos: pendencias.semVenda },
-                { valor: 'sem-custo', rotulo: 'sem custo', quantos: pendencias.semCusto },
-                { valor: 'sem-categoria', rotulo: 'sem categoria', quantos: pendencias.semCategoria },
-                { valor: 'sem-ean', rotulo: 'sem código de barras', quantos: pendencias.semEan },
-              ]}
-              atual={pendencia}
-              linkDe={(v) => link({ pendencia: v })}
-            />
-          </span>
-          <span className="flex items-center gap-1 text-xs text-tinta-3">
-            ordenar:
-            <Fichas
-              opcoes={[
-                { valor: null, rotulo: 'nome' },
-                { valor: 'vendidos', rotulo: 'mais vendidos (30 dias)' },
-                { valor: 'estoque', rotulo: 'mais estoque' },
-                { valor: 'preco', rotulo: 'maior preço' },
-              ]}
-              atual={ordem === 'nome' ? null : ordem}
-              linkDe={(v) => link({ ordem: v })}
-            />
-          </span>
+          <Fichas
+            rotulo="Pendência"
+            opcoes={[
+              { valor: null, rotulo: 'nenhuma' },
+              { valor: 'sem-venda', rotulo: 'sem venda em 30 dias', quantos: pendencias.semVenda },
+              { valor: 'sem-custo', rotulo: 'sem custo', quantos: pendencias.semCusto },
+              { valor: 'sem-categoria', rotulo: 'sem categoria', quantos: pendencias.semCategoria },
+              { valor: 'sem-ean', rotulo: 'sem código de barras', quantos: pendencias.semEan },
+            ]}
+            atual={pendencia}
+            linkDe={(v) => link({ pendencia: v })}
+          />
+          <Fichas
+            rotulo="Ordenar por"
+            opcoes={[
+              { valor: null, rotulo: 'nome' },
+              { valor: 'vendidos', rotulo: 'mais vendidos (30 dias)' },
+              { valor: 'estoque', rotulo: 'mais estoque' },
+              { valor: 'preco', rotulo: 'maior preço' },
+            ]}
+            atual={ordem === 'nome' ? null : ordem}
+            linkDe={(v) => link({ ordem: v })}
+          />
         </div>
+        )}
       </div>
 
       {produtos.length === 0 && !q && !categoriaId && (
@@ -394,21 +398,23 @@ export default async function Produtos({
                     editar
                   </Link>
                 )}
-                <Link
-                  href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
-                  className="hover:text-tinta"
-                  title="Imprimir etiquetas deste produto"
-                >
-                  etiquetas
-                </Link>
-                {p.categoria && (
+                {!simples && (
+                  <Link
+                    href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
+                    className="hover:text-tinta"
+                    title="Imprimir etiquetas deste produto"
+                  >
+                    etiquetas
+                  </Link>
+                )}
+                {!simples && p.categoria && (
                   <Link href={link({ categoria: p.categoria.id })} className="hover:text-tinta">
                     {p.categoria.nome}
                   </Link>
                 )}
-                {p.marca && <span>{p.marca}</span>}
+                {!simples && p.marca && <span>{p.marca}</span>}
                 {podeVerPreco && <span className="numero">{dinheiro(p.precoVista)} à vista</span>}
-                {podeVerCusto &&
+                {!simples && podeVerCusto &&
                   (margem === null ? (
                     <Link href={`/${slug}/produtos/${p.id}`} className="text-atencao hover:underline" title="Sem custo cadastrado, não há margem">
                       sem custo
@@ -418,9 +424,11 @@ export default async function Produtos({
                       margem {margem.toFixed(0)}%
                     </span>
                   ))}
-                <span className="numero" title="Vendido nos últimos 30 dias, nesta loja">
-                  {vendeu ? `${quantidade(vendeu, p.medida)} em 30d` : 'sem venda em 30d'}
-                </span>
+                {!simples && (
+                  <span className="numero" title="Vendido nos últimos 30 dias, nesta loja">
+                    {vendeu ? `${quantidade(vendeu, p.medida)} vendidos em 30 dias` : 'sem venda em 30 dias'}
+                  </span>
+                )}
                 {acabaram > 0 && <Ponto nivel="critico" quantos={acabaram} titulo="acabaram" />}
                 {noMinimo > 0 && <Ponto nivel="atencao" quantos={noMinimo} titulo="no mínimo" />}
                 <Situacao nivel={total > 0 ? 'bom' : 'critico'}>
@@ -438,7 +446,9 @@ export default async function Produtos({
                     v.padrao ? (
                       <span className="text-tinta-3">sem variação</span>
                     ) : (
-                      <span className="flex flex-wrap items-center gap-1.5">
+                      // Sem quebra: "Azul" numa linha e "M" na outra lê como
+                      // duas coisas. A tabela rola de lado se precisar.
+                      <span className="flex items-center gap-1.5 whitespace-nowrap">
                         {[...v.opcoes]
                           .sort((a, b) => a.opcao.eixo.ordem - b.opcao.eixo.ordem)
                           .map((o, i) => (
@@ -460,14 +470,12 @@ export default async function Produtos({
                 {
                   chave: 'codigo',
                   titulo: 'Etiqueta',
-                  largura: '8rem',
                   celula: (v) => <span className="font-mono text-xs">{v.codigo ?? '—'}</span>,
                 },
                 {
                   chave: 'saldo',
                   titulo: 'Em estoque',
                   numero: true,
-                  largura: '9rem',
                   celula: (v) => {
                     const q = v.estoques.reduce((t, e) => t + Number(e.quantidade), 0)
                     const nivel = situacaoDe(v)

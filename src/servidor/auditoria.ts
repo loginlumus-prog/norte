@@ -15,7 +15,7 @@
 // `auditoria`. Ler é tudo que dá para fazer, e é o que esta tela faz.
 
 import { comoOrg } from './banco'
-import { exigir, pode, type Sessao } from './permissao'
+import { exigir, pode, textoDaBusca, type Sessao } from './permissao'
 
 /**
  * O que cada ação quer dizer, em português de gente.
@@ -74,9 +74,20 @@ export const ACOES: Record<string, string> = {
   'empresa.modulos': 'ligou ou desligou módulos',
   'pontos.configurou': 'configurou o programa de pontos',
   'plano.trocou': 'trocou de plano',
+  'plano.pediu': 'pediu outro plano',
+  'credito.pediu': 'pediu crédito de IA',
   'agente.proposta.confirmou': 'confirmou uma proposta do assistente',
-  'financeiro.lancou': 'lançou uma conta',
+  'financeiro.despesa': 'lançou uma conta a pagar',
+  'financeiro.receita': 'lançou uma receita',
   'financeiro.pagou': 'deu baixa numa conta',
+  'financeiro.despagou': 'desfez a baixa de uma conta',
+  'estoque.minimo': 'mudou o estoque mínimo',
+  'agente.criou': 'criou o assistente',
+  'agente.alterou': 'alterou o assistente',
+  'agente.canal.conectou': 'conectou o WhatsApp do assistente',
+  'agente.canal.desconectou': 'desconectou o WhatsApp do assistente',
+  'agente.webhook.mostrou': 'viu o endereço do webhook do assistente',
+  'agente.rotinas': 'ligou ou desligou rotinas do assistente',
 }
 
 /**
@@ -122,6 +133,33 @@ export type LinhaDoLivro = {
   depois: unknown
 }
 
+/**
+ * As condições do livro, cada uma no seu lugar do AND.
+ *
+ * Pura e exportada para o teste conferir a FORMA: é aqui que uma chave
+ * repetida num objeto do Prisma apaga a outra sem erro nenhum.
+ */
+export function filtroDoLivro(permitidas: string[], prefixos: string[] | null, q: string) {
+  return [
+    // Linha sem unidade é da empresa inteira (cadastro de produto, troca de
+    // plano) e vale para quem tem o livro liberado.
+    { OR: [{ unidadeId: null }, { unidadeId: { in: permitidas } }] },
+    ...(prefixos ? [{ OR: prefixos.map((p) => ({ acao: { startsWith: p } })) }] : []),
+    ...(q
+      ? [
+          {
+            OR: [
+              { quem: { contains: q, mode: 'insensitive' as const } },
+              { alvoNome: { contains: q, mode: 'insensitive' as const } },
+              { motivo: { contains: q, mode: 'insensitive' as const } },
+              { acao: { contains: q, mode: 'insensitive' as const } },
+            ],
+          },
+        ]
+      : []),
+  ]
+}
+
 export async function listarAuditoria(sessao: Sessao, f: FiltroAuditoria): Promise<LinhaDoLivro[]> {
   exigir(sessao, 'auditoria.ver')
 
@@ -131,31 +169,19 @@ export async function listarAuditoria(sessao: Sessao, f: FiltroAuditoria): Promi
   const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'auditoria.ver', u))
   if (permitidas.length === 0) return []
 
-  const q = f.q?.trim() ?? ''
+  const q = textoDaBusca(f.q)
   const assunto = ASSUNTOS.find((a) => a.chave === f.assunto)
 
   return comoOrg(sessao.orgId, async (db) => {
     const linhas = await db.auditoria.findMany({
       where: {
         criadoEm: { gte: f.de, lt: f.ate },
-        OR: [{ unidadeId: null }, { unidadeId: { in: permitidas } }],
-        ...(assunto
-          ? { AND: [{ OR: assunto.prefixos.map((p) => ({ acao: { startsWith: p } })) }] }
-          : {}),
-        ...(q
-          ? {
-              AND: [
-                {
-                  OR: [
-                    { quem: { contains: q, mode: 'insensitive' } },
-                    { alvoNome: { contains: q, mode: 'insensitive' } },
-                    { motivo: { contains: q, mode: 'insensitive' } },
-                    { acao: { contains: q, mode: 'insensitive' } },
-                  ],
-                },
-              ],
-            }
-          : {}),
+        // TRÊS condições de "ou", e por isso as três num AND só. Antes o
+        // assunto e a busca eram cada um um `AND` espalhado no mesmo objeto, e
+        // o segundo SOBRESCREVIA o primeiro: filtrar por "caixa" e digitar
+        // "Ana" devolvia tudo que a Ana fez, de qualquer assunto. É o mesmo
+        // defeito do `OR` da busca que apagava o `OR` da loja no financeiro.
+        AND: filtroDoLivro(permitidas, assunto?.prefixos ?? null, q),
       },
       orderBy: { criadoEm: 'desc' },
       // Um mês de loja movimentada são umas duas mil linhas. Quinhentas com

@@ -15,6 +15,7 @@ import { Linhas } from '@/ui/Graficos'
 import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ProdutoNaTela } from '../Editor'
+import { plural } from '@/ui/texto'
 
 /** Decimal do banco vira o texto que a pessoa digitou: "49,90". */
 const emReais = (v: unknown) => (v == null ? '' : Number(v).toFixed(2).replace('.', ','))
@@ -160,8 +161,8 @@ export default async function FichaProduto({
           )}
           <Numero
             rotulo="Última venda"
-            valor={diasSemVender === null ? 'nunca' : diasSemVender === 0 ? 'hoje' : `${diasSemVender}d`}
-            detalhe={diasSemVender === null ? 'ainda não vendeu' : 'atrás'}
+            valor={diasSemVender === null ? 'nunca' : diasSemVender === 0 ? 'hoje' : `há ${plural(diasSemVender, 'dia', 'dias')}`}
+            detalhe={diasSemVender === null ? 'ainda não vendeu' : undefined}
             nivel={diasSemVender !== null && diasSemVender >= 30 ? 'atencao' : undefined}
           />
         </div>
@@ -220,7 +221,7 @@ export default async function FichaProduto({
           titulo="Itens na prateleira"
           acao={
             <span className="numero text-xs font-semibold text-tinta-3">
-              {produto.variacoes.filter((v) => v.ativa).length} ativo(s)
+              {plural(produto.variacoes.filter((v) => v.ativa).length, 'ativa', 'ativas')}
             </span>
           }
         >
@@ -294,7 +295,9 @@ export default async function FichaProduto({
               {movimentos.slice(0, 20).map((m) => (
                 <li key={m.id} className="flex items-center justify-between gap-3 py-1.5">
                   <span className="flex min-w-0 flex-col">
-                    <span className="truncate text-tinta">
+                    {/* Quebra no celular: cortado, sobrava "Loja Centr…" e a
+                        loja — o que diferencia uma linha da outra — sumia. */}
+                    <span className="text-tinta sm:truncate">
                       <span className="text-tinta-3">{quando(m.criadoEm)} · </span>
                       {ROTULO_MOVIMENTO[m.tipo]}
                       {m.codigo ? <span className="font-mono text-xs text-tinta-3"> {m.codigo}</span> : null}

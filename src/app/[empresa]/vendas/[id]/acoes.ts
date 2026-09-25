@@ -4,11 +4,17 @@ import { revalidatePath } from 'next/cache'
 import { exigirSessao } from '@/servidor/pagina'
 import { cancelarVenda } from '@/servidor/venda'
 import { devolver } from '@/servidor/devolucao'
+import { mostrarDiaDaColuna } from '@/servidor/dia'
 import type { DestinoDevolucao } from '@prisma/client'
 
 export type EstadoDevolucao = {
   erro?: string
-  ok?: { valor: number; vale: { codigo: string; validade: string } | null }
+  /**
+   * `valor` é o que vai para o cliente; `abatido`, o que apagou o fiado da
+   * própria venda antes (ver `abaterDoFiado`). Numa venda no crediário ainda
+   * em aberto, a devolução pode ser toda abatimento — e aí não sai dinheiro.
+   */
+  ok?: { valor: number; abatido: number; vale: { codigo: string; validade: string } | null }
 }
 
 /**
@@ -57,10 +63,13 @@ export async function devolverAcao(
   return {
     ok: {
       valor: r.valor,
+      abatido: r.abatido,
       vale: r.vale
         ? {
             codigo: r.vale.codigo,
-            validade: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(r.vale.validade),
+            // Coluna `date`: formatada em UTC, senão o vale "valia até" o
+            // dia anterior ao gravado — ver `mostrarDiaDaColuna`.
+            validade: mostrarDiaDaColuna(r.vale.validade, 'longo'),
           }
         : null,
     },
@@ -86,6 +95,10 @@ export async function cancelarAcao(
         nao_achada: 'Venda não encontrada.',
         ja_cancelada: 'Esta venda já estava cancelada.',
         sem_motivo: 'Diga o motivo. Ele vai para o livro, e é o que explica o dinheiro depois.',
+        ja_devolvida:
+          'Esta venda já teve devolução, e cancelar faria o estoque e os pontos voltarem de novo. Devolva o que falta.',
+        crediario_recebido:
+          'Esta venda no crediário já recebeu parcela. Devolva os itens: o valor abate o que o cliente ainda deve.',
       }[r.motivo],
     }
   }

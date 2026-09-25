@@ -4,7 +4,8 @@ import { redirect } from 'next/navigation'
 import { comoOrg } from '@/servidor/banco'
 import { sessaoViva } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
-import { TODOS, RAMOS, type Modulo, type Ramo } from '@/servidor/modulos'
+import { TODOS, RAMOS, MODULOS, type Modulo, type Ramo } from '@/servidor/modulos'
+import { PLANOS, planoLibera } from '@/servidor/planos'
 import { PORTES, DORES, CATALOGOS, CANAIS_VALIDOS, daLista } from '@/servidor/cadastro'
 import type { Regime } from '@prisma/client'
 
@@ -33,8 +34,15 @@ export async function terminarCadastro(
   if (!(ramo in RAMOS)) return { erro: 'Escolha um ramo.' }
 
   // Só entram módulos que existem — o que vem do formulário é do navegador,
-  // e o navegador é do usuário. Nunca confiar na lista que chegou.
-  const modulos = TODOS.filter((m) => form.get(`modulo_${m}`) === 'on')
+  // e o navegador é do usuário. Nunca confiar na lista que chegou. E só os
+  // que o PLANO abre: o ramo sugere crediário e metas até para quem está no
+  // Grátis, e ligar aqui era ganhar de presente o que a tabela vende no
+  // plano de cima (ver `planoLibera`).
+  const pedidos = TODOS.filter((m) => form.get(`modulo_${m}`) === 'on')
+  const plano = await comoOrg(sessao.orgId, (db) =>
+    db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { plano: true } }),
+  ).then((o) => o.plano)
+  const modulos = pedidos.filter((m) => planoLibera(plano, m))
 
   const regimeBruto = String(form.get('regime') ?? '')
   const regime = ['MEI', 'SIMPLES', 'PRESUMIDO', 'REAL'].includes(regimeBruto)
@@ -196,6 +204,21 @@ export async function salvarModulos(_anterior: EstadoComeco, form: FormData): Pr
 
   const modulos = TODOS.filter((m) => form.get(`modulo_${m}`) === 'on') as Modulo[]
   const balcaoGrade = form.get('balcaoGrade') === 'on'
+
+  // O módulo que o plano não abre não liga — nem pela tela, nem mandando o
+  // formulário na mão. Antes esta ação gravava a lista que chegasse, e o
+  // Grátis ligava crediário, assistente e metas em Configurações.
+  const plano = await comoOrg(sessao.orgId, (db) =>
+    db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { plano: true } }),
+  ).then((o) => o.plano)
+  const trancados = modulos.filter((m) => !planoLibera(plano, m))
+  if (trancados.length > 0) {
+    return {
+      erro:
+        `O plano ${PLANOS[plano].titulo} não inclui: ${trancados.map((m) => MODULOS[m].titulo).join(', ')}. ` +
+        'Desmarque, ou veja os planos em Assinatura.',
+    }
+  }
 
   await comoOrg(sessao.orgId, async (db) => {
     const antes = await db.org.findUnique({

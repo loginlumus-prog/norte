@@ -18,7 +18,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { comoOrg, acharOrgPorSlug } from './banco'
 import { guardarSenha } from './senha'
 import { normalizar } from './autenticacao'
-import { exigir, podeConceder, type Papel, type Sessao } from './permissao'
+import { exigir, podeConcederAcesso, type Papel, type Sessao } from './permissao'
 
 export const VALE_DIAS = 7
 
@@ -55,21 +55,37 @@ export async function convidar(
 
   exigir(sessao, 'equipe.gerir', unidadeId ?? undefined)
 
-  if (!podeConceder(sessao, dados.papel, unidadeId ?? undefined)) {
-    throw new Error(`Você não pode conceder o papel ${dados.papel}.`)
+  // Sem loja (`null`) é a empresa inteira, e só convida para a empresa
+  // inteira quem tem a empresa inteira. Antes `null` virava "alguma loja", e
+  // o gerente da loja 3 convidava balconista para todas as lojas.
+  if (!podeConcederAcesso(sessao, dados.papel, unidadeId)) {
+    throw new Error(`Você não pode conceder o papel ${dados.papel}${unidadeId ? ' nesta loja' : ' para todas as lojas'}.`)
   }
 
   // A conferência de e-mail repetido acontece FORA da transação de escrita.
   // Lançar de dentro dela aborta a transação, e transação abortada deixa a
   // conexão inutilizável em alguns servidores — inclusive no banco local de
   // desenvolvimento. Ler antes, escrever depois: mais simples e mais seguro.
-  const jaTem = await comoOrg(sessao.orgId, (db) =>
-    db.usuario.findUnique({
+  const { jaTem, lojaExiste, pendentes } = await comoOrg(sessao.orgId, async (db) => ({
+    jaTem: await db.usuario.findUnique({
       where: { orgId_email: { orgId: sessao.orgId, email } },
       select: { id: true },
     }),
-  )
+    // A loja vem do formulário: procurar aqui passa pelo RLS.
+    lojaExiste: unidadeId ? !!(await db.unidade.findUnique({ where: { id: unidadeId }, select: { id: true } })) : true,
+    pendentes: await db.convite.findMany({
+      where: { email, aceitoEm: null },
+      select: { papel: true, unidadeId: true },
+    }),
+  }))
   if (jaTem) throw new EmailJaUsado(email)
+  if (!lojaExiste) throw new Error('Loja não encontrada nesta empresa.')
+  // Convidar de novo o mesmo e-mail apaga o convite anterior. Se o anterior
+  // foi feito por alguém acima (a dona convidando uma gerente), o gerente não
+  // pode derrubá-lo trocando por um convite de balconista.
+  if (pendentes.some((c) => !podeConcederAcesso(sessao, c.papel as Papel, c.unidadeId))) {
+    throw new Error('Já existe um convite para este e-mail feito por quem tem mais acesso que você.')
+  }
 
   // Aqui havia uma conferência de cota do plano. Ela saiu: cadastrar gente é
   // de graça em todo plano, inclusive no grátis. O que a assinatura limita é
@@ -215,9 +231,14 @@ export async function revogarConvite(sessao: Sessao, conviteId: string) {
   await comoOrg(sessao.orgId, async (db) => {
     const alvo = await db.convite.findUnique({
       where: { id: conviteId },
-      select: { email: true, unidadeId: true },
+      select: { email: true, unidadeId: true, papel: true },
     })
     if (!alvo) return
+    // Cancelar um convite é o mesmo poder que fazê-lo: o gerente da loja 3
+    // não cancela o convite que a dona fez para a gerente da loja 5.
+    if (!podeConcederAcesso(sessao, alvo.papel as Papel, alvo.unidadeId)) {
+      throw new Error('Você não pode cancelar este convite: ele dá um acesso que você não pode conceder.')
+    }
     await db.convite.delete({ where: { id: conviteId } })
     await db.auditoria.create({
       data: {

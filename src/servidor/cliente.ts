@@ -14,7 +14,7 @@
 // o mesmo cliente cadastrado quatro vezes com dívidas separadas.
 
 import { comoOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, textoDaBusca, unidadesQuePodem, type Sessao } from './permissao'
 import { situacaoDosClientes } from './crediario'
 
 /** Só os dígitos. É o que faz a busca e a checagem de repetido funcionarem. */
@@ -213,14 +213,28 @@ export type ClienteNaLista = {
  * lista em ferramenta de venda — e é dele que sai o "cliente sumido" que o
  * assistente vai buscar.
  */
+/**
+ * As vendas de um cliente que esta pessoa pode ver.
+ *
+ * O cliente é da empresa inteira — o cadastro é um só, e a balconista de
+ * qualquer loja precisa achar a pessoa. As COMPRAS dele não: são vendas, e
+ * venda se vê por loja. Antes a ficha mostrava ao gerente da loja 3 cada
+ * compra feita na loja 5, com valor e itens. `null` = sem filtro (o dono).
+ */
+function lojasDasCompras(sessao: Sessao): string[] | null {
+  const alcance = unidadesQuePodem(sessao, 'venda.ver')
+  return alcance === 'todas' ? null : alcance
+}
+
 export async function listarClientes(
   sessao: Sessao,
   termo?: string,
 ): Promise<ClienteNaLista[]> {
   exigir(sessao, 'cliente.ver')
 
-  const t = termo?.trim() ?? ''
+  const t = textoDaBusca(termo)
   const digitos = soDigitos(t)
+  const lojas = lojasDasCompras(sessao)
 
   return comoOrg(sessao.orgId, async (db) => {
     const clientes = await db.cliente.findMany({
@@ -242,7 +256,7 @@ export async function listarClientes(
         id: true, nome: true, telefone: true, ativo: true, pontos: true,
         nascimento: true, criadoEm: true, cidade: true,
         vendas: {
-          where: { situacao: 'CONCLUIDA' },
+          where: { situacao: 'CONCLUIDA', ...(lojas ? { unidadeId: { in: lojas } } : {}) },
           select: { total: true, criadaEm: true },
         },
       },
@@ -274,6 +288,7 @@ export async function listarClientes(
 /** Quanto a pessoa gastou em cada um dos últimos N meses — para a ficha desenhar. */
 export async function comprasPorMes(sessao: Sessao, clienteId: string, meses = 12) {
   exigir(sessao, 'cliente.ver')
+  const lojas = lojasDasCompras(sessao)
   const agora = new Date()
   const de = new Date(agora.getFullYear(), agora.getMonth() - (meses - 1), 1)
   const chaves: string[] = []
@@ -289,6 +304,7 @@ export async function comprasPorMes(sessao: Sessao, clienteId: string, meses = 1
              sum(v.total) as total, count(*)::int as compras
         from vendas v
        where v.cliente_id = ${clienteId} and v.situacao = 'CONCLUIDA' and v.criada_em >= ${de}
+         and (${lojas === null} or v.unidade_id = any(${lojas ?? ['-']}))
        group by 1
     `
     return chaves.map((mes) => {
@@ -301,11 +317,13 @@ export async function comprasPorMes(sessao: Sessao, clienteId: string, meses = 1
 /** O que a pessoa mais leva. Cinco itens, por quantidade. */
 export async function favoritosDoCliente(sessao: Sessao, clienteId: string) {
   exigir(sessao, 'cliente.ver')
+  const lojas = lojasDasCompras(sessao)
   return comoOrg(sessao.orgId, async (db) => {
     const linhas = await db.$queryRaw<{ descricao: string; quantidade: string; total: string; vezes: number }[]>`
       select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total, count(distinct v.id)::int as vezes
         from venda_itens i join vendas v on v.id = i.venda_id
        where v.cliente_id = ${clienteId} and v.situacao = 'CONCLUIDA'
+         and (${lojas === null} or v.unidade_id = any(${lojas ?? ['-']}))
        group by 1 order by 2 desc limit 5
     `
     return linhas.map((l) => ({ descricao: l.descricao, quantidade: Number(l.quantidade), total: Number(l.total), vezes: l.vezes }))
@@ -315,6 +333,7 @@ export async function favoritosDoCliente(sessao: Sessao, clienteId: string) {
 /** A ficha, com as últimas compras. */
 export async function acharCliente(sessao: Sessao, clienteId: string) {
   exigir(sessao, 'cliente.ver')
+  const lojas = lojasDasCompras(sessao)
 
   return comoOrg(sessao.orgId, (db) =>
     db.cliente.findUnique({
@@ -335,7 +354,7 @@ export async function acharCliente(sessao: Sessao, clienteId: string) {
           },
         },
         vendas: {
-          where: { situacao: 'CONCLUIDA' },
+          where: { situacao: 'CONCLUIDA', ...(lojas ? { unidadeId: { in: lojas } } : {}) },
           orderBy: { criadaEm: 'desc' },
           take: 30,
           select: {

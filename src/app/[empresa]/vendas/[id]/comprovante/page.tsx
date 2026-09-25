@@ -1,3 +1,4 @@
+import { mostrarDiaDaColuna } from '@/servidor/dia'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -224,7 +225,7 @@ export default async function Comprovante({
                   <tr key={p.id}>
                     <td>
                       parcela {p.numero}/{p.de} · vence{' '}
-                      {new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(p.vencimento)}
+                      {mostrarDiaDaColuna(p.vencimento, 'curto')}
                     </td>
                     <td className="num">{brl(p.valor)}</td>
                   </tr>

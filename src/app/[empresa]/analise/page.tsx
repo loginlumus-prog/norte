@@ -22,6 +22,7 @@ import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import { Tabela, type Coluna } from '@/ui/Tabela'
 import { BarrasH } from '@/ui/Graficos'
 import type { Tema } from '@/ui/TrocaTema'
+import { palavra, plural } from '@/ui/texto'
 
 // A análise.
 //
@@ -221,7 +222,7 @@ export default async function Analise({
         <Cartao>
           <div className="flex flex-col gap-3 py-6 text-center">
             <p className="text-base font-semibold text-tinta">
-              A análise é do plano Rede para cima.
+              A análise é do plano {PLANOS.REDE.titulo} para cima.
             </p>
             <p className="mx-auto max-w-prose text-sm text-tinta-2">
               São três leituras que o painel não dá: as suas lojas lado a lado com venda, margem
@@ -244,10 +245,10 @@ export default async function Analise({
         <>
           <Tira
             itens={[
-              { rotulo: 'produtos classe A', quantos: naClasse('A'), nivel: 'bom' },
+              { rotulo: `${palavra(naClasse('A'), 'produto', 'produtos')} classe A`, quantos: naClasse('A'), nivel: 'bom' },
               { rotulo: 'classe B', quantos: naClasse('B'), nivel: 'atencao' },
               { rotulo: 'classe C', quantos: naClasse('C'), nivel: 'neutro' },
-              { rotulo: 'parados há 90+ dias', quantos: paradoVelho.length, nivel: 'critico' },
+              { rotulo: `${palavra(paradoVelho.length, 'parado', 'parados')} há 90+ dias`, quantos: paradoVelho.length, nivel: 'critico' },
             ]}
           />
 
@@ -341,7 +342,7 @@ export default async function Analise({
               <Numero
                 rotulo="Sem vender há 90+ dias"
                 valor={brl(paradoVelho.reduce((s, l) => s + l.valor, 0))}
-                detalhe={`${paradoVelho.length} produto(s) — candidatos a promoção`}
+                detalhe={`${plural(paradoVelho.length, 'produto', 'produtos')} — candidatos a promoção`}
                 nivel={paradoVelho.length > 0 ? 'critico' : undefined}
               />
             </div>

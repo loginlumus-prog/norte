@@ -53,3 +53,36 @@ export function somarDias(dia: string, n: number): string {
 export function diasEntre(de: string, ate: string): number {
   return Math.round((colunaDoDia(ate).getTime() - colunaDoDia(de).getTime()) / 864e5)
 }
+
+/**
+ * O instante em que um dia COMEÇA em São Paulo — para filtrar coluna de
+ * instante (`criadaEm`) pelo calendário da loja.
+ *
+ * O Brasil não tem horário de verão desde 2019, então a meia-noite de São
+ * Paulo é sempre 03:00 UTC. Escrito com o deslocamento, e não com a hora
+ * local do servidor: assim a conta não depende da variável TZ da máquina.
+ */
+export function inicioDoDiaEmSP(dia: string): Date {
+  return new Date(`${dia}T00:00:00.000-03:00`)
+}
+
+/** O primeiro dia do mês de `dia` ('2026-09-25' → '2026-09-01'). */
+export function primeiroDoMes(dia: string): string {
+  return `${dia.slice(0, 7)}-01`
+}
+
+/**
+ * Uma coluna `date` escrita para gente: '25/09', '25/09/26', '25/09/2026'.
+ *
+ * O `Intl` formata no fuso do servidor, e a coluna chega como meia-noite UTC:
+ * em São Paulo isso é 21h do dia ANTERIOR, e a parcela que vence dia 10
+ * aparecia "vence 09/10". Formatar em UTC mostra o dia que foi gravado.
+ */
+export function mostrarDiaDaColuna(valor: Date, ano: 'nao' | 'curto' | 'longo' = 'nao'): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'UTC',
+    day: '2-digit',
+    month: '2-digit',
+    ...(ano === 'curto' ? { year: '2-digit' as const } : ano === 'longo' ? { year: 'numeric' as const } : {}),
+  }).format(valor)
+}

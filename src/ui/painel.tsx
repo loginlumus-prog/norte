@@ -135,13 +135,20 @@ export function Numero({
   // à direita. Empilhadas, três fichas de 90px de altura empurravam o "Precisa
   // de você" para a segunda tela; em linha, cabem numa mão. Do `sm` para cima
   // volta a ser coluna, que é como o número lê bem lado a lado.
+  //
+  // A ficha SOLTA (fora da `Faixa`) segue a mesma regra no celular. Antes ela
+  // ficava empilhada e sem fio nenhum: em Vendas, Caixa, Preços, Equipe... três
+  // números de 26px boiando no fundo, cada um com 90px de altura, e a lista
+  // que a pessoa veio ver começava na segunda tela. Agora é uma linha com um
+  // fio em cima, como a lista do painel — e do `sm` para cima volta a ser o
+  // número solto separado pelo fio da esquerda.
   return (
     <div
       className={cx(
         'min-w-0',
         celula
           ? 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 bg-superficie px-4 py-3 sm:flex sm:flex-col sm:items-stretch sm:justify-center sm:py-3.5'
-          : 'flex flex-col gap-0.5 border-borda px-4 py-1 sm:border-l',
+          : 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-t border-borda px-1 pt-2.5 sm:flex sm:flex-col sm:items-stretch sm:gap-0.5 sm:border-t-0 sm:border-l sm:px-4 sm:py-1',
       )}
     >
       <span className="flex items-center gap-1.5 text-xs font-medium text-tinta-3">
@@ -151,7 +158,7 @@ export function Numero({
       <span
         className={cx(
           'numero leading-tight font-bold tracking-tight text-tinta',
-          celula ? 'row-span-2 text-right text-[22px] sm:text-left sm:text-[26px]' : 'text-[26px]',
+          'row-span-2 text-right text-[22px] sm:text-left sm:text-[26px]',
         )}
       >
         {valor}
@@ -476,7 +483,11 @@ export { brl, brlCurto }
 export function Tira({
   itens,
 }: {
-  itens: { rotulo: string; quantos: number; nivel: 'bom' | 'atencao' | 'critico' | 'neutro' }[]
+  /**
+   * `um` é o rótulo no singular, para quando o número é 1: "1 vencida", e não
+   * "1 vencidas". Sem ele, vale o `rotulo` para qualquer número.
+   */
+  itens: { rotulo: string; um?: string; quantos: number; nivel: 'bom' | 'atencao' | 'critico' | 'neutro' }[]
 }) {
   const visiveis = itens.filter((i) => i.quantos > 0)
   if (visiveis.length === 0) return null
@@ -494,7 +505,7 @@ export function Tira({
         <span key={i.rotulo} className="flex items-center gap-1.5 text-sm">
           <span aria-hidden className={cx('size-2 rounded-full', cor[i.nivel].ponto)} />
           <span className={cx('numero font-bold', cor[i.nivel].texto)}>{i.quantos}</span>
-          <span className="text-tinta-2">{i.rotulo}</span>
+          <span className="text-tinta-2">{i.quantos === 1 && i.um ? i.um : i.rotulo}</span>
         </span>
       ))}
     </div>

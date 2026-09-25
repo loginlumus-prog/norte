@@ -12,6 +12,7 @@
 //   ZAPI_TOKEN          o token DA INSTÂNCIA (vai na URL da chamada)
 //   ZAPI_CLIENT_TOKEN   o "token de segurança" da CONTA (cabeçalho Client-Token)
 //   ZAPI_URL            opcional; padrão https://api.z-api.io
+//   ZAPI_EMPRESA        o ENDEREÇO (slug) da única empresa que fala por ela
 //
 // Consequência que precisa estar escrita: uma instância é UM número de
 // WhatsApp, e o Z-API manda o webhook dela para UM endereço. Então, com
@@ -19,6 +20,11 @@
 // segunda loja, a instância precisa morar no cadastro da empresa (campo novo
 // no Agente, com o token guardado cifrado), e isso é migração de schema, que
 // não é desta etapa.
+//
+// Por isso `ZAPI_EMPRESA`: sem ela, NENHUMA empresa fala pelo número. Antes de
+// 25/09 a segunda empresa que ligasse o assistente respondia os clientes dela
+// pelo WhatsApp do piloto — o número de outra loja. Agora as outras ficam no
+// canal de mentira, e a tela delas diz que o WhatsApp é ligado com a gente.
 //
 // ── o que nunca sai daqui ────────────────────────────────────
 // Token não vai para log. Erro do fornecedor vira "falhou (status N)" — o
@@ -53,6 +59,13 @@ function lerConfigZapi(): ConfigZapi | null {
 
 /** Há Z-API configurado neste servidor? */
 export const temZapi = () => lerConfigZapi() !== null
+
+/** A empresa que fala pelo Z-API deste servidor — ver `ZAPI_EMPRESA` acima. */
+export const empresaDoZapi = (): string | null =>
+  (process.env.ZAPI_EMPRESA ?? '').trim().toLowerCase() || null
+
+/** Esta empresa sai pelo WhatsApp de verdade? Só a do piloto, com Z-API configurado. */
+export const zapiDa = (slug: string): boolean => temZapi() && empresaDoZapi() === slug.toLowerCase()
 
 /** O WhatsApp não mostra mensagem gigante; o Z-API recusa acima disto. */
 const MAXIMO_TEXTO = 4000
@@ -128,6 +141,14 @@ const guardado = globalThis as unknown as { __canalFalsoNorte?: CanalFalso }
 export function canalPadrao(): Canal {
   const cfg = lerConfigZapi()
   if (cfg) return new CanalZapi(cfg)
+  guardado.__canalFalsoNorte ??= new CanalFalso()
+  return guardado.__canalFalsoNorte
+}
+
+/** O canal DESTA empresa: o Z-API só para a do piloto; as outras, o de mentira. */
+export function canalPara(slug: string): Canal {
+  const cfg = lerConfigZapi()
+  if (cfg && zapiDa(slug)) return new CanalZapi(cfg)
   guardado.__canalFalsoNorte ??= new CanalFalso()
   return guardado.__canalFalsoNorte
 }

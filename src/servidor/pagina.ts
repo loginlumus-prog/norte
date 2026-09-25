@@ -128,3 +128,26 @@ export async function cortarSessoes(orgId: string, usuarioId: string) {
     db.usuario.update({ where: { id: usuarioId }, data: { sessoesDesde: new Date() } }),
   )
 }
+
+/**
+ * A frase que a tela pode mostrar quando uma ação deu errado.
+ *
+ * As ações devolviam `e.message` de qualquer erro — e o erro do Prisma traz
+ * nome de tabela, de coluna e a consulta inteira ("Invalid `prisma.lancamento
+ * .create()` invocation..."). Isso não ajuda quem está no balcão e ensina a
+ * quem não devia como o banco é por dentro. O erro escrito por nós (um
+ * `Error` com frase de gente) passa; o erro de máquina vira `padrao`, e o
+ * detalhe vai para o log do servidor.
+ */
+export function recadoDoErro(e: unknown, padrao: string): string {
+  if (!(e instanceof Error)) return padrao
+  const deMaquina =
+    e.name.startsWith('Prisma') ||
+    ['TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'DatabaseError'].includes(e.name) ||
+    'code' in e
+  if (deMaquina) {
+    console.error('[acao]', e)
+    return padrao
+  }
+  return e.message
+}

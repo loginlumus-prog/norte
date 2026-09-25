@@ -21,6 +21,7 @@ import {
   conversasRecentes,
   ROTINAS_NA_TELA,
 } from '@/servidor/assistente/conexao'
+import { plural } from '@/ui/texto'
 
 // O agente, numa tela só.
 //
@@ -111,7 +112,7 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
       itens={menu}
       ativo={`/${slug}/agente`}
       tema={tema}
-      titulo={agente ? agente.nome : 'Assistente'}
+      titulo={agente ? `Assistente · ${agente.nome}` : 'Assistente'}
     >
       {!agente && (
         <Aviso nivel="neutro">
@@ -121,18 +122,37 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
       )}
 
       {agente && (
-        <Secao titulo="O que ele fez este mês">
+        <Secao titulo="O que o assistente fez este mês">
+          {/* "Trouxe de volta" só aparece quando trouxe alguma coisa. Com ele
+              em zero, a tela dizia todo mês "saldo contra" — que é a conta
+              certa de um recibo que ainda não é emitido, e a leitura errada
+              do que o assistente faz. Aí o que importa é o crédito. */}
+          {bal.trouxe <= 0 ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Numero
+                rotulo="Custou de IA"
+                valor={brl(bal.custou)}
+                detalhe="neste mês, do seu crédito"
+              />
+              <Numero
+                rotulo="Crédito disponível"
+                valor={brl(reais(gasto.saldoCent))}
+                detalhe="recarga e extrato em Assinatura"
+                nivel={gasto.saldoCent <= 0 ? 'critico' : undefined}
+              />
+            </div>
+          ) : (
           <div className="grid gap-2 sm:grid-cols-3">
             <Numero
               rotulo="Trouxe de volta"
               valor={brl(bal.trouxe)}
-              detalhe={bal.porTipo.length === 0 ? 'ainda nada' : `${bal.porTipo.length} tipo(s)`}
+              detalhe={bal.porTipo.length === 0 ? 'ainda nada' : plural(bal.porTipo.length, 'tipo', 'tipos')}
               nivel={bal.trouxe > 0 ? 'bom' : undefined}
             />
             <Numero
               rotulo="Custou de IA"
               valor={brl(bal.custou)}
-              detalhe="só o que ele consumiu"
+              detalhe="só o que o assistente consumiu"
             />
             <Numero
               rotulo="Saldo"
@@ -141,6 +161,7 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
               nivel={saldo > 0 ? 'bom' : saldo < 0 ? 'atencao' : undefined}
             />
           </div>
+          )}
 
           {bal.porTipo.length > 0 && (
             <Cartao titulo="De onde veio">
@@ -171,7 +192,7 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
               className={gasto.pode ? 'size-2 rounded-full bg-bom-vivo' : 'size-2 rounded-full bg-critico-vivo'}
             />
             <span>
-              Hoje ele gastou <b className="numero text-tinta">{brl(reais(gasto.gastoCent))}</b> de
+              Hoje o assistente gastou <b className="numero text-tinta">{brl(reais(gasto.gastoCent))}</b> de
               IA, de um teto de <b className="numero text-tinta">{brl(reais(gasto.tetoCent))}</b>.
               {!gasto.pode && ' Ele parou de responder até amanhã.'}
             </span>

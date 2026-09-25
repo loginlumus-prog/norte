@@ -88,16 +88,27 @@ export function Guia({ slug, empresa, nome }: { slug: string; empresa: string; n
   return (
     <>
       {/* O botão. Some quando o painel está aberto: dois jeitos de abrir a
-          mesma coisa, um em cima do outro, só confundem. */}
+          mesma coisa, um em cima do outro, só confundem.
+          ── por que "?" e "Ajuda", e não o símbolo da marca ──
+          Era um círculo azul-noite com a agulha do Norte: o maior bloco
+          escuro da tela branca, e quem nunca usou não tinha como saber que
+          aquilo era ajuda. O ponto de interrogação é o sinal que qualquer
+          pessoa reconhece, e a palavra tira a última dúvida onde há espaço.
+          No celular fica só o círculo, para cobrir menos da tela. */}
       {!aberto && (
         <button
           type="button"
           onClick={() => setAberto(true)}
-          aria-label="Abrir o Guia do Norte"
-          title="Guia do Norte"
-          className="nav-fundo fixed right-4 bottom-4 z-40 flex size-11 items-center justify-center rounded-full shadow-norte-alta transition-transform hover:scale-105"
+          aria-label="Abrir a ajuda (Guia do Norte)"
+          title="Ajuda — Guia do Norte"
+          className="fixed right-4 bottom-4 z-40 flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full border border-borda bg-superficie px-3 text-sm font-semibold text-titulo shadow-norte-alta transition-colors hover:border-marca hover:text-marca"
         >
-          <Simbolo tamanho={24} nu id="guia-botao" />
+          <svg aria-hidden width="18" height="18" viewBox="0 0 20 20" fill="none">
+            <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M7.9 7.7a2.2 2.2 0 1 1 3.1 2c-.6.3-1 .8-1 1.5v.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="10" cy="14.2" r=".95" fill="currentColor" />
+          </svg>
+          <span className="hidden sm:inline">Ajuda</span>
         </button>
       )}
 
@@ -111,15 +122,18 @@ export function Guia({ slug, empresa, nome }: { slug: string; empresa: string; n
             aria-label="Guia do Norte"
             className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-borda bg-superficie shadow-norte-alta sm:w-[400px]"
           >
-            {/* Cabeçalho azul-noite, como a barra: é o sistema falando, não a tela. */}
-            <header className="nav-fundo flex items-start justify-between gap-3 px-4 py-3">
+            {/* Cabeçalho branco, com fio embaixo, como o cabeçalho de toda
+                tela. Já foi azul-noite "como a barra" — mas a barra ficou
+                branca em 24/09, e o bloco escuro virou a única mancha pesada
+                de um sistema claro. O símbolo com azulejo segura a marca. */}
+            <header className="flex items-start justify-between gap-3 border-b border-borda bg-superficie px-4 py-3">
               <div className="flex min-w-0 items-center gap-2.5">
-                <Simbolo tamanho={26} nu id="guia-painel" />
+                <Simbolo tamanho={26} id="guia-painel" />
                 <div className="flex min-w-0 flex-col">
-                  <span className="text-[15px] font-extrabold tracking-[-0.035em] text-nav-tinta">
+                  <span className="text-[15px] font-extrabold tracking-[-0.035em] text-titulo">
                     Guia do Norte
                   </span>
-                  <span className="truncate text-xs text-nav-tinta-2">
+                  <span className="truncate text-xs text-tinta-3">
                     {tela ? `Você está em ${tela.titulo}` : empresa}
                   </span>
                 </div>
@@ -129,7 +143,7 @@ export function Guia({ slug, empresa, nome }: { slug: string; empresa: string; n
                 type="button"
                 onClick={() => setAberto(false)}
                 aria-label="Fechar o guia"
-                className="flex size-8 shrink-0 items-center justify-center rounded-norte text-nav-tinta-2 hover:bg-nav-2 hover:text-nav-tinta"
+                className="flex size-9 shrink-0 items-center justify-center rounded-norte text-tinta-2 hover:bg-superficie-2 hover:text-tinta"
               >
                 <svg aria-hidden width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -206,7 +220,7 @@ export function Guia({ slug, empresa, nome }: { slug: string; empresa: string; n
                 </div>
 
                 {pensando && (
-                  <span className="nav-fundo inline-flex w-fit items-center rounded-full px-3 py-2" aria-label="O guia está pensando">
+                  <span className="inline-flex w-fit items-center rounded-full bg-superficie-2 px-3 py-2 [&_i]:bg-tinta-3" aria-label="O guia está pensando">
                     <span className="pensando">
                       <i />
                       <i />

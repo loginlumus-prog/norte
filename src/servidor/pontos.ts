@@ -21,6 +21,9 @@
 // a loja. O contrário seria a loja pagar um centavo que o cliente não juntou,
 // toda venda, para sempre.
 
+import type { Plano } from '@prisma/client'
+import { liberado } from './planos'
+
 export type Programa = {
   ativo: boolean
   /** Pontos ganhos por R$ 1 gasto. */
@@ -173,4 +176,16 @@ export function programaDe(org: {
     pontoVale: Number(org.pontoVale),
     minimo: org.pontosMinimo,
   }
+}
+
+/**
+ * O programa que VALE para esta empresa: o configurado, se o plano abre o
+ * programa de pontos; desligado, se não abre.
+ *
+ * O servidor da venda e a tela do balcão precisam dar a MESMA resposta: se a
+ * tela mostrasse "ganha 12 pontos" e o servidor não creditasse, a promessa
+ * seria feita na frente do cliente e quebrada no extrato dele.
+ */
+export function programaNoPlano(org: Parameters<typeof programaDe>[0] & { plano: Plano }): Programa {
+  return liberado(org.plano, 'pontos.programa') ? programaDe(org) : DESLIGADO
 }

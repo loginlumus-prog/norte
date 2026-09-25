@@ -179,11 +179,14 @@ export function CartaoLoja({
   return (
     <section
       className={cx(
-        'flex flex-col gap-4 rounded-xl border bg-superficie p-5',
+        'flex flex-col gap-4 rounded-norte border bg-superficie p-5',
         loja.ativa ? 'border-borda shadow-norte' : 'border-dashed border-borda opacity-80',
       )}
     >
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      {/* No celular as etiquetas vão SEMPRE embaixo do nome. Com `flex-wrap`
+          elas subiam para o lado do nome quando cabiam e desciam quando não
+          — e dois cartões vizinhos saíam com a etiqueta em lugares diferentes. */}
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1">
           <h3 className="text-lg font-bold tracking-tight">{loja.nome}</h3>
           <p className="text-sm text-tinta-2">

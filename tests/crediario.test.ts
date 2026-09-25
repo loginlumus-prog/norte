@@ -16,18 +16,29 @@ describe('montar as parcelas', () => {
     expect(p.reduce((s, x) => s + x.valorCent, 0)).toBe(10000)
   })
 
+  // O vencimento sai como a coluna `date` guarda: meia-noite UTC do dia.
+  const dia = (d: string) => new Date(`${d}T00:00:00.000Z`)
+  const meioDiaSP = new Date('2026-09-11T12:00:00-03:00')
+
   it('os vencimentos andam em dias de calendário a partir de hoje', () => {
-    const p = montarParcelas(9000, 3, hoje, 30)
-    expect(p[0]!.vencimento).toEqual(new Date(2026, 9, 11))
-    expect(p[1]!.vencimento).toEqual(new Date(2026, 10, 10))
-    expect(p[2]!.vencimento).toEqual(new Date(2026, 11, 10))
+    const p = montarParcelas(9000, 3, meioDiaSP, 30)
+    expect(p[0]!.vencimento).toEqual(dia('2026-10-11'))
+    expect(p[1]!.vencimento).toEqual(dia('2026-11-10'))
+    expect(p[2]!.vencimento).toEqual(dia('2026-12-10'))
   })
 
   it('uma parcela só é o total inteiro, para daqui a N dias', () => {
-    const p = montarParcelas(5990, 1, hoje, 15)
+    const p = montarParcelas(5990, 1, meioDiaSP, 15)
     expect(p).toHaveLength(1)
     expect(p[0]!.valorCent).toBe(5990)
-    expect(p[0]!.vencimento).toEqual(new Date(2026, 8, 26))
+    expect(p[0]!.vencimento).toEqual(dia('2026-09-26'))
+  })
+
+  // A venda das 22h em São Paulo já é o dia seguinte em UTC. O "hoje" da
+  // parcela é o da loja — senão a primeira vencia um dia depois do combinado.
+  it('a venda das 22h em São Paulo conta a partir do dia da loja', () => {
+    const as22h = new Date('2026-09-11T22:00:00-03:00')
+    expect(montarParcelas(1000, 1, as22h, 30)[0]!.vencimento).toEqual(dia('2026-10-11'))
   })
 
   it('total zero ou parcela zero não monta nada', () => {

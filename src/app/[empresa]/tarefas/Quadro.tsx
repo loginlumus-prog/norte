@@ -603,14 +603,14 @@ function Linha({
   return (
     <>
       <tr className={cx('group', aberta && 'bg-superficie-2/60')}>
-        <td className={cx(CELULA, 'min-w-56')}>
+        <td className={cx(CELULA, 'min-w-44 sm:min-w-56')}>
           <Titulo t={t} podeGerir={podeGerir} rodar={rodar} />
         </td>
         <td className={CELULA}>
-          <Responsavel t={t} pessoas={pessoas} podeGerir={podeGerir} liberado={lib.responsavel} rodar={rodar} />
+          <PilulaSituacao t={t} rodar={rodar} />
         </td>
         <td className={CELULA}>
-          <PilulaSituacao t={t} rodar={rodar} />
+          <Responsavel t={t} pessoas={pessoas} podeGerir={podeGerir} liberado={lib.responsavel} rodar={rodar} />
         </td>
         <td className={CELULA}>
           <LinhaDoTempo t={t} liberado={lib.linhaDoTempo} rodar={rodar} />
@@ -780,9 +780,12 @@ function Grupo({
         <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr>
+              {/* Situação logo depois da tarefa, como no Monday: é a
+                  coluna que se TOCA. Em terceiro, no celular ela ficava
+                  cortada na borda e dar baixa era rolar a tabela de lado. */}
               {th('Tarefa')}
-              {th('Resp.', 'tarefas.responsavel', lib.responsavel)}
               {th('Situação')}
+              {th('Resp.', 'tarefas.responsavel', lib.responsavel)}
               {th('Linha do tempo', 'tarefas.linhaDoTempo', lib.linhaDoTempo)}
               {th('Prazo', 'tarefas.prazo', lib.prazo)}
               {th('Prioridade', 'tarefas.prioridade', lib.prioridade)}

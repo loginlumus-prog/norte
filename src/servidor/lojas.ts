@@ -217,6 +217,14 @@ export async function editarLoja(sessao: Sessao, id: string, dados: DadosLoja) {
   return comoOrg(sessao.orgId, async (db) => {
     const antes = await db.unidade.findUnique({ where: { id } })
     if (!antes) throw new LojaRecusada('Loja não encontrada.')
+    // Virar depósito a última loja aberta é fechar a última loja por outro
+    // caminho: depósito não vende, e a empresa ficaria sem balcão nenhum.
+    if (d.ehDeposito && !antes.ehDeposito && antes.ativa) {
+      const outras = await db.unidade.count({ where: { ativa: true, ehDeposito: false, id: { not: id } } })
+      if (outras === 0) {
+        throw new LojaRecusada('Esta é a única loja que vende. Abra outra antes de transformar esta em depósito.')
+      }
+    }
     const loja = await db.unidade.update({ where: { id }, data: d })
 
     // Trocou o ramo: acrescenta o que o ramo novo pede. Não tira nada do
@@ -247,8 +255,15 @@ export async function editarLoja(sessao: Sessao, id: string, dados: DadosLoja) {
 export async function mudarSituacaoLoja(sessao: Sessao, id: string, ativa: boolean) {
   exigir(sessao, 'empresa.configurar')
 
-  // Reabrir conta cota, igual abrir — e fora da transação.
-  if (ativa) await exigirCotaDeUnidade(sessao)
+  // Reabrir conta cota, igual abrir — e fora da transação. Mas só se a loja
+  // estiver MESMO fechada: reabrir a que já está aberta não ocupa lugar
+  // novo, e antes recusava com "o plano atende N lojas" quem estava no teto.
+  if (ativa) {
+    const jaAberta = await comoOrg(sessao.orgId, (db) =>
+      db.unidade.findUnique({ where: { id }, select: { ativa: true } }),
+    )
+    if (!jaAberta?.ativa) await exigirCotaDeUnidade(sessao)
+  }
 
   return comoOrg(sessao.orgId, async (db) => {
     const loja = await db.unidade.findUnique({ where: { id } })

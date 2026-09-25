@@ -38,7 +38,7 @@ export type Entrada =
    * Vem separado dos outros motivos porque a tela precisa de mais que uma
    * frase — precisa dizer quem está ocupando e há quanto tempo cada um parou.
    * "Limite atingido" transforma isso em ligação para o suporte; a lista
-   * transforma em "a Bruna esqueceu aberto lá no fundo", que a loja resolve
+   * transforma em "a Ana esqueceu aberto lá no fundo", que a loja resolve
    * em cinco segundos sozinha.
    */
   | { ok: false; motivo: 'sem_vaga'; ocupantes: Ocupante[] }

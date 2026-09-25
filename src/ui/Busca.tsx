@@ -61,19 +61,32 @@ export function Busca({
 /**
  * Uma fileira de opções excludentes: "todas · acabaram · no mínimo".
  *
- * São links, não botões: cada um é um endereço. A escolhida fica em tinta
- * cheia — texto e fundo, não só cor — para quem não distingue cor ver igual.
+ * São links, não botões: cada um é um endereço. A escolhida muda texto, fundo
+ * E contorno — não só cor — para quem não distingue cor ver igual.
+ *
+ * Já foi pílula PRETA. No sistema branco ela era o ponto mais escuro da tela,
+ * mais forte que o botão principal, e brigava com o período (azul) logo
+ * acima: dois jeitos de dizer "escolhido". Agora é o azul da marca em fundo
+ * claro — a mesma família do período, um degrau mais quieta, porque filtro é
+ * apoio. E o alvo cresceu: 24px de altura não é alvo de dedo.
  */
 export function Fichas<T extends string>({
   opcoes,
   atual,
   linkDe,
+  rotulo,
 }: {
   opcoes: { valor: T | null; rotulo: string; quantos?: number }[]
   atual: T | null
   linkDe: (valor: T | null) => string
+  /**
+   * O nome do filtro ("Ordenar por", "Marca"). No celular ele fica EM CIMA
+   * das fichas; ao lado, quando as fichas quebravam linha, o rótulo boiava
+   * no meio da altura e parecia pertencer à linha de baixo.
+   */
+  rotulo?: string
 }) {
-  return (
+  const fileira = (
     <span className="flex flex-wrap gap-1 text-xs">
       {opcoes.map((o) => (
         <Link
@@ -81,8 +94,10 @@ export function Fichas<T extends string>({
           href={linkDe(o.valor)}
           aria-current={atual === o.valor ? 'true' : undefined}
           className={
-            'rounded-full px-2.5 py-1 font-semibold ' +
-            (atual === o.valor ? 'bg-tinta text-superficie' : 'text-tinta-2 hover:bg-superficie-2')
+            'rounded-full border px-3 py-1.5 font-semibold ' +
+            (atual === o.valor
+              ? 'border-marca/40 bg-marca-suave text-marca'
+              : 'border-transparent text-tinta-2 hover:bg-superficie-2 hover:text-tinta')
           }
         >
           {o.rotulo}
@@ -93,6 +108,13 @@ export function Fichas<T extends string>({
           )}
         </Link>
       ))}
+    </span>
+  )
+  if (!rotulo) return fileira
+  return (
+    <span className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+      <span className="shrink-0 text-xs font-medium text-tinta-3">{rotulo}</span>
+      {fileira}
     </span>
   )
 }

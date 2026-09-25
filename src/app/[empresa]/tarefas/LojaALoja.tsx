@@ -33,9 +33,9 @@ export function LojaALoja({ lojas, slug }: { lojas: LojaNoQuadro[]; slug: string
               itens={[
                 { rotulo: 'a fazer', quantos: l.aFazer, nivel: 'neutro' },
                 { rotulo: 'em andamento', quantos: l.emAndamento, nivel: 'atencao' },
-                { rotulo: 'paradas', quantos: l.paradas, nivel: 'critico' },
-                { rotulo: 'atrasadas', quantos: l.atrasadas, nivel: 'critico' },
-                { rotulo: 'feitas no mês', quantos: l.feitasNoMes, nivel: 'bom' },
+                { rotulo: 'paradas', um: 'parada', quantos: l.paradas, nivel: 'critico' },
+                { rotulo: 'atrasadas', um: 'atrasada', quantos: l.atrasadas, nivel: 'critico' },
+                { rotulo: 'feitas no mês', um: 'feita no mês', quantos: l.feitasNoMes, nivel: 'bom' },
               ]}
             />
             {l.aFazer + l.emAndamento + l.paradas + l.atrasadas + l.feitasNoMes === 0 && (

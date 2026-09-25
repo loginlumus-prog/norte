@@ -19,7 +19,7 @@
 // aqui faria a tela prometer uma coisa que o plano do cliente pode não ter.
 
 import { comoOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, soAsQuePode, type Sessao } from './permissao'
 import { PLANOS } from './planos'
 import type { Plano } from '@prisma/client'
 
@@ -78,6 +78,8 @@ export async function compararLojas(
   ate: Date,
 ): Promise<LojaComparada[]> {
   exigir(sessao, 'relatorio.ver')
+  // A lista de lojas vem de quem chama (e quem chama leu do endereço).
+  unidadeIds = soAsQuePode(sessao, 'relatorio.ver', unidadeIds)
   if (unidadeIds.length === 0) return []
 
   return comoOrg(sessao.orgId, async (db) => {
@@ -227,6 +229,8 @@ export async function curvaAbc(
   ate: Date,
 ): Promise<LinhaAbc[]> {
   exigir(sessao, 'relatorio.ver')
+  // A lista de lojas vem de quem chama (e quem chama leu do endereço).
+  unidadeIds = soAsQuePode(sessao, 'relatorio.ver', unidadeIds)
   if (unidadeIds.length === 0) return []
 
   return comoOrg(sessao.orgId, async (db) => {
@@ -296,6 +300,8 @@ export async function dinheiroParado(
   unidadeIds: string[],
 ): Promise<ParadoNaPrateleira[]> {
   exigir(sessao, 'relatorio.ver')
+  // A lista de lojas vem de quem chama (e quem chama leu do endereço).
+  unidadeIds = soAsQuePode(sessao, 'relatorio.ver', unidadeIds)
   if (unidadeIds.length === 0) return []
 
   const corte = new Date(Date.now() - PARADO_DIAS * 86400000)
@@ -367,10 +373,13 @@ export async function escala(
 ): Promise<TurnoNaEscala[]> {
   exigir(sessao, 'relatorio.ver')
   exigir(sessao, 'caixa.ver')
-  if (unidadeIds.length === 0) return []
+  // Os turnos são do CAIXA de cada loja: entra só a loja em que a pessoa vê
+  // o caixa, não toda loja em que ela lê relatório.
+  const permitidas = soAsQuePode(sessao, 'caixa.ver', unidadeIds)
+  if (permitidas.length === 0) return []
 
   return comoOrg(sessao.orgId, async (db) => {
-    const uni = unidadeIds
+    const uni = permitidas
 
     // A venda liga no caixa por `caixa_id`, então o total do turno é o que
     // saiu NAQUELE turno — não o que saiu no dia. É a diferença entre

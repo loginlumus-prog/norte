@@ -19,6 +19,7 @@
 import { useActionState } from 'react'
 import { Botao, Aviso, Campo } from '@/ui/base'
 import { recarregar, type EstadoAssinatura } from './acoes'
+import { plural } from '@/ui/texto'
 
 const brl = (c: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c / 100)
@@ -72,7 +73,7 @@ export function Credito({
             {acabou
               ? 'o assistente está parado'
               : diasQueDura !== null
-                ? `cerca de ${diasQueDura} dia(s) no seu ritmo`
+                ? `cerca de ${plural(diasQueDura, 'dia', 'dias')} no seu ritmo`
                 : 'ainda sem consumo para estimar'}
           </span>
         </div>

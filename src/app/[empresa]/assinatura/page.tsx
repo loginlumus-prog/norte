@@ -11,6 +11,7 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Planos } from './Planos'
 import { Credito } from './Credito'
 import { Comparar } from './Comparar'
+import { plural } from '@/ui/texto'
 
 // A tela da assinatura.
 //
@@ -105,7 +106,7 @@ export default async function AssinaturaPagina({
             }
             detalhe={
               a.mensal.extras > 0
-                ? `${a.mensal.extras} extra(s) · ${brl(a.mensal.extras * (a.mensal.porExtra ?? 0))}`
+                ? `${plural(a.mensal.extras, 'extra', 'extras')} · ${brl(a.mensal.extras * (a.mensal.porExtra ?? 0))}`
                 : 'dentro da cota'
             }
             nivel={
@@ -134,7 +135,7 @@ export default async function AssinaturaPagina({
             valor={brl(a.credito.saldoCent / 100)}
             detalhe={
               a.credito.diasQueDura !== null
-                ? `~${a.credito.diasQueDura} dia(s) no ritmo atual`
+                ? `~${plural(a.credito.diasQueDura, 'dia', 'dias')} no ritmo atual`
                 : 'sem consumo ainda'
             }
             nivel={a.credito.acabou ? 'critico' : a.credito.baixo ? 'atencao' : 'bom'}
@@ -166,7 +167,9 @@ export default async function AssinaturaPagina({
                     className="flex items-center justify-between gap-3 border-b border-borda-suave py-2 last:border-0"
                   >
                     <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-sm text-tinta">
+                      {/* Quebra no celular em vez de cortar: "Recarga — Recarga
+                          pel…" não diz qual foi. Do `sm` para cima cabe. */}
+                      <span className="text-sm text-tinta sm:truncate">
                         {TIPO[m.tipo] ?? m.tipo}
                         {m.motivo ? ` — ${m.motivo}` : ''}
                       </span>
@@ -186,7 +189,7 @@ export default async function AssinaturaPagina({
                         {m.centavos > 0 ? '+' : ''}
                         {brl(m.centavos / 100)}
                       </span>
-                      <span className="numero w-24 text-right text-xs text-tinta-3">
+                      <span className="numero w-20 text-right text-xs text-tinta-3 sm:w-24" title="Saldo depois deste movimento">
                         {brl(m.saldoDepois / 100)}
                       </span>
                     </span>

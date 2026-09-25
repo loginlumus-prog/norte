@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizarVendidoEm, soDaLoja, vendidoNaLoja } from '../src/servidor/catalogo-loja'
+import { lojasSugeridas, normalizarVendidoEm, soDaLoja, vendidoNaLoja } from '../src/servidor/catalogo-loja'
 import { limparLoja, LojaRecusada } from '../src/servidor/lojas'
 
 // A sorveteria não vende camisa. Estes testes são a regra escrita: o que cada
@@ -58,5 +58,44 @@ describe('os dados da loja', () => {
     expect(d.estado).toBe('BA')
     expect(d.cep).toBeNull()
     expect(d.horario!.length).toBe(120)
+  })
+})
+
+describe('lojasSugeridas — o produto novo nasce na loja do ramo da categoria', () => {
+  const CAT = { roupa: ['Blusas', 'Calças'], sorveteria: ['Picolé', 'Açaí'] }
+  const lojas = [
+    { id: 'centro', ramo: null },
+    { id: 'shopping', ramo: 'roupa' },
+    { id: 'sorveteria', ramo: 'sorveteria' },
+  ]
+  it('categoria de sorveteria marca só a sorveteria, sem ligar para acento', () => {
+    expect(lojasSugeridas('picole', lojas, 'roupa', CAT)).toEqual(['sorveteria'])
+  })
+  it('loja sem ramo vale pelo ramo da empresa', () => {
+    expect(lojasSugeridas('Blusas', lojas, 'roupa', CAT)).toEqual(['centro', 'shopping'])
+  })
+  it('categoria de ramo nenhum, ou sem categoria, fica em todas', () => {
+    expect(lojasSugeridas('Promoção', lojas, 'roupa', CAT)).toEqual([])
+    expect(lojasSugeridas(null, lojas, 'roupa', CAT)).toEqual([])
+  })
+  it('quando todas as lojas são do ramo, não há o que separar', () => {
+    expect(lojasSugeridas('Blusas', lojas.slice(0, 2), 'roupa', CAT)).toEqual([])
+  })
+})
+
+// Auditoria de 25/09: "acabou" só do que a loja vende (ou do depósito).
+import { contaComoFalta } from '../src/servidor/catalogo-loja'
+
+describe('o que conta como falta na loja', () => {
+  it('linha zerada de produto que a loja não vende não é "acabou"', () => {
+    expect(contaComoFalta({ quantidade: 0, unidadeId: SORVETE, ehDeposito: false }, [ROUPA])).toBe(false)
+  })
+  it('com saldo entra sempre — é mercadoria de verdade, e precisa sair de lá', () => {
+    expect(contaComoFalta({ quantidade: 3, unidadeId: SORVETE, ehDeposito: false }, [ROUPA])).toBe(true)
+  })
+  it('depósito conta sempre; loja que vende conta sempre', () => {
+    expect(contaComoFalta({ quantidade: 0, unidadeId: 'dep', ehDeposito: true }, [ROUPA])).toBe(true)
+    expect(contaComoFalta({ quantidade: 0, unidadeId: ROUPA, ehDeposito: false }, [ROUPA])).toBe(true)
+    expect(contaComoFalta({ quantidade: 0, unidadeId: SORVETE, ehDeposito: false }, [])).toBe(true)
   })
 })

@@ -13,6 +13,8 @@ import { SemPermissao } from '@/servidor/permissao'
 import { csv, respostaCsv } from '@/servidor/csv'
 import type { FormaPagamento, SituacaoVenda } from '@prisma/client'
 
+const FORMAS: FormaPagamento[] = ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'CREDIARIO', 'VALE', 'TRANSFERENCIA']
+
 export async function GET(req: Request, { params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
   const [empresa, sessao] = await Promise.all([acharOrgPorSlug(slug), sessaoViva(slug)])
@@ -33,7 +35,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ empresa:
       q: q.get('q'),
       situacao: sit === 'CONCLUIDA' || sit === 'CANCELADA' ? (sit as SituacaoVenda) : null,
       vendedorId: q.get('vendedor'),
-      forma: forma ? (forma as FormaPagamento) : null,
+      // A forma vem do endereço: fora da lista, o Prisma recusava o valor e a
+      // planilha virava erro de servidor. Fora da lista é "todas".
+      forma: FORMAS.includes(forma as FormaPagamento) ? (forma as FormaPagamento) : null,
     })
     const corpo = csv(
       ['Venda', 'Data', 'Loja', 'Situação', 'Cliente', 'Vendedor', 'Item', 'Código', 'Unidade', 'Quantidade', 'Preço unit.', 'Total do item', 'Custo unit.', 'Formas de pagamento', 'Total da venda'],

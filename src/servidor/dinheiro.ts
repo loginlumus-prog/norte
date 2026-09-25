@@ -65,3 +65,21 @@ export function mostrar(cent: number): string {
   const abs = Math.abs(cent)
   return `${sinal}R$ ${Math.floor(abs / 100)},${String(abs % 100).padStart(2, '0')}`
 }
+
+/**
+ * O que a pessoa digitou num campo de dinheiro, em reais — ou `null` quando
+ * não dá para saber o que ela quis dizer.
+ *
+ * Aceita "1.234,56", "1234,56", "1234.56" e "1234". RECUSA "1.234": pode ser
+ * mil duzentos e trinta e quatro (ponto de milhar, como se escreve aqui) ou
+ * um real e vinte e três (ponto decimal, como vem de planilha). Adivinhar
+ * errado é gravar um valor mil vezes menor sem aviso; recusar é pedir para a
+ * pessoa escrever de novo.
+ */
+export function lerDinheiro(bruto: string): number | null {
+  const t = bruto.trim().replace(/^R\$\s*/i, '')
+  if (!t) return null
+  const normal = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t
+  if (!/^\d+(\.\d{1,2})?$/.test(normal)) return null
+  return Number(normal)
+}

@@ -143,7 +143,7 @@ export function Rosca({
           >
             <span className="flex min-w-0 items-center gap-2">
               <span aria-hidden className="size-2.5 shrink-0 rounded-sm" style={{ background: a.cor }} />
-              <span className="truncate text-tinta">{a.f.rotulo}</span>
+              <span className="truncate text-tinta" title={a.f.rotulo}>{a.f.rotulo}</span>
               {a.f.detalhe && <span className="shrink-0 text-xs text-tinta-3">{a.f.detalhe}</span>}
             </span>
             <span className="flex shrink-0 items-baseline gap-2">
@@ -177,7 +177,7 @@ export function BarrasH({
       {itens.map((i) => (
         <li key={i.rotulo} className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-3">
-            <span className="truncate text-sm text-tinta">{i.rotulo}</span>
+            <span className="truncate text-sm text-tinta" title={i.rotulo}>{i.rotulo}</span>
             <span className="numero shrink-0 text-sm font-semibold text-tinta">{formatar(formato)(i.valor)}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -243,7 +243,7 @@ export function BarrasMeses({
           </ul>
         ) : (
           // Uma série só não tem legenda — o título já diz o que é.
-          <span className="text-xs text-tinta-3">Passe o mouse numa barra para ver o valor.</span>
+          <span className="text-xs text-tinta-3">Toque ou passe o mouse numa barra para ver o valor.</span>
         )}
       </div>
 
@@ -257,6 +257,7 @@ export function BarrasMeses({
               key={r}
               onMouseEnter={() => setAceso(gi)}
               onFocus={() => setAceso(gi)}
+              onClick={() => setAceso(gi)}
               onBlur={() => setAceso(null)}
               aria-label={`${r}: ${series.map((s) => `${s.nome} ${formatar(formato)(s.valores[gi] ?? 0)}`).join(', ')}`}
               className={cx('relative flex h-full flex-1 cursor-default items-end justify-center gap-0.5 rounded-sm', aceso === gi && 'bg-superficie-2')}
@@ -398,6 +399,7 @@ export function Linhas({
               key={r}
               onMouseEnter={() => setAceso(i)}
               onFocus={() => setAceso(i)}
+              onClick={() => setAceso(i)}
               onBlur={() => setAceso(null)}
               aria-label={`${r}: ${series.map((s) => `${s.nome} ${formatar(formato)(s.valores[i] ?? 0)}`).join(', ')}`}
               className="h-full flex-1 cursor-default"
@@ -447,7 +449,7 @@ export function Calor({
             <b className="numero text-tinta">{formatar(formato)(v)}</b>
           </span>
         ) : (
-          <span className="text-tinta-3">Passe o mouse numa casa para ver o valor.</span>
+          <span className="text-tinta-3">Toque ou passe o mouse numa casa para ver o valor.</span>
         )}
         {/* A escala, que antes era uma frase ("mais escuro, mais
             movimento") — e no tema escuro a casa cheia é a mais CLARA. */}
@@ -487,6 +489,7 @@ export function Calor({
                     key={c}
                     onMouseEnter={() => setAceso({ l: li, c: ci })}
                     onFocus={() => setAceso({ l: li, c: ci })}
+                    onClick={() => setAceso({ l: li, c: ci })}
                     onBlur={() => setAceso(null)}
                     aria-label={`${l} ${c}h: ${formatar(formato)(val)}`}
                     className={cx('h-5 rounded-[3px] border', aceso?.l === li && aceso?.c === ci ? 'border-tinta' : 'border-transparent')}

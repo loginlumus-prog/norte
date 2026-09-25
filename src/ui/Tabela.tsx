@@ -19,6 +19,12 @@ export type Coluna<L> = {
   /** Alinha à direita e alinha os dígitos. Para dinheiro e quantidade. */
   numero?: boolean
   largura?: string
+  /**
+   * Coluna de apoio, que some abaixo de `sm`. Serve para a tabela caber no
+   * telefone sem esconder o que importa atrás da rolagem lateral — quem usa
+   * isto precisa levar o recado da coluna para outra célula no celular.
+   */
+  escondeNoCelular?: boolean
   celula: (linha: L) => ReactNode
 }
 
@@ -54,9 +60,10 @@ export function Tabela<L>({
                 scope="col"
                 style={c.largura ? { width: c.largura } : undefined}
                 className={cx(
-                  'sticky top-0 z-10 border-b border-borda bg-superficie-2 px-3 py-2',
+                  'sticky top-0 z-10 border-b border-borda bg-superficie-2 px-2.5 py-2 sm:px-3',
                   'text-xs font-semibold tracking-wide text-tinta-3 uppercase',
                   c.numero ? 'text-right' : 'text-left',
+                  c.escondeNoCelular && 'hidden sm:table-cell',
                 )}
               >
                 {c.titulo}
@@ -77,7 +84,10 @@ export function Tabela<L>({
               {colunas.map((c) => (
                 <td
                   key={c.chave}
-                  className={cx('px-3 py-2 align-top text-tinta', c.numero && 'numero')}
+                  // 10px de lado no celular, e não 12: quatro colunas
+                  // ganham 16px, que é o que separava a lista de Vendas de
+                  // caber inteira num telefone sem rolar de lado.
+                  className={cx('px-2.5 py-2 align-top text-tinta sm:px-3', c.numero && 'numero', c.escondeNoCelular && 'hidden sm:table-cell')}
                 >
                   {c.celula(l)}
                 </td>

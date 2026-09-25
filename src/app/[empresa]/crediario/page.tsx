@@ -1,3 +1,4 @@
+import { mostrarDiaDaColuna } from '@/servidor/dia'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
@@ -23,8 +24,9 @@ import { Receber } from './Receber'
 // pergunta de quem abre: "quem eu preciso cobrar hoje?". Quitadas ficam num
 // filtro, para conferir depois.
 
-const dia = (d: Date) =>
-  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(d)
+// Vencimento é coluna `date` (meia-noite UTC): formatada no fuso do servidor
+// mostrava o dia ANTERIOR — "vence 09/10" para a parcela do dia 10.
+const dia = (d: Date) => mostrarDiaDaColuna(d, 'curto')
 
 export default async function CrediarioPagina({
   params,
@@ -262,9 +264,9 @@ export default async function CrediarioPagina({
 
         <Tira
           itens={[
-            { rotulo: 'parcelas na lista', quantos: parcelas.length, nivel: 'neutro' },
-            { rotulo: 'vencidas', quantos: parcelas.filter((p) => p.situacao === 'vencida').length, nivel: 'critico' },
-            { rotulo: 'quitadas', quantos: parcelas.filter((p) => p.situacao === 'quitada').length, nivel: 'bom' },
+            { rotulo: 'parcelas na lista', um: 'parcela na lista', quantos: parcelas.length, nivel: 'neutro' },
+            { rotulo: 'vencidas', um: 'vencida', quantos: parcelas.filter((p) => p.situacao === 'vencida').length, nivel: 'critico' },
+            { rotulo: 'quitadas', um: 'quitada', quantos: parcelas.filter((p) => p.situacao === 'quitada').length, nivel: 'bom' },
           ]}
         />
       </Secao>

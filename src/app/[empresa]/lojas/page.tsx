@@ -12,6 +12,7 @@ import { Aviso, Cartao } from '@/ui/base'
 import { Secao, Tira } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { CartaoLoja, NovaLoja, type LojaNaTela } from './Loja'
+import { palavra } from '@/ui/texto'
 
 // As lojas da empresa.
 //
@@ -52,7 +53,7 @@ export default async function TelaLojas({ params }: { params: Promise<{ empresa:
       <Tira
         itens={[
           { rotulo: ativas === 1 ? 'loja aberta' : 'lojas abertas', quantos: ativas, nivel: 'bom' },
-          { rotulo: 'fechada(s)', quantos: naTela.length - ativas, nivel: 'neutro' },
+          { rotulo: palavra(naTela.length - ativas, 'fechada', 'fechadas'), quantos: naTela.length - ativas, nivel: 'neutro' },
         ]}
       />
 

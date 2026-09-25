@@ -24,7 +24,7 @@ export function Rotinas({
   const sumido = itens.find((i) => i.tipo === 'CLIENTE_SUMIDO')
 
   return (
-    <Cartao titulo="O que ele faz sozinho">
+    <Cartao titulo="O que faz sozinho">
       <form action={agir} className="flex max-w-3xl flex-col gap-3">
         {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
         {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}

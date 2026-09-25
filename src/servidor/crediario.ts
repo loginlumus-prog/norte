@@ -18,7 +18,7 @@
 // quando o abatido alcança o valor.
 
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, pode, type Sessao } from './permissao'
+import { exigir, numeroDaBusca, pode, textoDaBusca, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
 import { colunaDoDia, diaDaColuna, diaEmSP, diasEntre, somarDias } from './dia'
 import type { FormaPagamento } from '@prisma/client'
@@ -29,15 +29,16 @@ import type { FormaPagamento } from '@prisma/client'
 
 export type ParcelaMontada = { numero: number; de: number; vencimento: Date; valorCent: number }
 
-const meiaNoite = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
-const maisDias = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
-
 /**
  * Divide o total em N parcelas iguais, em centavos inteiros. O que não
  * divide certo vai um centavo por vez para as PRIMEIRAS parcelas — a loja
  * recebe o resto antes, não depois.
  *
- * Os vencimentos andam em dias de calendário (não em 24h), a partir de hoje.
+ * Os vencimentos andam em dias de calendário (não em 24h), a partir do dia de
+ * HOJE EM SÃO PAULO, e saem prontos para a coluna `date`: meia-noite UTC do
+ * dia, que é como o banco grava e devolve. Antes eram a meia-noite do fuso do
+ * servidor — o dia certo só enquanto o servidor estivesse em São Paulo; num
+ * servidor em UTC, a venda das 22h ganhava parcelas vencendo um dia depois.
  */
 export function montarParcelas(
   totalCent: number,
@@ -48,11 +49,11 @@ export function montarParcelas(
   if (n < 1 || totalCent <= 0) return []
   const base = Math.floor(totalCent / n)
   const resto = totalCent - base * n
-  const inicio = meiaNoite(hoje)
+  const inicio = diaEmSP(hoje)
   return Array.from({ length: n }, (_, i) => ({
     numero: i + 1,
     de: n,
-    vencimento: maisDias(inicio, diasEntre * (i + 1)),
+    vencimento: colunaDoDia(somarDias(inicio, diasEntre * (i + 1))),
     valorCent: base + (i < resto ? 1 : 0),
   }))
 }
@@ -119,8 +120,8 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas): Promise
   const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'crediario.ver', u))
   if (permitidas.length === 0) return []
 
-  const q = f.q?.trim() ?? ''
-  const numero = /^\d+$/.test(q) ? Number(q) : null
+  const q = textoDaBusca(f.q)
+  const numero = numeroDaBusca(q)
   const agora = new Date()
 
   return comoOrg(sessao.orgId, async (db) => {
@@ -286,6 +287,8 @@ export async function receberParcela(
   sessao: Sessao,
   p: { parcelaId: string; valor: number; juros: number; forma: FormaPagamento },
 ): Promise<Recebido> {
+  // `centavos(NaN)` estoura com o erro cru do conversor; aqui é recusa.
+  if (!Number.isFinite(p.valor) || !Number.isFinite(p.juros)) return { ok: false, motivo: 'valor_invalido' }
   const valorC = centavos(p.valor)
   const jurosC = Math.max(0, centavos(p.juros))
   const principalC = valorC - jurosC
@@ -317,6 +320,24 @@ export async function receberParcela(
       caixaId = caixa.id
     }
 
+    // A parcela é gravada ANTES do recebimento, e só se o `pago` ainda for o
+    // que foi lido. Dois recebimentos da mesma parcela ao mesmo tempo (o
+    // clique duplo no "Receber", ou duas pessoas no balcão) liam o mesmo
+    // `pago` e gravavam o mesmo total: nasciam dois recebimentos — o caixa
+    // contava o dinheiro duas vezes — e a parcela abatia uma só. Com a
+    // condição, o segundo não acha mais a linha como ela estava, e desiste.
+    const novoPagoC = centavos(parcela.pago) + principalC
+    const quitada = novoPagoC >= centavos(parcela.valor)
+    const gravou = await db.parcela.updateMany({
+      where: { id: parcela.id, pago: parcela.pago, quitadaEm: null },
+      data: {
+        pago: reais(novoPagoC),
+        juros: { increment: reais(jurosC) },
+        quitadaEm: quitada ? new Date() : null,
+      },
+    })
+    if (gravou.count === 0) return { ok: false as const, motivo: 'ja_quitada' as const }
+
     await db.recebimento.create({
       data: {
         orgId: sessao.orgId,
@@ -326,17 +347,6 @@ export async function receberParcela(
         valor: reais(valorC),
         juros: reais(jurosC),
         quem: sessao.nome,
-      },
-    })
-
-    const novoPagoC = centavos(parcela.pago) + principalC
-    const quitada = novoPagoC >= centavos(parcela.valor)
-    await db.parcela.update({
-      where: { id: parcela.id },
-      data: {
-        pago: reais(novoPagoC),
-        juros: { increment: reais(jurosC) },
-        quitadaEm: quitada ? new Date() : null,
       },
     })
 

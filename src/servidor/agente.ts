@@ -10,7 +10,7 @@ import { exigir, pode, type Sessao } from './permissao'
 import { type ComModulos } from './modulos'
 import { centavos, reais } from './dinheiro'
 import { lancar } from './financeiro'
-import { mexerEstoqueEm } from './estoque'
+import { mexerEstoque } from './estoque'
 import type { TipoRecibo } from '@prisma/client'
 import { custoEmCentavos, cobrancaEmCentavos } from './custo-ia'
 import {
@@ -21,6 +21,7 @@ import {
   type ChavePoder,
   type Poder,
 } from './poderes'
+import { garantirCreditoDoMes } from './assinatura'
 
 export * from './poderes'
 export * from './custo-ia'
@@ -177,7 +178,7 @@ export async function responderProposta(
     db.propostaAgente.findUnique({ where: { id: propostaId } }),
   )
   if (!proposta) return { ok: false, motivo: 'nao_existe' }
-  if (proposta.situacao !== 'AGUARDANDO') return { ok: false, motivo: 'ja_respondida' }
+  if (proposta.situacao !== 'AGUARDANDO' || proposta.respondidaEm) return { ok: false, motivo: 'ja_respondida' }
 
   const p = PODERES[proposta.poder as ChavePoder] as Poder | undefined
   if (!p) return { ok: false, motivo: 'falhou', detalhe: 'poder desconhecido' }
@@ -189,6 +190,20 @@ export async function responderProposta(
     await marcar(sessao.orgId, propostaId, 'EXPIRADA', sessao.nome)
     return { ok: false, motivo: 'expirada' }
   }
+
+  // ── a proposta é TOMADA antes de qualquer coisa ──
+  // Carimbar `respondidaEm` só se ninguém carimbou antes. O clique duplo em
+  // "Confirmar" (ou duas abas, ou o sim no WhatsApp e na tela ao mesmo
+  // tempo) liam os dois AGUARDANDO e EXECUTAVAM os dois: a despesa lançada
+  // duas vezes, o estoque ajustado em dobro. Agora o segundo não toma, e
+  // desiste com "já respondida".
+  const tomou = await comoOrg(sessao.orgId, (db) =>
+    db.propostaAgente.updateMany({
+      where: { id: propostaId, situacao: 'AGUARDANDO', respondidaEm: null },
+      data: { respondidaEm: new Date(), quemRespondeu: sessao.nome },
+    }),
+  )
+  if (tomou.count === 0) return { ok: false, motivo: 'ja_respondida' }
 
   if (!aceita) {
     await marcar(sessao.orgId, propostaId, 'RECUSADA', sessao.nome)
@@ -295,15 +310,18 @@ async function executar(
 
     case 'ajustar.estoque': {
       const quantidade = Number(dados.quantidade ?? 0)
-      await comoOrg(sessao.orgId, (db) =>
-        mexerEstoqueEm(db, sessao, {
-          variacaoId: String(dados.variacaoId ?? ''),
-          unidadeId: String(dados.unidadeId ?? ''),
-          tipo: 'AJUSTE',
-          quantidade,
-          motivo: String(dados.motivo ?? 'Ajuste proposto pelo assistente'),
-        }),
-      )
+      // O MESMO serviço da tela: `mexerEstoque` confere a capacidade NA LOJA
+      // da proposta, confere que produto e loja são desta empresa e escreve
+      // no livro. Antes ia direto em `mexerEstoqueEm`, que não confere nada —
+      // o gerente da loja 3 confirmava ajuste na loja 5, e sem linha no livro.
+      const r = await mexerEstoque(sessao, {
+        variacaoId: String(dados.variacaoId ?? ''),
+        unidadeId: String(dados.unidadeId ?? ''),
+        tipo: 'AJUSTE',
+        quantidade,
+        motivo: String(dados.motivo ?? 'Ajuste proposto pelo assistente'),
+      })
+      if (!r.ok) throw new Error('O estoque não permite esse ajuste agora.')
       return undefined
     }
 
@@ -364,7 +382,7 @@ export async function balanco(orgId: string, de: Date, ate: Date): Promise<Balan
 
     const gasto = await db.consumoIA.aggregate({
       where: { criadoEm: { gte: de, lte: ate } },
-      _sum: { custoCent: true },
+      _sum: { cobradoCent: true },
     })
 
     const porTipo = recibos.map((r) => ({
@@ -375,7 +393,7 @@ export async function balanco(orgId: string, de: Date, ate: Date): Promise<Balan
 
     return {
       trouxe: porTipo.reduce((s, r) => s + r.valor, 0),
-      custou: reais(gasto._sum.custoCent ?? 0),
+      custou: reais(gasto._sum.cobradoCent ?? 0),
       porTipo: porTipo.sort((a, b) => b.valor - a.valor),
       mensalidade: 0,
     }
@@ -447,6 +465,11 @@ export async function podeGastarHoje(orgId: string): Promise<VeredictoIA> {
       recado: 'Esta empresa não tem assistente configurado.',
     }
   }
+
+  // O crédito incluso do mês cai antes de conferir o saldo: no dia 1º, a
+  // primeira mensagem do mês não pode ser recusada por falta de um crédito
+  // que o plano já garante.
+  await garantirCreditoDoMes(orgId)
 
   const inicio = new Date()
   inicio.setHours(0, 0, 0, 0)

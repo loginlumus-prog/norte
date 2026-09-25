@@ -28,6 +28,7 @@ import {
   type Mudanca,
 } from './planos'
 import { mostrar } from './dinheiro'
+import { diaEmSP } from './dia'
 
 export type Uso = { unidades: number; usuarios: number }
 
@@ -62,7 +63,66 @@ export type Assinatura = {
 
 const DIA = 864e5
 
+/**
+ * Deposita o crédito de IA incluso no plano, uma vez por mês.
+ *
+ * A tabela de planos promete "R$ 100 de crédito de IA por mês" — e até 25/09
+ * nada no código depositava: o crédito só chegava se alguém pusesse à mão.
+ * Agora ele cai sozinho na primeira vez que o mês é olhado (a tela da
+ * assinatura, ou o assistente antes de gastar), sem precisar de agendador.
+ *
+ * Uma vez por mês, e não mais: o recibo do depósito leva `plano:AAAA-MM` na
+ * referência, e a trava de transação impede que duas conversas chegando ao
+ * mesmo tempo depositem duas vezes. Quem sobe de plano no meio do mês recebe
+ * o do plano novo se ainda não recebeu nenhum naquele mês. O que sobra de um
+ * mês passa para o outro — o crédito é da loja, não vence.
+ *
+ * Empresa suspensa ou cancelada não recebe. Corporativo (`creditoMensal`
+ * nulo) tem o crédito no contrato, e o Grátis e o Balcão não têm assistente.
+ */
+export async function garantirCreditoDoMes(orgId: string, agora = new Date()): Promise<number> {
+  const mes = diaEmSP(agora).slice(0, 7)
+  const referencia = `plano:${mes}`
+  return comoOrg(orgId, async (db) => {
+    await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`credito-do-mes:${orgId}`}))`
+    const org = await db.org.findUniqueOrThrow({
+      where: { id: orgId },
+      select: { plano: true, situacao: true },
+    })
+    const incluso = PLANOS[org.plano].creditoMensal
+    if (!incluso || org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA') return 0
+
+    const ja = await db.recargaIA.findFirst({
+      where: { tipo: 'PLANO', referencia },
+      select: { id: true },
+    })
+    if (ja) return 0
+
+    const centavos = incluso * 100
+    const depois = await db.org.update({
+      where: { id: orgId },
+      data: { creditoIaCent: { increment: centavos } },
+      select: { creditoIaCent: true },
+    })
+    const [ano, m] = mes.split('-')
+    await db.recargaIA.create({
+      data: {
+        orgId,
+        centavos,
+        saldoDepois: depois.creditoIaCent,
+        tipo: 'PLANO',
+        origem: 'plano',
+        referencia,
+        motivo: `Crédito incluso no plano ${PLANOS[org.plano].titulo} — ${m}/${ano}`,
+        quem: 'Norte',
+      },
+    })
+    return centavos
+  })
+}
+
 export async function assinaturaDe(sessao: Sessao): Promise<Assinatura> {
+  await garantirCreditoDoMes(sessao.orgId)
   return comoOrg(sessao.orgId, async (db) => {
     const org = await db.org.findUniqueOrThrow({
       where: { id: sessao.orgId },
@@ -204,6 +264,49 @@ export async function exigirCotaDeUnidade(
 // A troca não é comercial, é de segurança: cobrar por conta cadastrada empurra
 // a loja a compartilhar login, e login compartilhado faz o livro de auditoria
 // mentir. A conferência de vaga mora no login — ver `podeAbrirVaga`.
+
+/**
+ * A empresa pode subir de plano e pôr crédito sozinha, sem pagar?
+ *
+ * Enquanto o gateway de pagamento não existe, NÃO: subir de plano e recarregar
+ * crédito de IA viram PEDIDO, que a gente confirma junto com o pagamento. Antes
+ * de 25/09 os dois cliques liberavam na hora — qualquer dono ia para o Direção
+ * e punha R$ 5.000 de crédito de IA de graça, e o crédito é gasto real nosso
+ * com a IA. Descer de plano continua imediato: não custa nada a ninguém.
+ *
+ * `NORTE_ASSINATURA_LIVRE=1` liga o clique direto — para o banco local, as
+ * conferências e, no futuro, quando o gateway cobrar antes de liberar.
+ */
+export const assinaturaLivre = () => process.env.NORTE_ASSINATURA_LIVRE === '1'
+
+/** Registra o pedido no livro da empresa e no log do servidor, onde a gente lê. */
+export async function registrarPedido(
+  sessao: Sessao,
+  pedido: { tipo: 'plano'; para: Plano } | { tipo: 'credito'; centavos: number },
+) {
+  exigir(sessao, 'empresa.configurar')
+  const texto =
+    pedido.tipo === 'plano'
+      ? `Pediu o plano ${PLANOS[pedido.para].titulo}`
+      : `Pediu ${mostrar(pedido.centavos)} de crédito de IA`
+  await comoOrg(sessao.orgId, (db) =>
+    db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: pedido.tipo === 'plano' ? 'plano.pediu' : 'credito.pediu',
+        alvoTipo: 'empresa',
+        alvoId: sessao.orgId,
+        alvoNome: pedido.tipo === 'plano' ? PLANOS[pedido.para].titulo : mostrar(pedido.centavos),
+        motivo: texto,
+      },
+    }),
+  )
+  // O log do servidor é onde a equipe do Norte vê o pedido chegar. Sem dado
+  // pessoal: a empresa pelo id, e o que foi pedido.
+  console.info(`[pedido-assinatura] org=${sessao.orgId} ${texto}`)
+}
 
 /**
  * Troca o plano.

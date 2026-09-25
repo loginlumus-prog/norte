@@ -1,3 +1,4 @@
+import { contaComoFalta } from '@/servidor/catalogo-loja'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -128,11 +129,12 @@ export default async function TelaEstoque({
           quantidade: true,
           minimo: true,
           unidadeId: true,
+          unidade: { select: { ehDeposito: true } },
           variacao: {
             select: {
               id: true,
               codigo: true,
-              produto: { select: { nome: true, medida: true, custo: true } },
+              produto: { select: { nome: true, medida: true, custo: true, vendidoEm: true } },
               opcoes: {
                 select: {
                   opcao: {
@@ -164,6 +166,18 @@ export default async function TelaEstoque({
   >()
   for (const l of linhas) {
     const v = l.variacao
+    // Linha zerada de produto que esta loja não vende não é "acabou" — é
+    // sobra de transferência ou de balanço. A mesma régua do "Precisa de
+    // você" do painel (ver `contaComoFalta`), senão o "Ver" levaria a uma
+    // lista de tamanho diferente do número prometido.
+    if (
+      !contaComoFalta(
+        { quantidade: Number(l.quantidade), unidadeId: l.unidadeId, ehDeposito: l.unidade.ehDeposito },
+        v.produto.vendidoEm,
+      )
+    ) {
+      continue
+    }
     const atual = porVariacao.get(v.id)
     const saldo = Number(l.quantidade)
     if (atual) {
@@ -417,7 +431,7 @@ export default async function TelaEstoque({
     >
       <Tira
         itens={[
-          { rotulo: 'acabaram', quantos: acabaram.length, nivel: 'critico' },
+          { rotulo: 'acabaram', um: 'acabou', quantos: acabaram.length, nivel: 'critico' },
           { rotulo: 'no mínimo', quantos: noMinimo.length, nivel: 'atencao' },
           { rotulo: 'com estoque', quantos: itens.length - acabaram.length - noMinimo.length, nivel: 'bom' },
         ]}
@@ -425,7 +439,7 @@ export default async function TelaEstoque({
 
       {divergencia && divergencia.length > 0 && (
         <Aviso nivel="critico">
-          {divergencia.length} item(ns) com saldo diferente da soma do histórico. Isso é
+          {divergencia.length} {divergencia.length === 1 ? 'item' : 'itens'} com saldo diferente da soma do histórico. Isso é
           defeito, não erro de contagem — o saldo foi mexido por fora do sistema.
         </Aviso>
       )}
@@ -514,8 +528,8 @@ export default async function TelaEstoque({
         <Cartao
           titulo={
             q || situacao
-              ? `${listados.length} de ${itens.length} item(ns)`
-              : `${itens.length} item(ns)`
+              ? `${listados.length} de ${itens.length} ${itens.length === 1 ? 'item' : 'itens'}`
+              : `${itens.length} ${itens.length === 1 ? 'item' : 'itens'}`
           }
           acao={
             valorParado > 0 ? (

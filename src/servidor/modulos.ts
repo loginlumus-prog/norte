@@ -17,12 +17,14 @@
 export const MODULOS = {
   crediario: {
     titulo: 'Crediário',
-    resumo: 'Vender fiado, com parcelas, juros e cobrança automática.',
+    resumo: 'Vender fiado, com parcelas, juros de atraso e a lista de quem deve.',
     pergunta: 'Você vende fiado (crediário próprio)?',
   },
   notaFiscal: {
     titulo: 'Nota fiscal',
-    resumo: 'Emitir NFC-e no balcão e NF-e.',
+    // Em breve: depende do emissor contratado e do certificado A1 de cada loja
+    // (ver `RECURSOS` em planos.ts). Até lá, ligar a chave não emite nada.
+    resumo: 'Em breve: emitir NFC-e no balcão e NF-e.',
     pergunta: 'Você emite nota fiscal?',
   },
   multiUnidade: {
@@ -77,10 +79,12 @@ export function moduloLigado(empresa: ComModulos, modulo: Modulo): boolean {
  *
  * ── o que cada campo faz ─────────────────────────────────────
  * `eixos`      as grades de variação (Cor, Numeração, Sabor)
- * `medida`     unidade padrão do produto (UN, KG, PAR)
- * `sugere`     módulos já marcados no cadastro inicial
+ * `medida`     como o ramo costuma vender (UN, KG, PAR) — referência para a
+ *              página de venda; o cadastro NÃO semeia isto, cada produto
+ *              escolhe a sua medida
+ * `sugere`     módulos já marcados no cadastro inicial — só os que o plano tem
  * `categorias` as gavetas do catálogo, criadas no cadastro inicial
- * `manual`     o que o assistente já sabe da loja no primeiro dia
+ * `manual`     o manual que o assistente recebe, se ele for ligado no cadastro
  * `balcao`     'grade' = vende tocando em botões por categoria (quem não
  *              etiqueta: sorveteria, lanchonete, floricultura, serviço);
  *              'busca' = vende bipando a etiqueta (quem tem leitor e grade

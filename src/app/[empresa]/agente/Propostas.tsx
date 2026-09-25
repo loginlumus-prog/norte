@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation'
 import { Botao, Cartao, Situacao } from '@/ui/base'
 import { brl } from '@/ui/painel'
 import { responder } from './acoes'
+import { plural } from '@/ui/texto'
 
 export type PropostaNaTela = {
   id: string
@@ -107,5 +108,5 @@ function daqui(iso: string): string {
   const h = Math.round((new Date(iso).getTime() - Date.now()) / 3600_000)
   if (h <= 0) return 'agora'
   if (h < 24) return `em ${h}h`
-  return `em ${Math.round(h / 24)} dia(s)`
+  return `em ${plural(Math.round(h / 24), 'dia', 'dias')}`
 }

@@ -794,9 +794,12 @@ export async function editarEncomenda(
     }
 
     // Guarda contra dois cliques em telas diferentes: só grava se ninguém
-    // concluiu a encomenda entre a leitura e agora.
+    // concluiu a encomenda entre a leitura e agora — nem mexeu no sinal. Sem
+    // o sinal na condição, o formulário mandado duas vezes (50 → 100) passava
+    // duas vezes e lançava dois "complementos de sinal" de 50: o financeiro
+    // contava R$ 100 a mais para um sinal que subiu 50.
     const r = await db.encomenda.updateMany({
-      where: { id, situacao: antes.situacao },
+      where: { id, situacao: antes.situacao, sinal: antes.sinal },
       data: {
         clienteId: e.clienteId,
         clienteNome: nome,

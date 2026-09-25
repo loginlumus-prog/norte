@@ -14,7 +14,14 @@
 import { useActionState, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao, Campo, Selecao, Aviso, Cartao, Situacao, cx } from '@/ui/base'
-import { convidarPessoa, revogar, trocarPapel, trocarSituacao, type EstadoEquipe } from './acoes'
+import {
+  convidarPessoa,
+  revogar,
+  trocarPapel,
+  trocarSituacao,
+  trocarTelefone,
+  type EstadoEquipe,
+} from './acoes'
 
 export type PessoaNaTela = {
   id: string
@@ -26,6 +33,98 @@ export type PessoaNaTela = {
   unidadeId: string | null
   unidadeNome: string | null
   souEu: boolean
+  /** Celular com DDD: é por ele que o assistente reconhece a pessoa no WhatsApp. */
+  telefone: string | null
+}
+
+/** "71999990000" → "(71) 99999-0000". O que não tiver forma de celular fica como veio. */
+function mostrarTelefone(t: string | null): string {
+  if (!t) return ''
+  const d = t.replace(/\D/g, '')
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
+  return t
+}
+
+/**
+ * O telefone na linha da pessoa: texto enquanto está quieto, campo quando
+ * alguém clica em mudar. A própria pessoa sempre pode; o de outra, só quem
+ * gere a equipe (o servidor confere de novo).
+ */
+function Telefone({
+  slug,
+  pessoa,
+  pode,
+  aoSalvar,
+}: {
+  slug: string
+  pessoa: PessoaNaTela
+  pode: boolean
+  aoSalvar: (r: EstadoEquipe) => void
+}) {
+  const [editando, setEditando] = useState(false)
+  const [valor, setValor] = useState(mostrarTelefone(pessoa.telefone))
+  const [indo, comecar] = useTransition()
+  const router = useRouter()
+
+  if (!editando) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-tinta-3">
+        {pessoa.telefone ? (
+          <span className="numero text-tinta-2">{mostrarTelefone(pessoa.telefone)}</span>
+        ) : (
+          <span>sem telefone</span>
+        )}
+        {pode && (
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            className="font-semibold text-marca hover:underline"
+          >
+            {pessoa.telefone ? 'mudar' : pessoa.souEu ? '+ cadastrar o meu' : '+ cadastrar'}
+          </button>
+        )}
+      </span>
+    )
+  }
+
+  return (
+    <form
+      className="flex flex-wrap items-center gap-1.5"
+      onSubmit={(e) => {
+        e.preventDefault()
+        comecar(async () => {
+          const r = await trocarTelefone(slug, pessoa.id, valor)
+          aoSalvar(r)
+          if (r.ok) {
+            setEditando(false)
+            router.refresh()
+          }
+        })
+      }}
+    >
+      <input
+        aria-label={`Telefone de ${pessoa.nome}`}
+        type="tel"
+        inputMode="tel"
+        autoFocus
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        placeholder="(71) 99999-0000"
+        className="w-40 rounded-norte border border-borda bg-superficie px-2 py-1 text-xs text-tinta"
+      />
+      <Botao type="submit" className="px-2 py-1 text-xs" carregando={indo}>
+        Salvar
+      </Botao>
+      <button
+        type="button"
+        onClick={() => setEditando(false)}
+        className="text-xs text-tinta-3 hover:text-tinta"
+      >
+        cancelar
+      </button>
+    </form>
+  )
 }
 
 export type ConviteNaTela = {
@@ -125,6 +224,7 @@ export function Equipe({
                   {p.ultimoLogin && ` · entrou ${p.ultimoLogin}`}
                   {!p.ultimoLogin && ' · nunca entrou'}
                 </span>
+                <Telefone slug={slug} pessoa={p} pode={p.souEu || podeGerir} aoSalvar={setRecado} />
               </span>
 
               <span className="flex flex-wrap items-center gap-2">

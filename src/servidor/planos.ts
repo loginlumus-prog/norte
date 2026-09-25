@@ -116,7 +116,8 @@ export const PLANOS: Record<Plano, Limite> = {
   BALCAO: {
     titulo: 'Balcão',
     artigo: 'o',
-    resumo: 'Até três lojas, e o sistema inteiro — menos o assistente.',
+    resumo:
+      'Até três lojas, com financeiro, fechamento do mês e tarefas da equipe — sem o assistente.',
     unidades: 3,
     vagas: 3,
     mensal: 100,
@@ -133,7 +134,7 @@ export const PLANOS: Record<Plano, Limite> = {
     // ele, o nome diz o que muda: aqui alguem passa a atender por voce.
     titulo: 'Assistente',
     artigo: 'o',
-    resumo: 'Até cinco lojas, com o assistente atendendo e cobrando no WhatsApp.',
+    resumo: 'Até cinco lojas, com o assistente atendendo no WhatsApp e propondo antes de agir.',
     unidades: 5,
     vagas: 5,
     mensal: 350,
@@ -164,7 +165,8 @@ export const PLANOS: Record<Plano, Limite> = {
     titulo: 'Direção',
     artigo: 'a',
     resumo:
-      'Lojas e pessoas sem limite, e a análise que diz onde você está perdendo e o que fazer.',
+      'Lojas e pessoas sem limite, crediário, curva ABC e previsão de ruptura. ' +
+      'Em breve, a análise que diz onde você está perdendo e o que fazer.',
     unidades: null,
     vagas: null,
     mensal: 1500,
@@ -251,13 +253,16 @@ export function podeCriarUnidade(plano: Plano, jaTem: number): Veredito {
     }
   }
 
-  // Passou da cota e o plano não vende extra: sobe de plano.
+  // Passou da cota e o plano não vende extra: sobe de plano — para o MENOR
+  // que cabe. Antes a sugestão era sempre a Direção (R$ 1.500): quem estava
+  // no Grátis querendo a segunda loja era mandado para o plano mais caro,
+  // quando o Balcão, de R$ 100, atende três.
   return {
     pode: false,
     motivo:
       `O plano ${p.titulo} atende ${p.unidades} ` +
       `${p.unidades === 1 ? 'unidade' : 'unidades'}.`,
-    sugestao: 'REDE',
+    sugestao: menorQueCabe({ unidades: jaTem + 1 }),
   }
 }
 
@@ -507,17 +512,26 @@ export const RECURSOS: Recurso[] = [
     em: TODOS_OS_PLANOS,
     detalhe: { GRATIS: 'simples', BALCAO: 'completo', BALCAO_AGENTE: 'completo', REDE: 'completo', CORPORATIVO: 'completo' },
   },
-  { titulo: 'Financeiro com DRE do mês', grupo: 'Dinheiro', em: PAGOS, destaque: true },
-  { titulo: 'Contas a pagar e recorrentes', grupo: 'Dinheiro', em: PAGOS },
+  // Financeiro, contas e fechamento: a tabela dizia "planos pagos" e o código
+  // nunca trancou — o Grátis sempre abriu as três telas. Entre tirar do
+  // cliente o que ele já usa e corrigir a tabela, a tabela é que estava
+  // errada (decidido em 25/09, na auditoria de promessas).
+  { titulo: 'Financeiro com DRE do mês', grupo: 'Dinheiro', em: TODOS_OS_PLANOS, destaque: true },
+  { titulo: 'Contas a pagar e recorrentes', grupo: 'Dinheiro', em: TODOS_OS_PLANOS },
   { titulo: 'Metas e comissão por vendedor', grupo: 'Equipe', em: COM_AGENTE },
-  { titulo: 'Fechamento de mês guiado', grupo: 'Dinheiro', em: PAGOS },
+  { titulo: 'Fechamento de mês guiado', grupo: 'Dinheiro', em: TODOS_OS_PLANOS },
   {
     titulo: 'Curva ABC e dinheiro parado',
     grupo: 'Dinheiro',
     em: DE_REDE,
     destaque: true,
   },
-  { titulo: 'Crediário próprio, com juros e cobrança', grupo: 'Dinheiro', em: DE_REDE, destaque: true },
+  {
+    titulo: 'Crediário próprio, com juros de atraso e a lista de quem deve',
+    grupo: 'Dinheiro',
+    em: DE_REDE,
+    destaque: true,
+  },
 
   // ── Equipe ──
   // O quadro existe em TODO plano — inclusive no Grátis, com um quadro só. É
@@ -612,7 +626,10 @@ export const RECURSOS: Recurso[] = [
     grupo: 'Estrutura',
     em: TODOS_OS_PLANOS,
     detalhe: porPlano(TODOS_OS_PLANOS, (l) =>
-      aVontade(l.vagas, (n) => (l.porVagaExtra ? `${n} (+R$ ${l.porVagaExtra} cada)` : String(n))),
+      // Sem o "(+R$ 40 cada)" que já esteve aqui: a vaga extra tem preço na
+      // tabela (`porVagaExtra`), mas o login ainda não vende vaga a mais
+      // (`ocuparVaga` só olha a cota). Prometer a compra seria vender o que não há.
+      aVontade(l.vagas, (n) => String(n)),
     ),
     destaque: true,
   },
@@ -687,6 +704,10 @@ export const LIBERACOES = {
   'precos.margem': { desde: 'BALCAO', titulo: 'Margem e markup' },
   'precos.sugestao': { desde: 'BALCAO_AGENTE', titulo: 'Preço sugerido' },
   'ruptura.previsao': { desde: 'REDE', titulo: 'Previsão de ruptura' },
+  // A tabela vende o programa de pontos dos planos pagos (`RECURSOS`). Antes
+  // disto ninguém conferia: o Grátis ligava o programa em Configurações, e o
+  // balcão pontuava.
+  'pontos.programa': { desde: 'BALCAO', titulo: 'Programa de pontos' },
 } as const satisfies Record<string, { desde: Plano; titulo: string }>
 
 export type Liberacao = keyof typeof LIBERACOES

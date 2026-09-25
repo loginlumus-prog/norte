@@ -5,7 +5,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { exigirSessao } from '@/servidor/pagina'
+import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { criarCliente, editarCliente } from '@/servidor/cliente'
 import { SemPermissao } from '@/servidor/permissao'
 
@@ -53,7 +53,7 @@ export async function criar(
     r = await criarCliente(sessao, dadosDoFormulario(form))
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para cadastrar cliente.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para cadastrar.' }
+    return { erro: recadoDoErro(e, 'Não deu para cadastrar.') }
   }
 
   if (!r.ok) {
@@ -85,6 +85,6 @@ export async function editar(
     return { ok: 'Salvo.' }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para editar cliente.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para salvar.' }
+    return { erro: recadoDoErro(e, 'Não deu para salvar.') }
   }
 }

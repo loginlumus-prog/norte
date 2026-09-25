@@ -4,10 +4,11 @@
 // Cada função repete a checagem inteira: sessão viva, capacidade E unidade.
 
 import { revalidatePath } from 'next/cache'
-import { exigirSessao } from '@/servidor/pagina'
+import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { exigir, SemPermissao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { mexerEstoque, transferir } from '@/servidor/estoque'
+import { colunaDoDia } from '@/servidor/dia'
 import { registrarEntrada, definirMinimo, type ItemEntrada } from '@/servidor/entrada'
 
 /** Tirar de uma loja e pôr na outra. A trava inteira está em `transferir`. */
@@ -33,7 +34,7 @@ export async function transferirAcao(
     return { ok: `Transferido. Ficaram ${r.saldoOrigem} aqui e ${r.saldoDestino} lá.` }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para mexer no estoque das duas lojas.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para transferir.' }
+    return { erro: recadoDoErro(e, 'Não deu para transferir.') }
   }
 }
 
@@ -126,8 +127,12 @@ export async function darEntrada(
       conta: dados.conta
         ? {
             categoriaId: dados.conta.categoriaId,
-            // 'T12:00' evita o pulo de dia por fuso: a data digitada é a gravada.
-            vencimento: new Date(`${dados.conta.vencimento}T12:00:00`),
+            // Coluna `date`: o DIA digitado, à meia-noite UTC, como o banco o
+            // guarda. Texto que não é data vira "Invalid Date", e a entrada
+            // recusa com frase — ver `registrarEntrada`.
+            vencimento: /^\d{4}-\d{2}-\d{2}$/.test(dados.conta.vencimento)
+              ? colunaDoDia(dados.conta.vencimento)
+              : new Date(Number.NaN),
             jaPago: dados.conta.jaPago,
           }
         : undefined,
@@ -152,7 +157,7 @@ export async function darEntrada(
     }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para dar entrada.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para registrar a entrada.' }
+    return { erro: recadoDoErro(e, 'Não deu para registrar a entrada.') }
   }
 }
 
@@ -186,7 +191,7 @@ export async function contar(
     return { ok: `Saldo corrigido para ${r.saldo}.` }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para ajustar estoque.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para corrigir.' }
+    return { erro: recadoDoErro(e, 'Não deu para corrigir.') }
   }
 }
 
@@ -203,6 +208,6 @@ export async function salvarMinimo(
     return { ok: 'Mínimo salvo.' }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para isso.' }
-    return { erro: e instanceof Error ? e.message : 'Não deu para salvar.' }
+    return { erro: recadoDoErro(e, 'Não deu para salvar.') }
   }
 }

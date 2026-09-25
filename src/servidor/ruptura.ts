@@ -28,7 +28,7 @@
 // testada em `tests/ruptura.test.ts`.
 
 import { comoOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, soAsQuePode, type Sessao } from './permissao'
 
 export const PRAZO_PADRAO = 7
 export const JANELA_DIAS = 30
@@ -155,6 +155,7 @@ export type LinhaRuptura = {
  */
 export async function previsaoDeRuptura(sessao: Sessao, unidadeIds: string[]): Promise<LinhaRuptura[]> {
   exigir(sessao, 'estoque.ver')
+  unidadeIds = soAsQuePode(sessao, 'estoque.ver', unidadeIds)
   if (unidadeIds.length === 0) return []
 
   const corte = new Date(Date.now() - JANELA_DIAS * DIA_MS)

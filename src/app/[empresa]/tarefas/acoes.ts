@@ -6,7 +6,7 @@
 // erro para uma frase que a tela pode mostrar.
 
 import { revalidatePath } from 'next/cache'
-import { exigirSessao } from '@/servidor/pagina'
+import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { SemPermissao } from '@/servidor/permissao'
 import {
   alterarQuadro,
@@ -38,7 +38,7 @@ async function tentar(slug: string, fn: () => Promise<Resultado | void>, semPerm
     return r
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: semPermissao }
-    return { erro: e instanceof Error ? e.message : 'Não deu para salvar.' }
+    return { erro: recadoDoErro(e, 'Não deu para salvar.') }
   }
 }
 

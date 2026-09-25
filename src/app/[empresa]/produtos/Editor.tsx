@@ -63,6 +63,7 @@ export function Editor({
   eixos,
   categorias,
   lojas = [],
+  sugestao,
   produto,
 }: {
   slug: string
@@ -70,6 +71,8 @@ export function Editor({
   categorias: { id: string; nome: string }[]
   /** As lojas abertas que vendem (depósito não). Com uma só, a pergunta nem aparece. */
   lojas?: { id: string; nome: string; ramo: string | null }[]
+  /** Produto novo: por categoria, as lojas do ramo dela. Vazio = todas. */
+  sugestao?: Record<string, string[]>
   /** Ausente = cadastro novo. */
   produto?: ProdutoNaTela
 }) {
@@ -81,6 +84,22 @@ export function Editor({
   const [estado, agir, pendente] = useActionState<EstadoProduto, FormData>(acao, {})
 
   const [marcadas, setMarcadas] = useState<Record<string, string[]>>(produto?.marcadas ?? {})
+
+  // "Vendido em" controlado: no cadastro novo, escolher a categoria já marca
+  // as lojas do ramo dela (o picolé só na sorveteria). A pessoa ainda pode
+  // mudar à mão depois — trocar de categoria de novo refaz a sugestão.
+  const vendeEmTodas = (ids: string[]) =>
+    Object.fromEntries(lojas.map((l) => [l.id, ids.length === 0 || ids.includes(l.id)]))
+  const [vendeEm, setVendeEm] = useState<Record<string, boolean>>(() =>
+    vendeEmTodas(produto?.vendidoEm ?? []),
+  )
+  const [sugerido, setSugerido] = useState(false)
+  const aoTrocarCategoria = (categoriaId: string) => {
+    if (produto || !sugestao) return
+    const ids = sugestao[categoriaId] ?? []
+    setVendeEm(vendeEmTodas(ids))
+    setSugerido(ids.length > 0)
+  }
 
   const alterna = (eixoId: string, opcaoId: string, on: boolean) =>
     setMarcadas((m) => {
@@ -118,6 +137,7 @@ export function Editor({
             rotulo="Categoria"
             name="categoriaId"
             defaultValue={produto?.categoriaId ?? ''}
+            onChange={(e) => aoTrocarCategoria(e.target.value)}
             opcoes={[{ valor: '', titulo: 'Sem categoria' }, ...categorias.map((c) => ({ valor: c.id, titulo: c.nome }))]}
           />
           <Selecao
@@ -176,6 +196,11 @@ export function Editor({
             O balcão de cada loja só mostra o que está marcado aqui. Com todas marcadas, a loja
             que você abrir depois também vende este produto.
           </p>
+          {sugerido && (
+            <p className="text-xs font-medium text-marca">
+              Marquei as lojas do ramo desta categoria. Confira antes de salvar.
+            </p>
+          )}
           <div className="grid gap-2 sm:grid-cols-2">
             {lojas.map((l) => (
               <Marcar
@@ -184,7 +209,8 @@ export function Editor({
                 id={`vendido-${l.id}`}
                 titulo={l.nome}
                 resumo={l.ramo ?? undefined}
-                defaultChecked={!produto || produto.vendidoEm.length === 0 || produto.vendidoEm.includes(l.id)}
+                checked={vendeEm[l.id] ?? true}
+                onChange={(e) => setVendeEm((v) => ({ ...v, [l.id]: e.target.checked }))}
               />
             ))}
           </div>
@@ -234,7 +260,8 @@ export function Editor({
                             className={cx(
                               'flex cursor-pointer items-center gap-1.5 rounded-norte border px-2.5 py-1.5 text-sm transition-colors',
                               ligada
-                                ? 'border-bom-vivo bg-bom-fundo font-semibold text-tinta'
+                                // Escolha é azul, como no `Marcar`: verde é situação.
+                                ? 'border-marca bg-marca-suave font-semibold text-tinta'
                                 : 'border-borda bg-superficie text-tinta-2 hover:bg-superficie-2',
                             )}
                           >
@@ -243,7 +270,7 @@ export function Editor({
                               name={`opcao_${e.id}_${o.id}`}
                               defaultChecked={ligada}
                               onChange={(ev) => alterna(e.id, o.id, ev.currentTarget.checked)}
-                              className="size-3.5 accent-[var(--bom-vivo)]"
+                              className="size-3.5 accent-[var(--marca)]"
                             />
                             {o.hex && (
                               <span

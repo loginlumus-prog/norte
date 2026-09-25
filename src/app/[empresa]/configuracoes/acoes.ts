@@ -9,6 +9,7 @@ import { exigir } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { salvarConfigCrediario } from '@/servidor/crediario'
 import { salvarTaxas, FORMAS_COM_TAXA } from '@/servidor/taxas'
+import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 
 export type EstadoTaxas = { erro?: string; ok?: string }
 
@@ -72,6 +73,18 @@ export async function salvarPontos(
   exigir(s, 'empresa.configurar')
 
   const ativo = form.get('ativo') != null
+
+  // O programa de pontos é dos planos pagos (`RECURSOS`). Desligar vale em
+  // qualquer plano — quem desceu de plano precisa conseguir sair.
+  if (ativo) {
+    const plano = await comoOrg(s.orgId, (db) =>
+      db.org.findUniqueOrThrow({ where: { id: s.orgId }, select: { plano: true } }),
+    ).then((o) => o.plano)
+    if (!liberado(plano, 'pontos.programa')) {
+      return { erro: `O programa de pontos é ${doPlano(planoQueAbre('pontos.programa').codigo)} para cima.` }
+    }
+  }
+
   const porReal = numero(form.get('porReal'))
   const pontoVale = numero(form.get('pontoVale'))
   const minimo = Math.max(0, Math.floor(numero(form.get('minimo'))))

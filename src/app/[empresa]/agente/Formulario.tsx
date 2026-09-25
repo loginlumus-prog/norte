@@ -59,7 +59,7 @@ export function Formulario({
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
 
       {/* ── quem ele é ── */}
-      <Cartao titulo="Quem ele é">
+      <Cartao titulo="Quem é o assistente">
         <div className="grid gap-4 sm:grid-cols-2">
           <Campo
             rotulo="Nome"
@@ -80,7 +80,7 @@ export function Formulario({
         </div>
 
         <label className="mt-4 flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-tinta">Como ele fala</span>
+          <span className="text-sm font-medium text-tinta">Jeito de falar</span>
           <textarea
             name="personalidade"
             rows={3}
@@ -120,7 +120,7 @@ export function Formulario({
 
       {/* ── o que ele pode ── */}
       <Cartao
-        titulo="O que ele pode fazer"
+        titulo="O que o assistente pode fazer"
         acao={
           <span className="numero text-xs font-semibold text-tinta-3">
             {ligados.length} de {TODOS_PODERES.length}

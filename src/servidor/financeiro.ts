@@ -13,7 +13,7 @@
 // formato que o contador espera.
 
 import { comoOrg } from './banco'
-import { exigir, pode, type Sessao } from './permissao'
+import { exigir, pode, soAsQuePode, textoDaBusca, type Sessao } from './permissao'
 import { colunaDoDia, diaEmSP } from './dia'
 import { centavos, reais } from './dinheiro'
 import { lerTaxas, taxaDe, taxaEmCentavos, taxasDoPeriodo } from './taxas'
@@ -86,10 +86,37 @@ export type NovoLancamento = {
 
 export async function lancar(sessao: Sessao, l: NovoLancamento) {
   exigir(sessao, 'financeiro.lancar', l.unidadeId ?? undefined)
-  if (l.valor <= 0) throw new Error('O valor precisa ser maior que zero.')
+  if (!Number.isFinite(l.valor) || l.valor <= 0) throw new Error('O valor precisa ser maior que zero.')
   if (!l.descricao.trim()) throw new Error('Todo lançamento precisa de descrição.')
+  if (l.tipo !== 'DESPESA' && l.tipo !== 'RECEITA') throw new Error('Escolha se é despesa ou receita.')
+  if (Number.isNaN(l.vencimento.getTime())) throw new Error('A data de vencimento não é uma data.')
+  if (l.pagoEm && Number.isNaN(l.pagoEm.getTime())) throw new Error('A data de pagamento não é uma data.')
 
   return comoOrg(sessao.orgId, async (db) => {
+    // Categoria, conta e loja vêm do formulário, e o formulário é do
+    // navegador. Procurar cada uma AQUI passa pelo RLS: id de outra empresa
+    // simplesmente não aparece. Sem isto o lançamento nascia apontando para a
+    // categoria de outra empresa — a chave estrangeira do banco não olha o
+    // RLS — e o DRE desta tela quebrava ao tentar ler o nome dela.
+    const categoria = await db.categoriaFinanceira.findUnique({
+      where: { id: l.categoriaId },
+      select: { id: true, tipo: true },
+    })
+    if (!categoria) throw new Error('Categoria não encontrada.')
+    // O DRE soma pelo GRUPO da categoria: despesa lançada numa categoria de
+    // receita entraria no resultado como dinheiro que chegou.
+    if (categoria.tipo !== l.tipo) {
+      throw new Error(l.tipo === 'DESPESA' ? 'Essa categoria é de receita.' : 'Essa categoria é de despesa.')
+    }
+    if (l.contaId) {
+      const conta = await db.contaFinanceira.findUnique({ where: { id: l.contaId }, select: { id: true } })
+      if (!conta) throw new Error('Conta não encontrada.')
+    }
+    if (l.unidadeId) {
+      const loja = await db.unidade.findUnique({ where: { id: l.unidadeId }, select: { id: true } })
+      if (!loja) throw new Error('Loja não encontrada.')
+    }
+
     const criado = await db.lancamento.create({
       data: {
         orgId: sessao.orgId,
@@ -126,6 +153,15 @@ export async function lancar(sessao: Sessao, l: NovoLancamento) {
   })
 }
 
+/**
+ * O dia de hoje, pronto para gravar numa coluna `date` (`pagoEm`).
+ *
+ * `new Date()` NÃO serve: depois das 21h em São Paulo já é o dia seguinte em
+ * UTC, e é o dia em UTC que a coluna guarda — a conta paga às 22h do dia 30
+ * aparecia paga no dia 1º, e saía do DRE do mês em que foi paga.
+ */
+export const hojeParaColuna = (agora: Date = new Date()) => colunaDoDia(diaEmSP(agora))
+
 /** Marca como pago (ou desmarca, se a pessoa se enganou). */
 export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null) {
   exigir(sessao, 'financeiro.lancar')
@@ -136,6 +172,15 @@ export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null
       select: { descricao: true, valor: true, pagoEm: true, unidadeId: true },
     })
     if (!antes) return
+    // A LOJA do lançamento decide, e ela só se sabe depois de achar. Sem isto
+    // o financeiro da loja 3 dava baixa na conta da loja 5 colando o id —
+    // `exigir` sem loja passa para quem pode lançar em QUALQUER uma.
+    // Lançamento sem loja é da empresa inteira, e segue a regra de `lancar`.
+    if (antes.unidadeId) exigir(sessao, 'financeiro.lancar', antes.unidadeId)
+
+    // Clique duplo, ou duas abas: dar baixa no que já está pago não troca a
+    // data do pagamento nem escreve outra linha no livro.
+    if ((antes.pagoEm === null) === (pagoEm === null)) return
 
     await db.lancamento.update({ where: { id }, data: { pagoEm } })
     await db.auditoria.create({
@@ -172,8 +217,11 @@ export type AVencer = {
  * Vencida vem primeiro e com quantos dias de atraso, porque é o único grupo
  * que já custou dinheiro — juro e multa correm enquanto a lista não é olhada.
  */
-export async function aVencer(sessao: Sessao, unidadeIds: string[], dias = 15, agora = new Date()): Promise<AVencer> {
+export async function aVencer(sessao: Sessao, pedidas: string[], dias = 15, agora = new Date()): Promise<AVencer> {
   exigir(sessao, 'financeiro.ver')
+  // A lista de lojas vem de quem chama, e quem chama pode ter vindo do
+  // endereço. Só entram as que esta pessoa vê no financeiro.
+  const unidadeIds = soAsQuePode(sessao, 'financeiro.ver', pedidas)
 
   // `vencimento` é coluna DATE, que o Prisma lê como meia-noite UTC. "Hoje"
   // tem de estar na mesma régua — meia-noite UTC do dia da LOJA —, senão a
@@ -267,11 +315,12 @@ const ROTULO: Record<GrupoDRE, string> = {
  */
 export async function montarDRE(
   sessao: Sessao,
-  unidadeIds: string[],
+  pedidas: string[],
   de: Date,
   ate: Date,
 ): Promise<DRE> {
   exigir(sessao, 'financeiro.ver')
+  const unidadeIds = soAsQuePode(sessao, 'financeiro.ver', pedidas)
 
   return comoOrg(sessao.orgId, async (db) => {
     const venda = await db.venda.aggregate({
@@ -435,10 +484,11 @@ const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set'
  */
 export async function resultadoPorMes(
   sessao: Sessao,
-  unidadeIds: string[],
+  pedidas: string[],
   meses = 6,
 ): Promise<MesDoResultado[]> {
   exigir(sessao, 'financeiro.ver')
+  const unidadeIds = soAsQuePode(sessao, 'financeiro.ver', pedidas)
 
   const agora = new Date()
   const de = new Date(agora.getFullYear(), agora.getMonth() - (meses - 1), 1)
@@ -563,10 +613,13 @@ export async function listarLancamentos(
   // O mês pelo DIA, não pelo instante: `vencimento` é coluna `date`, que chega
   // como meia-noite UTC. Com a meia-noite de São Paulo aqui, a conta que vence
   // no dia 1º ficava fora do próprio mês. Ver `dia.ts`.
+  // Mês que não é mês (veio do endereço: `?mes=2026-13`) é lista vazia, não
+  // "Invalid Date" estourando no Prisma e a tela de erro no lugar da lista.
+  if (!Number.isInteger(f.ano) || !Number.isInteger(f.mes) || f.mes < 1 || f.mes > 12) return []
   const mm = String(f.mes).padStart(2, '0')
   const de = colunaDoDia(`${f.ano}-${mm}-01`)
   const ate = colunaDoDia(f.mes === 12 ? `${f.ano + 1}-01-01` : `${f.ano}-${String(f.mes + 1).padStart(2, '0')}-01`)
-  const q = f.q?.trim() ?? ''
+  const q = textoDaBusca(f.q)
   // Só as lojas que esta pessoa pode ver no financeiro — a lista vem do
   // endereço, e o endereço é do usuário.
   const lojas = f.unidadeIds.filter((u) => pode(sessao, 'financeiro.ver', u))

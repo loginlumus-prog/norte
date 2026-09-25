@@ -116,3 +116,24 @@ describe('ida e volta', () => {
     expect(reais(centavos(v))).toBe(Number(v))
   })
 })
+
+// O campo de dinheiro digitado: o jeito brasileiro passa, o ambíguo não.
+import { lerDinheiro } from '../src/servidor/dinheiro'
+
+describe('lerDinheiro', () => {
+  it('aceita vírgula decimal, ponto de milhar, ponto decimal e inteiro', () => {
+    expect(lerDinheiro('1.234,56')).toBe(1234.56)
+    expect(lerDinheiro('1234,5')).toBe(1234.5)
+    expect(lerDinheiro('1234.56')).toBe(1234.56)
+    expect(lerDinheiro('R$ 90')).toBe(90)
+  })
+
+  // "1.234" pode ser mil e tanto (milhar) ou um real e vinte e três
+  // (planilha). Adivinhar errado é gravar mil vezes menos, sem aviso.
+  it('recusa o que não dá para saber o que é', () => {
+    expect(lerDinheiro('1.234')).toBeNull()
+    expect(lerDinheiro('abc')).toBeNull()
+    expect(lerDinheiro('')).toBeNull()
+    expect(lerDinheiro('-5')).toBeNull()
+  })
+})

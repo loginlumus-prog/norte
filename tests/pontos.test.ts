@@ -167,3 +167,16 @@ describe('a rodada inteira: ganha, junta, usa', () => {
     expect(pontosGanhos(pagou, COMUM)).toBe(59)
   })
 })
+
+// Auditoria de 25/09: o programa de pontos é dos planos pagos.
+import { programaNoPlano } from '../src/servidor/pontos'
+
+describe('o programa que vale no plano', () => {
+  const ligado = { pontosAtivo: true, pontosPorReal: '1', pontoVale: '0.05', pontosMinimo: 0 }
+  it('no Grátis fica desligado, mesmo ligado de antes', () => {
+    expect(programaNoPlano({ ...ligado, plano: 'GRATIS' }).ativo).toBe(false)
+  })
+  it('no Balcão vale o que a loja configurou', () => {
+    expect(programaNoPlano({ ...ligado, plano: 'BALCAO' })).toMatchObject({ ativo: true, porReal: 1, pontoVale: 0.05 })
+  })
+})

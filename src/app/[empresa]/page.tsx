@@ -44,6 +44,7 @@ import {
 import { Rosca, BarrasH, Linhas, Calor, BarrasMeses } from '@/ui/Graficos'
 import { Atalhos, IrParaModo, type Atalho } from '@/ui/Atalhos'
 import type { Tema } from '@/ui/TrocaTema'
+import { palavra, plural } from '@/ui/texto'
 
 // O painel, em dois modos.
 //
@@ -136,20 +137,20 @@ function menuComAvisos(slug: string, c: Contagens, parados = 0): ItemMenu[] {
       return {
         quantos: noEstoque,
         nivel: acabaram > 0 ? 'critico' : 'atencao',
-        titulo: acabaram > 0 ? 'item(ns) acabado(s) ou no mínimo' : 'no mínimo',
+        titulo: acabaram > 0 ? 'acabaram ou estão no mínimo' : 'no mínimo',
       }
     }
     if (href === `/${slug}/produtos` && parados > 0) {
-      return { quantos: parados, nivel: 'atencao', titulo: 'parado(s)' }
+      return { quantos: parados, nivel: 'atencao', titulo: palavra(parados, 'parado', 'parados') }
     }
     if (href === `/${slug}/crediario` && c.parcelasVencidas?.quantas) {
-      return { quantos: c.parcelasVencidas.quantas, nivel: 'critico', titulo: 'parcela(s) vencida(s)' }
+      return { quantos: c.parcelasVencidas.quantas, nivel: 'critico', titulo: palavra(c.parcelasVencidas.quantas, 'parcela vencida', 'parcelas vencidas') }
     }
     if (href === `/${slug}/financeiro` && c.contasVencidas?.quantas) {
-      return { quantos: c.contasVencidas.quantas, nivel: 'critico', titulo: 'conta(s) vencida(s)' }
+      return { quantos: c.contasVencidas.quantas, nivel: 'critico', titulo: palavra(c.contasVencidas.quantas, 'conta vencida', 'contas vencidas') }
     }
     if (href === `/${slug}/tarefas` && c.tarefasMinhas) {
-      return { quantos: c.tarefasMinhas, nivel: 'atencao', titulo: 'tarefa(s) sua(s) atrasada(s)' }
+      return { quantos: c.tarefasMinhas, nivel: 'atencao', titulo: palavra(c.tarefasMinhas, 'tarefa sua atrasada', 'tarefas suas atrasadas') }
     }
     if (href === `/${slug}/agente` && c.propostas) {
       return { quantos: c.propostas, nivel: 'atencao', titulo: 'esperando você' }
@@ -664,12 +665,12 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
             }
           >
             <Faixa colunas={3}>
-              <Numero celula rotulo="Em aberto" valor={brl(fiado.emAberto)} detalhe={`${fiado.clientesDevendo} cliente(s)`} />
+              <Numero celula rotulo="Em aberto" valor={brl(fiado.emAberto)} detalhe={plural(fiado.clientesDevendo, 'cliente', 'clientes')} />
               <Numero
                 celula
                 rotulo="Vencido"
                 valor={brl(fiado.vencido)}
-                detalhe={fiado.parcelasVencidas ? `${fiado.parcelasVencidas} parcela(s) · ${fiado.clientesAtrasados} cliente(s)` : 'ninguém atrasado'}
+                detalhe={fiado.parcelasVencidas ? `${plural(fiado.parcelasVencidas, 'parcela', 'parcelas')} · ${plural(fiado.clientesAtrasados, 'cliente', 'clientes')}` : 'ninguém atrasado'}
                 nivel={fiado.vencido > 0 ? 'critico' : 'bom'}
               />
               <Numero celula rotulo="Vence em 7 dias" valor={brl(fiado.aVencer7)} detalhe="para lembrar antes" />

@@ -17,32 +17,35 @@ import { Aviso, Botao, Cartao, Situacao } from '@/ui/base'
 import type { EstadoConexao } from '@/servidor/assistente/conexao'
 import { conectar, desconectar, testar, type EstadoConexaoAcao } from './acoes'
 
+// Em palavras de loja, não de servidor: "chave de IA", "segredo do webhook" e
+// "instância" não dizem nada a quem vende. O Z-API fica nomeado só onde a
+// pessoa precisa ir até ele.
 const FRASE: Record<EstadoConexao['situacao'], { nivel: 'bom' | 'atencao' | 'critico' | 'neutro'; titulo: string; texto: string }> = {
   sem_agente: { nivel: 'neutro', titulo: 'Sem assistente', texto: 'Crie o assistente no formulário abaixo antes de conectar.' },
   sem_chave: {
     nivel: 'critico',
-    titulo: 'Sem chave de IA',
-    texto: 'O servidor ainda não tem a chave de IA. Sem ela ele não responde nada — só avisa que alguém da loja vai responder. Isto é com o suporte do Norte.',
+    titulo: 'Inteligência artificial desligada',
+    texto: 'O Norte ainda não ligou a inteligência artificial desta conta. Sem ela o assistente não responde nada — só avisa que alguém da loja vai responder. Isto é com o suporte do Norte.',
   },
   sem_canal: {
     nivel: 'critico',
-    titulo: 'Sem canal',
-    texto: 'O servidor ainda não tem uma instância do Z-API configurada. As conversas ficam só no histórico; nada sai para o WhatsApp.',
+    titulo: 'Sem linha do WhatsApp',
+    texto: 'Ainda não há uma linha do WhatsApp (Z-API) ligada a esta conta. As conversas ficam só no histórico; nada sai para o WhatsApp. Isto é com o suporte do Norte.',
   },
   sem_webhook: {
     nivel: 'critico',
-    titulo: 'Sem segredo do webhook',
-    texto: 'O servidor não tem o segredo que protege o endereço de entrada. Sem ele, a porta fica fechada.',
+    titulo: 'Entrada sem proteção',
+    texto: 'Falta a senha que protege o endereço por onde as mensagens chegam. Sem ela, a porta fica fechada. Isto é com o suporte do Norte.',
   },
   desconectado: {
     nivel: 'atencao',
     titulo: 'Desconectado',
-    texto: 'Tudo pronto no servidor. Falta conectar: gere o endereço e cole no Z-API.',
+    texto: 'Tudo pronto do nosso lado. Falta conectar: gere o endereço e cole no painel do Z-API.',
   },
   desligado: {
     nivel: 'atencao',
     titulo: 'Conectado, mas desligado',
-    texto: 'A conexão está feita, e ele está desligado no formulário abaixo. Ligue para ele começar a responder.',
+    texto: 'A conexão está feita, mas o assistente está desligado no formulário abaixo. Ligue para ele começar a responder.',
   },
   pronto: { nivel: 'bom', titulo: 'Pronto', texto: 'Conectado e ligado. Ele responde no WhatsApp e manda as rotinas marcadas abaixo.' },
 }
@@ -77,11 +80,11 @@ export function Conexao({ slug, estado }: { slug: string; estado: EstadoConexao 
         </Aviso>
 
         <ul className="flex flex-wrap gap-2">
-          <li><Situacao nivel={estado.chaveIA ? 'bom' : 'critico'}>chave de IA</Situacao></li>
-          <li><Situacao nivel={estado.canalReal ? 'bom' : 'critico'}>canal Z-API</Situacao></li>
-          <li><Situacao nivel={estado.segredoWebhook ? 'bom' : 'critico'}>segredo do webhook</Situacao></li>
+          <li><Situacao nivel={estado.chaveIA ? 'bom' : 'critico'}>inteligência artificial</Situacao></li>
+          <li><Situacao nivel={estado.canalReal ? 'bom' : 'critico'}>linha do WhatsApp</Situacao></li>
+          <li><Situacao nivel={estado.segredoWebhook ? 'bom' : 'critico'}>entrada protegida</Situacao></li>
           <li><Situacao nivel={estado.conectado ? 'bom' : 'atencao'}>{estado.conectado ? 'conectado' : 'desconectado'}</Situacao></li>
-          <li><Situacao nivel={estado.rotinasSegredo ? 'bom' : 'atencao'}>relógio das rotinas</Situacao></li>
+          <li><Situacao nivel={estado.rotinasSegredo ? 'bom' : 'atencao'}>horário das rotinas</Situacao></li>
         </ul>
 
         {resposta.erro && <Aviso nivel="critico">{resposta.erro}</Aviso>}
