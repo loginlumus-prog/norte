@@ -1,7 +1,8 @@
 // O webhook do Z-API: POST /api/whatsapp/{empresa}/{token}.
 //
-// Sem sessão, sem cookie. Quem autoriza é o token do endereço, conferido
-// antes de qualquer outra coisa (ver src/servidor/assistente/webhook.ts).
+// Sem sessão, sem cookie. Quem autoriza é o token do endereço — o próprio da
+// empresa, ou o antigo enquanto ela não gerou um (ver
+// src/servidor/assistente/webhook.ts).
 //
 // Responde 200 NA HORA e processa depois (`after`): o Z-API reenvia o que
 // demora a ser confirmado, e a conversa com a IA pode levar vários segundos.
@@ -10,7 +11,6 @@
 
 import { after, NextResponse } from 'next/server'
 import { receberWebhook } from '@/servidor/assistente/webhook'
-import { canalPara } from '@/servidor/assistente/canal'
 
 
 /** Mensagem de WhatsApp em JSON não passa disto. Corpo maior é outra coisa. */
@@ -34,7 +34,9 @@ export async function POST(
     corpo = null
   }
 
-  const porta = receberWebhook(empresa, token, corpo, { canal: canalPara(empresa) })
+  // Sem canal nas dependências: a porta usa o da própria empresa (a linha
+  // dela no Z-API, ou a global se for a do piloto — ver canal.ts).
+  const porta = await receberWebhook(empresa, token, corpo, {})
   if (porta.trabalho) {
     const trabalho = porta.trabalho
     after(async () => {

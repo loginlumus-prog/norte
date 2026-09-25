@@ -11,6 +11,10 @@
 
 generator client {
   provider = "prisma-client-js"
+  // partialIndexes: índice com WHERE (ver Caixa). Sem o recurso, o índice
+  // parcial teria de morar fora do schema, e todo `migrar --nova` o veria
+  // como sobra no banco e escreveria um DROP dele.
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -890,6 +894,16 @@ model Caixa {
   recebimentos Recebimento[]
 
   @@index([orgId, unidadeId, aberto])
+  /// Uma loja, no máximo UM caixa aberto. A trava do `abrirCaixa` (advisory
+  /// lock por loja) é a resposta educada; este índice é a garantia — vale
+  /// também para quem escreve por fora dela (script, rotina, bug).
+  ///
+  /// CUIDADO: por causa dele o Prisma passa a aceitar `unidadeId` em
+  /// `findUnique`/`update({ where })` — mas o único é PARCIAL (só entre os
+  /// abertos). `findUnique({ where: { unidadeId } })` pode devolver um turno
+  /// FECHADO. Caixa aberto se procura com `findFirst({ where: { unidadeId,
+  /// aberto: true } })`, como em `caixaAberto`.
+  @@unique([unidadeId], map: "caixas_um_aberto_por_unidade", where: raw("aberto"))
   @@map("caixas")
 }
 
@@ -1502,6 +1516,21 @@ model Agente {
   // ── canal ────────────────────────────────────────────────
   canal  CanalAgente @default(NENHUM)
   numero String? // o WhatsApp da loja, com DDI
+
+  // ── a linha própria no Z-API ─────────────────────────────
+  // Cada empresa pode ter a SUA instância (um número de WhatsApp). Os dois
+  // tokens são segredo da conta dela no Z-API e ficam CIFRADOS (AES-256-GCM,
+  // chave NORTE_CIFRA do servidor — ver src/servidor/cifra.ts): banco vazado
+  // não vira WhatsApp da loja na mão de ninguém. Só se decifra na hora de
+  // enviar; a tela nunca recebe o token de volta, só os 4 últimos.
+  /// O id da instância no painel do Z-API. Não é segredo (vai na URL, junto do token).
+  zapiInstancia          String? @map("zapi_instancia")
+  zapiTokenCifrado       String? @map("zapi_token_cifrado")
+  zapiClientTokenCifrado String? @map("zapi_client_token_cifrado")
+  /// sha256 (hex) do token do endereço do webhook. O token em si aparece UMA
+  /// vez, na tela, e não é guardado; trocar é gerar outro. Nulo = empresa
+  /// ainda no endereço antigo, derivado do slug com WEBHOOK_SEGREDO.
+  webhookTokenHash String? @map("webhook_token_hash")
 
   // ── cérebro ──────────────────────────────────────────────
   modelo String @default("claude-sonnet-5")

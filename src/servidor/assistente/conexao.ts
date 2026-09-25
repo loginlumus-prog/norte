@@ -1,6 +1,12 @@
 // O que a tela do assistente mostra e faz sobre a CONEXÃO: se ele está de
-// fato ligado ao mundo, o endereço do webhook, a mensagem de teste, as
-// rotinas e as últimas conversas.
+// fato ligado ao mundo, a linha própria no Z-API, o endereço do webhook, a
+// mensagem de teste, as rotinas e as últimas conversas.
+//
+// ── segredo entra e não sai ──────────────────────────────────
+// O dono cola aqui o token da instância e o Client-Token do painel do Z-API.
+// Eles entram, são cifrados (src/servidor/cifra.ts) e NUNCA voltam para o
+// navegador: a tela recebe só "guardado, termina em …ab12". Nem o livro de
+// auditoria recebe o token — recebe que foi trocado, por quem e quando.
 //
 // Toda função aqui começa conferindo `agente.configurar`: é a mesma
 // capacidade que abre a tela, e Server Action é endereço público — o botão
@@ -10,8 +16,9 @@ import type { TipoGatilho } from '@prisma/client'
 import { comoOrg } from '../banco'
 import { exigir, type Sessao } from '../permissao'
 import { temChaveIA } from '../ia'
-import { zapiDa, canalPara } from './canal'
-import { enderecoDoWebhook, temSegredoWebhook } from './webhook'
+import { cifrar, decifrar, temCifra, SemChaveDeCifra } from '../cifra'
+import { escolherCanal, contextoDoToken, SELECT_LINHA, type OrigemCanal } from './canal'
+import { montarEnderecoDoWebhook, novoTokenDoWebhook, temSegredoWebhook } from './webhook'
 import { abrirConversa, enviarEGravar } from './contexto'
 import { chaveTelefone, mascarar } from './telefone'
 import { DIAS_SUMIDO } from './rotinas'
@@ -20,12 +27,27 @@ import { DIAS_SUMIDO } from './rotinas'
 // O ESTADO
 // ─────────────────────────────────────────────────────────────
 
+/** Um token guardado, como a tela pode ver: se existe, e os 4 últimos. */
+export type CredencialNaTela =
+  | { guardado: false }
+  /** `final` nulo: está guardado, mas não abre com a chave deste servidor. */
+  | { guardado: true; final: string | null }
+
 export type EstadoConexao = {
   /** A frase de cima: o que falta, na ordem em que se resolve. */
-  situacao: 'sem_agente' | 'sem_chave' | 'sem_canal' | 'sem_webhook' | 'desconectado' | 'desligado' | 'pronto'
+  situacao: 'sem_agente' | 'sem_chave' | 'sem_canal' | 'desconectado' | 'sem_webhook' | 'desligado' | 'pronto'
   chaveIA: boolean
   canalReal: boolean
+  /** De onde sai a mensagem: a linha própria, a global (piloto) ou nenhuma. */
+  origemCanal: OrigemCanal
+  /** O servidor tem a chave de cifra: dá para guardar a linha própria. */
+  cifra: boolean
+  /** A linha própria como está guardada — sem token nenhum. */
+  linha: { instancia: string | null; token: CredencialNaTela; clientToken: CredencialNaTela }
+  /** Há um endereço de entrada que abre: o próprio, ou o antigo que ainda vale. */
   segredoWebhook: boolean
+  /** A empresa já gerou o endereço próprio (e o antigo não abre mais). */
+  enderecoProprio: boolean
   rotinasSegredo: boolean
   conectado: boolean
   ativo: boolean
@@ -33,12 +55,19 @@ export type EstadoConexao = {
   meuTelefone: string | null
 }
 
+/** Os 4 últimos, e só se abrir: o bastante para conferir, pouco para usar. */
+function naTela(orgId: string, cifrado: string | null, campo: 'zapi_token' | 'zapi_client_token'): CredencialNaTela {
+  if (!cifrado) return { guardado: false }
+  const aberto = decifrar(cifrado, contextoDoToken(orgId, campo))
+  return { guardado: true, final: aberto && aberto.length >= 8 ? aberto.slice(-4) : null }
+}
+
 export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
   exigir(sessao, 'agente.configurar')
   const { agente, eu, slug } = await comoOrg(sessao.orgId, async (db) => {
     const agente = await db.agente.findUnique({
       where: { orgId: sessao.orgId },
-      select: { canal: true, ativo: true },
+      select: { canal: true, ativo: true, webhookTokenHash: true, ...SELECT_LINHA },
     })
     const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { telefone: true } })
     const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { slug: true } })
@@ -46,8 +75,10 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
   })
 
   const chaveIA = temChaveIA()
-  const canalReal = zapiDa(slug)
-  const segredoWebhook = temSegredoWebhook()
+  const { canal, origem } = escolherCanal({ id: sessao.orgId, slug }, agente)
+  const canalReal = canal.real
+  const enderecoProprio = !!agente?.webhookTokenHash
+  const segredoWebhook = enderecoProprio || temSegredoWebhook()
   const conectado = agente?.canal === 'ZAPI'
   const situacao: EstadoConexao['situacao'] = !agente
     ? 'sem_agente'
@@ -55,10 +86,10 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
       ? 'sem_chave'
       : !canalReal
         ? 'sem_canal'
-        : !segredoWebhook
-          ? 'sem_webhook'
-          : !conectado
-            ? 'desconectado'
+        : !conectado
+          ? 'desconectado'
+          : !segredoWebhook
+            ? 'sem_webhook'
             : !agente.ativo
               ? 'desligado'
               : 'pronto'
@@ -67,7 +98,15 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
     situacao,
     chaveIA,
     canalReal,
+    origemCanal: origem,
+    cifra: temCifra(),
+    linha: {
+      instancia: agente?.zapiInstancia ?? null,
+      token: naTela(sessao.orgId, agente?.zapiTokenCifrado ?? null, 'zapi_token'),
+      clientToken: naTela(sessao.orgId, agente?.zapiClientTokenCifrado ?? null, 'zapi_client_token'),
+    },
     segredoWebhook,
+    enderecoProprio,
     rotinasSegredo: (process.env.ROTINAS_SEGREDO ?? '').trim().length >= 32,
     conectado,
     ativo: agente?.ativo ?? false,
@@ -76,38 +115,192 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
 }
 
 // ─────────────────────────────────────────────────────────────
+// A LINHA PRÓPRIA NO Z-API
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * O que o painel do Z-API mostra é letra, número, hífen e sublinhado. Barra,
+ * interrogação e espaço não entram: instância e token vão no CAMINHO da URL
+ * de envio, e caractere de URL ali dentro muda para onde a chamada vai.
+ */
+const FORMATO_CREDENCIAL = /^[A-Za-z0-9_-]{6,128}$/
+
+export type EntradaLinha = { instancia: string; token: string; clientToken: string }
+
+/**
+ * Guarda a linha própria. Campo de token vazio = manter o que já está
+ * guardado (a tela nunca tem o token para devolver preenchido).
+ */
+export async function salvarLinhaZapi(
+  sessao: Sessao,
+  entrada: EntradaLinha,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  exigir(sessao, 'agente.configurar')
+  if (!temCifra()) return { ok: false, erro: new SemChaveDeCifra().message }
+
+  const instancia = entrada.instancia.trim()
+  const token = entrada.token.trim()
+  const clientToken = entrada.clientToken.trim()
+  if (!instancia) return { ok: false, erro: 'Cole o ID da instância, do painel do Z-API.' }
+  for (const [nome, v] of [
+    ['O ID da instância', instancia],
+    ['O token da instância', token],
+    ['O Client-Token', clientToken],
+  ] as const) {
+    if (v && !FORMATO_CREDENCIAL.test(v)) {
+      return { ok: false, erro: `${nome} não parece certo: só letras, números, hífen e sublinhado. Copie de novo do painel do Z-API.` }
+    }
+  }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const agente = await db.agente.findUnique({
+      where: { orgId: sessao.orgId },
+      select: { id: true, nome: true, ...SELECT_LINHA },
+    })
+    if (!agente) return { ok: false as const, erro: 'Crie o assistente antes de ligar a linha.' }
+    if (!token && !agente.zapiTokenCifrado) {
+      return { ok: false as const, erro: 'Cole o token da instância, do painel do Z-API.' }
+    }
+
+    await db.agente.update({
+      where: { id: agente.id },
+      data: {
+        zapiInstancia: instancia,
+        ...(token ? { zapiTokenCifrado: cifrar(token, contextoDoToken(sessao.orgId, 'zapi_token')) } : {}),
+        ...(clientToken
+          ? { zapiClientTokenCifrado: cifrar(clientToken, contextoDoToken(sessao.orgId, 'zapi_client_token')) }
+          : {}),
+      },
+    })
+    // No livro: QUE mudou, não O QUE é. A instância não é segredo (sozinha
+    // não manda nada); os tokens são, e deles fica só "trocado".
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'agente.zapi.salvou',
+        alvoTipo: 'agente',
+        alvoId: agente.id,
+        alvoNome: agente.nome,
+        antes: {
+          instancia: agente.zapiInstancia,
+          token: !!agente.zapiTokenCifrado,
+          clientToken: !!agente.zapiClientTokenCifrado,
+        },
+        depois: {
+          instancia,
+          tokenTrocado: !!token,
+          clientTokenTrocado: !!clientToken,
+        },
+      },
+    })
+    return { ok: true as const }
+  })
+}
+
+/** Esquece a linha própria. A empresa volta ao canal de mentira (ou à global, se for a do piloto). */
+export async function apagarLinhaZapi(sessao: Sessao) {
+  exigir(sessao, 'agente.configurar')
+  await comoOrg(sessao.orgId, async (db) => {
+    const agente = await db.agente.findUnique({
+      where: { orgId: sessao.orgId },
+      select: { id: true, nome: true, zapiInstancia: true, zapiTokenCifrado: true },
+    })
+    if (!agente || (!agente.zapiInstancia && !agente.zapiTokenCifrado)) return
+    await db.agente.update({
+      where: { id: agente.id },
+      data: { zapiInstancia: null, zapiTokenCifrado: null, zapiClientTokenCifrado: null },
+    })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'agente.zapi.apagou',
+        alvoTipo: 'agente',
+        alvoId: agente.id,
+        alvoNome: agente.nome,
+        antes: { instancia: agente.zapiInstancia },
+      },
+    })
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
 // CONECTAR E DESCONECTAR
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Liga o canal e devolve o endereço do webhook para colar no Z-API.
+ * Gera (ou TROCA) o endereço próprio do webhook, liga o canal, e devolve o
+ * endereço para colar no Z-API.
  *
- * O endereço só aparece como RESPOSTA desta ação, nunca impresso na página:
- * ele é a senha da porta. Quem precisar dele de novo clica de novo — e cada
- * vez fica no livro de auditoria, com nome e hora.
+ * O endereço aparece UMA vez, como resposta desta ação — como o link de
+ * convite. O banco guarda só o resumo, então ninguém (nem o suporte) consegue
+ * mostrar de novo: perdeu, gera outro. Gerar outro derruba o anterior NA
+ * HORA — inclusive o antigo, derivado do slug —, e é isso que faz "trocar"
+ * valer alguma coisa quando o endereço vazou.
  */
-export async function conectarCanal(
+export async function gerarEnderecoDoWebhook(
   sessao: Sessao,
   base: string,
-  slug: string,
-): Promise<{ ok: true; endereco: string } | { ok: false; erro: string }> {
+): Promise<{ ok: true; endereco: string; trocou: boolean } | { ok: false; erro: string }> {
   exigir(sessao, 'agente.configurar')
-  const endereco = enderecoDoWebhook(base, slug)
-  if (!endereco) return { ok: false, erro: 'O servidor ainda não tem o WEBHOOK_SEGREDO configurado. Fale com o suporte do Norte.' }
+  const { token, resumo } = novoTokenDoWebhook()
 
-  const agente = await comoOrg(sessao.orgId, (db) =>
-    db.agente.findUnique({ where: { orgId: sessao.orgId }, select: { id: true, nome: true, canal: true } }),
-  )
-  if (!agente) return { ok: false, erro: 'Crie o assistente antes de conectar.' }
+  const r = await comoOrg(sessao.orgId, async (db) => {
+    const agente = await db.agente.findUnique({
+      where: { orgId: sessao.orgId },
+      select: { id: true, nome: true, canal: true, webhookTokenHash: true },
+    })
+    if (!agente) return null
+    const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { slug: true } })
+    await db.agente.update({ where: { id: agente.id }, data: { webhookTokenHash: resumo, canal: 'ZAPI' } })
+    const trocou = !!agente.webhookTokenHash
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: trocou ? 'agente.webhook.trocou' : 'agente.webhook.gerou',
+        alvoTipo: 'agente',
+        alvoId: agente.id,
+        alvoNome: agente.nome,
+        // Nem o resumo entra: o livro diz que mudou, e isso basta.
+        antes: { canal: agente.canal, enderecoProprio: trocou },
+        depois: { canal: 'ZAPI', enderecoProprio: true },
+      },
+    })
+    return { slug: org.slug, trocou }
+  })
+  if (!r) return { ok: false, erro: 'Crie o assistente antes de conectar.' }
+  return { ok: true, endereco: montarEnderecoDoWebhook(base, r.slug, token), trocou: r.trocou }
+}
 
-  await comoOrg(sessao.orgId, async (db) => {
+/**
+ * Reabre a porta com o endereço que já está colado no Z-API — depois de um
+ * "Desconectar". Não mostra endereço nenhum: o próprio não dá para mostrar, e
+ * quem quer um endereço usa `gerarEnderecoDoWebhook`.
+ */
+export async function conectarCanal(sessao: Sessao): Promise<{ ok: true } | { ok: false; erro: string }> {
+  exigir(sessao, 'agente.configurar')
+  return comoOrg(sessao.orgId, async (db) => {
+    const agente = await db.agente.findUnique({
+      where: { orgId: sessao.orgId },
+      select: { id: true, nome: true, canal: true, webhookTokenHash: true },
+    })
+    if (!agente) return { ok: false as const, erro: 'Crie o assistente antes de conectar.' }
+    if (!agente.webhookTokenHash && !temSegredoWebhook()) {
+      return { ok: false as const, erro: 'Ainda não há endereço de entrada. Gere o endereço e cole no Z-API.' }
+    }
+    if (agente.canal === 'ZAPI') return { ok: true as const }
     await db.agente.update({ where: { id: agente.id }, data: { canal: 'ZAPI' } })
     await db.auditoria.create({
       data: {
         orgId: sessao.orgId,
         usuarioId: sessao.usuarioId,
         quem: sessao.nome,
-        acao: agente.canal === 'ZAPI' ? 'agente.webhook.mostrou' : 'agente.canal.conectou',
+        acao: 'agente.canal.conectou',
         alvoTipo: 'agente',
         alvoId: agente.id,
         alvoNome: agente.nome,
@@ -115,8 +308,8 @@ export async function conectarCanal(
         depois: { canal: 'ZAPI' },
       },
     })
+    return { ok: true as const }
   })
-  return { ok: true, endereco }
 }
 
 /** Fecha a porta desta empresa: o webhook passa a descartar tudo. */
@@ -165,7 +358,9 @@ export async function mensagemDeTeste(sessao: Sessao): Promise<{ ok: true; recad
     return { ok: false, erro: 'Cadastre o seu telefone (com DDD) na tela Equipe para receber o teste.' }
   }
 
-  const canal = canalPara(slug)
+  // Pelo canal DESTA empresa — a linha própria, se ela tem; é justamente o
+  // que o botão existe para provar.
+  const { canal, origem } = escolherCanal({ id: sessao.orgId, slug }, agente)
   const conversa = await abrirConversa(sessao.orgId, agente.id, eu.telefone, { nome: eu.nome, daEquipe: true })
   const s = await enviarEGravar(
     canal,
@@ -182,8 +377,8 @@ export async function mensagemDeTeste(sessao: Sessao): Promise<{ ok: true; recad
   return {
     ok: true,
     recado: canal.real
-      ? `Mensagem enviada para ${mascarar(eu.telefone)}.`
-      : 'Não há Z-API configurado neste servidor: a mensagem ficou só no histórico abaixo, nada saiu de verdade.',
+      ? `Mensagem enviada para ${mascarar(eu.telefone)}${origem === 'propria' ? ', pela linha desta loja' : ''}.`
+      : 'Esta conta ainda não tem linha do WhatsApp: a mensagem ficou só no histórico abaixo, nada saiu de verdade.',
   }
 }
 

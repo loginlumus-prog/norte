@@ -674,6 +674,10 @@ CREATE TABLE "agentes" (
     "ativo" BOOLEAN NOT NULL DEFAULT false,
     "canal" "CanalAgente" NOT NULL DEFAULT 'NENHUM',
     "numero" TEXT,
+    "zapi_instancia" TEXT,
+    "zapi_token_cifrado" TEXT,
+    "zapi_client_token_cifrado" TEXT,
+    "webhook_token_hash" TEXT,
     "modelo" TEXT NOT NULL DEFAULT 'claude-sonnet-5',
     "poderes" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "desconto_max_pct" DECIMAL(5,2) NOT NULL DEFAULT 5,
@@ -977,6 +981,9 @@ CREATE INDEX "clientes_org_id_documento_idx" ON "clientes"("org_id", "documento"
 
 -- CreateIndex
 CREATE INDEX "caixas_org_id_unidade_id_aberto_idx" ON "caixas"("org_id", "unidade_id", "aberto");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "caixas_um_aberto_por_unidade" ON "caixas"("unidade_id") WHERE (aberto);
 
 -- CreateIndex
 CREATE INDEX "caixa_movimentos_org_id_caixa_id_idx" ON "caixa_movimentos"("org_id", "caixa_id");

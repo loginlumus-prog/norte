@@ -21,6 +21,7 @@
 import { createHash } from 'node:crypto'
 import type { Agente } from '@prisma/client'
 import { comoOrg } from '../banco'
+import { inicioDeHojeEmSP } from '../dia'
 import { podeGastarHoje, paraConfig } from '../agente'
 import {
   conversarComFerramentas,
@@ -124,8 +125,8 @@ export async function processarMensagem(e: Entrada, deps: Dependencias): Promise
   if (conversa.humanoAte && conversa.humanoAte > new Date()) return { tipo: 'ignorada', motivo: 'humano' }
 
   // ── 4. teto da conversa ──────────────────────────────────
-  const inicio = new Date()
-  inicio.setHours(0, 0, 0, 0)
+  // O dia é o de São Paulo, não o da máquina (ver `inicioDeHojeEmSP`).
+  const inicio = inicioDeHojeEmSP()
   const respondidasHoje = await comoOrg(e.orgId, (db) =>
     db.mensagemAgente.count({ where: { conversaId: conversa.id, de: 'AGENTE', criadaEm: { gte: inicio } } }),
   )
@@ -286,8 +287,7 @@ async function recusarSemIA(
   conversa: { id: string; telefone: string },
   recado: string,
 ) {
-  const inicio = new Date()
-  inicio.setHours(0, 0, 0, 0)
+  const inicio = inicioDeHojeEmSP()
 
   if (quem.tipo === 'equipe') {
     await enviarEGravar(canal, agente, conversa, recado)

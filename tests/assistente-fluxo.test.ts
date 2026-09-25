@@ -355,12 +355,12 @@ describe('a porta do webhook', () => {
 
   it('token errado: 401, nenhum trabalho, nada gravado', async () => {
     const antes = await totais()
-    const p = receberWebhook('loja-a', 'token-errado', zapi('5571900001111', 'oi', 'W-ERR'), { canal: new CanalFalso() })
+    const p = await receberWebhook('loja-a', 'token-errado', zapi('5571900001111', 'oi', 'W-ERR'), { canal: new CanalFalso() })
     expect(p.status).toBe(401)
     expect(p.trabalho).toBeUndefined()
     // token de OUTRA empresa também não abre
     const daB = tokenDoWebhook('vizinha-b')!
-    expect(receberWebhook('loja-a', daB, zapi('5571900001111', 'oi', 'W-ERR2'), { canal: new CanalFalso() }).status).toBe(401)
+    expect((await receberWebhook('loja-a', daB, zapi('5571900001111', 'oi', 'W-ERR2'), { canal: new CanalFalso() })).status).toBe(401)
     expect(await totais()).toEqual(antes)
   })
 
@@ -370,8 +370,8 @@ describe('a porta do webhook', () => {
     const token = tokenDoWebhook('loja-a')!
     const corpo = zapi('5571900002222', 'bom dia', 'W-DUP-1')
 
-    const p1 = receberWebhook('loja-a', token, corpo, { canal, buscar: api.buscar })
-    const p2 = receberWebhook('loja-a', token, corpo, { canal, buscar: api.buscar })
+    const p1 = await receberWebhook('loja-a', token, corpo, { canal, buscar: api.buscar })
+    const p2 = await receberWebhook('loja-a', token, corpo, { canal, buscar: api.buscar })
     expect([p1.status, p2.status]).toEqual([200, 200])
     const d1 = await p1.trabalho!()
     const d2 = await p2.trabalho!()
@@ -390,8 +390,8 @@ describe('a porta do webhook', () => {
     const canal = new CanalFalso()
     const api = apiFalsa(diz('não deveria responder'))
     const token = tokenDoWebhook('loja-a')!
-    await receberWebhook('loja-a', token, zapi('5571900003333', 'deixa comigo', 'W-H1', { fromMe: true }), { canal }).trabalho!()
-    const d = await receberWebhook('loja-a', token, zapi('5571900003333', 'e aí?', 'W-H2'), { canal, buscar: api.buscar }).trabalho!()
+    await (await receberWebhook('loja-a', token, zapi('5571900003333', 'deixa comigo', 'W-H1', { fromMe: true }), { canal })).trabalho!()
+    const d = await (await receberWebhook('loja-a', token, zapi('5571900003333', 'e aí?', 'W-H2'), { canal, buscar: api.buscar })).trabalho!()
     expect(d).toEqual({ tipo: 'ignorada', motivo: 'humano' })
     expect(api.corpos).toHaveLength(0)
   })
@@ -400,7 +400,7 @@ describe('a porta do webhook', () => {
     await db.exec(`update agentes set canal = 'NENHUM' where id = 'ag-b'`)
     try {
       const antes = await totais()
-      const p = receberWebhook('vizinha-b', tokenDoWebhook('vizinha-b')!, zapi('5511900004444', 'oi', 'W-OFF'), {
+      const p = await receberWebhook('vizinha-b', tokenDoWebhook('vizinha-b')!, zapi('5511900004444', 'oi', 'W-OFF'), {
         canal: new CanalFalso(),
         buscar: apiFalsa(diz('x')).buscar,
       })
@@ -463,7 +463,8 @@ describe('as rotinas', () => {
     expect(paraAna).toHaveLength(1)
     expect(paraAna[0]!.texto).toMatch(/Vai faltar/)
     expect(paraAna[0]!.texto).toMatch(/Blusa Azul/)
-    expect(paraAna[0]!.texto).toMatch(/proposta\(s\) de reposição/)
+    // Plural de verdade: uma proposta só é "1 proposta", não "proposta(s)".
+    expect(paraAna[0]!.texto).toMatch(/Deixei 1 proposta de reposição/)
     // B tem giro lento e saldo que dura: nada a avisar
     expect(canal.enviadas.filter((e) => e.numero === BIA)).toHaveLength(0)
 

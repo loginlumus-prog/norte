@@ -41,6 +41,19 @@ export type Abertura =
   | { ok: true; caixaId: string }
   | { ok: false; motivo: 'ja_aberto'; caixaId: string; abertoPor: string }
 
+/**
+ * O erro é o do índice "um caixa aberto por loja"?
+ *
+ * Olha o NOME do índice, e não só o código P2002: outro índice único que um
+ * dia apareça em `caixas` não pode virar "já tem caixa aberto" por engano.
+ */
+export function ehCaixaJaAberto(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false
+  const x = e as { code?: unknown; meta?: unknown; message?: unknown }
+  if (x.code !== 'P2002' && x.code !== '23505') return false
+  return `${JSON.stringify(x.meta ?? null)} ${String(x.message ?? '')}`.includes('caixas_um_aberto_por_unidade')
+}
+
 export async function abrirCaixa(
   sessao: Sessao,
   unidadeId: string,
@@ -66,7 +79,31 @@ export async function abrirCaixa(
   // pela conferência e abriam dois turnos — e aí a venda cai num, o dinheiro
   // é contado no outro, e a gaveta nunca mais bate. A trava por loja faz o
   // segundo esperar o primeiro e encontrar o caixa já aberto.
-  const caixa = await comoOrg(sessao.orgId, async (db) => {
+  //
+  // E por baixo da trava, o banco: o índice único parcial
+  // `caixas_um_aberto_por_unidade` recusa o segundo aberto venha de onde vier
+  // (script, rotina, código que esqueceu a trava). Se ele disparar aqui, a
+  // resposta é a mesma de sempre — "já está aberto", com quem abriu —, e não
+  // um erro de máquina na cara de quem está no balcão.
+  let caixa: { jaAberto?: { id: string; abertoPor: string }; criado?: { id: string } }
+  try {
+    caixa = await abrirNaTrava(sessao, unidadeId, saldoAbertura)
+  } catch (e) {
+    if (!ehCaixaJaAberto(e)) throw e
+    // A transação que estourou já morreu; a leitura é outra, fora dela.
+    const outro = await caixaAberto(sessao, unidadeId)
+    if (!outro) throw e
+    return { ok: false, motivo: 'ja_aberto', caixaId: outro.id, abertoPor: outro.abertoPor }
+  }
+
+  if (caixa.jaAberto) {
+    return { ok: false, motivo: 'ja_aberto', caixaId: caixa.jaAberto.id, abertoPor: caixa.jaAberto.abertoPor }
+  }
+  return { ok: true, caixaId: caixa.criado!.id }
+}
+
+function abrirNaTrava(sessao: Sessao, unidadeId: string, saldoAbertura: number) {
+  return comoOrg(sessao.orgId, async (db) => {
     await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`abrir-caixa:${unidadeId}`}))`
     const outro = await db.caixa.findFirst({
       where: { unidadeId, aberto: true },
@@ -97,11 +134,6 @@ export async function abrirCaixa(
     })
     return { criado }
   })
-
-  if ('jaAberto' in caixa && caixa.jaAberto) {
-    return { ok: false, motivo: 'ja_aberto', caixaId: caixa.jaAberto.id, abertoPor: caixa.jaAberto.abertoPor }
-  }
-  return { ok: true, caixaId: caixa.criado!.id }
 }
 
 /** Sangria tira da gaveta; suprimento põe. Motivo é obrigatório nos dois. */

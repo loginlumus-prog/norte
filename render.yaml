@@ -76,9 +76,13 @@ services:
       # A chave da IA (console da Anthropic → API Keys).
       - key: ANTHROPIC_API_KEY
         sync: false
-      # A instância do Z-API: o id e o token DA INSTÂNCIA, e o token de
-      # segurança DA CONTA (Z-API → Segurança → Client-Token). Uma instância é
-      # UM número de WhatsApp: nesta etapa, UMA loja conversa por vez.
+      # A instância GLOBAL do Z-API (a do piloto): o id e o token DA
+      # INSTÂNCIA, e o token de segurança DA CONTA (Z-API → Segurança →
+      # Client-Token). Uma instância é UM número de WhatsApp, e ela só fala
+      # pela empresa de ZAPI_EMPRESA (o endereço dela, ex.: "exemplo"). As
+      # outras empresas colam a instância PRÓPRIA na tela Assistente › Conexão.
+      - key: ZAPI_EMPRESA
+        sync: false
       - key: ZAPI_INSTANCIA
         sync: false
       - key: ZAPI_TOKEN
@@ -89,6 +93,12 @@ services:
       # invalida o endereço de TODAS — cada loja precisa colar o novo no
       # Z-API. Pelo menos 32 caracteres aleatórios (openssl rand -base64 48).
       - key: WEBHOOK_SEGREDO
+        sync: false
+      # Cifra os tokens do Z-API que cada empresa cola na tela. 32 bytes em
+      # base64: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+      # PERDER ou TROCAR esta chave apaga, na prática, os tokens guardados:
+      # cada empresa precisa colar de novo. Guarde num cofre de senhas.
+      - key: NORTE_CIFRA
         sync: false
       # O que o relógio abaixo apresenta para rodar as rotinas. Pelo menos 32
       # caracteres aleatórios, e diferente do de cima: um vazado não abre o

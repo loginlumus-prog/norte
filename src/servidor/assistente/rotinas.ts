@@ -30,7 +30,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import type { TipoGatilho } from '@prisma/client'
 import { comoOrg } from '../banco'
-import { propor, AcimaDoTeto, PoderNegado } from '../agente'
+import { propor, apurarRecibos, AcimaDoTeto, PoderNegado } from '../agente'
 import { resumoDoPainel, type Resumo } from '../painel'
 import { janela } from '../periodo'
 import { previsaoDeRuptura, type LinhaRuptura } from '../ruptura'
@@ -49,6 +49,7 @@ import {
 } from './contexto'
 import { empresasComAgente } from './portaria'
 import { mostrarTelefone } from '../cliente'
+import { plural } from '../texto'
 
 export type Rotina = 'relatorio_manha' | 'ruptura' | 'cliente_sumido' | 'relatorio_noite'
 
@@ -144,12 +145,12 @@ export function textoDoRelatorio(p: {
   }
   if (p.contas && (p.contas.vencidas > 0 || p.contas.hoje > 0)) {
     const partes = []
-    if (p.contas.vencidas > 0) partes.push(`${p.contas.vencidas} vencida(s), ${brl(p.contas.totalVencido)}`)
+    if (p.contas.vencidas > 0) partes.push(`${plural(p.contas.vencidas, 'vencida', 'vencidas')}, ${brl(p.contas.totalVencido)}`)
     if (p.contas.hoje > 0) partes.push(`${p.contas.hoje} vencendo hoje`)
     linhas.push(`Contas: ${partes.join('; ')}.`)
   }
   if (p.vaiFaltar && p.vaiFaltar > 0) {
-    linhas.push(`${p.vaiFaltar} peça(s) vão faltar pelo ritmo de venda.`)
+    linhas.push(`${plural(p.vaiFaltar, 'peça vai', 'peças vão')} faltar pelo ritmo de venda.`)
   }
   if (p.respondeResumo) linhas.push('Quer detalhe de alguma coisa? É só perguntar aqui.')
   return linhas.join('\n')
@@ -208,6 +209,18 @@ export async function rodarNaEmpresa(
   const ctx = await carregarContexto(orgId)
   if (!ctx || !empresaApta(ctx)) return saida
   const agente = ctx.agente
+
+  // Uma vez por dia, junto com o "vai faltar": os recibos cuja janela de 30
+  // dias fechou. Antes da lista de donos de propósito — o recibo é da tela do
+  // assistente, e vale mesmo para quem ainda não ligou telefone nenhum. Falha
+  // aqui não derruba a rotina: o recibo espera o dia seguinte.
+  if (rotinas.includes('ruptura')) {
+    try {
+      await apurarRecibos(orgId, agora)
+    } catch (erro) {
+      console.error(`[rotinas] recibos da empresa ${orgId}:`, erro instanceof Error ? erro.message : erro)
+    }
+  }
 
   const donos = await donosComTelefone(orgId)
   if (donos.length === 0) return saida
@@ -327,7 +340,8 @@ async function ruptura(
   sessao: Sessao,
 ): Promise<{ texto: string | null; propostas: number }> {
   if (!pode(sessao, 'estoque.ver')) return { texto: null, propostas: 0 }
-  const linhas = await previsaoDeRuptura(sessao, await unidadesVisiveis(sessao, 'estoque.ver'))
+  const unidades = await unidadesVisiveis(sessao, 'estoque.ver')
+  const linhas = await previsaoDeRuptura(sessao, unidades)
   // "Já faltou" só entra se vendia: peça sem giro que zerou não é urgência.
   const urgentes = linhas.filter(
     (l) => l.previsao.situacao === 'pedir_agora' || (l.previsao.situacao === 'ja_faltou' && l.vendidos30 > 0),
@@ -338,7 +352,7 @@ async function ruptura(
   const linhasTexto = urgentes.slice(0, 8).map((l) =>
     l.previsao.situacao === 'ja_faltou'
       ? `• ${peca(l)}: *acabou* (vendia ${l.vendidos30} por mês)`
-      : `• ${peca(l)}: ${l.saldo} na prateleira, dura ~${Math.floor(l.previsao.duraDias ?? 0)} dia(s), entrega leva ${l.previsao.prazo}`,
+      : `• ${peca(l)}: ${l.saldo} na prateleira, dura ~${plural(Math.floor(l.previsao.duraDias ?? 0), 'dia', 'dias')}, entrega leva ${plural(l.previsao.prazo, 'dia', 'dias')}`,
   )
 
   // A reposição só é proposta se a loja deu esse poder a ele. O teto é
@@ -346,7 +360,7 @@ async function ruptura(
   const feitas: string[] = []
   const acimaDoTeto: string[] = []
   if (poderes.includes('pedir.compra') && pode(sessao, 'financeiro.lancar')) {
-    const r = await proporReposicoes(orgId, empresa, urgentes)
+    const r = await proporReposicoes(orgId, empresa, urgentes, unidades)
     feitas.push(...r.feitas)
     acimaDoTeto.push(...r.acimaDoTeto)
   }
@@ -354,7 +368,7 @@ async function ruptura(
   const partes = [`*Vai faltar* (${urgentes.length}):`, ...linhasTexto]
   if (urgentes.length > 8) partes.push(`…e mais ${urgentes.length - 8} na tela Estoque.`)
   if (feitas.length > 0) {
-    partes.push('', `Deixei ${feitas.length} proposta(s) de reposição para você confirmar na tela do assistente:`, ...feitas.map((f) => `• ${f}`))
+    partes.push('', `Deixei ${plural(feitas.length, 'proposta', 'propostas')} de reposição para você confirmar na tela do assistente:`, ...feitas.map((f) => `• ${f}`))
   }
   if (acimaDoTeto.length > 0) {
     partes.push('', `Não propus (passa do teto que você deu): ${acimaDoTeto.join(', ')}.`)
@@ -366,6 +380,8 @@ async function proporReposicoes(
   orgId: string,
   empresa: { modulos: string[] },
   urgentes: LinhaRuptura[],
+  /** As lojas somadas no saldo da previsão — o recibo mede nas mesmas. */
+  unidadeIds: string[],
 ): Promise<{ feitas: string[]; acimaDoTeto: string[] }> {
   const agora = new Date()
   const { custos, abertas, categoria } = await comoOrg(orgId, async (db) => {
@@ -421,6 +437,11 @@ async function proporReposicoes(
           fornecedor: '',
           variacaoId: l.variacaoId,
           quantidade: qtd,
+          // O saldo do aviso e as lojas dele: é o ponto de partida da conta do
+          // recibo (`apurarRecibos`), trinta dias depois do sim. Sem eles não
+          // há como separar o que a reposição vendeu do que já estava lá.
+          saldoNaProposta: l.saldo,
+          unidadeIds,
         },
       })
       feitas.push(`${qtd} × ${nome} — ${brl(valor)}`)

@@ -68,6 +68,134 @@ begin
   end loop;
 end $$;
 
+-- ── chave estrangeira não atravessa empresa ──────────────────
+--
+-- O furo que o RLS não fecha: a conferência de chave estrangeira do Postgres
+-- roda por cima do RLS. Código rodando como a empresa A consegue gravar
+-- `vendas.cliente_id` apontando para um cliente da B — o FK só pergunta "o id
+-- existe?", e existe. A venda nasce da A, com o nome e o telefone de um
+-- cliente da B pendurados nela; o crediário da A cobra parcela de gente da B.
+--
+-- Até aqui isso era fechado ação por ação, conferindo antes de gravar. Uma
+-- ação esquecida reabria. Agora é o banco que recusa: toda FK entre duas
+-- tabelas que carregam org_id exige que a linha apontada seja da MESMA
+-- empresa da linha que aponta.
+--
+-- Como:
+--   • UMA função genérica, e UM gatilho por tabela filha. A lista de
+--     (coluna, tabela pai) vai nos argumentos do gatilho, e vem do catálogo
+--     (pg_constraint), não de uma lista escrita à mão: relação nova entra
+--     sozinha quando este arquivo rodar de novo — o mesmo princípio do RLS
+--     acima.
+--   • Compara org_id explicitamente. Não basta "o pai é visível": para o
+--     papel da aplicação o pai de outra empresa é invisível (daria certo por
+--     acaso), mas o admin e os scripts passam por cima do RLS e veriam tudo.
+--     A comparação vale para qualquer papel. Por isso também não precisa de
+--     SECURITY DEFINER.
+--   • Lê NEW por to_jsonb, e não com `UPDATE OF coluna`: gatilho com lista
+--     de colunas cria dependência nelas, e aí uma migração que apaga ou muda o
+--     tipo de uma coluna de FK falharia com "other objects depend on it".
+--     No UPDATE, só confere quando a FK ou o org_id mudaram.
+--   • Recusa com o código de FK violada (23503): para a empresa A, a linha da
+--     B simplesmente não existe — mesma resposta de id inexistente, e a porta
+--     não serve para descobrir se um id é de alguém.
+--   • Custo: uma busca pela chave primária do pai por FK preenchida, no
+--     INSERT; no UPDATE, só quando a FK muda.
+--
+-- Não confere linhas que já existiam (gatilho não olha para trás). Para
+-- procurar sobra antiga, a consulta está no fim deste arquivo.
+create or replace function public.fk_mesma_empresa() returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $$
+declare
+  novo  jsonb := to_jsonb(NEW);
+  velho jsonb := case when TG_OP = 'UPDATE' then to_jsonb(OLD) end;
+  i     int := 0;
+  coluna text; pai text; chave text; tipo text; restricao text;
+  alvo  text;
+  achou boolean;
+begin
+  -- argumentos em quíntuplas: coluna, tabela pai, coluna do pai, tipo, nome da FK
+  while i + 4 < TG_NARGS loop
+    coluna    := TG_ARGV[i];
+    pai       := TG_ARGV[i + 1];
+    chave     := TG_ARGV[i + 2];
+    tipo      := TG_ARGV[i + 3];
+    restricao := TG_ARGV[i + 4];
+    i := i + 5;
+
+    alvo := novo ->> coluna;
+    continue when alvo is null;
+    continue when TG_OP = 'UPDATE'
+      and alvo is not distinct from (velho ->> coluna)
+      and (novo ->> 'org_id') is not distinct from (velho ->> 'org_id');
+
+    execute format(
+      'select exists (select 1 from public.%I where %I = $1::%s and org_id = $2)',
+      pai, chave, tipo
+    ) into achou using alvo, novo ->> 'org_id';
+
+    if not achou then
+      raise exception 'referencia de outra empresa'
+        using errcode = 'foreign_key_violation',
+              detail = format('%s.%s -> %s', TG_TABLE_NAME, coluna, pai),
+              schema = TG_TABLE_SCHEMA,
+              table = TG_TABLE_NAME,
+              column = coluna,
+              constraint = restricao;
+    end if;
+  end loop;
+  return NEW;
+end $$;
+
+do $$
+declare
+  t record;
+begin
+  -- Some antes de nascer de novo: tabela que perdeu a última FK entre
+  -- empresas não pode ficar com gatilho velho.
+  for t in
+    select c.relname
+    from pg_trigger g
+    join pg_class c on c.oid = g.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and g.tgname = 'zz_fk_mesma_empresa'
+  loop
+    execute format('drop trigger if exists zz_fk_mesma_empresa on public.%I', t.relname);
+  end loop;
+
+  -- Toda FK de uma coluna só, entre duas tabelas de public que têm org_id.
+  -- `orgs` fica de fora sozinha: ela não tem org_id (é a própria empresa).
+  for t in
+    select filha.relname as tabela,
+           string_agg(
+             format('%L, %L, %L, %L, %L', fcol.attname, pai.relname, pcol.attname,
+                    format_type(pcol.atttypid, pcol.atttypmod), k.conname),
+             ', ' order by k.conname
+           ) as args
+    from pg_constraint k
+    join pg_class filha on filha.oid = k.conrelid
+    join pg_namespace nf on nf.oid = filha.relnamespace and nf.nspname = 'public'
+    join pg_class pai on pai.oid = k.confrelid
+    join pg_namespace np on np.oid = pai.relnamespace and np.nspname = 'public'
+    join pg_attribute fcol on fcol.attrelid = k.conrelid and fcol.attnum = k.conkey[1]
+    join pg_attribute pcol on pcol.attrelid = k.confrelid and pcol.attnum = k.confkey[1]
+    where k.contype = 'f'
+      and cardinality(k.conkey) = 1
+      and fcol.attname <> 'org_id'
+      and exists (select 1 from pg_attribute a where a.attrelid = filha.oid and a.attname = 'org_id' and not a.attisdropped)
+      and exists (select 1 from pg_attribute a where a.attrelid = pai.oid and a.attname = 'org_id' and not a.attisdropped)
+    group by filha.relname
+  loop
+    execute format(
+      'create trigger zz_fk_mesma_empresa before insert or update on public.%I
+         for each row execute function public.fk_mesma_empresa(%s)',
+      t.tabela, t.args
+    );
+  end loop;
+end $$;
+
 -- ── a tabela orgs se filtra pelo próprio id ──────────────────
 alter table public.orgs enable row level security;
 alter table public.orgs force row level security;
@@ -151,3 +279,19 @@ end $$;
 --   from pg_class c join pg_namespace n on n.oid = c.relnamespace
 --   where n.nspname='public' and c.relkind='r'
 --   order by 1;
+--
+-- Sobra antiga de FK entre empresas (o gatilho só barra o que é gravado
+-- DEPOIS dele). Gera uma consulta por relação; rodar o resultado como admin.
+-- Todas devem voltar 0.
+--
+--   select format(
+--     'select %L as fk, count(*) from public.%I f join public.%I p on p.%I = f.%I where p.org_id <> f.org_id;',
+--     filha.relname || '.' || fcol.attname, filha.relname, pai.relname, pcol.attname, fcol.attname)
+--   from pg_constraint k
+--   join pg_class filha on filha.oid = k.conrelid
+--   join pg_class pai on pai.oid = k.confrelid
+--   join pg_attribute fcol on fcol.attrelid = k.conrelid and fcol.attnum = k.conkey[1]
+--   join pg_attribute pcol on pcol.attrelid = k.confrelid and pcol.attnum = k.confkey[1]
+--   where k.contype = 'f' and fcol.attname <> 'org_id'
+--     and exists (select 1 from pg_attribute a where a.attrelid = filha.oid and a.attname = 'org_id')
+--     and exists (select 1 from pg_attribute a where a.attrelid = pai.oid and a.attname = 'org_id');

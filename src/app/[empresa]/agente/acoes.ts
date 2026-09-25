@@ -14,10 +14,13 @@ import { TODOS_PODERES } from '@/servidor/poderes'
 import { centavos } from '@/servidor/dinheiro'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import {
+  apagarLinhaZapi,
   conectarCanal,
   desconectarCanal,
+  gerarEnderecoDoWebhook,
   mensagemDeTeste,
   salvarGatilhos,
+  salvarLinhaZapi,
   ROTINAS_NA_TELA,
 } from '@/servidor/assistente/conexao'
 
@@ -92,15 +95,60 @@ async function baseDoSite(): Promise<string> {
 
 const mensagem = (e: unknown) => recadoDoErro(e, 'Não deu certo.')
 
-export async function conectar(slug: string): Promise<EstadoConexaoAcao> {
+/** Gera o endereço próprio — ou troca, se já havia. O anterior para de valer na hora. */
+export async function gerarEndereco(slug: string): Promise<EstadoConexaoAcao> {
   try {
     const sessao = await exigirSessao(slug)
-    const r = await conectarCanal(sessao, await baseDoSite(), slug)
+    const r = await gerarEnderecoDoWebhook(sessao, await baseDoSite())
     revalidatePath(`/${slug}/agente`)
-    // O endereço volta UMA vez, nesta resposta. A página não o imprime.
-    return r.ok
-      ? { ok: 'Conectado. Cole este endereço no Z-API, em "Ao receber":', endereco: r.endereco }
-      : { erro: r.erro }
+    // O endereço volta UMA vez, nesta resposta. A página não o imprime, e o
+    // banco só tem o resumo: não há como mostrar de novo.
+    if (!r.ok) return { erro: r.erro }
+    return {
+      ok: r.trocou
+        ? 'Endereço trocado. O anterior já não abre: cole este no Z-API, em "Ao receber", agora.'
+        : 'Conectado. Cole este endereço no Z-API, em "Ao receber":',
+      endereco: r.endereco,
+    }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+/** Reabre a porta com o endereço que já está no Z-API (depois de desconectar). */
+export async function conectar(slug: string): Promise<EstadoConexaoAcao> {
+  try {
+    const r = await conectarCanal(await exigirSessao(slug))
+    revalidatePath(`/${slug}/agente`)
+    return r.ok ? { ok: 'Conectado de novo, com o mesmo endereço que já está no Z-API.' } : { erro: r.erro }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+/**
+ * Guarda a linha própria do Z-API. Os tokens entram por aqui e não voltam:
+ * a resposta é só "guardado" ou o erro, nunca o que foi colado.
+ */
+export async function salvarLinha(slug: string, form: FormData): Promise<EstadoConexaoAcao> {
+  try {
+    const r = await salvarLinhaZapi(await exigirSessao(slug), {
+      instancia: String(form.get('instancia') ?? ''),
+      token: String(form.get('token') ?? ''),
+      clientToken: String(form.get('clientToken') ?? ''),
+    })
+    revalidatePath(`/${slug}/agente`)
+    return r.ok ? { ok: 'Linha do WhatsApp guardada. Mande a mensagem de teste para conferir.' } : { erro: r.erro }
+  } catch (e) {
+    return { erro: mensagem(e) }
+  }
+}
+
+export async function apagarLinha(slug: string): Promise<EstadoConexaoAcao> {
+  try {
+    await apagarLinhaZapi(await exigirSessao(slug))
+    revalidatePath(`/${slug}/agente`)
+    return { ok: 'Linha do WhatsApp removida desta conta.' }
   } catch (e) {
     return { erro: mensagem(e) }
   }

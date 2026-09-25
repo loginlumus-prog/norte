@@ -160,8 +160,9 @@ describe('a porta do webhook', () => {
     process.env.WEBHOOK_SEGREDO = antes
   })
 
-  it('token errado dá 401 sem nenhum trabalho agendado (nem leitura de banco)', () => {
-    const p = receberWebhook('loja-a', 'errado', { type: 'ReceivedCallback' }, { canal: new CanalFalso() })
+  it('token errado dá 401 sem nenhum trabalho agendado (nem leitura de banco)', async () => {
+    // Fora do formato, morre antes da portaria: este arquivo nem tem banco.
+    const p = await receberWebhook('loja-a', 'errado', { type: 'ReceivedCallback' }, { canal: new CanalFalso() })
     expect(p.status).toBe(401)
     expect(p.trabalho).toBeUndefined()
   })

@@ -5,32 +5,37 @@
 // texto)`. É isso que deixa trocar de fornecedor sem mexer em regra — e é o
 // que deixa testar o laço inteiro sem mandar mensagem para ninguém.
 //
-// ── nesta etapa: UMA instância Z-API, global ─────────────────
-// As credenciais vêm de variáveis de ambiente do servidor, não do banco:
+// ── qual linha cada empresa usa ──────────────────────────────
+// Uma instância Z-API é UM número de WhatsApp. Então a pergunta "por onde sai
+// a mensagem da empresa X?" tem três respostas, nesta ordem:
 //
+//   1. A LINHA PRÓPRIA dela: instância e tokens que o dono colou na tela do
+//      assistente, guardados no Agente — os tokens cifrados (ver
+//      src/servidor/cifra.ts), decifrados só aqui, na hora de montar o canal.
+//   2. A linha GLOBAL do servidor, das variáveis de ambiente — mas SÓ para a
+//      empresa de `ZAPI_EMPRESA` (o piloto, de antes de existir linha
+//      própria). Continua valendo, para não derrubar quem já estava ligado.
+//   3. O canal de mentira: grava no histórico, não manda nada, e a tela diz.
+//
+// Por que a global não serve a todas: antes de 25/09 a segunda empresa que
+// ligasse o assistente respondia os clientes dela pelo WhatsApp do piloto — o
+// número de OUTRA loja. Nunca mais: sem linha própria e sem ser a do piloto,
+// é o canal de mentira.
+//
+// Variáveis da linha global:
 //   ZAPI_INSTANCIA      o id da instância (painel do Z-API → Instâncias)
 //   ZAPI_TOKEN          o token DA INSTÂNCIA (vai na URL da chamada)
 //   ZAPI_CLIENT_TOKEN   o "token de segurança" da CONTA (cabeçalho Client-Token)
-//   ZAPI_URL            opcional; padrão https://api.z-api.io
+//   ZAPI_URL            opcional; padrão https://api.z-api.io (vale para as duas)
 //   ZAPI_EMPRESA        o ENDEREÇO (slug) da única empresa que fala por ela
-//
-// Consequência que precisa estar escrita: uma instância é UM número de
-// WhatsApp, e o Z-API manda o webhook dela para UM endereço. Então, com
-// credencial global, só UMA empresa conversa por vez — a do piloto. Para a
-// segunda loja, a instância precisa morar no cadastro da empresa (campo novo
-// no Agente, com o token guardado cifrado), e isso é migração de schema, que
-// não é desta etapa.
-//
-// Por isso `ZAPI_EMPRESA`: sem ela, NENHUMA empresa fala pelo número. Antes de
-// 25/09 a segunda empresa que ligasse o assistente respondia os clientes dela
-// pelo WhatsApp do piloto — o número de outra loja. Agora as outras ficam no
-// canal de mentira, e a tela delas diz que o WhatsApp é ligado com a gente.
 //
 // ── o que nunca sai daqui ────────────────────────────────────
 // Token não vai para log. Erro do fornecedor vira "falhou (status N)" — o
 // corpo da resposta do Z-API ecoa a URL chamada, e a URL tem o token dentro.
 
 import { paraEnvio } from './telefone'
+import { decifrar } from '../cifra'
+import { comoOrg } from '../banco'
 
 export type Envio = { ok: true; id?: string } | { ok: false; motivo: string }
 
@@ -46,15 +51,58 @@ export interface Canal {
 // Z-API
 // ─────────────────────────────────────────────────────────────
 
-type ConfigZapi = { url: string; instancia: string; token: string; clientToken: string }
+export type ConfigZapi = { url: string; instancia: string; token: string; clientToken: string }
+
+const urlZapi = () => (process.env.ZAPI_URL ?? 'https://api.z-api.io').trim().replace(/\/$/, '')
 
 function lerConfigZapi(): ConfigZapi | null {
   const instancia = (process.env.ZAPI_INSTANCIA ?? '').trim()
   const token = (process.env.ZAPI_TOKEN ?? '').trim()
   const clientToken = (process.env.ZAPI_CLIENT_TOKEN ?? '').trim()
   if (!instancia || !token) return null
-  const url = (process.env.ZAPI_URL ?? 'https://api.z-api.io').trim().replace(/\/$/, '')
-  return { url, instancia, token, clientToken }
+  return { url: urlZapi(), instancia, token, clientToken }
+}
+
+// ── a linha própria, como mora no Agente ─────────────────────
+
+/** As colunas do Agente que descrevem a linha própria. Tokens ainda cifrados. */
+export type LinhaGuardada = {
+  zapiInstancia: string | null
+  zapiTokenCifrado: string | null
+  zapiClientTokenCifrado: string | null
+}
+
+export const SELECT_LINHA = { zapiInstancia: true, zapiTokenCifrado: true, zapiClientTokenCifrado: true } as const
+
+/**
+ * O contexto da cifra de cada token: prende o texto cifrado à empresa E ao
+ * campo. Copiado para outra empresa, ou trocado de coluna, não abre.
+ */
+export const contextoDoToken = (orgId: string, campo: 'zapi_token' | 'zapi_client_token') =>
+  `agente:${orgId}:${campo}`
+
+/**
+ * A linha própria da empresa, decifrada e pronta para uso — ou nulo se ela
+ * não tem, se está incompleta, ou se o token não abre com a chave deste
+ * servidor (chave trocada, texto mexido). Nulo nunca vira "tenta assim mesmo".
+ */
+export function linhaPropria(orgId: string, g: LinhaGuardada | null | undefined): ConfigZapi | null {
+  const instancia = g?.zapiInstancia?.trim()
+  if (!instancia || !g?.zapiTokenCifrado) return null
+  const token = decifrar(g.zapiTokenCifrado, contextoDoToken(orgId, 'zapi_token'))
+  if (!token) {
+    // O id da empresa é nosso; nada da credencial vai junto.
+    console.error(`[canal] a linha própria da empresa ${orgId} não abre com a chave deste servidor`)
+    return null
+  }
+  const clientToken = g.zapiClientTokenCifrado
+    ? decifrar(g.zapiClientTokenCifrado, contextoDoToken(orgId, 'zapi_client_token'))
+    : ''
+  if (clientToken === null) {
+    console.error(`[canal] o Client-Token da empresa ${orgId} não abre com a chave deste servidor`)
+    return null
+  }
+  return { url: urlZapi(), instancia, token, clientToken }
 }
 
 /** Há Z-API configurado neste servidor? */
@@ -64,7 +112,7 @@ export const temZapi = () => lerConfigZapi() !== null
 export const empresaDoZapi = (): string | null =>
   (process.env.ZAPI_EMPRESA ?? '').trim().toLowerCase() || null
 
-/** Esta empresa sai pelo WhatsApp de verdade? Só a do piloto, com Z-API configurado. */
+/** Esta empresa pode sair pela linha GLOBAL? Só a do piloto, com Z-API configurado. */
 export const zapiDa = (slug: string): boolean => temZapi() && empresaDoZapi() === slug.toLowerCase()
 
 /** O WhatsApp não mostra mensagem gigante; o Z-API recusa acima disto. */
@@ -137,18 +185,43 @@ export class CanalFalso implements Canal {
 // entre o webhook e a tela, senão "o que ele teria mandado" some.
 const guardado = globalThis as unknown as { __canalFalsoNorte?: CanalFalso }
 
-/** O canal deste servidor: Z-API se configurado; o de mentira se não. */
-export function canalPadrao(): Canal {
-  const cfg = lerConfigZapi()
-  if (cfg) return new CanalZapi(cfg)
+function canalFalso(): CanalFalso {
   guardado.__canalFalsoNorte ??= new CanalFalso()
   return guardado.__canalFalsoNorte
 }
 
-/** O canal DESTA empresa: o Z-API só para a do piloto; as outras, o de mentira. */
-export function canalPara(slug: string): Canal {
-  const cfg = lerConfigZapi()
-  if (cfg && zapiDa(slug)) return new CanalZapi(cfg)
-  guardado.__canalFalsoNorte ??= new CanalFalso()
-  return guardado.__canalFalsoNorte
+// ─────────────────────────────────────────────────────────────
+// A ESCOLHA
+// ─────────────────────────────────────────────────────────────
+
+/** De onde sai a mensagem da empresa. A tela mostra; o teste confere. */
+export type OrigemCanal = 'propria' | 'global' | 'nenhuma'
+
+/**
+ * A regra inteira, sem banco: linha própria > global (só a do piloto) >
+ * mentira. Recebe o que já foi lido do Agente.
+ */
+export function escolherCanal(
+  org: { id: string; slug: string },
+  linha: LinhaGuardada | null | undefined,
+  buscar: typeof fetch = fetch,
+): { canal: Canal; origem: OrigemCanal } {
+  const propria = linhaPropria(org.id, linha)
+  if (propria) return { canal: new CanalZapi(propria, buscar), origem: 'propria' }
+  const global = lerConfigZapi()
+  if (global && zapiDa(org.slug)) return { canal: new CanalZapi(global, buscar), origem: 'global' }
+  return { canal: canalFalso(), origem: 'nenhuma' }
+}
+
+/**
+ * O canal DESTA empresa, lendo a linha dela no banco.
+ *
+ * Abre o próprio `comoOrg`: NÃO chame de dentro de outro (trava — ver
+ * banco.ts). Quem já leu o Agente usa `escolherCanal` direto.
+ */
+export async function canalPara(org: { id: string; slug: string }): Promise<Canal> {
+  const linha = await comoOrg(org.id, (db) =>
+    db.agente.findUnique({ where: { orgId: org.id }, select: SELECT_LINHA }),
+  )
+  return escolherCanal(org, linha).canal
 }
