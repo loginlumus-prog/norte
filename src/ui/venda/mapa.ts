@@ -13,10 +13,10 @@
 // dela de novo com outras palavras.
 //
 // ── para onde cada item leva ─────────────────────────────────
-// Para o lugar da página que mostra aquela tela. `#tela-…` é o botão da aba
-// correspondente em "O sistema por dentro": o navegador rola até ele sozinho,
-// e o componente das abas lê o endereço e abre a aba certa. Sem JavaScript o
-// clique ainda rola até a seção — só não troca a aba.
+// Para o lugar da página que mostra aquela tela. `#tela-…` é o item do menu
+// do exemplo clicável em "O sistema por dentro" (`demo/SistemaPorDentro`): o
+// navegador rola até ele sozinho, e o exemplo lê o endereço e abre a tela
+// certa. Sem JavaScript o clique ainda rola até a seção — só não troca a tela.
 
 import type { ComponentType } from 'react'
 import {
@@ -59,9 +59,9 @@ export const MAPA: GrupoMapa[] = [
     nome: 'Pessoas',
     Icone: IconePessoas,
     itens: [
-      { nome: 'Clientes', linha: 'Histórico de compra e programa de pontos', href: '#tela-balcao' },
-      { nome: 'Equipe', linha: 'Cada pessoa com o seu papel e a sua loja, meta, comissão e estrelas', href: '#tela-equipe' },
-      { nome: 'Tarefas', linha: 'O quadro da loja: quem está com o quê', href: '#tela-equipe' },
+      { nome: 'Clientes', linha: 'Histórico de compra e programa de pontos', href: '#tela-clientes' },
+      { nome: 'Equipe', linha: 'Cada pessoa com o seu papel e a sua loja, meta, comissão e estrelas', href: '#tela-tarefas' },
+      { nome: 'Tarefas', linha: 'O quadro da loja: quem está com o quê', href: '#tela-tarefas' },
     ],
   },
   {

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import type { ComponentType, ReactNode } from 'react'
+import type { CSSProperties, ComponentType, ReactNode } from 'react'
 import type { Plano } from '@prisma/client'
 import {
   PLANOS as LIMITES,
@@ -20,26 +20,17 @@ import { Estrelas } from '@/ui/Estrelas'
 import { BarraTopo } from '@/ui/venda/BarraTopo'
 import { Vitrine } from '@/ui/venda/Vitrine'
 import { Ramos } from '@/ui/venda/Ramos'
-import { AbasProduto, type Aba } from '@/ui/venda/AbasProduto'
+import { Palco } from '@/ui/venda/Palco'
 import { SimplesAvancado } from '@/ui/venda/SimplesAvancado'
-import {
-  TelaAnalise,
-  TelaAssistente,
-  TelaBalcao,
-  TelaEquipe,
-  TelaEstoque,
-  TelaFinanceiro,
-} from '@/ui/venda/Telas'
+import { SistemaPorDentro, type TextoTela } from '@/ui/venda/demo/SistemaPorDentro'
+import type { TelaId } from '@/ui/venda/demo/estado'
 import { Avatar, Barra, Pilula, reais as reaisCentavos } from '@/ui/venda/Pecas'
 import { COMECAR, ENTRAR, mailto } from '@/ui/venda/mapa'
 import {
   IconeAbaixo,
   IconeAdiante,
-  IconeAssistente,
   IconeAuditoria,
-  IconeControle,
   IconeCorte,
-  IconeDinheiro,
   IconeExcesso,
   IconeFechamento,
   IconeFiado,
@@ -51,7 +42,6 @@ import {
   IconePreco,
   IconeRuptura,
   IconeTranca,
-  IconeVender,
   IconeVisto,
 } from '@/ui/Icones'
 
@@ -63,7 +53,7 @@ import {
 //
 //   1. o que é isto?            → o topo, com o produto grande logo embaixo
 //   2. serve para o meu ramo?   → as fichas dos ramos, lidas da tabela real
-//   3. como é por dentro?       → as abas, uma tela por módulo
+//   3. como é por dentro?       → o exemplo clicável, oito telas que respondem
 //   4. vou conseguir usar?      → simples ou avançado
 //   5. o que só vocês têm?      → o assistente, e o controle sobre ele
 //   6. resolve o que me dói?    → o bento das dores, cada uma com a tela
@@ -231,7 +221,7 @@ const CARTOES: Record<
       'Curva ABC e dinheiro parado',
       'Crediário próprio: parcelas, juros de atraso e a lista de quem deve',
       'Quadro da rede inteira e desempenho completo, loja a loja',
-      'Escala e presença: quem abriu o caixa, a que horas, e quanto vendeu',
+      'Turnos de caixa por pessoa: quem abriu, quanto tempo, quanto vendeu',
       'Análise profunda: onde está perdendo e o que fazer · em breve',
     ],
     fora: [],
@@ -260,16 +250,23 @@ const cotaGente = (l: Limite) =>
   l.vagas === null ? 'Sem limite' : l.vagas === 1 ? '1 por vez' : `${l.vagas} ao mesmo tempo`
 
 /* ═══════════════════════════════════════════════════════════
-   As abas do produto
+   O sistema por dentro
    ═══════════════════════════════════════════════════════════
-   Três frases por tela, cada uma dizendo uma coisa que a tela FAZ — conferida
-   contra o manual (`servidor/guia.ts`). A última linha diz em que plano, lida
-   da tabela. */
-const ABAS: Aba[] = [
-  {
-    id: 'balcao',
-    titulo: 'Balcão',
-    icone: <IconeVender tamanho={18} />,
+   Uma chamada e três frases por tela, cada frase dizendo uma coisa que a tela
+   FAZ — conferida contra o manual (`servidor/guia.ts`) e contra a tela de
+   verdade. A última linha diz em que plano, lida da tabela. As telas em si
+   são o exemplo clicável de `ui/venda/demo/`. */
+const TEXTOS: Record<TelaId, TextoTela> = {
+  painel: {
+    chamada: 'O dia da loja numa olhada, e o que precisa de você.',
+    frases: [
+      'No simples, o painel abre pelo que precisa de você hoje — o que acabou, a conta que vence, a proposta esperando — e cada linha leva à tela que resolve.',
+      'No avançado, o período que você escolher, de hoje ao mês passado, sempre contra o período anterior do mesmo tamanho.',
+      'Hora a hora contra a mesma semana passada, ticket médio, margem sobre o custo e quem mais vendeu.',
+    ],
+    plano: `${desde('Relatório de vendas')}.`,
+  },
+  balcao: {
     chamada: 'Vender rápido, e fechar o caixa sem susto.',
     frases: [
       'Bipe a etiqueta e o Enter lança. Quem não etiqueta — sorveteria, lanchonete, floricultura — vende tocando em botões grandes.',
@@ -277,12 +274,8 @@ const ABAS: Aba[] = [
       'O caixa abre, sangra e fecha conferindo a gaveta. A diferença vai para o livro — inclusive quando é zero.',
     ],
     plano: `${desde('Balcão, caixa e sangria')}.`,
-    tela: <TelaBalcao />,
   },
-  {
-    id: 'estoque',
-    titulo: 'Estoque',
-    icone: <IconeControle tamanho={18} />,
+  estoque: {
     chamada: 'Cada loja com o seu saldo, e o aviso antes de faltar.',
     frases: [
       'Cada loja com o saldo dela. Transferir sai de uma e entra na outra na mesma operação.',
@@ -290,12 +283,8 @@ const ABAS: Aba[] = [
       'O histórico é a verdade: se o saldo divergir da soma dos movimentos, o sistema acusa em vez de esconder.',
     ],
     plano: `Estoque: ${desde('Estoque, entrada de mercadoria e balanço').toLowerCase()}. “Vai faltar”: ${desde('Previsão de ruptura com prazo de reposição').toLowerCase()}.`,
-    tela: <TelaEstoque />,
   },
-  {
-    id: 'financeiro',
-    titulo: 'Financeiro',
-    icone: <IconeFechamento tamanho={18} />,
+  financeiro: {
     chamada: 'Saber quanto sobrou, e não só quanto vendeu.',
     frases: [
       'Contas a pagar avisando o que venceu, o que vence hoje e o que vem nos próximos 15 dias.',
@@ -303,12 +292,17 @@ const ABAS: Aba[] = [
       'O fechamento guiado diz o que falta conferir — caixa, gaveta, contas, taxa, fiado — antes de o número do mês valer.',
     ],
     plano: `${desde('Financeiro com DRE do mês')}.`,
-    tela: <TelaFinanceiro />,
   },
-  {
-    id: 'equipe',
-    titulo: 'Equipe e tarefas',
-    icone: <IconePessoas tamanho={18} />,
+  clientes: {
+    chamada: 'Quem compra, quanto, e há quanto tempo sumiu.',
+    frases: [
+      'Busca por nome, telefone ou CPF, e a ficha de cada um com o histórico de compra.',
+      'Fichas prontas para o que vira ação: quem sumiu há mais de 60 dias e quem faz aniversário no mês.',
+      'Programa de pontos: a venda com cliente escolhido soma os pontos na hora.',
+    ],
+    plano: `Ficha do cliente: ${desde('Ficha do cliente com histórico').toLowerCase()}. Pontos: ${desde('Programa de pontos').toLowerCase()}.`,
+  },
+  tarefas: {
     chamada: 'A equipe no mesmo quadro, e o mês em estrelas.',
     frases: [
       'O quadro no jeito que a equipe já conhece: grupos, situação colorida, responsável, prazo e linha do tempo.',
@@ -316,34 +310,37 @@ const ABAS: Aba[] = [
       'De 0 a 5 estrelas por pessoa e por mês: meta batida, tarefa no prazo e dias presente.',
     ],
     plano: `Quadro de tarefas: ${desde('Quadro de tarefas da equipe').toLowerCase()}. Estrelas: ${desde('Desempenho da equipe em estrelas').toLowerCase()}.`,
-    tela: <TelaEquipe />,
   },
-  {
-    id: 'assistente',
-    titulo: 'Assistente',
-    icone: <IconeAssistente tamanho={18} />,
-    chamada: 'Um assistente que age — e que pede antes.',
-    frases: [
-      'Você dá o nome, o jeito de falar e o manual da loja. Ele conta como foi o dia e consulta estoque, caixa e contas.',
-      'Para agir — registrar uma compra, lançar uma conta, somar ao estoque a peça que apareceu — ele monta a proposta com o número e espera o seu sim.',
-      'Os tetos moram no banco: valor máximo, desconto máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
-    ],
-    plano: `${desde('Assistente no WhatsApp')}.`,
-    tela: <TelaAssistente />,
-  },
-  {
-    id: 'analise',
-    titulo: 'Análise',
-    icone: <IconeDinheiro tamanho={18} />,
+  analise: {
     chamada: 'Onde o dinheiro está parado, e qual loja puxa a rede.',
     frases: [
       'As lojas lado a lado: vendas, o que entrou, margem, ticket e o que ficou sem saída.',
       'A curva ABC separa o que sustenta a loja do que só ocupa prateleira.',
       'O dinheiro parado em reais, a preço de custo — o que não vende há 90 dias e o que nunca vendeu são as candidatas a promoção.',
     ],
-    plano: `${desde('Curva ABC e dinheiro parado')}.`,
-    tela: <TelaAnalise />,
+    plano: `${desde('Curva ABC e dinheiro parado')}. No menu, só no modo avançado.`,
   },
+  assistente: {
+    chamada: 'Um assistente que age — e que pede antes.',
+    frases: [
+      'Você dá o nome, o jeito de falar e o manual da loja. Ele conta como foi o dia e consulta estoque, caixa e contas.',
+      'Para agir — registrar uma compra, lançar uma conta, somar ao estoque a peça que apareceu — ele monta a proposta com o número e espera o seu sim, na tela.',
+      'Os tetos moram no banco: valor máximo, desconto máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
+    ],
+    plano: `${desde('Assistente no WhatsApp')}.`,
+  },
+}
+
+/** As telas no rodapé, na ordem do menu. */
+const TELAS_RODAPE: [string, TelaId][] = [
+  ['Painel', 'painel'],
+  ['Balcão', 'balcao'],
+  ['Estoque', 'estoque'],
+  ['Financeiro', 'financeiro'],
+  ['Clientes', 'clientes'],
+  ['Tarefas e equipe', 'tarefas'],
+  ['Análise', 'analise'],
+  ['Assistente', 'assistente'],
 ]
 
 /* ═══════════════════════════════════════════════════════════
@@ -355,6 +352,11 @@ const ABAS: Aba[] = [
    dele. */
 const CONSULTA = TODOS_PODERES.filter((k) => !PODERES[k].escreve).map((k) => PODERES[k])
 const AGE = TODOS_PODERES.filter((k) => PODERES[k].escreve).map((k) => PODERES[k])
+// O que ele consulta sozinho na tela do exemplo: os de dentro da loja (o
+// que responde CLIENTE fica de fora, que lá é outra conversa).
+const CONSULTA_EXEMPLO = TODOS_PODERES.filter((k) => !PODERES[k].escreve && !('paraCliente' in PODERES[k])).map(
+  (k) => ({ titulo: PODERES[k].titulo, disponivel: PODERES[k].disponivel as boolean }),
+)
 
 // "Gain full control", no desenho das referências — mas com o que é NOSSO:
 // cada cartão é uma trava que existe no código, e a miniatura embaixo é a
@@ -668,14 +670,21 @@ export default function Inicio() {
             Centrado, curto e com o produto logo embaixo. Título de duas
             linhas, uma frase, dois botões e a letra miúda que tira o medo
             ("grátis, sem cartão"). A pílula de cima é a novidade de verdade
-            desta semana — o modo simples — e leva até ela. */}
-        <section id="topo" className="fundo-topo relative isolate overflow-x-clip">
+            desta semana — o modo simples — e leva até ela.
+
+            ── vivo, desde 25/09 ──
+            O título entra palavra por palavra e "numa tela só" ganha a cor
+            que corre para a marca, com um fio de sol que atravessa de tempos
+            em tempos. Atrás, a luz anda devagar (`Palco`). Embaixo, a vitrine
+            é uma tarde de loja acontecendo. Tudo CSS na carga — nada espera
+            JavaScript para aparecer — e tudo para quando o topo sai da tela. */}
+        <Palco id="topo" className="fundo-topo relative isolate overflow-x-clip">
           <div aria-hidden className="grade-fundo pointer-events-none absolute inset-0 -z-10" />
           <div className="mx-auto max-w-6xl px-4 pt-12 pb-16 sm:px-6 md:pt-20 md:pb-24">
-            <AoEntrar className="mx-auto flex max-w-3xl flex-col items-center text-center">
+            <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
               <a
                 href="#modos"
-                className="surge group inline-flex items-center gap-2 rounded-full border border-borda bg-superficie py-1 pr-3 pl-1 text-[13px] font-medium text-tinta-2 shadow-norte hover:border-tinta-3"
+                className="chega group inline-flex items-center gap-2 rounded-full border border-borda bg-superficie py-1 pr-3 pl-1 text-[13px] font-medium text-tinta-2 shadow-norte hover:border-tinta-3"
               >
                 <span className="rounded-full bg-marca-suave px-2 py-0.5 text-[11px] font-bold text-marca">
                   Novo
@@ -684,21 +693,21 @@ export default function Inicio() {
                 <span className="hidden sm:inline">Modo simples para o balcão, avançado para o dono</span>
                 <IconeAdiante tamanho={13} className="transition-transform group-hover:translate-x-0.5" />
               </a>
-              <h1
-                className="surge mt-6 text-[2.5rem] leading-[1.02] text-balance sm:text-[3.4rem] lg:text-[4rem]"
-                style={{ animationDelay: '0.06s' }}
-              >
-                Do balcão ao fim do mês, numa tela só.
+              <h1 className="mt-6 text-[2.5rem] leading-[1.04] text-balance sm:text-[3.4rem] lg:text-[4.1rem]">
+                <Palavras texto="Do balcão ao fim do mês," />{' '}
+                <span className="texto-luz" style={{ '--i': 6 } as CSSProperties}>
+                  numa tela só.
+                </span>
               </h1>
               <p
-                className="surge mt-5 max-w-2xl text-lg leading-relaxed text-balance text-tinta-2 sm:text-xl"
-                style={{ animationDelay: '0.12s' }}
+                className="chega mt-5 max-w-2xl text-lg leading-relaxed text-balance text-tinta-2 sm:text-xl"
+                style={{ '--d': '.4s' } as CSSProperties}
               >
                 Venda, estoque, dinheiro e equipe. E um assistente que pede antes de agir.
               </p>
               <div
-                className="surge mt-8 flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center"
-                style={{ animationDelay: '0.18s' }}
+                className="chega mt-8 flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center"
+                style={{ '--d': '.5s' } as CSSProperties}
               >
                 <a
                   href={COMECAR}
@@ -710,20 +719,20 @@ export default function Inicio() {
                   href="#produto"
                   className="flex items-center justify-center gap-2 rounded-norte border border-borda bg-superficie px-7 py-3.5 text-[15px] font-semibold text-tinta hover:bg-superficie-2"
                 >
-                  Ver o sistema por dentro
+                  Explorar o sistema por dentro
                   <IconeAbaixo tamanho={14} className="text-tinta-3" />
                 </a>
               </div>
-              <p className="surge mt-4 text-sm text-tinta-3" style={{ animationDelay: '0.24s' }}>
+              <p className="chega mt-4 text-sm text-tinta-3" style={{ '--d': '.6s' } as CSSProperties}>
                 Grátis para sempre no plano de uma loja · sem cartão
               </p>
-            </AoEntrar>
+            </div>
 
             <div className="mt-12 md:mt-16">
               <Vitrine />
             </div>
           </div>
-        </section>
+        </Palco>
 
         {/* ── feito para o seu ramo ─────────────────────────────── */}
         <section id="ramos" className="scroll-mt-16 border-t border-borda-suave bg-superficie">
@@ -763,18 +772,23 @@ export default function Inicio() {
           </div>
         </section>
 
-        {/* ── o sistema por dentro ──────────────────────────────── */}
+        {/* ── o sistema por dentro ──────────────────────────────────
+            Um Norte pequeno para clicar (`ui/venda/demo/`): o menu de
+            verdade, oito telas que respondem umas às outras e a chave
+            Simples | Avançado no cabeçalho, onde ela mora no sistema. */}
         <section id="produto" className="scroll-mt-16 bg-superficie">
-          <div className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 md:pb-24">
+          <div className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 md:pb-24">
             <Titulo
               centro
               olho="O sistema por dentro"
-              titulo="Uma tela para cada parte da loja"
-              resumo="Escolha uma. Cada tela abaixo é a do sistema, com números de exemplo."
+              titulo="Uma tela para cada parte da loja. Pode mexer."
+              resumo="Venda no balcão, pague uma conta, confirme uma proposta do assistente — cada tela responde às outras, como lá dentro. Os números são de exemplo."
             />
-            <div className="mt-10">
-              <AbasProduto abas={ABAS} />
-            </div>
+            <AoEntrar className="mt-10">
+              <div className="surge">
+                <SistemaPorDentro textos={TEXTOS} consulta={CONSULTA_EXEMPLO} />
+              </div>
+            </AoEntrar>
           </div>
         </section>
 
@@ -1259,7 +1273,7 @@ export default function Inicio() {
           <Coluna
             titulo="Produto"
             links={[
-              ...ABAS.map((a) => ({ nome: a.titulo, href: `#tela-${a.id}` })),
+              ...TELAS_RODAPE.map(([nome, id]) => ({ nome, href: `#tela-${id}` })),
               { nome: 'Simples ou avançado', href: '#modos' },
               { nome: 'Segurança', href: '#seguranca' },
             ]}
@@ -1311,13 +1325,34 @@ function Titulo({
   centro?: boolean
 }) {
   return (
-    <div className={'flex max-w-2xl flex-col gap-3 ' + (centro ? 'mx-auto items-center text-center' : '')}>
+    <AoEntrar className={'cascata flex max-w-2xl flex-col gap-3 ' + (centro ? 'mx-auto items-center text-center' : '')}>
       <span className="text-[13px] font-bold tracking-[0.12em] text-marca uppercase">{olho}</span>
       <h2 className="text-[2rem] leading-[1.08] text-balance sm:text-[2.5rem] lg:text-[2.75rem]">
         {titulo}
       </h2>
       {resumo && <p className="text-[17px] leading-relaxed text-tinta-2 sm:text-lg">{resumo}</p>}
-    </div>
+    </AoEntrar>
+  )
+}
+
+/**
+ * O título partido em palavras, cada uma com o seu atraso (`--i`). É CSS
+ * puro na carga (`.palavra` no globals): o servidor manda as palavras já no
+ * lugar, e a entrada roda sozinha na primeira pintura.
+ */
+function Palavras({ texto, de = 0 }: { texto: string; de?: number }) {
+  const partes = texto.split(' ')
+  return (
+    <>
+      {partes.map((p, i) => (
+        <span key={i}>
+          <span className="palavra" style={{ '--i': de + i } as CSSProperties}>
+            {p}
+          </span>
+          {i < partes.length - 1 ? ' ' : ''}
+        </span>
+      ))}
+    </>
   )
 }
 
