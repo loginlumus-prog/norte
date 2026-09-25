@@ -16,6 +16,7 @@ import type { Metadata } from 'next'
 import { PaginaLegal, Secao, Itens, Destaque } from '@/ui/PaginaLegal'
 import { EMPRESA } from '@/servidor/legal'
 import { PLANOS, PLANOS_COM_PRECO } from '@/servidor/planos'
+import { plural } from '@/ui/texto'
 
 export const metadata: Metadata = {
   title: 'Termos de uso · Norte',
@@ -74,12 +75,12 @@ export default function Termos() {
             return (
               <li key={p}>
                 <b>{l.titulo}</b> — {real(l.mensal!)}/mês.{' '}
-                {l.unidades === null ? 'Lojas sem limite' : `Até ${l.unidades} loja(s)`}, e{' '}
+                {l.unidades === null ? 'Lojas sem limite' : `Até ${plural(l.unidades, 'loja', 'lojas')}`}, e{' '}
                 {l.vagas === null
                   ? 'sem limite de pessoas dentro ao mesmo tempo'
-                  : `${l.vagas} pessoa(s) dentro ao mesmo tempo`}
+                  : `${plural(l.vagas, 'pessoa', 'pessoas')} dentro ao mesmo tempo`}
                 . Cadastrar a equipe inteira não tem custo em nenhum plano.
-                {l.porVagaExtra ? ` Pessoa a mais ao mesmo tempo: ${real(l.porVagaExtra)}/mês cada.` : ''}
+                {' '}Precisando de mais gente dentro ao mesmo tempo, o plano de cima abre mais vagas.
                 {l.creditoMensal ? ` Inclui ${real(l.creditoMensal)} de crédito de IA por mês.` : ''}
               </li>
             )

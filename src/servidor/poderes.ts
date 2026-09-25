@@ -120,7 +120,7 @@ export const PODERES = {
   // ── agir (sempre propõe, e a pessoa confirma) ───────────────
   'lancar.despesa': {
     titulo: 'Lançar uma conta a pagar',
-    resumo: 'Você manda a foto do boleto ou diz o valor; ele monta o lançamento.',
+    resumo: 'Você diz o valor e o vencimento; ele monta o lançamento.',
     exige: 'financeiro.lancar',
     escreve: true,
     teto: 'valor',
@@ -128,7 +128,7 @@ export const PODERES = {
   },
   'pedir.compra': {
     titulo: 'Registrar compra de mercadoria',
-    resumo: 'Quando o estoque está acabando, ele monta o pedido e a conta a pagar.',
+    resumo: 'Quando o estoque está acabando, ele lança a compra em contas a pagar.',
     exige: 'financeiro.lancar',
     escreve: true,
     teto: 'valor',
@@ -136,7 +136,8 @@ export const PODERES = {
   },
   'ajustar.estoque': {
     titulo: 'Corrigir o estoque',
-    resumo: 'Quebra, perda, contagem que não bateu. Sempre com motivo escrito.',
+    resumo:
+      'Somar peça que apareceu na contagem, sempre com motivo escrito. Perda e quebra continuam na tela de Estoque.',
     exige: 'estoque.ajustar',
     escreve: true,
     disponivel: true,

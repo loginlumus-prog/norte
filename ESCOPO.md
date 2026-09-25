@@ -29,7 +29,7 @@ opera e consulta a empresa conversando com um agente de IA no WhatsApp.
 |---|---|---|
 | 1 | Sem site. Só sistema. | Tira ~metade do código e quase todo o custo variável e de suporte. |
 | 2 | Crediário **fica**, como módulo ligável. | É a ação que gera recibo em dinheiro. Sem ela o agente vira relatório. |
-| 3 | Agente é criado e batizado pelo cliente. | White-label. "Donna" é marca do cliente atual, não do produto. |
+| 3 | Agente é criado e batizado pelo cliente. | White-label. O nome que o cliente dá ao assistente é marca dele, não do produto. |
 | 4 | Instrução personalizada **nunca** define permissão. | Segurança. Ver seção 6. |
 | 5 | Toda ação do agente emite recibo em R$. | O que não vira número no fim do mês não sustenta renovação. |
 | 6 | `tenant_id` desde a primeira tabela. | Ver seção 4. |

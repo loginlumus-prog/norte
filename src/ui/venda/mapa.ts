@@ -42,7 +42,7 @@ export const MAPA: GrupoMapa[] = [
     itens: [
       { nome: 'Balcão', linha: 'Bipa a etiqueta ou toca no botão, e o troco aparece grande', href: '#tela-balcao' },
       { nome: 'Caixa', linha: 'Abre, sangra e fecha conferindo a gaveta', href: '#tela-balcao' },
-      { nome: 'Crediário', linha: 'Fiado com parcelas, juros e cobrança', href: '#resolve' },
+      { nome: 'Crediário', linha: 'Fiado com parcelas, juros de atraso e a lista de quem deve', href: '#resolve' },
       { nome: 'Encomendas', linha: 'O pedido que o cliente retira depois', href: '#ramos' },
     ],
   },
@@ -60,7 +60,7 @@ export const MAPA: GrupoMapa[] = [
     Icone: IconePessoas,
     itens: [
       { nome: 'Clientes', linha: 'Histórico de compra e programa de pontos', href: '#tela-balcao' },
-      { nome: 'Equipe', linha: 'Permissão por pessoa, meta, comissão e estrelas', href: '#tela-equipe' },
+      { nome: 'Equipe', linha: 'Cada pessoa com o seu papel e a sua loja, meta, comissão e estrelas', href: '#tela-equipe' },
       { nome: 'Tarefas', linha: 'O quadro da loja: quem está com o quê', href: '#tela-equipe' },
     ],
   },
@@ -78,7 +78,7 @@ export const MAPA: GrupoMapa[] = [
     Icone: IconeAssistente,
     itens: [
       { nome: 'Assistente', linha: 'Ele propõe, uma pessoa confirma', href: '#assistente' },
-      { nome: 'Auditoria', linha: 'O livro de tudo que mexeu, que não se apaga', href: '#seguranca' },
+      { nome: 'Auditoria', linha: 'O livro de tudo que mexeu, que ninguém edita nem apaga', href: '#seguranca' },
       { nome: 'Guia do Norte', linha: 'A ajuda que sabe o sistema, em toda tela', href: '#modos' },
     ],
   },

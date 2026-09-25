@@ -183,7 +183,7 @@ const CARTOES: Record<
       'Fechamento de mês guiado',
       'Quadros de tarefas com responsável, prazo e prioridade',
       'Preços: margem e markup item a item',
-      'Equipe sem limite de cadastro, com permissão por pessoa',
+      'Equipe sem limite de cadastro, cada pessoa com o seu papel e a sua loja',
       // Estava sem a etiqueta — e a tabela marca a nota fiscal como
       // "em breve" desde 24/09 (depende de emissor contratado e do
       // certificado A1 de cada loja). Sem a etiqueta, o cartão prometia o que
@@ -196,7 +196,10 @@ const CARTOES: Record<
     // "R$ 100 de crédito" não diz nada para quem nunca comprou token. O número
     // sai do custo medido por conversa, com cache e roteamento de modelo.
     conta: '~1.650 conversas no WhatsApp',
-    nota: 'renovado todo mês · compra mais quando quiser',
+    // Dizia "renovado todo mês": não existe rotina que devolva o crédito na
+    // virada do mês (`recarregarCredito` só é chamada pela recarga). A recarga
+    // existe, pela tela de Assinatura.
+    nota: 'recarga quando quiser',
     itens: [
       'Tudo do Balcão, e até cinco lojas',
       'Assistente com o nome que você der',
@@ -220,13 +223,13 @@ const CARTOES: Record<
     // Era "O mais pedido". Sem cliente, não existe "mais pedido" — ver o topo.
     selo: 'Recomendado',
     conta: '~5.000 conversas no WhatsApp',
-    nota: 'renovado todo mês · compra mais quando quiser',
+    nota: 'recarga quando quiser',
     itens: [
       'Tudo do Assistente, sem limite de loja nem de gente',
       'Previsão de ruptura: quantos dias o saldo aguenta, e até quando pedir',
       'Comparação entre lojas: venda, margem e estoque parado lado a lado',
       'Curva ABC e dinheiro parado',
-      'Crediário próprio, com juros e parcelas',
+      'Crediário próprio: parcelas, juros de atraso e a lista de quem deve',
       'Quadro da rede inteira e desempenho completo, loja a loja',
       'Escala e presença: quem abriu o caixa, a que horas, e quanto vendeu',
       'Análise profunda: onde está perdendo e o que fazer · em breve',
@@ -322,7 +325,7 @@ const ABAS: Aba[] = [
     chamada: 'Um assistente que age — e que pede antes.',
     frases: [
       'Você dá o nome, o jeito de falar e o manual da loja. Ele conta como foi o dia e consulta estoque, caixa e contas.',
-      'Para agir — registrar uma compra, lançar uma conta, corrigir o estoque — ele monta a proposta com o número e espera o seu sim.',
+      'Para agir — registrar uma compra, lançar uma conta, somar ao estoque a peça que apareceu — ele monta a proposta com o número e espera o seu sim.',
       'Os tetos moram no banco: valor máximo, desconto máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
     ],
     plano: `${desde('Assistente no WhatsApp')}.`,
@@ -391,7 +394,7 @@ const CONTROLE: { t: string; d: string; peca: ReactNode }[] = [
   },
   {
     t: 'Tudo no livro, com antes e depois.',
-    d: 'O que ele propôs e alguém confirmou aparece no nome de quem confirmou, com “assistente” embaixo. O livro não se apaga — nem por nós.',
+    d: 'O que ele propôs e alguém confirmou aparece no nome de quem confirmou, com “assistente” embaixo. Enquanto a conta existir, ninguém edita nem apaga o livro.',
     peca: (
       <div className="flex flex-col gap-1.5 rounded-lg border border-borda bg-superficie p-3 text-[12px]">
         <span className="flex items-center gap-2">
@@ -408,7 +411,10 @@ const CONTROLE: { t: string; d: string; peca: ReactNode }[] = [
   },
   {
     t: 'Gasto de IA com teto por dia.',
-    d: 'Passou do teto do dia, ele para de responder até amanhã. E a tela mostra o que ele trouxe de volta contra o que custou.',
+    // Dizia "a tela mostra o que ele trouxe de volta contra o que custou" — e o
+    // "trouxe de volta" ainda não soma nada (nenhuma ação dele emite recibo).
+    // O custo do mês é real.
+    d: 'Passou do teto do dia, ele para de responder até amanhã. E a tela mostra quanto ele custou de IA no mês.',
     peca: (
       <div className="flex flex-col gap-2 rounded-lg border border-borda bg-superficie p-3 text-[12px]">
         <span className="flex justify-between">
@@ -497,9 +503,9 @@ const DORES: Dor[] = [
   {
     Icone: IconeFiado,
     t: 'O fiado no caderno',
-    d: 'Crediário com parcelas, juros e a ficha de quem deve, quanto e há quantos dias — e a venda fiada só sai com cliente escolhido.',
+    d: 'Crediário com parcelas, juros de atraso e a lista de quem deve, quanto e há quantos dias — e a venda fiada só sai com cliente escolhido.',
     tela: 'Crediário',
-    plano: desde('Crediário próprio, com juros e cobrança'),
+    plano: desde('Crediário próprio, com juros de atraso e a lista de quem deve'),
     classe: '',
   },
   {
@@ -569,7 +575,10 @@ const SEGURANCA: {
   {
     Icone: IconeAuditoria,
     t: 'O livro não se apaga',
-    d: 'Quem mexeu, no quê, quando, de quanto para quanto. O banco recusa editar e apagar — inclusive para nós.',
+    // Dizia "inclusive para nós" — e a política de privacidade apaga tudo em
+    // até 90 dias depois do fim do contrato. As duas coisas são verdade só
+    // com o "enquanto a conta existir".
+    d: 'Quem mexeu, no quê, quando, de quanto para quanto. Enquanto a conta existir, ninguém edita nem apaga o livro — nem a sua equipe, nem o sistema. O banco recusa.',
   },
   {
     Icone: IconeCorte,
@@ -579,7 +588,7 @@ const SEGURANCA: {
   {
     Icone: IconeFreio,
     t: 'Porta com freio',
-    d: 'Senha errada repetida trava a tentativa por alguns minutos, por conta e por origem. Lista de senhas comuns não passa.',
+    d: 'Senha errada repetida trava a tentativa por alguns minutos, por conta e por origem — chute em lista não vai longe.',
   },
   {
     Icone: IconeTranca,
@@ -602,7 +611,10 @@ const PERGUNTAS: { p: string; r: string }[] = [
   },
   {
     p: 'O assistente já responde no WhatsApp?',
-    r: `A configuração dele — nome, jeito de falar, manual da loja, poderes e tetos — e as propostas esperando o seu sim já estão no sistema. A conexão com o WhatsApp está sendo ligada agora; a data a gente só fala quando estiver no ar. Ele entra ${doPlano('BALCAO_AGENTE')} para cima.`,
+    // A conexão existe no código (Z-API, `servidor/assistente/canal.ts`), mas
+    // com UMA instância global: uma empresa conversa por vez. Dizer "sim" a
+    // todo mundo seria prometer o número de cada loja, que ainda não há.
+    r: `A configuração dele — nome, jeito de falar, manual da loja, poderes e tetos — e as propostas esperando o seu sim já estão no sistema. A conversa pelo WhatsApp também já existe, e a conexão do número é montada junto com a nossa equipe — hoje uma loja de cada vez. Quando der para ligar o número de toda loja, a gente avisa; antes disso, não promete data. Ele entra ${doPlano('BALCAO_AGENTE')} para cima.`,
   },
   {
     p: 'O assistente pode dar desconto sozinho? Mexer no meu preço?',
@@ -719,7 +731,7 @@ export default function Inicio() {
             <Titulo
               olho="Para quem é"
               titulo="Feito para o seu ramo desde o primeiro dia"
-              resumo="Escolha o ramo no cadastro e o Norte já abre com as variações, a medida, as categorias e o jeito de vender de quem é do ramo. Toque num deles para ver o que muda."
+              resumo="Escolha o ramo no cadastro e o Norte já abre com as variações, as categorias e o jeito de vender de quem é do ramo. Toque num deles para ver o que muda."
             />
             <div className="mt-10">
               <Ramos />
@@ -834,8 +846,9 @@ export default function Inicio() {
                   <ListaPoderes titulo="Propõe, e você confirma" poderes={AGE} />
                 </div>
                 <p className="text-[13px] leading-relaxed text-tinta-3">
-                  A configuração dele e as propostas já funcionam dentro do sistema; a conexão
-                  com o WhatsApp está sendo ligada agora. {desde('Assistente no WhatsApp')}.
+                  A configuração dele e as propostas já funcionam dentro do sistema. A conversa
+                  pelo WhatsApp também existe, e o número é conectado junto com a nossa equipe —
+                  hoje uma loja de cada vez. {desde('Assistente no WhatsApp')}.
                 </p>
               </div>
 
@@ -973,7 +986,7 @@ export default function Inicio() {
               centro
               olho="Planos"
               titulo="Preço por tamanho de operação"
-              resumo={`A partir de ${reais(MENOR_MENSAL)} por mês, sem taxa de implantação. Pessoa a mais tem preço de tabela, não “fale com o comercial”.`}
+              resumo={`A partir de ${reais(MENOR_MENSAL)} por mês, sem taxa de implantação. Precisa de mais gente dentro ao mesmo tempo? O próximo plano abre mais vagas.`}
             />
 
             <div className="mx-auto mt-10 flex max-w-2xl flex-col gap-4 rounded-2xl border border-borda bg-superficie p-6 sm:flex-row sm:items-center sm:justify-between lg:max-w-none">
@@ -1026,8 +1039,11 @@ export default function Inicio() {
                       <span className="text-sm text-tinta-3">/mês</span>
                     </p>
                     <p className="mt-2 text-xs text-tinta-3">
-                      {l.porVagaExtra
-                        ? `+ ${reais(l.porVagaExtra)} por pessoa a mais dentro ao mesmo tempo`
+                      {/* Dizia "+ R$ 40 por pessoa a mais dentro ao mesmo
+                          tempo" — e a vaga extra não se compra: o login só
+                          olha a cota (`ocuparVaga`). O caminho hoje é subir. */}
+                      {l.vagas !== null
+                        ? 'Mais gente dentro ao mesmo tempo? O próximo plano abre mais vagas.'
                         : 'Sem taxa de implantação'}
                     </p>
 
@@ -1200,8 +1216,9 @@ export default function Inicio() {
                 Comece pelo que dói mais.
               </h2>
               <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-tinta-2">
-                A gente monta o seu ambiente, sobe o catálogo junto com você e liga o assistente com
-                o nome que você escolher. Em duas semanas você sabe se vale.
+                A gente monta o seu ambiente, sobe o catálogo junto com você e, no plano com
+                assistente, liga ele com o nome que você escolher. Em duas semanas você sabe se
+                vale.
               </p>
               <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
                 <a

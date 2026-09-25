@@ -8,8 +8,10 @@
 // ramo que o sistema semeia em unidade). Aqui não há frase: o painel lê
 // `servidor/modulos.ts` — a MESMA tabela que o cadastro inicial usa para
 // semear a empresa. O que aparece é o que a pessoa vai encontrar pronto no
-// primeiro dia: os eixos de variação com as opções, a medida, o jeito do
-// balcão, as categorias, os módulos já marcados e o que o assistente já sabe.
+// primeiro dia: os eixos de variação com as opções, o jeito do balcão, as
+// categorias e os módulos já marcados (os que o plano tiver). A medida entra
+// como "costuma vender" — o cadastro não a semeia — e o manual do assistente
+// só vale se ele for ligado no cadastro.
 //
 // Nada disso é caminho no código — é semente, e o dono muda depois. O
 // rodapé do painel diz isso, porque é a pergunta seguinte de quem tem um
@@ -31,12 +33,16 @@
 // `#ramo-calcados` abre direto aquele ramo. É o que o rodapé usa.
 
 import { useEffect, useRef, useState } from 'react'
-import { MODULOS, RAMOS, type Ramo } from '@/servidor/modulos'
+import { MODULOS, RAMOS, type Modulo, type Ramo } from '@/servidor/modulos'
 import { Rotulo } from './Pecas'
 
 // "Outro" começa vazio de propósito — mostrar ele seria mostrar um painel sem
 // nada. Fica fora da fileira.
 const LISTA: Ramo[] = (Object.keys(RAMOS) as Ramo[]).filter((r) => r !== 'outro')
+
+// Módulos que o cadastro deixa marcar mas que ainda não fazem nada. Some daqui
+// no dia em que a nota fiscal sair do `quando: 'breve'` de planos.ts.
+const EM_BREVE: readonly Modulo[] = ['notaFiscal']
 
 const MEDIDA: Record<string, string> = {
   UN: 'por unidade',
@@ -158,14 +164,21 @@ export function Ramos() {
                 ? 'Sem grade — cada produto é um item'
                 : r.eixos.map((e) => e.nome).join(' e ')}
             </Fato>
-            <Fato rotulo="Vende">{MEDIDA[r.medida] ?? r.medida}</Fato>
+            {/* "Costuma", e não "Vende": a medida é do PRODUTO, e o cadastro
+                não semeia nenhuma — quem escolhe quilo é quem cadastra. */}
+            <Fato rotulo="Costuma vender">{MEDIDA[r.medida] ?? r.medida}</Fato>
             <Fato rotulo="Balcão">
               {r.balcao === 'grade' ? 'Por botões grandes, sem etiqueta' : 'Bipando a etiqueta'}
             </Fato>
-            <Fato rotulo="Já vem ligado">
+            {/* "Marcado", e não "ligado": o cadastro marca o que o ramo sugere,
+                mas só liga o que o plano tem (`planoLibera`). E nota fiscal
+                ainda não emite — ver `RECURSOS` em planos.ts. */}
+            <Fato rotulo="Já vem marcado (se o plano tiver)">
               {r.sugere.length === 0
                 ? 'Só o essencial'
-                : r.sugere.map((m) => MODULOS[m].titulo).join(', ')}
+                : r.sugere
+                    .map((m) => MODULOS[m].titulo + (EM_BREVE.includes(m) ? ' (em breve)' : ''))
+                    .join(', ')}
             </Fato>
           </dl>
 
@@ -192,7 +205,7 @@ export function Ramos() {
               texto da tabela, sem uma vírgula mudada. */}
           <figure className="rounded-xl border border-borda-suave bg-fundo p-4">
             <figcaption>
-              <Rotulo>O que o assistente já sabe no primeiro dia</Rotulo>
+              <Rotulo>O manual que o assistente recebe se você ligar ele no cadastro</Rotulo>
             </figcaption>
             <blockquote className="mt-2 text-[13.5px] leading-relaxed text-tinta-2">
               {r.manual}

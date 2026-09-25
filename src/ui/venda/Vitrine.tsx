@@ -79,16 +79,15 @@ export function Vitrine() {
       >
         {/* ── a janela ── */}
         <div className="surge overflow-hidden rounded-2xl border border-borda bg-superficie shadow-[var(--sombra-vitrine)]">
-          {/* A barra fina de cima: a busca e a loja, como no sistema. */}
+          {/* A barra fina de cima: a loja, como no sistema. Já teve uma busca
+              "produto, cliente ou venda" — que o sistema não tem. Saiu. */}
           <div className="flex items-center gap-3 border-b border-borda-suave px-4 py-2.5">
             <Simbolo tamanho={20} id="vitrine-sol" />
-            <span className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md bg-superficie-2 px-2.5 text-[11.5px] text-tinta-3 sm:max-w-xs">
-              <span className="truncate">Buscar produto, cliente ou venda…</span>
-            </span>
-            <span className="ml-auto hidden items-center gap-1.5 rounded-md border border-borda px-2 py-1 text-[11.5px] font-semibold text-tinta sm:flex">
+            <span className="flex h-7 items-center gap-1.5 rounded-md border border-borda px-2 text-[11.5px] font-semibold text-tinta">
               Loja Centro
               <span className="text-tinta-3">▾</span>
             </span>
+            <span className="flex-1" />
             <Avatar iniciais="MC" className="size-7" />
           </div>
 
@@ -304,8 +303,8 @@ export function Vitrine() {
             </span>
           </div>
           <p className="mt-2.5 text-[12.5px] leading-snug text-tinta">
-            A Camiseta canelada Preto · G acaba quinta. Peço <b>20 un.</b> ao fornecedor por{' '}
-            <b className="numero">{reais(448)}</b>?
+            A Camiseta canelada Preto · G acaba quinta. Lanço a compra de <b>20 un.</b> (
+            <b className="numero">{reais(448)}</b>) em contas a pagar?
           </p>
           <div className="mt-3 flex items-center gap-2">
             <span className="rounded-md border border-borda px-3 py-1 text-[11.5px] font-semibold text-tinta-2">

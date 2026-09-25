@@ -3,8 +3,8 @@
 // ── cada uma é a cara da tela de verdade ─────────────────────
 // Não é ilustração: é a tela do sistema resumida ao que cabe numa vitrine —
 // os mesmos rótulos, as mesmas situações, os mesmos botões, na mesma ordem.
-// "Fechar venda F10", "↓ Sangria", "pedir até", "Esperando você", "Trouxe de
-// volta": quem entrar no sistema depois reconhece a tela que viu aqui. O
+// "Fechar venda F10", "↓ Sangria", "pedir até", "Esperando você", "Custou de
+// IA": quem entrar no sistema depois reconhece a tela que viu aqui. O
 // texto de cada rótulo foi conferido contra o manual (`servidor/guia.ts`).
 //
 // Os números são de exemplo, de loja nenhuma, e as pessoas não existem.
@@ -430,7 +430,7 @@ export function TelaAssistente() {
             // Os dois poderes de agir que já existem hoje (`servidor/poderes.ts`):
             // registrar a compra de mercadoria e lançar uma conta a pagar.
             ['Registrar a compra de 20 un. da Camiseta canelada Preto · G', reais(448)],
-            ['Lançar a conta de luz, pela foto do boleto · vence 5 out', reais(312.4)],
+            ['Lançar a conta de luz · vence 5 out', reais(312.4)],
           ].map(([t, v]) => (
             <div key={t} className="flex flex-col gap-2 rounded-lg border border-borda bg-superficie p-3">
               <p className="text-[12.5px] leading-snug text-tinta">
@@ -459,15 +459,12 @@ export function TelaAssistente() {
               </div>
             ))}
           </dl>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-lg bg-superficie p-2.5 shadow-norte">
-              <Rotulo>Trouxe de volta</Rotulo>
-              <p className="numero mt-1 font-display text-lg font-bold text-bom">{reais(2180, 0)}</p>
-            </div>
-            <div className="rounded-lg bg-superficie p-2.5 shadow-norte">
-              <Rotulo>Custou de IA</Rotulo>
-              <p className="numero mt-1 font-display text-lg font-bold text-tinta">{reais(38, 0)}</p>
-            </div>
+          {/* Já teve ao lado um "Trouxe de volta · R$ 2.180". A tela de verdade
+              ainda não soma nada ali (nenhuma ação dele emite recibo), então o
+              que fica é o número que ela mostra de fato: o custo do mês. */}
+          <div className="rounded-lg bg-superficie p-2.5 shadow-norte">
+            <Rotulo>Custou de IA este mês</Rotulo>
+            <p className="numero mt-1 font-display text-lg font-bold text-tinta">{reais(38, 0)}</p>
           </div>
         </div>
       </div>

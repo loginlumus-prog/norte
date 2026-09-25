@@ -64,23 +64,17 @@ const FALAS: Fala[] = [
     texto: 'Bom dia! A Camiseta canelada Preto · G tem 2 peças e vende 9 por semana. Acaba quinta.',
     recuo: 'mr-8',
   },
-  { de: 'dono', texto: 'pede 20 pro fornecedor', recuo: 'ml-10' },
+  { de: 'dono', texto: 'lança a compra de 20', recuo: 'ml-10' },
   {
     de: 'agente',
-    texto: 'Anotei a compra: 20 un × R$ 22,40 = R$ 448,00, vencimento em 30 dias. Confirma?',
+    texto: 'Montei a compra: 20 un × R$ 22,40 = R$ 448,00, vencimento em 30 dias.',
+    // Frase de exemplo também promete. Já foi "confirmo" pelo WhatsApp e
+    // "avisei o Carlos no balcão" — e nem confirmar por mensagem nem avisar a
+    // equipe existem: a proposta espera na tela do assistente, e é lá que
+    // alguém confirma (`servidor/assistente/regras.ts`).
+    destaque:
+      'Deixei a proposta na tela do assistente. É só confirmar lá que entra em contas a pagar.',
     recuo: 'mr-4',
-  },
-  { de: 'dono', texto: 'confirmo', recuo: 'ml-16' },
-  {
-    de: 'agente',
-    texto: 'Pronto. Entrou em contas a pagar e avisei o Carlos no balcão.',
-    // O destaque é um dos recibos que a tela do assistente soma de verdade
-    // ("reposição antes de acabar"). Já foi "recuperei R$ 1.240 de crediário
-    // atrasado" — e cobrar crediário é poder que ainda não existe
-    // (`servidor/poderes.ts`, `disponivel: false`). Frase de exemplo também
-    // promete.
-    destaque: 'Esse mês já foram 4 reposições antes de a peça acabar.',
-    recuo: 'mr-2',
   },
 ]
 
