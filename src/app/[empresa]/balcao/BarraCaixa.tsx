@@ -27,6 +27,7 @@ export function BarraCaixa({
   conferencia,
   podeOperar,
   meta = null,
+  compacta = false,
 }: {
   slug: string
   unidadeId: string
@@ -35,9 +36,16 @@ export function BarraCaixa({
   podeOperar: boolean
   /** A meta do mês de quem está no caixa. Nula sem módulo de metas ou sem meta. */
   meta?: { valor: number; vendido: number } | null
+  /**
+   * O jeito do balcão simples: uma linha só, com os gestos do turno atrás do
+   * botão "Caixa". A sorveteria olha a gaveta duas vezes por turno; a venda,
+   * duzentas. A linha fina deixa a altura para os produtos.
+   */
+  compacta?: boolean
 }) {
   const [painel, setPainel] = useState<'SANGRIA' | 'SUPRIMENTO' | null>(null)
   const [feito, setFeito] = useState<string | null>(null)
+  const [gestos, setGestos] = useState(!compacta)
 
   const horas = (Date.now() - new Date(caixa.abertoEm).getTime()) / 36e5
   const dias = Math.floor(horas / 24)
@@ -47,7 +55,12 @@ export function BarraCaixa({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-norte border border-borda bg-superficie px-3 py-2">
+      <div
+        className={cx(
+          'flex flex-wrap items-center gap-x-5 gap-y-2 rounded-norte border border-borda bg-superficie px-3 py-2',
+          compacta && 'rounded-2xl',
+        )}
+      >
         <div className="flex flex-col">
           <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">
             caixa desde {hora(new Date(caixa.abertoEm))}
@@ -60,9 +73,9 @@ export function BarraCaixa({
           <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">na gaveta</span>
           <span className="numero text-sm font-semibold text-tinta">{brl(conferencia.esperado)}</span>
         </div>
-        <span className="text-xs text-tinta-3">{caixa.abertoPor}</span>
+        <span className={cx('text-xs text-tinta-3', compacta && 'hidden sm:inline')}>{caixa.abertoPor}</span>
         {meta && (
-          <div className="flex flex-col" title="Sua meta do mês, líquida de devolução">
+          <div className={cx('flex-col', compacta ? 'hidden md:flex' : 'flex')} title="Sua meta do mês, líquida de devolução">
             <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">sua meta do mês</span>
             <span className="numero text-sm font-semibold text-tinta">
               {brl(meta.vendido)} <span className="text-tinta-3">de {brl(meta.valor)}</span>{' '}
@@ -80,8 +93,25 @@ export function BarraCaixa({
           </Situacao>
         )}
 
-        {podeOperar && (
-          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        {podeOperar && compacta && (
+          <button
+            type="button"
+            onClick={() => {
+              setGestos((g) => !g)
+              setPainel(null)
+            }}
+            aria-expanded={gestos}
+            className={cx(botao, 'ml-auto inline-flex min-h-10 items-center gap-1.5 px-3 text-sm', gestos && 'bg-superficie-2')}
+          >
+            Caixa
+            <svg aria-hidden viewBox="0 0 12 12" className={cx('size-3 transition-transform', gestos && 'rotate-180')} fill="none">
+              <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+
+        {podeOperar && gestos && (
+          <div className={cx('flex flex-wrap items-center gap-1.5', compacta ? 'w-full justify-end' : 'ml-auto')}>
             <button
               type="button"
               onClick={() => setPainel((p) => (p === 'SANGRIA' ? null : 'SANGRIA'))}

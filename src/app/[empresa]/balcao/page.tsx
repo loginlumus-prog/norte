@@ -5,7 +5,7 @@ import { caixaAberto, conferirCaixa } from '@/servidor/caixa'
 import { listarVendedores } from '@/servidor/equipe'
 import { configCrediario } from '@/servidor/crediario'
 import { minhaMeta, mesChave } from '@/servidor/metas'
-import { moduloLigado } from '@/servidor/modulos'
+import { moduloLigado, RAMOS } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
@@ -13,9 +13,11 @@ import { Aviso } from '@/ui/base'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import type { Tema } from '@/ui/TrocaTema'
 import { Balcao } from './Balcao'
+import { BalcaoSimples } from './BalcaoSimples'
+import { lerModo } from '@/servidor/modo'
 import { BarraCaixa } from './BarraCaixa'
 import { comoOrg } from '@/servidor/banco'
-import { programaDe, DESLIGADO } from '@/servidor/pontos'
+import { programaNoPlano, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
 
 export default async function BalcaoPagina({
@@ -43,10 +45,24 @@ export default async function BalcaoPagina({
   const conf = await comoOrg(sessao.orgId, (db) =>
     db.org.findUnique({
       where: { id: sessao.orgId },
-      select: { pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true, balcaoGrade: true },
+      select: { pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true, balcaoGrade: true, plano: true },
     }),
   )
-  const programa = conf ? programaDe(conf) : DESLIGADO
+  // O programa que o PLANO libera: sem isso a tela prometeria "ganha X pontos"
+  // num plano em que o servidor não credita ponto nenhum.
+  const programa = conf ? programaNoPlano(conf) : DESLIGADO
+
+  // Botões ou busca é decisão da LOJA, não da empresa: a mesma empresa pode
+  // ter a loja de roupa (bipa etiqueta) e a sorveteria (toca no picolé). Loja
+  // com ramo próprio segue o ramo; sem ramo, vale a escolha da empresa em
+  // Configurações. Uma consulta depois da outra — ver acoes.ts, `grade`.
+  const loja = unidadeId
+    ? await comoOrg(sessao.orgId, (db) =>
+        db.unidade.findUnique({ where: { id: unidadeId }, select: { ramo: true } }),
+      )
+    : null
+  const ramoDaLoja = loja?.ramo && loja.ramo in RAMOS ? RAMOS[loja.ramo as keyof typeof RAMOS] : null
+  const usaGrade = ramoDaLoja ? ramoDaLoja.balcao === 'grade' : (conf?.balcaoGrade ?? false)
 
   const caixa = unidadeId ? await caixaAberto(sessao, unidadeId) : null
   const conferencia = caixa ? await conferirCaixa(sessao, caixa.id) : null
@@ -69,6 +85,15 @@ export default async function BalcaoPagina({
   // meta existir durante o dia, e não só no dia 30.
   const meta = moduloLigado(empresa, 'metas') ? await minhaMeta(sessao, mesChave(new Date())) : null
 
+  // O modo é do APARELHO (ver servidor/modo.ts): o computador do balcão fica
+  // no simples, e vende por cartões grandes; o notebook do dono, no avançado,
+  // vende por busca e tabela. A venda é a mesma — muda só a cara.
+  const simples = (await lerModo()) === 'simples'
+  // A venda do simples ocupa a janela inteira: a moldura vira trilho de
+  // ícones e não rola — quem rola são as colunas do balcão. Só na tela de
+  // venda: abrir e fechar o caixa são páginas comuns, que rolam.
+  const telaDeVenda = simples && !!unidadeId && !!caixa && aba !== 'fechar'
+
   return (
     <Estrutura
       empresa={empresa}
@@ -77,6 +102,7 @@ export default async function BalcaoPagina({
       ativo={`/${slug}/balcao`}
       tema={tema}
       titulo={aba === 'fechar' ? 'Fechar o caixa' : 'Balcão'}
+      recolhida={telaDeVenda}
       acao={
         onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={unidadeId} /> : undefined
       }
@@ -100,6 +126,30 @@ export default async function BalcaoPagina({
           <FecharCaixa slug={slug} caixaId={caixa.id} conferencia={conferencia!} />
           <Movimento slug={slug} caixaId={caixa.id} />
         </div>
+      ) : simples ? (
+        <BalcaoSimples
+          slug={slug}
+          unidadeId={unidadeId}
+          usuarioId={sessao.usuarioId}
+          caixaId={caixa.id}
+          unidadeNome={unidadeNome}
+          programa={programa}
+          vendedores={vendedores}
+          podeAvulso={podeAvulso}
+          crediario={crediario}
+          colada
+          barra={
+            <BarraCaixa
+              compacta
+              slug={slug}
+              unidadeId={unidadeId}
+              caixa={caixa}
+              conferencia={conferencia!}
+              podeOperar={podeOperarCaixa}
+              meta={meta && meta.valor > 0 ? { valor: meta.valor, vendido: meta.vendido } : null}
+            />
+          }
+        />
       ) : (
         <>
           <BarraCaixa
@@ -114,7 +164,7 @@ export default async function BalcaoPagina({
             slug={slug}
             unidadeId={unidadeId}
             usuarioId={sessao.usuarioId}
-            grade={conf?.balcaoGrade ?? false}
+            grade={usaGrade}
             caixaId={caixa.id}
             unidadeNome={unidadeNome}
             programa={programa}

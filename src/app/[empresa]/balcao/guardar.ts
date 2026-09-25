@@ -43,6 +43,13 @@ export type Guardado = {
   desconto: number
   cliente: ClienteNoBalcao | null
   pontosUsar: number
+  /**
+   * A venda estava sendo concluída quando isto foi guardado. Se a tela voltar
+   * com esta marca, o servidor PODE ter registrado a venda antes de a tela
+   * cair — e o balcão avisa para conferir antes de concluir de novo, em vez
+   * de oferecer, inocente, a mesma venda para cobrar duas vezes.
+   */
+  fechando?: number
   /** Quando foi guardado. É o que decide se ainda vale. */
   em: number
 }

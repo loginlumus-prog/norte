@@ -12,7 +12,7 @@
 import { revalidatePath } from 'next/cache'
 import { exigirSessao } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
-import { comoOrg } from '@/servidor/banco'
+import { comoOrg, type BancoDaOrg } from '@/servidor/banco'
 import { registrarVenda, type PagamentoDaVenda } from '@/servidor/venda'
 import { abrirCaixa, fecharCaixa, movimentarCaixa } from '@/servidor/caixa'
 import { listarClientes, criarCliente } from '@/servidor/cliente'
@@ -20,6 +20,8 @@ import { escada, type Tabela } from '@/servidor/preco'
 import { consultarVale } from '@/servidor/devolucao'
 import { situacaoDosClientes } from '@/servidor/crediario'
 import type { FormaPagamento } from '@prisma/client'
+import type { ProdutoNaVitrine } from './vitrine'
+import { soDaLoja } from '@/servidor/catalogo-loja'
 
 export type Achado = {
   id: string
@@ -35,6 +37,18 @@ export type Achado = {
    */
   precos: Record<Tabela, number>
   saldo: number
+  /**
+   * As lojas que vendem este produto; vazio = todas (ver catalogo-loja.ts).
+   * Vai junto para a linha do pedido: se a pessoa troca de loja com o pedido
+   * montado, a tela sabe dizer o que a loja nova não vende.
+   */
+  vendidoEm?: string[]
+  /**
+   * O código existe, mas o produto não é vendido NESTA loja. Só vem na busca,
+   * e só por código exato: é o bipe de uma etiqueta da outra loja, que a tela
+   * explica em vez de lançar.
+   */
+  foraDaLoja?: boolean
 }
 
 type VariacaoLida = {
@@ -47,6 +61,7 @@ type VariacaoLida = {
     precoVista: { toString(): string } | null
     precoCartao: { toString(): string } | null
     precoCrediario: { toString(): string } | null
+    vendidoEm?: string[]
   }
   opcoes: { opcao: { valor: string } }[]
   estoques: { quantidade: { toString(): string } }[]
@@ -57,7 +72,7 @@ const SELECAO_DA_VARIACAO = {
   codigo: true,
   ajustePreco: true,
   produto: {
-    select: { nome: true, medida: true, precoVista: true, precoCartao: true, precoCrediario: true },
+    select: { nome: true, medida: true, precoVista: true, precoCartao: true, precoCrediario: true, vendidoEm: true },
   },
   opcoes: { select: { opcao: { select: { valor: true } } } },
 } as const
@@ -81,6 +96,7 @@ function montarAchado(v: VariacaoLida): Achado {
     preco: e.vista + ajuste,
     precos: { vista: e.vista + ajuste, cartao: e.cartao + ajuste, crediario: e.crediario + ajuste },
     saldo: Number(v.estoques[0]?.quantidade ?? 0),
+    vendidoEm: v.produto.vendidoEm ?? [],
   }
 }
 
@@ -108,10 +124,11 @@ export async function procurar(
   if (t.length < 2) return []
 
   return comoOrg(s.orgId, async (db) => {
+    // Só o que ESTA loja vende: a sorveteria não acha camisa, nem por nome.
     const vs = await db.variacao.findMany({
       where: {
         ativa: true,
-        produto: { ativo: true },
+        produto: { ativo: true, ...soDaLoja(unidadeId) },
         OR: [
           { codigo: { equals: t, mode: 'insensitive' } },
           { codigoBarras: t },
@@ -130,9 +147,28 @@ export async function procurar(
 
     // Código exato na frente: é o caso do leitor de código de barras.
     const exato = t.toUpperCase()
-    return achados.sort((a, b) =>
+    achados.sort((a, b) =>
       a.codigo?.toUpperCase() === exato ? -1 : b.codigo?.toUpperCase() === exato ? 1 : 0,
     )
+    if (achados[0]?.codigo?.toUpperCase() === exato) return achados
+
+    // Nenhum código desta loja bateu. Se o código existe no catálogo de OUTRA
+    // loja, ele volta marcado — é a etiqueta do picolé bipada na loja de
+    // roupa, e a pessoa precisa ouvir "isto não é vendido aqui", não "não
+    // achei". Por nome, não: a sorveteria digitando "cam" não quer saber que
+    // a loja do lado vende camisa.
+    const deFora = await db.variacao.findFirst({
+      where: {
+        ativa: true,
+        produto: { ativo: true, NOT: soDaLoja(unidadeId) },
+        OR: [{ codigo: { equals: t, mode: 'insensitive' } }, { codigoBarras: t }],
+      },
+      select: {
+        ...SELECAO_DA_VARIACAO,
+        estoques: { where: { unidadeId }, select: { quantidade: true } },
+      },
+    })
+    return deFora ? [{ ...montarAchado(deFora), foraDaLoja: true }, ...achados] : achados
   })
 }
 
@@ -171,35 +207,152 @@ export async function grade(
   const TETO = 120
 
   return comoOrg(s.orgId, async (db) => {
-    const [categorias, vs] = await Promise.all([
-      db.categoria.findMany({
-        orderBy: { ordem: 'asc' },
-        select: {
-          id: true,
-          nome: true,
-          _count: { select: { produtos: { where: { ativo: true } } } },
-        },
-      }),
-      db.variacao.findMany({
-        where: {
-          ativa: true,
-          produto: { ativo: true, ...(categoriaId ? { categoriaId } : {}) },
-        },
-        orderBy: [{ produto: { nome: 'asc' } }, { codigo: 'asc' }],
-        take: TETO + 1,
-        select: {
-          ...SELECAO_DA_VARIACAO,
-          estoques: { where: { unidadeId }, select: { quantidade: true } },
-        },
-      }),
-    ])
+    // Uma depois da outra, e não em Promise.all: dentro de comoOrg é UMA
+    // conexão numa transação, o Postgres executa em fila de qualquer jeito, e
+    // o driver `pg` já avisa que consulta em paralelo no mesmo cliente vai
+    // deixar de funcionar na versão 9.
+    const categorias = await categoriasComProduto(db, unidadeId)
+    const vs = await db.variacao.findMany({
+      where: {
+        ativa: true,
+        produto: { ativo: true, ...soDaLoja(unidadeId), ...(categoriaId ? { categoriaId } : {}) },
+      },
+      orderBy: [{ produto: { nome: 'asc' } }, { codigo: 'asc' }],
+      take: TETO + 1,
+      select: {
+        ...SELECAO_DA_VARIACAO,
+        estoques: { where: { unidadeId }, select: { quantidade: true } },
+      },
+    })
 
     return {
-      categorias: categorias
-        .filter((c) => c._count.produtos > 0)
-        .map((c) => ({ id: c.id, nome: c.nome, quantos: c._count.produtos })),
+      categorias,
       itens: vs.slice(0, TETO).map(montarAchado),
       cortou: vs.length > TETO,
+    }
+  })
+}
+
+type Db = BancoDaOrg
+
+/**
+ * As categorias que têm produto ativo VENDIDO NESTA LOJA, na ordem da empresa.
+ * Categoria vazia vira aba que não leva a nada — e, na sorveteria, a aba
+ * "Camisetas" com zero dentro.
+ */
+async function categoriasComProduto(db: Db, unidadeId: string) {
+  const cs = await db.categoria.findMany({
+    orderBy: { ordem: 'asc' },
+    select: {
+      id: true,
+      nome: true,
+      _count: { select: { produtos: { where: { ativo: true, ...soDaLoja(unidadeId) } } } },
+    },
+  })
+  return cs
+    .filter((c) => c._count.produtos > 0)
+    .map((c) => ({ id: c.id, nome: c.nome, quantos: c._count.produtos }))
+}
+
+export type Vitrine = {
+  /** Só vem na primeira página; as seguintes reaproveitam as da tela. */
+  categorias: { id: string; nome: string; quantos: number }[] | null
+  produtos: ProdutoNaVitrine[]
+  /** Tem mais produto depois destes: a tela mostra "Mostrar mais". */
+  mais: boolean
+}
+
+/**
+ * A vitrine do balcão simples: os PRODUTOS de uma categoria, cada um com as
+ * suas variações dentro — ver vitrine.ts para o porquê de não ser variação
+ * solta como na grade.
+ *
+ * ── e por que página, e não tudo de uma vez ──────────────────
+ * Sorveteria tem trinta produtos e cabe numa tela. Loja de roupa pode ter
+ * quatrocentos, com seis variações cada: mandar tudo seria uma resposta de
+ * megabytes para a pessoa rolar uma parede. Vem de 36 em 36 (quatro telas de
+ * tablet, mais ou menos), e o resto chega pelo "Mostrar mais" — ou, o que é
+ * mais rápido nessa loja, pela busca, que continua em cima de tudo. Não
+ * virtualizamos a lista: com 36 cartões por vez não há o que ganhar, e
+ * virtualizar quebra o Tab e o "achar na página" do navegador.
+ *
+ * As mesmas travas da busca e da grade.
+ */
+export async function vitrine(
+  slug: string,
+  unidadeId: string,
+  categoriaId: string | null,
+  pular = 0,
+): Promise<Vitrine> {
+  const s = await exigirSessao(slug)
+  exigir(s, 'produto.ver', unidadeId)
+  exigir(s, 'estoque.ver', unidadeId)
+
+  const POR_PAGINA = 36
+  const desde = Math.max(0, Math.floor(Number(pular) || 0))
+
+  return comoOrg(s.orgId, async (db) => {
+    const categorias = desde === 0 ? await categoriasComProduto(db, unidadeId) : null
+    const ps = await db.produto.findMany({
+      where: {
+        ativo: true,
+        ...soDaLoja(unidadeId),
+        variacoes: { some: { ativa: true } },
+        ...(categoriaId ? { categoriaId } : {}),
+      },
+      orderBy: [{ nome: 'asc' }, { id: 'asc' }],
+      skip: desde,
+      take: POR_PAGINA + 1,
+      select: {
+        id: true,
+        nome: true,
+        medida: true,
+        precoVista: true,
+        precoCartao: true,
+        precoCrediario: true,
+        vendidoEm: true,
+        categoriaId: true,
+        variacoes: {
+          where: { ativa: true },
+          orderBy: [{ padrao: 'desc' }, { codigo: 'asc' }],
+          select: {
+            id: true,
+            codigo: true,
+            ajustePreco: true,
+            opcoes: {
+              select: {
+                opcao: {
+                  select: { valor: true, ordem: true, hex: true, eixo: { select: { nome: true, ordem: true } } },
+                },
+              },
+            },
+            estoques: { where: { unidadeId }, select: { quantidade: true } },
+          },
+        },
+      },
+    })
+
+    return {
+      categorias,
+      mais: ps.length > POR_PAGINA,
+      produtos: ps.slice(0, POR_PAGINA).map((p) => ({
+        id: p.id,
+        nome: p.nome,
+        medida: p.medida,
+        categoriaId: p.categoriaId,
+        variacoes: p.variacoes.map((v) => ({
+          // O mesmo montarAchado da busca e da grade: o preço que o cartão
+          // mostra é o mesmo que a linha do pedido vai cobrar.
+          ...montarAchado({ ...v, produto: p }),
+          opcoes: v.opcoes.map((o) => ({
+            eixo: o.opcao.eixo.nome,
+            eixoOrdem: o.opcao.eixo.ordem,
+            valor: o.opcao.valor,
+            ordem: o.opcao.ordem,
+            hex: o.opcao.hex,
+          })),
+        })),
+      })),
     }
   })
 }
@@ -223,9 +376,12 @@ export async function fecharVenda(
     clienteId?: string | null
     vendedorId?: string | null
     pontosUsar?: number
+    /** "Entregar às 15h", "retira a mãe". Vai para a venda como está, aparado. */
+    observacoes?: string
   },
 ) {
   const s = await exigirSessao(slug)
+  const obs = dados.observacoes?.trim().slice(0, 500)
 
   const r = await registrarVenda(s, {
     unidadeId: dados.unidadeId,
@@ -239,6 +395,7 @@ export async function fecharVenda(
     clienteId: dados.clienteId ?? null,
     vendedorId: dados.vendedorId ?? null,
     pontosUsar: dados.pontosUsar ?? 0,
+    observacoes: obs || undefined,
     pagamentos: dados.pagamentos.map((p) => ({
       forma: p.forma as FormaPagamento,
       valor: p.valor,

@@ -27,30 +27,23 @@
 //    diz. O servidor recusa de novo ao fechar — o aviso é conforto, a trava
 //    é lá.
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+// O estado e as ações moram em useVenda.ts, e a conta em conta.ts: o balcão
+// simples (BalcaoSimples.tsx) usa os mesmos, e é assim que as duas caras dão
+// o mesmo troco para a mesma compra. Aqui fica só o que é desta cara — a
+// grade de botões por variação e a tabela.
+
+import { useEffect, useState } from 'react'
 import { EscolherCliente } from './Cliente'
-import type { ClienteNoBalcao } from './acoes'
-import { chaveDoBalcao, guardar, recuperar, esquecer, faz } from './guardar'
-import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
-import { tabelaDe, ROTULO_TABELA, type Tabela } from '@/servidor/preco'
-import { multiplicar } from '@/servidor/dinheiro'
+import { faz } from './guardar'
+import { VendaIncerta, AvisoFixo } from './VendaIncerta'
+import { ROTULO_TABELA, type Tabela } from '@/servidor/preco'
+import type { Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
 import { Botao, Aviso, Situacao, cx } from '@/ui/base'
-import { procurar, grade, fecharVenda, consultarValeAcao, type Achado, type Grade } from './acoes'
+import { grade, type Grade } from './acoes'
+import { brl, precoDe, linhaCent } from './conta'
+import { useVenda, FORMAS, tituloDaForma, type Linha } from './useVenda'
 
-type Pago = { forma: string; valor: number; referencia?: string; rotulo?: string; parcelas?: number }
-
-const FORMAS = [
-  { chave: 'DINHEIRO', titulo: 'Dinheiro' },
-  { chave: 'PIX', titulo: 'Pix' },
-  { chave: 'DEBITO', titulo: 'Débito' },
-  { chave: 'CREDITO', titulo: 'Crédito' },
-] as const
-
-type Linha = Achado & { quantidade: number; avulso?: boolean }
-
-const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const cent = (v: number) => Math.round(v * 100)
 const MEDIDA: Record<string, string> = {
   UN: 'un', KG: 'kg', G: 'g', L: 'l', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx',
 }
@@ -95,45 +88,30 @@ export function Balcao({
   /** O crediário da loja. Nulo = módulo desligado: a forma nem aparece. */
   crediario: { maxParcelas: number } | null
 }) {
-  const [termo, setTermo] = useState('')
-  const [achados, setAchados] = useState<Achado[]>([])
-  const [carrinho, setCarrinho] = useState<Linha[]>([])
-  const [pagos, setPagos] = useState<Pago[]>([])
+  const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario })
+  const {
+    termo, setTermo, achados, setAchados,
+    carrinho, lancar, mudarQtd, tirar, limpar, itensNaVenda, qtd, setQtd,
+    conta, pontosCent, oferta, podeConcluir,
+    pagos, setPagos, pagarCom, mudarPago, parcelasN, setParcelasN, pagarNoCrediario,
+    desconto, setDesconto, cliente, setCliente, vendedorId, setVendedorId,
+    pontosUsar, setPontosUsar, pedidoCliente,
+    recado, alerta, voltou, concluir, indo,
+    busca, vendedorRef, primeiraForma, raiz, focarBusca,
+  } = v
+  const { tabela, totalCent, aPagarCent, faltaCent, trocoCent, sobrouSemDinheiro, escada, temEscada } = conta
+  const {
+    aberto: valeAberto, setAberto: setValeAberto, codigo: valeCodigo, setCodigo: setValeCodigo,
+    erro: valeErro, indo: valeIndo, usar: usarVale,
+  } = v.vale
+  const {
+    aberto: avulsoAberto, setAberto: setAvulsoAberto, nome: avulsoNome, setNome: setAvulsoNome,
+    preco: avulsoPreco, setPreco: setAvulsoPreco, lancar: lancarAvulso,
+  } = v.avulso
 
-  // ── o crediário ──────────────────────────────────────────
-  const [parcelasN, setParcelasN] = useState(1)
-
-  // ── o vale de troca ──────────────────────────────────────
-  const [valeAberto, setValeAberto] = useState(false)
-  const [valeCodigo, setValeCodigo] = useState('')
-  const [valeErro, setValeErro] = useState<string | null>(null)
-  const [valeIndo, setValeIndo] = useState(false)
-  const [desconto, setDesconto] = useState(0)
-  const [cliente, setCliente] = useState<ClienteNoBalcao | null>(null)
-  const [vendedorId, setVendedorId] = useState(usuarioId)
-  const [pontosUsar, setPontosUsar] = useState(0)
-  const [recado, setRecado] = useState<{
-    nivel: 'bom' | 'critico'
-    texto: string
-    /** "imprimir comprovante", depois de fechar. */
-    link?: { href: string; rotulo: string }
-  } | null>(null)
-  const [alerta, setAlerta] = useState<string | null>(null)
-  const [voltou, setVoltou] = useState<number | null>(null)
-  const [pedidoCliente, setPedidoCliente] = useState(0)
-  const [indo, comecar] = useTransition()
-
-  // ── a grade e a quantidade ───────────────────────────────
-  // `qtd` é a quantidade do PRÓXIMO lançamento, e volta a 1 depois de cada um.
-  // Para peso (KG), é o peso lido na balança; para unidade, quantas.
-  const [qtd, setQtd] = useState(1)
+  // ── a grade de botões ────────────────────────────────────
   const [botoes, setBotoes] = useState<Grade | null>(null)
   const [categoriaId, setCategoriaId] = useState<string | null>(null)
-
-  // ── item avulso ──────────────────────────────────────────
-  const [avulsoAberto, setAvulsoAberto] = useState(false)
-  const [avulsoNome, setAvulsoNome] = useState('')
-  const [avulsoPreco, setAvulsoPreco] = useState('')
 
   useEffect(() => {
     if (!usaGrade) return
@@ -146,387 +124,15 @@ export function Balcao({
     }
   }, [slug, unidadeId, categoriaId, usaGrade])
 
-  const busca = useRef<HTMLInputElement>(null)
-  const vendedorRef = useRef<HTMLSelectElement>(null)
-  const primeiraForma = useRef<HTMLButtonElement>(null)
-  const focarBusca = () => busca.current?.focus()
-
-  // ── a venda em andamento não se perde ────────────────────
-  // Ver guardar.ts para o porquê. Aqui é só a ligação com a tela, e ela tem
-  // uma ordem que importa: RECUPERAR antes de começar a GUARDAR.
-  //
-  // Sem isso os dois efeitos brigam na montagem — o de guardar rodaria com o
-  // carrinho ainda vazio e apagaria o que o de recuperar ia buscar. O
-  // `primeiraVez` existe só para o segundo efeito deixar a montagem passar.
-  const chave = useMemo(
-    () => chaveDoBalcao(slug, unidadeId, usuarioId),
-    [slug, unidadeId, usuarioId],
-  )
-  const primeiraVez = useRef(true)
-
-  useEffect(() => {
-    const g = recuperar(chave)
-    if (!g) return
-    setCarrinho(g.carrinho as Linha[])
-    setPagos(g.pagos)
-    setDesconto(g.desconto)
-    setCliente(g.cliente)
-    setPontosUsar(g.pontosUsar)
-    setVoltou(g.em)
-  }, [chave])
-
-  useEffect(() => {
-    if (primeiraVez.current) {
-      primeiraVez.current = false
-      return
-    }
-    if (carrinho.length === 0) esquecer(chave)
-    else guardar(chave, { carrinho, pagos, desconto, cliente, pontosUsar })
-  }, [chave, carrinho, pagos, desconto, cliente, pontosUsar])
-
-  // Busca conforme digita, com uma pausa curta para não consultar a cada tecla.
-  useEffect(() => {
-    if (termo.trim().length < 2) {
-      setAchados([])
-      return
-    }
-    const t = setTimeout(() => {
-      procurar(slug, unidadeId, termo).then(setAchados).catch(() => setAchados([]))
-    }, 180)
-    return () => clearTimeout(t)
-  }, [termo, slug, unidadeId])
-
-  // O aviso de estoque some sozinho: ele é informação de agora, não erro.
-  useEffect(() => {
-    if (!alerta) return
-    const t = setTimeout(() => setAlerta(null), 7000)
-    return () => clearTimeout(t)
-  }, [alerta])
-
-  // ── as contas ────────────────────────────────────────────
-  // A tabela de preço vem das formas já escolhidas. Sem forma, à vista. O
-  // carrinho guardado de antes desta versão pode não ter `precos`; aí vale o
-  // preço à vista que ele sempre teve.
-  const tabela: Tabela = tabelaDe(pagos.map((p) => p.forma))
-  const precoDe = (l: Linha, t: Tabela) => (l.avulso ? l.preco : (l.precos?.[t] ?? l.preco))
-  const linhaCent = (l: Linha, t: Tabela) => multiplicar(cent(precoDe(l, t)), l.quantidade)
-  const totalNa = (t: Tabela) => carrinho.reduce((s, l) => s + linhaCent(l, t), 0)
-
-  const totalCent = totalNa(tabela)
-  const descontoCent = cent(desconto)
-  const comDescontoCent = Math.max(totalCent - descontoCent, 0)
-
-  // A oferta de pontos é calculada em cima do valor JÁ com desconto, e sobre o
-  // saldo menos o que já foi marcado — senão, ao aplicar, a tela ofereceria os
-  // mesmos pontos de novo.
-  const oferta = cliente ? oferecer(cliente.pontos, comDescontoCent, programa) : null
-  const pontosCent = valorEmCentavos(pontosUsar, programa)
-  const aPagarCent = Math.max(comDescontoCent - pontosCent, 0)
-  const pagoCent = pagos.reduce((s, p) => s + cent(p.valor), 0)
-  const faltaCent = aPagarCent - pagoCent
-  // Troco só existe em dinheiro. Cartão e Pix não devolvem diferença — se
-  // sobrar ali, é erro de digitação, e a venda tem que travar em vez de
-  // "dar troco" de um valor que nunca entrou na gaveta.
-  const temDinheiro = pagos.some((p) => p.forma === 'DINHEIRO')
-  const trocoCent = temDinheiro ? Math.max(-faltaCent, 0) : 0
-  const sobrouSemDinheiro = !temDinheiro && faltaCent < 0
-
-  // A escada: os três totais. Só aparece quando são diferentes — loja que
-  // cobra igual em tudo não precisa saber que a escada existe.
-  const escada = { vista: totalNa('vista'), cartao: totalNa('cartao'), crediario: totalNa('crediario') }
-  const temEscada = escada.cartao !== escada.vista || escada.crediario !== escada.vista
-
-  const podeConcluir =
-    carrinho.length > 0 && faltaCent <= 0 && !sobrouSemDinheiro && !!caixaId && !indo
-
-  function lancar(a: Achado) {
-    setRecado(null)
-    const q = qtd > 0 ? qtd : 1
-    const jaTem = carrinho.find((l) => l.id === a.id)
-    // Unidade acumula: tocar duas vezes no picolé é dois picolés. Peso não
-    // acumula sozinho: 0,3 kg + 0,3 kg raramente é o que se quer — a segunda
-    // pesagem SUBSTITUI a primeira.
-    const novaQtd = jaTem ? (a.medida === 'UN' ? jaTem.quantidade + q : q) : q
-    setCarrinho((c) =>
-      jaTem
-        ? c.map((l) => (l.id === a.id ? { ...l, quantidade: novaQtd } : l))
-        : [...c, { ...a, quantidade: novaQtd }],
-    )
-    // O aviso é agora, não no fim: quem lançou 3 e só tem 1 precisa saber
-    // com a pessoa na frente, não depois de escolher o pagamento.
-    if (novaQtd > a.saldo) {
-      setAlerta(
-        a.saldo <= 0
-          ? `${a.descricao} está sem estoque nesta loja. A venda não vai fechar assim.`
-          : `Estoque de ${a.descricao}: ${a.saldo}. Você lançou ${novaQtd}. Confira a peça.`,
-      )
-    }
-    // A quantidade é do lançamento, não da sessão: "×20" vale para o próximo
-    // toque e mais nenhum. Sem isto, o "20" esquecido lançava 20 do item
-    // seguinte — e o erro só aparecia no total.
-    setQtd(1)
-    setTermo('')
-    setAchados([])
-    focarBusca()
-  }
-
-  function lancarAvulso() {
-    const nome = avulsoNome.trim()
-    const preco = Number(avulsoPreco.replace(',', '.'))
-    if (!nome || !(preco >= 0)) return
-    const id = `avulso-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-    setCarrinho((c) => [
-      ...c,
-      {
-        id,
-        codigo: null,
-        descricao: nome,
-        medida: 'UN',
-        preco,
-        precos: { vista: preco, cartao: preco, crediario: preco },
-        saldo: 0,
-        quantidade: qtd > 0 ? qtd : 1,
-        avulso: true,
-      },
-    ])
-    setQtd(1)
-    setAvulsoNome('')
-    setAvulsoPreco('')
-    setAvulsoAberto(false)
-    focarBusca()
-  }
-
-  function mudarQtd(id: string, q: number) {
-    setCarrinho((c) => c.map((l) => (l.id === id ? { ...l, quantidade: Math.max(q, 0) } : l)))
-  }
-
-  const tirar = (id: string) => setCarrinho((c) => c.filter((l) => l.id !== id))
-
-  function pagarCom(forma: string) {
-    // Clicar na forma preenche o que FALTA. É o gesto mais comum: a pessoa
-    // escolhe como vai receber e o valor já vem certo. Mas o valor fica
-    // EDITÁVEL: em dinheiro o cliente entrega R$ 100 numa venda de R$ 83, e o
-    // caixa precisa digitar os 100 para ver o troco.
-    //
-    // A conta é feita na tabela que a NOVA forma puxa: escolher Crédito numa
-    // venda à vista sobe o total, e o que falta tem que ser calculado já com
-    // o total de cartão.
-    const t = tabelaDe([...pagos.map((p) => p.forma), forma])
-    const aPagarNa = Math.max(Math.max(totalNa(t) - descontoCent, 0) - pontosCent, 0)
-    const falta = (aPagarNa - pagoCent) / 100
-    if (falta <= 0) return
-    setPagos((p) => [...p, { forma, valor: falta }])
-  }
-
-  const mudarPago = (i: number, valor: number) =>
-    setPagos((p) => p.map((x, j) => (j === i ? { ...x, valor: Math.max(valor, 0) } : x)))
-
-  // Fiado é dívida com nome: sem cliente, a tela abre a busca de cliente em
-  // vez de aceitar. O total é o da tabela "no crediário" — o preço que já
-  // embute o risco de vender a prazo.
-  function pagarNoCrediario() {
-    if (!crediario) return
-    if (!cliente) {
-      setRecado({ nivel: 'critico', texto: 'Venda no crediário precisa de cliente. Escolha quem está comprando.' })
-      setPedidoCliente((n) => n + 1)
-      return
-    }
-    if (pagos.some((p) => p.forma === 'CREDIARIO')) return
-    const t = tabelaDe([...pagos.map((p) => p.forma), 'CREDIARIO'])
-    const aPagarNa = Math.max(Math.max(totalNa(t) - descontoCent, 0) - pontosCent, 0)
-    const falta = aPagarNa - pagoCent
-    if (falta <= 0) return
-    setRecado(null)
-    setPagos((p) => [
-      ...p,
-      { forma: 'CREDIARIO', valor: falta / 100, parcelas: parcelasN, rotulo: `Crediário ${parcelasN}×` },
-    ])
-  }
-
-  // O vale entra pelo código do papel. A tela consulta antes de aceitar,
-  // para dizer o saldo e de quem é; o servidor confere de novo ao fechar.
-  async function usarVale() {
-    const codigo = valeCodigo.trim()
-    if (!codigo) return
-    setValeIndo(true)
-    setValeErro(null)
-    try {
-      const r = await consultarValeAcao(slug, codigo)
-      if (!r.ok) {
-        setValeErro(
-          r.motivo === 'nao_achado' ? 'Vale não encontrado. Confira o código.'
-          : r.motivo === 'zerado' ? 'Este vale já foi todo usado.'
-          : 'Este vale venceu.',
-        )
-        return
-      }
-      if (pagos.some((p) => p.referencia === r.codigo)) {
-        setValeErro('Esse vale já está nesta venda.')
-        return
-      }
-      const t = tabelaDe([...pagos.map((p) => p.forma), 'VALE'])
-      const aPagarNa = Math.max(Math.max(totalNa(t) - descontoCent, 0) - pontosCent, 0)
-      const falta = aPagarNa - pagoCent
-      if (falta <= 0) {
-        setValeErro('Não falta nada para pagar.')
-        return
-      }
-      const valorCent = Math.min(cent(r.saldo), falta)
-      setPagos((p) => [
-        ...p,
-        {
-          forma: 'VALE',
-          valor: valorCent / 100,
-          referencia: r.codigo,
-          rotulo: `Vale ${r.codigo}${r.cliente ? ` · ${r.cliente}` : ''}`,
-        },
-      ])
-      setValeCodigo('')
-      setValeAberto(false)
-    } catch {
-      setValeErro('Não deu para consultar o vale agora.')
-    } finally {
-      setValeIndo(false)
-    }
-  }
-
-  function limpar() {
-    setVoltou(null)
-    setCarrinho([])
-    setPagos([])
-    setDesconto(0)
-    setCliente(null)
-    setPontosUsar(0)
-    setTermo('')
-    setAchados([])
-    setAlerta(null)
-    focarBusca()
-  }
-
-  function concluir() {
-    if (!podeConcluir) return
-    comecar(async () => {
-      const r = await fecharVenda(slug, {
-        unidadeId,
-        caixaId,
-        desconto,
-        clienteId: cliente?.id ?? null,
-        vendedorId: vendedores ? vendedorId : null,
-        pontosUsar,
-        itens: carrinho.map((l) =>
-          l.avulso
-            ? {
-                variacaoId: null,
-                quantidade: l.quantidade,
-                precoUnit: l.preco,
-                avulso: { descricao: l.descricao, precoUnit: l.preco },
-              }
-            : { variacaoId: l.id, quantidade: l.quantidade, precoUnit: precoDe(l, tabela) },
-        ),
-        // O troco não é pagamento: o que entra no sistema é o que FICA na
-        // gaveta. E ele sai do dinheiro, nunca do cartão.
-        pagamentos: (() => {
-          const limpos = pagos.map((p) => ({
-            forma: p.forma,
-            valor: p.valor,
-            referencia: p.referencia,
-            parcelas: p.parcelas,
-          }))
-          if (trocoCent === 0) return limpos
-          const ultimoDinheiro = limpos.map((p) => p.forma).lastIndexOf('DINHEIRO')
-          return limpos.map((p, i) =>
-            i === ultimoDinheiro ? { ...p, valor: p.valor - trocoCent / 100 } : p,
-          )
-        })(),
-      })
-
-      if (r.ok) {
-        // O ganho aparece no recado porque e a hora de falar: "voce ja tem
-        // 1.240 pontos" dito no balcao e o que faz a pessoa voltar. Guardado
-        // so no banco, o programa nao existe para quem compra.
-        const ganhou = r.pontosGanhos > 0 ? ` · ganhou ${r.pontosGanhos} pontos` : ''
-        setRecado({
-          nivel: 'bom',
-          texto: `Venda ${r.numero} fechada — ${brl(r.total)}${ganhou}`,
-          link: { href: `/${slug}/vendas/${r.vendaId}/comprovante?imprimir=1`, rotulo: 'imprimir comprovante' },
-        })
-        limpar()
-      } else if (r.motivo === 'pontos_recusados') {
-        setRecado({ nivel: 'critico', texto: r.recado })
-        setPontosUsar(0)
-      } else if (r.motivo === 'sem_estoque') {
-        setRecado({
-          nivel: 'critico',
-          texto: `Sem estoque: ${r.faltando.map((f) => `${f.descricao} (tem ${f.tem})`).join(', ')}`,
-        })
-      } else if (r.motivo === 'pagamento_nao_fecha') {
-        setRecado({ nivel: 'critico', texto: `A conta não fecha: falta ${brl(r.total - r.pago)}` })
-      } else if (r.motivo === 'caixa_fechado') {
-        setRecado({ nivel: 'critico', texto: 'O caixa foi fechado. Abra de novo para vender.' })
-      } else if (r.motivo === 'desconto_acima_do_teto') {
-        setRecado({
-          nivel: 'critico',
-          texto: `Desconto de ${r.percentual.toFixed(1)}% passa do teto de ${r.teto}%. Chame quem pode autorizar.`,
-        })
-      } else if (r.motivo === 'avulso_negado') {
-        setRecado({ nivel: 'critico', texto: 'Item avulso só com permissão de desconto acima do teto.' })
-      } else if (r.motivo === 'vendedor_invalido') {
-        setRecado({ nivel: 'critico', texto: 'Esse vendedor não pode vender nesta loja.' })
-      } else if (r.motivo === 'vale_recusado') {
-        setRecado({ nivel: 'critico', texto: r.recado })
-        setPagos((p) => p.filter((x) => x.forma !== 'VALE'))
-      } else if (r.motivo === 'crediario_recusado') {
-        setRecado({ nivel: 'critico', texto: r.recado })
-      } else {
-        setRecado({ nivel: 'critico', texto: 'Não deu para fechar a venda.' })
-      }
-    })
-  }
-
-  // ── as teclas ────────────────────────────────────────────
-  // Uma escuta só, na janela, lendo o estado mais recente por referência:
-  // registrar de novo a cada tecla digitada seria trocar o ouvinte trinta
-  // vezes por venda. F10 é a única que age; as outras só levam o foco.
-  const estado = useRef({ podeConcluir, concluir, temItens: carrinho.length > 0 })
-  estado.current = { podeConcluir, concluir, temItens: carrinho.length > 0 }
-  useEffect(() => {
-    const tecla = (e: KeyboardEvent) => {
-      if (e.key === 'F10') {
-        e.preventDefault()
-        const s = estado.current
-        if (s.podeConcluir) s.concluir()
-        else if (s.temItens) primeiraForma.current?.focus()
-        return
-      }
-      if (e.ctrlKey && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
-        // Ctrl+P é imprimir no navegador; no balcão é "produto", como em todo PDV.
-        e.preventDefault()
-        focarBusca()
-        return
-      }
-      if (e.altKey && (e.key === 'n' || e.key === 'N')) {
-        e.preventDefault()
-        setPedidoCliente((n) => n + 1)
-        return
-      }
-      if (e.altKey && (e.key === 'f' || e.key === 'F')) {
-        e.preventDefault()
-        vendedorRef.current?.focus()
-      }
-    }
-    window.addEventListener('keydown', tecla)
-    return () => window.removeEventListener('keydown', tecla)
-  }, [])
-
   const emVenda = carrinho.length > 0
-  const itensNaVenda = carrinho.reduce((s, l) => s + (l.medida === 'UN' ? l.quantidade : 1), 0)
 
   return (
-    <div className="flex flex-col gap-3">
+    <div ref={raiz} className="flex flex-col gap-3">
       {/* Recuperar em silêncio seria pior que perder: a pessoa veria itens
           que ela não lançou agora e não saberia de onde vieram. Diz o que
           aconteceu, de quando é, e deixa jogar fora num clique. */}
-      {voltou !== null && carrinho.length > 0 && (
+      {voltou !== null && carrinho.length > 0 && v.incerta && <VendaIncerta slug={slug} aoLimpar={limpar} />}
+      {voltou !== null && carrinho.length > 0 && !v.incerta && (
         <Aviso nivel="atencao">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>Recuperamos a venda que estava sendo montada {faz(voltou)}.</span>
@@ -555,6 +161,7 @@ export function Balcao({
         </Aviso>
       )}
       {alerta && <Aviso nivel="atencao">{alerta}</Aviso>}
+      {v.aviso && <AvisoFixo texto={v.aviso} aoFechar={() => v.setAviso(null)} />}
 
       {/* ── quem compra, quem vende ── */}
       <div className={cx('grid gap-2', vendedores ? 'sm:grid-cols-[1fr_16rem]' : '')}>
@@ -622,9 +229,9 @@ export function Balcao({
                 value={termo}
                 onChange={(e) => setTermo(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && achados[0]) {
+                  if (e.key === 'Enter') {
                     e.preventDefault()
-                    lancar(achados[0])
+                    void v.enterNaBusca().then((a) => a && lancar(a))
                   }
                   if (e.key === 'Escape') {
                     setTermo('')
@@ -642,9 +249,16 @@ export function Balcao({
               <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
                 <Tecla>Ctrl P</Tecla>
               </span>
-              {achados.length > 0 && (
+              {/* O código de outra loja não vira linha que se lança: vira uma
+                  frase dizendo de quem é. Cada loja só mostra o que é dela. */}
+              {achados.length > 0 && achados.every((a) => a.foraDaLoja) && (
+                <p className="absolute z-20 mt-1 w-full rounded-norte border border-borda bg-superficie px-3 py-2.5 text-sm text-tinta-2 shadow-norte">
+                  <b className="text-tinta">{achados[0]?.descricao}</b> não é vendido na {unidadeNome}.
+                </p>
+              )}
+              {achados.some((a) => !a.foraDaLoja) && (
                 <ul className="absolute z-20 mt-1 flex max-h-80 w-full flex-col overflow-y-auto rounded-norte border border-borda bg-superficie shadow-norte">
-                  {achados.map((a, i) => (
+                  {achados.filter((a) => !a.foraDaLoja).map((a, i) => (
                     <li key={a.id}>
                       <button
                         type="button"
@@ -747,17 +361,26 @@ export function Balcao({
           )}
 
           {/* ── os itens da venda ── */}
-          <div className="overflow-hidden rounded-norte border border-borda bg-superficie">
+          <div className="realce overflow-hidden rounded-norte border border-borda bg-superficie">
             {carrinho.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-tinta-3">
-                {usaGrade && botoes && botoes.itens.length > 0
-                  ? 'Toque num produto, ou bipe a etiqueta.'
-                  : 'Nenhuma peça ainda. Bipe a etiqueta ou aperte '}
-                {!(usaGrade && botoes && botoes.itens.length > 0) && <Tecla>Ctrl P</Tecla>}
-                {!(usaGrade && botoes && botoes.itens.length > 0) && ' para buscar.'}
-              </p>
+              // O vazio diz o que fazer, não só que está vazio — e com a
+              // tecla, para quem ainda não sabe que ela existe.
+              <div className="flex flex-col items-center gap-1.5 px-4 py-12 text-center">
+                <p className="text-sm font-semibold text-tinta">Nenhum item nesta venda</p>
+                <p className="text-sm text-tinta-2">
+                  {usaGrade && botoes && botoes.itens.length > 0 ? (
+                    'Toque num produto acima, ou bipe a etiqueta.'
+                  ) : (
+                    <>
+                      Bipe a etiqueta, ou aperte <Tecla>Ctrl P</Tecla> e digite o nome.
+                    </>
+                  )}
+                </p>
+              </div>
             ) : (
-              <div className="overflow-x-auto">
+              // `relative`: sem ele, qualquer coisa posicionada lá dentro
+              // escapa da caixa que rola e estica a página de lado no celular.
+              <div className="relative overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-borda bg-superficie-2 text-xs tracking-wide text-tinta-3 uppercase">
@@ -915,7 +538,7 @@ export function Balcao({
         </div>
 
         {/* ── direita: pagamento, sempre visível ── */}
-        <aside className="flex h-fit flex-col gap-3 rounded-norte border border-borda bg-superficie p-4 lg:sticky lg:top-4">
+        <aside className="realce flex h-fit flex-col gap-3 rounded-norte border border-borda bg-superficie p-4 lg:sticky lg:top-4">
           <div className="flex items-baseline justify-between">
             <span className="text-xs font-medium text-tinta-3">{unidadeNome}</span>
             {!caixaId && <Situacao nivel="critico">caixa fechado</Situacao>}
@@ -1032,7 +655,7 @@ export function Balcao({
               </select>
               <Botao
                 tom="secundario"
-                onClick={pagarNoCrediario}
+                onClick={() => pagarNoCrediario()}
                 disabled={carrinho.length === 0 || faltaCent <= 0 || pagos.some((p) => p.forma === 'CREDIARIO')}
                 className="flex-1 py-2 text-xs"
               >
@@ -1088,7 +711,7 @@ export function Balcao({
               {pagos.map((p, i) => (
                 <li key={i} className="flex items-center justify-between gap-2 text-sm">
                   <span className="truncate text-tinta-2">
-                    {p.rotulo ?? FORMAS.find((f) => f.chave === p.forma)?.titulo ?? p.forma}
+                    {tituloDaForma(p)}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <input

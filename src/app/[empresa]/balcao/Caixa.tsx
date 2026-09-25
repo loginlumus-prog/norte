@@ -26,45 +26,83 @@ export function AbrirCaixa({
   const [erro, setErro] = useState<string | null>(null)
   const [indo, comecar] = useTransition()
 
+  function abrirAgora() {
+    comecar(async () => {
+      setErro(null)
+      const r = await abrir(slug, unidadeId, Number(saldo) || 0)
+      if (!r.ok) setErro(`Já existe um caixa aberto aqui, por ${r.abertoPor}.`)
+    })
+  }
+
+  // No lugar da tela de venda, e não em cima dela: com o caixa fechado não há
+  // venda para mostrar, e um cartão no meio da tela diz isso sem precisar de
+  // aviso vermelho. Os valores prontos são os trocos de abertura mais comuns
+  // — no tablet, digitar "100,00" com o dedo é o que ninguém quer às 8h.
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-col gap-4 rounded-norte border border-borda bg-superficie p-6">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-bold">Abrir o caixa</h2>
-        <p className="text-sm text-tinta-2">
-          {unidadeNome} — sem caixa aberto não dá para vender. É assim que o dinheiro do
-          dia tem dono e hora.
-        </p>
+    <div className="flex min-h-[60dvh] items-center justify-center py-6">
+      <div className="realce-alto flex w-full max-w-md flex-col gap-5 rounded-2xl border border-borda bg-superficie p-6 sm:p-8">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span aria-hidden className="flex size-14 items-center justify-center rounded-2xl bg-marca-suave text-marca">
+            <svg viewBox="0 0 24 24" className="size-7" fill="none">
+              <rect x="3" y="10" width="18" height="10" rx="2" stroke="currentColor" strokeWidth="1.7" />
+              <path d="M7 10V6.5A1.5 1.5 0 018.5 5h7A1.5 1.5 0 0117 6.5V10M10 15h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            </svg>
+          </span>
+          <h2 className="text-2xl font-extrabold">Abrir o caixa</h2>
+          <p className="text-sm text-tinta-2">
+            {unidadeNome} — sem caixa aberto não dá para vender. É assim que o dinheiro do dia
+            tem dono e hora.
+          </p>
+        </div>
+
+        {erro && <Aviso nivel="critico">{erro}</Aviso>}
+
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            abrirAgora()
+          }}
+        >
+          <Campo
+            rotulo="Quanto tem na gaveta agora"
+            name="saldo"
+            type="number"
+            step={0.01}
+            min={0}
+            inputMode="decimal"
+            autoFocus
+            value={saldo}
+            onChange={(e) => setSaldo(e.target.value)}
+            placeholder="0,00"
+            dica="O troco que ficou de ontem. Se começou zerado, deixe 0."
+            className="numero h-14 rounded-xl text-2xl font-bold"
+          />
+
+          <div role="group" aria-label="Valores comuns" className="grid grid-cols-4 gap-2">
+            {[0, 50, 100, 200].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setSaldo(String(n))}
+                aria-pressed={saldo !== '' && Number(saldo) === n}
+                className={cx(
+                  'numero min-h-11 rounded-xl border text-sm font-semibold transition-colors',
+                  saldo !== '' && Number(saldo) === n
+                    ? 'border-marca bg-marca-suave text-tinta'
+                    : 'border-borda bg-superficie text-tinta-2 hover:bg-superficie-2',
+                )}
+              >
+                {n === 0 ? 'Zerado' : brl(n).replace(',00', '')}
+              </button>
+            ))}
+          </div>
+
+          <Botao type="submit" tom="confirmar" largo carregando={indo} className="min-h-14 rounded-xl text-base">
+            {indo ? 'Abrindo...' : 'Abrir caixa e começar a vender'}
+          </Botao>
+        </form>
       </div>
-
-      {erro && <Aviso nivel="critico">{erro}</Aviso>}
-
-      <Campo
-        rotulo="Quanto tem na gaveta agora"
-        name="saldo"
-        type="number"
-        step={0.01}
-        min={0}
-        autoFocus
-        value={saldo}
-        onChange={(e) => setSaldo(e.target.value)}
-        placeholder="0,00"
-        dica="O troco que ficou de ontem. Se começou zerado, deixe 0."
-      />
-
-      <Botao
-        tom="confirmar"
-        largo
-        carregando={indo}
-        onClick={() =>
-          comecar(async () => {
-            setErro(null)
-            const r = await abrir(slug, unidadeId, Number(saldo) || 0)
-            if (!r.ok) setErro(`Já existe um caixa aberto aqui, por ${r.abertoPor}.`)
-          })
-        }
-      >
-        {indo ? 'Abrindo...' : 'Abrir caixa'}
-      </Botao>
     </div>
   )
 }
