@@ -1,11 +1,17 @@
 'use client'
 
-import { useActionState } from 'react'
-import { Botao, Campo, Aviso } from '@/ui/base'
+import { useActionState, useState } from 'react'
+import { Botao, Aviso, cx } from '@/ui/base'
 import { entrarAcao, type EstadoEntrada } from './acoes'
+
+const CAMPO =
+  'h-12 w-full rounded-xl border border-borda bg-superficie px-4 text-[15px] text-tinta ' +
+  'placeholder:text-tinta-3 transition-shadow ' +
+  'focus:border-marca focus:ring-4 focus:ring-marca/15 focus:outline-none'
 
 export function Formulario({ empresa }: { empresa: string }) {
   const [estado, agir, pendente] = useActionState<EstadoEntrada, FormData>(entrarAcao, {})
+  const [ver, setVer] = useState(false)
 
   return (
     <form action={agir} className="flex flex-col gap-4">
@@ -62,19 +68,53 @@ export function Formulario({ empresa }: { empresa: string }) {
         </div>
       )}
 
-      <Campo
-        rotulo="E-mail"
-        name="email"
-        type="email"
-        autoComplete="username"
-        defaultValue={estado.email}
-        required
-        autoFocus
-      />
-      <Campo rotulo="Senha" name="senha" type="password" autoComplete="current-password" required />
+      {/* Campos altos, de toque: a tela de entrar também é aberta no tablet
+          do balcão, e 36px de altura é mira, não campo. */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="entrar-email" className="text-sm font-semibold text-tinta">
+          E-mail
+        </label>
+        <input
+          id="entrar-email"
+          name="email"
+          type="email"
+          autoComplete="username"
+          inputMode="email"
+          defaultValue={estado.email}
+          required
+          autoFocus
+          placeholder="voce@empresa.com.br"
+          className={CAMPO}
+        />
+      </div>
 
-      <Botao type="submit" largo carregando={pendente}>
-        {pendente ? 'Entrando...' : 'Entrar'}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="entrar-senha" className="text-sm font-semibold text-tinta">
+          Senha
+        </label>
+        <div className="relative">
+          <input
+            id="entrar-senha"
+            name="senha"
+            type={ver ? 'text' : 'password'}
+            autoComplete="current-password"
+            required
+            className={cx(CAMPO, 'pr-20')}
+          />
+          <button
+            type="button"
+            onClick={() => setVer((v) => !v)}
+            aria-pressed={ver}
+            aria-controls="entrar-senha"
+            className="absolute inset-y-0 right-1.5 my-1.5 rounded-lg px-2.5 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta"
+          >
+            {ver ? 'Ocultar' : 'Mostrar'}
+          </button>
+        </div>
+      </div>
+
+      <Botao type="submit" largo carregando={pendente} className="mt-1 h-12 rounded-xl text-[15px]">
+        {pendente ? 'Entrando…' : 'Entrar'}
       </Botao>
     </form>
   )

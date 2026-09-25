@@ -13,6 +13,11 @@
 //    é o SISTEMA (navegação, sempre igual) do que é o TRABALHO (área branca,
 //    muda o tempo todo) — e faz o verde e o vermelho da direita saltarem mais,
 //    porque agora eles têm um lado quieto para contrastar.
+// 5. RECOLHIDA, ELA VIRA TRILHO. O balcão abre em tela cheia: a barra encolhe
+//    para uma coluna de ícones e o trabalho ganha a largura toda. O ícone de
+//    cada item (`IconesMenu.tsx`) existe para isso — no trilho ele é o item.
+// 6. O MODO E O TEMA MORAM NO CABEÇALHO, à vista em toda tela. No rodapé da
+//    barra eles ficavam embaixo da rolagem, e quem queria trocar não achava.
 // 4. O MESMO MENU VAI PARA O CELULAR. Abaixo de `md` a barra some e entra uma
 //    gaveta com a mesma lista, já filtrada. Antes disso o telefone não tinha
 //    menu NENHUM: quem entrava pelo celular caía no painel e não saía dele.
@@ -30,6 +35,7 @@ import { lerModo } from '@/servidor/modo'
 import { noModo } from './menu'
 import { Simbolo } from './Marca'
 import { Gaveta } from './Gaveta'
+import { IconeDoItem } from './IconesMenu'
 import { Tranca } from './Tranca'
 import { Guia } from './Guia'
 import { cx, Ponto } from './base'
@@ -60,6 +66,7 @@ export async function Estrutura({
   tema,
   titulo,
   acao,
+  recolhida = false,
   children,
 }: {
   empresa: { nome: string; slug: string; corMarca?: string | null; modulos: string[] }
@@ -69,6 +76,12 @@ export async function Estrutura({
   tema: Tema
   titulo: string
   acao?: ReactNode
+  /**
+   * Tela de trabalho em tela cheia (o balcão): a barra vira trilho de ícones,
+   * o cabeçalho encolhe e o conteúdo ocupa a altura da janela sem rolar a
+   * página — quem rola são as colunas dele.
+   */
+  recolhida?: boolean
   children: ReactNode
 }) {
   // A moldura busca o proprio resumo do plano: assim as doze telas nao
@@ -78,6 +91,13 @@ export async function Estrutura({
     : null
 
   const modo = await lerModo()
+  const iniciais =
+    sessao.nome
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase())
+      .join('') || '·'
 
   // Três perguntas: "esta pessoa pode?", "esta empresa usa?" e "este
   // aparelho está no modo que mostra isto?". A terceira nunca esconde a tela
@@ -100,8 +120,44 @@ export async function Estrutura({
     else grupos.push({ nome: i.grupo, itens: [i] })
   }
 
-  const item = (i: ItemMenu) => {
+  const item = (i: ItemMenu, trilho = false) => {
     const aqui = i.href === ativo
+
+    // No trilho, só o ícone — o nome vai no `title` e no `aria-label`, e o
+    // aviso vira um ponto no canto, para o que pede ação não sumir.
+    if (trilho) {
+      if (i.emBreve) return null
+      return (
+        <Link
+          key={i.href}
+          href={i.href}
+          aria-current={aqui ? 'page' : undefined}
+          aria-label={i.titulo}
+          title={i.titulo}
+          className={cx(
+            'relative mx-auto grid size-10 shrink-0 place-items-center rounded-xl transition-colors',
+            aqui
+              ? 'bg-lado-3 text-lado-ativo'
+              : 'text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta',
+          )}
+        >
+          <IconeDoItem href={i.href} tamanho={20} />
+          {i.aviso && (
+            <span
+              aria-hidden
+              className={cx(
+                'absolute top-1.5 right-1.5 size-2 rounded-full ring-2 ring-lado',
+                i.aviso.nivel === 'critico'
+                  ? 'bg-critico-vivo'
+                  : i.aviso.nivel === 'atencao'
+                    ? 'bg-atencao-vivo'
+                    : 'bg-bom-vivo',
+              )}
+            />
+          )}
+        </Link>
+      )
+    }
 
     // Ainda não construído: entra como texto, não como link. Item que
     // leva a 404 faz o sistema parecer quebrado, e quem clicou não tem
@@ -113,7 +169,10 @@ export async function Estrutura({
           className="flex cursor-default items-center justify-between gap-2 rounded-norte px-2.5 py-2 text-sm font-medium text-lado-tinta-2/55"
           title="Está no plano, ainda não foi construída"
         >
-          <span className="truncate">{i.titulo}</span>
+          <span className="flex min-w-0 items-center gap-2.5">
+            <IconeDoItem href={i.href} className="shrink-0" />
+            <span className="truncate">{i.titulo}</span>
+          </span>
           <span className="shrink-0 rounded border border-lado-borda px-1 py-px text-[9px] font-bold tracking-wide text-lado-tinta-2/70 uppercase">
             em breve
           </span>
@@ -127,13 +186,19 @@ export async function Estrutura({
         href={i.href}
         aria-current={aqui ? 'page' : undefined}
         className={cx(
-          'flex items-center justify-between gap-2 rounded-norte px-2.5 py-2 text-sm transition-colors',
+          'flex items-center justify-between gap-2 rounded-norte px-2.5 py-[7px] text-sm transition-colors',
           aqui
             ? 'bg-lado-3 font-semibold text-lado-ativo'
             : 'font-medium text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta',
         )}
       >
-        <span className="truncate">{i.titulo}</span>
+        <span className="flex min-w-0 items-center gap-2.5">
+          <IconeDoItem
+            href={i.href}
+            className={cx('shrink-0', aqui ? 'text-lado-ativo' : 'text-lado-tinta-2')}
+          />
+          <span className="truncate">{i.titulo}</span>
+        </span>
         {/* O aviso ganha da contagem: o que pede ação vem primeiro. */}
         {i.aviso ? (
           <Ponto nivel={i.aviso.nivel} quantos={i.aviso.quantos} titulo={i.aviso.titulo} />
@@ -149,7 +214,7 @@ export async function Estrutura({
   // A lista inteira, uma vez: vai para a barra e vai para a gaveta.
   const navegacao = (
     <nav className="flex flex-col gap-0.5">
-      {soltos.map(item)}
+      {soltos.map((i) => item(i))}
       {grupos.map((g) => (
         <div key={g.nome} className="mt-2.5 flex flex-col gap-0.5">
           {/* O título do grupo é miúdo e apagado de propósito: ele organiza,
@@ -157,7 +222,20 @@ export async function Estrutura({
           <span className="px-2.5 pb-1 text-[10px] font-bold tracking-[0.12em] text-lado-tinta-2/75 uppercase">
             {g.nome}
           </span>
-          {g.itens.map(item)}
+          {g.itens.map((i) => item(i))}
+        </div>
+      ))}
+    </nav>
+  )
+
+  // O mesmo menu, só de ícones. Os grupos viram um fio entre eles: o título
+  // não cabe, e a separação ainda ajuda o olho a achar o pedaço certo.
+  const trilho = (
+    <nav aria-label="Menu" className="flex flex-col gap-1">
+      {soltos.map((i) => item(i, true))}
+      {grupos.map((g) => (
+        <div key={g.nome} className="mt-0.5 flex flex-col gap-1 border-t border-lado-borda pt-1.5">
+          {g.itens.map((i) => item(i, true))}
         </div>
       ))}
     </nav>
@@ -201,18 +279,43 @@ export async function Estrutura({
         </Link>
       )}
 
-      {/* O modo vem antes do tema, porque muda o que a pessoa vê; o tema só
-          muda a cor. */}
-      <TrocaModo atual={modo} />
-      <TrocaTema inicial={tema} tom="lado" />
-      <p className="truncate text-xs text-lado-tinta-2" title={sessao.nome}>
-        {sessao.nome}
-      </p>
+      <div className="flex items-center gap-2 px-1">
+        <span
+          aria-hidden
+          className="grid size-7 shrink-0 place-items-center rounded-full bg-lado-3 text-[11px] font-bold text-lado-ativo"
+        >
+          {iniciais}
+        </span>
+        <p className="min-w-0 flex-1 truncate text-xs font-semibold text-lado-tinta" title={sessao.nome}>
+          {sessao.nome}
+        </p>
+        <form action={sairAcao}>
+          <input type="hidden" name="empresa" value={empresa.slug} />
+          <button
+            type="submit"
+            className="rounded px-1.5 py-1 text-xs font-medium text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta"
+          >
+            Sair
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+
+  // No trilho, o rodapé é a pessoa: as iniciais, e o sair logo abaixo.
+  const rodapeTrilho = (
+    <div className="mt-auto flex flex-col items-center gap-1.5 border-t border-lado-borda pt-2">
+      <span
+        title={sessao.nome}
+        className="grid size-8 place-items-center rounded-full bg-lado-3 text-[11px] font-bold text-lado-ativo"
+      >
+        {iniciais}
+      </span>
       <form action={sairAcao}>
         <input type="hidden" name="empresa" value={empresa.slug} />
         <button
           type="submit"
-          className="text-xs font-medium text-lado-tinta-2 underline-offset-2 hover:text-lado-tinta hover:underline"
+          className="rounded px-1.5 py-0.5 text-[11px] font-medium text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta"
         >
           Sair
         </button>
@@ -246,16 +349,31 @@ export async function Estrutura({
   )
 
   return (
-    <div className="flex min-h-dvh">
+    <div className={cx('flex', recolhida ? 'h-dvh overflow-hidden' : 'min-h-dvh')}>
       {/* `sticky` + `h-dvh`: sem isso a barra tem a altura da PÁGINA, não a da
           tela — e numa tela longa ela acaba no meio, deixando um pedaço branco
           embaixo do azul. Grudada, ela também continua à mão depois de rolar,
           que é o que se espera de navegação de sistema. */}
-      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-lado-borda bg-lado p-2.5 md:flex">
-        {marca}
-        {navegacao}
-        {rodape}
-      </aside>
+      {recolhida ? (
+        <aside className="sticky top-0 hidden h-dvh w-[68px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-lado-borda bg-lado px-2 py-3 md:flex">
+          <Link
+            href={`/${empresa.slug}`}
+            aria-label={`Norte · ${empresa.nome}`}
+            title={empresa.nome}
+            className="mx-auto mb-1"
+          >
+            <Simbolo tamanho={30} id="marca-trilho" />
+          </Link>
+          {trilho}
+          {rodapeTrilho}
+        </aside>
+      ) : (
+        <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-lado-borda bg-lado p-2.5 md:flex">
+          {marca}
+          {navegacao}
+          {rodape}
+        </aside>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* A barra de cima do celular: azul-noite como a lateral, para a
@@ -278,11 +396,29 @@ export async function Estrutura({
             seletores, e numa tela de 1.000px o seletor de período comia o
             nome da tela até sobrar "Pai...". Agora os dois dividem a linha
             enquanto cabem, e os seletores descem para baixo quando não cabem. */}
-        <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-borda bg-superficie px-4 py-2.5 md:px-6">
+        <header
+          className={cx(
+            'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-borda bg-superficie px-4 md:px-6',
+            recolhida ? 'py-2' : 'py-2.5',
+          )}
+        >
           <h1 className="shrink-0 text-base font-bold tracking-tight">{titulo}</h1>
-          {acao && <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{acao}</div>}
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            {acao}
+            {/* O modo muda o que a pessoa vê; o tema, só a cor. Os dois à
+                vista em toda tela, e não perdidos no pé da barra. */}
+            <TrocaModo atual={modo} tom="topo" />
+            <TrocaTema inicial={tema} tom="papel" />
+          </div>
         </header>
-        <main className="flex flex-1 flex-col gap-5 p-4 md:p-6">{children}</main>
+        <main
+          className={cx(
+            'flex flex-1 flex-col',
+            recolhida ? 'min-h-0 overflow-hidden' : 'gap-5 p-4 md:p-6',
+          )}
+        >
+          {children}
+        </main>
       </div>
 
       {/* Trinta minutos parada, a tela tranca e pede a senha. Mora aqui

@@ -1,6 +1,10 @@
 'use client'
 
-// Claro, escuro ou o que o sistema mandar.
+// Claro ou escuro. O claro é o padrão.
+//
+// "Do sistema" saiu em 25/09: com ele, quem tinha o computador no escuro
+// abria o Norte preto sem ter escolhido — e o produto é branco. Agora o
+// escuro é sempre uma escolha. Cookie velho com `sistema` vale como claro.
 //
 // Troca sem recarregar a página e sem piscar: mexe direto no <html> e grava o
 // cookie para o servidor já mandar certo na próxima visita. O balcão pega sol
@@ -26,8 +30,11 @@ export type Tema = 'claro' | 'escuro' | 'sistema'
 const OPCOES: { valor: Tema; titulo: string; icone: string }[] = [
   { valor: 'claro', titulo: 'Claro', icone: '☀' },
   { valor: 'escuro', titulo: 'Escuro', icone: '☾' },
-  { valor: 'sistema', titulo: 'Do sistema', icone: '⌘' },
 ]
+
+/** O que vale de fato: tudo que não for escuro é claro. */
+export const temaDe = (t: string | undefined | null): 'claro' | 'escuro' =>
+  t === 'escuro' ? 'escuro' : 'claro'
 
 /** Sobre o azul-noite da barra, ou sobre o papel da página de venda. */
 type Tom = 'nav' | 'papel' | 'lado'
@@ -58,21 +65,20 @@ function doCookie(): Tema | undefined {
 }
 
 export function TrocaTema({ inicial, tom = 'nav' }: { inicial?: Tema; tom?: Tom }) {
-  const [tema, setTema] = useState<Tema>(inicial ?? 'sistema')
+  const [tema, setTema] = useState<Tema>(temaDe(inicial))
   /** Só depois disto o componente pode escrever no <html> e no cookie. */
   const [sabe, setSabe] = useState(inicial !== undefined)
 
   useEffect(() => {
     if (inicial !== undefined) return
-    setTema(doCookie() ?? 'sistema')
+    setTema(temaDe(doCookie()))
     setSabe(true)
   }, [inicial])
 
   useEffect(() => {
     if (!sabe) return
     const raiz = document.documentElement
-    if (tema === 'sistema') raiz.removeAttribute('data-tema')
-    else raiz.setAttribute('data-tema', tema)
+    raiz.setAttribute('data-tema', temaDe(tema))
     // 1 ano; é preferência, não sessão
     document.cookie = `tema=${tema}; path=/; max-age=31536000; samesite=lax`
   }, [tema, sabe])

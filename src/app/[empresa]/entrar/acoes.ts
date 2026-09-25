@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { entrar, RECADO, type MotivoRecusa } from '@/servidor/autenticacao'
 import { abrirSessao } from '@/servidor/sessao'
+import { pode } from '@/servidor/permissao'
 
 /**
  * De onde veio a requisição.
@@ -27,7 +28,7 @@ export type EstadoEntrada = {
    *
    * Vai para a tela como LISTA, e não como frase. "Limite atingido" é o que
    * transforma isto numa ligação para o suporte; dizer quem está ocupando e há
-   * quanto cada um parou transforma em "a Bruna esqueceu aberto lá no fundo",
+   * quanto cada um parou transforma em "a Ana esqueceu aberto lá no fundo",
    * que a loja resolve sozinha em cinco segundos.
    */
   semVaga?: { nome: string; paradaMin: number }[]
@@ -68,5 +69,9 @@ export async function entrarAcao(
 
   // redirect() funciona lançando — precisa ficar FORA de try/catch,
   // senão o catch engole e a pessoa fica na tela de login achando que falhou.
-  redirect(`/${empresa}`)
+  //
+  // Quem é do caixa vai direto para o balcão: vender é a primeira coisa do dia
+  // dele, e passar pelo painel (que ele nem pode ler) seria um pulo a mais.
+  const soVende = !pode(r.sessao, 'relatorio.ver') && pode(r.sessao, 'venda.criar')
+  redirect(soVende ? `/${empresa}/balcao` : `/${empresa}`)
 }

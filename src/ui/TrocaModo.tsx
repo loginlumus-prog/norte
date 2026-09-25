@@ -16,7 +16,23 @@ const OPCOES: { valor: Modo; titulo: string; dica: string }[] = [
   { valor: 'avancado', titulo: 'Avançado', dica: 'Todas as telas, gráficos e colunas.' },
 ]
 
-export function TrocaModo({ atual }: { atual: Modo }) {
+/** Na barra lateral, ou no cabeçalho de toda tela (onde mora hoje). */
+type Tom = 'lado' | 'topo'
+
+const TOM: Record<Tom, { caixa: string; ativo: string; parado: string }> = {
+  lado: {
+    caixa: 'grid grid-cols-2 border-lado-borda bg-lado-2',
+    ativo: 'bg-lado text-lado-ativo shadow-norte',
+    parado: 'text-lado-tinta-2 hover:text-lado-tinta',
+  },
+  topo: {
+    caixa: 'inline-flex border-borda bg-superficie-2',
+    ativo: 'bg-superficie text-marca shadow-norte',
+    parado: 'text-tinta-3 hover:text-tinta',
+  },
+}
+
+export function TrocaModo({ atual, tom = 'lado' }: { atual: Modo; tom?: Tom }) {
   const router = useRouter()
   const [indo, comecar] = useTransition()
 
@@ -32,7 +48,7 @@ export function TrocaModo({ atual }: { atual: Modo }) {
       role="group"
       aria-label="Modo da tela"
       aria-busy={indo || undefined}
-      className="grid grid-cols-2 gap-0.5 rounded-norte border border-lado-borda bg-lado-2 p-0.5"
+      className={cx('w-fit gap-0.5 rounded-norte border p-0.5', TOM[tom].caixa, indo && 'opacity-70')}
     >
       {OPCOES.map((o) => (
         <button
@@ -42,10 +58,8 @@ export function TrocaModo({ atual }: { atual: Modo }) {
           title={o.dica}
           aria-pressed={atual === o.valor}
           className={cx(
-            'rounded px-2 py-1 text-xs font-semibold transition-colors',
-            atual === o.valor
-              ? 'bg-lado text-lado-ativo shadow-norte'
-              : 'text-lado-tinta-2 hover:text-lado-tinta',
+            'rounded px-2.5 py-1 text-xs font-semibold transition-colors',
+            atual === o.valor ? TOM[tom].ativo : TOM[tom].parado,
           )}
         >
           {o.titulo}

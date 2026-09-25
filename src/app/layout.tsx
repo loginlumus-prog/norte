@@ -46,8 +46,9 @@ export default async function LayoutRaiz({ children }: { children: React.ReactNo
   // O tema vem do cookie já na primeira renderização. Se fosse decidido no
   // navegador, a tela piscaria clara antes de escurecer — feio, e cansa a
   // vista de quem trabalha no escuro.
-  const tema = (await cookies()).get('tema')?.value
-  const escolhido = tema === 'claro' || tema === 'escuro' ? tema : undefined
+  // Sempre carimbado: o claro é o padrão, e o escuro só com escolha. Sem o
+  // carimbo, o computador com o sistema no escuro abria o Norte preto.
+  const escolhido = (await cookies()).get('tema')?.value === 'escuro' ? 'escuro' : 'claro'
 
   return (
     <html

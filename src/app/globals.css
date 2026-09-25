@@ -857,3 +857,10 @@ th.numero {
    a última aba cortada na borda já diz que tem mais. */
 .sem-barra { scrollbar-width: none; }
 .sem-barra::-webkit-scrollbar { display: none; }
+
+/* ── a entrada da tela de entrar ─────────────────────────── */
+/* Roda uma vez ao carregar; antes e depois, o cartão está no lugar. */
+.entra { animation: surgir .5s cubic-bezier(.2,.7,.3,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .entra { animation: none; }
+}
