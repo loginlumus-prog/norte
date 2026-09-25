@@ -13,9 +13,11 @@
 // formato que o contador espera.
 
 import { comoOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, pode, type Sessao } from './permissao'
+import { colunaDoDia, diaEmSP } from './dia'
 import { centavos, reais } from './dinheiro'
 import { lerTaxas, taxaDe, taxaEmCentavos, taxasDoPeriodo } from './taxas'
+import { hojeNaLoja, situacaoDoVencimento } from './recorrentes'
 import type { FormaPagamento, GrupoDRE, TipoLancamento } from '@prisma/client'
 
 /* ── categorias que toda empresa começa tendo ─────────────── */
@@ -170,11 +172,17 @@ export type AVencer = {
  * Vencida vem primeiro e com quantos dias de atraso, porque é o único grupo
  * que já custou dinheiro — juro e multa correm enquanto a lista não é olhada.
  */
-export async function aVencer(sessao: Sessao, unidadeIds: string[], dias = 15): Promise<AVencer> {
+export async function aVencer(sessao: Sessao, unidadeIds: string[], dias = 15, agora = new Date()): Promise<AVencer> {
   exigir(sessao, 'financeiro.ver')
 
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0)
+  // `vencimento` é coluna DATE, que o Prisma lê como meia-noite UTC. "Hoje"
+  // tem de estar na mesma régua — meia-noite UTC do dia da LOJA —, senão a
+  // conta que vence hoje (00:00 UTC) parecia anterior à meia-noite local
+  // (03:00 UTC) e aparecia como "vencida há 0 dias", e o grupo "vence hoje"
+  // nunca tinha nada. Apareceu quando as contas recorrentes passaram a nascer
+  // com vencimento exato.
+  const hojeK = hojeNaLoja(agora)
+  const hoje = new Date(`${hojeK}T00:00:00.000Z`)
   const limite = new Date(hoje.getTime() + dias * 864e5)
 
   return comoOrg(sessao.orgId, async (db) => {
@@ -192,13 +200,13 @@ export async function aVencer(sessao: Sessao, unidadeIds: string[], dias = 15): 
     const diasEntre = (d: Date) => Math.round((hoje.getTime() - d.getTime()) / 864e5)
 
     const vencidas = linhas
-      .filter((l) => l.vencimento < hoje)
+      .filter((l) => situacaoDoVencimento(l.vencimento, agora) === 'vencida')
       .map((l) => ({ ...l, valor: Number(l.valor), dias: diasEntre(l.vencimento) }))
     const doDia = linhas
-      .filter((l) => l.vencimento.getTime() === hoje.getTime())
+      .filter((l) => situacaoDoVencimento(l.vencimento, agora) === 'hoje')
       .map((l) => ({ ...l, valor: Number(l.valor) }))
     const proximas = linhas
-      .filter((l) => l.vencimento > hoje)
+      .filter((l) => situacaoDoVencimento(l.vencimento, agora) === 'a vencer')
       .map((l) => ({ ...l, valor: Number(l.valor), dias: -diasEntre(l.vencimento) }))
 
     return {
@@ -278,11 +286,14 @@ export async function montarDRE(
     `
     // Regime de CAIXA: conta o que foi pago no período, não o que venceu.
     // É como o comércio pequeno enxerga o mês, e é o que bate com o extrato.
+    //
+    // `pago_em` é coluna `date`: compara com o DIA em São Paulo, não com o
+    // instante. Com o instante, o que foi pago no dia 1º caía fora do mês.
     const grupos = await db.$queryRaw<{ grupo: GrupoDRE; nome: string; total: string }[]>`
       select c.grupo, c.nome, sum(l.valor) as total
         from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
        where l.pago_em is not null
-         and l.pago_em >= ${de} and l.pago_em <= ${ate}
+         and l.pago_em >= ${diaEmSP(de)}::date and l.pago_em <= ${diaEmSP(ate)}::date
          and (l.unidade_id = any(${unidadeIds}) or l.unidade_id is null)
        group by c.grupo, c.nome
        order by 3 desc
@@ -466,7 +477,7 @@ export async function resultadoPorMes(
         from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
        where l.tipo = 'DESPESA' and l.pago_em is not null
          and c.grupo <> 'MERCADORIA'
-         and l.pago_em >= ${de} and l.pago_em <= ${ate}
+         and l.pago_em >= ${diaEmSP(de)}::date and l.pago_em <= ${diaEmSP(ate)}::date
          and (l.unidade_id = any(${unidadeIds}) or l.unidade_id is null)
        group by 1
     `
@@ -528,6 +539,8 @@ export type LancamentoNaLista = {
   fornecedor: string | null
   documento: string | null
   quem: string
+  /** Nasceu de uma conta recorrente (ver `recorrentes.ts`). */
+  recorrente: boolean
 }
 
 /**
@@ -547,35 +560,50 @@ export async function listarLancamentos(
 ): Promise<LancamentoNaLista[]> {
   exigir(sessao, 'financeiro.ver')
 
-  const de = new Date(f.ano, f.mes - 1, 1)
-  const ate = new Date(f.ano, f.mes, 1)
+  // O mês pelo DIA, não pelo instante: `vencimento` é coluna `date`, que chega
+  // como meia-noite UTC. Com a meia-noite de São Paulo aqui, a conta que vence
+  // no dia 1º ficava fora do próprio mês. Ver `dia.ts`.
+  const mm = String(f.mes).padStart(2, '0')
+  const de = colunaDoDia(`${f.ano}-${mm}-01`)
+  const ate = colunaDoDia(f.mes === 12 ? `${f.ano + 1}-01-01` : `${f.ano}-${String(f.mes + 1).padStart(2, '0')}-01`)
   const q = f.q?.trim() ?? ''
+  // Só as lojas que esta pessoa pode ver no financeiro — a lista vem do
+  // endereço, e o endereço é do usuário.
+  const lojas = f.unidadeIds.filter((u) => pode(sessao, 'financeiro.ver', u))
 
   return comoOrg(sessao.orgId, async (db) => {
     const linhas = await db.lancamento.findMany({
       where: {
-        // Lançamento sem unidade é da empresa inteira (aluguel do escritório,
-        // contador) e aparece em qualquer loja escolhida.
-        OR: [{ unidadeId: { in: f.unidadeIds } }, { unidadeId: null }],
+        // DUAS condições de "ou", e por isso dentro de um AND. Antes as duas
+        // eram a mesma chave `OR` no mesmo objeto, e a da busca SOBRESCREVIA a
+        // da loja: com qualquer coisa digitada na busca, o gerente da loja 3
+        // passava a ver os lançamentos da loja 5.
+        AND: [
+          // Lançamento sem unidade é da empresa inteira (aluguel do escritório,
+          // contador) e aparece em qualquer loja escolhida.
+          { OR: [{ unidadeId: { in: lojas } }, { unidadeId: null }] },
+          ...(q
+            ? [
+                {
+                  OR: [
+                    { descricao: { contains: q, mode: 'insensitive' as const } },
+                    { fornecedor: { contains: q, mode: 'insensitive' as const } },
+                    { documento: { contains: q, mode: 'insensitive' as const } },
+                  ],
+                },
+              ]
+            : []),
+        ],
         vencimento: { gte: de, lt: ate },
         ...(f.tipo ? { tipo: f.tipo } : {}),
         ...(f.categoriaId ? { categoriaId: f.categoriaId } : {}),
         ...(f.situacao === 'aberto' ? { pagoEm: null } : f.situacao === 'pago' ? { pagoEm: { not: null } } : {}),
-        ...(q
-          ? {
-              OR: [
-                { descricao: { contains: q, mode: 'insensitive' } },
-                { fornecedor: { contains: q, mode: 'insensitive' } },
-                { documento: { contains: q, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
       },
       orderBy: [{ vencimento: 'asc' }, { criadoEm: 'asc' }],
       take: 500,
       select: {
         id: true, tipo: true, descricao: true, valor: true, vencimento: true, pagoEm: true,
-        fornecedor: true, documento: true, quem: true,
+        fornecedor: true, documento: true, quem: true, recorrenteId: true,
         categoria: { select: { nome: true } },
       },
     })
@@ -590,6 +618,7 @@ export async function listarLancamentos(
       fornecedor: l.fornecedor,
       documento: l.documento,
       quem: l.quem,
+      recorrente: l.recorrenteId !== null,
     }))
   })
 }

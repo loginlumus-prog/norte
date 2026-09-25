@@ -1,7 +1,8 @@
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
-import { aVencer, montarDRE, listarLancamentos, resultadoPorMes } from '@/servidor/financeiro'
+import { aVencer, montarDRE, listarLancamentos, prepararFinanceiro, resultadoPorMes } from '@/servidor/financeiro'
+import { garantirRecorrentes, listarRecorrentes, situacaoDoVencimento } from '@/servidor/recorrentes'
 import { BarrasMeses, Rosca } from '@/ui/Graficos'
 import Link from 'next/link'
 import { Tabela } from '@/ui/Tabela'
@@ -16,9 +17,13 @@ import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Lancar, Pagar } from './Lancar'
+import { Recorrentes } from './Recorrentes'
 
+// Vencimento e pagamento são colunas DATE, que chegam como meia-noite UTC do
+// dia. Formatar no fuso do servidor (Brasil, UTC-3) mostrava o dia ANTERIOR —
+// a conta do dia 10 aparecia "09/09". Em UTC, o dia é o dia.
 const dia = (d: Date) =>
-  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(d)
+  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(d)
 
 const MES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -49,6 +54,7 @@ export default async function Financeiro({
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'financeiro.ver')
+  const podeLancar = pode(sessao, 'financeiro.lancar')
 
   // Mês do relatório: o corrente, ou o que veio no endereço (YYYY-MM).
   const agora = new Date()
@@ -57,8 +63,17 @@ export default async function Financeiro({
     .map(Number)
   const de = new Date(ano!, mesNum! - 1, 1)
   const ate = new Date(ano!, mesNum!, 0, 23, 59, 59)
+  const mesOlhado = `${ano}-${String(mesNum).padStart(2, '0')}`
 
-  const [contas, dre, categorias, unidades, lancamentos, meses] = await Promise.all([
+  // Antes de ler: empresa sem categoria nenhuma ganha as padrão (sem elas não
+  // dá para lançar nem cadastrar conta recorrente — o cadastro inicial não as
+  // cria), e as contas recorrentes do mês, do seguinte e do mês olhado (se
+  // futuro) nascem se faltarem. Um de cada vez e FORA do Promise.all: cada um
+  // abre a própria transação e escreve; e nenhum deles pode derrubar a tela.
+  if (podeLancar) await prepararFinanceiro(sessao).catch((e) => console.error('[financeiro] preparar', e))
+  await garantirRecorrentes(sessao, mesOlhado).catch((e) => console.error('[financeiro] recorrentes', e))
+
+  const [contas, dre, categorias, unidades, lancamentos, meses, recorrentes] = await Promise.all([
     aVencer(sessao, onde.ids),
     montarDRE(sessao, onde.ids, de, ate),
     comoOrg(sessao.orgId, (db) =>
@@ -85,6 +100,7 @@ export default async function Financeiro({
       q,
     }),
     resultadoPorMes(sessao, onde.ids, 6),
+    listarRecorrentes(sessao, onde.ids),
   ])
 
   // "Para onde foi o dinheiro": as linhas negativas do DRE que não são
@@ -108,9 +124,7 @@ export default async function Financeiro({
   const somaL = (t: TipoLancamento) =>
     lancamentos.filter((l) => l.tipo === t).reduce((s, l) => s + l.valor, 0)
   const abertos = lancamentos.filter((l) => !l.pagoEm)
-  const hojeZero = new Date(new Date().toDateString())
-
-  const podeLancar = pode(sessao, 'financeiro.lancar')
+  const nomeDaLoja = new Map(onde.opcoes.map((u) => [u.id, u.nome]))
   const menu = MENU(slug).map((i) =>
     i.href === `/${slug}/financeiro` && contas.vencidas.length > 0
       ? {
@@ -221,6 +235,26 @@ export default async function Financeiro({
         )}
       </Secao>
 
+      {/* ── RECORRENTES ──
+          O que se paga todo mês sem ninguém precisar lembrar. Fica logo
+          depois das contas a pagar porque é de onde boa parte delas vem. */}
+      <Secao
+        titulo="Contas que se repetem"
+        resumo="Cadastre uma vez; o lançamento de cada mês nasce sozinho, em aberto, com o vencimento certo."
+      >
+        <Recorrentes
+          slug={slug}
+          lista={recorrentes.map((r) => ({
+            ...r,
+            unidadeNome: r.unidadeId ? (nomeDaLoja.get(r.unidadeId) ?? null) : null,
+          }))}
+          categorias={categorias}
+          lojas={onde.opcoes.filter((u) => pode(sessao, 'financeiro.lancar', u.id)).map((u) => ({ id: u.id, nome: u.nome }))}
+          lojaAtual={onde.unidadeId}
+          podeLancar={podeLancar}
+        />
+      </Secao>
+
       {/* ── LANÇAMENTOS ──
           O DRE agrega; isto é a prova dele. "Quanto paguei de fornecedor em
           agosto" e "esse R$ 1.200 é o quê" não tinham onde ser olhados. */}
@@ -300,6 +334,13 @@ export default async function Financeiro({
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate text-tinta">{l.descricao}</span>
                     <span className="text-xs text-tinta-3">
+                      {/* Etiqueta com texto, não só o símbolo: "↻" sozinho
+                          ninguém sabe o que é. */}
+                      {l.recorrente && (
+                        <span className="mr-1.5 inline-flex items-center gap-1 rounded-full border border-borda px-1.5 py-px font-semibold text-tinta-2">
+                          <span aria-hidden>↻</span> recorrente
+                        </span>
+                      )}
                       {l.categoria}
                       {l.fornecedor ? ` · ${l.fornecedor}` : ''}
                       {l.documento ? ` · ${l.documento}` : ''}
@@ -314,7 +355,7 @@ export default async function Financeiro({
                 celula: (l: (typeof lancamentos)[number]) =>
                   l.pagoEm ? (
                     <Situacao nivel="bom">pago {dia(l.pagoEm)}</Situacao>
-                  ) : l.vencimento < hojeZero ? (
+                  ) : situacaoDoVencimento(l.vencimento) === 'vencida' ? (
                     <Situacao nivel="critico">vencido</Situacao>
                   ) : (
                     <Situacao nivel="neutro">em aberto</Situacao>
@@ -446,7 +487,7 @@ export default async function Financeiro({
           </p>
         </Cartao>
 
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Cartao caixa titulo="Entrou × saiu, nos últimos 6 meses">
             <BarrasMeses
               rotulos={meses.map((m) => m.rotulo)}
