@@ -37,6 +37,7 @@
 //    o da empresa (`descontoMaximo`) para quem opera, e `venda.desconto` para
 //    quem passa dele.
 
+import { vendidoNaLoja } from './catalogo-loja'
 import { comoOrg } from './banco'
 import type { SituacaoVenda } from '@prisma/client'
 import { exigir, pode, PODERES, type Papel, type Sessao } from './permissao'
@@ -116,6 +117,8 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'vendedor_invalido' }
   | { ok: false; motivo: 'vale_recusado'; recado: string }
   | { ok: false; motivo: 'crediario_recusado'; recado: string }
+  /** Produto que não é vendido nesta loja — ver `catalogo-loja.ts`. */
+  | { ok: false; motivo: 'fora_da_loja'; itens: string[] }
 
 /** Os papéis que podem vender. Derivado da tabela de poderes, não escrito à mão. */
 const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) =>
@@ -220,12 +223,28 @@ export async function registrarVenda(
           select: {
             nome: true, medida: true, custo: true,
             precoVista: true, precoCartao: true, precoCrediario: true,
+            vendidoEm: true,
           },
         },
         opcoes: { select: { opcao: { select: { valor: true } } } },
       },
     })
     const porId = new Map(variacoes.map((x) => [x.id, x]))
+
+    // ── 1b. só o que ESTA loja vende ──
+    // A tela do balcão já só mostra o catálogo da loja; esta conferência é a
+    // que vale, porque a tela é do navegador e o navegador é do usuário. Sem
+    // ela, um código de barras bipado de cabeça venderia picolé na loja de
+    // roupa e baixaria estoque de um lugar onde ele não existe.
+    const foraDaLoja = [
+      ...new Set(
+        doCatalogo
+          .map((i) => porId.get(i.variacaoId))
+          .filter((x): x is NonNullable<typeof x> => !!x && !vendidoNaLoja(x.produto.vendidoEm, v.unidadeId))
+          .map((x) => descrever(x)),
+      ),
+    ]
+    if (foraDaLoja.length > 0) return { ok: false as const, motivo: 'fora_da_loja' as const, itens: foraDaLoja }
 
     // ── 2. estoque: confere TUDO antes de escrever qualquer coisa ──
     const saldos = await db.estoque.findMany({

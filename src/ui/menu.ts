@@ -67,6 +67,9 @@ export const MENU = (slug: string): ItemMenu[] => [
   // O livro de tudo que mexeu. Ele é escrito por todo canto do sistema desde
   // o primeiro dia e não tinha onde ser lido — o que é o mesmo que não ter.
   { grupo: 'Empresa', href: `/${slug}/auditoria`, titulo: 'Auditoria', exige: 'auditoria.ver', avancado: true },
+  // Abrir, editar e fechar loja. Aparece mesmo para quem tem uma só: é onde
+  // mora o endereço, o horário e o ramo dela — e onde a segunda nasce.
+  { grupo: 'Empresa', href: `/${slug}/lojas`, titulo: 'Lojas', exige: 'empresa.configurar' },
   { grupo: 'Empresa', href: `/${slug}/assinatura`, titulo: 'Assinatura', exige: 'empresa.configurar' },
   { grupo: 'Empresa', href: `/${slug}/configuracoes`, titulo: 'Configurações', exige: 'empresa.configurar' },
 ]

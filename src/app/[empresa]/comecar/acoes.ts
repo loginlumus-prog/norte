@@ -96,6 +96,9 @@ export async function terminarCadastro(
       cep: texto(form, 'cep'),
       telefone: texto(form, 'telefone'),
       horario: texto(form, 'horario'),
+      // A primeira loja nasce com o ramo da empresa. As que vierem depois
+      // escolhem o delas na tela de Lojas.
+      ramo,
     }
 
     if (primeira) {

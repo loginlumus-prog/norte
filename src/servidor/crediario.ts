@@ -20,6 +20,7 @@
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
+import { colunaDoDia, diaDaColuna, diaEmSP, diasEntre, somarDias } from './dia'
 import type { FormaPagamento } from '@prisma/client'
 
 // ─────────────────────────────────────────────────────────────
@@ -56,11 +57,15 @@ export function montarParcelas(
   }))
 }
 
-/** Dias de calendário vencidos. O dia do vencimento ainda não é atraso. */
-export function diasDeAtraso(vencimento: Date, hoje: Date): number {
-  const v = meiaNoite(vencimento)
-  const h = meiaNoite(hoje)
-  const dias = Math.round((h.getTime() - v.getTime()) / 864e5)
+/**
+ * Dias de calendário vencidos. O dia do vencimento ainda não é atraso.
+ *
+ * `vencimento` é o valor da coluna `date` como o banco devolve (meia-noite
+ * UTC do dia); `agora` é um instante, lido no calendário de São Paulo. Ver
+ * `dia.ts` — antes disto a conta dava um dia a mais e o juro saía maior.
+ */
+export function diasDeAtraso(vencimento: Date, agora: Date): number {
+  const dias = diasEntre(diaDaColuna(vencimento), diaEmSP(agora))
   return dias > 0 ? dias : 0
 }
 
@@ -116,7 +121,7 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas): Promise
 
   const q = f.q?.trim() ?? ''
   const numero = /^\d+$/.test(q) ? Number(q) : null
-  const hoje = meiaNoite(new Date())
+  const agora = new Date()
 
   return comoOrg(sessao.orgId, async (db) => {
     const org = await db.org.findUniqueOrThrow({
@@ -132,7 +137,7 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas): Promise
         ...(f.situacao === 'quitada'
           ? { quitadaEm: { not: null } }
           : f.situacao === 'vencida'
-            ? { quitadaEm: null, vencimento: { lt: hoje } }
+            ? { quitadaEm: null, vencimento: { lt: colunaDoDia(diaEmSP()) } }
             : f.situacao === 'aberta'
               ? { quitadaEm: null }
               : {}),
@@ -158,7 +163,7 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas): Promise
       const pagoC = centavos(p.pago)
       const restaC = Math.max(valorC - pagoC, 0)
       const quitada = p.quitadaEm !== null
-      const dias = quitada ? 0 : diasDeAtraso(p.vencimento, hoje)
+      const dias = quitada ? 0 : diasDeAtraso(p.vencimento, agora)
       return {
         id: p.id,
         vendaId: p.vendaId,
@@ -199,8 +204,8 @@ export async function resumoCrediario(sessao: Sessao, unidadeIds: string[]): Pro
   const vazio = { emAberto: 0, vencido: 0, aVencer7: 0, clientesDevendo: 0, clientesAtrasados: 0, parcelasVencidas: 0 }
   if (permitidas.length === 0) return vazio
 
-  const hoje = meiaNoite(new Date())
-  const em7 = maisDias(hoje, 8)
+  const hoje = diaEmSP()
+  const em7 = somarDias(hoje, 8)
 
   return comoOrg(sessao.orgId, async (db) => {
     const abertas = await db.parcela.findMany({
@@ -215,11 +220,12 @@ export async function resumoCrediario(sessao: Sessao, unidadeIds: string[]): Pro
       if (resta <= 0) continue
       r.emAberto += resta
       devendo.add(p.clienteId)
-      if (p.vencimento < hoje) {
+      const dia = diaDaColuna(p.vencimento)
+      if (dia < hoje) {
         r.vencido += resta
         r.parcelasVencidas++
         atrasados.add(p.clienteId)
-      } else if (p.vencimento < em7) {
+      } else if (dia < em7) {
         r.aVencer7 += resta
       }
     }
@@ -244,7 +250,7 @@ export async function situacaoDosClientes(
 ): Promise<Map<string, { devendo: number; vencido: number }>> {
   const mapa = new Map<string, { devendo: number; vencido: number }>()
   if (clienteIds.length === 0) return mapa
-  const hoje = meiaNoite(new Date())
+  const hoje = diaEmSP()
   const abertas = await db.parcela.findMany({
     where: { clienteId: { in: clienteIds }, quitadaEm: null },
     select: { clienteId: true, vencimento: true, valor: true, pago: true },
@@ -254,7 +260,7 @@ export async function situacaoDosClientes(
     if (resta <= 0) continue
     const atual = mapa.get(p.clienteId) ?? { devendo: 0, vencido: 0 }
     atual.devendo += resta
-    if (p.vencimento < hoje) atual.vencido += resta
+    if (diaDaColuna(p.vencimento) < hoje) atual.vencido += resta
     mapa.set(p.clienteId, atual)
   }
   for (const [k, v] of mapa) mapa.set(k, { devendo: reais(v.devendo), vencido: reais(v.vencido) })

@@ -69,3 +69,26 @@ describe('juro de atraso', () => {
     expect(jurosDeAtraso(0, 30, 3)).toBe(0)
   })
 })
+
+// ── o dia, do jeito que o banco devolve ─────────────────────
+// Coluna `date` chega como meia-noite UTC. Os testes de cima montam datas no
+// horário local e por isso não pegavam o defeito: a parcela que vence hoje
+// aparecia vencida desde a madrugada, e o atraso contava um dia a mais.
+describe('atraso com a data como vem do banco', () => {
+  const coluna = (dia: string) => new Date(`${dia}T00:00:00.000Z`)
+  const emSP = (iso: string) => new Date(`${iso}-03:00`)
+
+  it('vence hoje não é atraso, de madrugada nem à noite', () => {
+    expect(diasDeAtraso(coluna('2026-09-25'), emSP('2026-09-25T00:30:00'))).toBe(0)
+    expect(diasDeAtraso(coluna('2026-09-25'), emSP('2026-09-25T23:30:00'))).toBe(0)
+  })
+
+  it('o dia seguinte é um dia de atraso, e não dois', () => {
+    expect(diasDeAtraso(coluna('2026-09-25'), emSP('2026-09-26T00:10:00'))).toBe(1)
+    expect(diasDeAtraso(coluna('2026-09-25'), emSP('2026-09-26T23:50:00'))).toBe(1)
+  })
+
+  it('atravessa o mês certo', () => {
+    expect(diasDeAtraso(coluna('2026-08-31'), emSP('2026-09-30T12:00:00'))).toBe(30)
+  })
+})

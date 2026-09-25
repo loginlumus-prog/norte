@@ -9,6 +9,8 @@ import { redirect } from 'next/navigation'
 import { exigirSessao } from '@/servidor/pagina'
 import { criarProduto, editarProduto, ajustarGrade, type EixoEscolhido } from '@/servidor/produto'
 import { SemPermissao } from '@/servidor/permissao'
+import { comoOrg } from '@/servidor/banco'
+import { normalizarVendidoEm } from '@/servidor/catalogo-loja'
 import type { Medida } from '@prisma/client'
 
 export type EstadoProduto = { erro?: string; ok?: string }
@@ -65,6 +67,29 @@ function eixosDoFormulario(form: FormData, eixosDaEmpresa: string[]): EixoEscolh
   return eixosDaEmpresa.map((eixoId) => ({ eixoId, opcaoIds: porEixo.get(eixoId) ?? [] }))
 }
 
+/**
+ * As lojas marcadas em "Vendido em".
+ *
+ * `undefined` = o formulário não tinha a pergunta (empresa de uma loja só) e
+ * nada muda. O que veio marcado é conferido contra as lojas abertas DESTA
+ * empresa — o nome do campo vem do navegador — e todas marcadas vira vazio,
+ * que quer dizer "todas, inclusive as que abrirem depois".
+ */
+async function vendidoEmDo(
+  form: FormData,
+  orgId: string,
+): Promise<{ valor?: string[]; erro?: string }> {
+  if (form.get('temLojas') !== '1') return {}
+  const marcadas = [...form.keys()]
+    .filter((k) => k.startsWith('vendidoEm_'))
+    .map((k) => k.slice('vendidoEm_'.length))
+  if (marcadas.length === 0) return { erro: 'Marque pelo menos uma loja onde o produto é vendido.' }
+  const lojas = await comoOrg(orgId, (db) =>
+    db.unidade.findMany({ where: { ativa: true, ehDeposito: false }, select: { id: true } }),
+  )
+  return { valor: normalizarVendidoEm(marcadas, lojas.map((l) => l.id)) }
+}
+
 export async function criar(
   slug: string,
   eixosDaEmpresa: string[],
@@ -77,6 +102,8 @@ export async function criar(
   if (vista == null || vista <= 0) return { erro: 'Informe o preço à vista.' }
   const reposicao = prazo(form)
   if ('erro' in reposicao) return { erro: reposicao.erro }
+  const vendido = await vendidoEmDo(form, sessao.orgId)
+  if (vendido.erro) return { erro: vendido.erro }
 
   const medidaBruta = String(form.get('medida') ?? 'UN') as Medida
   const medida = MEDIDAS.includes(medidaBruta) ? medidaBruta : 'UN'
@@ -96,6 +123,7 @@ export async function criar(
         precoCrediario: preco(form, 'precoCrediario'),
         custo: preco(form, 'custo'),
         prazoReposicaoDias: reposicao.valor,
+        vendidoEm: vendido.valor,
       },
       eixosDoFormulario(form, eixosDaEmpresa),
     )
@@ -125,6 +153,8 @@ export async function editar(
   if (vista == null || vista <= 0) return { erro: 'Informe o preço à vista.' }
   const reposicao = prazo(form)
   if ('erro' in reposicao) return { erro: reposicao.erro }
+  const vendido = await vendidoEmDo(form, sessao.orgId)
+  if (vendido.erro) return { erro: vendido.erro }
 
   const medidaBruta = String(form.get('medida') ?? 'UN') as Medida
   const medida = MEDIDAS.includes(medidaBruta) ? medidaBruta : 'UN'
@@ -141,6 +171,7 @@ export async function editar(
       precoCrediario: preco(form, 'precoCrediario') ?? vista,
       custo: preco(form, 'custo'),
       prazoReposicaoDias: reposicao.valor,
+      vendidoEm: vendido.valor,
       ativo: form.get('ativo') === 'on',
     })
     if (!r.ok) return { erro: r.motivo }

@@ -107,8 +107,17 @@ export const GUIA: Entrada[] = [
     titulo: 'Painel',
     caminho: '',
     oQueE:
-      'O resumo do negócio no período escolhido: quanto vendeu (e se foi melhor ou pior que o período anterior do mesmo tamanho), média por dia, ticket médio e margem; o movimento por dia e por hora; o que mais vendeu e por categoria; o que está parado há mais de 30 dias e o que está acabando; o crediário em aberto; quem mais vendeu e a meta do mês; e os clientes. Exige a permissão de ler relatório — quem só vende cai direto no Balcão.',
+      'A primeira tela do dia, em dois modos. No SIMPLES: quanto vendeu hoje (comparado com o mesmo dia da semana passada até a mesma hora), o que precisa de você agora — o que acabou, conta vencida ou que vence hoje, fiado vencido, tarefa atrasada, caixa esquecido aberto, proposta do assistente —, atalhos para o que se faz mais e os mais vendidos da semana. No AVANÇADO: o resumo do período escolhido, com todos os gráficos — movimento por dia e por hora, formas de pagamento, categorias, parados, estoque, crediário, equipe e clientes. Exige a permissão de ler relatório — quem só vende cai direto no Balcão.',
     comoFazer: [
+      {
+        titulo: 'Trocar entre o modo simples e o avançado',
+        passos: [
+          'Na barra lateral, embaixo, a chave "Simples | Avançado". No painel também há o atalho "Ver o painel completo" e, no avançado, "Voltar ao simples".',
+          'O modo é do APARELHO, não da pessoa: o computador do balcão fica no simples para quem sentar; o notebook do dono fica no avançado.',
+          'No simples, o menu esconde as telas de análise (Caixa, Preços, Análise, Auditoria) e o balcão vende por botões grandes. Nada é tirado de permissão: a tela aberta por link continua abrindo.',
+          'A tela de entrar segue o mesmo modo: no simples é só o formulário.',
+        ],
+      },
       {
         titulo: 'Mudar o período',
         passos: [
@@ -487,6 +496,85 @@ export const GUIA: Entrada[] = [
     palavras: ['fiado', 'vender fiado', 'parcela', 'parcelas', 'carnê', 'cobrança', 'cobrar', 'juros', 'atraso', 'receber', 'dívida', 'devedor', 'inadimplente', 'a prazo'],
   },
 
+  // ── Encomendas ──
+  {
+    chave: 'encomendas',
+    titulo: 'Encomendas',
+    caminho: '/encomendas',
+    oQueE:
+      'O pedido que sai depois: o bolo para sábado às 15h, o buquê para as 16h, a peça que o cliente paga metade hoje e busca na semana que vem. A lista abre pelo que vence primeiro, em faixas — Atrasadas (passou da hora e não saiu), Hoje, Amanhã, Esta semana (os próximos dias) e Depois — com hora, cliente e WhatsApp, valor, sinal, o que falta pagar e se é retirada ou entrega. Só existe com o módulo Encomenda ligado em Configurações › Módulos (planos pagos). O sinal entra no Financeiro na hora, como receita; o que falta é recebido no Balcão, como venda.',
+    comoFazer: [
+      {
+        titulo: 'Anotar uma encomenda',
+        passos: [
+          '"+ Nova encomenda".',
+          'Para quem: digite o nome e escolha no cadastro de clientes, ou deixe só o nome e o WhatsApp de quem não é cadastrado.',
+          'O que é (tamanho, sabor, o que vai escrito), o valor e o sinal, se o cliente adiantou alguma coisa — a tela mostra quanto falta pagar.',
+          'Dia E hora: a hora é a do relógio da loja. Data que já passou só é aceita marcando "a data já passou, é isso mesmo".',
+          'Retirada na loja ou entrega (com o endereço), e uma observação se precisar. "Anotar encomenda".',
+          'O sinal entra no Financeiro no mesmo instante, como receita da loja da encomenda — não lance de novo.',
+        ],
+        capacidade: 'venda.criar',
+        plano: 'BALCAO',
+      },
+      {
+        titulo: 'Marcar pronta e entregar',
+        passos: [
+          '"Pronta" quando a encomenda estiver feita (fica amarela: está esperando o cliente). Marcou por engano? "Não está pronta" volta atrás.',
+          '"Entregue": a tela mostra quanto falta receber e lembra que o sinal já está no Financeiro.',
+          '"Receber no balcão" marca a entrega e só abre o Balcão — a venda você lança lá, SÓ do que falta. Lançar o valor cheio contaria o sinal duas vezes.',
+          '"Só marcar entregue" é para quando o que faltava já foi pago de outro jeito. Entregue não volta: sai da lista em aberto e fica no filtro "entregues".',
+        ],
+        capacidade: 'venda.criar',
+      },
+      {
+        titulo: 'Cancelar uma encomenda',
+        passos: [
+          '"Cancelar" na linha da encomenda.',
+          'Escreva o motivo — é obrigatório e fica no livro de auditoria.',
+          'Se houve sinal, a tela lembra de devolver. Marque "Devolvi o sinal" e a devolução sai no Financeiro de hoje; sem marcar, o sinal fica como receita da loja.',
+          '"Cancelar encomenda". Cancelada não volta: se foi engano, anote de novo.',
+        ],
+        capacidade: 'venda.cancelar',
+      },
+      {
+        titulo: 'Mudar uma encomenda',
+        passos: [
+          '"Mudar" na linha: abre o formulário preenchido no alto da tela.',
+          'Troque o que precisar — dia, hora, valor, endereço. A loja não muda; para outra loja, cancele e anote lá.',
+          'Mudou o sinal? A diferença entra no Financeiro hoje: a mais como receita, a menos como devolução.',
+          'Entregue ou cancelada não muda mais.',
+        ],
+        capacidade: 'venda.criar',
+      },
+      {
+        titulo: 'Achar uma encomenda e avisar o cliente',
+        passos: [
+          'Busque por nome, telefone ou pelo que foi encomendado ("bolo", "buquê").',
+          'Fichas: em aberto (a fazer e prontas), a fazer, prontas, entregues, canceladas, todas.',
+          'O telefone de cada encomenda abre a conversa no WhatsApp num toque — "está pronto, pode vir buscar".',
+          'Com mais de uma loja, o seletor do alto escolhe a loja; quem só vê uma loja só vê as encomendas dela.',
+        ],
+        capacidade: 'venda.ver',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'O sinal aparece no resultado do mês?',
+        r: 'Sim. Ele entra no Financeiro no dia em que foi recebido, em "Outras receitas", com a loja da encomenda. Na entrega, o que falta vira venda no Balcão. Sinal + venda do restante = o valor da encomenda, contado uma vez só.',
+      },
+      {
+        p: 'O que conta como atrasada?',
+        r: 'Passou da hora combinada e não está entregue nem cancelada — o bolo das 10h que às 14h não saiu. É a primeira faixa da lista, fica vermelha e acende a bolinha do menu.',
+      },
+      {
+        p: 'Não vejo Encomendas no menu. Por quê?',
+        r: 'O módulo Encomenda está desligado (Configurações › Módulos), ou o plano não o inclui (é dos planos pagos), ou o seu papel não vê vendas.',
+      },
+    ],
+    palavras: ['pedido', 'pedidos', 'bolo', 'reserva', 'retirada', 'retirar', 'entrega', 'entregar', 'sinal', 'adiantamento', 'encomendar', 'buquê', 'agendar', 'data de entrega', 'para sábado'],
+  },
+
   // ── Produtos ──
   {
     chave: 'produtos',
@@ -503,6 +591,17 @@ export const GUIA: Entrada[] = [
           'Preço à vista é o único obrigatório. Cartão e crediário em branco ficam iguais a ele. Custo é o que permite calcular margem.',
           'Em "Como varia", marque só as opções que o produto tem de verdade: 2 cores × 3 tamanhos = 6 itens, e a tela mostra a conta antes de salvar.',
           '"Cadastrar" leva à ficha, onde a grade já nasceu com os códigos de etiqueta (três letras do nome + número: CAM001).',
+        ],
+        capacidade: 'produto.editar',
+      },
+      {
+        titulo: 'Escolher em que lojas o produto é vendido',
+        passos: [
+          'Só aparece para quem tem mais de uma loja: na ficha do produto, o bloco "Vendido em".',
+          'Tudo marcado = vendido em todas, inclusive nas lojas que abrirem depois.',
+          'Desmarque a loja que NÃO vende: a sorveteria não mostra camisa no balcão, a loja de roupa não mostra picolé.',
+          'A regra vale no servidor também: produto de outra loja é recusado na venda mesmo que alguém bipe o código de cabeça.',
+          '"Salvar". A lista de Lojas mostra quantos produtos são só de cada uma.',
         ],
         capacidade: 'produto.editar',
       },
@@ -935,7 +1034,7 @@ export const GUIA: Entrada[] = [
     titulo: 'Financeiro',
     caminho: '/financeiro',
     oQueE:
-      'As contas a pagar (vencidas, hoje, próximos 15 dias), os lançamentos do mês com busca e filtros, e o resultado do mês — o DRE: receita das vendas, devoluções, custo da mercadoria vendida, despesas por grupo, taxas de maquininha e o que sobrou. Venda não vira lançamento: o DRE puxa direto das vendas. Fechar o mês, guiado, fica no botão do alto.',
+      'As contas a pagar (vencidas, hoje, próximos 15 dias), os lançamentos do mês com busca e filtros, e o resultado do mês — o DRE: receita das vendas, devoluções, custo da mercadoria vendida, despesas por grupo, taxas de maquininha e o que sobrou. Venda não vira lançamento: o DRE puxa direto das vendas. As contas que se repetem (aluguel, internet, contador) se cadastram uma vez e o lançamento de cada mês nasce sozinho. Fechar o mês, guiado, fica no botão do alto.',
     comoFazer: [
       {
         titulo: 'Lançar uma conta',
@@ -977,11 +1076,23 @@ export const GUIA: Entrada[] = [
         capacidade: 'financeiro.ver',
       },
       {
-        titulo: 'Contas do mês, comissão e mercadoria',
+        titulo: 'Cadastrar uma conta que se repete',
         passos: [
-          'Aluguel, luz, salário: lance uma vez por mês com o vencimento certo — "A vencer" mostra o que vem nos próximos 15 dias. Repetição automática ainda não existe.',
-          'A comissão da equipe (tela Equipe) você lança na categoria "Comissão", no mês em que pagar.',
-          'A conta do fornecedor de mercadoria pode nascer na própria entrada de estoque: Estoque › Dar entrada › "Lançar a conta do fornecedor".',
+          'Em "Contas que se repetem", "+ Conta que se repete".',
+          'O que é, categoria, valor, dia do vencimento (31 em mês curto cai no último dia: 28 ou 29 em fevereiro, 30 em abril), fornecedor e, se tiver fim, "até quando".',
+          '"Cadastrar". Ao abrir o Financeiro, o lançamento do mês e o do próximo nascem sozinhos, em aberto, marcados "↻ recorrente" — e aparecem em "A vencer" no tempo certo. Olhando um mês futuro, o daquele mês também aparece.',
+          'Vencimento que já tinha passado no dia do cadastro não é criado: esse, se ainda não foi pago, lance à mão.',
+          'Abrir a tela duas vezes não duplica nada: cada conta tem um lançamento por mês.',
+        ],
+        capacidade: 'financeiro.lancar',
+      },
+      {
+        titulo: 'Mudar ou pausar uma conta que se repete',
+        passos: [
+          '"Mudar" na linha da conta: o aluguel subiu, o dia mudou.',
+          'Salvar acerta também os lançamentos dela que ainda estão em aberto, de hoje em diante. O que já foi pago fica como está.',
+          '"Pausar" para de gerar e tira de "A vencer" os lançamentos futuros em aberto dela; "Retomar" volta a gerar.',
+          'Comissão da equipe (tela Equipe) se lança na categoria "Comissão", no mês em que pagar; a conta do fornecedor de mercadoria pode nascer na entrada de estoque (Estoque › Dar entrada).',
         ],
         capacidade: 'financeiro.lancar',
       },
@@ -997,10 +1108,14 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'Quem pode lançar?',
-        r: 'Dono e financeiro. Gerente e contador veem o financeiro, mas não lançam.',
+        r: 'Dono e financeiro. Gerente e contador veem o financeiro, mas não lançam — nem cadastram conta recorrente. Os lançamentos das recorrentes nascem sozinhos para quem abre a tela.',
+      },
+      {
+        p: 'O sinal de encomenda aparece aqui?',
+        r: 'Sim, como receita paga no dia em que foi recebido, na categoria de outras receitas e com o código da encomenda (ENC-...). Não lance de novo; na entrega, só o que falta vira venda no Balcão.',
       },
     ],
-    palavras: ['contas a pagar', 'despesa', 'receita', 'boleto', 'conta', 'lançamento', 'lançar', 'dar baixa', 'pagar', 'paguei', 'dre', 'resultado', 'lucro', 'prejuízo', 'cmv', 'taxa', 'fluxo de caixa', 'recorrente', 'aluguel', 'salário', 'fornecedor'],
+    palavras: ['contas a pagar', 'despesa', 'receita', 'boleto', 'conta', 'lançamento', 'lançar', 'dar baixa', 'pagar', 'paguei', 'dre', 'resultado', 'lucro', 'prejuízo', 'cmv', 'taxa', 'fluxo de caixa', 'recorrente', 'recorrentes', 'conta fixa', 'todo mês', 'mensalidade', 'aluguel', 'internet', 'contador', 'salário', 'fornecedor'],
   },
 
   // ── Fechamento de mês ──
@@ -1234,6 +1349,60 @@ export const GUIA: Entrada[] = [
 
   // ── Assinatura ──
   {
+    chave: 'lojas',
+    titulo: 'Lojas',
+    caminho: '/lojas',
+    oQueE:
+      'As lojas da empresa: abrir uma nova com o ramo dela, editar nome, endereço, telefone, CNPJ e horário, marcar depósito, fechar e reabrir. Cada loja tem o próprio estoque, caixa e balcão. Em cima, quantas lojas o plano comporta e quantas estão abertas.',
+    comoFazer: [
+      {
+        titulo: 'Abrir outra loja',
+        passos: [
+          'Em "Abrir outra loja", dê o nome e escolha o RAMO desta loja — pode ser diferente do da empresa (uma sorveteria numa empresa de roupa).',
+          'Se for só estoque, marque "É um depósito": ele recebe e transfere mercadoria, mas não tem balcão.',
+          'Endereço, contato e horário são opcionais; o assistente responde com o horário.',
+          '"Abrir a loja". Ela nasce com as categorias e os eixos do ramo que ainda não existiam na empresa (ex.: Picolé, Massa, Açaí e o eixo Sabor), sem mexer no que já existe.',
+          'Depois, na ficha de cada produto, diga em "Vendido em" se ele é vendido na loja nova.',
+        ],
+        capacidade: 'empresa.configurar',
+      },
+      {
+        titulo: 'Editar os dados de uma loja',
+        passos: [
+          '"Editar" no cartão da loja.',
+          'Mude o que precisar e "Salvar". Trocar o ramo acrescenta as categorias do ramo novo; nada do antigo é apagado.',
+          'O "Nome no comprovante" é o que sai impresso para o cliente.',
+        ],
+        capacidade: 'empresa.configurar',
+      },
+      {
+        titulo: 'Fechar e reabrir uma loja',
+        passos: [
+          '"Fechar a loja" no cartão. Ela some do balcão e dos seletores; vendas, estoque e caixa antigos continuam guardados.',
+          'Não fecha com o caixa aberto — feche o caixa antes, para a gaveta ser conferida.',
+          'A última loja aberta não fecha: a empresa precisa de pelo menos uma.',
+          '"Reabrir" conta na cota do plano, igual a abrir uma nova.',
+        ],
+        capacidade: 'empresa.configurar',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'O plano não deixa abrir mais uma loja. E agora?',
+        r: 'A tela diz quantas o plano comporta. Para abrir mais, troque de plano em Assinatura — ou feche uma loja que não usa mais.',
+      },
+      {
+        p: 'Tenho uma loja de roupa e uma sorveteria. O balcão mistura os produtos?',
+        r: 'Não, se cada produto disser onde é vendido: na ficha, em "Vendido em", deixe a camiseta só na loja de roupa e o sorvete só na sorveteria. O balcão de cada loja mostra só o que é dela, e o servidor recusa venda de produto de outra loja.',
+      },
+      {
+        p: 'Posso ter duas empresas separadas, com CNPJ e financeiro diferentes?',
+        r: 'Cada empresa no Norte tem o próprio endereço e os próprios dados, e nada é compartilhado entre elas. Lojas dentro da mesma empresa dividem o catálogo e o financeiro; empresas diferentes, não.',
+      },
+    ],
+    palavras: ['loja', 'lojas', 'filial', 'unidade', 'depósito', 'abrir loja', 'nova loja', 'endereço', 'horário', 'ramo', 'nicho'],
+  },
+  {
     chave: 'assinatura',
     titulo: 'Assinatura',
     caminho: '/assinatura',
@@ -1253,7 +1422,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Trocar de plano',
         passos: [
           'Cada cartão mostra o preço, a diferença por mês, o que passa a ter e o que deixa de ter — antes do clique.',
-          'Descer com mais lojas do que o plano de baixo aceita é recusado: desative lojas antes. Vaga a mais não impede, só aperta.',
+          'Descer com mais lojas do que o plano de baixo aceita é recusado: feche lojas antes, na tela Lojas. Vaga a mais não impede, só aperta.',
           '"Mudar para este" ou "Voltar para este". Só quem configura a empresa troca.',
           'O Corporativo é fechado por conversa: "Falar com a gente" abre o WhatsApp do Norte.',
         ],
@@ -1272,7 +1441,7 @@ export const GUIA: Entrada[] = [
         titulo: 'O que cada plano abre',
         passos: [
           'Grátis (R$ 0): 1 loja, 1 pessoa dentro, 300 vendas por mês. Balcão e caixa, produto com grade, estoque, cliente, 1 quadro de tarefas, relatório simples, auditoria.',
-          'Balcão (R$ 100/mês): até 3 lojas, 3 dentro. Tudo do Grátis mais nota fiscal, encomenda, programa de pontos, financeiro com DRE, contas a pagar, fechamento de mês, preços (margem e markup), vários quadros com responsável, prazo e prioridade, estoque e caixa por loja.',
+          'Balcão (R$ 100/mês): até 3 lojas, 3 dentro. Tudo do Grátis mais encomenda, programa de pontos, financeiro com DRE, contas a pagar, fechamento de mês, preços (margem e markup), vários quadros com responsável, prazo e prioridade, estoque e caixa por loja.',
           'Assistente (R$ 350/mês): até 5 lojas, 5 dentro. Tudo do Balcão mais o agente no WhatsApp com R$ 100 de crédito de IA, metas e comissão, desempenho básico, preço sugerido, linha do tempo e modelos de quadro.',
           'Direção (R$ 1.500/mês): lojas e pessoas sem limite. Tudo do Assistente mais crediário, análise (lojas, ABC, dinheiro parado, escala), previsão de ruptura, desempenho completo, quadro da rede, R$ 300 de crédito.',
           'Corporativo: sob consulta — a operação inteira com a gente junto, crédito no contrato.',

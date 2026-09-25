@@ -231,6 +231,12 @@ model Unidade {
   /// Texto livre: "Seg a sex 9h-18h, sáb 9h-13h". O agente responde com isto.
   horario String?
 
+  /// O ramo DESTA loja. A empresa tem um ramo (o do cadastro), mas a mesma
+  /// empresa pode ter uma loja de roupa e uma sorveteria — e aí cada uma
+  /// precisa nascer com as categorias e o jeito de vender dela. Nulo = segue
+  /// o ramo da empresa.
+  ramo String?
+
   ehDeposito Boolean @default(false) @map("eh_deposito")
   ativa      Boolean @default(true)
 
@@ -631,6 +637,19 @@ model Produto {
   precoCartao    Decimal? @map("preco_cartao") @db.Decimal(12, 2)
   precoCrediario Decimal? @map("preco_crediario") @db.Decimal(12, 2)
   custo          Decimal? @db.Decimal(12, 2)
+
+  /// Em quais lojas este produto é VENDIDO. Vazio = em todas.
+  ///
+  /// É o que impede a sorveteria de mostrar camisa no balcão quando a mesma
+  /// empresa tem as duas. Vazio por padrão, e não "todas as ids": quem tem uma
+  /// loja só nunca vê a pergunta, e a loja que abrir depois já nasce vendendo
+  /// o catálogo inteiro, que é o que a maioria das redes quer.
+  ///
+  /// Lista de ids em vez de tabela de ligação: a pergunta é sempre "esta loja
+  /// vende isto?", respondida num `has`, e o RLS da tabela de produtos já
+  /// cobre a lista. Loja desativada que fica na lista não faz mal — ela não
+  /// abre balcão.
+  vendidoEm String[] @default([]) @map("vendido_em")
 
   /// Quantos dias o fornecedor leva para repor este produto, contados do
   /// pedido à prateleira. É o número que transforma "está acabando" em "vai

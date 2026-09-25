@@ -72,3 +72,13 @@ describe('validade', () => {
     expect(venceu(validade, new Date(2026, 8, 1))).toBe(false)
   })
 })
+
+describe('validade do vale com a data como vem do banco', () => {
+  const coluna = (dia: string) => new Date(`${dia}T00:00:00.000Z`)
+  const emSP = (iso: string) => new Date(`${iso}-03:00`)
+  it('o último dia inteiro ainda vale, e o seguinte não', () => {
+    expect(venceu(coluna('2026-09-25'), emSP('2026-09-25T09:00:00'))).toBe(false)
+    expect(venceu(coluna('2026-09-25'), emSP('2026-09-25T23:59:00'))).toBe(false)
+    expect(venceu(coluna('2026-09-25'), emSP('2026-09-26T00:01:00'))).toBe(true)
+  })
+})

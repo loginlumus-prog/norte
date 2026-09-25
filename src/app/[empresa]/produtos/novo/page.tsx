@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { eixosDaEmpresa } from '@/servidor/produto'
 import { comoOrg } from '@/servidor/banco'
+import { RAMOS, type Ramo } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
@@ -31,6 +32,16 @@ export default async function NovoProduto({ params }: { params: Promise<{ empres
     ),
   ])
 
+  // As lojas que têm balcão — para a pergunta "Vendido em". Depósito não
+  // vende, então não entra.
+  const lojasQueVendem = await comoOrg(sessao.orgId, (db) =>
+    db.unidade.findMany({
+      where: { ativa: true, ehDeposito: false },
+      orderBy: { nome: 'asc' },
+      select: { id: true, nome: true, ramo: true },
+    }),
+  ).then((us) => us.map((u) => ({ ...u, ramo: u.ramo && u.ramo in RAMOS ? RAMOS[u.ramo as Ramo].titulo : null })))
+
   return (
     <Estrutura
       empresa={empresa}
@@ -41,7 +52,7 @@ export default async function NovoProduto({ params }: { params: Promise<{ empres
       titulo="Novo produto"
     >
       <Secao titulo="Cadastro">
-        <Editor slug={slug} eixos={eixos} categorias={categorias} />
+        <Editor slug={slug} eixos={eixos} categorias={categorias} lojas={lojasQueVendem} />
       </Secao>
     </Estrutura>
   )

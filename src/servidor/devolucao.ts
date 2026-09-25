@@ -28,6 +28,7 @@
 // do período; é assim que o mês de março não muda quando alguém devolve em
 // abril.
 
+import { diaDaColuna, diaEmSP } from './dia'
 import { comoOrg } from './banco'
 import { exigir, pode, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
@@ -320,10 +321,15 @@ export function normalizarCodigo(bruto: string): string | null {
   return `VT-${corpo}`
 }
 
-/** Vencido = a data de validade já passou (a data inteira ainda vale). */
+/**
+ * Vencido = a data de validade já passou (a data inteira ainda vale).
+ *
+ * Comparado pelo DIA no calendário de São Paulo — ver `dia.ts`. Antes a conta
+ * usava o horário local sobre uma coluna `date` que chega como meia-noite UTC,
+ * e o vale era recusado no balcão justamente no último dia dele.
+ */
 export function venceu(validade: Date, hoje = new Date()): boolean {
-  const fim = new Date(validade.getFullYear(), validade.getMonth(), validade.getDate() + 1)
-  return hoje >= fim
+  return diaDaColuna(validade) < diaEmSP(hoje)
 }
 
 /** Os vales de um cliente com saldo — para a ficha e para o balcão oferecer. */

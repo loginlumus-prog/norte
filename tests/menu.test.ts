@@ -22,7 +22,7 @@ describe('o que cada perfil vê no menu', () => {
   it('o dono vê tudo', () => {
     expect(visiveis('DONO')).toEqual([
       'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Produtos', 'Estoque', 'Preços', 'Clientes', 'Equipe',
-      'Tarefas', 'Financeiro', 'Análise', 'Assistente', 'Auditoria', 'Assinatura', 'Configurações',
+      'Tarefas', 'Financeiro', 'Análise', 'Assistente', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
     ])
   })
 

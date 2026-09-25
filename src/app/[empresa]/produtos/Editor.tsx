@@ -38,6 +38,8 @@ export type ProdutoNaTela = {
   custo: string
   /** Dias, como texto do campo. Vazio = não informado. */
   prazoReposicaoDias: string
+  /** Ids das lojas onde é vendido. Vazio = todas. */
+  vendidoEm: string[]
   ativo: boolean
   /** As opções já marcadas hoje, por eixo. */
   marcadas: Record<string, string[]>
@@ -60,11 +62,14 @@ export function Editor({
   slug,
   eixos,
   categorias,
+  lojas = [],
   produto,
 }: {
   slug: string
   eixos: EixoNaTela[]
   categorias: { id: string; nome: string }[]
+  /** As lojas abertas que vendem (depósito não). Com uma só, a pergunta nem aparece. */
+  lojas?: { id: string; nome: string; ramo: string | null }[]
   /** Ausente = cadastro novo. */
   produto?: ProdutoNaTela
 }) {
@@ -159,6 +164,32 @@ export function Editor({
           />
         </div>
       </Cartao>
+
+      {/* VENDIDO EM. Só existe para quem tem mais de uma loja — e é o que
+          impede a sorveteria de mostrar camisa no balcão quando a mesma
+          empresa tem as duas. Tudo marcado = vendido em todas, inclusive nas
+          que abrirem depois; desmarcar é tirar do balcão daquela loja. */}
+      {lojas.length > 1 && (
+        <Cartao titulo="Vendido em">
+          <input type="hidden" name="temLojas" value="1" />
+          <p className="text-xs text-tinta-3">
+            O balcão de cada loja só mostra o que está marcado aqui. Com todas marcadas, a loja
+            que você abrir depois também vende este produto.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {lojas.map((l) => (
+              <Marcar
+                key={l.id}
+                name={`vendidoEm_${l.id}`}
+                id={`vendido-${l.id}`}
+                titulo={l.nome}
+                resumo={l.ramo ?? undefined}
+                defaultChecked={!produto || produto.vendidoEm.length === 0 || produto.vendidoEm.includes(l.id)}
+              />
+            ))}
+          </div>
+        </Cartao>
+      )}
 
       <Cartao
         titulo="Como varia"

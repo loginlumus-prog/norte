@@ -67,6 +67,10 @@ export const ACOES: Record<string, string> = {
   'sessao.entrou': 'entrou no sistema',
   'vaga.assumiu': 'assumiu a vaga de alguém',
   'empresa.configurou': 'configurou a empresa',
+  'unidade.criou': 'abriu uma loja',
+  'unidade.alterou': 'alterou os dados de uma loja',
+  'unidade.desativou': 'fechou uma loja',
+  'unidade.reativou': 'reabriu uma loja',
   'empresa.modulos': 'ligou ou desligou módulos',
   'pontos.configurou': 'configurou o programa de pontos',
   'plano.trocou': 'trocou de plano',
@@ -87,7 +91,7 @@ export const ASSUNTOS: { chave: string; rotulo: string; prefixos: string[] }[] =
   { chave: 'cliente', rotulo: 'clientes', prefixos: ['cliente.', 'crediario.', 'pontos.'] },
   { chave: 'equipe', rotulo: 'equipe e acessos', prefixos: ['equipe.', 'convite.', 'sessao.', 'vaga.'] },
   { chave: 'tarefa', rotulo: 'tarefas', prefixos: ['tarefa.', 'quadro.'] },
-  { chave: 'empresa', rotulo: 'empresa', prefixos: ['empresa.', 'plano.', 'agente.', 'financeiro.'] },
+  { chave: 'empresa', rotulo: 'empresa e lojas', prefixos: ['empresa.', 'unidade.', 'plano.', 'agente.', 'financeiro.'] },
 ]
 
 export type FiltroAuditoria = {
