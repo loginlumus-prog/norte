@@ -44,7 +44,7 @@ export function Tabela<L>({
   }
 
   return (
-    <div className="overflow-x-auto rounded-norte border border-borda bg-superficie">
+    <div className="relative overflow-x-auto rounded-norte border border-borda bg-superficie">
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr>

@@ -24,21 +24,21 @@ export default function Quebrou({
   reset: () => void
 }) {
   return (
-    <main className="nav-fundo relative flex min-h-dvh flex-col items-center justify-center gap-6 overflow-hidden p-6 text-center">
+    <main className="relative flex min-h-dvh bg-superficie flex-col items-center justify-center gap-6 overflow-hidden p-6 text-center">
       <Traco
         arte="bussola"
-        sobre="escuro"
-        opacidade={0.12}
+        sobre="tema"
+        opacidade={0.07}
         className="pointer-events-none absolute top-1/2 left-1/2 w-[46rem] max-w-none -translate-x-1/2 -translate-y-1/2"
       />
       <div className="relative">
-        <Marca tamanho={30} nu claro />
+        <Marca tamanho={30} />
       </div>
       <div className="relative flex max-w-md flex-col gap-3">
-        <h1 className="text-3xl font-extrabold tracking-tight text-nav-tinta">
+        <h1 className="text-3xl font-extrabold tracking-tight">
           Deu problema aqui do nosso lado.
         </h1>
-        <p className="leading-relaxed text-nav-tinta-2">
+        <p className="leading-relaxed text-tinta-2">
           Não foi você, e nada que já estava salvo se perdeu. Tente de novo em alguns
           segundos. Se continuar, chame o suporte e diga este código.
         </p>
@@ -52,7 +52,7 @@ export default function Quebrou({
       </button>
 
       {error.digest && (
-        <p className="numero text-xs text-nav-tinta-2">código {error.digest}</p>
+        <p className="numero text-xs text-tinta-3">código {error.digest}</p>
       )}
     </main>
   )

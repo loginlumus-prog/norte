@@ -31,7 +31,7 @@ const NAO = (
 
 export function Comparar({ atual }: { atual: Plano }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full min-w-[46rem] border-collapse text-sm">
         <caption className="sr-only">
           O que cada plano do Norte inclui, item por item.

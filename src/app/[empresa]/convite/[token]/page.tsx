@@ -20,20 +20,20 @@ export default async function AceitarConvite({
 
   return (
     <main className="flex min-h-dvh flex-col md:flex-row">
-      <aside className="flex flex-col justify-between gap-8 bg-nav p-6 md:w-[42%] md:max-w-md md:p-10">
-        <Marca tamanho={30} nu claro />
+      <aside className="flex flex-col justify-between gap-8 border-b border-borda bg-marca-suave p-6 md:w-[42%] md:max-w-md md:border-r md:border-b-0 md:p-10">
+        <Marca tamanho={30} />
         <div className="hidden flex-col gap-3 md:flex">
-          <h2 className="text-[26px] leading-tight font-extrabold tracking-tight text-nav-tinta">
+          <h2 className="text-[26px] leading-tight font-extrabold tracking-tight">
             Você foi convidado
             <br />
             para {org.nome}.
           </h2>
-          <p className="text-sm leading-relaxed text-nav-tinta-2">
+          <p className="text-sm leading-relaxed text-tinta-2">
             Escolha uma senha e a sua conta nasce aqui. O que você vai ver depende do papel
             que te deram — e quem te convidou já escolheu.
           </p>
         </div>
-        <p className="hidden text-xs text-nav-tinta-2 md:block">
+        <p className="hidden text-xs text-tinta-3 md:block">
           O link vale por 7 dias e serve uma vez só.
         </p>
       </aside>

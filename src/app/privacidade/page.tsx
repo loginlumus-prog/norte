@@ -139,7 +139,7 @@ export default function Privacidade() {
           Para o Norte funcionar, alguns fornecedores tocam nos dados. Esta é a lista inteira, com
           o que cada um vê:
         </p>
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[34rem] border-collapse text-[14px]">
             <thead>
               <tr>

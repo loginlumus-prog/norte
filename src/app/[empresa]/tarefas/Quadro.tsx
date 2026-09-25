@@ -774,7 +774,7 @@ function Grupo({
           pasta. A tabela rola dentro da própria caixa — a página nunca rola
           de lado, senão o menu vai embora. */}
       <div
-        className={cx('overflow-x-auto rounded-norte border border-borda bg-superficie border-l-[3px]', !quadro.cor && (primeiro ? 'border-l-marca' : 'border-l-tinta-3'))}
+        className={cx('relative overflow-x-auto rounded-norte border border-borda bg-superficie border-l-[3px]', !quadro.cor && (primeiro ? 'border-l-marca' : 'border-l-tinta-3'))}
         style={quadro.cor ? { borderLeftColor: quadro.cor } : undefined}
       >
         <table className="w-full min-w-[760px] border-collapse text-sm">
