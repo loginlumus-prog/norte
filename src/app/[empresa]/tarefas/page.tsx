@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -35,6 +36,8 @@ import { Cabecalho } from './Cabecalho'
 import { NovoQuadro, type ModeloNaTela } from './NovoQuadro'
 import { LojaALoja, AMOSTRA_DA_REDE } from './LojaALoja'
 import { Quadro, type QuadroNaTela, type SituacaoNaTela } from './Quadro'
+
+export const metadata: Metadata = { title: 'Tarefas' }
 
 // Os componentes de cliente recebem isto como DADO, e não importam do módulo
 // de tarefas: ele fala com o banco, e valor importado dele levaria o driver

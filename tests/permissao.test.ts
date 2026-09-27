@@ -350,3 +350,13 @@ describe('a busca que veio do endereço', () => {
     expect(numeroDaBusca('12a')).toBeNull()
   })
 })
+
+describe('o IP de quem pediu', () => {
+  it('vale o último da lista: o primeiro é o que o cliente inventou', async () => {
+    const { ipDoCabecalho } = await import('../src/servidor/requisicao')
+    expect(ipDoCabecalho('1.2.3.4, 200.10.10.10', null)).toBe('200.10.10.10')
+    expect(ipDoCabecalho('200.10.10.10', null)).toBe('200.10.10.10')
+    expect(ipDoCabecalho(null, '9.9.9.9')).toBe('9.9.9.9')
+    expect(ipDoCabecalho(' , ', null)).toBeNull()
+  })
+})

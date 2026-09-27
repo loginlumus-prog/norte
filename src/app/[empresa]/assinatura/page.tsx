@@ -1,8 +1,10 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { pode, podeVerPlanos } from '@/servidor/permissao'
 import { assinaturaDe, opcoesDeTroca, extratoDeCredito } from '@/servidor/assinatura'
+import { eventosDePedido, pedidosParaTela, type Pedido } from '@/servidor/pedidos'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Aviso, Situacao, Vazio } from '@/ui/base'
@@ -12,6 +14,8 @@ import { Planos } from './Planos'
 import { Credito } from './Credito'
 import { Comparar } from './Comparar'
 import { plural } from '@/ui/texto'
+
+export const metadata: Metadata = { title: 'Assinatura' }
 
 // A tela da assinatura.
 //
@@ -65,6 +69,11 @@ export default async function AssinaturaPagina({
   ])
 
   const sit = SITUACAO[a.situacao] ?? { texto: a.situacao, nivel: 'neutro' as const }
+
+  // O pedido feito aqui (subir de plano, pôr crédito) espera a equipe do
+  // Norte. Sem esta linha, a loja clicava, lia "pedido registrado" uma vez e
+  // depois não tinha como saber se alguém viu — nem por que foi recusado.
+  const pedidos = pedidosParaTela(await eventosDePedido(sessao.orgId))
 
   return (
     <Estrutura
@@ -144,6 +153,7 @@ export default async function AssinaturaPagina({
       </Secao>
 
       <Secao titulo="Crédito do assistente">
+        {pedidos.credito && <AvisoDoPedido pedido={pedidos.credito} />}
         <Cartao>
           <Credito
             slug={slug}
@@ -202,6 +212,7 @@ export default async function AssinaturaPagina({
       </Secao>
 
       <Secao titulo="Mudar de plano">
+        {pedidos.plano && <AvisoDoPedido pedido={pedidos.plano} />}
         <Planos
           slug={slug}
           atual={a.plano}
@@ -220,5 +231,31 @@ export default async function AssinaturaPagina({
         </Cartao>
       </Secao>
     </Estrutura>
+  )
+}
+
+// No fuso da loja, e não no do servidor: na hospedagem o relógio é UTC, e
+// "enviado às 17:40" de um pedido feito às 14:40 faz a loja achar que o
+// sistema está errado.
+const quando = (d: Date) =>
+  new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
+  }).format(d)
+
+/** "Pedido do plano X enviado em …, aguardando confirmação" / "… recusado: motivo". */
+function AvisoDoPedido({ pedido }: { pedido: Pedido }) {
+  const oQue = pedido.tipo === 'plano' ? `do ${pedido.oQue}` : `de ${pedido.oQue}`
+  if (pedido.estado === 'recusado') {
+    return (
+      <Aviso nivel="neutro">
+        O pedido {oQue}, de {quando(pedido.criadoEm)}, foi recusado
+        {pedido.motivoRecusa ? `: ${pedido.motivoRecusa}` : '.'}
+      </Aviso>
+    )
+  }
+  return (
+    <Aviso nivel="atencao">
+      Pedido {oQue} enviado em {quando(pedido.criadoEm)}, aguardando confirmação da equipe do Norte.
+    </Aviso>
   )
 }

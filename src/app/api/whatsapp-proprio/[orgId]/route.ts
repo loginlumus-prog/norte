@@ -13,6 +13,7 @@
 import { after, NextResponse } from 'next/server'
 import { veioDoConector } from '@/servidor/assistente/conector'
 import { receberDoConector } from '@/servidor/assistente/proprio'
+import { resumoDoErro } from '@/servidor/registro'
 
 /** Mensagem de texto normalizada pelo conector não chega perto disto. */
 const MAXIMO_CORPO = 64 * 1024
@@ -42,7 +43,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ org
         await trabalho()
       } catch (e) {
         // O id da empresa é nosso; nada da mensagem vai para o log.
-        console.error(`[whatsapp-proprio] ${orgId}: falhou ao processar`, e instanceof Error ? e.message : e)
+        console.error(`[whatsapp-proprio] ${orgId}: falhou ao processar`, resumoDoErro(e))
       }
     })
   }

@@ -43,10 +43,39 @@ const POOL_MAX = Number(process.env.POOL_MAX ?? 10)
 // oportunidade de descobrir que a variável falta.
 const guardado = globalThis as unknown as { __prismaNorte?: PrismaClient }
 
+/**
+ * Quanto se espera para ABRIR uma conexão antes de desistir.
+ *
+ * O padrão do `pg` é zero, que quer dizer "para sempre": com o banco
+ * inalcançável (rede caída, pooler engasgado, pacote sumindo no caminho), a
+ * espera dura o tempo que o sistema operacional leva para desistir do TCP —
+ * 21 s no Windows, uns 2 min no Linux. Medido: `findUnique` da portaria contra
+ * um endereço que não responde levou 21.287 ms para falhar; com este prazo,
+ * 5.012 ms. E TODA tela começa pela portaria (`acharOrgPorSlug`), então sem
+ * prazo o balcão fica olhando tela branca em vez de ver "Deu problema aqui do
+ * nosso lado" com o código para o suporte.
+ *
+ * Cinco segundos é folga para o pooler acordar (o Supabase grátis dorme) e
+ * ainda é menos do que alguém espera antes de apertar F5.
+ */
+export const PRAZO_CONEXAO_MS = Number(process.env.PRAZO_CONEXAO_MS ?? 5_000)
+
+/** As opções do pool, num lugar só — as duas conexões (app e portaria) seguem a mesma régua. */
+export function opcoesDoPool(connectionString: string, max: number) {
+  return {
+    connectionString,
+    max,
+    connectionTimeoutMillis: PRAZO_CONEXAO_MS,
+    // Conexão parada devolve a vaga ao pooler do Supabase, que tem teto por
+    // projeto; o padrão do pg (10 s) já é isso, fica escrito para não mudar.
+    idleTimeoutMillis: 10_000,
+  }
+}
+
 function cliente(): PrismaClient {
   if (!guardado.__prismaNorte) {
     guardado.__prismaNorte = new PrismaClient({
-      adapter: new PrismaPg({ connectionString: url('DATABASE_URL'), max: POOL_MAX }),
+      adapter: new PrismaPg(opcoesDoPool(url('DATABASE_URL'), POOL_MAX)),
     })
   }
   return guardado.__prismaNorte
@@ -140,21 +169,28 @@ export async function comoOrg<T>(
  *
  * Devolve só o que a tela de login precisa mostrar. Nada sensível.
  */
-let portaria: PrismaClient | undefined
+// Poucas conexões, e de propósito: a portaria responde uma pergunta de uma
+// linha, em milissegundos. Uma conexão só aguenta centenas de logins por
+// segundo; duas é folga para o dia em que a resposta demorar. Passa a ser
+// gargalo antes de qualquer outra coisa? Não: o que cresce com a base é o
+// pool da aplicação (POOL_MAX), e é ele que se ajusta por instância.
+//
+// No global, pelo mesmo motivo do cliente da aplicação (ver `guardado` lá em
+// cima): cada recarga do `next dev` abria um pool novo da portaria e largava
+// o antigo aberto.
+const guardadoPortaria = globalThis as unknown as { __prismaPortaria?: PrismaClient }
+
+// Exportada para a outra pergunta de portaria que é FUNÇÃO do banco:
+// `criar_empresa_cadastro` (prisma/sql/rls.sql), chamada por autocadastro.ts.
+export function clientePortaria(): PrismaClient {
+  guardadoPortaria.__prismaPortaria ??= new PrismaClient({
+    adapter: new PrismaPg(opcoesDoPool(url('DATABASE_URL_PORTARIA'), Number(process.env.POOL_PORTARIA ?? 2))),
+  })
+  return guardadoPortaria.__prismaPortaria
+}
 
 export async function acharOrgPorSlug(slug: string) {
-  // Poucas conexões, e de propósito: a portaria responde uma pergunta de uma
-  // linha, em milissegundos. Uma conexão só aguenta centenas de logins por
-  // segundo; duas é folga para o dia em que a resposta demorar. Passa a ser
-  // gargalo antes de qualquer outra coisa? Não: o que cresce com a base é o
-  // pool da aplicação (POOL_MAX), e é ele que se ajusta por instância.
-  portaria ??= new PrismaClient({
-    adapter: new PrismaPg({
-      connectionString: url('DATABASE_URL_PORTARIA'),
-      max: Number(process.env.POOL_PORTARIA ?? 2),
-    }),
-  })
-  return portaria.org.findUnique({
+  return clientePortaria().org.findUnique({
     where: { slug },
     select: {
       id: true,
@@ -171,7 +207,36 @@ export async function acharOrgPorSlug(slug: string) {
   })
 }
 
+/**
+ * O banco responde? Para o /saude — e só para ele.
+ *
+ * Vai pela PORTARIA de propósito: é o papel com menos poder que existe
+ * (`select 1` não lê tabela nenhuma), não carimba empresa e não ocupa vaga do
+ * pool da aplicação, que é o que as telas usam. Devolve quanto demorou, ou o
+ * motivo curto da falha — sem a mensagem crua, que pode trazer o endereço do
+ * banco.
+ */
+export async function pingBanco(prazoMs = 2_000): Promise<{ ok: true; ms: number } | { ok: false; ms: number; motivo: 'prazo' | 'erro' }> {
+  const inicio = Date.now()
+  let relogio: ReturnType<typeof setTimeout> | undefined
+  const prazo = new Promise<'prazo'>((r) => {
+    relogio = setTimeout(() => r('prazo'), prazoMs)
+  })
+  try {
+    const r = await Promise.race([clientePortaria().$queryRaw`select 1`.then(() => 'ok' as const), prazo])
+    return r === 'ok' ? { ok: true, ms: Date.now() - inicio } : { ok: false, ms: Date.now() - inicio, motivo: 'prazo' }
+  } catch {
+    return { ok: false, ms: Date.now() - inicio, motivo: 'erro' }
+  } finally {
+    clearTimeout(relogio)
+  }
+}
+
 export async function fechar() {
   await guardado.__prismaNorte?.$disconnect()
-  await portaria?.$disconnect()
+  await guardadoPortaria.__prismaPortaria?.$disconnect()
+  // Esquece os dois: quem chamar de novo (o próximo arquivo de teste, com
+  // outro banco em outra porta) ganha cliente novo, e não o desligado.
+  delete guardado.__prismaNorte
+  delete guardadoPortaria.__prismaPortaria
 }

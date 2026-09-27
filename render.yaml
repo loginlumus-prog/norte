@@ -68,6 +68,24 @@ services:
       - key: SEGREDO_SESSAO
         sync: false
 
+      # ── o e-mail (Resend) e o cadastro pelo site ─────────────
+      # Sem as duas primeiras, nada quebra: o e-mail não sai e as telas dizem
+      # isso ("peça um link a quem administra a empresa, na tela Equipe").
+      # Todo link que sai por e-mail usa NORTE_URL (lá embaixo) — sem ela, o
+      # e-mail fica desligado. README, seção "E-mail e cadastro pelo site".
+      #
+      # A chave do Resend (Resend › API Keys).
+      - key: RESEND_API_KEY
+        sync: false
+      # Quem manda, ex.: Norte <nao-responda@usenorte.com.br>. O domínio
+      # precisa estar verificado no Resend.
+      - key: EMAIL_REMETENTE
+        sync: false
+      # Opcional. 0 fecha o cadastro pelo site (/cadastro), que passa a
+      # mostrar o e-mail de contato. Vazio = aberto.
+      - key: CADASTRO_ABERTO
+        sync: false
+
       # ── o assistente no WhatsApp ─────────────────────────────
       # Sem estas, o sistema inteiro funciona e o assistente fica mudo — a
       # tela dele diz qual falta ("sem chave de IA", "sem canal"...). Nenhuma

@@ -21,6 +21,7 @@ import { acharOrgPorSlug, comoOrg } from './banco'
 import { lerSessao } from './sessao'
 import { sinal } from './presenca'
 import { sessaoAindaVale, pode, type Capacidade, type Sessao } from './permissao'
+import { registrarErro } from './registro'
 
 export type Empresa = NonNullable<Awaited<ReturnType<typeof acharOrgPorSlug>>>
 
@@ -271,8 +272,11 @@ export function recadoDoErro(e: unknown, padrao: string): string {
     ['TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'DatabaseError'].includes(e.name) ||
     'code' in e
   if (deMaquina) {
-    console.error('[acao]', e)
-    return padrao
+    // O resumo, não o objeto: o erro de validação do Prisma traz os
+    // argumentos com os valores (nome, telefone). E o código volta na frase,
+    // para a pessoa ditar ao suporte e o suporte achar a linha no log.
+    const codigo = registrarErro('acao', e)
+    return `${padrao} (código ${codigo})`
   }
   return e.message
 }

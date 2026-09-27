@@ -17,6 +17,7 @@
 import { after, NextResponse } from 'next/server'
 import { receberWebhookMeta, verificarWebhookMeta } from '@/servidor/assistente/meta-webhook'
 import { semSegredo } from '@/servidor/assistente/meta-regras'
+import { resumoDoErro } from '@/servidor/registro'
 
 /** A Meta junta até mil atualizações por POST; nada legítimo passa de 1 MB. */
 const MAXIMO_CORPO = 1024 * 1024
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
       try {
         await trabalho()
       } catch (e) {
-        console.error('[whatsapp-meta] falhou ao processar', semSegredo(e instanceof Error ? e.message : String(e)))
+        console.error('[whatsapp-meta] falhou ao processar', semSegredo(resumoDoErro(e)))
       }
     })
   }

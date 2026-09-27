@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -11,6 +12,8 @@ import { Secao } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor } from '../Editor'
 import { alcanceComum, alcancaLoja, lojasSugeridas } from '@/servidor/catalogo-loja'
+
+export const metadata: Metadata = { title: 'Novo produto' }
 
 export default async function NovoProduto({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params

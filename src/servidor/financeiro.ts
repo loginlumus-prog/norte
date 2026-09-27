@@ -607,6 +607,8 @@ export type LancamentoNaLista = {
 export async function listarLancamentos(
   sessao: Sessao,
   f: FiltroLancamentos,
+  /** A tela mostra 500; a planilha pede tudo do mês. */
+  limite = 500,
 ): Promise<LancamentoNaLista[]> {
   exigir(sessao, 'financeiro.ver')
 
@@ -653,7 +655,7 @@ export async function listarLancamentos(
         ...(f.situacao === 'aberto' ? { pagoEm: null } : f.situacao === 'pago' ? { pagoEm: { not: null } } : {}),
       },
       orderBy: [{ vencimento: 'asc' }, { criadoEm: 'asc' }],
-      take: 500,
+      take: limite,
       select: {
         id: true, tipo: true, descricao: true, valor: true, vencimento: true, pagoEm: true,
         fornecedor: true, documento: true, quem: true, recorrenteId: true,

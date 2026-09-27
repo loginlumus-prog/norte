@@ -5,8 +5,15 @@
 
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
+import { after } from 'next/server'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { convidar, revogarConvite, EmailJaUsado } from '@/servidor/convite'
+import { convidar, revogarConvite, EmailJaUsado, VALE_DIAS } from '@/servidor/convite'
+import { gerarLinkDeSenha } from '@/servidor/conta'
+import { emailConfigurado, enviarEmail } from '@/servidor/email'
+import { emailConvite } from '@/servidor/email-modelos'
+import { enderecoPublico } from '@/servidor/requisicao'
+import { acharOrgPorSlug } from '@/servidor/banco'
+import { NOME_DO_PAPEL } from '@/servidor/guia'
 import { mudarAcesso, mudarSituacao, mudarTelefone } from '@/servidor/equipe'
 import { salvarMeta, mesValido } from '@/servidor/metas'
 import { SemPermissao, type Papel } from '@/servidor/permissao'
@@ -65,11 +72,32 @@ export async function convidarPessoa(
 
   const unidadeId = String(form.get('unidadeId') ?? '') || null
 
+  // Com e-mail configurado, o convite também vai por e-mail — e aí o link
+  // segue o endereço público (NORTE_URL), o mesmo de todo link que sai por
+  // e-mail (ver requisicao.ts). Sem ele, o de sempre: o endereço da tela.
+  const publico = emailConfigurado() ? await enderecoPublico() : null
+
   try {
-    const c = await convidar(sessao, { email, papel: papelBruto, unidadeId }, await baseDoSite(slug))
+    const c = await convidar(sessao, { email, papel: papelBruto, unidadeId }, publico ? `${publico}/${slug}` : await baseDoSite(slug))
     revalidatePath(`/${slug}/equipe`)
     // O link aparece UMA vez. Ele não fica guardado em lugar nenhum que dê
     // para recuperar — o banco só tem o resumo dele.
+    if (publico) {
+      const org = await acharOrgPorSlug(slug)
+      const mensagem = emailConvite({
+        para: c.email,
+        empresa: org?.nome ?? slug,
+        quemConvidou: sessao.nome,
+        papel: NOME_DO_PAPEL[c.papel],
+        link: c.link,
+        validadeDias: VALE_DIAS,
+      })
+      // Depois da resposta: o fornecedor de e-mail lento não segura a tela.
+      after(async () => {
+        await enviarEmail(mensagem)
+      })
+      return { ok: `Convite criado e enviado por e-mail para ${c.email}. Se preferir, mande você mesmo este link:`, link: c.link }
+    }
     return { ok: `Convite criado para ${c.email}. Mande este link para ela:`, link: c.link }
   } catch (e) {
     if (e instanceof EmailJaUsado) return { erro: e.message }
@@ -142,5 +170,26 @@ export async function trocarTelefone(
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode mexer no telefone desta pessoa.' }
     return { erro: recadoDoErro(e, 'Não deu para salvar o telefone.') }
+  }
+}
+
+/**
+ * Um link de senha nova para alguém da equipe — o caminho quando o servidor
+ * não manda e-mail, ou quando a pessoa não lê e-mail. Aparece UMA vez, como o
+ * do convite. As travas (quem pode gerar para quem) moram em conta.ts.
+ */
+export async function gerarLinkSenha(slug: string, usuarioId: string): Promise<EstadoEquipe> {
+  const sessao = await exigirSessao(slug)
+  try {
+    const r = await gerarLinkDeSenha(sessao, usuarioId, await baseDoSite(slug))
+    if (!r.ok) return { erro: r.motivo }
+    revalidatePath(`/${slug}/auditoria`)
+    return {
+      ok: `Link de senha nova para ${r.nome}. Mande só para ela — quem abre este link escolhe a senha da conta:`,
+      link: r.link,
+    }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode gerar link de senha.' }
+    return { erro: recadoDoErro(e, 'Não deu para gerar o link.') }
   }
 }

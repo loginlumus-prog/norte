@@ -17,6 +17,7 @@ import { useActionState, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao, cx } from '@/ui/base'
 import { criar, editar, type EstadoProduto } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 export type EixoNaTela = {
   id: string
@@ -128,7 +129,7 @@ export function Editor({
   const total = usados.length === 0 ? 1 : quantas
 
   return (
-    <form action={agir} className="flex max-w-3xl flex-col gap-5">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex max-w-3xl flex-col gap-5">
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
 

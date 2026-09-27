@@ -16,6 +16,7 @@ import { useActionState, useState } from 'react'
 import Link from 'next/link'
 import { Botao, Campo, Marcar, Aviso, Cartao, Selecao } from '@/ui/base'
 import { criar, editar, type EstadoCliente } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 /**
  * As ofertas no WhatsApp, como a ficha mostra. Os textos vêm prontos do
@@ -60,7 +61,7 @@ export function Editor({ slug, cliente, ofertas }: { slug: string; cliente?: Cli
   const simTravado = !!ofertas.lista?.soAPessoa
 
   return (
-    <form action={agir} className="flex max-w-3xl flex-col gap-5">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex max-w-3xl flex-col gap-5">
       {estado.erro && (
         <Aviso nivel="critico">
           <span className="flex flex-wrap items-center gap-2">

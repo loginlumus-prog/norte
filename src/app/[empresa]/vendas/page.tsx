@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -15,6 +16,9 @@ import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import type { Tema } from '@/ui/TrocaTema'
 import type { FormaPagamento, SituacaoVenda } from '@prisma/client'
 import { Fichas } from '@/ui/Busca'
+import { pode } from '@/servidor/permissao'
+
+export const metadata: Metadata = { title: 'Vendas' }
 
 const FORMAS_FILTRO: FormaPagamento[] = ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'CREDIARIO', 'VALE']
 
@@ -317,7 +321,21 @@ export default async function Vendas({
         }
       >
         {vendas.length === 0 ? (
-          <Vazio>
+          <Vazio
+            acao={
+              q ? (
+                <Link href={link({ q: null })} className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2">
+                  Limpar a busca
+                </Link>
+              ) : (
+                pode(sessao, 'venda.criar') && (
+                  <Link href={`/${slug}/balcao`} className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta">
+                    Abrir o balcão
+                  </Link>
+                )
+              )
+            }
+          >
             {q ? 'Nenhuma venda com isso.' : `Nenhuma venda ${j.rotulo.toLowerCase()}.`}
           </Vazio>
         ) : (

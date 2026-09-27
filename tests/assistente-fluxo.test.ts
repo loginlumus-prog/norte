@@ -73,7 +73,11 @@ let servidor: PGLiteSocketServer
 // Tudo relativo a HOJE às 08h de São Paulo (11h UTC): as vendas de "ontem"
 // caem na janela de ontem em qualquer fuso em que o teste rodar.
 const agora = new Date()
-const AS_8H_SP = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate(), 11, 0, 0))
+// O DIA de São Paulo, não o de Greenwich: das 21h à meia-noite em SP o dia
+// UTC já é amanhã, "hoje às 8h" caía amanhã e as vendas de "ontem" viravam
+// as de hoje — o teste falhava toda noite.
+const HOJE_SP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(agora)
+const AS_8H_SP = new Date(`${HOJE_SP}T11:00:00Z`)
 const AS_9H_SP = new Date(AS_8H_SP.getTime() + 3600_000)
 const AS_5H_SP = new Date(AS_8H_SP.getTime() - 3 * 3600_000)
 const ONTEM = new Date(AS_8H_SP.getTime() - 864e5).toISOString()

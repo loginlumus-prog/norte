@@ -30,7 +30,7 @@ export function AbrirCaixa({
     comecar(async () => {
       setErro(null)
       const r = await abrir(slug, unidadeId, Number(saldo) || 0)
-      if (!r.ok) setErro(`Já existe um caixa aberto aqui, por ${r.abertoPor}.`)
+      if (!r.ok) setErro('erro' in r ? r.erro : `Já existe um caixa aberto aqui, por ${r.abertoPor}.`)
     })
   }
 
@@ -130,6 +130,7 @@ export function FecharCaixa({
   const [contado, setContado] = useState('')
   const [obs, setObs] = useState('')
   const [feito, setFeito] = useState<{ diferenca: number; esperado: number } | null>(null)
+  const [erroFechar, setErroFechar] = useState<string | null>(null)
   const [indo, comecar] = useTransition()
 
   if (feito) {
@@ -205,13 +206,17 @@ export function FecharCaixa({
           onChange={(e) => setObs(e.target.value)}
           placeholder="Opcional — o que explica a diferença"
         />
+        {erroFechar && <Aviso nivel="critico">{erroFechar}</Aviso>}
         <Botao
           tom="confirmar"
           carregando={indo}
           disabled={contado === ''}
           onClick={() =>
             comecar(async () => {
+              setErroFechar(null)
               const r = await fechar(slug, caixaId, Number(contado) || 0, obs || undefined)
+              // Deu errado: o contado continua no campo, e a frase aparece aqui.
+              if (!r.ok) return setErroFechar(r.erro)
               setFeito({ diferenca: r.diferenca, esperado: r.esperado })
             })
           }
@@ -288,13 +293,15 @@ export function Movimento({
           comecar(async () => {
             setErro(null)
             try {
-              await movimentar(slug, caixaId, tipo, Number(valor), motivo)
+              const r = await movimentar(slug, caixaId, tipo, Number(valor), motivo)
+              if (r.erro) return setErro(r.erro)
               const v = Number(valor)
               setValor('')
               setMotivo('')
               aoRegistrar?.(tipo, v)
-            } catch (e) {
-              setErro(e instanceof Error ? e.message : 'Não deu para registrar.')
+            } catch {
+              // Queda de rede: a ação nem chegou a responder.
+              setErro('Não deu para registrar. Confira a internet e tente de novo.')
             }
           })
         }

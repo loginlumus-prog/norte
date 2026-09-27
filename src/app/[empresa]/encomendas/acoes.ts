@@ -17,6 +17,7 @@ import {
   type DadosEncomenda,
   type Mudanca,
 } from '@/servidor/encomenda'
+import { registrarErro } from '@/servidor/registro'
 
 export type EstadoEncomenda = { erro?: string; ok?: string; pedeConfirmacao?: boolean; vez?: number }
 
@@ -68,8 +69,7 @@ export async function salvarEncomendaAcao(
     if (!r.ok) return { erro: r.erro, pedeConfirmacao: r.pedeConfirmacao, vez }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode anotar encomenda nesta loja.', vez }
-    console.error('[encomenda] salvar', e)
-    return { erro: 'Não deu para salvar. Tente de novo.', vez }
+    return { erro: `Não deu para salvar. Tente de novo. (código ${registrarErro('encomenda.salvar', e)})`, vez }
   }
 
   revalidatePath(`/${slug}/encomendas`)
@@ -106,8 +106,7 @@ export async function mudarSituacaoAcao(
     if (e instanceof SemPermissao) {
       return { erro: para === 'CANCELADA' ? 'Você não pode cancelar encomenda. Peça para a gerência.' : 'Você não pode mexer nas encomendas desta loja.' }
     }
-    console.error('[encomenda] situação', e)
-    return { erro: 'Não deu para salvar. Tente de novo.' }
+    return { erro: `Não deu para salvar. Tente de novo. (código ${registrarErro('encomenda.situacao', e)})` }
   }
 
   revalidatePath(`/${slug}/encomendas`)

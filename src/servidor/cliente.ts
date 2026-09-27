@@ -284,6 +284,10 @@ function lojasDasCompras(sessao: Sessao): string[] | null {
 export async function listarClientes(
   sessao: Sessao,
   termo?: string,
+  // A TELA mostra quinhentos; a PLANILHA pede tudo. Antes as duas usavam o
+  // mesmo teto, e a planilha de uma loja com 3.000 clientes saía com 500 —
+  // sem aviso, justamente na cópia que a loja leva para guardar.
+  limite = 500,
 ): Promise<ClienteNaLista[]> {
   exigir(sessao, 'cliente.ver')
 
@@ -305,8 +309,8 @@ export async function listarClientes(
         : {},
       orderBy: { nome: 'asc' },
       // Quinhentos com os filtros da tela; a busca acha o resto. Acima disso
-      // a pessoa quer a planilha, e ela existe.
-      take: 500,
+      // a pessoa quer a planilha, e ela existe (e pede o `limite` dela).
+      take: limite,
       select: {
         id: true, nome: true, telefone: true, ativo: true, pontos: true,
         nascimento: true, criadoEm: true, cidade: true,

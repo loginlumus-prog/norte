@@ -492,9 +492,7 @@ export function Balcao({
                 )}
               </span>
               {carrinho.length > 0 && (
-                <button type="button" onClick={limpar} className="text-tinta-3 underline-offset-2 hover:text-critico hover:underline">
-                  limpar venda
-                </button>
+                <LimparVenda aoLimpar={limpar} />
               )}
             </div>
 
@@ -774,5 +772,35 @@ export function Balcao({
         </aside>
       </div>
     </div>
+  )
+}
+
+/**
+ * "limpar venda" pede um segundo toque, como no modo simples (ver
+ * BalcaoSimples.tsx). No avançado era um clique: apagava um carrinho de oito
+ * itens com o cliente no balcão, sem volta.
+ */
+function LimparVenda({ aoLimpar }: { aoLimpar: () => void }) {
+  const [certeza, setCerteza] = useState(false)
+  useEffect(() => {
+    if (!certeza) return
+    const t = setTimeout(() => setCerteza(false), 4000)
+    return () => clearTimeout(t)
+  }, [certeza])
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (!certeza) return setCerteza(true)
+        setCerteza(false)
+        aoLimpar()
+      }}
+      className={cx(
+        'underline-offset-2 hover:underline',
+        certeza ? 'font-semibold text-critico' : 'text-tinta-3 hover:text-critico',
+      )}
+    >
+      {certeza ? 'clique de novo para limpar' : 'limpar venda'}
+    </button>
   )
 }

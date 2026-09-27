@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -13,6 +14,8 @@ import { escolherUnidade } from '@/servidor/unidade'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
+
+export const metadata: Metadata = { title: 'Produtos' }
 
 type SituacaoItem = 'acabaram' | 'minimo' | 'ok'
 type Ordem = 'nome' | 'vendidos' | 'estoque' | 'preco'
@@ -399,13 +402,14 @@ export default async function Produtos({
                   </Link>
                 )}
                 {!simples && (
-                  <Link
+                  // <a>: página de impressão abre inteira — ver etiquetas/page.tsx.
+                  <a
                     href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
                     className="hover:text-tinta"
                     title="Imprimir etiquetas deste produto"
                   >
                     etiquetas
-                  </Link>
+                  </a>
                 )}
                 {!simples && p.categoria && (
                   <Link href={link({ categoria: p.categoria.id })} className="hover:text-tinta">

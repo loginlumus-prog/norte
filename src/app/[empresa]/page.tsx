@@ -60,6 +60,16 @@ import { Atalhos, IrParaModo, type Atalho } from '@/ui/Atalhos'
 import type { Tema } from '@/ui/TrocaTema'
 import { palavra, plural } from '@/ui/texto'
 import { IconeDoItem } from '@/ui/IconesMenu'
+import { registrarErro } from '@/servidor/registro'
+import { empresaDoEndereco, montarTitulo } from '@/servidor/titulo'
+import type { Metadata } from 'next'
+
+// O painel mora no MESMO segmento do layout da empresa, e o modelo de título
+// do layout só vale para os de baixo — então aqui ele se escreve inteiro.
+export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
+  const empresa = await empresaDoEndereco((await params).empresa)
+  return { title: { absolute: montarTitulo('Painel', empresa?.nome ?? null) } }
+}
 
 // O painel, em dois modos.
 //
@@ -879,7 +889,7 @@ async function nichoSemDerrubar(sessao: Sessao, empresa: Empresa, ids: string[],
   try {
     return await nichoDoPainel(sessao, empresa, ids, agora)
   } catch (e) {
-    console.error('[painel] bloco do ramo falhou', e)
+    registrarErro('painel.ramo', e)
     return []
   }
 }

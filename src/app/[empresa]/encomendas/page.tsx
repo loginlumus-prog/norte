@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -32,6 +33,9 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Formulario } from './Formulario'
 import { AcoesEncomenda } from './Linha'
 import { palavra } from '@/ui/texto'
+import Link from 'next/link'
+
+export const metadata: Metadata = { title: 'Encomendas' }
 
 // Encomendas: o que sai depois — bolo para sábado, buquê para as 16h.
 //
@@ -369,7 +373,15 @@ export default async function Encomendas({
       </div>
 
       {grupos.length === 0 ? (
-        <Vazio>
+        <Vazio
+          acao={
+            (q || chaveFiltro) && (
+              <Link href={`/${slug}/encomendas`} className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2">
+                Ver as em aberto
+              </Link>
+            )
+          }
+        >
           {q || chaveFiltro
             ? 'Nenhuma encomenda com esse filtro.'
             : 'Nenhuma encomenda em aberto. Quando alguém pedir um bolo para sábado, anote em “Nova encomenda” — com dia, hora e sinal.'}

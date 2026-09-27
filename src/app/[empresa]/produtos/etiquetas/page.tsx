@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -6,6 +7,9 @@ import { pode } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
 import { svgCode128 } from '@/servidor/codigo-barras'
 import { Imprimir } from '@/ui/Imprimir'
+import { headers } from 'next/headers'
+
+export const metadata: Metadata = { title: 'Etiquetas' }
 
 // As etiquetas, para imprimir.
 //
@@ -37,6 +41,7 @@ export default async function Etiquetas({
     imprimir?: string
   }>
 }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined
   const { empresa: slug } = await params
   const p = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug)
@@ -98,7 +103,12 @@ export default async function Etiquetas({
 
   return (
     <div className="mx-auto max-w-5xl p-4 print:p-0">
-      <style>{`
+      {/* Com o bilhete (nonce) desta requisição: em produção a CSP só deixa
+          entrar <style> que tenha o bilhete (ver src/proxy.ts), e sem ele a
+          folha de impressão inteira era ignorada — etiqueta e cupom saíam no
+          tamanho e na margem da tela. No desenvolvimento a CSP libera estilo
+          em linha, e por isso ninguém via. */}
+      <style nonce={nonce}>{`
         @media print {
           .nao-imprime { display: none !important; }
           body { background: #fff !important; }
@@ -129,23 +139,27 @@ export default async function Etiquetas({
           <span className="flex flex-wrap gap-x-3 text-xs text-tinta-2">
             <span>
               formato:{' '}
-              <Link href={trocar({ formato: null })} className={formato === 'a4' ? 'font-bold text-tinta' : 'underline'}>
+              {/* <a>, e não <Link>: cada troca recarrega a página inteira, e a
+                  folha de impressão (o <style> com o bilhete desta página)
+                  vem junto. Na troca pelo roteador do Next o bilhete é outro
+                  e a CSP descarta o estilo novo. */}
+              <a href={trocar({ formato: null })} className={formato === 'a4' ? 'font-bold text-tinta' : 'underline'}>
                 folha A4 (50×30 mm)
-              </Link>{' '}
+              </a>{' '}
               ·{' '}
-              <Link href={trocar({ formato: 'termica' })} className={formato === 'termica' ? 'font-bold text-tinta' : 'underline'}>
+              <a href={trocar({ formato: 'termica' })} className={formato === 'termica' ? 'font-bold text-tinta' : 'underline'}>
                 impressora térmica
-              </Link>
+              </a>
             </span>
             <span>
               cópias:{' '}
-              <Link href={trocar({ copias: null })} className={copias === 'uma' ? 'font-bold text-tinta' : 'underline'}>
+              <a href={trocar({ copias: null })} className={copias === 'uma' ? 'font-bold text-tinta' : 'underline'}>
                 uma por item
-              </Link>{' '}
+              </a>{' '}
               ·{' '}
-              <Link href={trocar({ copias: 'estoque' })} className={copias === 'estoque' ? 'font-bold text-tinta' : 'underline'}>
+              <a href={trocar({ copias: 'estoque' })} className={copias === 'estoque' ? 'font-bold text-tinta' : 'underline'}>
                 uma por peça em estoque
-              </Link>
+              </a>
             </span>
           </span>
         </div>

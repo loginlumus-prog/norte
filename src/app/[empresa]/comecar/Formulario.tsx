@@ -5,6 +5,7 @@ import { Botao, Campo, Selecao, Marcar, Aviso, Cartao } from '@/ui/base'
 import { PORTES, CATALOGOS, CANAIS, DORES } from '@/servidor/cadastro'
 import { MODULOS, RAMOS, TODOS, type Ramo } from '@/servidor/modulos'
 import { terminarCadastro, type EstadoComeco } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 const REGIMES = [
   { valor: '', titulo: 'Não sei / depois' },
@@ -14,10 +15,19 @@ const REGIMES = [
   { valor: 'REAL', titulo: 'Lucro Real' },
 ]
 
-export function Formulario({ empresa, nomeAtual }: { empresa: string; nomeAtual: string }) {
+export function Formulario({
+  empresa,
+  nomeAtual,
+  ramoAtual,
+}: {
+  empresa: string
+  nomeAtual: string
+  /** O ramo escolhido no cadastro do site, quando a empresa nasceu por lá. */
+  ramoAtual?: Ramo
+}) {
   const [estado, agir, pendente] = useActionState<EstadoComeco, FormData>(terminarCadastro, {})
 
-  const [ramo, setRamo] = useState<Ramo>('outro')
+  const [ramo, setRamo] = useState<Ramo>(ramoAtual ?? 'outro')
   // O ramo só SUGERE. Depois que a pessoa mexeu, a sugestão para de mandar —
   // nada pior que um formulário que desmarca o que você acabou de marcar.
   const [mexeu, setMexeu] = useState(false)
@@ -40,7 +50,7 @@ export function Formulario({ empresa, nomeAtual }: { empresa: string; nomeAtual:
   }
 
   return (
-    <form action={agir} className="flex flex-col gap-4">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4">
       <input type="hidden" name="empresa" value={empresa} />
 
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}

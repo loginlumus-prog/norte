@@ -11,6 +11,7 @@
 
 import { after, NextResponse } from 'next/server'
 import { receberWebhook } from '@/servidor/assistente/webhook'
+import { resumoDoErro } from '@/servidor/registro'
 
 
 /** Mensagem de WhatsApp em JSON não passa disto. Corpo maior é outra coisa. */
@@ -44,7 +45,7 @@ export async function POST(
         await trabalho()
       } catch (e) {
         // O slug é público; o token não entra no log.
-        console.error(`[whatsapp] ${empresa}: falhou ao processar`, e instanceof Error ? e.message : e)
+        console.error(`[whatsapp] ${empresa}: falhou ao processar`, resumoDoErro(e))
       }
     })
   }

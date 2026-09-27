@@ -10,6 +10,7 @@ import { useActionState } from 'react'
 import { Aviso, Botao, Campo, Cartao, Marcar } from '@/ui/base'
 import type { GatilhoNaTela } from '@/servidor/assistente/conexao'
 import { salvarRotinas, type EstadoAgente } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 export function Rotinas({
   slug,
@@ -25,7 +26,7 @@ export function Rotinas({
 
   return (
     <Cartao titulo="O que faz sozinho">
-      <form action={agir} className="flex max-w-3xl flex-col gap-3">
+      <form action={agir} onSubmit={semApagar(agir)} className="flex max-w-3xl flex-col gap-3">
         {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
         {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
         {rotinas.map((r) => {

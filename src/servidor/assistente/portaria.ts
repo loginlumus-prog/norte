@@ -21,6 +21,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
+import { opcoesDoPool } from '../banco'
 
 const guardado = globalThis as unknown as { __portariaRotinas?: PrismaClient }
 
@@ -28,7 +29,9 @@ function portaria(): PrismaClient {
   const url = process.env.DATABASE_URL_PORTARIA
   if (!url) throw new Error('Falta DATABASE_URL_PORTARIA no .env.')
   guardado.__portariaRotinas ??= new PrismaClient({
-    adapter: new PrismaPg({ connectionString: url, max: 1 }),
+    // O mesmo prazo de conexão das outras (ver PRAZO_CONEXAO_MS em banco.ts):
+    // a rotina de hora em hora não pode ficar pendurada no banco mudo.
+    adapter: new PrismaPg(opcoesDoPool(url, 1)),
   })
   return guardado.__portariaRotinas
 }

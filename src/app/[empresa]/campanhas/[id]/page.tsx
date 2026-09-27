@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -10,6 +11,8 @@ import { MENU } from '@/ui/menu'
 import { Aviso } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor } from './Editor'
+
+export const metadata: Metadata = { title: 'Campanha' }
 
 // O editor de uma campanha: o desenho do roteiro, o bloco escolhido, as
 // pendências e quem está dentro agora. Tudo o que a tela confere, o servidor

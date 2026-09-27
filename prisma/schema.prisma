@@ -195,6 +195,8 @@ model Org {
   lancamentos    Lancamento[]
   recorrentes    Recorrente[]
   tentativas     TentativaLogin[]
+  tokensConta    TokenConta[]
+  pedidosConta   PedidoConta[]
   agente         Agente?
   sessaoWhatsapp    SessaoWhatsapp?
   gatilhos       GatilhoAgente[]
@@ -304,11 +306,20 @@ model Usuario {
   /// data para agora, e a sessao antiga morre na proxima tela que ele abrir.
   sessoesDesde DateTime @default(now()) @map("sessoes_desde")
 
+  /// A conta nasceu pelo cadastro do site e o e-mail ainda não foi
+  /// confirmado: a senha pode estar certa e mesmo assim ela não entra.
+  /// Falso para todo mundo que entrou por convite (o link do convite já
+  /// chegou por um caminho que alguém da empresa escolheu) e para quem se
+  /// cadastrou num servidor sem e-mail configurado — não dá para exigir
+  /// confirmação que não tem como chegar. Ver src/servidor/conta.ts.
+  emailPendente Boolean @default(false) @map("email_pendente")
+
   acessos   Acesso[]
   auditoria Auditoria[]
   presencas Presenca[]
   metas     Meta[]
   tarefas   Tarefa[]
+  tokens    TokenConta[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -390,6 +401,78 @@ model Convite {
 
   @@index([orgId])
   @@map("convites")
+}
+
+/// Um link de uso único para a CONTA de alguém: redefinir a senha ou
+/// confirmar o e-mail. Mesmo esquema do convite: o link leva 32 bytes
+/// aleatórios, o banco guarda só o SHA-256 — vazou o banco, os links em
+/// aberto continuam inúteis. Ver src/servidor/conta.ts.
+model TokenConta {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  usuarioId String  @map("usuario_id")
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  tipo TipoTokenConta
+  /// SHA-256 (hex) do token. O token em si não existe em lugar nenhum daqui.
+  hash String @unique
+
+  expiraEm DateTime  @map("expira_em")
+  /// Preenchido no uso. Link usado não abre de novo.
+  usadoEm  DateTime? @map("usado_em")
+  /// De onde veio o pedido — para o suporte entender um abuso, nada mais.
+  ip       String?
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, usuarioId, tipo])
+  @@map("tokens_conta")
+}
+
+enum TipoTokenConta {
+  SENHA
+  EMAIL
+}
+
+/// Cada pedido público de "esqueci a senha" ou "reenviar a confirmação",
+/// exista a conta ou não. É onde o freio conta — ver src/servidor/conta.ts.
+///
+/// Grava o e-mail DIGITADO, como `TentativaLogin`: contar só o que existe
+/// entregaria, pelo comportamento, quem tem cadastro. Descartável: some
+/// sozinho depois de um dia.
+model PedidoConta {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  tipo  TipoTokenConta
+  email String
+  ip    String?
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, email, criadoEm])
+  @@index([orgId, ip, criadoEm])
+  @@map("pedidos_conta")
+}
+
+/// As empresas que nasceram pelo cadastro do site, uma linha por empresa —
+/// é onde o freio por endereço conta ("3 por hora").
+///
+/// SEM org_id, de propósito: o freio existe ANTES de existir empresa. Quem
+/// lê e escreve aqui é só a função `criar_empresa_cadastro` (prisma/sql/
+/// rls.sql), com os direitos do dono. A aplicação e a portaria não têm
+/// permissão nenhuma nesta tabela. Guarda o RESUMO do IP, não o IP: para
+/// comparar basta o resumo, e endereço de gente é dado pessoal.
+model CadastroPublico {
+  id       String   @id @default(cuid())
+  ipResumo String?  @map("ip_resumo")
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([ipResumo, criadoEm])
+  @@map("cadastros_publicos")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1048,6 +1131,10 @@ model Venda {
   @@unique([unidadeId, numero])
   @@index([orgId, unidadeId, criadaEm])
   @@index([orgId, situacao])
+  // O histórico do cliente e a conta de metas por vendedor filtram por essas
+  // colunas; sem índice, cada ficha de cliente varre as vendas da empresa.
+  @@index([orgId, clienteId, criadaEm])
+  @@index([orgId, vendedorId, criadaEm])
   @@map("vendas")
 }
 

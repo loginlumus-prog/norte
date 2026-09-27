@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import { Botao, Campo, Aviso } from '@/ui/base'
 import { cancelarAcao, type EstadoCancelamento } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 // Cancelar é a única ação destrutiva desta tela, e por isso ela é a única
 // coisa aqui que pede DUAS decisões: abrir, e depois confirmar com motivo.
@@ -28,7 +29,7 @@ export function Cancelar({ slug, vendaId, numero }: { slug: string; vendaId: str
   }
 
   return (
-    <form action={agir} className="flex flex-col gap-3 rounded-norte border border-critico-borda bg-critico-fundo p-4">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-3 rounded-norte border border-critico-borda bg-critico-fundo p-4">
       <input type="hidden" name="empresa" value={slug} />
       <input type="hidden" name="venda" value={vendaId} />
 

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
@@ -16,6 +17,8 @@ import { moduloLigado } from '@/servidor/modulos'
 import { taxasDaEmpresa, FORMAS_COM_TAXA } from '@/servidor/taxas'
 import { montarDRE } from '@/servidor/financeiro'
 import { unidadesVisiveis } from '@/servidor/unidade'
+
+export const metadata: Metadata = { title: 'Configurações' }
 
 /**
  * O cartão das taxas busca o que precisa sozinho: as taxas escritas e quanto

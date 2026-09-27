@@ -1,8 +1,9 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { Botao, Aviso, cx } from '@/ui/base'
-import { entrarAcao, type EstadoEntrada } from './acoes'
+import { entrarAcao, reenviarConfirmacaoAcao, type EstadoEntrada } from './acoes'
 
 const CAMPO =
   'h-12 w-full rounded-xl border border-borda bg-superficie px-4 text-[15px] text-tinta ' +
@@ -12,6 +13,8 @@ const CAMPO =
 export function Formulario({ empresa }: { empresa: string }) {
   const [estado, agir, pendente] = useActionState<EstadoEntrada, FormData>(entrarAcao, {})
   const [ver, setVer] = useState(false)
+  const [reenvio, setReenvio] = useState<{ ok?: string; erro?: string } | null>(null)
+  const [reenviando, reenviar] = useTransition()
 
   return (
     <form action={agir} className="flex flex-col gap-4">
@@ -68,6 +71,37 @@ export function Formulario({ empresa }: { empresa: string }) {
         </div>
       )}
 
+      {/* ── falta confirmar o e-mail ──
+          Só aparece depois da senha certa (ver autenticacao.ts). O botão
+          manda o link de novo para o e-mail digitado. */}
+      {estado.emailPendente && (
+        <div
+          role="alert"
+          className="flex flex-col gap-2.5 rounded-norte border border-atencao-borda bg-atencao-fundo px-4 py-3.5"
+        >
+          <p className="text-sm font-bold text-tinta">A senha está certa. Falta confirmar o seu e-mail.</p>
+          <p className="text-[13px] leading-relaxed text-tinta-2">
+            Quando a empresa foi criada, mandamos um link para <b>{estado.email}</b>. Abra o e-mail e toque em
+            &ldquo;Confirmar meu e-mail&rdquo;; depois é só entrar.
+          </p>
+          {reenvio?.ok ? (
+            <p className="text-[13px] font-semibold text-bom">{reenvio.ok}</p>
+          ) : (
+            <button
+              type="button"
+              disabled={reenviando}
+              onClick={() =>
+                reenviar(async () => setReenvio(await reenviarConfirmacaoAcao(empresa, estado.email ?? '')))
+              }
+              className="self-start text-[13px] font-semibold text-marca underline-offset-2 hover:underline disabled:opacity-60"
+            >
+              {reenviando ? 'Mandando…' : 'Não chegou? Mandar o link de novo'}
+            </button>
+          )}
+          {reenvio?.erro && <p className="text-[13px] font-semibold text-critico">{reenvio.erro}</p>}
+        </div>
+      )}
+
       {/* Campos altos, de toque: a tela de entrar também é aberta no tablet
           do balcão, e 36px de altura é mira, não campo. */}
       <div className="flex flex-col gap-1.5">
@@ -89,9 +123,17 @@ export function Formulario({ empresa }: { empresa: string }) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="entrar-senha" className="text-sm font-semibold text-tinta">
-          Senha
-        </label>
+        <div className="flex items-baseline justify-between gap-3">
+          <label htmlFor="entrar-senha" className="text-sm font-semibold text-tinta">
+            Senha
+          </label>
+          <Link
+            href={`/${empresa}/redefinir-senha`}
+            className="text-[13px] font-medium text-marca underline-offset-2 hover:underline"
+          >
+            Esqueci a senha
+          </Link>
+        </div>
         <div className="relative">
           <input
             id="entrar-senha"

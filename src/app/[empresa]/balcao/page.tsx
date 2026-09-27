@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -19,6 +20,8 @@ import { BarraCaixa } from './BarraCaixa'
 import { comoOrg } from '@/servidor/banco'
 import { programaNoPlano, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
+
+export const metadata: Metadata = { title: 'Balcão' }
 
 export default async function BalcaoPagina({
   params,

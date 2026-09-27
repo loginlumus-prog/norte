@@ -976,6 +976,7 @@ export const GUIA: Entrada[] = [
         passos: [
           '"+ Convidar": e-mail, papel e loja (ou todas as lojas).',
           '"Criar convite". O link aparece UMA vez — copie agora e mande. O sistema guarda só o resumo dele; nem o suporte recupera.',
+          'Com e-mail configurado no servidor, o convite também vai sozinho para o e-mail da pessoa — o link na tela continua valendo, para mandar pelo WhatsApp se preferir.',
           'O link vale 7 dias e serve uma vez. A pessoa abre, escolhe a senha e entra já com o papel que você deu.',
           'Você só concede papéis que pode: o gerente convida balcão, na loja dele; só o dono cria dono, gerente, financeiro e contador, e só quem tem todas as lojas convida para "todas as lojas".',
           'Cadastrar gente é de graça em todo plano. O plano limita quantas ficam dentro ao mesmo tempo.',
@@ -990,6 +991,17 @@ export const GUIA: Entrada[] = [
           'Ninguém muda o próprio acesso, e a empresa nunca fica sem dono — o sistema recusa.',
           'Mexer em alguém exige poder dar o acesso que ele tem: o gerente troca, tira e devolve o acesso do balcão da loja dele — não o de outro gerente, nem o da dona.',
           'Convite pendente que não serve mais: "Cancelar" em "Convites esperando".',
+        ],
+        capacidade: 'equipe.gerir',
+      },
+      {
+        titulo: 'Gerar um link de senha nova para alguém',
+        passos: [
+          'Na linha da pessoa, "Gerar link de senha". O link aparece UMA vez, em cima da lista — copie e mande só para ela.',
+          'Quem abre o link escolhe a senha nova da conta. Vale 24 horas, serve uma vez, e gerar outro apaga o anterior.',
+          'Ao salvar a senha nova, todos os aparelhos com a conta aberta saem.',
+          'As regras são as de mexer no acesso: o gerente gera para o balcão da loja dele, não para outro gerente nem para a dona. Conta sem acesso precisa do acesso devolvido antes.',
+          'A sua própria senha você troca em "Minha conta" (clique no seu nome, no rodapé do menu). Quem gerou link para quem fica no livro, em Auditoria.',
         ],
         capacidade: 'equipe.gerir',
       },
@@ -1029,6 +1041,10 @@ export const GUIA: Entrada[] = [
       {
         p: 'Perdi o link do convite. Como recupero?',
         r: 'Não recupera — o sistema guarda só o resumo dele. Cancele o convite em "Convites esperando" e crie outro para o mesmo e-mail.',
+      },
+      {
+        p: 'Alguém da equipe esqueceu a senha. O que eu faço?',
+        r: 'Se o servidor manda e-mail, ela mesma usa "Esqueci a senha" na tela de entrar. Se não, "Gerar link de senha" na linha dela, aqui em Equipe, e mande o link só para ela: vale 24 horas e serve uma vez.',
       },
       {
         p: 'Quantas pessoas posso cadastrar?',
@@ -1750,7 +1766,7 @@ export const GUIA: Entrada[] = [
     caminho: '/comecar',
     abre: ['empresa.configurar'],
     oQueE:
-      'O cadastro inicial, no primeiro acesso: nome da empresa, razão social, CNPJ, regime, ramo (que prepara eixos de variação, categorias, medida e o manual do assistente), contato, a primeira unidade, como você trabalha, os módulos e o nome do assistente. Leva dois minutos, e tudo muda depois em Configurações.',
+      'O cadastro inicial, no primeiro acesso: nome da empresa, razão social, CNPJ, regime, ramo (que prepara eixos de variação, categorias, medida e o manual do assistente), contato, a primeira unidade, como você trabalha, os módulos e o nome do assistente. Leva dois minutos, e tudo muda depois em Configurações. Quem criou a conta pelo site ("Começar grátis") chega aqui já com o ramo escolhido lá.',
     comoFazer: [
       {
         titulo: 'Terminar o cadastro',
@@ -1764,6 +1780,16 @@ export const GUIA: Entrada[] = [
           'Entrou com a conta errada? "Sair", no alto da tela, volta para a tela de entrar.',
         ],
         capacidade: 'empresa.configurar',
+      },
+      {
+        titulo: 'Criar a conta pelo site',
+        passos: [
+          'Na página do Norte, "Começar grátis": nome da empresa, o seu nome, e-mail, senha e o ramo da loja, e aceite os Termos e a Política de Privacidade.',
+          'A empresa nasce no plano Grátis, com você como dono e uma loja com o nome da empresa. O endereço sai do nome (/sorveteria-da-praca); se já estiver em uso, ganha um número no fim.',
+          'Com e-mail configurado no servidor, chega um link para confirmar o e-mail. Sem confirmar, a conta não entra; o link vale 48 horas, e a tela de entrar oferece mandar outro.',
+          'Confirmado, entre com a senha que escolheu: o primeiro acesso cai aqui, no cadastro inicial.',
+          'Sem e-mail no servidor, a conta entra na hora e vem direto para cá.',
+        ],
       },
       {
         titulo: 'O que o ramo prepara',
@@ -1795,7 +1821,7 @@ export const GUIA: Entrada[] = [
         r: 'Quem configura a empresa ainda não terminou o cadastro inicial. Assim que terminar, o seu acesso aparece.',
       },
     ],
-    palavras: ['primeiro acesso', 'cadastro inicial', 'onboarding', 'ramo', 'começar', 'configurar a empresa', 'setup', 'implantação', 'início'],
+    palavras: ['primeiro acesso', 'cadastro inicial', 'onboarding', 'ramo', 'começar', 'configurar a empresa', 'setup', 'implantação', 'início', 'criar conta', 'cadastro', 'começar grátis', 'confirmar e-mail'],
   },
 
   // ── Entrar, sair, tela trancada e tema ──
@@ -1804,7 +1830,7 @@ export const GUIA: Entrada[] = [
     titulo: 'Entrar, sair e a tela trancada',
     caminho: '/entrar',
     oQueE:
-      'Cada empresa entra pelo próprio endereço, com e-mail e senha. O plano limita quantas pessoas ficam dentro ao mesmo tempo, e a vaga solta com 10 minutos parada. Trinta minutos sem mexer, a tela tranca e pede a senha de novo — sem perder a venda em andamento. Quem só vende entra direto no Balcão; os outros, no Painel. "Sair" fica no rodapé do menu; o tema claro/escuro, no alto da tela.',
+      'Cada empresa entra pelo próprio endereço, com e-mail e senha. O plano limita quantas pessoas ficam dentro ao mesmo tempo, e a vaga solta com 10 minutos parada. Trinta minutos sem mexer, a tela tranca e pede a senha de novo — sem perder a venda em andamento. Quem só vende entra direto no Balcão; os outros, no Painel. "Esqueci a senha" fica na própria tela de entrar; trocar a senha, em "Minha conta" (o seu nome, no rodapé do menu). "Sair" fica no rodapé do menu; o tema claro/escuro, no alto da tela.',
     comoFazer: [
       {
         titulo: 'Entrar',
@@ -1813,6 +1839,25 @@ export const GUIA: Entrada[] = [
           'E-mail ou senha errados dão o mesmo recado, de propósito. Errou muitas vezes seguidas, espere alguns minutos.',
           'Quem só vende (sem acesso ao painel) cai direto no Balcão; os outros, no Painel.',
           'A sessão dura 12 horas, ou até alguém mexer no seu acesso (trocar papel, tirar acesso): aí a sessão morre na próxima tela.',
+        ],
+      },
+      {
+        titulo: 'Esqueci a senha',
+        passos: [
+          'Na tela de entrar, "Esqueci a senha", ao lado do campo da senha. Digite o seu e-mail e "Mandar o link".',
+          'A resposta é a mesma para qualquer e-mail, de propósito: a tela não conta quem tem conta na empresa. Se o seu tem, o link chega em alguns minutos.',
+          'O link vale 30 minutos e serve uma vez; pedir de novo apaga o anterior. Escolha a senha nova, e todos os aparelhos com a sua conta aberta saem.',
+          'Três pedidos por hora para o mesmo e-mail; depois, é esperar.',
+          'Servidor sem e-mail configurado: a tela diz isso. Peça para quem administra a empresa gerar um link na tela Equipe.',
+        ],
+      },
+      {
+        titulo: 'Trocar a minha senha',
+        passos: [
+          'Clique no seu nome, no rodapé do menu: abre "Minha conta".',
+          'Em "Trocar minha senha": a senha atual, a nova (pelo menos 8 caracteres) e a nova de novo.',
+          'Este aparelho continua dentro; os outros com a sua conta aberta saem na próxima tela.',
+          'Com e-mail configurado, chega um aviso de que a senha mudou. Não foi você? Fale com quem administra a empresa.',
         ],
       },
       {
@@ -1844,7 +1889,7 @@ export const GUIA: Entrada[] = [
     perguntas: [
       {
         p: 'Esqueci a senha.',
-        r: 'Ainda não há "esqueci a senha" na tela. Fale com quem responde pela empresa ou com o suporte do Norte.',
+        r: '"Esqueci a senha", na tela de entrar, manda um link para o seu e-mail (vale 30 minutos). Se o servidor não manda e-mail, peça para quem administra a empresa gerar um link na tela Equipe.',
       },
       {
         p: 'Fui derrubado do sistema do nada. Por quê?',
@@ -1855,7 +1900,7 @@ export const GUIA: Entrada[] = [
         r: 'Não. O tema é sempre uma escolha: claro (o padrão) ou escuro, na chave do alto da tela. Não segue o computador nem o celular.',
       },
     ],
-    palavras: ['login', 'logar', 'senha', 'sair', 'logout', 'tela trancada', 'trancou', 'bloqueou', 'destrancar', 'tema', 'escuro', 'claro', 'modo noturno', 'sessão', 'vaga', 'plano cheio', 'esqueci a senha', 'acesso'],
+    palavras: ['login', 'logar', 'senha', 'sair', 'logout', 'redefinir senha', 'trocar senha', 'mudar senha', 'minha conta', 'recuperar senha', 'confirmar e-mail', 'tela trancada', 'trancou', 'bloqueou', 'destrancar', 'tema', 'escuro', 'claro', 'modo noturno', 'sessão', 'vaga', 'plano cheio', 'esqueci a senha', 'acesso'],
   },
 ]
 

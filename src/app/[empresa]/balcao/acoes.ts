@@ -10,7 +10,7 @@
 // Esconder o botão é conforto. A trava é aqui.
 
 import { revalidatePath } from 'next/cache'
-import { exigirSessao } from '@/servidor/pagina'
+import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
 import { comoOrg, type BancoDaOrg } from '@/servidor/banco'
 import { registrarVenda, type PagamentoDaVenda } from '@/servidor/venda'
@@ -408,18 +408,35 @@ export async function fecharVenda(
   return r
 }
 
+// ── o caixa ──────────────────────────────────────────────────
+// As três DEVOLVEM o erro em vez de lançar. Erro lançado por Server Action
+// chega ao navegador, em produção, sem a frase (o Next troca por um texto
+// genérico em inglês, para não vazar detalhe) — e o "O valor precisa ser
+// maior que zero" virava "An error occurred in the Server Components
+// render". Pior no fechamento: o erro subia para a tela de erro inteira e o
+// valor contado na gaveta, já digitado, sumia. Caso real: dois tablets na
+// mesma loja, um fecha o caixa, o outro tenta fechar em seguida.
+
 export async function abrir(slug: string, unidadeId: string, saldo: number) {
-  const s = await exigirSessao(slug)
-  const r = await abrirCaixa(s, unidadeId, saldo)
-  revalidatePath(`/${slug}/balcao`)
-  return r
+  try {
+    const s = await exigirSessao(slug)
+    const r = await abrirCaixa(s, unidadeId, saldo)
+    revalidatePath(`/${slug}/balcao`)
+    return r
+  } catch (e) {
+    return { ok: false as const, erro: recadoDoErro(e, 'Não deu para abrir o caixa. Tente de novo.') }
+  }
 }
 
 export async function fechar(slug: string, caixaId: string, contado: number, obs?: string) {
-  const s = await exigirSessao(slug)
-  const r = await fecharCaixa(s, caixaId, contado, obs)
-  revalidatePath(`/${slug}/balcao`)
-  return r
+  try {
+    const s = await exigirSessao(slug)
+    const r = await fecharCaixa(s, caixaId, contado, obs)
+    revalidatePath(`/${slug}/balcao`)
+    return { ok: true as const, ...r }
+  } catch (e) {
+    return { ok: false as const, erro: recadoDoErro(e, 'Não deu para fechar o caixa. Tente de novo.') }
+  }
 }
 
 export async function movimentar(
@@ -428,10 +445,15 @@ export async function movimentar(
   tipo: 'SANGRIA' | 'SUPRIMENTO',
   valor: number,
   motivo: string,
-) {
-  const s = await exigirSessao(slug)
-  await movimentarCaixa(s, caixaId, tipo, valor, motivo)
-  revalidatePath(`/${slug}/balcao`)
+): Promise<{ erro?: string }> {
+  try {
+    const s = await exigirSessao(slug)
+    await movimentarCaixa(s, caixaId, tipo, valor, motivo)
+    revalidatePath(`/${slug}/balcao`)
+    return {}
+  } catch (e) {
+    return { erro: recadoDoErro(e, 'Não deu para registrar. Tente de novo.') }
+  }
 }
 
 // ── o vale de troca ──────────────────────────────────────────

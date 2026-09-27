@@ -1,9 +1,14 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { pode } from '@/servidor/permissao'
+import { comoOrg } from '@/servidor/banco'
+import { RAMOS, type Ramo } from '@/servidor/modulos'
 import { Aviso } from '@/ui/base'
 import { Formulario } from './Formulario'
 import { sairAcao } from '@/app/[empresa]/acoes'
+
+export const metadata: Metadata = { title: 'Começar' }
 
 export default async function Comecar({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
@@ -12,6 +17,12 @@ export default async function Comecar({ params }: { params: Promise<{ empresa: s
 
   // Já configurada: não deixa refazer o cadastro inicial por engano.
   if (empresa.configuradaEm) redirect(`/${slug}/configuracoes`)
+
+  // Quem se cadastrou pelo site já disse o ramo lá; a tela começa com ele.
+  const { ramo } = await comoOrg(sessao.orgId, (db) =>
+    db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { ramo: true } }),
+  )
+  const ramoAtual = ramo && ramo in RAMOS ? (ramo as Ramo) : undefined
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-6">
@@ -40,7 +51,7 @@ export default async function Comecar({ params }: { params: Promise<{ empresa: s
       </header>
 
       {pode(sessao, 'empresa.configurar') ? (
-        <Formulario empresa={slug} nomeAtual={empresa.nome} />
+        <Formulario empresa={slug} nomeAtual={empresa.nome} ramoAtual={ramoAtual} />
       ) : (
         <Aviso nivel="atencao">
           Esta empresa ainda está sendo configurada por quem responde por ela. Assim que

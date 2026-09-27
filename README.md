@@ -82,8 +82,13 @@ repositório, no ar.
 | | |
 |---|---|
 | `DATABASE_URL` | papel `app_norte`, porta **6543** (modo transação) |
-| `DATABASE_URL_ADMIN` | papel `postgres`, porta **6543** |
+| `DATABASE_URL_PORTARIA` | papel `app_portaria`, porta **6543** — só responde "de quem é este endereço" |
 | `SEGREDO_SESSAO` | 48 bytes aleatórios, **diferente** do local |
+
+`DATABASE_URL_ADMIN` **não vai** para a Vercel nem para servidor nenhum: a
+aplicação não usa (ver `src/servidor/banco.ts`), e no Supabase o `postgres`
+passa por cima de todo RLS. Ela mora só no `.env.producao` do laptop de quem
+opera — migração, preparação e a operação do dia a dia (abaixo).
 
 A porta muda conforme o uso: **5432** é sessão, e é o que DDL e migração
 precisam; **6543** é transação, e é o que serverless precisa, porque a conexão
@@ -95,6 +100,168 @@ troca a conexão por baixo. Se alguém um dia trocar por `SET` de sessão, o
 `npm run conexao` acusa antes de virar vazamento.
 
 `POOL_MAX` não vai: o padrão (10) é o certo fora do PGlite.
+
+### E-mail e cadastro pelo site
+
+O Norte manda e-mail pelo [Resend](https://resend.com), pela API HTTP
+(`src/servidor/email.ts`): "esqueci a senha", o aviso de senha trocada, a
+confirmação do e-mail de quem se cadastra pelo site e o convite da equipe.
+Sem as duas primeiras variáveis, nada quebra: o e-mail não sai, o log diz
+"e-mail não configurado", e as telas dizem a verdade — "peça para quem
+administra a empresa gerar um link na tela Equipe".
+
+| | |
+|---|---|
+| `RESEND_API_KEY` | a chave do Resend (Resend › API Keys), com permissão de envio |
+| `EMAIL_REMETENTE` | quem manda, ex.: `Norte <nao-responda@usenorte.com.br>` — o domínio precisa estar verificado no Resend (SPF e DKIM no DNS) |
+| `NORTE_URL` | já existente. É a base de TODO link que sai por e-mail; em produção, sem ela, o e-mail fica desligado (link montado pelo cabeçalho `Host` deixaria um golpista pedir a senha de alguém e receber o link verdadeiro apontando para o site dele) |
+| `CADASTRO_ABERTO` | opcional. `0` fecha o cadastro pelo site (`/cadastro`): a página passa a dizer "fale com a gente" com o e-mail. Qualquer outro valor, ou nenhum, deixa aberto |
+
+O cadastro pelo site cria a empresa no plano **Grátis** pela função
+`criar_empresa_cadastro` do banco (`prisma/sql/rls.sql`), que só o papel da
+portaria pode chamar — a aplicação continua sem a credencial de admin. Ela tem
+o próprio freio: 3 empresas por hora por endereço de rede, 60 no total. Com
+e-mail configurado, a conta só entra depois de confirmar o e-mail (link de 48
+horas); sem, entra na hora.
+
+## Operação do dia a dia
+
+A equipe do Norte opera as empresas por **uma ferramenta de linha de comando,
+rodada do laptop** — `scripts/operacao.ts`. Não existe console de
+administração na web, de propósito: ele precisaria, no servidor, de uma chave
+que atravessa empresas, e aí um furo em qualquer tela viraria acesso a todas
+as lojas.
+
+```bash
+npm run operacao -- empresas                    # quem são, plano, lojas, crédito, WhatsApp, suporte
+npm run operacao -- pedidos                     # pedidos de plano e de crédito esperando resposta
+npm run operacao -- plano    <endereço> <PLANO>
+npm run operacao -- credito  <endereço> <reais> --motivo "..." [--tipo COMPRA|AJUSTE] [--sem-pedido]
+npm run operacao -- recusar  <endereço> plano|credito --motivo "..."
+npm run operacao -- suporte  <endereço> --email <e-mail> --horas <1..72> --motivo "..." [--nome "..."]
+npm run operacao -- suporte-revogar <endereço> --email <e-mail> [--motivo "..."]
+npm run operacao -- situacao <endereço> ATIVA|SUSPENSA|CANCELADA --motivo "..."
+```
+
+**As travas.**
+
+- Todo comando que **muda** dado só mostra o resumo do que faria. Aplica com
+  `--confirmar`.
+- `--quem "Seu nome"` (ou `NORTE_OPERADOR="Seu nome"` no `.env` /
+  `.env.producao`) assina no livro de auditoria **da loja**: toda mudança
+  sai como `Equipe Norte (Seu nome)`, autor SISTEMA, e a loja lê na tela
+  Auditoria.
+- `--producao` lê o `.env.producao`. Lá, além do `--confirmar`, a ferramenta
+  mostra o resumo e pede para **digitar o endereço da empresa**; sem terminal
+  para digitar, recusa. E recusa rodar `--producao` com `NODE_ENV=production`
+  ou na Vercel: é ferramenta de laptop.
+- Toda saída passa por um filtro que troca por `***` a senha de qualquer URL
+  do Postgres e o valor de qualquer variável com cara de segredo — um erro do
+  driver não imprime a senha do banco.
+- As listas não mostram dado pessoal: nem nome de cliente, nem telefone, nem
+  quem da loja fez o pedido. A empresa aparece pelo endereço.
+
+**As duas credenciais.** As listas (`empresas`, `pedidos`) atravessam
+empresas e leem com a `DATABASE_URL_ADMIN`, só as colunas escolhidas. Toda
+**escrita** vai pela credencial da aplicação, dentro do `comoOrg` da empresa
+(`src/servidor/operacao.ts`, `trocarPlanoComoEquipe` em `assinatura.ts`): o
+RLS prende a operação àquela empresa, as travas são as mesmas da tela, e a
+linha do livro sai na mesma transação.
+
+### Os pedidos
+
+Com o gateway ainda desligado, "subir de plano" e "pôr crédito" na tela da
+Assinatura viram **pedido** (`plano.pediu` / `credito.pediu` no livro). Não
+existe tabela de pedidos: o estado sai do que veio depois no livro
+(`src/servidor/pedidos.ts`) — atendido pela troca para o plano pedido (ou pela
+troca da equipe apontando para ele), pela recarga, recusado por
+`pedido.recusou`, ou substituído por um pedido mais novo do mesmo tipo. A
+loja vê na própria tela "Pedido do plano Direção enviado em 26/09 21:31,
+aguardando confirmação" — ou a recusa, com o motivo, por 30 dias.
+
+```
+$ npm run operacao -- pedidos
+
+  2 pedido(s) esperando resposta   [banco: local]
+
+  endereço     pedido em                   pediu                       plano hoje  crédito hoje  situação
+  ───────────  ──────────────────────────  ──────────────────────────  ──────────  ────────────  ────────
+  atelie-vera  26/09/26, 21:31 (há 0 min)  plano Direção               Assistente  R$ 0,00       teste
+  atelie-vera  26/09/26, 21:31 (há 0 min)  R$ 200,00 de crédito de IA  Assistente  R$ 0,00       teste
+
+$ npm run operacao -- plano atelie-vera REDE --quem "Seu nome" --confirmar
+
+  Trocar o plano de /atelie-vera   [banco: local]
+
+    Empresa       Ateliê Vera (teste)
+    Plano         Assistente → Direção (subir)
+    Mensalidade   R$ 1500,00 (+R$ 1150,00)
+    Ganha         crediario
+    Perde         —
+    Pedido        atende o pedido do plano Direção, de 26/09/26, 21:31
+
+  Feito. /atelie-vera está no plano Direção. No livro da loja: Equipe Norte (Seu nome).
+
+$ npm run operacao -- credito atelie-vera 200 --motivo "Pix de R$ 200 confirmado em 26/09" --quem "Seu nome" --confirmar
+
+    Lançamento   +R$ 200,00 (COMPRA)
+    Saldo        R$ 100,00 → R$ 300,00
+    Motivo       "Pix de R$ 200 confirmado em 26/09" — a loja lê isto no extrato do crédito
+    Pedido       atende o pedido de R$ 200,00 de crédito de IA, de 26/09/26, 21:31
+
+  Feito. Saldo de crédito de IA de /atelie-vera: R$ 300,00.
+```
+
+A troca da equipe tem as **mesmas travas** da tela: loja demais para o plano
+novo impede, e o módulo que o plano novo não cobre sai da empresa. O
+`--motivo` do crédito e da recusa é **texto para a loja ler** — escreva para
+ela. `--tipo AJUSTE` aceita valor negativo (correção), nunca abaixo de zero;
+acima de R$ 5.000 numa recarga só, não.
+
+### O acesso de suporte
+
+Para olhar a conta de uma loja, alguém da equipe recebe um acesso **SUPORTE**:
+só leitura (`permissao.ts`), com prazo (1 a 72 horas) e motivo. Cada tela que
+ele abre vira linha no livro da loja com esse motivo (`suporte.acessou`, em
+`pagina.ts`).
+
+```
+$ npm run operacao -- suporte exemplo --email suporte.teste@usenorte.com.br --horas 4 \
+    --motivo "Chamado 118: conferir o fechamento de caixa de sexta" --quem "Seu nome" --confirmar
+
+    Conta     será criada agora, sem senha
+    Senha     ninguém daqui escolhe: o link de "Esqueci a senha" vai para suporte.teste@usenorte.com.br
+    Prazo     até 27/09/26, 01:35 (4 h)
+    Poder     só leitura (papel SUPORTE); cada tela aberta vira linha no livro da loja
+
+  Feito. Acesso de suporte até 27/09/26, 01:35. A conta foi criada.
+  Como entrar: http://localhost:3000/exemplo/entrar — com o e-mail suporte.teste@usenorte.com.br e a SENHA DA PRÓPRIA PESSOA.
+```
+
+- Usuário é sempre de uma empresa só: quem atende três lojas tem três contas,
+  cada uma com a sua senha.
+- A conta nasce **sem senha**. Ninguém da equipe escolhe, vê ou imprime a
+  senha de ninguém: a ferramenta dispara o "Esqueci a senha"
+  (`src/servidor/conta.ts`) e o link vai para a caixa de e-mail da própria
+  pessoa. Sem e-mail configurado no ambiente, ela pede pela entrada da
+  empresa, onde o e-mail funcionar.
+- Entra pela entrada normal, `/<endereço>/entrar`. Passado o prazo, o login
+  responde "sem acesso"; a conta fica lá, sem poder nenhum.
+- Rodar de novo **estende** (o mesmo acesso, prazo novo). Encurtar ou
+  `suporte-revogar` corta as sessões abertas na hora.
+- Recusa e-mail de gente da loja (suporte é conta separada) e conta que a
+  própria loja desativou na tela Equipe — a decisão é dela.
+  `NORTE_EQUIPE_DOMINIO=usenorte.com.br` restringe ao e-mail da equipe.
+- A conta de suporte não conta como "pessoa cadastrada" na Assinatura da loja.
+
+### Situação da empresa
+
+`situacao <endereço> SUSPENSA --motivo "..."` recusa o login ("o acesso desta
+empresa está suspenso"), leva toda tela aberta de volta para a entrada, para
+o assistente e as campanhas, não deposita o crédito do mês — e **corta a
+sessão de todo mundo da empresa**, porque uma Server Action de tela já aberta
+confere a sessão, não a empresa. `ATIVA` devolve tudo. Criar empresa continua
+sendo `npm run empresa`; atender pedido de titular (LGPD), `npm run anonimizar`.
 
 ## Conector do WhatsApp (QR Code)
 
@@ -511,6 +678,9 @@ gatilhos que fazem ele agir sozinho.
 | `src/servidor/unidade.ts` | Qual loja a pessoa está olhando, e quais ela alcança |
 | `src/servidor/painel.ts` | Os números do painel, uma consulta por assunto |
 | `src/servidor/planos.ts` | Cotas por plano e o que custa a loja extra |
+| `src/servidor/pedidos.ts` | O estado de um pedido de plano/crédito, lido do livro. A regra é **pura** |
+| `src/servidor/operacao.ts` | O que a equipe do Norte faz nas empresas (crédito, recusa, suporte, situação) |
+| `scripts/operacao.ts` | A ferramenta de operação, do laptop — ver "Operação do dia a dia" |
 | `src/servidor/limite.ts` | O freio do login: quantas tentativas, por e-mail e por IP |
 | `src/servidor/produto.ts` | Cadastrar produto e mexer na grade sem apagar história |
 | `src/servidor/entrada.ts` | Entrada de mercadoria: saldo, custo e conta do fornecedor |

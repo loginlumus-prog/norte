@@ -27,6 +27,7 @@ import { IconeCadeado } from '@/ui/Cadeado'
 import { quantoCusta } from '@/servidor/pontos'
 import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 import { salvarPontos, type EstadoPontos } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 const brl = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -88,7 +89,7 @@ export function Pontos({
   const porMes = (faturamentoMes * pct) / 100
 
   return (
-    <form action={agir} className="flex flex-col gap-4">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4">
       <input type="hidden" name="empresa" value={empresa} />
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}

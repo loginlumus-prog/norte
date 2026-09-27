@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -23,6 +24,8 @@ import { Tabela, type Coluna } from '@/ui/Tabela'
 import { BarrasH } from '@/ui/Graficos'
 import type { Tema } from '@/ui/TrocaTema'
 import { palavra, plural, quantidade } from '@/ui/texto'
+
+export const metadata: Metadata = { title: 'Análise' }
 
 // A análise.
 //

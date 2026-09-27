@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import Link from 'next/link'
@@ -27,6 +28,8 @@ import { plural } from '@/ui/texto'
 import { moduloLigado } from '@/servidor/modulos'
 import { ORDEM, doPlano, planoLibera } from '@/servidor/planos'
 import { diaEmSP, inicioDoDiaEmSP, primeiroDoMes, somarDias } from '@/servidor/dia'
+
+export const metadata: Metadata = { title: 'Assistente' }
 
 // O agente, numa tela só.
 //

@@ -9,11 +9,10 @@
 // escolhe nome e senha, a conta nasce, e ele cai no cadastro inicial que já
 // existe — onde escolhe ramo, módulos e batiza o assistente.
 //
-// ── por que isto é script, e não tela ────────────────────────
-// Um dia vai ser tela: a pessoa assina, escolhe o endereço e entra sozinha.
-// Enquanto não existe cobrança nem contrato, quem cria empresa é quem vende —
-// e são poucos. Tela de auto-cadastro antes disso é porta aberta para encher o
-// banco de empresa que ninguém pediu.
+// ── por que isto continua existindo, se há /cadastro ─────────
+// O cadastro pelo site (src/app/cadastro) cria empresa no plano Grátis, com o
+// próprio dono escolhendo a senha. Este script é o caminho de quem VENDE:
+// escolhe o plano e os dias de teste, e manda o convite do dono por fora.
 //
 // ── e por que ele usa a credencial de admin ──────────────────
 // Criar empresa é a segunda operação que legitimamente acontece FORA de uma
@@ -22,9 +21,9 @@
 // ainda não existe.
 //
 // Aqui isso é aceitável porque é script de operador, rodado da máquina de
-// quem vende, e não caminho de requisição. Quando virar tela, NÃO pode ser
-// assim: vai precisar de um papel próprio, com permissão de inserir em `orgs`
-// e `convites` e mais nada — do mesmo jeito que a portaria só lê nove colunas.
+// quem vende, e não caminho de requisição. A tela (/cadastro) NÃO é assim:
+// ela pede à função `criar_empresa_cadastro` do banco, que só a portaria
+// chama — ver prisma/sql/rls.sql.
 
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -33,29 +32,14 @@ import { carregarAmbiente, ehLocal } from './ambiente'
 import { resumirToken, VALE_DIAS } from '../src/servidor/convite'
 import { normalizar } from '../src/servidor/autenticacao'
 import { PLANOS } from '../src/servidor/planos'
+import { RESERVADOS } from '../src/servidor/enderecos'
 import type { Plano } from '@prisma/client'
 
 const { arquivo } = carregarAmbiente()
 
 // ── endereços que a empresa não pode ter ─────────────────────
-// O endereço da empresa é o primeiro pedaço da URL (norte.app/<slug>), então
-// ele disputa espaço com as páginas do próprio site. `usenorte.com.br/termos`
-// precisa ser os termos, não a loja de alguém que se cadastrou como "termos".
-//
-// A lista é maior do que as páginas de hoje de propósito: tirar um nome de
-// alguém que já está usando é muito pior do que reservar um nome a mais.
-const RESERVADOS = new Set([
-  // o que existe
-  'fontes', 'img', 'video', 'arte', 'icon.svg', 'favicon.ico', 'robots.txt', 'sitemap.xml',
-  // o que o Next usa
-  '_next', 'api', 'static',
-  // páginas do site, as de hoje e as próximas
-  'termos', 'privacidade', 'contrato', 'planos', 'precos', 'ajuda', 'suporte',
-  'sobre', 'contato', 'blog', 'status', 'seguranca', 'lgpd',
-  // o que confunde com o sistema
-  'admin', 'app', 'painel', 'entrar', 'sair', 'conta', 'assinatura', 'convite',
-  'cadastro', 'criar', 'nova', 'novo', 'norte', 'www', 'mail', 'email',
-])
+// A lista mora em src/servidor/enderecos.ts: é a mesma do cadastro pelo site
+// e da função do banco que cria empresa (o teste confere as três).
 
 function argumento(nome: string) {
   const i = process.argv.indexOf(`--${nome}`)

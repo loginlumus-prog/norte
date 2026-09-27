@@ -19,9 +19,10 @@
 //    impedem. Quem tem tempo e uma lista de senhas comuns entra.
 
 import { comoOrg, acharOrgPorSlug } from './banco'
-import { ocuparVaga, type Ocupante } from './presenca'
+import { ocuparVaga, type Ocupante, type Veredito } from './presenca'
 import { conferirSenha, precisaTrocar, HASH_ISCA } from './senha'
 import { reservarTentativa, concluirTentativa } from './limite'
+import { emailConfigurado } from './email'
 import type { Sessao, Papel } from './permissao'
 
 export type Entrada =
@@ -50,6 +51,7 @@ export type MotivoRecusa =
   | 'credenciais' // genérico de propósito
   | 'sem_acesso' // existe e a senha bate, mas não tem papel em lugar nenhum
   | 'muitas_tentativas' // freio: erros demais na janela
+  | 'email_pendente' // senha certa, mas a conta do cadastro ainda não confirmou o e-mail
 // 'sem_vaga' NÃO entra aqui: ele carrega a lista de ocupantes e por isso é uma
 // variante própria em `Entrada`. Misturado nesta lista, o TypeScript deixa de
 // separar as duas formas e a lista some do tipo.
@@ -60,6 +62,7 @@ export const RECADO: Record<MotivoRecusa, string> = {
   credenciais: 'E-mail ou senha não conferem.',
   sem_acesso: 'Sua conta não tem acesso liberado. Peça para o responsável liberar.',
   muitas_tentativas: 'Muitas tentativas seguidas. Espere alguns minutos e tente de novo.',
+  email_pendente: 'Falta confirmar o seu e-mail: o link chegou na sua caixa de entrada quando a empresa foi criada.',
 }
 
 export async function entrar(
@@ -93,7 +96,7 @@ export async function entrar(
   const achado = await comoOrg(org.id, async (db) => {
     const usuario = await db.usuario.findUnique({
       where: { orgId_email: { orgId: org.id, email: alvo } },
-      select: { id: true, nome: true, senhaHash: true, ativo: true },
+      select: { id: true, nome: true, senhaHash: true, ativo: true, emailPendente: true },
     })
     if (!usuario) return null
 
@@ -113,6 +116,17 @@ export async function entrar(
     // não precisa saber que o cadastro dele ainda existe.
     await concluirTentativa(org.id, tentativa, false)
     return { ok: false, motivo: 'credenciais' }
+  }
+
+  // ── o e-mail ainda não foi confirmado ────────────────────
+  // Só a conta que nasceu pelo cadastro do site (ver conta.ts). DEPOIS da
+  // senha, de propósito: dizer "falta confirmar" antes dela contaria a
+  // qualquer um que este e-mail tem conta aqui. E só com e-mail configurado:
+  // servidor que não manda e-mail não pode exigir um link que nunca chega.
+  // A tentativa conta como ACERTO — a senha estava certa.
+  if (achado.usuario.emailPendente && emailConfigurado()) {
+    await concluirTentativa(org.id, tentativa, true)
+    return { ok: false, motivo: 'email_pendente' }
   }
 
   const agora = new Date()
@@ -140,14 +154,26 @@ export async function entrar(
   // O plano é lido aqui dentro, e não pela portaria: a portaria enxerga nove
   // colunas da tabela de empresas e não precisa de uma décima. Aqui já existe
   // empresa no contexto.
+  //
+  // ── o NOSSO suporte não ocupa vaga ───────────────────────
+  // A vaga é o que a loja paga. Quem entra só com acesso de SUPORTE (nós, com
+  // prazo e motivo) não pode gastar uma delas — nem, no plano de uma vaga só,
+  // derrubar a caixa no meio da venda para a gente olhar um fechamento. Então
+  // ele entra sem presença: não conta, não é contado, não derruba ninguém. O
+  // rastro dele continua no livro da loja (ver `sessaoViva` em pagina.ts).
+  // Quem tem SUPORTE e mais algum papel da loja ocupa vaga como qualquer um.
+  const soSuporte = acessos.every((a) => a.papel === 'SUPORTE')
+
   const plano = await comoOrg(org.id, (db) =>
     db.org.findUniqueOrThrow({ where: { id: org.id }, select: { plano: true } }),
   )
 
-  const vaga = await ocuparVaga(org.id, plano.plano, {
-    usuarioId: sessao.usuarioId,
-    ehDono: acessos.some((a) => a.papel === 'DONO'),
-  })
+  const vaga = soSuporte
+    ? ({ pode: true, derrubar: null } satisfies Veredito)
+    : await ocuparVaga(org.id, plano.plano, {
+        usuarioId: sessao.usuarioId,
+        ehDono: acessos.some((a) => a.papel === 'DONO'),
+      })
 
   if (!vaga.pode) {
     // Não é tentativa errada: a senha estava certa. Registrar como erro faria

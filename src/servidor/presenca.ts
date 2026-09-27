@@ -131,10 +131,18 @@ export function decidirEntrada(
 // O LADO DO BANCO
 // ─────────────────────────────────────────────────────────────
 
-/** Quem está dentro, para a tela de "quem está usando agora". */
+/**
+ * Quem está dentro, para a tela de "quem está usando agora" — e para a conta
+ * das vagas.
+ *
+ * Fica de fora quem só tem acesso de SUPORTE (nós): o login dele nem cria
+ * presença (ver `entrar` em autenticacao.ts), e a presença que tenha sobrado
+ * de antes dessa regra também não conta. A vaga é da loja.
+ */
 export async function quemEstaDentro(orgId: string, agora = new Date()): Promise<Ocupante[]> {
   const linhas = await comoOrg(orgId, (db) =>
     db.presenca.findMany({
+      where: { usuario: { acessos: { some: { papel: { not: 'SUPORTE' } } } } },
       select: { usuarioId: true, desde: true, ultimoSinal: true, usuario: { select: { nome: true } } },
       orderBy: { ultimoSinal: 'desc' },
     }),

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { contaComoFalta } from '@/servidor/catalogo-loja'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -27,6 +28,8 @@ type SituacaoItem = 'acabaram' | 'minimo' | 'ok'
 import { Entrada } from './Entrada'
 import { Corrigir } from './Corrigir'
 import { Transferir } from './Transferir'
+
+export const metadata: Metadata = { title: 'Estoque' }
 
 const TIPOS: TipoMovimento[] = ['ENTRADA', 'VENDA', 'DEVOLUCAO', 'AJUSTE', 'PERDA', 'TRANSFERENCIA', 'BALANCO']
 const quando = (d: Date) =>
@@ -544,11 +547,27 @@ export default async function TelaEstoque({
           }
         >
           {itens.length === 0 ? (
-            <Vazio>
+            <Vazio
+              acao={
+                pode(sessao, 'produto.editar') && (
+                  <Link href={`/${slug}/produtos/novo`} className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta">
+                    Cadastrar um produto
+                  </Link>
+                )
+              }
+            >
               Nenhum item com estoque nesta loja. Cadastre um produto e dê entrada nele.
             </Vazio>
           ) : listados.length === 0 ? (
-            <Vazio>{q ? `Nada com “${q}”.` : 'Nada nessa situação.'}</Vazio>
+            <Vazio
+              acao={
+                <Link href={link({ q: null, situacao: null })} className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2">
+                  Ver tudo
+                </Link>
+              }
+            >
+              {q ? `Nada com “${q}”.` : 'Nada nessa situação.'}
+            </Vazio>
           ) : (
             <Tabela colunas={colunas} linhas={listados} chave={(i) => i.id} vazio="Vazio." />
           )}

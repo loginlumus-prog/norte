@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -13,6 +14,8 @@ import { Secao, Tira } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { CartaoLoja, NovaLoja, type LojaNaTela } from './Loja'
 import { palavra } from '@/ui/texto'
+
+export const metadata: Metadata = { title: 'Lojas' }
 
 // As lojas da empresa.
 //

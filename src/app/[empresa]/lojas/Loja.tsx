@@ -12,6 +12,8 @@ import { useActionState, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Marcar, Selecao, Situacao, cx } from '@/ui/base'
 import { criarLojaAcao, editarLojaAcao, situacaoLojaAcao, type EstadoLoja } from './acoes'
+import { semApagar } from '@/ui/formulario'
+import { Confirmar } from '@/ui/Confirmar'
 
 export type LojaNaTela = {
   id: string
@@ -55,7 +57,7 @@ function Formulario({
   const d = loja
 
   return (
-    <form action={agir} className="flex flex-col gap-4">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4">
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
 
@@ -223,9 +225,18 @@ export function CartaoLoja({
             Editar
           </Botao>
           {loja.ativa ? (
-            <Botao tom="discreto" carregando={indo} onClick={() => trocar(false)}>
+            // Fechar tira a loja do balcão, do seletor e da equipe dela: pergunta antes.
+            <Confirmar
+              pergunta="A loja some do balcão e do seletor. Fechar?"
+              sim="Sim, fechar"
+              aoConfirmar={async () => {
+                const r = await situacaoLojaAcao(slug, loja.id, false)
+                setRecado(r)
+                if (r.ok) router.refresh()
+              }}
+            >
               Fechar a loja
-            </Botao>
+            </Confirmar>
           ) : (
             <Botao tom="secundario" carregando={indo} onClick={() => trocar(true)}>
               Reabrir

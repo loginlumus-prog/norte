@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -12,6 +13,8 @@ import { MENU } from '@/ui/menu'
 import { Aviso, Cartao, Situacao, Vazio } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { NovoModelo, ApagarModelo } from './Modelos'
+
+export const metadata: Metadata = { title: 'Modelos de mensagem' }
 
 // Campanhas › Modelos: as mensagens pré-aprovadas pela Meta.
 //

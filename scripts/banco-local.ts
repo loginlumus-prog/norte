@@ -28,6 +28,21 @@ const db = await PGlite.create({ dataDir: PASTA })
 // comportam como num Postgres de verdade. Para desenvolver sozinho serve;
 // qualquer coisa sensivel a concorrencia tem que ser validada no Neon/Supabase.
 // Por isso o pool da aplicacao fica em 1 (POOL_MAX no .env).
+// ── conexão cortada não derruba o banco ─────────────────────
+// Um script ou teste encerrado no meio de uma consulta corta a conexão do
+// lado dele, e o socket do servidor PGlite recebe ECONNRESET sem ninguém
+// escutando o erro: o Node trata como erro fatal e derruba o processo
+// inteiro — banco E site juntos (aconteceu em 26/09, com o sistema no ar).
+// Conexão de cliente que caiu é problema do cliente; o banco segue.
+process.on('uncaughtException', (erro: NodeJS.ErrnoException) => {
+  if (erro?.code === 'ECONNRESET' || erro?.code === 'EPIPE') {
+    console.warn(`  [banco] um cliente caiu no meio da conversa (${erro.code}) — seguindo`)
+    return
+  }
+  console.error(erro)
+  process.exit(1)
+})
+
 const servidor = new PGLiteSocketServer({
   db,
   port: PORTA,

@@ -92,14 +92,11 @@ export const LINKS_BARRA: { nome: string; href: string }[] = [
 ]
 
 /**
- * Para onde vai "Começar grátis".
- *
- * Não existe cadastro sozinho ainda: toda empresa nasce com a gente montando
- * o ambiente junto (ver o fechamento da página). Um botão que prometesse
- * "crie sua conta" e abrisse um e-mail seria a primeira mentira da página;
- * então ele leva para o fim, onde o texto diz exatamente o que acontece.
+ * Para onde vai "Começar grátis": o cadastro pelo site (src/app/cadastro),
+ * que cria a empresa no plano Grátis. Com CADASTRO_ABERTO=0 a mesma página
+ * diz que está fechado e mostra o e-mail — o botão nunca leva a lugar vazio.
  */
-export const COMECAR = '#comecar'
+export const COMECAR = '/cadastro'
 export const ENTRAR = '/exemplo/entrar'
 export const EMAIL = 'contato@usenorte.com.br'
 

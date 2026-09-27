@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -26,6 +27,8 @@ import { Tabela, type Coluna } from '@/ui/Tabela'
 import { Cadeado, Trancado } from '@/ui/Cadeado'
 import type { Tema } from '@/ui/TrocaTema'
 import { Alvo } from './Alvo'
+
+export const metadata: Metadata = { title: 'Preços' }
 
 // A tela de preços.
 //
@@ -249,7 +252,13 @@ export default async function Precos({
             }
           >
             {linhas.length === 0 ? (
-              <Vazio>
+              <Vazio
+                acao={
+                  <Link href={`/${slug}/produtos/novo`} className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta">
+                    Cadastrar um produto
+                  </Link>
+                }
+              >
                 Nenhum produto ativo. Cadastre o primeiro em Produtos e ele aparece aqui com a
                 margem calculada.
               </Vazio>

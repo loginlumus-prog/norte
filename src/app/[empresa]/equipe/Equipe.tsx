@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation'
 import { Botao, Campo, Selecao, Aviso, Cartao, Situacao, cx } from '@/ui/base'
 import {
   convidarPessoa,
+  gerarLinkSenha,
   revogar,
   trocarPapel,
   trocarSituacao,
@@ -185,7 +186,21 @@ export function Equipe({
   return (
     <div className="flex flex-col gap-4">
       {recado?.erro && <Aviso nivel="critico">{recado.erro}</Aviso>}
-      {recado?.ok && <Aviso nivel="bom">{recado.ok}</Aviso>}
+      {recado?.ok && !recado.link && <Aviso nivel="bom">{recado.ok}</Aviso>}
+      {/* O link de senha nova aparece UMA vez, como o do convite. */}
+      {recado?.ok && recado.link && (
+        <Aviso nivel="bom">
+          <span className="flex flex-col gap-1.5">
+            <span>{recado.ok}</span>
+            <code className="block overflow-x-auto rounded bg-superficie px-2 py-1.5 font-mono text-xs break-all text-tinta">
+              {recado.link}
+            </code>
+            <span className="text-xs">
+              Copie agora: ele não aparece de novo. Vale por 24 horas e serve uma vez; gerar outro apaga este.
+            </span>
+          </span>
+        </Aviso>
+      )}
 
       {/* ── quem tem acesso ── */}
       <Cartao
@@ -261,6 +276,17 @@ export function Equipe({
                     >
                       {p.ativo ? 'Tirar acesso' : 'Devolver'}
                     </Botao>
+                    {p.ativo && (
+                      <Botao
+                        tom="discreto"
+                        className="px-2 py-1 text-xs"
+                        carregando={indo}
+                        title="Um link para esta pessoa escolher uma senha nova. Aparece uma vez."
+                        onClick={() => fazer(() => gerarLinkSenha(slug, p.id))}
+                      >
+                        Gerar link de senha
+                      </Botao>
+                    )}
                   </>
                 )}
               </span>

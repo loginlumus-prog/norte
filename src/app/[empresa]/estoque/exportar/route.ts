@@ -7,13 +7,14 @@ import { acharOrgPorSlug, comoOrg } from '@/servidor/banco'
 import { escolherUnidade } from '@/servidor/unidade'
 import { pode } from '@/servidor/permissao'
 import { csv, respostaCsv } from '@/servidor/csv'
+import { filtrosUsados, podeExportar, registrarExportacao } from '@/servidor/exportacao'
 
 export async function GET(req: Request, { params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
   const [empresa, sessao] = await Promise.all([acharOrgPorSlug(slug), sessaoViva(slug)])
   if (!empresa) return new Response('Empresa não encontrada.', { status: 404 })
   if (!sessao || sessao.orgId !== empresa.id) return new Response('Entre no sistema para exportar.', { status: 401 })
-  if (!pode(sessao, 'estoque.ver')) return new Response('Sem permissão para ver o estoque.', { status: 403 })
+  if (!podeExportar(sessao, 'estoque')) return new Response('Sem permissão para ver o estoque.', { status: 403 })
 
   const q = new URL(req.url).searchParams
   const onde = await escolherUnidade(sessao, empresa, q.get('unidade') ?? undefined, 'estoque.ver')
@@ -53,5 +54,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ empresa:
       ]
     }),
   )
+  await registrarExportacao(sessao, 'estoque', { linhas: linhas.length, filtros: filtrosUsados(q), unidadeId: onde.unidadeId })
   return respostaCsv(`estoque-${slug}${onde.unidadeId ? `-${onde.titulo}` : ''}`, corpo)
 }

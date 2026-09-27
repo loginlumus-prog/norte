@@ -46,6 +46,8 @@ export async function trocar(
     if (previa.impedimentos.length > 0) return { erro: previa.impedimentos.join(' ') }
     if (previa.sentido === 'subir') {
       await registrarPedido(s, { tipo: 'plano', para: alvo })
+      // A tela passa a mostrar "aguardando confirmação" (ver page.tsx).
+      revalidatePath(`/${slug}/assinatura`)
       return {
         ok:
           `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você ` +
@@ -96,6 +98,7 @@ export async function recarregar(
 
   if (!assinaturaLivre()) {
     await registrarPedido(s, { tipo: 'credito', centavos: cent })
+    revalidatePath(`/${slug}/assinatura`)
     return {
       ok:
         `Pedido de ${mostrar(cent)} de crédito registrado. A gente confirma o pagamento com você ` +

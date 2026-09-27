@@ -2,6 +2,9 @@
 CREATE SCHEMA IF NOT EXISTS "public";
 
 -- CreateEnum
+CREATE TYPE "TipoTokenConta" AS ENUM ('SENHA', 'EMAIL');
+
+-- CreateEnum
 CREATE TYPE "Porte" AS ENUM ('SO_EU', 'ATE_5', 'ATE_20', 'MAIS_DE_20');
 
 -- CreateEnum
@@ -160,6 +163,7 @@ CREATE TABLE "usuarios" (
     "ativo" BOOLEAN NOT NULL DEFAULT true,
     "ultimo_login" TIMESTAMP(3),
     "sessoes_desde" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "email_pendente" BOOLEAN NOT NULL DEFAULT false,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizado_em" TIMESTAMP(3) NOT NULL,
 
@@ -207,6 +211,42 @@ CREATE TABLE "convites" (
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "convites_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "tokens_conta" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "usuario_id" TEXT NOT NULL,
+    "tipo" "TipoTokenConta" NOT NULL,
+    "hash" TEXT NOT NULL,
+    "expira_em" TIMESTAMP(3) NOT NULL,
+    "usado_em" TIMESTAMP(3),
+    "ip" TEXT,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "tokens_conta_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "pedidos_conta" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "tipo" "TipoTokenConta" NOT NULL,
+    "email" TEXT NOT NULL,
+    "ip" TEXT,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "pedidos_conta_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "cadastros_publicos" (
+    "id" TEXT NOT NULL,
+    "ip_resumo" TEXT,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "cadastros_publicos_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1025,6 +1065,21 @@ CREATE UNIQUE INDEX "convites_token_key" ON "convites"("token");
 CREATE INDEX "convites_org_id_idx" ON "convites"("org_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "tokens_conta_hash_key" ON "tokens_conta"("hash");
+
+-- CreateIndex
+CREATE INDEX "tokens_conta_org_id_usuario_id_tipo_idx" ON "tokens_conta"("org_id", "usuario_id", "tipo");
+
+-- CreateIndex
+CREATE INDEX "pedidos_conta_org_id_email_criado_em_idx" ON "pedidos_conta"("org_id", "email", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "pedidos_conta_org_id_ip_criado_em_idx" ON "pedidos_conta"("org_id", "ip", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "cadastros_publicos_ip_resumo_criado_em_idx" ON "cadastros_publicos"("ip_resumo", "criado_em");
+
+-- CreateIndex
 CREATE INDEX "auditoria_org_id_criado_em_idx" ON "auditoria"("org_id", "criado_em");
 
 -- CreateIndex
@@ -1116,6 +1171,12 @@ CREATE INDEX "vendas_org_id_unidade_id_criada_em_idx" ON "vendas"("org_id", "uni
 
 -- CreateIndex
 CREATE INDEX "vendas_org_id_situacao_idx" ON "vendas"("org_id", "situacao");
+
+-- CreateIndex
+CREATE INDEX "vendas_org_id_cliente_id_criada_em_idx" ON "vendas"("org_id", "cliente_id", "criada_em");
+
+-- CreateIndex
+CREATE INDEX "vendas_org_id_vendedor_id_criada_em_idx" ON "vendas"("org_id", "vendedor_id", "criada_em");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "vendas_unidade_id_numero_key" ON "vendas"("unidade_id", "numero");
@@ -1308,6 +1369,15 @@ ALTER TABLE "acessos" ADD CONSTRAINT "acessos_unidade_id_fkey" FOREIGN KEY ("uni
 
 -- AddForeignKey
 ALTER TABLE "convites" ADD CONSTRAINT "convites_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "tokens_conta" ADD CONSTRAINT "tokens_conta_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "tokens_conta" ADD CONSTRAINT "tokens_conta_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pedidos_conta" ADD CONSTRAINT "pedidos_conta_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "auditoria" ADD CONSTRAINT "auditoria_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

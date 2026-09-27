@@ -17,7 +17,7 @@
 // no sistema precisa saber qual gateway é.
 
 import type { Plano, Situacao } from '@prisma/client'
-import { comoOrg } from './banco'
+import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, type Sessao } from './permissao'
 import {
   PLANOS,
@@ -122,11 +122,18 @@ export async function garantirCreditoDoMes(orgId: string, agora = new Date()): P
   })
 }
 
-export async function assinaturaDe(sessao: Sessao): Promise<Assinatura> {
-  await garantirCreditoDoMes(sessao.orgId)
-  return comoOrg(sessao.orgId, async (db) => {
+export const assinaturaDe = (sessao: Sessao): Promise<Assinatura> => assinaturaDaEmpresa(sessao.orgId)
+
+/**
+ * A assinatura de uma empresa pelo id — o mesmo quadro da tela, sem sessão.
+ * Existe para a equipe do Norte (scripts/operacao.ts), que age SOBRE a
+ * empresa e não DENTRO dela; quem vem da tela passa por `assinaturaDe`.
+ */
+export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
+  await garantirCreditoDoMes(orgId)
+  return comoOrg(orgId, async (db) => {
     const org = await db.org.findUniqueOrThrow({
-      where: { id: sessao.orgId },
+      where: { id: orgId },
       select: {
         plano: true, situacao: true, testeAte: true,
         creditoIaCent: true, creditoAvisoCent: true,
@@ -139,7 +146,12 @@ export async function assinaturaDe(sessao: Sessao): Promise<Assinatura> {
     const unidades = await db.unidade.count({ where: { ativa: true } })
     // Cota é de ACESSO, não de cadastro: quem saiu da empresa continua no
     // banco por causa do histórico e não pode ocupar vaga.
-    const usuarios = await db.usuario.count({ where: { ativo: true, acessos: { some: {} } } })
+    // O acesso do NOSSO suporte não é gente da loja: a conta de suporte
+    // existe na empresa (é assim que o livro diz quem olhou), mas não entra
+    // na conta de "pessoas cadastradas" que a loja lê.
+    const usuarios = await db.usuario.count({
+      where: { ativo: true, acessos: { some: { papel: { not: 'SUPORTE' } } } },
+    })
     // O que a LOJA pagou, nao o que o fornecedor cobrou da gente: e o
     // consumo dela que a tela dela mostra.
     const gasto = await db.consumoIA.aggregate({
@@ -304,12 +316,92 @@ export async function registrarPedido(
         alvoId: sessao.orgId,
         alvoNome: pedido.tipo === 'plano' ? PLANOS[pedido.para].titulo : mostrar(pedido.centavos),
         motivo: texto,
+        // O que foi pedido, em forma de máquina. O título e o "R$ 200,00"
+        // acima são para gente ler; a equipe atende pelo que está aqui
+        // (src/servidor/pedidos.ts) — e título de plano muda de nome.
+        depois: pedido.tipo === 'plano' ? { plano: pedido.para } : { centavos: pedido.centavos },
       },
     }),
   )
-  // O log do servidor é onde a equipe do Norte vê o pedido chegar. Sem dado
+  // O log do servidor avisa que chegou; quem ATENDE lê a lista pela
+  // ferramenta de operação (`npm run operacao -- pedidos`). Sem dado
   // pessoal: a empresa pelo id, e o que foi pedido.
   console.info(`[pedido-assinatura] org=${sessao.orgId} ${texto}`)
+}
+
+/**
+ * O quadro da troca, só lendo: plano de hoje, lojas ativas, e o que mudaria.
+ *
+ * Não deposita o crédito do mês nem grava nada — é o que a ferramenta da
+ * equipe mostra ANTES do `--confirmar`, e prévia que escreve no banco não é
+ * prévia.
+ */
+export async function previaDeTroca(orgId: string, para: Plano): Promise<Mudanca> {
+  const { plano, unidades } = await comoOrg(orgId, async (db) => {
+    // Em sequência: dentro do comoOrg é uma conexão só.
+    const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } })
+    // Só loja ATIVA conta, como em `assinaturaDaEmpresa`.
+    const unidades = await db.unidade.count({ where: { ativa: true } })
+    return { plano: org.plano, unidades }
+  })
+  return mudanca(plano, para, { unidades })
+}
+
+/** Quem assina a troca no livro. */
+type AutorDaTroca = {
+  usuarioId: string | null
+  quem: string
+  autor: 'PESSOA' | 'SISTEMA'
+  /** O pedido que esta troca atende, quando é a equipe respondendo um. */
+  pedidoId?: string | null
+}
+
+/**
+ * O miolo da troca, igual para a loja e para a equipe: as mesmas travas
+ * (`mudanca` — loja demais para o plano novo impede), os mesmos módulos
+ * desligados, a mesma linha no livro. Duas cópias disto divergiriam no dia
+ * em que uma regra nova entrasse numa só.
+ */
+async function aplicarTroca(orgId: string, para: Plano, por: AutorDaTroca): Promise<Mudanca> {
+  // O crédito incluso do mês cai ANTES, no plano de hoje — era o que a troca
+  // pela tela já fazia, e continua fazendo.
+  await garantirCreditoDoMes(orgId)
+  const m = await previaDeTroca(orgId, para)
+  if (m.impedimentos.length > 0) throw new SemCota(m.impedimentos.join(' '), m.de)
+
+  await comoOrg(orgId, async (db) => {
+    const antes = await db.org.findUniqueOrThrow({
+      where: { id: orgId },
+      select: { modulos: true },
+    })
+
+    // Módulo que o plano novo não libera SAI da lista. Deixar ligado seria
+    // vender de graça o que o plano de cima cobra — e, pior, o menu mostraria
+    // uma tela que a assinatura não cobre.
+    const permitidos = new Set<string>(PLANOS[para].modulos)
+    const modulos = antes.modulos.filter((m) => permitidos.has(m))
+
+    await db.org.update({ where: { id: orgId }, data: { plano: para, modulos } })
+    await db.auditoria.create({
+      data: {
+        orgId,
+        usuarioId: por.usuarioId,
+        quem: por.quem,
+        autor: por.autor,
+        acao: 'plano.trocou',
+        alvoTipo: 'empresa',
+        alvoId: orgId,
+        alvoNome: PLANOS[para].titulo,
+        motivo: `${PLANOS[m.de].titulo} → ${PLANOS[para].titulo}${
+          m.perde.length > 0 ? ` (perdeu: ${m.perde.join(', ')})` : ''
+        }`,
+        antes: { plano: m.de, modulos: antes.modulos },
+        depois: { de: m.de, para, modulos, ...(por.pedidoId ? { pedidoId: por.pedidoId } : {}) },
+      },
+    })
+  })
+
+  return m
 }
 
 /**
@@ -321,83 +413,107 @@ export async function registrarPedido(
  */
 export async function trocarPlano(sessao: Sessao, para: Plano) {
   exigir(sessao, 'empresa.configurar')
+  return aplicarTroca(sessao.orgId, para, { usuarioId: sessao.usuarioId, quem: sessao.nome, autor: 'PESSOA' })
+}
 
-  const a = await assinaturaDe(sessao)
-  const m = mudanca(a.plano, para, a.uso)
-  if (m.impedimentos.length > 0) throw new SemCota(m.impedimentos.join(' '), a.plano)
+/**
+ * A troca feita pela equipe do Norte — o pedido de subir que a loja fez, já
+ * pago, ou o Corporativo fechado em contrato.
+ *
+ * Mesmas travas da tela (`aplicarTroca`), sem sessão: quem chama é a
+ * ferramenta de operação, do laptop. No livro da loja a linha sai assinada
+ * "Equipe Norte (<quem rodou>)" e aponta para o pedido que atende — é isso
+ * que tira o pedido da lista de abertos (src/servidor/pedidos.ts).
+ */
+export async function trocarPlanoComoEquipe(
+  orgId: string,
+  para: Plano,
+  quem: string,
+  opcoes: { pedidoId?: string | null } = {},
+): Promise<Mudanca> {
+  return aplicarTroca(orgId, para, {
+    usuarioId: null,
+    quem: quemDaEquipe(quem),
+    autor: 'SISTEMA',
+    pedidoId: opcoes.pedidoId ?? null,
+  })
+}
 
-  await comoOrg(sessao.orgId, async (db) => {
-    const antes = await db.org.findUniqueOrThrow({
-      where: { id: sessao.orgId },
-      select: { modulos: true },
-    })
+/**
+ * Como a equipe do Norte assina no livro da loja: "Equipe Norte (Fulano)".
+ *
+ * O nome de quem rodou vai junto porque "o Norte" não é ninguém — a loja tem
+ * direito de saber QUEM daqui mexeu na conta dela, e nós também, na hora de
+ * perguntar por quê. E-mail não entra: o livro não se apaga.
+ */
+export function quemDaEquipe(nome: string): string {
+  const n = nome.trim().replace(/\s+/g, ' ')
+  if (/^Equipe Norte \(.+\)$/.test(n)) return n
+  if (n.length < 2 || n.length > 60 || n.includes('@') || !/\p{L}/u.test(n)) {
+    throw new Error('Diga quem está rodando: --quem "Seu nome" (de 2 a 60 caracteres, sem e-mail).')
+  }
+  return `Equipe Norte (${n})`
+}
 
-    // Módulo que o plano novo não libera SAI da lista. Deixar ligado seria
-    // vender de graça o que o plano de cima cobra — e, pior, o menu mostraria
-    // uma tela que a assinatura não cobre.
-    const permitidos = new Set<string>(PLANOS[para].modulos)
-    const modulos = antes.modulos.filter((m) => permitidos.has(m))
+type DadosDaRecarga = {
+  tipo: 'COMPRA' | 'PLANO' | 'AJUSTE' | 'ESTORNO'
+  quem: string
+  origem?: string
+  referencia?: string
+  motivo?: string
+}
 
-    await db.org.update({ where: { id: sessao.orgId }, data: { plano: para, modulos } })
-    await db.auditoria.create({
-      data: {
-        orgId: sessao.orgId,
-        usuarioId: sessao.usuarioId,
-        quem: sessao.nome,
-        acao: 'plano.trocou',
-        alvoTipo: 'empresa',
-        alvoId: sessao.orgId,
-        alvoNome: PLANOS[para].titulo,
-        motivo: `${PLANOS[a.plano].titulo} → ${PLANOS[para].titulo}${
-          m.perde.length > 0 ? ` (perdeu: ${m.perde.join(', ')})` : ''
-        }`,
-      },
-    })
+/**
+ * O miolo da recarga, dentro de uma transação que já existe — para quem
+ * precisa gravar a linha do livro JUNTO (a equipe, em operacao.ts). Recarga
+ * e linha do livro na mesma transação: ou as duas, ou nenhuma.
+ */
+export async function creditarNaTransacao(
+  db: BancoDaOrg,
+  orgId: string,
+  centavos: number,
+  dados: DadosDaRecarga,
+): Promise<number> {
+  if (!Number.isInteger(centavos) || centavos === 0) {
+    throw new Error('Recarga precisa ser um número inteiro de centavos, diferente de zero.')
+  }
+
+  // Uma escrita só, com o delta: ler-somar-gravar abriria corrida entre
+  // duas recargas ao mesmo tempo.
+  const depois = await db.org.update({
+    where: { id: orgId },
+    data: { creditoIaCent: { increment: centavos } },
+    select: { creditoIaCent: true },
   })
 
-  return m
+  await db.recargaIA.create({
+    data: {
+      orgId,
+      centavos,
+      saldoDepois: depois.creditoIaCent,
+      tipo: dados.tipo,
+      origem: dados.origem ?? 'manual',
+      referencia: dados.referencia,
+      motivo: dados.motivo,
+      quem: dados.quem,
+    },
+  })
+
+  return depois.creditoIaCent
 }
 
 /**
  * Põe crédito de IA na conta.
  *
- * Hoje quem chama é o painel do dono do sistema, na mão. Quando o gateway
- * existir, ele chama esta mesma função com `origem` e `referencia` do
- * pagamento — e nada além disto muda.
+ * Hoje quem chama é a tela (no modo livre) e a equipe do Norte, pela
+ * ferramenta de operação. Quando o gateway existir, ele chama esta mesma
+ * função com `origem` e `referencia` do pagamento — e nada além disto muda.
  */
-export async function recarregarCredito(
-  orgId: string,
-  centavos: number,
-  dados: { tipo: 'COMPRA' | 'PLANO' | 'AJUSTE' | 'ESTORNO'; quem: string; origem?: string; referencia?: string; motivo?: string },
-) {
+export async function recarregarCredito(orgId: string, centavos: number, dados: DadosDaRecarga) {
   if (!Number.isInteger(centavos) || centavos === 0) {
     throw new Error('Recarga precisa ser um número inteiro de centavos, diferente de zero.')
   }
-
-  return comoOrg(orgId, async (db) => {
-    // Uma escrita só, com o delta: ler-somar-gravar abriria corrida entre
-    // duas recargas ao mesmo tempo.
-    const depois = await db.org.update({
-      where: { id: orgId },
-      data: { creditoIaCent: { increment: centavos } },
-      select: { creditoIaCent: true },
-    })
-
-    await db.recargaIA.create({
-      data: {
-        orgId,
-        centavos,
-        saldoDepois: depois.creditoIaCent,
-        tipo: dados.tipo,
-        origem: dados.origem ?? 'manual',
-        referencia: dados.referencia,
-        motivo: dados.motivo,
-        quem: dados.quem,
-      },
-    })
-
-    return depois.creditoIaCent
-  })
+  return comoOrg(orgId, (db) => creditarNaTransacao(db, orgId, centavos, dados))
 }
 
 /** O extrato da carteira. */

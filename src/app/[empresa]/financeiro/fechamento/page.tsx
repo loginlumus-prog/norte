@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -10,6 +11,8 @@ import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, cx } from '@/ui/base'
 import { Numero, Secao, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
+
+export const metadata: Metadata = { title: 'Fechamento do mês' }
 
 // O fechamento de mês.
 //

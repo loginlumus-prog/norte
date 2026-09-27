@@ -93,8 +93,11 @@ type Rodar = (fn: () => Promise<Resultado>, depois?: () => void) => void
 
 // O slug e a tabela de situações são um só para a tela inteira. Em vez de
 // descer por dez componentes, vão por contexto, preenchidos uma vez pelo `Quadro`.
-const TelaContexto = createContext<{ slug: string; situacoes: SituacaoNaTela[] }>({ slug: '', situacoes: [] })
+// `indo`: uma escrita em curso. Os botões de apagar e arquivar se desligam
+// com ele — dois cliques no "Apagar" viravam dois pedidos.
+const TelaContexto = createContext<{ slug: string; situacoes: SituacaoNaTela[]; indo: boolean }>({ slug: '', situacoes: [], indo: false })
 const useSlug = () => useContext(TelaContexto).slug
+const useIndo = () => useContext(TelaContexto).indo
 const useSituacoes = () => useContext(TelaContexto).situacoes
 const situacaoDe = (lista: SituacaoNaTela[], chave: SituacaoTarefa): SituacaoNaTela =>
   lista.find((s) => s.chave === chave) ?? { chave, rotulo: chave, nivel: 'neutro' }
@@ -511,6 +514,7 @@ function Detalhes({
   fechar: () => void
 }) {
   const slug = useSlug()
+  const indo = useIndo()
   const [confirmando, setConfirmando] = useState(false)
   const [descricao, setDescricao] = useState(t.descricao ?? '')
   return (
@@ -557,7 +561,7 @@ function Detalhes({
         {confirmando ? (
           <span className="flex flex-wrap items-center gap-2 text-xs">
             <span className="text-critico">Apagar de vez?</span>
-            <Botao tom="perigo" className="py-1 text-xs" onClick={() => rodar(() => apagarTarefaAcao(slug, t.id), fechar)}>
+            <Botao tom="perigo" className="py-1 text-xs" carregando={indo} onClick={() => rodar(() => apagarTarefaAcao(slug, t.id), fechar)}>
               Apagar
             </Botao>
             <Botao tom="discreto" className="py-1 text-xs" onClick={() => setConfirmando(false)}>
@@ -867,7 +871,7 @@ export function Quadro({
   if (quadro.tarefas.some((t) => !t.grupo)) grupos.push('')
 
   return (
-    <TelaContexto.Provider value={{ slug, situacoes }}>
+    <TelaContexto.Provider value={{ slug, situacoes, indo }}>
     <div className={cx('flex flex-col gap-5', indo && 'opacity-80 transition-opacity')} aria-busy={indo}>
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-col gap-0.5">
@@ -909,7 +913,7 @@ export function Quadro({
         {arquivando ? (
           <span className="flex items-center gap-2 text-xs">
             <span className="text-tinta-2">Arquivar? Ele sai daqui, mas nada é apagado.</span>
-            <Botao tom="perigo" className="py-1 text-xs" onClick={() => rodar(() => arquivarQuadroAcao(slug, quadro.id), () => router.push(`/${slug}/tarefas`))}>
+            <Botao tom="perigo" className="py-1 text-xs" carregando={indo} onClick={() => rodar(() => arquivarQuadroAcao(slug, quadro.id), () => router.push(`/${slug}/tarefas`))}>
               Arquivar
             </Botao>
             <Botao tom="discreto" className="py-1 text-xs" onClick={() => setArquivando(false)}>

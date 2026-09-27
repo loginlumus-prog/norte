@@ -12,6 +12,7 @@ import { SemPermissao } from '@/servidor/permissao'
 import { lerDinheiro } from '@/servidor/dinheiro'
 import { colunaDoDia, diaEmSP } from '@/servidor/dia'
 import type { TipoLancamento } from '@prisma/client'
+import { registrarErro } from '@/servidor/registro'
 
 export type EstadoLanc = { erro?: string; ok?: string }
 
@@ -113,7 +114,7 @@ export async function salvarRecorrenteAcao(
     await garantirRecorrentes(s)
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode cadastrar conta nesta loja.', vez }
-    console.error('[recorrente] salvar', e)
+    registrarErro('recorrente.salvar', e)
     return { erro: 'Não deu para salvar. Tente de novo.', vez }
   }
 
@@ -130,7 +131,7 @@ export async function alternarRecorrenteAcao(slug: string, id: string, ativo: bo
     if (ativo) await garantirRecorrentes(s)
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode mexer nesta conta.' }
-    console.error('[recorrente] pausar', e)
+    registrarErro('recorrente.pausar', e)
     return { erro: 'Não deu para salvar. Tente de novo.' }
   }
   revalidatePath(`/${slug}/financeiro`)

@@ -21,6 +21,7 @@
     "empresa": "tsx scripts/criar-empresa.ts",
     "migrar": "tsx scripts/migrar.ts",
     "anonimizar": "tsx scripts/anonimizar-cliente.ts",
+    "operacao": "tsx scripts/operacao.ts",
     "video": "node scripts/recortar-video.mjs"
   },
   "dependencies": {

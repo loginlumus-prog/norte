@@ -10,6 +10,7 @@
 import { useActionState } from 'react'
 import { Botao, Campo, Aviso } from '@/ui/base'
 import { salvarCrediario, type EstadoCrediario } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 export function Crediario({
   empresa,
@@ -21,7 +22,7 @@ export function Crediario({
   const [estado, agir, pendente] = useActionState<EstadoCrediario, FormData>(salvarCrediario, {})
 
   return (
-    <form action={agir} className="flex flex-col gap-4">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4">
       <input type="hidden" name="empresa" value={empresa} />
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}

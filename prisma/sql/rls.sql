@@ -306,6 +306,203 @@ begin
   end if;
 end $$;
 
+-- ── a terceira pergunta de portaria: "crie esta empresa" ─────
+--
+-- O cadastro pelo site (/cadastro) cria uma empresa que ainda não existe —
+-- e por isso não cabe no `comoOrg`, que só enxerga UMA empresa que já
+-- existe. A saída fácil seria a credencial de admin, e ela é justamente o
+-- que a aplicação nunca pode ter (passa por cima de todo RLS). O script de
+-- operador (scripts/criar-empresa.ts) usa admin porque roda na máquina de
+-- quem vende; o site roda na internet.
+--
+-- Então: uma função SECURITY DEFINER, no mesmo molde de org_do_numero_meta.
+-- Só a portaria chama. Ela faz UMA coisa, inteira ou nada (é uma transação):
+-- a empresa (plano Grátis), a primeira loja, a conta do dono com acesso de
+-- DONO e a linha do livro. E não confia em quem chama:
+--
+--   • confere cada campo de novo (tamanho, formato, caractere de controle);
+--   • recebe a senha JÁ em hash scrypt — a senha nunca chega ao banco, e um
+--     texto que não tem a forma de hash é recusado;
+--   • escolhe o endereço ela mesma, a partir da sugestão: pula os
+--     reservados (a mesma lista de src/servidor/enderecos.ts, conferida
+--     pelo teste) e os ocupados, acrescentando "-2", "-3"...;
+--   • não recebe id nenhum: não há como mandar ela escrever numa empresa
+--     que já existe;
+--   • tem o próprio freio: 3 empresas por hora por endereço de rede (o
+--     resumo SHA-256 do IP, não o IP) e 60 por hora no total, com trava do
+--     Postgres para duas chamadas simultâneas não passarem juntas.
+--
+-- As tabelas das empresas têm RLS forçado; a função carimba a empresa nova
+-- (`app.org_id`, só nesta transação) antes de gravar, então as políticas
+-- aceitam mesmo que o dono da função um dia deixe de passar por cima delas.
+--
+-- A tabela do freio (cadastros_publicos) não tem org_id, e é trancada logo
+-- abaixo: nem a aplicação nem a portaria leem ou escrevem nela.
+do $$
+declare r record;
+begin
+  -- antes da migração que a cria, não há o que trancar
+  if to_regclass('public.cadastros_publicos') is null then
+    return;
+  end if;
+  -- RLS ligado e SEM política: quem não é dono não enxerga linha nenhuma.
+  -- Não é forçado — o dono (quem aplica este arquivo, e com os direitos de
+  -- quem a função roda) precisa ler e gravar aqui.
+  alter table public.cadastros_publicos enable row level security;
+  for r in select rolname from pg_roles where rolname in ('app_norte', 'app_portaria') loop
+    execute format('revoke all on public.cadastros_publicos from %I', r.rolname);
+  end loop;
+end $$;
+
+drop function if exists public.criar_empresa_cadastro(text, text, text, text, text, text, text, boolean, text);
+create function public.criar_empresa_cadastro(
+  p_nome text,
+  p_endereco text,
+  p_dono text,
+  p_email text,
+  p_senha_hash text,
+  p_ramo text,
+  p_ip text,
+  p_email_pendente boolean,
+  p_termos text
+)
+returns table (r_org text, r_usuario text, r_endereco text, r_recusa text)
+language plpgsql
+volatile
+security definer
+set search_path = pg_catalog, public
+as $fn$
+declare
+  -- A MESMA lista de src/servidor/enderecos.ts (o teste confere).
+  reservados text[] := array[
+    'fontes', 'img', 'video', 'arte', 'marca', 'saude', 'exclusao-de-dados', '_next', 'api',
+    'static', 'termos', 'privacidade', 'contrato', 'planos', 'precos', 'ajuda', 'suporte',
+    'sobre', 'contato', 'blog', 'status', 'seguranca', 'lgpd', 'admin', 'app', 'painel',
+    'entrar', 'sair', 'conta', 'assinatura', 'convite', 'cadastro', 'cadastrar', 'criar',
+    'nova', 'novo', 'norte', 'www', 'mail', 'email', 'redefinir-senha', 'confirmar-email',
+    'esqueci-a-senha', 'comecar', 'login'
+  ];
+  v_nome text := btrim(p_nome);
+  v_dono text := btrim(p_dono);
+  v_email text := lower(btrim(p_email));
+  v_base text := lower(btrim(p_endereco));
+  v_ramo text := btrim(p_ramo);
+  v_ip text := encode(sha256(convert_to(coalesce(nullif(btrim(p_ip), ''), '-'), 'UTF8')), 'hex');
+  -- As colunas são timestamp sem fuso, gravadas em UTC pelo Prisma.
+  v_agora timestamp := now() at time zone 'utc';
+  v_org text := replace(gen_random_uuid()::text, '-', '');
+  v_usuario text := replace(gen_random_uuid()::text, '-', '');
+  v_candidato text;
+  v_sufixo text;
+  v_criou boolean := false;
+  n integer;
+begin
+  -- ── a entrada, conferida de novo ──
+  if v_nome is null or length(v_nome) < 2 or length(v_nome) > 80 or v_nome ~ '[[:cntrl:]]' then
+    raise exception 'cadastro: nome da empresa inválido' using errcode = '22023';
+  end if;
+  if v_dono is null or length(v_dono) < 2 or length(v_dono) > 80 or v_dono ~ '[[:cntrl:]]' then
+    raise exception 'cadastro: nome do dono inválido' using errcode = '22023';
+  end if;
+  if v_email is null or length(v_email) > 254 or v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then
+    raise exception 'cadastro: e-mail inválido' using errcode = '22023';
+  end if;
+  if p_senha_hash is null or length(p_senha_hash) > 300
+     or p_senha_hash !~ '^scrypt\$[0-9]+\$[0-9]+\$[0-9]+\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$' then
+    raise exception 'cadastro: senha sem a forma de hash' using errcode = '22023';
+  end if;
+  if v_ramo is null or v_ramo !~ '^[a-z]{2,24}$' then
+    raise exception 'cadastro: ramo inválido' using errcode = '22023';
+  end if;
+  if v_base is null or length(v_base) < 3 or length(v_base) > 40 or v_base !~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' then
+    raise exception 'cadastro: endereço inválido' using errcode = '22023';
+  end if;
+  if p_termos is null or length(btrim(p_termos)) < 1 or length(p_termos) > 60 then
+    raise exception 'cadastro: versão dos termos inválida' using errcode = '22023';
+  end if;
+  if p_ip is not null and length(p_ip) > 100 then
+    raise exception 'cadastro: endereço de rede inválido' using errcode = '22023';
+  end if;
+  if p_email_pendente is null then
+    raise exception 'cadastro: falta dizer se o e-mail precisa de confirmação' using errcode = '22023';
+  end if;
+
+  -- ── o freio ──
+  -- Trava por endereço de rede e depois a geral, sempre nessa ordem.
+  perform pg_advisory_xact_lock(hashtext('cadastro:ip:' || v_ip));
+  select count(*) into n from public.cadastros_publicos c
+   where c.ip_resumo = v_ip and c.criado_em > v_agora - interval '1 hour';
+  if n >= 3 then
+    return query select null::text, null::text, null::text, 'muitas_tentativas'::text;
+    return;
+  end if;
+  perform pg_advisory_xact_lock(hashtext('cadastro:geral'));
+  select count(*) into n from public.cadastros_publicos c
+   where c.criado_em > v_agora - interval '1 hour';
+  if n >= 60 then
+    return query select null::text, null::text, null::text, 'muitas_no_geral'::text;
+    return;
+  end if;
+
+  -- ── o endereço ──
+  perform set_config('app.org_id', v_org, true);
+  for i in 1..30 loop
+    if i = 1 then
+      v_candidato := v_base;
+    else
+      v_sufixo := '-' || case when i <= 20 then i::text else substr(md5(random()::text), 1, 5) end;
+      v_candidato := rtrim(left(v_base, 40 - length(v_sufixo)), '-') || v_sufixo;
+    end if;
+    continue when v_candidato = any(reservados);
+    continue when exists (select 1 from public.orgs o where o.slug = v_candidato);
+    begin
+      insert into public.orgs (id, nome, slug, email, ramo, plano, situacao, modulos, criada_em, atualizada_em)
+      values (v_org, v_nome, v_candidato, v_email, v_ramo, 'GRATIS', 'ATIVA', '{}', v_agora, v_agora);
+      v_criou := true;
+    exception when unique_violation then
+      -- outra pessoa levou este endereço no mesmo instante: tenta o próximo
+      v_criou := false;
+    end;
+    exit when v_criou;
+  end loop;
+  if not v_criou then
+    raise exception 'cadastro: nenhum endereço livre' using errcode = '22023';
+  end if;
+
+  -- ── a loja, a pessoa, o acesso e o livro ──
+  insert into public.unidades (id, org_id, nome, ramo, criada_em, atualizada_em)
+  values (replace(gen_random_uuid()::text, '-', ''), v_org, v_nome, v_ramo, v_agora, v_agora);
+
+  insert into public.usuarios (id, org_id, nome, email, senha_hash, ativo, email_pendente, sessoes_desde, criado_em, atualizado_em)
+  values (v_usuario, v_org, v_dono, v_email, p_senha_hash, true, p_email_pendente, v_agora, v_agora, v_agora);
+
+  insert into public.acessos (id, org_id, usuario_id, unidade_id, papel, criado_em)
+  values (replace(gen_random_uuid()::text, '-', ''), v_org, v_usuario, null, 'DONO', v_agora);
+
+  insert into public.auditoria (id, org_id, usuario_id, quem, autor, acao, alvo_tipo, alvo_id, alvo_nome, depois, criado_em)
+  values (
+    replace(gen_random_uuid()::text, '-', ''), v_org, v_usuario, v_dono, 'PESSOA', 'empresa.criou', 'org', v_org, v_nome,
+    jsonb_build_object('origem', 'cadastro', 'plano', 'GRATIS', 'ramo', v_ramo,
+                       'termos', btrim(p_termos), 'emailConfirmado', not p_email_pendente),
+    v_agora
+  );
+
+  insert into public.cadastros_publicos (id, ip_resumo, criado_em)
+  values (replace(gen_random_uuid()::text, '-', ''), v_ip, v_agora);
+  -- a limpeza vai de carona: linha de anteontem não freia ninguém
+  delete from public.cadastros_publicos c where c.criado_em < v_agora - interval '2 days';
+
+  return query select v_org, v_usuario, v_candidato, null::text;
+end $fn$;
+
+revoke all on function public.criar_empresa_cadastro(text, text, text, text, text, text, text, boolean, text) from public;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'app_portaria') then
+    grant execute on function public.criar_empresa_cadastro(text, text, text, text, text, text, text, boolean, text) to app_portaria;
+  end if;
+end $$;
+
 -- ── auditoria é livro: só entra, nunca muda nem sai ──────────
 drop policy if exists org_isolada on public.auditoria;
 

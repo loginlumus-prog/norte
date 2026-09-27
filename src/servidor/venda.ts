@@ -869,7 +869,14 @@ export type ItemVendido = {
  * quem analisa querem saber o que saiu, não só quanto; e planilha com a
  * venda numa linha e os itens em outra tabela ninguém consegue cruzar.
  */
-export async function listarItensVendidos(sessao: Sessao, f: FiltroVendas): Promise<ItemVendido[]> {
+export async function listarItensVendidos(
+  sessao: Sessao,
+  f: FiltroVendas,
+  // Teto contra a planilha que derruba o servidor, não contra a loja: 90 dias
+  // de uma loja com 100 itens por dia já são 9.000 linhas, e o teto antigo
+  // (5.000) cortava a planilha no meio, sem aviso.
+  limite = 100_000,
+): Promise<ItemVendido[]> {
   exigir(sessao, 'venda.ver')
   // O custo é o segredo da margem. A planilha de vendas vai para quem vê
   // venda — inclusive o balcão —, e a coluna de custo só sai para quem já
@@ -894,7 +901,7 @@ export async function listarItensVendidos(sessao: Sessao, f: FiltroVendas): Prom
         },
       },
       orderBy: [{ venda: { criadaEm: 'desc' } }, { id: 'asc' }],
-      take: 5000,
+      take: limite,
       select: {
         descricao: true, codigo: true, medida: true, quantidade: true, precoUnit: true, total: true, custoUnit: true,
         venda: {

@@ -21,6 +21,7 @@ import { IconeCadeado } from '@/ui/Cadeado'
 import { MODULOS, TODOS, type Modulo } from '@/servidor/modulos'
 import { ORDEM, doPlano, planoLibera } from '@/servidor/planos'
 import { salvarModulos, type EstadoComeco } from '../comecar/acoes'
+import { semApagar } from '@/ui/formulario'
 
 /** O plano mais barato que abre o módulo, ou null se nenhum abre ainda. */
 const primeiroQueAbre = (m: Modulo): Plano | null => ORDEM.find((p) => planoLibera(p, m)) ?? null
@@ -43,7 +44,7 @@ export function Modulos({
   const trancados = TODOS.filter((m) => !planoLibera(plano, m))
 
   return (
-    <form action={agir} className="flex flex-col gap-4">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4">
       <input type="hidden" name="empresa" value={empresa} />
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
 

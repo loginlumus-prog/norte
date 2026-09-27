@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
@@ -17,6 +18,8 @@ import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ProdutoNaTela } from '../Editor'
 import { plural } from '@/ui/texto'
+
+export const metadata: Metadata = { title: 'Produto' }
 
 /** Decimal do banco vira o texto que a pessoa digitou: "49,90". */
 const emReais = (v: unknown) => (v == null ? '' : Number(v).toFixed(2).replace('.', ','))
@@ -142,12 +145,13 @@ export default async function FichaProduto({
           <Link href={`/${slug}/produtos`} className="text-sm font-medium text-tinta-2 hover:text-tinta">
             ← produtos
           </Link>
-          <Link
+          {/* <a>: página de impressão abre inteira — ver etiquetas/page.tsx. */}
+          <a
             href={`/${slug}/produtos/etiquetas?produto=${produto.id}`}
             className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
           >
             Etiquetas
-          </Link>
+          </a>
         </span>
       }
     >

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { mostrarDiaDaColuna } from '@/servidor/dia'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -17,6 +18,8 @@ import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import { Situacao, cx } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { Receber } from './Receber'
+
+export const metadata: Metadata = { title: 'Crediário' }
 
 // O crediário: quem deve, quanto, desde quando — e receber.
 //

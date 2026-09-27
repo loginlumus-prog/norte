@@ -9,6 +9,7 @@
 import { useActionState } from 'react'
 import { Botao, Campo, Aviso } from '@/ui/base'
 import { salvarTaxasAcao, type EstadoTaxas } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 export type LinhaDeTaxa = {
   forma: string
@@ -33,7 +34,7 @@ export function Taxas({
   const [estado, agir, pendente] = useActionState<EstadoTaxas, FormData>(salvarTaxasAcao, {})
 
   return (
-    <form action={agir} className="flex flex-col gap-4">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4">
       <input type="hidden" name="empresa" value={empresa} />
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}

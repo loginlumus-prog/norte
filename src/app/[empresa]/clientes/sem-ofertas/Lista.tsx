@@ -6,6 +6,7 @@
 
 import { useActionState } from 'react'
 import { Aviso, Botao, Campo } from '@/ui/base'
+import { Confirmar } from '@/ui/Confirmar'
 import { anotarNumero, tirarNumero, type EstadoSemOfertas } from '../acoes'
 
 export function AnotarNumero({ slug }: { slug: string }) {
@@ -30,14 +31,17 @@ export function AnotarNumero({ slug }: { slug: string }) {
   )
 }
 
+// Tirar da lista volta a permitir oferta para esse número: é o lado da LGPD
+// que não pode sair por um toque sem querer. Pergunta antes.
 export function TirarNumero({ slug, id }: { slug: string; id: string }) {
-  const [estado, agir, pendente] = useActionState<EstadoSemOfertas, FormData>(tirarNumero.bind(null, slug, id), {})
   return (
-    <form action={agir} className="flex flex-col items-end gap-1">
-      <Botao type="submit" tom="discreto" carregando={pendente} title="A loja anotou por engano? Tira da lista.">
-        Tirar da lista
-      </Botao>
-      {estado.erro && <span className="text-xs text-critico">{estado.erro}</span>}
-    </form>
+    <Confirmar
+      pergunta="Volta a poder receber ofertas. Tirar?"
+      sim="Sim, tirar"
+      title="A loja anotou por engano? Tira da lista."
+      aoConfirmar={() => tirarNumero(slug, id, {}, new FormData())}
+    >
+      Tirar da lista
+    </Confirmar>
   )
 }

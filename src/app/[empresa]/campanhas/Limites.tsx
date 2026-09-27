@@ -7,6 +7,7 @@
 import { useActionState } from 'react'
 import { Aviso, Botao, Campo } from '@/ui/base'
 import { ajustesAcao, type Resposta } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 export function Limites({
   slug,
@@ -23,7 +24,7 @@ export function Limites({
 }) {
   const [estado, agir, pendente] = useActionState<Resposta, FormData>(ajustesAcao.bind(null, slug), {})
   return (
-    <form action={agir} className="flex flex-col gap-3">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-3">
       <p className="text-sm text-tinta-2">
         Número que manda demais é denunciado, e o WhatsApp bloqueia o número da loja. Chegou no limite, a campanha
         daquela pessoa para. Hoje já saíram <b className="text-tinta">{hoje}</b> mensagens de campanha.

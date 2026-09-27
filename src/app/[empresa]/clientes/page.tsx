@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { diaEmSP } from '@/servidor/dia'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
@@ -13,6 +14,9 @@ import { Tabela } from '@/ui/Tabela'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
 import { plural } from '@/ui/texto'
+import { podeExportar } from '@/servidor/exportacao'
+
+export const metadata: Metadata = { title: 'Clientes' }
 
 type Quem = 'sumidos' | 'nunca' | 'ativos' | 'novos' | 'aniversario' | 'pontos' | 'devendo'
 type Ordem = 'nome' | 'gastou' | 'recente'
@@ -117,7 +121,7 @@ export default async function Clientes({
           >
             Sem ofertas
           </Link>
-          {!simples && (
+          {!simples && podeExportar(sessao, 'clientes') && (
             <a
               href={`/${slug}/clientes/exportar${q ? `?q=${encodeURIComponent(q)}` : ''}`}
               className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"

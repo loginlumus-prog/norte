@@ -15,6 +15,7 @@ import { useActionState, useState } from 'react'
 import { Botao, Campo, Aviso, Marcar, cx } from '@/ui/base'
 import { brl } from '@/ui/painel'
 import { devolverAcao, type EstadoDevolucao } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 export type ItemDevolvivel = {
   id: string
@@ -94,7 +95,7 @@ export function Devolver({
   }
 
   return (
-    <form action={agir} className="flex flex-col gap-4 rounded-norte border border-borda bg-superficie p-4">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4 rounded-norte border border-borda bg-superficie p-4">
       <input type="hidden" name="empresa" value={slug} />
       <input type="hidden" name="venda" value={vendaId} />
 

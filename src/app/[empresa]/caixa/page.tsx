@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
@@ -15,6 +16,8 @@ import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import { Aviso, Cartao, Situacao, cx } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { duracao } from '@/ui/texto'
+
+export const metadata: Metadata = { title: 'Caixa' }
 
 // Os turnos do caixa.
 //

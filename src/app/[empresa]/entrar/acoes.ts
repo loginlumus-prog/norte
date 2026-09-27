@@ -1,24 +1,13 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
+import { after } from 'next/server'
 import { entrar, RECADO, type MotivoRecusa } from '@/servidor/autenticacao'
 import { abrirSessao } from '@/servidor/sessao'
 import { pode } from '@/servidor/permissao'
-
-/**
- * De onde veio a requisição.
- *
- * Atrás da Vercel, `x-forwarded-for` é escrito pela borda e o primeiro
- * endereço da lista é o do visitante. Fora dela, esse cabeçalho é do cliente
- * e portanto mentira — por isso o freio por IP é a SEGUNDA trava, nunca a
- * única: o freio por e-mail continua valendo mesmo com IP forjado.
- */
-async function deOndeVeio(): Promise<string | null> {
-  const h = await headers()
-  const encadeado = h.get('x-forwarded-for')?.split(',')[0]?.trim()
-  return encadeado || h.get('x-real-ip') || null
-}
+import { acharOrgPorSlug } from '@/servidor/banco'
+import { reenviarConfirmacao, reservarPedido } from '@/servidor/conta'
+import { deOndeVeio, enderecoPublico } from '@/servidor/requisicao'
 
 export type EstadoEntrada = {
   erro?: string
@@ -32,6 +21,11 @@ export type EstadoEntrada = {
    * que a loja resolve sozinha em cinco segundos.
    */
   semVaga?: { nome: string; paradaMin: number }[]
+  /**
+   * A senha estava certa, e a conta (nascida no cadastro do site) ainda não
+   * confirmou o e-mail. A tela oferece mandar o link de novo.
+   */
+  emailPendente?: boolean
 }
 
 export async function entrarAcao(
@@ -56,6 +50,8 @@ export async function entrarAcao(
       }
     }
 
+    if (r.motivo === 'email_pendente') return { email, emailPendente: true }
+
     // Devolve o e-mail para a pessoa não precisar digitar de novo — mas nunca
     // a senha, que não deve voltar do servidor por motivo nenhum.
     const recado =
@@ -74,4 +70,29 @@ export async function entrarAcao(
   // dele, e passar pelo painel (que ele nem pode ler) seria um pulo a mais.
   const soVende = !pode(r.sessao, 'relatorio.ver') && pode(r.sessao, 'venda.criar')
   redirect(soVende ? `/${empresa}/balcao` : `/${empresa}`)
+}
+
+/**
+ * "Mandar o link de novo", para a conta que ainda não confirmou o e-mail.
+ *
+ * Mesmo freio e mesma resposta do "esqueci a senha": a frase não diz se o
+ * e-mail tem conta, e o envio roda depois da resposta.
+ */
+export async function reenviarConfirmacaoAcao(empresa: string, email: string): Promise<{ ok?: string; erro?: string }> {
+  const org = await acharOrgPorSlug(empresa)
+  if (!org) return { erro: 'Não encontramos essa empresa.' }
+  const alvo = String(email ?? '').trim().slice(0, 254)
+  if (!alvo.includes('@')) return { erro: 'Digite o e-mail no campo de cima.' }
+
+  const ip = await deOndeVeio()
+  const freio = await reservarPedido(org.id, 'EMAIL', alvo, ip)
+  if (freio.bloqueado) return { erro: `Muitos pedidos seguidos. Tente de novo em ${freio.esperarMin} min.` }
+
+  const base = await enderecoPublico()
+  if (base) {
+    after(async () => {
+      await reenviarConfirmacao(org.id, alvo, base, ip)
+    })
+  }
+  return { ok: 'Se este e-mail está esperando confirmação, um link novo chega em alguns minutos. Confira também o spam.' }
 }

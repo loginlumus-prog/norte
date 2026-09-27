@@ -5,11 +5,12 @@
 import { useActionState } from 'react'
 import { Aviso, Botao, Campo } from '@/ui/base'
 import { criarAcao, type Resposta } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 export function Nova({ slug }: { slug: string }) {
   const [estado, agir, pendente] = useActionState<Resposta, FormData>(criarAcao.bind(null, slug), {})
   return (
-    <form action={agir} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-3 sm:flex-row sm:items-end">
       <div className="flex-1">
         <Campo rotulo="Nome da campanha" name="nome" required maxLength={80} placeholder="Ex.: Catálogo de verão" />
       </div>

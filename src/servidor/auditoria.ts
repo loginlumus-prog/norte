@@ -51,6 +51,12 @@ export const ACOES: Record<string, string> = {
   // por tela ou ação, no máximo uma a cada 10 minutos por tela — ver
   // `registrarAcessoDeSuporte` em pagina.ts.
   'suporte.acessou': 'acesso do suporte do Norte',
+  // As planilhas baixadas (ver exportacao.ts): a saída dos dados deixa rastro.
+  'exportou.clientes': 'baixou a planilha de clientes',
+  'exportou.vendas': 'baixou a planilha de vendas',
+  'exportou.produtos': 'baixou a planilha de produtos',
+  'exportou.estoque': 'baixou a planilha do estoque',
+  'exportou.financeiro': 'baixou a planilha do financeiro',
   'crediario.recebeu': 'recebeu uma parcela',
   'equipe.papel.alterou': 'mudou o acesso de alguém',
   'equipe.meta': 'definiu meta e comissão',
@@ -87,6 +93,13 @@ export const ACOES: Record<string, string> = {
   'plano.trocou': 'trocou de plano',
   'plano.pediu': 'pediu outro plano',
   'credito.pediu': 'pediu crédito de IA',
+  // O que a equipe do Norte faz pela ferramenta de operação
+  // (scripts/operacao.ts) — sempre assinado "Equipe Norte (<quem>)".
+  'credito.recarregou': 'o Norte pôs crédito de IA',
+  'pedido.recusou': 'o Norte recusou um pedido',
+  'empresa.situacao': 'o Norte mudou a situação da conta',
+  'suporte.concedeu': 'o Norte liberou acesso de suporte',
+  'suporte.revogou': 'o Norte encerrou o acesso de suporte',
   'agente.proposta.confirmou': 'confirmou uma proposta do assistente',
   'financeiro.despesa': 'lançou uma conta a pagar',
   'financeiro.receita': 'lançou uma receita',
@@ -119,7 +132,7 @@ export const ASSUNTOS: { chave: string; rotulo: string; prefixos: string[] }[] =
   { chave: 'cliente', rotulo: 'clientes', prefixos: ['cliente.', 'crediario.', 'pontos.', 'ofertas.'] },
   { chave: 'equipe', rotulo: 'equipe e acessos', prefixos: ['equipe.', 'convite.', 'sessao.', 'vaga.'] },
   { chave: 'tarefa', rotulo: 'tarefas', prefixos: ['tarefa.', 'quadro.'] },
-  { chave: 'empresa', rotulo: 'empresa e lojas', prefixos: ['empresa.', 'unidade.', 'plano.', 'agente.', 'campanha.', 'financeiro.'] },
+  { chave: 'empresa', rotulo: 'empresa e lojas', prefixos: ['empresa.', 'unidade.', 'plano.', 'credito.', 'pedido.', 'agente.', 'campanha.', 'financeiro.'] },
   { chave: 'suporte', rotulo: 'suporte do Norte', prefixos: ['suporte.'] },
 ]
 

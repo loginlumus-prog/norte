@@ -7,9 +7,11 @@
 // grande aberto o tempo todo empurra a informação para baixo da dobra, e a
 // pessoa passa a rolar todo dia para ver o que já devia estar na cara dela.
 
-import { useActionState, useState, useTransition } from 'react'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao } from '@/ui/base'
 import { novoLancamento, pagar, type EstadoLanc } from './acoes'
+import { semApagar } from '@/ui/formulario'
+import { Confirmar } from '@/ui/Confirmar'
 
 const hojeISO = () => new Date().toISOString().slice(0, 10)
 
@@ -29,6 +31,12 @@ export function Lancar({
 
   const acao = novoLancamento.bind(null, slug)
   const [estado, agir, pendente] = useActionState<EstadoLanc, FormData>(acao, {})
+  // Lançou: o formulário limpa para a próxima conta (a tela de lançar é de
+  // várias em seguida). Com erro, NÃO limpa — ver src/ui/formulario.ts.
+  const formRef = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    if (estado.ok) formRef.current?.reset()
+  }, [estado])
 
   const doTipo = categorias.filter((c) => c.tipo === tipo)
 
@@ -56,7 +64,7 @@ export function Lancar({
         </button>
       }
     >
-      <form action={agir} className="flex flex-col gap-4">
+      <form ref={formRef} action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4">
         <input type="hidden" name="unidadeId" value={unidadeId ?? ''} />
         <input type="hidden" name="tipo" value={tipo} />
 
@@ -114,16 +122,19 @@ export function Lancar({
   )
 }
 
+// Pergunta antes: a tela não tem "desfazer pagamento", e um toque rolando a
+// lista no tablet marcava a conta errada como paga. Ver src/ui/Confirmar.tsx.
 export function Pagar({ slug, id }: { slug: string; id: string }) {
-  const [indo, comecar] = useTransition()
   return (
-    <Botao
+    <Confirmar
       tom="confirmar"
-      carregando={indo}
-      onClick={() => comecar(() => pagar(slug, id))}
+      tomSim="confirmar"
+      pergunta="Paga hoje?"
+      sim="Sim, paguei"
+      aoConfirmar={() => pagar(slug, id)}
       className="px-2 py-1 text-xs"
     >
       Paguei
-    </Botao>
+    </Confirmar>
   )
 }

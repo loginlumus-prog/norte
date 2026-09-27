@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -14,6 +15,8 @@ import { plural } from '@/ui/texto'
 import { Nova } from './Nova'
 import { AcoesDaCampanha } from './AcoesDaCampanha'
 import { Limites } from './Limites'
+
+export const metadata: Metadata = { title: 'Campanhas' }
 
 // Campanhas: o roteiro de WhatsApp com começo e fim.
 //

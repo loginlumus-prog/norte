@@ -286,9 +286,14 @@ export async function Estrutura({
         >
           {iniciais}
         </span>
-        <p className="min-w-0 flex-1 truncate text-xs font-semibold text-lado-tinta" title={sessao.nome}>
+        {/* O nome leva à conta da própria pessoa (trocar a senha). */}
+        <Link
+          href={`/${empresa.slug}/conta`}
+          className="min-w-0 flex-1 truncate rounded text-xs font-semibold text-lado-tinta hover:underline"
+          title={`${sessao.nome} · minha conta`}
+        >
           {sessao.nome}
-        </p>
+        </Link>
         <form action={sairAcao}>
           <input type="hidden" name="empresa" value={empresa.slug} />
           <button
@@ -305,12 +310,14 @@ export async function Estrutura({
   // No trilho, o rodapé é a pessoa: as iniciais, e o sair logo abaixo.
   const rodapeTrilho = (
     <div className="mt-auto flex flex-col items-center gap-1.5 border-t border-lado-borda pt-2">
-      <span
-        title={sessao.nome}
-        className="grid size-8 place-items-center rounded-full bg-lado-3 text-[11px] font-bold text-lado-ativo"
+      <Link
+        href={`/${empresa.slug}/conta`}
+        title={`${sessao.nome} · minha conta`}
+        aria-label={`${sessao.nome} · minha conta`}
+        className="grid size-8 place-items-center rounded-full bg-lado-3 text-[11px] font-bold text-lado-ativo hover:ring-2 hover:ring-lado-borda"
       >
         {iniciais}
-      </span>
+      </Link>
       <form action={sairAcao}>
         <input type="hidden" name="empresa" value={empresa.slug} />
         <button

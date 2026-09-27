@@ -10,6 +10,7 @@
 import { useActionState, useState } from 'react'
 import { Botao, Aviso, cx } from '@/ui/base'
 import { receberAcao, type EstadoRecebimento } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 const FORMAS = [
   { chave: 'DINHEIRO', titulo: 'Dinheiro' },
@@ -52,7 +53,7 @@ export function Receber({
   const j = Number(juros.replace(',', '.')) || 0
 
   return (
-    <form action={agir} className="flex min-w-[16rem] flex-col gap-2 rounded-norte border border-borda bg-superficie-2 p-2 text-xs">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex min-w-[16rem] flex-col gap-2 rounded-norte border border-borda bg-superficie-2 p-2 text-xs">
       <input type="hidden" name="empresa" value={slug} />
       <input type="hidden" name="parcela" value={parcelaId} />
 

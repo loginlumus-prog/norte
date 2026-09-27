@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { mostrarDiaDaColuna } from '@/servidor/dia'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -5,6 +6,9 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { acharVenda } from '@/servidor/venda'
 import { comoOrg } from '@/servidor/banco'
 import { Imprimir } from '@/ui/Imprimir'
+import { headers } from 'next/headers'
+
+export const metadata: Metadata = { title: 'Comprovante' }
 
 // O comprovante da venda, em papel de 80 mm.
 //
@@ -46,6 +50,7 @@ export default async function Comprovante({
   params: Promise<{ empresa: string; id: string }>
   searchParams: Promise<{ imprimir?: string }>
 }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined
   const { empresa: slug, id } = await params
   const { imprimir } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'venda.ver' })
@@ -86,7 +91,12 @@ export default async function Comprovante({
 
   return (
     <div className="mx-auto max-w-[80mm] p-3 print:p-0">
-      <style>{`
+      {/* Com o bilhete (nonce) desta requisição: em produção a CSP só deixa
+          entrar <style> que tenha o bilhete (ver src/proxy.ts), e sem ele a
+          folha de impressão inteira era ignorada — etiqueta e cupom saíam no
+          tamanho e na margem da tela. No desenvolvimento a CSP libera estilo
+          em linha, e por isso ninguém via. */}
+      <style nonce={nonce}>{`
         @page { size: 80mm auto; margin: 4mm; }
         @media print { .nao-imprime { display: none !important; } body { background: #fff !important; } }
         .cupom { color: #000; background: #fff; font: 9.5pt/1.35 ui-monospace, 'Cascadia Mono', Consolas, monospace; }

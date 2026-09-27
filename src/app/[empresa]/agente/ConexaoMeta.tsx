@@ -24,6 +24,8 @@ import type { EstadoMeta } from '@/servidor/assistente/meta-conexao'
 import { lerFimDoCadastro, origemDaMeta, type FimDoCadastro } from '@/servidor/assistente/meta-cadastro'
 import { conectarMeta, desconectarMetaAcao, recriarModelosAcao, type MetaAcao } from './acoes'
 
+const SEM_REDE = 'Não deu para falar com o servidor. Confira a internet e tente de novo.'
+
 type RespostaLogin = { authResponse?: { code?: string } | null; status?: string }
 type SdkFacebook = {
   init: (o: { appId: string; autoLogAppEvents: boolean; xfbml: boolean; version: string }) => void
@@ -150,13 +152,15 @@ export function ConexaoMeta({ slug, meta }: { slug: string; meta: EstadoMeta }) 
       setResposta({ erro: 'A Meta não disse qual conta e número foram escolhidos. Tente conectar de novo.' })
       return
     }
+    // A ação devolve o próprio erro; o que sobra é a rede caindo no meio —
+    // sem isto o botão ficava girando em "conectar" para sempre.
     const r = await conectarMeta(slug, {
       code,
       wabaId: f.wabaId,
       phoneNumberId: f.phoneNumberId,
       coexistencia: coexistencia || f.coexistencia,
       pin: coexistencia ? null : pin,
-    })
+    }).catch((): MetaAcao => ({ erro: SEM_REDE }))
     setPin('')
     setIndo(null)
     setResposta(r)
@@ -166,7 +170,7 @@ export function ConexaoMeta({ slug, meta }: { slug: string; meta: EstadoMeta }) 
   const rodar = async (qual: 'desconectar' | 'modelos', acao: () => Promise<MetaAcao>) => {
     setIndo(qual)
     setResposta({})
-    const r = await acao()
+    const r = await acao().catch((): MetaAcao => ({ erro: SEM_REDE }))
     setIndo(null)
     setConfirmarSaida(false)
     setResposta(r)

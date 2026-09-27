@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import { lerModo } from '@/servidor/modo'
@@ -5,6 +6,8 @@ import { Aviso } from '@/ui/base'
 import { Marca } from '@/ui/Marca'
 import { IconeDoItem } from '@/ui/IconesMenu'
 import { Formulario } from './Formulario'
+
+export const metadata: Metadata = { title: 'Entrar' }
 
 // A tela de entrar é a primeira coisa que o cliente vê todo dia de manhã.
 //
@@ -51,8 +54,23 @@ function saudacao(): string {
   return hora < 5 ? 'Boa noite' : hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
 }
 
-export default async function Entrar({ params }: { params: Promise<{ empresa: string }> }) {
+export default async function Entrar({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ empresa: string }>
+  searchParams: Promise<{ senha?: string; confirmado?: string }>
+}) {
   const { empresa } = await params
+  const volta = await searchParams
+  // Quem chega aqui vindo da senha nova ou da confirmação do e-mail precisa
+  // de uma frase dizendo que deu certo — senão a tela de entrar parece erro.
+  const recado =
+    volta.senha === 'nova'
+      ? 'Senha nova salva. Entre com ela.'
+      : volta.confirmado === '1'
+        ? 'E-mail confirmado. Entre com a senha que você escolheu no cadastro.'
+        : null
   const org = await acharOrgPorSlug(empresa)
   if (!org) notFound()
 
@@ -85,7 +103,10 @@ export default async function Entrar({ params }: { params: Promise<{ empresa: st
           O acesso desta empresa está suspenso. Fale com o responsável pela conta.
         </Aviso>
       ) : (
-        <Formulario empresa={empresa} />
+        <>
+          {recado && <Aviso nivel="bom">{recado}</Aviso>}
+          <Formulario empresa={empresa} />
+        </>
       )}
     </div>
   )

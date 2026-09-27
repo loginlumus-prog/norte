@@ -1024,7 +1024,7 @@ export default function Inicio() {
                 </p>
               </div>
               <a
-                href={mailto('Quero começar no plano Grátis')}
+                href={COMECAR}
                 className="shrink-0 rounded-norte border border-borda px-5 py-2.5 text-center text-sm font-semibold text-tinta hover:bg-superficie-2"
               >
                 Começar de graça
@@ -1242,7 +1242,7 @@ export default function Inicio() {
               </p>
               <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
                 <a
-                  href={mailto('Quero começar no Norte')}
+                  href={COMECAR}
                   className="botao-marca rounded-norte px-7 py-3.5 text-[15px] font-semibold text-marca-tinta"
                 >
                   Começar grátis

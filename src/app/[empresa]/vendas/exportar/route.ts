@@ -11,6 +11,7 @@ import { janela, lerPeriodo } from '@/servidor/periodo'
 import { listarItensVendidos } from '@/servidor/venda'
 import { SemPermissao } from '@/servidor/permissao'
 import { csv, respostaCsv } from '@/servidor/csv'
+import { filtrosUsados, podeExportar, registrarExportacao } from '@/servidor/exportacao'
 import type { FormaPagamento, SituacaoVenda } from '@prisma/client'
 
 const FORMAS: FormaPagamento[] = ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'CREDIARIO', 'VALE', 'TRANSFERENCIA']
@@ -20,6 +21,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ empresa:
   const [empresa, sessao] = await Promise.all([acharOrgPorSlug(slug), sessaoViva(slug)])
   if (!empresa) return new Response('Empresa não encontrada.', { status: 404 })
   if (!sessao || sessao.orgId !== empresa.id) return new Response('Entre no sistema para exportar.', { status: 401 })
+
+  if (!podeExportar(sessao, 'vendas')) return new Response('Sem permissão para ver vendas.', { status: 403 })
 
   const q = new URL(req.url).searchParams
   const onde = await escolherUnidade(sessao, empresa, q.get('unidade') ?? undefined, 'venda.ver')
@@ -46,6 +49,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ empresa:
         i.descricao, i.codigo, i.medida, i.quantidade, i.precoUnit, i.total, i.custoUnit, i.formas, i.totalVenda,
       ]),
     )
+    await registrarExportacao(sessao, 'vendas', { linhas: itens.length, filtros: filtrosUsados(q), unidadeId: onde.unidadeId })
     return respostaCsv(`vendas-${slug}-${j.chave}`, corpo)
   } catch (e) {
     if (e instanceof SemPermissao) return new Response('Sem permissão para ver vendas.', { status: 403 })

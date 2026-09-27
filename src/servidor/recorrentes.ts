@@ -43,6 +43,7 @@ import type { TipoLancamento } from '@prisma/client'
 import { comoOrg } from './banco'
 import { exigir, pode, SemPermissao, unidadesQuePodem, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
+import { registrarErro } from './registro'
 
 // ─────────────────────────────────────────────────────────────
 // DATAS
@@ -367,7 +368,7 @@ export async function garantirRecorrentes(sessao: Sessao, mesOlhado?: string | n
     try {
       total += await gerarRecorrentesDoMes(sessao, mes)
     } catch (e) {
-      console.error('[recorrentes] não gerou', mes, e)
+      registrarErro('recorrentes.gerar', e, { mes: String(mes) })
     }
   }
   return total

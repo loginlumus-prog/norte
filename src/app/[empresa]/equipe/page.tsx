@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { listarEquipe } from '@/servidor/equipe'
@@ -24,6 +25,8 @@ import { metasDoMes, mesChave, mesValido, nomeDoMes } from '@/servidor/metas'
 import { Equipe, type PessoaNaTela, type ConviteNaTela } from './Equipe'
 import { Metas } from './Metas'
 import { Desempenho, SetasDoMes } from './Desempenho'
+
+export const metadata: Metadata = { title: 'Equipe' }
 
 const TODOS_PAPEIS: Papel[] = ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR']
 

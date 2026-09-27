@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -19,6 +20,9 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Lancar, Pagar } from './Lancar'
 import { Recorrentes } from './Recorrentes'
 import { palavra, plural } from '@/ui/texto'
+import { registrarErro } from '@/servidor/registro'
+
+export const metadata: Metadata = { title: 'Financeiro' }
 
 // Vencimento e pagamento são colunas DATE, que chegam como meia-noite UTC do
 // dia. Formatar no fuso do servidor (Brasil, UTC-3) mostrava o dia ANTERIOR —
@@ -86,8 +90,8 @@ export default async function Financeiro({
   // cria), e as contas recorrentes do mês, do seguinte e do mês olhado (se
   // futuro) nascem se faltarem. Um de cada vez e FORA do Promise.all: cada um
   // abre a própria transação e escreve; e nenhum deles pode derrubar a tela.
-  if (podeLancar) await prepararFinanceiro(sessao).catch((e) => console.error('[financeiro] preparar', e))
-  await garantirRecorrentes(sessao, mesOlhado).catch((e) => console.error('[financeiro] recorrentes', e))
+  if (podeLancar) await prepararFinanceiro(sessao).catch((e) => registrarErro('financeiro.preparar', e))
+  await garantirRecorrentes(sessao, mesOlhado).catch((e) => registrarErro('financeiro.recorrentes', e))
 
   const [contas, dre, categorias, unidades, lancamentos, meses, recorrentes] = await Promise.all([
     aVencer(sessao, onde.ids),
@@ -176,6 +180,17 @@ export default async function Financeiro({
           >
             Fechar o mês
           </Link>
+          <a
+            href={`/${slug}/financeiro/exportar?${new URLSearchParams(
+              Object.entries({ mes: mesOlhado, tipo, situacao: situacaoL, categoria: catPedida, q, unidade: onde.unidadeId }).filter(
+                (par): par is [string, string] => typeof par[1] === 'string' && par[1] !== '',
+              ),
+            )}`}
+            className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            title="Baixar em planilha os lançamentos deste mês, com os filtros desta tela"
+          >
+            Planilha
+          </a>
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
         </div>
       }

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
@@ -15,6 +16,8 @@ import { SeletorPeriodo } from '@/ui/Periodo'
 import { Secao, Tira, brl } from '@/ui/painel'
 import { Situacao } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
+
+export const metadata: Metadata = { title: 'Auditoria' }
 
 // O livro, aberto.
 //

@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import { Marca } from '@/ui/Marca'
 import { Formulario } from './Formulario'
+
+export const metadata: Metadata = { title: 'Convite' }
 
 // Aceitar o convite.
 //

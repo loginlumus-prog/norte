@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -12,6 +13,8 @@ import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { plural } from '@/ui/texto'
 import { AnotarNumero, TirarNumero } from './Lista'
+
+export const metadata: Metadata = { title: 'Sem ofertas' }
 
 // Quem não recebe oferta no WhatsApp — a lista de descadastro da empresa.
 //

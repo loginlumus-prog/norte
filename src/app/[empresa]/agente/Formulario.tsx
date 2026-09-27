@@ -29,6 +29,7 @@ import {
   RECADO_PADRAO,
 } from '@/servidor/assistente/recado'
 import { salvar, type EstadoAgente } from './acoes'
+import { semApagar } from '@/ui/formulario'
 
 export type AgenteNaTela = {
   nome: string
@@ -78,7 +79,7 @@ export function Formulario({
   const recadoInicial = agente.poderes.includes(PODER_RECADO) && agente.saudacao ? agente.saudacao : RECADO_PADRAO
 
   return (
-    <form action={agir} className="flex max-w-3xl flex-col gap-5">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex max-w-3xl flex-col gap-5">
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
 

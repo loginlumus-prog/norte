@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { mostrarDiaDaColuna } from '@/servidor/dia'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -21,6 +22,8 @@ import { Anonimizar } from './Anonimizar'
 import { PALAVRA_CONFIRMA } from '@/servidor/anonimizar'
 import { colunaDoDia, diaEmSP } from '@/servidor/dia'
 import { plural, quantidade } from '@/ui/texto'
+
+export const metadata: Metadata = { title: 'Cliente' }
 
 // A ficha do cliente.
 //

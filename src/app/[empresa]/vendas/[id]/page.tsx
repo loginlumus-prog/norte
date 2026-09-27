@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { mostrarDiaDaColuna } from '@/servidor/dia'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
@@ -15,6 +16,8 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Cancelar } from './Cancelar'
 import { Devolver, type ItemDevolvivel } from './Devolver'
 import { restante } from '@/servidor/devolucao'
+
+export const metadata: Metadata = { title: 'Venda' }
 
 // A ficha de uma venda.
 //
@@ -147,12 +150,13 @@ export default async function FichaVenda({
           <Link href={`/${slug}/vendas`} className="text-sm font-medium text-tinta-2 hover:text-tinta">
             ← todas as vendas
           </Link>
-          <Link
+          {/* <a>: página de impressão abre inteira — ver comprovante/page.tsx. */}
+          <a
             href={`/${slug}/vendas/${v.id}/comprovante`}
             className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
           >
             Comprovante
-          </Link>
+          </a>
           {v.cliente?.telefone && (
             <a
               href={`https://wa.me/55${v.cliente.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(
