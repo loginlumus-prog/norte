@@ -17,7 +17,7 @@
 // Por isso não vai nada sensível — só id, nome e os papéis, que a própria
 // pessoa já enxerga na tela.
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { Sessao } from './permissao'
 
@@ -104,13 +104,51 @@ export async function abrirSessao(slugEmpresa: string, sessao: Sessao) {
   })
 }
 
-export async function lerSessao(slugEmpresa: string): Promise<SessaoNoCookie | null> {
-  const cookieStore = await cookies()
-  const bruto = cookieStore.get(PREFIXO + slugEmpresa)?.value
-  if (!bruto) return null
+/**
+ * Todos os valores que o navegador mandou com este nome, na ordem em que vieram.
+ *
+ * O navegador pode mandar DOIS cookies com o mesmo nome: o de agora e um
+ * antigo que ficou preso com outros atributos (um `Secure` de quando o site
+ * rodou em modo de produção nesta mesma máquina, por exemplo) e que o login
+ * novo não conseguiu sobrescrever. O `cookies().get()` do Next fica só com o
+ * primeiro, e o primeiro era o velho, vencido: a pessoa entrava, o painel
+ * abria (ele vem na própria resposta do login) e o clique seguinte a
+ * mandava de volta para a tela de entrar. Por isso lemos o cabeçalho cru.
+ */
+export function valoresDoCookie(cabecalho: string | null, nome: string): string[] {
+  if (!cabecalho) return []
+  const valores: string[] = []
+  for (const parte of cabecalho.split(';')) {
+    const i = parte.indexOf('=')
+    if (i < 0 || parte.slice(0, i).trim() !== nome) continue
+    const bruto = parte.slice(i + 1).trim()
+    try {
+      valores.push(decodeURIComponent(bruto))
+    } catch {
+      valores.push(bruto)
+    }
+  }
+  return valores
+}
 
-  // Cookie de uma empresa não vale para outra: a assinatura está presa ao slug.
-  return desempacotar(slugEmpresa, bruto)
+export async function lerSessao(slugEmpresa: string): Promise<SessaoNoCookie | null> {
+  const nome = PREFIXO + slugEmpresa
+  const cabecalhos = await headers()
+  const candidatos = valoresDoCookie(cabecalhos.get('cookie'), nome)
+  if (candidatos.length === 0) {
+    const doNext = (await cookies()).get(nome)?.value
+    if (doNext) candidatos.push(doNext)
+  }
+
+  // Cada candidato passa pela assinatura sozinho — ter mais de um não abre
+  // nada que um só não abriria. Cookie de uma empresa não vale para outra: a
+  // assinatura está presa ao slug. Entre os que valem, fica o mais novo.
+  let melhor: SessaoNoCookie | null = null
+  for (const valor of candidatos) {
+    const s = desempacotar(slugEmpresa, valor)
+    if (s && (!melhor || s.nasceu > melhor.nasceu)) melhor = s
+  }
+  return melhor
 }
 
 export async function fecharSessao(slugEmpresa: string) {

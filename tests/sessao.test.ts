@@ -40,3 +40,23 @@ describe('sessão ainda vale?', () => {
     expect(sessaoAindaVale({ ativo: true, sessoesDesde: ONTEM }, new Date(0))).toBe(false)
   })
 })
+
+// O navegador pode mandar dois cookies com o mesmo nome — o novo e um velho,
+// vencido, que ficou preso com outros atributos. Ler só o primeiro fazia
+// qualquer clique depois do login devolver a pessoa para a tela de entrar.
+import { valoresDoCookie } from '../src/servidor/sessao'
+
+describe('todos os cookies com o mesmo nome', () => {
+  it('devolve os dois quando o navegador manda dois', () => {
+    const cabecalho = 'modo=avancado; norte_sessao_exemplo=velho.aaa; tema=claro; norte_sessao_exemplo=novo.bbb'
+    expect(valoresDoCookie(cabecalho, 'norte_sessao_exemplo')).toEqual(['velho.aaa', 'novo.bbb'])
+  })
+
+  it('não confunde com o cookie de outra empresa', () => {
+    expect(valoresDoCookie('norte_sessao_exemplo2=x.y; norte_sessao_exemplo=a.b', 'norte_sessao_exemplo')).toEqual(['a.b'])
+  })
+
+  it('sem cabeçalho, nada', () => {
+    expect(valoresDoCookie(null, 'norte_sessao_exemplo')).toEqual([])
+  })
+})
