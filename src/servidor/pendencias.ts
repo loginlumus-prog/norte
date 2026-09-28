@@ -338,7 +338,7 @@ export async function pendenciasDoDia(
                   join variacoes va on va.id = e.variacao_id
                   join produtos p on p.id = va.produto_id
                   join unidades u on u.id = e.unidade_id
-                 where e.unidade_id = any(${doEstoque}) and va.ativa and p.ativo
+                 where e.unidade_id = any(${doEstoque}) and va.ativa and p.ativo and not p.servico
                    and (e.quantidade > 0 or u.eh_deposito
                         or cardinality(p.vendido_em) = 0 or e.unidade_id = any(p.vendido_em))
                  group by e.variacao_id) s

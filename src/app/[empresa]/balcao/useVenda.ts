@@ -26,7 +26,7 @@
 //     regra 9 quebraria o leitor no tablet.
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import type { ClienteNoBalcao, Achado } from './acoes'
+import type { ClienteNoBalcao, Achado, InicialDoBalcao } from './acoes'
 import { procurar, fecharVenda, consultarValeAcao } from './acoes'
 import { chaveDoBalcao, guardar, recuperar, esquecer } from './guardar'
 import { contar, faltaCom, pagamentosParaEnviar, precoDe, brl, cent } from './conta'
@@ -36,7 +36,32 @@ import { vendidoNaLoja } from '@/servidor/catalogo-loja'
 
 export type Pago = { forma: string; valor: number; referencia?: string; rotulo?: string; parcelas?: number }
 
-export type Linha = Achado & { quantidade: number; avulso?: boolean }
+export type Linha = Achado & {
+  quantidade: number
+  avulso?: boolean
+  /**
+   * A linha de uma encomenda ("Receber no balcão"): o que falta pagar dela.
+   * Não vai para o servidor como item — vai o id, e o servidor lança a linha
+   * com o valor que ELE lê da encomenda. Quantidade fixa em 1.
+   */
+  encomendaId?: string
+}
+
+/** A encomenda que abriu o balcão, como a página a entrega. */
+export type EncomendaNoPedido = { id: string; codigo: string; descricao: string; clienteNome: string; falta: number }
+
+const linhaDaEncomenda = (e: EncomendaNoPedido): Linha => ({
+  id: `encomenda-${e.id}`,
+  codigo: e.codigo,
+  descricao: `Encomenda ${e.codigo}: ${e.descricao}`,
+  medida: 'UN',
+  preco: e.falta,
+  precos: { vista: e.falta, cartao: e.falta, crediario: e.falta },
+  saldo: 1,
+  quantidade: 1,
+  avulso: true,
+  encomendaId: e.id,
+})
 
 export type Recado = {
   nivel: 'bom' | 'critico'
@@ -75,9 +100,21 @@ export function useVenda({
   programa,
   vendedores,
   crediario,
+  inicial,
+  encomenda = null,
+  veAssinatura = false,
 }: {
+  /** Aberto por "Receber no balcão", em Encomendas: o que falta dela entra no pedido. */
+  encomenda?: EncomendaNoPedido | null
+  /** Pode abrir Assinatura — decide o link do recado de "teto do plano". */
+  veAssinatura?: boolean
   slug: string
   unidadeId: string
+  /**
+   * O balcão aberto pela Agenda ("Atender e cobrar"): o serviço e o cliente
+   * já na venda, e o horário que ela cobra.
+   */
+  inicial?: InicialDoBalcao | null
   /** Para dizer "não é vendido na Loja Centro", e não "nesta loja". */
   unidadeNome: string
   usuarioId: string
@@ -109,6 +146,8 @@ export function useVenda({
   const [vendedorId, setVendedorId] = useState(usuarioId)
   const [pontosUsar, setPontosUsar] = useState(0)
   const [observacoes, setObservacoes] = useState('')
+  /** O horário da agenda que esta venda cobra. Some ao fechar, ao limpar, e quando a pessoa tira. */
+  const [agendamentoId, setAgendamentoId] = useState<string | null>(null)
   const [recado, setRecado] = useState<Recado | null>(null)
   const [fechada, setFechada] = useState<Fechada | null>(null)
   const [alerta, setAlerta] = useState<string | null>(null)
@@ -179,15 +218,51 @@ export function useVenda({
 
   useEffect(() => {
     const g = recuperar(chave)
-    if (!g) return
+    if (!g) {
+      // Veio da Agenda e não havia venda pela metade: o horário entra.
+      if (inicial) {
+        setCarrinho(inicial.itens.map((a) => ({ ...a, quantidade: 1 })))
+        setCliente(inicial.cliente)
+        setAgendamentoId(inicial.agendamentoId)
+      }
+      return
+    }
     setCarrinho(g.carrinho as Linha[])
     setPagos(g.pagos)
     setDesconto(g.desconto)
     setCliente(g.cliente)
     setPontosUsar(g.pontosUsar)
+    setAgendamentoId(g.agendamentoId ?? null)
     setVoltou(g.em)
     setIncerta(!!g.fechando)
+    // Havia uma venda pela metade de OUTRA coisa: ela não some por causa do
+    // horário. A pessoa conclui ou limpa, e volta à Agenda para cobrar.
+    if (inicial && g.agendamentoId !== inicial.agendamentoId) {
+      setAviso(`Havia uma venda em andamento neste balcão, e ela voltou. Conclua ou limpe essa venda antes de cobrar o horário de ${inicial.rotulo}.`)
+    }
+    // Só na montagem: o horário é do endereço que abriu a tela.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chave])
+
+  // A encomenda do endereço (`?encomenda=`) entra como a linha do que falta.
+  // Mesma regra do horário da Agenda: se havia uma venda pela metade de
+  // outra coisa, ela volta e a encomenda espera — misturar as duas cobraria
+  // o bolo de um cliente na conta de outro.
+  useEffect(() => {
+    if (!encomenda) return
+    const g = recuperar(chave)
+    const pela = (g?.carrinho ?? []) as Linha[]
+    if (pela.some((l) => l.encomendaId === encomenda.id)) return
+    if (pela.length > 0) {
+      setAviso(
+        `Havia uma venda em andamento neste balcão, e ela voltou. Conclua ou limpe essa venda antes de receber a encomenda de ${encomenda.clienteNome}.`,
+      )
+      return
+    }
+    setCarrinho((c) => (c.some((l) => l.encomendaId) ? c : [...c, linhaDaEncomenda(encomenda)]))
+    // Só na montagem: a encomenda é do endereço que abriu a tela.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chave, encomenda?.id])
 
   useEffect(() => {
     if (primeiraVez.current) {
@@ -195,8 +270,8 @@ export function useVenda({
       return
     }
     if (carrinho.length === 0) esquecer(chave)
-    else guardar(chave, { carrinho, pagos, desconto, cliente, pontosUsar })
-  }, [chave, carrinho, pagos, desconto, cliente, pontosUsar])
+    else guardar(chave, { carrinho, pagos, desconto, cliente, pontosUsar, agendamentoId })
+  }, [chave, carrinho, pagos, desconto, cliente, pontosUsar, agendamentoId])
 
   // Busca conforme digita, com uma pausa curta para não consultar a cada tecla.
   useEffect(() => {
@@ -341,7 +416,8 @@ export function useVenda({
   // está na tela — e recado velho na tela é recado que ninguém mais lê.
   function mudarQtd(id: string, q: number) {
     setRecado(null)
-    setCarrinho((c) => c.map((l) => (l.id === id ? { ...l, quantidade: Math.max(q, 0) } : l)))
+    // A encomenda é uma só: "2 × o bolo" cobraria o que falta duas vezes.
+    setCarrinho((c) => c.map((l) => (l.id === id && !l.encomendaId ? { ...l, quantidade: Math.max(q, 0) } : l)))
   }
 
   const tirar = (id: string) => {
@@ -462,6 +538,7 @@ export function useVenda({
     setCliente(null)
     setPontosUsar(0)
     setObservacoes('')
+    setAgendamentoId(null)
     setTermo('')
     setAchados([])
     setAlerta(null)
@@ -474,7 +551,7 @@ export function useVenda({
     // sucesso depois que o carrinho já foi limpo.
     const trocoAgora = trocoCent
     const formasAgora = pagos.map((p) => p.forma)
-    const guardado = { carrinho, pagos, desconto, cliente, pontosUsar }
+    const guardado = { carrinho, pagos, desconto, cliente, pontosUsar, agendamentoId }
     // Marca o guardado como "concluindo" ANTES de pedir: se a tela cair entre
     // o pedido e a resposta, quem abrir de novo fica sabendo.
     guardar(chave, { ...guardado, fechando: Date.now() })
@@ -490,7 +567,11 @@ export function useVenda({
         vendedorId: vendedores ? vendedorId : null,
         pontosUsar,
         observacoes,
-        itens: carrinho.map((l) =>
+        agendamentoId,
+        // A linha da encomenda não vai como item: vai o id, e o servidor
+        // lança o que falta com o valor que ele lê.
+        encomendaId: carrinho.find((l) => l.encomendaId)?.encomendaId ?? null,
+        itens: carrinho.filter((l) => !l.encomendaId).map((l) =>
           l.avulso
             ? {
                 variacaoId: null,
@@ -558,7 +639,33 @@ export function useVenda({
           link: { href: `/${slug}/balcao?unidade=${unidadeId}`, rotulo: 'abrir o caixa' },
         })
       } else if (r.motivo === 'teto_do_plano') {
-        setRecado({ nivel: 'critico', texto: r.recado, link: { href: `/${slug}/assinatura`, rotulo: 'ver o plano' } })
+        // O link só para quem abre Assinatura: para o balcão, ele levava a
+        // uma página que não existe para ele.
+        setRecado(
+          veAssinatura
+            ? { nivel: 'critico', texto: r.recado, link: { href: `/${slug}/assinatura`, rotulo: 'ver o plano' } }
+            : { nivel: 'critico', texto: `${r.recado} Avise quem responde pela empresa — é quem pode mudar o plano.` },
+        )
+      } else if (r.motivo === 'recusa') {
+        // A venda estourou no meio e nada foi gravado — ver `fecharVenda`.
+        setRecado({ nivel: 'critico', texto: r.recado })
+        if (r.soltar === 'vale') setPagos((p) => p.filter((x) => x.forma !== 'VALE'))
+        if (r.soltar === 'pontos') setPontosUsar(0)
+      } else if (r.motivo === 'loja_nao_vende') {
+        setRecado({ nivel: 'critico', texto: 'Esta unidade não vende: é depósito ou foi desativada. Escolha uma loja.' })
+      } else if (r.motivo === 'item_inativo') {
+        const fora = new Set(r.itens)
+        setCarrinho((c) => c.filter((l) => l.avulso || !fora.has(l.descricao)))
+        setAviso(`Saiu do pedido: ${r.itens.join(', ')} — foi desativado no cadastro. Confira o total e conclua de novo.`)
+      } else if (r.motivo === 'quantidade_fracionada') {
+        setRecado({
+          nivel: 'critico',
+          texto: `Peça, par e caixa vão em número inteiro: ${r.itens.join(', ')}. Fração só em quilo, litro ou metro.`,
+        })
+      } else if (r.motivo === 'encomenda_recusada') {
+        // A encomenda sai do pedido; o resto da venda pode seguir.
+        setCarrinho((c) => c.filter((l) => !l.encomendaId))
+        setRecado({ nivel: 'critico', texto: r.recado, link: { href: `/${slug}/encomendas`, rotulo: 'abrir Encomendas' } })
       } else if (r.motivo === 'desconto_acima_do_teto') {
         setRecado({
           nivel: 'critico',
@@ -573,6 +680,11 @@ export function useVenda({
         setPagos((p) => p.filter((x) => x.forma !== 'VALE'))
       } else if (r.motivo === 'crediario_recusado') {
         setRecado({ nivel: 'critico', texto: r.recado })
+      } else if (r.motivo === 'agendamento_recusado') {
+        // O horário sai da venda (a venda pode seguir sem ele), e a frase diz
+        // por quê — quase sempre: já foi cobrado em outra aba.
+        setAgendamentoId(null)
+        setRecado({ nivel: 'critico', texto: r.recado, link: { href: `/${slug}/agenda`, rotulo: 'abrir a Agenda' } })
       } else if (r.motivo === 'fora_da_loja') {
         // O cadastro mudou depois que o item entrou (alguém tirou o produto
         // desta loja agora há pouco). Mesma regra de cima: sai, com aviso, e a
@@ -701,6 +813,9 @@ export function useVenda({
       setPreco: setAvulsoPreco,
       lancar: lancarAvulso,
     },
+    // o horário da agenda que esta venda cobra
+    cobrando: agendamentoId && inicial?.agendamentoId === agendamentoId ? inicial.rotulo : agendamentoId ? 'um horário da agenda' : null,
+    tirarHorario: () => setAgendamentoId(null),
     // quem, e o resto
     desconto,
     setDesconto,

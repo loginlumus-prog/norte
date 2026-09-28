@@ -9,7 +9,7 @@ import { Cartao, Situacao, Vazio } from '@/ui/base'
 import type { ConversaNaTela } from '@/servidor/assistente/conexao'
 
 const hora = (iso: string) =>
-  new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
 export function Conversas({ itens, nome }: { itens: ConversaNaTela[]; nome: string }) {
   return (

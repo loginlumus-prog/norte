@@ -14,8 +14,11 @@
 //     empresa: assinado para a A não abre a porta da B.
 //
 // Variáveis:
-//   CONECTOR_URL      onde o conector escuta, ex.: http://10.0.0.5:3200 (rede
-//                     privada) ou https://conector.norte.app
+//   CONECTOR_URL      onde o conector escuta, ex.: https://conector.norte.app.
+//                     Em produção (NODE_ENV=production) SÓ https — http só
+//                     para http://localhost / 127.0.0.1 (a mesma máquina). O
+//                     segredo viaja em todo pedido; em http, quem está no
+//                     caminho lê.
 //   CONECTOR_SEGREDO  32+ caracteres, o MESMO configurado no conector
 //
 // Sem as duas, a conexão por QR Code fica desligada neste servidor e a tela
@@ -42,10 +45,29 @@ export function lerConfigConector(env: Record<string, string | undefined> = proc
   try {
     const u = new URL(url)
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+    // O segredo vai no cabeçalho de TODO pedido (Bearer), e o mesmo segredo
+    // assina o que o conector manda de volta. Em http, qualquer um no caminho
+    // lê o segredo uma vez e passa a mandar pelo WhatsApp de todas as lojas
+    // (e a entregar mensagem "recebida" falsa). Em produção, só https — a
+    // exceção é o conector na MESMA máquina (localhost), que não passa por
+    // rede nenhuma.
+    if (u.protocol === 'http:' && env.NODE_ENV === 'production' && !ehLocal(u.hostname)) {
+      avisarUmaVez('[conector] CONECTOR_URL em http:// fora de localhost: recusado em produção. Use https://.')
+      return null
+    }
   } catch {
     return null
   }
   return { url, segredo }
+}
+
+const ehLocal = (host: string) => host === 'localhost' || host === '127.0.0.1' || host === '[::1]'
+
+let avisou = false
+function avisarUmaVez(texto: string) {
+  if (avisou) return
+  avisou = true
+  console.error(texto)
 }
 
 /** A conexão por QR Code está ligada neste servidor? */
@@ -191,7 +213,7 @@ export async function sairNoConector(cfg: ConfigConector, orgId: string, buscar?
 export async function enviarPeloConector(
   cfg: ConfigConector,
   orgId: string,
-  corpo: { numero: string; texto: string } | { numero: string; midia: unknown },
+  corpo: ({ numero: string; texto: string } | { numero: string; midia: unknown }) & { chave?: string },
   buscar?: typeof fetch,
 ) {
   // Folga larga: o conector espera a vez na fila e o "digitando…" antes de

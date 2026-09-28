@@ -210,8 +210,11 @@ describe('podeMexerNaTarefa', () => {
     expect(podeMexerNaTarefa(balcaoDa1, { responsavelId: 'u-BALCAO' }, 'uni-2')).toBe(false)
   })
 
-  it('quadro da empresa inteira (sem loja) aceita quem tem a capacidade em qualquer loja', () => {
-    expect(podeMexerNaTarefa(gerenteDa1, { responsavelId: 'outra' }, null)).toBe(true)
+  it('quadro da empresa inteira (sem loja): quem VÊ em qualquer loja mexe no que é seu; gerir é só de quem tem a empresa inteira', () => {
+    // O gerente da loja 1 não gere o quadro de todos: ali ele é como quem só
+    // vê — mexe na tarefa dele e na de ninguém, não na dos outros.
+    expect(podeMexerNaTarefa(gerenteDa1, { responsavelId: 'outra' }, null)).toBe(false)
+    expect(podeMexerNaTarefa(gerenteDa1, { responsavelId: null }, null)).toBe(true)
     expect(podeMexerNaTarefa(balcaoDa1, { responsavelId: null }, null)).toBe(true)
     expect(podeMexerNaTarefa(balcaoDa1, { responsavelId: 'outra' }, null)).toBe(false)
   })

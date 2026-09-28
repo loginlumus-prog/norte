@@ -74,7 +74,7 @@ function MiniBarras({ meses, valores }: { meses: string[]; valores: (number | nu
 
 const textoMeta = (i: Insumos) => (i.meta === null ? 'sem meta' : `${Math.round(i.meta * 100)}%`)
 const textoTarefas = (i: Insumos) => (i.tarefas ? `${i.tarefas.noPrazo}/${i.tarefas.atribuidas} no prazo` : 'sem tarefa')
-const textoPresenca = (i: Insumos) => (i.presenca ? `${i.presenca.dias} de ${i.presenca.de} dias` : 'sem entrada')
+const textoPresenca = (i: Insumos) => (i.presenca ? `em ${i.presenca.dias} de ${i.presenca.de} dias` : '—')
 
 /* ── o corpo: tira + tabela ───────────────────────────────── */
 
@@ -93,11 +93,16 @@ function Corpo({ pessoas, tendencia }: { pessoas: PessoaComNota[]; tendencia?: T
       titulo: 'Estrelas',
       largura: '9rem',
       celula: (p) =>
-        semDados(p.nota) ? <span className="text-xs whitespace-nowrap text-tinta-3">sem dados no mês</span> : <Estrelas valor={p.nota.estrelas} tamanho="sm" />,
+        semDados(p.nota) ? (
+          <span className="text-xs whitespace-nowrap text-tinta-3">{p.insumos.vendido ? 'sem meta no mês' : 'sem dados no mês'}</span>
+        ) : (
+          <Estrelas valor={p.nota.estrelas} tamanho="sm" />
+        ),
     },
     { chave: 'meta', titulo: 'Meta', celula: (p) => <Medida nota={p.nota.notas.meta ?? null} texto={textoMeta(p.insumos)} /> },
     { chave: 'tarefas', titulo: 'Tarefas', celula: (p) => <Medida nota={p.nota.notas.tarefas ?? null} texto={textoTarefas(p.insumos)} /> },
-    { chave: 'presenca', titulo: 'Presença', celula: (p) => <Medida nota={p.nota.notas.presenca ?? null} texto={textoPresenca(p.insumos)} /> },
+    // Informação, não nota: é login, não ponto. Ver o cabeçalho de servidor/desempenho.ts.
+    { chave: 'presenca', titulo: 'Entrou no sistema', celula: (p) => <Medida nota={null} texto={textoPresenca(p.insumos)} /> },
     ...(tendencia
       ? [
           {
@@ -123,13 +128,14 @@ function Corpo({ pessoas, tendencia }: { pessoas: PessoaComNota[]; tendencia?: T
           { rotulo: 'com 4 estrelas ou mais', quantos: quantos('bom'), nivel: 'bom' },
           { rotulo: 'entre 2,5 e 4', quantos: quantos('atencao'), nivel: 'atencao' },
           { rotulo: 'abaixo de 2,5', quantos: quantos('critico'), nivel: 'critico' },
-          { rotulo: 'sem dados no mês', quantos: pessoas.length - comNota.length, nivel: 'neutro' },
+          { rotulo: 'sem nota no mês', quantos: pessoas.length - comNota.length, nivel: 'neutro' },
         ]}
       />
       <Tabela colunas={colunas} linhas={pessoas} chave={(p) => p.usuarioId} vazio="Ninguém com venda, meta ou tarefa neste mês." />
       <p className="text-xs text-tinta-3">
-        Pesos: meta 50%, tarefas 30%, presença 20% — quem não tem meta ou tarefa divide o peso entre o que tem. Presença é dia em que a
-        pessoa entrou no sistema, não ponto. Passar da meta não dá estrela a mais: isso é comissão.
+        A nota mede duas coisas: meta (60%) e tarefas no prazo (40%) — quem não tem uma das duas fica com a outra inteira. "Entrou no
+        sistema" é só informação, não conta na nota: é dia com login, não ponto — quem fica logado a semana toda aparece com poucos
+        dias. Passar da meta não dá estrela a mais: isso é comissão.
       </p>
     </div>
   )

@@ -32,10 +32,13 @@ const EXIGE: Record<TipoMovimento, Capacidade> = {
   PERDA: 'estoque.ajustar',
   TRANSFERENCIA: 'estoque.ajustar',
   BALANCO: 'estoque.ajustar',
+  // O material que se gasta atendendo (esmalte, luva, algodão). Quem atende
+  // anota; quem ajusta estoque não precisa ser chamado para isso.
+  CONSUMO: 'estoque.consumir',
 }
 
 /** Movimentos que TIRAM do estoque precisam de saldo. */
-const TIRA: TipoMovimento[] = ['VENDA', 'PERDA', 'TRANSFERENCIA']
+const TIRA: TipoMovimento[] = ['VENDA', 'PERDA', 'TRANSFERENCIA', 'CONSUMO']
 
 export type Movimento = {
   variacaoId: string
@@ -83,7 +86,9 @@ export async function mexerEstoque(
     const loja = await db.unidade.findUnique({ where: { id: m.unidadeId }, select: { id: true } })
     if (!v || !loja) throw new Error('Produto ou loja não encontrado nesta empresa.')
 
-    const antes = m.tipo === 'BALANCO' ? await saldoDe(db, m.variacaoId, m.unidadeId) : null
+    // Travado (for update), como a conta do balanço lá embaixo: o "antes" do
+    // livro é o mesmo saldo de que o ajuste parte.
+    const antes = m.tipo === 'BALANCO' ? await saldoDe(db, m.variacaoId, m.unidadeId, true) : null
     const r = await mexerEstoqueEm(db, sessao, m)
 
     // Correção de saldo é o movimento que MAIS precisa de livro: é onde some
@@ -135,6 +140,14 @@ export async function mexerEstoqueEm(
   }
 
   return (async () => {
+    // Serviço não tem estoque (ver `Produto.servico`): a manicure vendida, a
+    // venda cancelada ou devolvida não mexem em saldo nenhum. Aqui, e não em
+    // cada chamador, para a venda, o cancelamento e a devolução concordarem.
+    const [tipoDoProduto] = await db.$queryRaw<{ servico: boolean }[]>`
+      select p.servico from variacoes v join produtos p on p.id = v.produto_id where v.id = ${m.variacaoId}
+    `
+    if (tipoDoProduto?.servico) return { ok: true as const, saldo: 0 }
+
     // Garante que a linha de saldo existe, sem correr risco de duas criarem
     // ao mesmo tempo (o índice único resolve; `do nothing` engole o empate).
     await db.$executeRaw`
@@ -144,9 +157,15 @@ export async function mexerEstoqueEm(
     `
 
     // BALANCO informa o contado; o delta é a diferença para o que está gravado.
+    //
+    // A leitura TRAVA a linha (for update). Sem a trava, uma venda que
+    // baixasse 2 entre esta leitura e o update abaixo seria somada por cima:
+    // contou 10, o saldo lido era 12, a venda deixou 10, o delta de -2 levava
+    // a 8 — duas peças sumidas no próprio balanço, que existe para achar peça
+    // sumida. Travada, a venda espera, e o saldo termina no contado.
     let delta: number
     if (m.tipo === 'BALANCO') {
-      const atual = await saldoDe(db, m.variacaoId, m.unidadeId)
+      const atual = await saldoDe(db, m.variacaoId, m.unidadeId, true)
       delta = m.quantidade - atual
     } else {
       delta = TIRA.includes(m.tipo) ? -m.quantidade : m.quantidade
@@ -192,11 +211,17 @@ export async function mexerEstoqueEm(
   })()
 }
 
-async function saldoDe(db: any, variacaoId: string, unidadeId: string): Promise<number> {
-  const r = await db.$queryRaw<{ quantidade: string }[]>`
-    select quantidade from estoque
-     where variacao_id = ${variacaoId} and unidade_id = ${unidadeId}
-  `
+async function saldoDe(db: any, variacaoId: string, unidadeId: string, travar = false): Promise<number> {
+  const r = travar
+    ? await db.$queryRaw<{ quantidade: string }[]>`
+        select quantidade from estoque
+         where variacao_id = ${variacaoId} and unidade_id = ${unidadeId}
+           for update
+      `
+    : await db.$queryRaw<{ quantidade: string }[]>`
+        select quantidade from estoque
+         where variacao_id = ${variacaoId} and unidade_id = ${unidadeId}
+      `
   return r.length ? Number(r[0]!.quantidade) : 0
 }
 
@@ -315,6 +340,7 @@ export const ROTULO_MOVIMENTO: Record<TipoMovimento, string> = {
   PERDA: 'Perda',
   TRANSFERENCIA: 'Transferência',
   BALANCO: 'Balanço',
+  CONSUMO: 'Consumo interno',
 }
 
 // ─────────────────────────────────────────────────────────────

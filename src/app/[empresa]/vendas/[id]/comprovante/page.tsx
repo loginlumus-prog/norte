@@ -34,7 +34,7 @@ const qtd = (v: unknown, medida: string) => {
   return `${t} ${MEDIDA[medida] ?? ''}`.trim()
 }
 const quando = (d: Date) =>
-  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d)
+  new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d)
 const cnpj = (d: string | null) => {
   if (!d) return null
   const s = d.replace(/\D/g, '')

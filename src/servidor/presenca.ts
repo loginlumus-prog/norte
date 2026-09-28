@@ -131,6 +131,15 @@ export function decidirEntrada(
 // O LADO DO BANCO
 // ─────────────────────────────────────────────────────────────
 
+/** Quem conta na vaga: tem algum papel da loja além do SUPORTE (nosso). */
+const CONTA_NA_VAGA = { usuario: { acessos: { some: { papel: { not: 'SUPORTE' as const } } } } }
+
+type Linha = { usuarioId: string; desde: Date; ultimoSinal: Date; usuario: { nome: string } }
+const SELECAO = { usuarioId: true, desde: true, ultimoSinal: true, usuario: { select: { nome: true } } } as const
+
+const paraOcupante = (agora: Date) => (l: Linha): Ocupante =>
+  enfeitar(agora, { usuarioId: l.usuarioId, nome: l.usuario.nome, desde: l.desde, ultimoSinal: l.ultimoSinal })
+
 /**
  * Quem está dentro, para a tela de "quem está usando agora" — e para a conta
  * das vagas.
@@ -141,20 +150,31 @@ export function decidirEntrada(
  */
 export async function quemEstaDentro(orgId: string, agora = new Date()): Promise<Ocupante[]> {
   const linhas = await comoOrg(orgId, (db) =>
-    db.presenca.findMany({
-      where: { usuario: { acessos: { some: { papel: { not: 'SUPORTE' } } } } },
-      select: { usuarioId: true, desde: true, ultimoSinal: true, usuario: { select: { nome: true } } },
-      orderBy: { ultimoSinal: 'desc' },
-    }),
+    db.presenca.findMany({ where: CONTA_NA_VAGA, select: SELECAO, orderBy: { ultimoSinal: 'desc' } }),
   )
-  return linhas.map((l) =>
-    enfeitar(agora, {
-      usuarioId: l.usuarioId,
-      nome: l.usuario.nome,
-      desde: l.desde,
-      ultimoSinal: l.ultimoSinal,
-    }),
-  )
+  return linhas.map(paraOcupante(agora))
+}
+
+/**
+ * A marca da vaga: o instante em que ela foi ocupada (`desde`), em texto.
+ *
+ * Vai dentro do cookie e é o que PRENDE a sessão à vaga. Enquanto a linha de
+ * presença existir com este mesmo `desde`, a sessão vale; se a vaga foi
+ * tomada por outra pessoa (a linha foi apagada) ou a pessoa clicou em Sair
+ * (idem), a marca não confere mais e o cookie morre na próxima tela — mesmo
+ * que ainda tenha horas de validade.
+ *
+ * Por que o `desde`, e não um número sorteado: a vaga é por PESSOA, não por
+ * aparelho. O celular e o computador da dona dividem a mesma linha, e o
+ * `desde` só muda quando a linha nasce de novo — exatamente quando a vaga
+ * anterior deixou de existir. E ele não precisa ser segredo: o cookie é
+ * assinado, ninguém troca a marca sem o segredo do sistema.
+ */
+export const marcaDaVaga = (desde: Date) => desde.toISOString()
+
+export type Ocupacao = Veredito & {
+  /** A marca da vaga ocupada (ver `marcaDaVaga`), quando entrou. */
+  vaga?: string
 }
 
 /**
@@ -163,18 +183,28 @@ export async function quemEstaDentro(orgId: string, agora = new Date()): Promise
  * Depois, e não antes, de propósito: quem errou a senha não pode descobrir
  * quem está dentro da empresa. A lista de ocupantes só sai para quem já provou
  * que tem conta ali.
+ *
+ * ── contar e ocupar num passo só ─────────────────────────────
+ * Antes eram duas transações: uma contava quem estava dentro, a outra gravava
+ * a presença. Duas pessoas entrando no MESMO segundo, com uma vaga sobrando,
+ * contavam as duas "cabe" e entravam as duas — a loja de uma vaga com duas
+ * pessoas dentro. Agora a trava do Postgres por empresa (`xact`: solta sozinha
+ * no fim da transação) faz a segunda esperar a primeira gravar, e contar de
+ * novo já com ela dentro.
  */
 export async function ocuparVaga(
   orgId: string,
   plano: Plano,
   quem: { usuarioId: string; ehDono: boolean },
   agora = new Date(),
-): Promise<Veredito> {
-  const presentes = await quemEstaDentro(orgId, agora)
-  const v = decidirEntrada(agora, presentes, quem, PLANOS[plano].vagas)
-  if (!v.pode) return v
+): Promise<Ocupacao> {
+  return comoOrg(orgId, async (db) => {
+    await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`vaga:${orgId}`}))`
 
-  await comoOrg(orgId, async (db) => {
+    const linhas = await db.presenca.findMany({ where: CONTA_NA_VAGA, select: SELECAO, orderBy: { ultimoSinal: 'desc' } })
+    const v = decidirEntrada(agora, linhas.map(paraOcupante(agora)), quem, PLANOS[plano].vagas)
+    if (!v.pode) return v
+
     if (v.derrubar) {
       await db.presenca.delete({
         where: { orgId_usuarioId: { orgId, usuarioId: v.derrubar.usuarioId } },
@@ -192,14 +222,36 @@ export async function ocuparVaga(
         },
       })
     }
-    await db.presenca.upsert({
+    // Quem já estava dentro (outro aparelho) continua com a MESMA vaga: o
+    // `desde` não muda, e o cookie do outro aparelho segue valendo.
+    const linha = await db.presenca.upsert({
       where: { orgId_usuarioId: { orgId, usuarioId: quem.usuarioId } },
       create: { orgId, usuarioId: quem.usuarioId, desde: agora, ultimoSinal: agora },
       update: { ultimoSinal: agora },
+      select: { desde: true },
     })
+    return { ...v, vaga: marcaDaVaga(linha.desde) }
   })
+}
 
-  return v
+/**
+ * A sessão ainda segura a vaga com que entrou?
+ *
+ * `null` quando a vaga não existe mais — foi tomada por outra pessoa, ou a
+ * pessoa clicou em Sair em algum aparelho. Função pura, para o teste.
+ */
+export function vagaConfere(linha: { desde: Date } | null, vaga: string | null | undefined): boolean {
+  return !!linha && !!vaga && marcaDaVaga(linha.desde) === vaga
+}
+
+/** A linha de presença desta pessoa, para conferir a vaga do cookie. */
+export async function presencaDe(orgId: string, usuarioId: string): Promise<{ desde: Date; ultimoSinal: Date } | null> {
+  return comoOrg(orgId, (db) =>
+    db.presenca.findUnique({
+      where: { orgId_usuarioId: { orgId, usuarioId } },
+      select: { desde: true, ultimoSinal: true },
+    }),
+  )
 }
 
 /**

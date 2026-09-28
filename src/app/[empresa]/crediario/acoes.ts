@@ -32,6 +32,7 @@ export async function receberAcao(
         valor_invalido: 'O valor precisa ser maior que os juros.',
         passa_do_resto: 'Está recebendo mais do que a parcela deve.',
         caixa_fechado: 'Para receber em dinheiro o caixa desta loja precisa estar aberto.',
+        mudou: 'Esta parcela mudou agora (outro recebimento ou uma devolução). Nada foi recebido: confira o valor e receba de novo.',
       }[r.motivo],
     }
   }

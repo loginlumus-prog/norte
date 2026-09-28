@@ -16,8 +16,10 @@ describe('comissão', () => {
 
 describe('o mês', () => {
   it('a chave é AAAA-MM', () => {
-    expect(mesChave(new Date(2026, 8, 11))).toBe('2026-09')
-    expect(mesChave(new Date(2026, 0, 1))).toBe('2026-01')
+    expect(mesChave(new Date('2026-09-11T12:00:00-03:00'))).toBe('2026-09')
+    expect(mesChave(new Date('2026-01-01T00:00:00-03:00'))).toBe('2026-01')
+    // 22h30 do dia 30 em São Paulo já é dia 1º em UTC — e ainda é setembro.
+    expect(mesChave(new Date('2026-09-30T22:30:00-03:00'))).toBe('2026-09')
   })
 
   it('só aceita mês de verdade', () => {

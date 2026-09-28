@@ -44,7 +44,7 @@ import {
   rotearCondicao,
   variaveisDoModelo,
 } from './grafo'
-import { proximaAbertura, type Horario } from './horario'
+import { proximaAbertura, proximoHorarioDeFalar, type Horario } from './horario'
 
 export type EstadoExecucao = {
   id: string
@@ -66,10 +66,17 @@ export type Evento =
 
 /**
  * O que aconteceu com uma mensagem que o motor tentou mandar.
- * 'janela' = WhatsApp oficial, 24 horas sem a pessoa escrever, e sem modelo
- * aprovado para mandar no lugar: a execução termina ('janela_fechada').
+ * 'janela' = mais de 24 horas sem a pessoa escrever e sem aceite de ofertas
+ * (ou WhatsApp oficial sem modelo aprovado): a execução termina
+ * ('janela_fechada').
+ * 'incerto' = o canal não confirmou, mas pode ter entregado, e não sabe
+ * evitar repetição: conta como enviada e o roteiro segue — mandar de novo
+ * seria a mesma mensagem duas vezes.
+ * 'perdida' = a trava não é mais desta rodada (tiraram a pessoa, ela mandou
+ * PARAR, outra rodada assumiu): para NA HORA, sem mandar e sem gravar.
+ * 'na_lista' = a pessoa está na lista de quem não recebe: a execução sai.
  */
-export type Envio = 'ok' | 'limite' | 'falha' | 'janela'
+export type Envio = 'ok' | 'limite' | 'falha' | 'janela' | 'incerto' | 'perdida' | 'na_lista'
 
 export type Deps = {
   agora: () => Date
@@ -78,9 +85,13 @@ export type Deps = {
    * `modelo`: o modelo aprovado do bloco, com as variáveis JÁ preenchidas
    * para esta pessoa. Só é usado se a janela de 24 horas fechou (WhatsApp
    * oficial); nos outros canais ele é ignorado.
+   *
+   * `chave`: a identidade DESTE envio — a mesma na nova tentativa depois de
+   * uma falha, outra na próxima mensagem. O canal que sabe deduplicar (o
+   * conector do QR Code) não manda duas vezes a mesma chave.
    */
-  enviarTexto: (texto: string, modelo?: ModeloDoBloco | null) => Promise<Envio>
-  enviarMidia: (d: DadosMidia, legenda: string) => Promise<Envio>
+  enviarTexto: (texto: string, modelo?: ModeloDoBloco | null, chave?: string) => Promise<Envio>
+  enviarMidia: (d: DadosMidia, legenda: string, chave?: string) => Promise<Envio>
   /** Avisa a equipe. Devolve quantas mensagens saíram para ela. */
   passarParaPessoa: (d: DadosPassar, vars: Vars) => Promise<number>
   /** O horário da loja entendido, ou nulo (a espera ignora o horário). */
@@ -113,14 +124,16 @@ const REPETIR_EM_MS = 2 * 60_000
 type Passo =
   | { tipo: 'seguir'; saida: string }
   | { tipo: 'parar' }
-  | { tipo: 'fim'; status: 'concluida' | 'erro'; motivo: MotivoFim; conectarPara?: string }
+  /** A trava foi perdida: nem grava (outro já é dono da execução). */
+  | { tipo: 'abortar' }
+  | { tipo: 'fim'; status: 'concluida' | 'erro' | 'cancelada'; motivo: MotivoFim; conectarPara?: string }
 
 export async function rodar(g: Grafo, inicial: EstadoExecucao, evento: Evento, deps: Deps): Promise<Resultado> {
   const e: EstadoExecucao = { ...inicial, vars: { ...inicial.vars } }
   let passos = 0
   if (!ehViva(e.status)) return { estado: e, passos, andou: false }
 
-  const encerrar = async (status: 'concluida' | 'erro', motivo: MotivoFim) => {
+  const encerrar = async (status: 'concluida' | 'erro' | 'cancelada', motivo: MotivoFim) => {
     e.status = status
     e.motivoFim = motivo
     e.proximoEm = null
@@ -161,6 +174,23 @@ export async function rodar(g: Grafo, inicial: EstadoExecucao, evento: Evento, d
     }
     // 'rodando' com trava vencida: processo que morreu no meio. Retoma do
     // bloco salvo — que é o bloco que ainda NÃO tinha terminado.
+
+    // ── a noite ─────────────────────────────────────────────
+    // O prazo do "Esperar resposta" e a nova tentativa depois de uma falha
+    // são o RELÓGIO falando, não resposta a quem acabou de escrever: a
+    // pergunta das 22h com prazo de 2 horas não pode virar "Ainda está aí?"
+    // à meia-noite. Fora do horário da loja (ou das 8h às 21h, sem ele), o
+    // despertador pula para a próxima abertura e nada sai agora. Se a pessoa
+    // responder antes, a resposta anda na hora, como sempre.
+    const doRelogio = venceu && (e.status === 'aguardando_resposta' || (e.status === 'esperando' && e.vars._falhas != null))
+    if (doRelogio) {
+      const pode = proximoHorarioDeFalar(agora, deps.horario)
+      if (pode.getTime() > agora.getTime()) {
+        e.proximoEm = pode
+        await deps.salvar(e)
+        return { estado: e, passos, andou: false }
+      }
+    }
   }
 
   let noId: string | null = e.nodeId
@@ -190,6 +220,7 @@ export async function rodar(g: Grafo, inicial: EstadoExecucao, evento: Evento, d
     passos++
 
     const r = await executar(no, e, deps)
+    if (r.tipo === 'abortar') return { estado: e, passos, andou: true }
     if (r.tipo === 'fim') {
       await encerrar(r.status, r.motivo)
       return { estado: e, passos, andou: true, ...(r.conectarPara ? { conectarPara: r.conectarPara } : {}) }
@@ -203,18 +234,31 @@ export async function rodar(g: Grafo, inicial: EstadoExecucao, evento: Evento, d
   }
 }
 
-/** Manda (ou reagenda, se o canal falhou). */
+/**
+ * Manda (ou reagenda, se o canal falhou).
+ *
+ * Cada envio tem uma CHAVE: o id da execução e quantas mensagens ela já
+ * mandou (`_envios`). A nova tentativa do mesmo bloco leva a mesma chave (o
+ * contador só anda quando sai); a mensagem seguinte, outra — inclusive a do
+ * mesmo bloco quando o roteiro volta a ele de propósito.
+ */
 async function mandar(
   no: No,
   e: EstadoExecucao,
   deps: Deps,
-  enviar: () => Promise<Envio>,
+  enviar: (chave: string) => Promise<Envio>,
 ): Promise<Passo | null> {
-  const r = await enviar()
-  if (r === 'ok') {
+  const n = Number(e.vars._envios ?? 0)
+  const r = await enviar(`${e.id}.${n}`)
+  if (r === 'ok' || r === 'incerto') {
     delete e.vars._falhas
+    e.vars._envios = n + 1
+    // Ficou no ar: fica no diário, e não sai de novo (ver `Envio`).
+    if (r === 'incerto') await deps.registrar({ nodeId: no.id, tipo: no.tipo, saida: 'incerto' })
     return null
   }
+  if (r === 'perdida') return { tipo: 'abortar' }
+  if (r === 'na_lista') return { tipo: 'fim', status: 'cancelada', motivo: 'sem_ofertas' }
   if (r === 'limite') return { tipo: 'fim', status: 'erro', motivo: 'limite' }
   if (r === 'janela') {
     // Tentar de novo não adianta: a janela só reabre quando a PESSOA escrever,
@@ -259,7 +303,7 @@ async function executar(no: No, e: EstadoExecucao, deps: Deps): Promise<Passo> {
         ? { nome: no.dados.modelo.nome, idioma: no.dados.modelo.idioma, variaveis: variaveisDoModelo(no.dados.modelo, e.vars) }
         : null
       if (texto) {
-        const falhou = await mandar(no, e, deps, () => deps.enviarTexto(texto, modelo))
+        const falhou = await mandar(no, e, deps, (k) => deps.enviarTexto(texto, modelo, k))
         if (falhou) return falhou
       }
       await deps.registrar({ nodeId: no.id, tipo: no.tipo, saida: 'saida', enviadas: texto ? 1 : 0 })
@@ -269,7 +313,7 @@ async function executar(no: No, e: EstadoExecucao, deps: Deps): Promise<Passo> {
     case 'midia': {
       delete e.vars._digitado
       const legenda = interpolar(no.dados.legenda, e.vars)
-      const falhou = await mandar(no, e, deps, () => deps.enviarMidia(no.dados, legenda))
+      const falhou = await mandar(no, e, deps, (k) => deps.enviarMidia(no.dados, legenda, k))
       if (falhou) return falhou
       await deps.registrar({ nodeId: no.id, tipo: no.tipo, saida: 'saida', enviadas: 1 })
       return { tipo: 'seguir', saida: 'saida' }
@@ -308,7 +352,7 @@ async function executar(no: No, e: EstadoExecucao, deps: Deps): Promise<Passo> {
       const aviso = interpolar(no.dados.mensagemContato, e.vars)
       let enviadas = 0
       if (aviso) {
-        const falhou = await mandar(no, e, deps, () => deps.enviarTexto(aviso))
+        const falhou = await mandar(no, e, deps, (k) => deps.enviarTexto(aviso, null, k))
         if (falhou) return falhou
         enviadas = 1
       }
@@ -331,7 +375,7 @@ async function executar(no: No, e: EstadoExecucao, deps: Deps): Promise<Passo> {
     case 'fim': {
       const texto = interpolar(no.dados.texto, e.vars)
       if (texto) {
-        const falhou = await mandar(no, e, deps, () => deps.enviarTexto(texto))
+        const falhou = await mandar(no, e, deps, (k) => deps.enviarTexto(texto, null, k))
         if (falhou) return falhou
       }
       await deps.registrar({ nodeId: no.id, tipo: no.tipo, saida: 'fim', enviadas: texto ? 1 : 0 })

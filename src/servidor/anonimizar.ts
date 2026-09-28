@@ -15,6 +15,8 @@
 //     guardam o nome e as respostas da pessoa;
 //   • nas encomendas dela, o nome, o telefone e o endereço de entrega (a
 //     encomenda — o que foi, quanto, quando — fica, é venda);
+//   • nos horários da agenda dela, o nome, o telefone e a observação (o
+//     horário — quando, com quem, o serviço — fica, é a história da agenda);
 //   • nos lançamentos do financeiro que o sinal da encomenda gerou, o nome
 //     no meio da descrição;
 //   • no livro de auditoria, o nome e os dados pessoais das linhas sobre ela
@@ -265,10 +267,27 @@ async function apagarRastros(
     })
   }
 
+  // ── os horários da agenda: some quem, fica o quê ──────────
+  // O horário (dia, serviço, quem atendeu, a venda) é história da agenda; o
+  // nome, o telefone e a observação eram dela.
+  const agendamentos = (
+    await db.agendamento.findMany({
+      where: { OR: [{ clienteId: c.id }, ...(final ? [{ telefone: { endsWith: final } }] : [])] },
+      select: { id: true, clienteId: true, clienteNome: true, telefone: true },
+    })
+  ).filter((a) => a.clienteId === c.id || (!!chave && chaveTelefone(a.telefone) === chave))
+  const idsAgendamento = agendamentos.map((a) => a.id)
+  if (idsAgendamento.length) {
+    await db.agendamento.updateMany({
+      where: { id: { in: idsAgendamento } },
+      data: { clienteNome: NOME_ANONIMO, telefone: null, observacao: null },
+    })
+  }
+
   // ── o sinal da encomenda no financeiro ────────────────────
   // A descrição é "Sinal da encomenda — Maria: bolo...": o lançamento fica
   // (é dinheiro), o nome sai. Acha pelo código da encomenda no documento.
-  const nomes = [...new Set([c.nome, ...encomendas.map((e) => e.clienteNome)].filter((n) => n && n.length >= 3))]
+  const nomes = [...new Set([c.nome, ...encomendas.map((e) => e.clienteNome), ...agendamentos.map((a) => a.clienteNome)].filter((n) => n && n.length >= 3))]
   const lancamentos = idsEncomenda.length
     ? await db.lancamento.findMany({
         where: { documento: { in: idsEncomenda.map(codigoEncomenda) } },
@@ -289,7 +308,7 @@ async function apagarRastros(
   // Uma chamada por nome (o da ficha e o que ficou gravado na encomenda, que
   // pode ser diferente: "Dona Maria"). A função só troca o nome pela frase
   // fixa e tira as chaves pessoais — ver rls.sql.
-  const alvos = [c.id, ...idsEncomenda, ...idsLancamento]
+  const alvos = [c.id, ...idsEncomenda, ...idsAgendamento, ...idsLancamento]
   let linhasDoLivro = 0
   for (const nome of nomes.length ? nomes : ['']) {
     const r = await db.$queryRaw<{ n: number }[]>`select public.anonimizar_auditoria(${alvos}::text[], ${nome}) as n`

@@ -618,6 +618,148 @@ end $$;
 -- especial, e nenhuma função que atravesse empresas: "PARAR" para a loja A
 -- não tira a pessoa da loja B, porque o consentimento é dado a cada loja.
 
+-- ── atendimento (colaboradores, registros_ponto, agendamentos,
+--    fornecedores, pedidos_compra, itens_compra, recebimentos_compra) ──
+-- Todas têm org_id e entram na varredura do começo: org_isolada, RLS ligado
+-- e forçado — a agenda do salão A não aparece para o salão B, nem o ponto,
+-- nem o custo do que ele compra. As FKs entre elas (horário → colaborador,
+-- horário → cliente, horário → serviço, item → pedido, item → variação) têm
+-- org_id dos dois lados, e o gatilho zz_fk_mesma_empresa as descobre sozinho:
+-- ninguém marca horário com a profissional de outra empresa.
+--
+-- Duas regras a mais, que o RLS sozinho não dá:
+
+-- 1. PONTO NÃO SE APAGA E NÃO SE REESCREVE.
+--
+-- A batida de ponto é prova — para a empresa e para quem trabalha. Errou? A
+-- correção é uma batida nova de AJUSTE, com motivo, ou a anulação da errada,
+-- também com motivo; a linha original continua lá. Então:
+--   • sem política de DELETE (com FORCE RLS, ausência é proibição) e sem a
+--     permissão de DELETE, para a tentativa estourar em vez de passar calada
+--     — o mesmo desenho do livro de auditoria;
+--   • UPDATE só existe para ANULAR: o gatilho recusa qualquer mudança que não
+--     seja carimbar anulado_em, anulado_por e o motivo, uma vez só.
+drop policy if exists org_isolada on public.registros_ponto;
+drop policy if exists ponto_le on public.registros_ponto;
+create policy ponto_le on public.registros_ponto
+  for select using (org_id = public.app_org_id());
+drop policy if exists ponto_grava on public.registros_ponto;
+create policy ponto_grava on public.registros_ponto
+  for insert with check (org_id = public.app_org_id());
+drop policy if exists ponto_anula on public.registros_ponto;
+create policy ponto_anula on public.registros_ponto
+  for update using (org_id = public.app_org_id()) with check (org_id = public.app_org_id());
+
+do $$
+declare r record;
+begin
+  for r in
+    select distinct grantee
+    from information_schema.role_table_grants
+    where table_schema = 'public'
+      and table_name = 'registros_ponto'
+      and privilege_type = 'DELETE'
+      and grantee <> current_user
+  loop
+    execute format('revoke delete on public.registros_ponto from %I', r.grantee);
+  end loop;
+end $$;
+
+create or replace function public.ponto_so_anula() returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $$
+declare
+  anulacao text[] := array['anulado_em', 'anulado_por', 'motivo_anulacao'];
+begin
+  if OLD.anulado_em is not null then
+    raise exception 'batida de ponto anulada não muda mais'
+      using errcode = 'check_violation', constraint = 'registros_ponto_so_anula';
+  end if;
+  if NEW.anulado_em is null or NEW.anulado_por is null or coalesce(btrim(NEW.motivo_anulacao), '') = '' then
+    raise exception 'batida de ponto só muda para ser anulada, com motivo'
+      using errcode = 'check_violation', constraint = 'registros_ponto_so_anula';
+  end if;
+  if (to_jsonb(NEW) - anulacao) is distinct from (to_jsonb(OLD) - anulacao) then
+    raise exception 'batida de ponto não se reescreve: anule e registre outra'
+      using errcode = 'check_violation', constraint = 'registros_ponto_so_anula';
+  end if;
+  return NEW;
+end $$;
+
+do $$
+begin
+  -- antes da migração que cria a tabela, não há onde pendurar o gatilho
+  if to_regclass('public.registros_ponto') is null then
+    return;
+  end if;
+  drop trigger if exists ponto_so_anula on public.registros_ponto;
+  create trigger ponto_so_anula before update on public.registros_ponto
+    for each row execute function public.ponto_so_anula();
+end $$;
+
+-- 2. A MESMA PROFISSIONAL NÃO ATENDE DUAS PESSOAS NA MESMA HORA.
+--
+-- A agenda confere antes de gravar, com uma trava por profissional
+-- (src/servidor/agenda.ts). Esta é a garantia do banco, para quem grava por
+-- fora dela (script, rotina, bug): um horário vivo (marcado, confirmado ou
+-- atendido) que encosta em outro vivo da mesma profissional é recusado.
+--
+-- Por que gatilho e não EXCLUDE: a restrição de exclusão por intervalo pede a
+-- extensão btree_gist, que nem todo Postgres tem (o PGlite dos testes não
+-- tem). O gatilho pega a MESMA trava da aplicação (pg_advisory_xact_lock por
+-- profissional) antes de olhar: dois horários gravados ao mesmo tempo para a
+-- mesma pessoa esperam um pelo outro, e o segundo enxerga o primeiro — a
+-- consulta de dentro do gatilho vê o que foi confirmado depois da trava.
+--
+-- Encostar não é sobrepor: das 9h às 10h e das 10h às 11h cabem.
+-- Faltou e desmarcado não ocupam: a cadeira ficou livre.
+create or replace function public.agenda_sem_choque() returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  if NEW.fim <= NEW.inicio then
+    raise exception 'horário termina antes de começar'
+      using errcode = 'check_violation', constraint = 'agendamentos_sem_choque';
+  end if;
+  if NEW.situacao::text not in ('MARCADO', 'CONFIRMADO', 'ATENDIDO') then
+    return NEW;
+  end if;
+  -- Mudou só a situação entre as vivas (marcado → confirmado → atendido):
+  -- o lugar na agenda é o mesmo, não há o que conferir.
+  if TG_OP = 'UPDATE'
+     and OLD.situacao::text in ('MARCADO', 'CONFIRMADO', 'ATENDIDO')
+     and NEW.colaborador_id = OLD.colaborador_id
+     and NEW.inicio = OLD.inicio
+     and NEW.fim = OLD.fim then
+    return NEW;
+  end if;
+  perform pg_advisory_xact_lock(hashtext('agenda:' || NEW.colaborador_id));
+  if exists (
+    select 1 from public.agendamentos a
+     where a.colaborador_id = NEW.colaborador_id
+       and a.id <> NEW.id
+       and a.situacao::text in ('MARCADO', 'CONFIRMADO', 'ATENDIDO')
+       and a.inicio < NEW.fim
+       and a.fim > NEW.inicio
+  ) then
+    raise exception 'horário ocupado para esta profissional'
+      using errcode = 'exclusion_violation', constraint = 'agendamentos_sem_choque';
+  end if;
+  return NEW;
+end $$;
+
+do $$
+begin
+  if to_regclass('public.agendamentos') is null then
+    return;
+  end if;
+  drop trigger if exists agenda_sem_choque on public.agendamentos;
+  create trigger agenda_sem_choque before insert or update on public.agendamentos
+    for each row execute function public.agenda_sem_choque();
+end $$;
+
 -- ── conferência ──────────────────────────────────────────────
 -- Deve listar TODA tabela com org_id, e rowsecurity = true em todas.
 --

@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
-import { listarEquipe } from '@/servidor/equipe'
+import { listarEquipe, podeMexerEm, soLeitura } from '@/servidor/equipe'
 import { listarConvites } from '@/servidor/convite'
 import { comoOrg } from '@/servidor/banco'
-import { pode, podeConceder, podeVerPlanos, unidadesQuePodem, type Papel } from '@/servidor/permissao'
+import { pode, podeConceder, podeConcederAcesso, podeVerPlanos, unidadesQuePodem, type Papel } from '@/servidor/permissao'
 import { planoDaEmpresa } from '@/servidor/relatorios'
 import { liberado } from '@/servidor/planos'
 import {
@@ -22,7 +22,8 @@ import { Cartao } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { moduloLigado } from '@/servidor/modulos'
 import { metasDoMes, mesChave, mesValido, nomeDoMes } from '@/servidor/metas'
-import { Equipe, type PessoaNaTela, type ConviteNaTela } from './Equipe'
+import { outroMes } from '@/servidor/fechamento'
+import { Equipe, type PessoaNaTela, type ConviteNaTela, type SuporteNaTela } from './Equipe'
 import { Metas } from './Metas'
 import { Desempenho, SetasDoMes } from './Desempenho'
 
@@ -31,7 +32,15 @@ export const metadata: Metadata = { title: 'Equipe' }
 const TODOS_PAPEIS: Papel[] = ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR']
 
 const dia = (d: Date) =>
-  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(d)
+  new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(d)
+const diaEHora = (d: Date) =>
+  new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d)
 
 export default async function TelaEquipe({
   params,
@@ -49,9 +58,10 @@ export default async function TelaEquipe({
   const temMetas = moduloLigado(empresa, 'metas')
   const mes = mesValido(mesPedido) ? mesPedido : mesChave(new Date())
   const metas = temMetas ? await metasDoMes(sessao, mes) : []
-  const [ano, mesNum] = mes.split('-').map(Number)
-  const mesAnterior = mesChave(new Date(ano!, mesNum! - 2, 1))
-  const mesSeguinte = mesChave(new Date(ano!, mesNum!, 1))
+  // Conta de calendário, sem instante: `new Date(ano, mes, 1)` é a meia-noite
+  // da MÁQUINA, e num servidor em UTC isso já é o mês anterior em São Paulo.
+  const mesAnterior = outroMes(mes, -1)
+  const mesSeguinte = outroMes(mes, 1)
   const totalMeta = metas.reduce((s, m) => s + m.valor, 0)
   const totalVendido = metas.reduce((s, m) => s + m.liquido, 0)
   const totalComissao = metas.reduce((s, m) => s + m.comissao, 0)
@@ -89,23 +99,47 @@ export default async function TelaEquipe({
   // a pessoa o que ela está perdendo.
   const papeisQuePosso = TODOS_PAPEIS.filter((p) => podeConceder(sessao, p))
 
-  const naTela: PessoaNaTela[] = pessoas.map((p) => {
-    const a = p.acessos[0]
-    return {
-      id: p.id,
-      nome: p.nome,
-      email: p.email,
-      ativo: p.ativo,
-      ultimoLogin: p.ultimoLogin ? dia(p.ultimoLogin) : null,
-      papel: a?.papel ?? null,
-      unidadeId: a?.unidadeId ?? null,
-      unidadeNome: a?.unidadeNome ?? null,
-      souEu: p.id === sessao.usuarioId,
-      telefone: p.telefone ?? null,
-    }
-  })
-
   const agora = new Date()
+  const vale = (a: { expiraEm: Date | null }) => !a.expiraEm || a.expiraEm > agora
+
+  // ── o NOSSO suporte, à parte ─────────────────────────────
+  // A conta de suporte aparecia no meio da equipe, com os mesmos botões — que
+  // o servidor recusava — e entrava na conta de "com acesso" (a Assinatura,
+  // que não conta suporte, dizia 3 e a Equipe dizia 4). Agora ela sai da
+  // lista da loja e ganha a própria caixa: quem é, até quando e por quê, com
+  // o botão que a dona precisa — cortar.
+  const suportes: SuporteNaTela[] = pessoas.flatMap((p) => {
+    const s = p.acessos.find((a) => a.papel === 'SUPORTE' && vale(a))
+    return s && p.ativo ? [{ id: p.id, nome: p.nome, ate: s.expiraEm ? diaEHora(s.expiraEm) : null, motivo: s.motivo }] : []
+  })
+  const podeCortarSuporte = podeGerir && podeConcederAcesso(sessao, 'DONO', null)
+  const euSoLeio = soLeitura(sessao)
+
+  const naTela: PessoaNaTela[] = pessoas
+    // Quem só tem (ou só teve) SUPORTE não é da equipe da loja.
+    .filter((p) => p.acessos.length === 0 || p.acessos.some((a) => a.papel !== 'SUPORTE'))
+    .map((p) => {
+      const a = p.acessos.find((x) => x.papel !== 'SUPORTE')
+      const souEu = p.id === sessao.usuarioId
+      // Os botões só aparecem onde o servidor deixa: o gerente via os da linha
+      // da dona e cada clique voltava com "você não pode".
+      const podeMexer = podeGerir && !souEu && podeMexerEm(sessao, p.acessos, agora)
+      return {
+        id: p.id,
+        nome: p.nome,
+        email: p.email,
+        ativo: p.ativo,
+        ultimoLogin: p.ultimoLogin ? dia(p.ultimoLogin) : null,
+        papel: a?.papel ?? null,
+        unidadeId: a?.unidadeId ?? null,
+        unidadeNome: a?.unidadeNome ?? null,
+        souEu,
+        telefone: p.telefone ?? null,
+        podeMexer,
+        podeTelefone: souEu ? !euSoLeio : podeMexer,
+      }
+    })
+
   const convitesNaTela: ConviteNaTela[] = convites.map((c) => ({
     id: c.id,
     email: c.email,
@@ -114,8 +148,8 @@ export default async function TelaEquipe({
     vencido: c.expiraEm < agora,
   }))
 
-  const ativos = naTela.filter((p) => p.ativo).length
-  const semAcesso = naTela.filter((p) => p.ativo && !p.papel).length
+  const comAcesso = naTela.filter((p) => p.ativo && p.papel).length
+  const esperando = convitesNaTela.filter((c) => !c.vencido).length
 
   return (
     <Estrutura
@@ -128,9 +162,10 @@ export default async function TelaEquipe({
     >
       <Tira
         itens={[
-          { rotulo: 'com acesso', quantos: ativos - semAcesso, nivel: 'bom' },
-          { rotulo: 'convite esperando', quantos: convitesNaTela.length, nivel: 'atencao' },
-          { rotulo: 'sem acesso', quantos: naTela.length - ativos + semAcesso, nivel: 'neutro' },
+          { rotulo: 'com acesso', quantos: comAcesso, nivel: 'bom' },
+          { rotulo: 'convites esperando', um: 'convite esperando', quantos: esperando, nivel: 'atencao' },
+          { rotulo: 'sem acesso', quantos: naTela.length - comAcesso, nivel: 'neutro' },
+          { rotulo: 'acessos do suporte', um: 'acesso do suporte', quantos: suportes.length, nivel: 'atencao' },
         ]}
       />
 
@@ -182,6 +217,8 @@ export default async function TelaEquipe({
           unidades={unidades}
           papeisQuePosso={papeisQuePosso}
           podeGerir={podeGerir}
+          suportes={suportes}
+          podeCortarSuporte={podeCortarSuporte}
         />
       </Secao>
     </Estrutura>

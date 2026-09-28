@@ -108,7 +108,7 @@ describe('trocarPlanoComoEquipe', () => {
     const [org] = await linhas<{ plano: string; modulos: string[] }>(`select plano, modulos from orgs where id = 'org-a'`)
     expect(org).toEqual({ plano: 'BALCAO', modulos: ['encomenda'] })
     const todas = await livro('org-a', 'plano.trocou')
-    expect(todas.at(-1)!.motivo).toMatch(/perdeu: .*agente/)
+    expect(todas.at(-1)!.motivo).toMatch(/perdeu: .*Agente no WhatsApp/)
     expect(todas.at(-1)!.depois).not.toHaveProperty('pedidoId')
   })
 

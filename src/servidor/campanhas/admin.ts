@@ -15,10 +15,11 @@ import { comoOrg, type BancoDaOrg } from '../banco'
 import { exigir, type Sessao } from '../permissao'
 import { inicioDeHojeEmSP } from '../dia'
 import type { Canal } from '../assistente/canal'
-import { chaveTelefone, mascarar, paraEnvio, soDigitos } from '../assistente/telefone'
+import { chaveTelefone, chavesParaBuscar, mascarar, paraEnvio, soDigitos } from '../assistente/telefone'
 import {
   AJUSTES_PADRAO,
   GATILHO_NOVO,
+  JANELA_HORAS,
   ROTULO_NO,
   STATUS_VIVOS,
   type Ajustes,
@@ -30,7 +31,8 @@ import {
 import { conflitosDeGatilho, lerGatilho } from './casar'
 import { acharNo, grafoNovo, lerGrafo, pendencias, temErro, type Pendencia } from './grafo'
 import { lerAjustes } from './freios'
-import { exigirCampanhasLiberadas } from './acesso'
+import { exigirCampanhasLiberadas, lerAgenteParaCampanha, porQueCalado } from './acesso'
+import { estaNaLista } from '../ofertas'
 import { encerrarViva, horarioDaEmpresa, iniciar } from './execucao'
 import { caminhoDaMidia } from './midia'
 
@@ -234,7 +236,9 @@ export async function lerParaEditor(sessao: Sessao, id: string): Promise<ParaEdi
   })
 }
 
-export type Salvamento = { ok: true; pendencias: Pendencia[] } | { ok: false; erro: string; pendencias?: Pendencia[] }
+export type Salvamento =
+  | { ok: true; pendencias: Pendencia[]; /** Ao reativar: quantas pessoas paradas há mais de 24 h saíram. */ encerradas?: number }
+  | { ok: false; erro: string; pendencias?: Pendencia[] }
 
 /** As outras campanhas ATIVAS da empresa, para conferir conflito de frase. */
 async function outrasAtivas(db: BancoDaOrg, id: string) {
@@ -305,11 +309,32 @@ export async function ativarCampanha(sessao: Sessao, id: string, ativa: boolean)
       const conflitos = conflitosDeGatilho({ id, nome: c.nome, gatilho }, await outrasAtivas(db, id))
       if (conflitos.length) return { ok: false as const, erro: conflitos[0]!, pendencias: ps }
     }
+    let encerradas = 0
     if (c.ativa !== ativa) {
       await db.campanha.update({ where: { id }, data: { ativa } })
-      await auditar(db, sessao, ativa ? 'campanha.ativou' : 'campanha.pausou', c)
+      // Reativar depois de uma pausa: quem ficou parado lá dentro e não
+      // escreve há mais de 24 horas SAI, em vez de receber o resto do roteiro
+      // todo de uma vez no minuto seguinte. A pausa de uma semana acordaria
+      // dezenas de pessoas que já nem lembram da conversa — e é assim que o
+      // número da loja é denunciado. Quem escreveu nas últimas 24 horas
+      // continua de onde parou.
+      if (ativa) {
+        const r = await db.campanhaExecucao.updateMany({
+          where: {
+            campanhaId: id,
+            teste: false,
+            status: { in: [...STATUS_VIVOS] },
+            OR: [{ ultimaEntradaEm: null }, { ultimaEntradaEm: { lt: new Date(Date.now() - JANELA_HORAS * 3_600_000) } }],
+          },
+          data: { status: 'cancelada', motivoFim: 'pausada' satisfies MotivoFim, finalizadaEm: new Date(), proximoEm: null, trava: null, travaEm: null },
+        })
+        encerradas = r.count
+      }
+      await auditar(db, sessao, ativa ? 'campanha.ativou' : 'campanha.pausou', c, {
+        ...(encerradas ? { motivo: `${encerradas} ${encerradas === 1 ? 'pessoa parada' : 'pessoas paradas'} há mais de 24 horas ${encerradas === 1 ? 'saiu' : 'saíram'} da campanha` } : {}),
+      })
     }
-    return { ok: true as const, pendencias: ps }
+    return { ok: true as const, pendencias: ps, ...(encerradas ? { encerradas } : {}) }
   })
 }
 
@@ -390,9 +415,22 @@ export async function testarCampanha(sessao: Sessao, id: string, canal: Canal): 
   if (temErro(dados.ps)) return { ok: false, erro: 'Resolva as pendências antes de testar.' }
   const chave = chaveTelefone(dados.eu?.telefone)
   if (!chave || !dados.eu?.telefone) return { ok: false, erro: 'Seu cadastro não tem telefone. Ponha o seu WhatsApp em Equipe e teste de novo.' }
+  // Assistente desligado ou WhatsApp desconectado: o teste mandaria a
+  // primeira mensagem e a sua resposta não voltaria para a campanha — a
+  // porta de entrada está fechada.
+  const calado = porQueCalado(await lerAgenteParaCampanha(sessao.orgId))
+  if (calado) return { ok: false, erro: calado }
+  // A lista de quem não recebe vale para o teste também: o número pode ter
+  // pedido PARAR (ou ter sido anotado pela loja).
+  if (await estaNaLista(sessao.orgId, chave)) {
+    return {
+      ok: false,
+      erro: 'Seu número está na lista de quem não recebe ofertas. Se foi você que mandou PARAR, mande VOLTAR do seu WhatsApp para o número da loja; se foi a loja que anotou, tire o número em Clientes › Sem ofertas. Depois, teste de novo.',
+    }
+  }
 
   const viva = await comoOrg(sessao.orgId, (db) =>
-    db.campanhaExecucao.findFirst({ where: { telefone: chave, status: { in: [...STATUS_VIVOS] } }, select: { id: true } }),
+    db.campanhaExecucao.findFirst({ where: { telefone: { in: chavesParaBuscar(chave) }, status: { in: [...STATUS_VIVOS] } }, select: { id: true } }),
   )
   if (viva) await encerrarViva(sessao.orgId, viva.id, 'cancelada', 'teste')
 

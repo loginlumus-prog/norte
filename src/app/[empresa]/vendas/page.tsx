@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
 import { lerModo } from '@/servidor/modo'
 import { escolherUnidade } from '@/servidor/unidade'
-import { listarVendas } from '@/servidor/venda'
+import { listarVendas, resumoVendas } from '@/servidor/venda'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
@@ -40,6 +40,7 @@ const FORMA: Record<string, string> = {
 
 const quando = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(d)
 
@@ -73,21 +74,33 @@ export default async function Vendas({
   // Duas consultas: a lista filtrada e a base do período, de onde saem as
   // opções de vendedor e forma. Se as opções viessem da lista filtrada,
   // escolher "Carlos" faria "Ana" sumir do filtro — e não teria como voltar.
-  const [vendas, base] = await Promise.all([
-    listarVendas(sessao, { unidadeIds: onde.ids, de: j.de, ate: j.ate, q, situacao, vendedorId, forma }),
+  const filtro = { unidadeIds: onde.ids, de: j.de, ate: j.ate, q, situacao, vendedorId, forma }
+  // Quanto a loja vendeu no período é número de dono (ver o Painel em
+  // ui/menu.ts): o total e o ticket médio só para quem vê relatório. Quem
+  // opera o balcão continua achando e abrindo as vendas — só não lê o
+  // faturamento da loja no alto da tela.
+  const veReceita = onde.ids.some((u) => pode(sessao, 'relatorio.ver', u))
+  const [vendas, base, resumo] = await Promise.all([
+    listarVendas(sessao, filtro),
     vendedorId || forma
       ? listarVendas(sessao, { unidadeIds: onde.ids, de: j.de, ate: j.ate, q, situacao })
       : Promise.resolve(null),
+    // Somado no banco, sem o teto de 500 da lista: com o teto, o "Vendido"
+    // de um mês movimentado era o das 500 vendas mais recentes.
+    resumoVendas(sessao, filtro),
   ])
   const universo = base ?? vendas
   const vendedores = [...new Map(universo.filter((v) => v.vendedorId).map((v) => [v.vendedorId!, v.vendedor ?? '—'])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]))
   const formasUsadas = FORMAS_FILTRO.filter((f) => universo.some((v) => v.formas.includes(f)))
 
-  const concluidas = vendas.filter((v) => v.situacao === 'CONCLUIDA')
-  const canceladas = vendas.filter((v) => v.situacao === 'CANCELADA')
-  const total = concluidas.reduce((s, v) => s + v.total, 0)
-  const ticket = concluidas.length > 0 ? total / concluidas.length : 0
+  const total = resumo.total
+  const ticket = resumo.concluidas > 0 ? total / resumo.concluidas : 0
+  // O número da venda recomeça em cada loja: sem a loja escolhida, "venda 12"
+  // pode ser duas — a coluna Loja diz qual é qual (inclusive na busca por
+  // número, que traz a 12 de cada loja).
+  const variasLojas = onde.unidadeId === null && onde.opcoes.length > 1
+  const temFiltro = !!(q || situacao || vendedorId || forma)
 
   // Preserva o resto do endereço ao trocar um filtro.
   const link = (mudanca: Record<string, string | null>) => {
@@ -121,6 +134,16 @@ export default async function Vendas({
         </Link>
       ),
     },
+    ...(variasLojas
+      ? [
+          {
+            chave: 'loja',
+            titulo: 'Loja',
+            largura: '8rem',
+            celula: (v: (typeof vendas)[number]) => <span className="truncate text-tinta-2">{v.unidade}</span>,
+          },
+        ]
+      : []),
     {
       chave: 'quando',
       titulo: 'Quando',
@@ -219,27 +242,43 @@ export default async function Vendas({
       }
     >
       {/* O número grande primeiro: é ele que a pessoa veio ver. */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Numero
-          rotulo={`Vendido · ${j.rotulo.toLowerCase()}`}
-          valor={brl(total)}
-          detalhe={`${concluidas.length} venda${concluidas.length === 1 ? '' : 's'}`}
-          principal
-        />
-        <Numero rotulo="Ticket médio" valor={brl(ticket)} detalhe="por venda" />
+      <div className={veReceita ? 'grid gap-3 sm:grid-cols-3' : 'grid gap-3 sm:grid-cols-2'}>
+        {veReceita ? (
+          <>
+            <Numero
+              rotulo={`Vendido · ${j.rotulo.toLowerCase()}`}
+              valor={brl(total)}
+              detalhe={`${resumo.concluidas} venda${resumo.concluidas === 1 ? '' : 's'}`}
+              principal
+            />
+            <Numero rotulo="Ticket médio" valor={brl(ticket)} detalhe="por venda" />
+          </>
+        ) : (
+          <Numero
+            rotulo={`Vendas · ${j.rotulo.toLowerCase()}`}
+            valor={String(resumo.concluidas)}
+            detalhe={resumo.concluidas === 1 ? 'concluída' : 'concluídas'}
+            principal
+          />
+        )}
         <Numero
           rotulo="Canceladas"
-          valor={String(canceladas.length)}
-          detalhe={canceladas.length ? brl(canceladas.reduce((s, v) => s + v.total, 0)) : 'nenhuma'}
-          nivel={canceladas.length > 0 ? 'atencao' : undefined}
+          valor={String(resumo.canceladas)}
+          detalhe={resumo.canceladas ? (veReceita ? brl(resumo.totalCanceladas) : 'no período') : 'nenhuma'}
+          nivel={resumo.canceladas > 0 ? 'atencao' : undefined}
         />
       </div>
 
       {/* Busca e filtro no endereço. `q` aceita número da venda ou nome do
           cliente — é o que a pessoa tem na mão quando vem procurar. */}
       <form className="flex flex-wrap gap-2">
+        {/* Buscar não apaga os outros filtros: o formulário leva junto tudo
+            o que já estava escolhido no endereço. */}
         <input type="hidden" name="periodo" value={j.chave} />
         {onde.unidadeId && <input type="hidden" name="unidade" value={onde.unidadeId} />}
+        {situacao && <input type="hidden" name="situacao" value={situacao} />}
+        {vendedorId && <input type="hidden" name="vendedor" value={vendedorId} />}
+        {forma && <input type="hidden" name="forma" value={forma} />}
         <input
           name="q"
           defaultValue={q ?? ''}
@@ -262,8 +301,8 @@ export default async function Vendas({
 
       <Tira
         itens={[
-          { rotulo: 'concluídas', um: 'concluída', quantos: concluidas.length, nivel: 'bom' },
-          { rotulo: 'canceladas', um: 'cancelada', quantos: canceladas.length, nivel: canceladas.length ? 'critico' : 'neutro' },
+          { rotulo: 'concluídas', um: 'concluída', quantos: resumo.concluidas, nivel: 'bom' },
+          { rotulo: 'canceladas', um: 'cancelada', quantos: resumo.canceladas, nivel: resumo.canceladas ? 'critico' : 'neutro' },
         ]}
       />
 
@@ -323,9 +362,13 @@ export default async function Vendas({
         {vendas.length === 0 ? (
           <Vazio
             acao={
-              q ? (
-                <Link href={link({ q: null })} className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2">
-                  Limpar a busca
+              temFiltro ? (
+                // Nada com os filtros: o caminho é tirá-los, não vender.
+                <Link
+                  href={link({ q: null, situacao: null, vendedor: null, forma: null })}
+                  className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+                >
+                  Limpar filtros
                 </Link>
               ) : (
                 pode(sessao, 'venda.criar') && (
@@ -336,7 +379,11 @@ export default async function Vendas({
               )
             }
           >
-            {q ? 'Nenhuma venda com isso.' : `Nenhuma venda ${j.rotulo.toLowerCase()}.`}
+            {q
+              ? 'Nenhuma venda com isso.'
+              : temFiltro
+                ? `Nenhuma venda com esses filtros ${j.rotulo.toLowerCase()}.`
+                : `Nenhuma venda ${j.rotulo.toLowerCase()}.`}
           </Vazio>
         ) : (
           <Tabela colunas={colunas} linhas={vendas} chave={(v) => v.id} />

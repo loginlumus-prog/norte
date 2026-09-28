@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
-import { pode } from '@/servidor/permissao'
+import { pode, textoDaBusca, type Capacidade, type Sessao } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { listarAuditoria, ASSUNTOS, type LinhaDoLivro } from '@/servidor/auditoria'
@@ -16,6 +16,7 @@ import { SeletorPeriodo } from '@/ui/Periodo'
 import { Secao, Tira, brl } from '@/ui/painel'
 import { Situacao } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
+import { resumoDaMudanca } from './mudanca'
 
 export const metadata: Metadata = { title: 'Auditoria' }
 
@@ -28,6 +29,7 @@ export const metadata: Metadata = { title: 'Auditoria' }
 
 const quando = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(d)
 
@@ -37,43 +39,41 @@ const quando = (d: Date) =>
  */
 const ehDoSuporte = (l: LinhaDoLivro) => l.acao.startsWith('suporte.')
 
-/** Para onde a linha leva, quando o alvo tem tela. */
-function linkDoAlvo(slug: string, l: LinhaDoLivro): string | null {
-  if (!l.alvoId) return null
-  switch (l.alvoTipo) {
-    case 'venda': return `/${slug}/vendas/${l.alvoId}`
-    case 'produto': return `/${slug}/produtos/${l.alvoId}`
-    case 'cliente': return `/${slug}/clientes/${l.alvoId}`
-    case 'caixa': return `/${slug}/caixa`
-    case 'usuario': return `/${slug}/equipe`
-    default: return null
-  }
+/**
+ * Para onde a linha leva, quando o alvo tem tela — e a pessoa pode abrir essa
+ * tela. O financeiro lê o livro inteiro, mas não abre Equipe nem o cadastro
+ * de produto: o link caía em "este endereço não abre", que parece defeito.
+ * Cada destino pede a mesma capacidade que a tela de lá exige.
+ */
+const DESTINO: Record<string, { capacidade: Capacidade; endereco: (slug: string, id: string) => string }> = {
+  venda: { capacidade: 'venda.ver', endereco: (s, id) => `/${s}/vendas/${id}` },
+  produto: { capacidade: 'produto.editar', endereco: (s, id) => `/${s}/produtos/${id}` },
+  cliente: { capacidade: 'cliente.ver', endereco: (s, id) => `/${s}/clientes/${id}` },
+  caixa: { capacidade: 'caixa.ver', endereco: (s) => `/${s}/caixa` },
+  usuario: { capacidade: 'equipe.ver', endereco: (s) => `/${s}/equipe` },
 }
 
-/** O "antes → depois" numa frase curta, só quando dá para ler. */
-function resumoDaMudanca(l: LinhaDoLivro): string | null {
-  const a = l.antes as Record<string, unknown> | null
-  const d = l.depois as Record<string, unknown> | null
-  if (!a || !d || typeof a !== 'object' || typeof d !== 'object') return null
-  const partes: string[] = []
-  for (const k of Object.keys(d)) {
-    if (k in a && a[k] !== d[k] && ['string', 'number', 'boolean'].includes(typeof d[k])) {
-      const v = (x: unknown) => (typeof x === 'number' && /preco|custo|esperado|contado/i.test(k) ? brl(x) : String(x))
-      partes.push(`${k}: ${v(a[k])} → ${v(d[k])}`)
-    }
-  }
-  return partes.length ? partes.slice(0, 3).join(' · ') : null
+function linkDoAlvo(slug: string, sessao: Sessao, l: LinhaDoLivro): string | null {
+  if (!l.alvoId || !l.alvoTipo) return null
+  const d = DESTINO[l.alvoTipo]
+  return d && pode(sessao, d.capacidade) ? d.endereco(slug, l.alvoId) : null
 }
+
+/** Um valor do endereço, só se for texto: `?unidade=a&unidade=b` chega como lista. */
+const umTexto = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
 export default async function AuditoriaPagina({
   params,
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string; periodo?: string; q?: string; assunto?: string }>
+  searchParams: Promise<{ unidade?: string | string[]; periodo?: string | string[]; q?: string | string[]; assunto?: string | string[] }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, periodo: pedido, q: qBruto, assunto: assuntoPedido } = await searchParams
+  const busca = await searchParams
+  const pedida = umTexto(busca.unidade)
+  const pedido = umTexto(busca.periodo)
+  const assuntoPedido = umTexto(busca.assunto)
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -81,7 +81,8 @@ export default async function AuditoriaPagina({
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'auditoria.ver')
   const j = janela(lerPeriodo(pedido))
-  const q = (qBruto ?? '').trim()
+  // `?q=a&q=b` chegava como lista e o `.trim()` derrubava a tela.
+  const q = textoDaBusca(busca.q)
   const assunto = ASSUNTOS.some((a) => a.chave === assuntoPedido) ? assuntoPedido! : null
 
   const linhas = await listarAuditoria(sessao, {
@@ -93,6 +94,7 @@ export default async function AuditoriaPagina({
   })
 
   const atuais = { unidade: onde.unidadeId, periodo: j.chave, q, assunto }
+  const lojas = new Map(onde.opcoes.map((u) => [u.id, u.nome]))
   const link = (m: Record<string, string | null>) => enderecoCom(`/${slug}/auditoria`, atuais, m)
 
   const pessoas = new Set(linhas.map((l) => l.quem)).size
@@ -183,8 +185,8 @@ export default async function AuditoriaPagina({
               chave: 'oque',
               titulo: 'O que fez',
               celula: (l: LinhaDoLivro) => {
-                const href = linkDoAlvo(slug, l)
-                const mudanca = resumoDaMudanca(l)
+                const href = linkDoAlvo(slug, sessao, l)
+                const mudanca = resumoDaMudanca(l.antes, l.depois, lojas)
                 return (
                   <span className="flex min-w-0 flex-col">
                     <span className="text-tinta">

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
 import { lerModo } from '@/servidor/modo'
 import { listarClientes, mostrarTelefone } from '@/servidor/cliente'
+import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
@@ -16,7 +17,10 @@ import type { Tema } from '@/ui/TrocaTema'
 import { plural } from '@/ui/texto'
 import { podeExportar } from '@/servidor/exportacao'
 
-export const metadata: Metadata = { title: 'Clientes' }
+// O título diz a palavra do ramo: "Pacientes" na clínica, "Alunos" na escola.
+export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
+  return { title: (await vocabularioDoEndereco((await params).empresa)).Pessoas }
+}
 
 type Quem = 'sumidos' | 'nunca' | 'ativos' | 'novos' | 'aniversario' | 'pontos' | 'devendo'
 type Ordem = 'nome' | 'gastou' | 'recente'
@@ -53,6 +57,7 @@ export default async function Clientes({
   // recortes de cadastro são do avançado. Filtro já escolhido nunca some.
   const simples = (await lerModo()) === 'simples'
 
+  const vocab = await vocabularioDaEmpresa(sessao.orgId)
   const clientes = await listarClientes(sessao, q)
   const podeEditar = pode(sessao, 'cliente.editar')
 
@@ -111,7 +116,7 @@ export default async function Clientes({
       itens={MENU(slug)}
       ativo={`/${slug}/clientes`}
       tema={tema}
-      titulo="Clientes"
+      titulo={vocab.Pessoas}
       acao={
         <span className="flex flex-wrap items-center gap-2">
           <Link
@@ -135,7 +140,7 @@ export default async function Clientes({
               href={`/${slug}/clientes/novo`}
               className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"
             >
-              + Novo cliente
+              + {vocab.novo}
             </Link>
           )}
         </span>
@@ -196,8 +201,8 @@ export default async function Clientes({
           q
             ? `Resultado de “${q}”`
             : quem
-              ? `${listados.length} de ${plural(clientes.length, 'cliente', 'clientes')}`
-              : plural(clientes.length, 'cliente', 'clientes')
+              ? `${listados.length} de ${plural(clientes.length, vocab.pessoa, vocab.pessoas)}`
+              : plural(clientes.length, vocab.pessoa, vocab.pessoas)
         }
         acao={
           clientes.length >= 200 ? (

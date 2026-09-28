@@ -49,7 +49,9 @@ import {
   type BlocoResposta,
   type MensagemAPI,
 } from '../ia'
-import { receberDeCliente, testeVivo } from '../campanhas/entrada'
+import { receberDeCliente, receberPedidoDeLista, testeVivo } from '../campanhas/entrada'
+import { ehPedidoDeVolta, lerParada } from '../campanhas/casar'
+import { estaNaLista } from '../ofertas'
 import type { Canal } from './canal'
 import { modeloDeAviso } from './meta-regras'
 import {
@@ -65,7 +67,7 @@ import {
 import { agoraEmSP, ferramentasParaModelo, montarSistema, poderDaFerramenta, poderesDaConversa, type Equipe } from './regras'
 import { executarFerramenta } from './ferramentas'
 import { decidirRecado, humanoAteDepoisDe, recadoDe, type DecisaoRecado } from './recado'
-import { mesmoTelefone } from './telefone'
+import { chaveTelefone, mesmoTelefone } from './telefone'
 
 /** Voltas de ferramenta por mensagem. Mais que isso é o modelo andando em círculo. */
 export const MAXIMO_VOLTAS = 5
@@ -99,8 +101,12 @@ export type Dependencias = {
   buscar?: typeof fetch
 }
 
-/** Cliente fora de campanha, e nada automático sai para ele. */
-export type MotivoSilencio = Extract<DecisaoRecado, { manda: false }>['motivo'] | 'falha_campanha'
+/**
+ * Cliente fora de campanha, e nada automático sai para ele. 'sem_ofertas':
+ * o recado estava ligado, mas o número está na lista de quem pediu para não
+ * receber — quem mandou PARAR não recebe nem o "já vamos te atender".
+ */
+export type MotivoSilencio = Extract<DecisaoRecado, { manda: false }>['motivo'] | 'falha_campanha' | 'sem_ofertas'
 
 export type Desfecho =
   | { tipo: 'ignorada'; motivo: 'empresa' | 'teto_conversa' }
@@ -126,7 +132,15 @@ export const idDaMensagem = (orgId: string, idExterno: string) =>
 
 export async function processarMensagem(e: Entrada, deps: Dependencias): Promise<Desfecho> {
   const ctx = await carregarContexto(e.orgId)
-  if (!ctx || !empresaApta(ctx)) return { tipo: 'ignorada', motivo: 'empresa' }
+  if (!ctx) return { tipo: 'ignorada', motivo: 'empresa' }
+  if (!empresaApta(ctx)) {
+    // Assistente desligado, plano sem ele, empresa suspensa: nada de
+    // campanha, recado ou IA — MAS o PARAR (e o VOLTAR) valem. A pessoa que
+    // pediu para sair não pode depender de a loja estar com o assistente
+    // ligado no dia em que pediu.
+    await soPedidoDeLista(e, deps.canal)
+    return { tipo: 'ignorada', motivo: 'empresa' }
+  }
   const agente = ctx.agente
 
   const { quem, clienteId } = await acharInterlocutor(e.orgId, e.telefone, e.nome)
@@ -171,6 +185,29 @@ export async function processarMensagem(e: Entrada, deps: Dependencias): Promise
     if (r.tratou) return { tipo: 'campanha' }
   }
   return conversarComEquipe(ctx, quem, conversa, texto, deps)
+}
+
+/**
+ * Só o PARAR/VOLTAR, quando a mensagem não pode ir a lugar nenhum: o
+ * assistente desligado (acima) ou a porta fechada — a mensagem chegou por uma
+ * linha que não é mais a ligada (webhook do Z-API com a loja desconectada, o
+ * número oficial com o canal em outro lugar, o QR com o canal trocado).
+ *
+ * `canal` nulo = porta fechada: grava a saída e não confirma (não há por
+ * onde responder pelo número em que a pessoa escreveu). Quem é da EQUIPE não
+ * entra na lista de clientes que saíram — é a mesma regra do caminho normal.
+ * Nada disto grava a mensagem no histórico nem chama IA.
+ */
+export async function soPedidoDeLista(e: Entrada, canal: Canal | null): Promise<void> {
+  try {
+    // Sem cara de pedido, nem consulta (a régua é pura).
+    if (!lerParada(e.texto) && !ehPedidoDeVolta(e.texto)) return
+    const { quem } = await acharInterlocutor(e.orgId, e.telefone, e.nome)
+    if (quem.tipo === 'equipe') return
+    await receberPedidoDeLista({ orgId: e.orgId, telefone: e.telefone, texto: e.texto, canal })
+  } catch (erro) {
+    console.error(`[assistente] ${e.orgId}: o pedido de saída falhou:`, erro instanceof Error ? erro.message : erro)
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -220,6 +257,10 @@ async function atenderCliente(
     : null
   const d = decidirRecado({ recado, humanoAte: conversa.humanoAte, ultimaNossa: ultimaNossa?.criadaEm ?? null, agora })
   if (!d.manda) return { tipo: 'silencio', motivo: d.motivo }
+  // Só aqui, com o recado prestes a sair: o caso comum (recado desligado)
+  // continua sem consulta nenhuma.
+  const chave = chaveTelefone(conversa.telefone)
+  if (chave && (await estaNaLista(agente.orgId, chave))) return { tipo: 'silencio', motivo: 'sem_ofertas' }
 
   const saida = await enviarEGravar(canal, agente, conversa, d.texto)
   return { tipo: 'recado', enviada: saida.enviada }

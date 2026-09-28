@@ -2,16 +2,26 @@
 
 // Abrir e fechar o caixa.
 //
-// O fechamento mostra o esperado ANTES de a pessoa digitar o contado — e essa
-// ordem é decisão, não acaso. Se o sistema mostra o número primeiro, quem está
-// com pressa digita aquele número e a conferência vira teatro. Aqui ela conta
-// a gaveta, digita, e só então o sistema diz se bateu.
+// O fechamento NÃO mostra o esperado antes de a pessoa digitar o contado — e
+// essa ordem é decisão, não acaso. Se o sistema mostra o número primeiro, quem
+// está com pressa digita aquele número e a conferência vira teatro. Aqui ela
+// conta a gaveta, digita, fecha, e só então o sistema mostra a conta inteira
+// e diz se bateu. (Antes a tela prometia isso e mostrava o "Deveria ter" logo
+// em cima do campo.) Pela mesma razão, a linha do dinheiro vendido fica para
+// depois: com ela e a abertura, o esperado sai de cabeça.
 
 import { useState, useTransition } from 'react'
 import { Botao, Campo, Aviso, cx } from '@/ui/base'
 import { abrir, fechar, movimentar } from './acoes'
+import type { Fechamento } from '@/servidor/caixa'
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+/** O nome da forma como a pessoa fala — "CREDITO" é o nome do banco, não o dela. */
+const FORMA: Record<string, string> = {
+  DINHEIRO: 'Dinheiro', PIX: 'Pix', DEBITO: 'Débito', CREDITO: 'Crédito', CREDIARIO: 'Crediário',
+  VALE: 'Vale de troca', TRANSFERENCIA: 'Transferência',
+}
 
 export function AbrirCaixa({
   slug,
@@ -110,39 +120,22 @@ export function AbrirCaixa({
 export function FecharCaixa({
   slug,
   caixaId,
-  conferencia,
+  turno,
 }: {
   slug: string
   caixaId: string
-  conferencia: {
-    abertura: number
-    dinheiroVendido: number
-    dinheiroRecebido: number
-    recebidoCrediario: number
-    suprimentos: number
-    sangrias: number
-    esperado: number
-    vendidoTotal: number
-    porForma: { forma: string; total: number }[]
-    vendas: number
-  }
+  /**
+   * O que dá para mostrar ANTES de contar: quantas vendas e o que entrou fora
+   * da gaveta (cartão, Pix). O esperado e o dinheiro vendido nem chegam ao
+   * navegador — vêm na resposta do fechamento.
+   */
+  turno: { vendas: number; foraDaGaveta: { forma: string; total: number }[] }
 }) {
   const [contado, setContado] = useState('')
   const [obs, setObs] = useState('')
-  const [feito, setFeito] = useState<{ diferenca: number; esperado: number } | null>(null)
+  const [feito, setFeito] = useState<Fechamento | null>(null)
   const [erroFechar, setErroFechar] = useState<string | null>(null)
   const [indo, comecar] = useTransition()
-
-  if (feito) {
-    const zerou = Math.abs(feito.diferenca) < 0.005
-    return (
-      <Aviso nivel={zerou ? 'bom' : 'critico'}>
-        {zerou
-          ? `Caixa fechado certinho, ${brl(feito.esperado)}.`
-          : `Caixa fechado com ${feito.diferenca > 0 ? 'sobra' : 'falta'} de ${brl(Math.abs(feito.diferenca))}.`}
-      </Aviso>
-    )
-  }
 
   // A chave é obrigatória porque este helper também é usado dentro de .map().
   // Sem ela o React reclama e, pior, pode reaproveitar a linha errada quando a
@@ -160,30 +153,78 @@ export function FecharCaixa({
     </div>
   )
 
+  // Fechado: agora sim, a conta inteira — com o esperado que o servidor
+  // contou NA HORA de fechar, que é o que vale.
+  if (feito) {
+    const zerou = Math.abs(feito.diferenca) < 0.005
+    const conferencia = feito.conferencia
+    return (
+      <div className="flex flex-col gap-4">
+        <Aviso nivel={zerou ? 'bom' : 'critico'}>
+          {zerou
+            ? `Caixa fechado certinho, ${brl(feito.esperado)}.`
+            : `Caixa fechado com ${feito.diferenca > 0 ? 'sobra' : 'falta'} de ${brl(Math.abs(feito.diferenca))}.`}
+        </Aviso>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="rounded-norte border border-borda bg-superficie p-4">
+            <h3 className="mb-2 text-sm font-bold">O que passou pela gaveta</h3>
+            {linha('Abertura', conferencia.abertura)}
+            {linha('Vendas em dinheiro', conferencia.dinheiroVendido)}
+            {conferencia.dinheiroRecebido > 0 && linha('Crediário recebido em dinheiro', conferencia.dinheiroRecebido)}
+            {linha('Suprimentos', conferencia.suprimentos)}
+            {linha('Sangrias', -conferencia.sangrias)}
+            {linha('Deveria ter', feito.esperado, true)}
+            {linha('Contado', feito.contado)}
+            <p className="mt-2 text-xs text-tinta-3">
+              Cartão e Pix não entram: não passam pela gaveta. Somá-los faria o caixa faltar
+              todo dia o valor das maquininhas.
+            </p>
+          </div>
+          <div className="rounded-norte border border-borda bg-superficie p-4">
+            <h3 className="mb-2 text-sm font-bold">
+              {conferencia.vendas} venda{conferencia.vendas === 1 ? '' : 's'} no turno
+            </h3>
+            {conferencia.porForma.map((f) => linha(FORMA[f.forma] ?? f.forma, f.total))}
+            {linha('Total vendido', conferencia.vendidoTotal, true)}
+            {conferencia.recebidoCrediario > 0 && linha('Crediário recebido (todas as formas)', conferencia.recebidoCrediario)}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Antes de fechar: só o que NÃO passa pela gaveta — é o que a pessoa confere
+  // com a maquininha e o extrato do Pix. O dinheiro, ela conta.
+  const foraDaGaveta = turno.foraDaGaveta
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-norte border border-borda bg-superficie p-4">
-          <h3 className="mb-2 text-sm font-bold">O que passou pela gaveta</h3>
-          {linha('Abertura', conferencia.abertura)}
-          {linha('Vendas em dinheiro', conferencia.dinheiroVendido)}
-          {conferencia.dinheiroRecebido > 0 && linha('Crediário recebido em dinheiro', conferencia.dinheiroRecebido)}
-          {linha('Suprimentos', conferencia.suprimentos)}
-          {linha('Sangrias', -conferencia.sangrias)}
-          {linha('Deveria ter', conferencia.esperado, true)}
+          <h3 className="mb-2 text-sm font-bold">Conte a gaveta</h3>
+          <p className="text-sm text-tinta-2">
+            Tire o dinheiro, conte nota por nota e digite o total aqui embaixo. O quanto o sistema
+            esperava aparece depois de fechar — se aparecesse antes, a contagem virava copiar o
+            número.
+          </p>
           <p className="mt-2 text-xs text-tinta-3">
-            Cartão e Pix não entram: não passam pela gaveta. Some-los faria o caixa faltar
-            todo dia o valor das maquininhas.
+            Só o dinheiro conta. Cartão e Pix não passam pela gaveta: somá-los faria o caixa
+            faltar todo dia o valor das maquininhas.
           </p>
         </div>
 
         <div className="rounded-norte border border-borda bg-superficie p-4">
           <h3 className="mb-2 text-sm font-bold">
-            {conferencia.vendas} venda{conferencia.vendas === 1 ? '' : 's'} no turno
+            {turno.vendas} venda{turno.vendas === 1 ? '' : 's'} no turno
           </h3>
-          {conferencia.porForma.map((f) => linha(f.forma, f.total))}
-          {linha('Total vendido', conferencia.vendidoTotal, true)}
-          {conferencia.recebidoCrediario > 0 && linha('Crediário recebido (todas as formas)', conferencia.recebidoCrediario)}
+          {foraDaGaveta.length > 0 ? (
+            <>
+              <p className="mb-1 text-xs text-tinta-3">Para conferir com a maquininha e o extrato:</p>
+              {foraDaGaveta.map((f) => linha(FORMA[f.forma] ?? f.forma, f.total))}
+            </>
+          ) : (
+            <p className="text-sm text-tinta-3">Nenhuma venda em cartão, Pix ou outra forma fora da gaveta.</p>
+          )}
         </div>
       </div>
 
@@ -197,7 +238,7 @@ export function FecharCaixa({
           value={contado}
           onChange={(e) => setContado(e.target.value)}
           placeholder="0,00"
-          dica="Conte antes de olhar o valor esperado. É o que faz a conferência valer."
+          dica="O esperado aparece depois de fechar. É o que faz a conferência valer."
         />
         <Campo
           rotulo="Observação"
@@ -217,7 +258,7 @@ export function FecharCaixa({
               const r = await fechar(slug, caixaId, Number(contado) || 0, obs || undefined)
               // Deu errado: o contado continua no campo, e a frase aparece aqui.
               if (!r.ok) return setErroFechar(r.erro)
-              setFeito({ diferenca: r.diferenca, esperado: r.esperado })
+              setFeito(r)
             })
           }
         >

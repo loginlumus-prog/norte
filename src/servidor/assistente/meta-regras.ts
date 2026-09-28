@@ -353,6 +353,7 @@ export function paraVariavel(texto: string, max = 900): string {
 
 export const NOME_MODELO_RELATORIO = 'norte_relatorio_dia'
 export const NOME_MODELO_AVISO = 'norte_aviso'
+export const NOME_MODELO_LEMBRETE = 'norte_lembrete_horario'
 export const IDIOMA_NORTE = 'pt_BR'
 
 /**
@@ -392,6 +393,23 @@ export const MODELOS_NORTE = [
       },
     ],
   },
+  {
+    // O lembrete do horário marcado (lembretes.ts), para o CLIENTE que aceitou
+    // receber mensagem da loja. Texto fixo: loja, dia e hora — nunca o serviço,
+    // que na clínica seria dado de saúde na tela de bloqueio.
+    name: NOME_MODELO_LEMBRETE,
+    category: 'UTILITY',
+    language: IDIOMA_NORTE,
+    components: [
+      {
+        type: 'BODY',
+        text:
+          'Olá, {{1}}! Lembrete do seu horário na {{2}}: {{3}}.\n\n' +
+          'Se precisar remarcar, responda esta mensagem. Para não receber mais lembretes, responda PARAR.',
+        example: { body_text: [['Maria', 'Salão Exemplo', 'sex 26/09 às 15:00']] },
+      },
+    ],
+  },
 ] as const
 
 /** O relatório das 8h/20h como modelo: a primeira linha ("Bom dia, Ana…") vira as variáveis 1 e 2. */
@@ -402,6 +420,12 @@ export function modeloDoRelatorio(nome: string, quando: 'manha' | 'noite', texto
     idioma: IDIOMA_NORTE,
     variaveis: [paraVariavel(nome.split(' ')[0] ?? '', 60), quando === 'manha' ? 'ontem' : 'hoje', paraVariavel(corpo)],
   }
+}
+
+/** O lembrete do horário como modelo: nome, loja e "sex 26/09 às 15:00". */
+export function modeloDoLembrete(nome: string | null, loja: string, quando: string): ModeloParaEnvio {
+  const primeiro = (nome ?? '').trim().split(/\s+/)[0] || 'tudo bem'
+  return { nome: NOME_MODELO_LEMBRETE, idioma: IDIOMA_NORTE, variaveis: [paraVariavel(primeiro, 40), paraVariavel(loja, 80), paraVariavel(quando, 60)] }
 }
 
 /** Qualquer aviso para a equipe (vai faltar, cliente sumido, contato pedindo pessoa, teste). */

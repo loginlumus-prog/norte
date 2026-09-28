@@ -10,6 +10,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao, Situacao, cx } from '@/ui/base'
 import { salvarMetaAcao } from './acoes'
+import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
 export type MetaNaTela = {
   usuarioId: string
@@ -101,10 +102,17 @@ function Linha({ slug, mes, m, podeGerir }: { slug: string; mes: string; m: Meta
               className="py-1 text-xs"
               onClick={() =>
                 comecar(async () => {
+                  // "1.500,00" virava 1,5 → NaN → 0, e a meta era gravada zerada
+                  // sem aviso. A régua é a de todo campo de dinheiro.
+                  const lido = valor.trim() ? lerDinheiro(valor) : 0
+                  if (lido === null) {
+                    setRecado({ erro: DINHEIRO_ILEGIVEL })
+                    return
+                  }
                   const r = await salvarMetaAcao(slug, {
                     usuarioId: m.usuarioId,
                     mes,
-                    valor: Number(valor.replace(',', '.')) || 0,
+                    valor: lido,
                     comissaoPct: Number(pct.replace(',', '.')) || 0,
                   })
                   setRecado(r)

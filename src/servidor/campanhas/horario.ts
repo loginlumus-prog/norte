@@ -48,13 +48,20 @@ export function lerHorario(texto: string | null | undefined): Horario | null {
   // sáb 9h-13h" funciona com ou sem vírgula entre os trechos.
   const faixa = /(\d{1,2})(?:[:h](\d{2}))?\s*h?\s*(?:-|a|as|ate)\s*(\d{1,2})(?:[:h](\d{2}))?\s*h?/g
   let depoisDaAnterior = 0
+  // Trecho sem dia herda os dias do trecho anterior: em "seg a sex 9h-12h e
+  // 14h-18h" o "e 14h-18h" é da mesma semana — não de sábado e domingo.
+  // Até 27/09 ele valia para TODOS os dias, e a campanha "só no horário da
+  // loja" mandava mensagem no domingo às 14h.
+  let diasAnteriores: number[] | null = null
   for (const m of limpo.matchAll(faixa)) {
     const de = hora(m[1]!, m[2])
     const ate = hora(m[3]!, m[4])
     const parteDias = normalizar(limpo.slice(depoisDaAnterior, m.index))
     depoisDaAnterior = m.index! + m[0].length
+    const dias: number[] = lerDias(parteDias) ?? diasAnteriores ?? TODOS_OS_DIAS
+    diasAnteriores = dias
     if (!(de >= 0 && ate <= 24 * 60 && de < ate)) continue
-    for (const d of lerDias(parteDias)) (h[d] ??= []).push([de, ate])
+    for (const d of dias) (h[d] ??= []).push([de, ate])
     achou = true
   }
   return achou ? h : null
@@ -62,15 +69,20 @@ export function lerHorario(texto: string | null | undefined): Horario | null {
 
 const TODOS_OS_DIAS = [0, 1, 2, 3, 4, 5, 6]
 
-/** Os dias de um trecho. Trecho sem dia nenhum ("9h às 18h") vale para todos. */
-function lerDias(t: string): number[] {
-  if (!t || /\b(todos os dias|diariamente|todo dia|todos)\b/.test(t)) return TODOS_OS_DIAS
+/**
+ * Os dias de um trecho. "Todos os dias" → todos; trecho sem dia nenhum
+ * ("9h às 18h", "e 14h-18h") → nulo, e quem chama decide (o do trecho
+ * anterior, ou todos se for o primeiro).
+ */
+function lerDias(t: string): number[] | null {
+  if (/\b(todos os dias|diariamente|todo dia|todos)\b/.test(t)) return TODOS_OS_DIAS
+  if (!t) return null
   const palavras = t.split(' ').filter(Boolean)
   const achados: { d: number; i: number }[] = []
   palavras.forEach((p, i) => {
     if (p in DIAS) achados.push({ d: DIAS[p]!, i })
   })
-  if (achados.length === 0) return TODOS_OS_DIAS
+  if (achados.length === 0) return null
   // "seg a sex": intervalo entre os dois primeiros, se ligados por "a"/"ate".
   if (achados.length === 2 && palavras.slice(achados[0]!.i + 1, achados[1]!.i).some((p) => p === 'a' || p === 'ate')) {
     const out: number[] = []
@@ -89,6 +101,23 @@ function relogio(agora: Date): { dia: string; semana: number; minuto: number } {
   const semana = new Date(`${dia}T12:00:00Z`).getUTCDay()
   const minuto = Math.floor((agora.getTime() - inicioDoDiaEmSP(dia).getTime()) / 60_000)
   return { dia, semana, minuto }
+}
+
+/** Sem horário da loja entendido, o relógio só fala entre 8h e 21h (São Paulo). */
+export const SILENCIO_SEM_HORARIO: Horario = Object.fromEntries(
+  TODOS_OS_DIAS.map((d) => [d, [[8 * 60, 21 * 60] as [number, number]]]),
+)
+
+/**
+ * O primeiro instante, a partir de `quando`, em que uma mensagem que o
+ * RELÓGIO dispara (não a resposta imediata a quem acabou de escrever) pode
+ * sair: dentro do horário da loja, se ele foi entendido; senão, das 8h às
+ * 21h de São Paulo. É a regra da noite: o "não respondeu em 2 horas" de uma
+ * pergunta feita às 22h não chega à meia-noite — sai às 8h (ou quando a
+ * loja abre).
+ */
+export function proximoHorarioDeFalar(quando: Date, h: Horario | null): Date {
+  return proximaAbertura(quando, h ?? SILENCIO_SEM_HORARIO)
 }
 
 /**

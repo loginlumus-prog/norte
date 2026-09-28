@@ -19,6 +19,7 @@ import { comoOrg, acharOrgPorSlug } from './banco'
 import { guardarSenha } from './senha'
 import { normalizar } from './autenticacao'
 import { exigir, podeConcederAcesso, type Papel, type Sessao } from './permissao'
+import { DONO_SO_DA_EMPRESA, recadoNaoConcede } from './equipe'
 
 export const VALE_DIAS = 7
 
@@ -58,8 +59,9 @@ export async function convidar(
   // Sem loja (`null`) é a empresa inteira, e só convida para a empresa
   // inteira quem tem a empresa inteira. Antes `null` virava "alguma loja", e
   // o gerente da loja 3 convidava balconista para todas as lojas.
+  if (dados.papel === 'DONO' && unidadeId !== null) throw new Error(DONO_SO_DA_EMPRESA)
   if (!podeConcederAcesso(sessao, dados.papel, unidadeId)) {
-    throw new Error(`Você não pode conceder o papel ${dados.papel}${unidadeId ? ' nesta loja' : ' para todas as lojas'}.`)
+    throw new Error(recadoNaoConcede(dados.papel, unidadeId))
   }
 
   // A conferência de e-mail repetido acontece FORA da transação de escrita.

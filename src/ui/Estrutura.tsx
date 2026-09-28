@@ -27,12 +27,13 @@ import { resumoDaBarra } from '@/servidor/assinatura'
 import type { ReactNode } from 'react'
 import { CAPACIDADES, pode, type Capacidade, type Sessao } from '@/servidor/permissao'
 import { moduloLigado, type Modulo } from '@/servidor/modulos'
+import { vocabularioDaEmpresa } from '@/servidor/vocabulario'
 import { sairAcao } from '@/app/[empresa]/acoes'
 import { TRANCA_MIN, AVISO_SEG } from '@/servidor/presenca'
 import { TrocaTema, type Tema } from './TrocaTema'
 import { TrocaModo } from './TrocaModo'
 import { lerModo } from '@/servidor/modo'
-import { noModo } from './menu'
+import { itemNaEmpresa, noModo, podeVerItem } from './menu'
 import { Simbolo } from './Marca'
 import { Gaveta } from './Gaveta'
 import { IconeDoItem } from './IconesMenu'
@@ -44,11 +45,23 @@ export type ItemMenu = {
   href: string
   titulo: string
   exige: Capacidade
+  /**
+   * Outras capacidades que TAMBÉM abrem o item (basta uma). Para a tela que
+   * serve a papéis diferentes: Funcionários abre para quem bate o próprio
+   * ponto e para o contador, que só lê as horas.
+   */
+  ouExige?: Capacidade[]
   /** Em que grupo o item aparece. Sem grupo, fica no topo, sozinho. */
   grupo?: string
   /// Só aparece se a empresa usa este módulo. Sem isto, quem não vende fiado
   /// veria Crediário parado no menu para sempre.
   modulo?: Modulo
+  /// Aparece se a empresa usa QUALQUER um destes. É o caso de Funcionários:
+  /// a lista de quem trabalha serve ao Ponto e à Agenda.
+  modulos?: Modulo[]
+  /// O título é a palavra do ramo para quem a empresa atende ("Pacientes",
+  /// "Alunos") — ver servidor/vocabulario.ts.
+  vocabulario?: boolean
   contagem?: number
   /** Bolinha de aviso: quantos precisam de olhada, e com que urgência. */
   aviso?: { quantos: number; nivel: 'critico' | 'atencao' | 'bom'; titulo: string }
@@ -102,8 +115,12 @@ export async function Estrutura({
   // Três perguntas: "esta pessoa pode?", "esta empresa usa?" e "este
   // aparelho está no modo que mostra isto?". A terceira nunca esconde a tela
   // aberta agora — ver `noModo`.
+  // O nome do cadastro de pessoas é a palavra do ramo ("Pacientes").
+  const vocab = await vocabularioDaEmpresa(sessao.orgId)
   const visiveis = noModo(
-    itens.filter((i) => pode(sessao, i.exige) && (!i.modulo || moduloLigado(empresa, i.modulo))),
+    itens
+      .filter((i) => podeVerItem(sessao, i) && itemNaEmpresa(i, empresa))
+      .map((i) => (i.vocabulario ? { ...i, titulo: vocab.Pessoas } : i)),
     modo,
     ativo,
   )

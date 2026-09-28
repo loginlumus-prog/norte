@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { acharOrgPorSlug } from '@/servidor/banco'
+import { RECADO_VAGA } from '@/servidor/pagina'
 import { lerModo } from '@/servidor/modo'
 import { Aviso } from '@/ui/base'
 import { Marca } from '@/ui/Marca'
@@ -59,7 +60,7 @@ export default async function Entrar({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ senha?: string; confirmado?: string }>
+  searchParams: Promise<{ senha?: string; confirmado?: string; saiu?: string }>
 }) {
   const { empresa } = await params
   const volta = await searchParams
@@ -71,6 +72,9 @@ export default async function Entrar({
       : volta.confirmado === '1'
         ? 'E-mail confirmado. Entre com a senha que você escolheu no cadastro.'
         : null
+  // Quem caiu porque outra pessoa tomou a vaga dele (ver `sessaoViva`) precisa
+  // saber que não foi defeito — senão a tela de entrar parece erro do sistema.
+  const perdeuVaga = volta.saiu === 'vaga'
   const org = await acharOrgPorSlug(empresa)
   if (!org) notFound()
 
@@ -105,6 +109,7 @@ export default async function Entrar({
       ) : (
         <>
           {recado && <Aviso nivel="bom">{recado}</Aviso>}
+          {perdeuVaga && <Aviso nivel="atencao">{RECADO_VAGA}</Aviso>}
           <Formulario empresa={empresa} />
         </>
       )}

@@ -120,6 +120,30 @@ export const PODERES = {
     escreve: false,
     disponivel: true,
   },
+  // ── atendimento: agenda, pagamentos, ponto ──────────────────
+  'agenda.consultar': {
+    titulo: 'Consultar a agenda',
+    resumo: 'Quem vem hoje, amanhã ou na semana, por profissional ou por cliente, e os horários livres.',
+    exige: 'agenda.ver',
+    escreve: false,
+    modulo: 'agenda',
+    disponivel: true,
+  },
+  'pagamentos.consultar': {
+    titulo: 'Consultar se alguém pagou',
+    resumo: '"A Joana pagou?": as compras e como pagou, e o que deve no crediário — só o que a pessoa que pergunta pode ver.',
+    exige: 'cliente.ver',
+    escreve: false,
+    disponivel: true,
+  },
+  'ponto.consultar': {
+    titulo: 'Consultar o ponto',
+    resumo: 'As horas do mês — as suas, ou as de todos para quem pode ver — e quem está trabalhando agora.',
+    exige: 'ponto.proprio',
+    escreve: false,
+    modulo: 'ponto',
+    disponivel: true,
+  },
   'ver.cliente': {
     titulo: 'Consultar cliente',
     resumo: 'Última compra, o que costuma levar, há quanto tempo sumiu.',
@@ -159,6 +183,22 @@ export const PODERES = {
       'Somar peça que apareceu na contagem, sempre com motivo escrito. Perda e quebra continuam na tela de Estoque.',
     exige: 'estoque.ajustar',
     escreve: true,
+    disponivel: true,
+  },
+  'agenda.marcar': {
+    titulo: 'Marcar horário',
+    resumo: 'Você diz quem, com quem, o dia e a hora; ele monta o horário e uma pessoa confirma na tela. Ele não fala com o cliente.',
+    exige: 'agenda.marcar',
+    escreve: true,
+    modulo: 'agenda',
+    disponivel: true,
+  },
+  'agenda.desmarcar': {
+    titulo: 'Desmarcar horário',
+    resumo: 'Desmarca um horário, sempre com motivo, e só depois de uma pessoa confirmar na tela.',
+    exige: 'agenda.marcar',
+    escreve: true,
+    modulo: 'agenda',
     disponivel: true,
   },
   'dar.desconto': {

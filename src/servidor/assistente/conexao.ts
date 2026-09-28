@@ -18,7 +18,7 @@ import { comoOrg } from '../banco'
 import { exigir, type Sessao } from '../permissao'
 import { temChaveIA } from '../ia'
 import { cifrar, decifrar, temCifra, SemChaveDeCifra } from '../cifra'
-import { escolherCanal, contextoDoToken, SELECT_LINHA, type OrigemCanal } from './canal'
+import { linhaDaEmpresa, contextoDoToken, SELECT_LINHA, type OrigemCanal } from './canal'
 import {
   iniciarNoConector,
   lerConfigConector,
@@ -90,7 +90,9 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
   })
 
   const chaveIA = temChaveIA()
-  const { canal, origem } = escolherCanal({ id: sessao.orgId, slug }, agente)
+  // A linha que a empresa TEM, com a porta aberta ou não: é o que deixa a
+  // tela dizer "a linha está pronta, falta conectar" (ver `linhaDaEmpresa`).
+  const { canal, origem } = linhaDaEmpresa({ id: sessao.orgId, slug }, agente)
   const canalReal = canal.real
   const enderecoProprio = !!agente?.webhookTokenHash
   const segredoWebhook = enderecoProprio || temSegredoWebhook()
@@ -527,9 +529,11 @@ export async function mensagemDeTeste(sessao: Sessao): Promise<{ ok: true; recad
     return { ok: false, erro: 'Cadastre o seu telefone (com DDD) na tela Equipe para receber o teste.' }
   }
 
-  // Pelo canal DESTA empresa — a linha própria, se ela tem; é justamente o
-  // que o botão existe para provar.
-  const { canal, origem } = escolherCanal({ id: sessao.orgId, slug }, agente)
+  // Pela linha DESTA empresa — a própria, se ela tem; é justamente o que o
+  // botão existe para provar, e por isso vale também ANTES de conectar
+  // (`linhaDaEmpresa`, e não `escolherCanal`): guardou os tokens, testa, e
+  // só então abre a porta. Sai só para o número de quem clicou.
+  const { canal, origem } = linhaDaEmpresa({ id: sessao.orgId, slug }, agente)
   const conversa = await abrirConversa(sessao.orgId, agente.id, eu.telefone, { nome: eu.nome, daEquipe: true })
   const texto = `Oi, ${eu.nome.split(' ')[0]}! Aqui é ${agente.nome}, o assistente da loja. Se esta mensagem chegou, a conexão está funcionando.`
   // No WhatsApp oficial, se você não escreveu para o número da loja nas

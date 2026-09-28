@@ -23,6 +23,7 @@ import {
   type DadosProducao,
   type DadosReposicao,
   type DadosSabores,
+  type DadosAgenda,
 } from '@/servidor/nicho'
 import { horaEmSP } from '@/servidor/encomenda'
 import { diaEmSP } from '@/servidor/dia'
@@ -414,7 +415,11 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
   // mostrar nada.
   const pct =
     r.anterior.total > 0 ? ((r.atual.total - r.anterior.total) / r.anterior.total) * 100 : NaN
-  const margem = r.atual.total > 0 ? ((r.atual.total - r.atual.custo) / r.atual.total) * 100 : 0
+  // Margem BRUTA, sobre o que ficou vendido: a devolução sai da receita e o
+  // custo dela já sai de `r.atual.custo` (ver painel.ts).
+  const receitaLiquida = r.atual.total - r.devolucoes.valor
+  const lucroBruto = receitaLiquida - r.atual.custo
+  const margem = receitaLiquida > 0 ? (lucroBruto / receitaLiquida) * 100 : 0
 
   // ── por hora do dia: somando os dias da semana ──────────
   const porHoraDia = Array.from({ length: 24 }, (_, h) => r.porHora.reduce((s, dia) => s + (dia[h] ?? 0), 0))
@@ -495,9 +500,9 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
             {verDinheiro && (
               <Numero
                 celula
-                rotulo="Margem"
-                valor={`${margem.toFixed(0)}%`}
-                detalhe={`${brl(r.atual.total - r.atual.custo)} sobre o custo`}
+                rotulo="Margem bruta"
+                valor={`${margem.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%`}
+                detalhe={`${brl(lucroBruto)} sobre o custo`}
                 nivel={margem >= 40 ? 'bom' : margem >= 20 ? 'atencao' : 'critico'}
               />
             )}
@@ -987,6 +992,16 @@ function BlocoDoRamo({
         }
         varias={variasNoBloco}
       />
+    ) : bloco.familia === 'agenda' ? (
+      <AgendaDoRamo
+        dados={bloco.dados}
+        agenda={
+          pode(sessao, 'agenda.ver', bloco.unidadeId ?? undefined)
+            ? `/${slug}/agenda${bloco.unidadeId ? `?unidade=${bloco.unidadeId}` : ''}`
+            : null
+        }
+        varias={variasNoBloco}
+      />
     ) : (
       <ReposicaoDoRamo dados={bloco.dados} noEstoque={noEstoque} slug={slug} />
     )
@@ -1002,6 +1017,129 @@ function BlocoDoRamo({
     <Bloco titulo={bloco.titulo} detalhe={lojas}>
       {corpo}
     </Bloco>
+  )
+}
+
+/* ── salão, clínica, escola ── */
+
+/**
+ * Quem atende com hora marcada abre o dia por aqui: os próximos horários, onde
+ * ainda cabe alguém, quem faltou, e o que já foi atendido e recebido. Sem a
+ * Agenda ligada (a escola, no começo), fica o que existe: quem está
+ * trabalhando e o que entrou hoje.
+ */
+function AgendaDoRamo({ dados, agenda, varias }: { dados: DadosAgenda; agenda: string | null; varias: boolean }) {
+  const a = dados.agenda
+  return (
+    <div className={cx('grid gap-6', a ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2')}>
+      {a && (
+        <Peca
+          titulo="Próximos horários"
+          detalhe={
+            a.total === 0
+              ? 'Nada marcado para hoje'
+              : `${a.total} ${a.total === 1 ? 'horário' : 'horários'} hoje · ${a.confirmados} ${a.confirmados === 1 ? 'confirmado' : 'confirmados'}`
+          }
+          icone="/x/agenda"
+          acao={
+            agenda ? (
+              <Link href={agenda} className={linkMiudo}>
+                Abrir a agenda →
+              </Link>
+            ) : undefined
+          }
+        >
+          {a.proximos.length === 0 ? (
+            a.total > 0 ? <Calmo>Todos os horários de hoje já foram atendidos.</Calmo> : <SemDado>Ninguém marcado para hoje ainda.</SemDado>
+          ) : (
+            <ul className="flex flex-col divide-y divide-borda-suave">
+              {a.proximos.map((h) => (
+                <li key={h.id} className="grid grid-cols-[3rem_minmax(0,1fr)] gap-2 py-2 text-sm first:pt-0 last:pb-0">
+                  <span className="numero font-bold text-tinta">{h.hora}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold text-tinta">{h.cliente}</span>
+                    <span className="block truncate text-xs text-tinta-3">
+                      {h.servico} · {h.profissional}
+                      {h.situacao === 'CONFIRMADO' && ' · confirmado'}
+                      {varias && ` · ${h.unidadeNome}`}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Peca>
+      )}
+
+      {a && (
+        <Peca titulo="Onde ainda cabe" detalhe={a.livres ? 'Horários livres de hoje, por quem atende' : undefined}>
+          {a.livres === null ? (
+            <SemDado>Escolha uma loja no alto para ver os horários livres dela.</SemDado>
+          ) : a.livres.length === 0 ? (
+            <SemDado>Sem horário livre hoje.</SemDado>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {a.livres.map((l) => (
+                <li key={l.nome} className="flex flex-col gap-1">
+                  <span className="text-sm font-semibold text-tinta">{l.nome}</span>
+                  <span className="flex flex-wrap gap-1">
+                    {l.horarios.map((h) => (
+                      <span key={h} className="numero rounded-full bg-superficie-2 px-2 py-0.5 text-xs text-tinta-2">
+                        {h}
+                      </span>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Peca>
+      )}
+
+      <Peca titulo="Hoje até agora" detalhe="O que foi atendido e o que entrou pelo balcão">
+        <dl className="grid grid-cols-2 gap-3 text-sm">
+          {a && (
+            <>
+              <div className="flex flex-col">
+                <dt className="text-xs text-tinta-3">Atendidos</dt>
+                <dd className="numero text-lg font-bold text-tinta">{a.atendidos}</dd>
+              </div>
+              <div className="flex flex-col">
+                <dt className="text-xs text-tinta-3">Faltas e desmarcados</dt>
+                <dd className={cx('numero text-lg font-bold', a.faltas > 0 ? 'text-critico' : 'text-tinta')}>
+                  {a.faltas} <span className="text-sm font-normal text-tinta-3">· {a.desmarcados}</span>
+                </dd>
+              </div>
+            </>
+          )}
+          <div className="flex flex-col">
+            <dt className="text-xs text-tinta-3">Recebido no balcão</dt>
+            <dd className="numero text-lg font-bold text-tinta">{brl(dados.recebido.total)}</dd>
+          </div>
+          <div className="flex flex-col">
+            <dt className="text-xs text-tinta-3">Vendas</dt>
+            <dd className="numero text-lg font-bold text-tinta">{dados.recebido.vendas}</dd>
+          </div>
+        </dl>
+        {dados.trabalhando && (
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold tracking-[0.06em] text-tinta-3 uppercase">Trabalhando agora</span>
+            {dados.trabalhando.length === 0 ? (
+              <span className="text-sm text-tinta-3">Ninguém bateu entrada.</span>
+            ) : (
+              <span className="text-sm text-tinta-2">
+                {dados.trabalhando.map((t) => `${t.nome} (desde ${t.desde})`).join(', ')}
+              </span>
+            )}
+          </div>
+        )}
+        {!a && (
+          <p className="text-xs text-tinta-3">
+            Para ver quem vem hoje e os horários livres, ligue a Agenda em Configurações — os {dados.pessoas} com hora marcada aparecem aqui.
+          </p>
+        )}
+      </Peca>
+    </div>
   )
 }
 

@@ -45,6 +45,7 @@ const TIPO: Record<string, string> = {
 
 const data = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(d)
 
@@ -184,8 +185,10 @@ export default async function AssinaturaPagina({
                         {m.motivo ? ` — ${m.motivo}` : ''}
                       </span>
                       <span className="text-xs text-tinta-3">
+                        {/* A origem ("plano", "manual") é etiqueta de máquina:
+                            aparecia como "· plano" no fim da linha. O tipo e o
+                            motivo, acima, já dizem de onde veio. */}
                         {data(m.criadoEm)} · {m.quem}
-                        {m.origem !== 'manual' && ` · ${m.origem}`}
                       </span>
                     </span>
                     <span className="flex shrink-0 items-baseline gap-3">

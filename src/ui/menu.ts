@@ -18,6 +18,8 @@
 
 import type { ItemMenu } from './Estrutura'
 import type { Modo } from '@/servidor/modo'
+import { pode, type Sessao } from '../servidor/permissao'
+import { moduloLigado } from '../servidor/modulos'
 
 export const MENU = (slug: string): ItemMenu[] => [
   // O Painel mostra faturamento do dia, margem e ticket medio. Isso NAO e
@@ -39,15 +41,32 @@ export const MENU = (slug: string): ItemMenu[] => [
   // ligou o módulo — quem vende e entrega na hora nunca vê.
   { grupo: 'Vender', href: `/${slug}/encomendas`, titulo: 'Encomendas', exige: 'venda.ver', modulo: 'encomenda' },
 
+  // ── atendimento ──
+  // Quem vende hora marcada (salão, clínica, escola) vive nesta tela: a
+  // recepção abre a Agenda antes do Balcão.
+  { grupo: 'Atendimento', href: `/${slug}/agenda`, titulo: 'Agenda', exige: 'agenda.ver', modulo: 'agenda' },
+  // Quem trabalha aqui, com ou sem login. Existe com o Ponto (as horas) OU
+  // com a Agenda (a lista de profissionais) — ver modulos.ts. Aparece para
+  // quem bate o próprio ponto: cada um vê o seu, e só quem pode vê as horas
+  // dos outros.
+  { grupo: 'Atendimento', href: `/${slug}/funcionarios`, titulo: 'Funcionários', exige: 'ponto.proprio', ouExige: ['ponto.ver', 'equipe.ver'], modulos: ['ponto', 'agenda'] },
+
   // ── catálogo ──
   { grupo: 'Catálogo', href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver' },
   { grupo: 'Catálogo', href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },
+  // O pedido ao fornecedor, com o custo. Receber é dar entrada no estoque.
+  { grupo: 'Catálogo', href: `/${slug}/compras`, titulo: 'Compras', exige: 'compra.ver', modulo: 'compras' },
+  // O esmalte, a luva, o algodão: quem atende anota o que gastou. Item
+  // próprio porque quem anota (a recepção) não vê as compras.
+  { grupo: 'Catálogo', href: `/${slug}/compras/consumo`, titulo: 'Material usado', exige: 'estoque.consumir', modulo: 'compras' },
   // Margem, markup e o preço que a margem alvo pede. Exige mexer em preço, e
   // não só ver produto: quem não pode mudar o preço não precisa ver o custo.
   { grupo: 'Catálogo', href: `/${slug}/precos`, titulo: 'Preços', exige: 'produto.preco', avancado: true },
 
   // ── pessoas ──
-  { grupo: 'Pessoas', href: `/${slug}/clientes`, titulo: 'Clientes', exige: 'cliente.ver' },
+  // O nome muda com o ramo: "Pacientes" na clínica, "Alunos" na escola (ver
+  // servidor/vocabulario.ts). A tela é a mesma.
+  { grupo: 'Pessoas', href: `/${slug}/clientes`, titulo: 'Clientes', exige: 'cliente.ver', vocabulario: true },
   { grupo: 'Pessoas', href: `/${slug}/equipe`, titulo: 'Equipe', exige: 'equipe.ver' },
   // O quadro da equipe: o que abrir, conferir, montar e ligar. Aparece para
   // quem trabalha na loja, não só para quem manda — a balconista vê a lista
@@ -77,6 +96,18 @@ export const MENU = (slug: string): ItemMenu[] => [
   { grupo: 'Empresa', href: `/${slug}/assinatura`, titulo: 'Assinatura', exige: 'empresa.configurar' },
   { grupo: 'Empresa', href: `/${slug}/configuracoes`, titulo: 'Configurações', exige: 'empresa.configurar' },
 ]
+
+/** A pessoa abre o item? A capacidade dele, ou qualquer uma das alternativas. */
+export function podeVerItem(sessao: Sessao, i: Pick<ItemMenu, 'exige' | 'ouExige'>): boolean {
+  return pode(sessao, i.exige) || !!i.ouExige?.some((c) => pode(sessao, c))
+}
+
+/** O item existe nesta empresa? Módulo único, ou qualquer um da lista. */
+export function itemNaEmpresa(i: Pick<ItemMenu, 'modulo' | 'modulos'>, empresa: { modulos: string[] }): boolean {
+  if (i.modulo && !moduloLigado(empresa, i.modulo)) return false
+  if (i.modulos && !i.modulos.some((m) => moduloLigado(empresa, m))) return false
+  return true
+}
 
 /**
  * O que o menu mostra neste modo.

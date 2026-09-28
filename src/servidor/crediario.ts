@@ -21,6 +21,8 @@ import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, numeroDaBusca, pode, textoDaBusca, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
 import { colunaDoDia, diaDaColuna, diaEmSP, diasEntre, somarDias } from './dia'
+import { travarVenda } from './devolucao'
+import { travarCaixaAberto } from './caixa'
 import type { FormaPagamento } from '@prisma/client'
 
 // ─────────────────────────────────────────────────────────────
@@ -274,7 +276,7 @@ export async function situacaoDosClientes(
 
 export type Recebido =
   | { ok: true; restante: number; quitada: boolean; juros: number }
-  | { ok: false; motivo: 'nao_achada' | 'ja_quitada' | 'valor_invalido' | 'passa_do_resto' | 'caixa_fechado' }
+  | { ok: false; motivo: 'nao_achada' | 'ja_quitada' | 'valor_invalido' | 'passa_do_resto' | 'caixa_fechado' | 'mudou' }
 
 /**
  * Recebe (parte de) uma parcela.
@@ -295,6 +297,15 @@ export async function receberParcela(
   if (!(valorC > 0) || principalC <= 0) return { ok: false, motivo: 'valor_invalido' }
 
   return comoOrg(sessao.orgId, async (db) => {
+    // A venda da parcela fica presa até o fim — a mesma trava de cancelar e
+    // devolver. Sem ela, receber corria junto com a devolução (que abaixa o
+    // `valor` da parcela) ou com o cancelamento (que apaga as parcelas sem
+    // recebimento): o dinheiro entrava na gaveta e a parcela que ele pagava
+    // sumia, ou quitava uma dívida que a devolução já tinha abatido.
+    const dona = await db.parcela.findUnique({ where: { id: p.parcelaId }, select: { vendaId: true } })
+    if (!dona) return { ok: false as const, motivo: 'nao_achada' as const }
+    await travarVenda(db, dona.vendaId)
+
     const parcela = await db.parcela.findUnique({
       where: { id: p.parcelaId },
       select: {
@@ -310,14 +321,12 @@ export async function receberParcela(
     const restaC = centavos(parcela.valor) - centavos(parcela.pago)
     if (principalC > restaC) return { ok: false as const, motivo: 'passa_do_resto' as const }
 
+    // O turno fica preso até o fim (`travarCaixaAberto`): o dinheiro não cai
+    // num caixa que outro tablet está fechando neste segundo.
     let caixaId: string | null = null
     if (p.forma === 'DINHEIRO') {
-      const caixa = await db.caixa.findFirst({
-        where: { unidadeId: parcela.unidadeId, aberto: true },
-        select: { id: true },
-      })
-      if (!caixa) return { ok: false as const, motivo: 'caixa_fechado' as const }
-      caixaId = caixa.id
+      caixaId = await travarCaixaAberto(db, parcela.unidadeId)
+      if (!caixaId) return { ok: false as const, motivo: 'caixa_fechado' as const }
     }
 
     // A parcela é gravada ANTES do recebimento, e só se o `pago` ainda for o
@@ -326,17 +335,18 @@ export async function receberParcela(
     // `pago` e gravavam o mesmo total: nasciam dois recebimentos — o caixa
     // contava o dinheiro duas vezes — e a parcela abatia uma só. Com a
     // condição, o segundo não acha mais a linha como ela estava, e desiste.
+    // O `valor` entra na condição também: é ele que a devolução abaixa.
     const novoPagoC = centavos(parcela.pago) + principalC
     const quitada = novoPagoC >= centavos(parcela.valor)
     const gravou = await db.parcela.updateMany({
-      where: { id: parcela.id, pago: parcela.pago, quitadaEm: null },
+      where: { id: parcela.id, pago: parcela.pago, valor: parcela.valor, quitadaEm: null },
       data: {
         pago: reais(novoPagoC),
         juros: { increment: reais(jurosC) },
         quitadaEm: quitada ? new Date() : null,
       },
     })
-    if (gravou.count === 0) return { ok: false as const, motivo: 'ja_quitada' as const }
+    if (gravou.count === 0) return { ok: false as const, motivo: 'mudou' as const }
 
     await db.recebimento.create({
       data: {

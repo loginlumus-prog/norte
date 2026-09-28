@@ -1,29 +1,32 @@
 // Desempenho da equipe em estrelas.
 //
 // ── o que é ──────────────────────────────────────────────────
-// Uma nota de 0 a 5 por pessoa por mês, feita de três coisas que o sistema já
-// sabe: quanto da meta ela fez, quantas tarefas entregou no prazo e em quantos
-// dias entrou no sistema. É a "estrelinha" que a dona da loja dá de cabeça no
-// fim do mês — só que com a conta aberta ao lado, para ninguém achar que é
-// implicância.
+// Uma nota de 0 a 5 por pessoa por mês, feita de duas coisas que o sistema
+// sabe de verdade: quanto da meta ela fez e quantas tarefas entregou no
+// prazo. É a "estrelinha" que a dona da loja dá de cabeça no fim do mês — só
+// que com a conta aberta ao lado, para ninguém achar que é implicância.
+//
+// Os dias em que a pessoa ENTROU NO SISTEMA aparecem ao lado, como
+// informação, e não contam na nota. Já contaram (20%), e a dona que fica
+// logada no computador da loja a semana inteira levava "faltou 21 dias": o
+// registro é de login, não de presença. Login não é ponto.
 //
 // ── por que a conta é aberta ─────────────────────────────────
 // Nota que cai do céu vira briga. Cada estrela aqui vem com os motivos
-// ("bateu 104% da meta", "faltou 3 dias") e com os pesos que a formaram. Quem
+// ("bateu 104% da meta", "3 de 4 tarefas no prazo") e com os pesos que a formaram. Quem
 // discorda discorda de um número que pode conferir, não de uma opinião.
 //
 // ── por que os pesos são estes ───────────────────────────────
-// Meta pesa metade porque venda é o que paga a loja. Tarefa pesa 30% porque é
-// o que faz a loja funcionar quando não tem cliente na frente. Presença pesa
-// 20% e é o menor de propósito: entrar no sistema é sinal fraco — a pessoa
-// pode estar na loja sem abrir o computador. Ela existe para separar quem
-// esteve de quem sumiu, não para ser ponto eletrônico.
+// Meta pesa 60% porque venda é o que paga a loja. Tarefa pesa 40% porque é o
+// que faz a loja funcionar quando não tem cliente na frente.
 //
 // ── o que sai da conta sai dos pesos ─────────────────────────
-// Pessoa sem meta não é punida por não ter meta: o peso da meta é dividido
-// entre os outros dois. Sem tarefa, idem. A nota é sempre sobre o que EXISTE
-// para medir — e quando não existe nada, a resposta é "sem dados", nunca zero
-// estrela, porque zero é um julgamento e "sem dados" é a verdade.
+// Pessoa sem meta não é punida por não ter meta: o peso vai todo para as
+// tarefas. Sem tarefa, idem. A nota é sempre sobre o que EXISTE para medir —
+// e quando não existe nada, a resposta é "sem nota", nunca zero estrela,
+// porque zero é um julgamento. Quem vendeu sem ter meta ouve quanto vendeu
+// (o mesmo número da seção de metas), e não "sem dados", que parecia dizer
+// que a venda dela não existiu.
 //
 // A conta é pura (`estrelas`) e está testada em tests/desempenho.test.ts. O
 // banco só entra para reunir os insumos.
@@ -42,11 +45,20 @@ export type Insumos = {
   meta: number | null
   /** Tarefas em que a pessoa é a responsável, no mês. Nulo = nenhuma. */
   tarefas: { atribuidas: number; feitas: number; noPrazo: number; atrasadasAbertas: number } | null
-  /** Dias em que entrou no sistema, e quantos dias do mês contam (teto 26). */
+  /**
+   * Dias em que entrou no sistema, e quantos dias do mês contam (teto 26).
+   * Só informação: NÃO entra na nota (login não é ponto).
+   */
   presenca: { dias: number; de: number } | null
+  /**
+   * O vendido líquido no mês, em reais — o mesmo da seção de metas. Nulo com
+   * o módulo de metas desligado. Não entra na nota sozinho (sem meta não há
+   * contra o que medir), mas é dito.
+   */
+  vendido?: number | null
 }
 
-export type Componente = 'meta' | 'tarefas' | 'presenca'
+export type Componente = 'meta' | 'tarefas'
 
 export type Nota = {
   /** 0 a 5, em meios: 0, 0,5, 1 … 5. */
@@ -60,7 +72,7 @@ export type Nota = {
 }
 
 /** Os pesos de partida. Quem falta sai, e os que ficam são reescalados. */
-export const PESOS: Record<Componente, number> = { meta: 0.5, tarefas: 0.3, presenca: 0.2 }
+export const PESOS: Record<Componente, number> = { meta: 0.6, tarefas: 0.4 }
 
 /**
  * Quantos dias de um mês contam para presença.
@@ -98,15 +110,16 @@ export function estrelas(i: Insumos): Nota {
     }
   }
 
-  const p = i.presenca
-  if (p && p.de > 0) {
-    notas.presenca = Math.min(Math.max(p.dias / p.de, 0), 1)
-    const faltas = Math.max(p.de - p.dias, 0)
-    motivos.push(faltas === 0 ? `sem falta em ${p.de} dias` : `faltou ${faltas} ${faltas === 1 ? 'dia' : 'dias'}`)
+  // Vendeu sem ter meta: diz quanto, com o número da seção de metas.
+  if (i.meta === null && i.vendido && i.vendido > 0) {
+    const brl = i.vendido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    motivos.push(`vendeu ${brl} no mês, sem meta para comparar`)
   }
 
   const entram = Object.keys(notas) as Componente[]
-  if (entram.length === 0) return { estrelas: 0, notas: {}, pesos: {}, motivos: ['sem dados no mês'] }
+  if (entram.length === 0) {
+    return { estrelas: 0, notas: {}, pesos: {}, motivos: motivos.length ? motivos : ['sem dados no mês'] }
+  }
 
   const somaPesos = entram.reduce((s, c) => s + PESOS[c], 0)
   const pesos: Nota['pesos'] = {}
@@ -134,7 +147,7 @@ export function NIVEL(estrelas: number): 'bom' | 'atencao' | 'critico' {
 }
 
 /**
- * Quantos dias do mês já contam para presença.
+ * Quantos dias do mês já contam (para o "entrou em X de Y dias").
  *
  * No mês corrente, os dias corridos até hoje — cobrar 26 dias no dia 5 seria
  * dar zero para todo mundo. Em mês passado, o mês inteiro. Mês futuro é zero:
@@ -324,20 +337,24 @@ async function lerLiquidoPorLoja(db: BancoDaOrg, j: Janela, uni: string[]): Prom
 }
 
 /**
- * Junta os três insumos de uma pessoa.
+ * Junta os insumos de uma pessoa.
  *
- * Zero entrada, sem meta e sem tarefa, NÃO é falta: é ausência de dado. A
- * pessoa pode nem usar o sistema — a venda dela é lançada por outro, ou ela
- * só tem o papel e ainda não começou. Nesse caso a presença sai e a nota vira
- * "sem dados". Com meta ou tarefa no mês, zero entrada é falta de verdade.
+ * As entradas no sistema vão junto só para a tela mostrar, e só quando há
+ * alguma: zero entrada não é falta — a venda pode ser lançada por outro, e a
+ * dona fica logada a semana inteira sem "entrar" de novo.
  */
-function montar(o: { meta: number | null; tarefas: LinhaTarefa[]; dias: number; de: number }): Insumos {
-  const tarefas = somarTarefas(o.tarefas)
-  const nadaAlem = o.meta === null && tarefas === null && o.dias === 0
+function montar(o: {
+  meta: number | null
+  tarefas: LinhaTarefa[]
+  dias: number
+  de: number
+  vendido?: number | null
+}): Insumos {
   return {
     meta: o.meta,
-    tarefas,
-    presenca: nadaAlem || o.de === 0 ? null : { dias: o.dias, de: o.de },
+    tarefas: somarTarefas(o.tarefas),
+    presenca: o.dias === 0 || o.de === 0 ? null : { dias: o.dias, de: o.de },
+    vendido: o.vendido ?? null,
   }
 }
 
@@ -403,17 +420,18 @@ export async function desempenhoDoMes(
       pessoas: pessoas
         .map((p) => {
           const m = metaDe.get(p.id)
-          let meta: number | null = null
-          if (m && m.valor > 0) {
-            meta = liquidoNaLoja
-              ? uni!.reduce((s, u) => s + (liquidoNaLoja.get(chaveLoja(u, p.id)) ?? 0), 0) / m.valor
-              : m.progresso
-          }
+          // O vendido é o da seção de metas (ou a fatia das lojas pedidas):
+          // o mesmo número nas duas seções da mesma tela.
+          const vendido = liquidoNaLoja
+            ? uni!.reduce((s, u) => s + (liquidoNaLoja.get(chaveLoja(u, p.id)) ?? 0), 0)
+            : (m?.liquido ?? null)
+          const meta = m && m.valor > 0 && vendido !== null ? (liquidoNaLoja ? vendido / m.valor : m.progresso) : null
           const insumos = montar({
             meta,
             tarefas: tarefas.filter((t) => t.responsavel_id === p.id),
             dias: presenca.get(p.id) ?? 0,
             de,
+            vendido: opcoes.metas ? vendido : null,
           })
           return { usuarioId: p.id, nome: p.nome, insumos, nota: estrelas(insumos) }
         })

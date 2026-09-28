@@ -37,6 +37,7 @@ import { finalDoNumero, log, mascararNumero, resumoDoErro } from './log'
 import type { ClienteNorte } from './norte'
 import { ehLid, normalizar, telefoneDoJid, type MensagemBruta } from './normalizar'
 import { Fila, Ritmo, tempoDigitando } from './ritmo'
+import { Idempotencia } from './idempotencia'
 
 export type Estado = 'desconectado' | 'aguardando_qr' | 'conectando' | 'conectado' | 'expulso'
 
@@ -462,6 +463,11 @@ const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 export class Sessoes {
   private mapa = new Map<string, SessaoDaEmpresa>()
   private lista: ListaDeEmpresas
+  // O mesmo pedido de envio (a mesma chave) sai uma vez só — ver
+  // idempotencia.ts. Recusa certa (409 não conectado, 429 limite ou fila,
+  // 422 sem WhatsApp, 400) libera a chave; 502 (o WhatsApp não confirmou)
+  // não: pode ter saído.
+  private idem = new Idempotencia<Envio>((r) => !r.ok && r.status !== 502)
 
   constructor(
     private readonly cfg: Config,
@@ -509,7 +515,11 @@ export class Sessoes {
     return { estado: 'desconectado', qr: null, numero: null, motivo: null }
   }
 
-  async enviar(orgId: string, numero: string, conteudo: Conteudo): Promise<Envio> {
+  async enviar(orgId: string, numero: string, conteudo: Conteudo, chave?: string | null): Promise<Envio> {
+    return this.idem.uma(chave ? `${orgId}:${chave}` : null, () => this.enviarDeVerdade(orgId, numero, conteudo))
+  }
+
+  private async enviarDeVerdade(orgId: string, numero: string, conteudo: Conteudo): Promise<Envio> {
     const s = this.da(orgId)
     if (s.estado !== 'conectado') {
       // Conector reiniciado e esta empresa ainda não religou? Tenta religar

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { mostrarDiaDaColuna } from '@/servidor/dia'
+import { diaDaColuna, diaEmSP, mostrarDiaDaColuna } from '@/servidor/dia'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -15,7 +15,7 @@ import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { Cancelar } from './Cancelar'
 import { Devolver, type ItemDevolvivel } from './Devolver'
-import { restante } from '@/servidor/devolucao'
+import { pedeInteiro, restante } from '@/servidor/devolucao'
 
 export const metadata: Metadata = { title: 'Venda' }
 
@@ -39,6 +39,7 @@ const MEDIDA: Record<string, string> = {
 
 const quando = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     weekday: 'short', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit',
   }).format(d)
 
@@ -78,11 +79,17 @@ export default async function FichaVenda({
       id: i.id,
       descricao: i.descricao,
       medida: i.medida,
+      inteiro: pedeInteiro(i.medida),
       restante: restante(Number(i.quantidade), voltouDe(i)),
       precoUnit: Number(i.precoUnit),
     }))
     .filter((i) => i.restante > 0)
   const temDevolucao = v.devolucoes.length > 0
+  // Vencida é o dia do vencimento JÁ PASSADO, no calendário de São Paulo —
+  // a mesma régua do Crediário (`diasDeAtraso`). Comparar a coluna `date`
+  // (meia-noite UTC) com o instante de agora chamava de vencida, desde as 21h
+  // da véspera, a parcela que o Crediário mostrava em dia.
+  const hoje = diaEmSP()
 
   type Item = (typeof v.itens)[number]
   const colunas = [
@@ -281,7 +288,7 @@ export default async function FichaVenda({
                   <span className="flex items-center gap-3">
                     {p.quitadaEm ? (
                       <Situacao nivel="bom">quitada</Situacao>
-                    ) : p.vencimento < new Date() ? (
+                    ) : diaDaColuna(p.vencimento) < hoje ? (
                       <Situacao nivel="critico">vencida</Situacao>
                     ) : (
                       <Situacao nivel="neutro">em aberto</Situacao>

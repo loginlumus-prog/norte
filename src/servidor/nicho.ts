@@ -7,8 +7,13 @@
 // sistema querendo saber se acabou o M da peça que vende; o padeiro, quanto
 // pão pôr no forno e que bolo sai hoje; o dono da mercearia, o que pedir ao
 // fornecedor. As três respostas saem dos mesmos dados (venda, estoque,
-// encomenda) — só a lente muda. Por isso são quatro FAMÍLIAS, e não dezesseis
+// encomenda) — só a lente muda. Por isso são cinco FAMÍLIAS, e não dezenove
 // telas: ramo novo escolhe uma família numa tabela, como em RAMOS.
+//
+// A quinta, AGENDA, é de quem vende hora marcada — o salão, a clínica, a
+// escola. Ali a primeira pergunta do dia não é o estoque, é "quem vem hoje, e
+// onde ainda cabe alguém?". Ela lê a agenda (quando o módulo está ligado), o
+// ponto (quem já chegou) e o que entrou no caixa hoje.
 //
 // ── a regra de honestidade ───────────────────────────────────
 // Cada número diz de onde veio. "Média das últimas 4 quartas" é média das
@@ -30,25 +35,30 @@
 import type { Plano, SituacaoEncomenda } from '@prisma/client'
 import { comoOrg } from './banco'
 import { RAMOS, moduloLigado, type ComModulos, type Ramo } from './modulos'
-import { soAsQuePode, type Sessao } from './permissao'
+import { pode, soAsQuePode, type Sessao } from './permissao'
 import { liberado } from './planos'
 import { previsaoDeRuptura, type SituacaoRuptura } from './ruptura'
 import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
-import { grupoDa } from './encomenda'
+import { grupoDa, horaEmSP } from './encomenda'
+import { listarAgenda, profissionaisDaLoja, horarioDaLoja, resumirDia, ROTULO_AGENDA, type SituacaoAgendamento } from './agenda'
+import { trabalhandoAgora } from './ponto'
+import { vocabularioDoRamo } from './vocabulario'
 
 // ─────────────────────────────────────────────────────────────
 // A TABELA
 // ─────────────────────────────────────────────────────────────
 
 /**
- * As quatro lentes.
+ * As cinco lentes.
  *
  * `grade`     quem vende tamanho e cor: o que dói é a grade quebrada.
  * `sabores`   quem vende sabor, a quilo: o que acaba hoje, o que mais saiu.
  * `producao`  quem produz no dia ou trabalha por encomenda: o que fazer hoje.
  * `reposicao` quem revende catálogo grande: o que pedir, o que mais gira.
+ * `agenda`    quem atende com hora marcada: quem vem hoje, onde ainda cabe,
+ *             quem faltou, o que já foi atendido e recebido.
  */
-export type Familia = 'grade' | 'sabores' | 'producao' | 'reposicao'
+export type Familia = 'grade' | 'sabores' | 'producao' | 'reposicao' | 'agenda'
 
 type Nicho = {
   familia: Familia
@@ -80,6 +90,12 @@ export const NICHOS: Record<Ramo, Nicho> = {
   papelaria: { familia: 'reposicao', nome: 'papelaria', plural: 'papelarias', artigo: 'a' },
   brinquedos: { familia: 'reposicao', nome: 'loja de brinquedos', plural: 'lojas de brinquedos', artigo: 'a' },
   outro: { familia: 'reposicao', nome: 'loja', plural: 'lojas', artigo: 'a' },
+  beleza: { familia: 'agenda', nome: 'salão', plural: 'salões', artigo: 'o' },
+  saude: { familia: 'agenda', nome: 'clínica', plural: 'clínicas', artigo: 'a' },
+  // A escola nasce sem a Agenda ligada (o ramo sugere só o ponto): o bloco
+  // mostra o que tem — quem está trabalhando e o que entrou hoje — e a agenda
+  // aparece no dia em que ela ligar o módulo.
+  escola: { familia: 'agenda', nome: 'escola', plural: 'escolas', artigo: 'a' },
 }
 
 const ehRamo = (r: string | null | undefined): r is Ramo => !!r && Object.hasOwn(RAMOS, r)
@@ -609,6 +625,38 @@ export type DadosReposicao = {
   giro: Giro[]
 }
 
+export type HorarioCurto = {
+  id: string
+  hora: string
+  fim: string
+  cliente: string
+  servico: string
+  profissional: string
+  situacao: SituacaoAgendamento
+  rotulo: string
+  unidadeNome: string
+}
+
+export type DadosAgenda = {
+  /** Nulo quando a Agenda está desligada ou a pessoa não a vê. */
+  agenda: {
+    total: number
+    confirmados: number
+    atendidos: number
+    faltas: number
+    desmarcados: number
+    proximos: HorarioCurto[]
+    /** Só quando o bloco é de UMA loja: o horário livre depende do funcionamento dela. */
+    livres: { nome: string; horarios: string[] }[] | null
+  } | null
+  /** O que entrou pelo balcão hoje, nas lojas do bloco. */
+  recebido: { vendas: number; total: number }
+  /** Nulo quando o Ponto está desligado ou a pessoa não vê as horas dos outros. */
+  trabalhando: { nome: string; desde: string }[] | null
+  /** "clientes", "pacientes", "alunos". */
+  pessoas: string
+}
+
 export type BlocoDoNicho = {
   ramo: Ramo
   titulo: string
@@ -620,6 +668,7 @@ export type BlocoDoNicho = {
   | { familia: 'sabores'; dados: DadosSabores }
   | { familia: 'producao'; dados: DadosProducao }
   | { familia: 'reposicao'; dados: DadosReposicao }
+  | { familia: 'agenda'; dados: DadosAgenda }
 )
 
 // ─────────────────────────────────────────────────────────────
@@ -683,6 +732,7 @@ export async function blocoDoGrupo(
   if (familia === 'grade') return { ...comum, familia, dados: await dadosGrade(sessao, g.lojas, g.ramo, agora) }
   if (familia === 'sabores') return { ...comum, familia, dados: await dadosSabores(sessao, ids, agora) }
   if (familia === 'producao') return { ...comum, familia, dados: await dadosProducao(sessao, empresa, ids, g.ramo, agora) }
+  if (familia === 'agenda') return { ...comum, familia, dados: await dadosAgenda(sessao, empresa, ids, g.ramo, agora) }
   return { ...comum, familia, dados: await dadosReposicao(sessao, ids, plano, agora) }
 }
 
@@ -759,7 +809,7 @@ async function dadosGrade(
            where i.variacao_id = vr.id and v.unidade_id = u.id
              and v.situacao = 'CONCLUIDA' and v.criada_em >= ${corte30}
         ) s on true
-       where vr.ativa and p.ativo
+       where vr.ativa and p.ativo and not p.servico
          and (cardinality(p.vendido_em) = 0 or u.id = any(p.vendido_em))
          and (select count(*) from variacoes x where x.produto_id = p.id and x.ativa) > 1
        order by p.nome, p.id, o.chave
@@ -857,7 +907,7 @@ async function dadosSabores(sessao: Sessao, ids: string[], agora: Date): Promise
            where i.variacao_id = vr.id and v.unidade_id = any(${uni})
              and v.situacao = 'CONCLUIDA' and v.criada_em >= ${corte7}
         ) s on true
-       where vr.ativa and p.ativo
+       where vr.ativa and p.ativo and not p.servico
          and (cardinality(p.vendido_em) = 0 or p.vendido_em && ${uni}::text[])
          and (coalesce(e.saldo, 0) > 0 or coalesce(s.hoje, 0) > 0 or coalesce(s.semana, 0) > 0)
     `
@@ -1075,4 +1125,77 @@ async function dadosReposicao(sessao: Sessao, ids: string[], plano: Plano, agora
     comPrevisao,
     giro: giro(r.giro.map((g) => ({ rotulo: g.rotulo, medida: g.medida, semana: n(g.semana), anterior: n(g.anterior) }))),
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// FAMÍLIA AGENDA — salão, clínica, escola
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * O dia de quem atende com hora marcada. Cada pedaço pede a SUA permissão e o
+ * SEU módulo: a agenda pede `agenda.ver` e o módulo Agenda; quem está
+ * trabalhando pede `ponto.ver` e o módulo Ponto. O recebido de hoje é número
+ * de venda — quem abre o painel já pode ler relatório.
+ *
+ * Uma consulta depois da outra: cada função abaixo abre o próprio comoOrg.
+ */
+async function dadosAgenda(
+  sessao: Sessao,
+  empresa: ComModulos,
+  ids: string[],
+  ramo: Ramo,
+  agora: Date,
+): Promise<DadosAgenda> {
+  const hoje = diaEmSP(agora)
+  const inicioHoje = inicioDoDiaEmSP(hoje)
+  const amanha = inicioDoDiaEmSP(somarDias(hoje, 1))
+
+  let agenda: DadosAgenda['agenda'] = null
+  const lojasAgenda = moduloLigado(empresa, 'agenda') ? soAsQuePode(sessao, 'agenda.ver', ids) : []
+  if (lojasAgenda.length > 0) {
+    const lista = await listarAgenda(sessao, { unidadeIds: lojasAgenda, de: inicioHoje, ate: amanha })
+    // Os livres só fazem sentido numa loja: dependem do horário dela e de
+    // quem atende nela.
+    const uma = lojasAgenda.length === 1 ? lojasAgenda[0]! : null
+    const profs = uma ? await profissionaisDaLoja(sessao, uma) : []
+    const horario = uma ? (await horarioDaLoja(sessao, uma)).horario : null
+    const r = resumirDia(lista, profs, horario, hoje, agora)
+    agenda = {
+      total: r.total,
+      confirmados: r.confirmados,
+      atendidos: r.atendidos,
+      faltas: r.faltas,
+      desmarcados: r.desmarcados,
+      proximos: r.proximos.slice(0, 8).map((a) => ({
+        id: a.id,
+        hora: horaEmSP(a.inicio),
+        fim: horaEmSP(a.fim),
+        cliente: a.clienteNome,
+        servico: a.servico,
+        profissional: a.colaboradorNome,
+        situacao: a.situacao,
+        rotulo: ROTULO_AGENDA[a.situacao],
+        unidadeNome: a.unidadeNome,
+      })),
+      livres: uma
+        ? r.livres.filter((l) => l.horarios.length > 0).map((l) => ({ nome: l.nome, horarios: l.horarios.map(horaEmSP) }))
+        : null,
+    }
+  }
+
+  const recebido = await comoOrg(sessao.orgId, async (db) => {
+    const v = await db.venda.aggregate({
+      where: { unidadeId: { in: ids }, situacao: 'CONCLUIDA', criadaEm: { gte: inicioHoje } },
+      _count: { _all: true },
+      _sum: { total: true },
+    })
+    return { vendas: v._count._all, total: n(v._sum.total) }
+  })
+
+  const trabalhando =
+    moduloLigado(empresa, 'ponto') && pode(sessao, 'ponto.ver')
+      ? (await trabalhandoAgora(sessao, ids, agora)).map((t) => ({ nome: t.nome, desde: horaEmSP(t.desde) }))
+      : null
+
+  return { agenda, recebido, trabalhando, pessoas: vocabularioDoRamo(ramo).pessoas }
 }

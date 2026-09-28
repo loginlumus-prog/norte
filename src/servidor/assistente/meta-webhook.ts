@@ -30,7 +30,7 @@
 // entrega volta 'duplicada'.
 
 import { comoOrg } from '../banco'
-import { marcarHumano, processarMensagem, type Dependencias, type Desfecho } from './conversa'
+import { marcarHumano, processarMensagem, soPedidoDeLista, type Dependencias, type Desfecho } from './conversa'
 import { escolherCanal, SELECT_LINHA, type Canal } from './canal'
 import { CanalMeta } from './meta'
 import { assinaturaConfere, lerConfigMeta, lerWebhookMeta, respostaDoDesafio, semSegredo, type EventoMeta } from './meta-regras'
@@ -116,6 +116,15 @@ export async function processarEventos(eventos: EventoMeta[], deps: Dependencias
       // A porta desta empresa: só com o canal ligado no oficial, e para ESTE número.
       if (!agente || agente.canal !== 'META' || agente.metaPhoneNumberId !== phoneNumberId) {
         resumo.descartados += doNumero.length
+        // O número é dela (a portaria e o Agente concordam), mas a loja
+        // desligou o oficial: nada anda — só o PARAR/VOLTAR é gravado, sem
+        // confirmação (a porta está fechada, e a Meta assinou o pedido).
+        if (agente && agente.metaPhoneNumberId === phoneNumberId) {
+          for (const e of doNumero) {
+            if (e.tipo !== 'mensagem') continue
+            await soPedidoDeLista({ orgId: org.id, telefone: e.telefone, nome: e.nome, texto: e.texto, idExterno: e.idExterno }, null)
+          }
+        }
         continue
       }
       const canal = deps.canal ?? escolherCanal(org, agente).canal

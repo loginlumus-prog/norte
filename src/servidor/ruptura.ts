@@ -202,7 +202,7 @@ export async function previsaoDeRuptura(sessao: Sessao, unidadeIds: string[]): P
             join eixos ex on ex.id = op.eixo_id
            where vo.variacao_id = vr.id
         ) o on true
-       where vr.ativa and p.ativo
+       where vr.ativa and p.ativo and not p.servico
          and (coalesce(e.saldo, 0) > 0 or coalesce(s.vendidos, 0) > 0)
     `
   })

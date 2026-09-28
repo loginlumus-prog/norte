@@ -55,8 +55,14 @@ import { lerConfigMeta } from './meta-regras'
  * `codigo` é para quem decide o que fazer depois — a frase (`motivo`) é
  * para a tela e o log. 'janela_fechada': WhatsApp oficial, a pessoa não
  * escreveu nas últimas 24 horas, e texto livre não sai (só modelo aprovado).
+ *
+ * 'incerto': o pedido SAIU daqui e a resposta não voltou (prazo estourado,
+ * conexão caída no meio). A mensagem pode ter chegado — o Z-API costuma
+ * mandar e responder devagar. Tentar de novo às cegas manda em dobro; quem
+ * chama só repete se o canal é `semDuplicar` (o conector reconhece a chave do
+ * envio e não manda de novo).
  */
-export type CodigoFalha = 'janela_fechada' | 'modelo' | 'credencial' | 'limite' | 'numero' | 'fornecedor'
+export type CodigoFalha = 'janela_fechada' | 'modelo' | 'credencial' | 'limite' | 'numero' | 'fornecedor' | 'incerto'
 export type Envio = { ok: true; id?: string } | { ok: false; motivo: string; codigo?: CodigoFalha }
 
 /**
@@ -64,6 +70,13 @@ export type Envio = { ok: true; id?: string } | { ok: false; motivo: string; cod
  * o idioma e o texto de cada variável do corpo, na ordem ({{1}}, {{2}}...).
  */
 export type ModeloParaEnvio = { nome: string; idioma: string; variaveis: string[] }
+
+/**
+ * `chave`: o mesmo envio tentado de novo leva a MESMA chave (a campanha monta
+ * uma por mensagem do roteiro). Quem sabe deduplicar (o conector) não manda
+ * duas vezes; os outros canais ignoram.
+ */
+export type OpcoesEnvio = { chave?: string }
 
 /** A janela de atendimento com um número (só existe no WhatsApp oficial). */
 export type Janela = { aberta: boolean; ultimaEntrada: Date | null }
@@ -73,14 +86,19 @@ export interface Canal {
   readonly nome: string
   /** Falso no canal de mentira: a tela precisa saber que nada sai de verdade. */
   readonly real: boolean
-  enviar(numero: string, texto: string): Promise<Envio>
+  /**
+   * O canal reconhece a `chave` do envio e não manda duas vezes a mesma: aí
+   * repetir depois de uma falha 'incerto' é seguro. Só o conector do QR Code.
+   */
+  readonly semDuplicar?: boolean
+  enviar(numero: string, texto: string, opcoes?: OpcoesEnvio): Promise<Envio>
   /**
    * Foto, vídeo ou áudio (campanhas). OPCIONAL: canal que não sabe mandar
    * mídia não implementa, e a campanha manda só a legenda como texto.
    * `url` é um endereço público e assinado, com prazo (/api/midia/...): o
    * fornecedor busca o arquivo lá. `comoGravado` = áudio como nota de voz.
    */
-  enviarMidia?(numero: string, m: MidiaParaEnvio): Promise<Envio>
+  enviarMidia?(numero: string, m: MidiaParaEnvio, opcoes?: OpcoesEnvio): Promise<Envio>
   /**
    * Só no WhatsApp OFICIAL. A Meta só entrega texto livre a quem escreveu
    * para a loja nas últimas 24 horas; fora disso, só modelo aprovado. Canal
@@ -105,8 +123,9 @@ export async function enviarOuModelo(
   numero: string,
   texto: string,
   modelo?: ModeloParaEnvio | null,
+  opcoes?: OpcoesEnvio,
 ): Promise<Envio & { porModelo?: boolean }> {
-  const r = await canal.enviar(numero, texto)
+  const r = await canal.enviar(numero, texto, opcoes)
   if (r.ok || r.codigo !== 'janela_fechada' || !modelo || !canal.enviarModelo) return r
   const m = await canal.enviarModelo(numero, modelo)
   return m.ok ? { ...m, porModelo: true } : m
@@ -250,11 +269,25 @@ export class CanalZapi implements Canal {
       }
       const corpo = (await r.json().catch(() => ({}))) as { messageId?: string; id?: string }
       return { ok: true, id: corpo.messageId ?? corpo.id }
-    } catch {
-      console.error('[canal] Z-API não respondeu')
-      return { ok: false, motivo: 'o Z-API não respondeu' }
+    } catch (e) {
+      // Endereço que não existe, conexão recusada: o pedido nem saiu, e
+      // tentar de novo é seguro. Qualquer outra coisa (o prazo de 15 s
+      // estourou, a conexão caiu no meio) pode ter mandado — 'incerto'.
+      if (antesDeSair(e)) {
+        console.error('[canal] Z-API fora do ar (o pedido não saiu)')
+        return { ok: false, motivo: 'o Z-API não respondeu', codigo: 'fornecedor' }
+      }
+      console.error('[canal] Z-API não respondeu a tempo (pode ter mandado)')
+      return { ok: false, motivo: 'o Z-API não respondeu a tempo', codigo: 'incerto' }
     }
   }
+}
+
+/** O erro do fetch é de ANTES de o pedido sair (endereço, conexão recusada)? */
+export function antesDeSair(e: unknown): boolean {
+  const causa = (e as { cause?: { code?: unknown } } | null)?.cause
+  const codigo = typeof causa?.code === 'string' ? causa.code : ''
+  return ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(codigo)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -270,6 +303,9 @@ export class CanalZapi implements Canal {
 export class CanalProprio implements Canal {
   readonly nome = 'WhatsApp (QR Code)'
   readonly real = true
+  // O conector guarda a chave de cada envio por um dia: o mesmo pedido
+  // repetido devolve o resultado do primeiro, sem mandar de novo.
+  readonly semDuplicar = true
 
   constructor(
     private readonly orgId: string,
@@ -277,9 +313,15 @@ export class CanalProprio implements Canal {
     private readonly buscar: typeof fetch = fetch,
   ) {}
 
-  private async pedir(corpo: { numero: string; texto: string } | { numero: string; midia: MidiaParaEnvio }): Promise<Envio> {
-    const r = await enviarPeloConector(this.cfg, this.orgId, corpo, this.buscar)
-    if (!r) return { ok: false, motivo: 'o conector do WhatsApp não respondeu' }
+  private async pedir(
+    corpo: { numero: string; texto: string } | { numero: string; midia: MidiaParaEnvio },
+    opcoes?: OpcoesEnvio,
+  ): Promise<Envio> {
+    const r = await enviarPeloConector(this.cfg, this.orgId, opcoes?.chave ? { ...corpo, chave: opcoes.chave } : corpo, this.buscar)
+    // Sem resposta em 120 s: o conector pode estar com o pedido na fila e
+    // mandar daqui a pouco. 'incerto' — e a nova tentativa, com a mesma
+    // chave, não duplica.
+    if (!r) return { ok: false, motivo: 'o conector do WhatsApp não respondeu', codigo: 'incerto' }
     const j = (r.json ?? {}) as { ok?: unknown; id?: unknown; motivo?: unknown }
     if (r.status === 200 && j.ok === true) return { ok: true, id: typeof j.id === 'string' ? j.id : undefined }
     // O motivo do conector é frase nossa, sem segredo nem número inteiro.
@@ -288,16 +330,16 @@ export class CanalProprio implements Canal {
     return { ok: false, motivo }
   }
 
-  async enviar(numero: string, texto: string): Promise<Envio> {
+  async enviar(numero: string, texto: string, opcoes?: OpcoesEnvio): Promise<Envio> {
     const n = paraEnvio(numero)
     if (!n) return { ok: false, motivo: 'número inválido' }
-    return this.pedir({ numero: n, texto: texto.slice(0, MAXIMO_TEXTO) })
+    return this.pedir({ numero: n, texto: texto.slice(0, MAXIMO_TEXTO) }, opcoes)
   }
 
-  async enviarMidia(numero: string, midia: MidiaParaEnvio): Promise<Envio> {
+  async enviarMidia(numero: string, midia: MidiaParaEnvio, opcoes?: OpcoesEnvio): Promise<Envio> {
     const n = paraEnvio(numero)
     if (!n) return { ok: false, motivo: 'número inválido' }
-    return this.pedir({ numero: n, midia })
+    return this.pedir({ numero: n, midia }, opcoes)
   }
 }
 
@@ -352,16 +394,40 @@ export type OrigemCanal = 'meta' | 'qr' | 'propria' | 'global' | 'nenhuma'
 export type LinhaDoAgente = LinhaGuardada & { canal?: CanalAgente | null }
 
 /**
+ * Por onde a empresa FALA: a linha dela (`linhaDaEmpresa`, abaixo) — mas só
+ * com a porta aberta. `canal = NENHUM` é a loja que desconectou (ou nunca
+ * conectou): nada sai, nem pela linha do Z-API que ficou guardada, nem pela
+ * global do piloto. Até 27/09 a escolha ignorava o NENHUM, e a dona que
+ * clicava "Desconectar" continuava com as campanhas mandando pela linha
+ * guardada — enquanto as respostas (e o PARAR) chegavam a uma porta fechada.
+ *
+ * Sem `canal` lido (quem monta a linha à mão), vale a linha.
+ */
+export function escolherCanal(
+  org: { id: string; slug: string },
+  linha: LinhaDoAgente | null | undefined,
+  buscar: typeof fetch = fetch,
+): { canal: Canal; origem: OrigemCanal } {
+  if (linha?.canal === 'NENHUM') return { canal: canalFalso(), origem: 'nenhuma' }
+  return linhaDaEmpresa(org, linha, buscar)
+}
+
+/**
  * A regra inteira, sem banco: oficial (Meta) > QR Code > linha própria no
  * Z-API > global (só a do piloto) > mentira. Recebe o que já foi lido do
  * Agente.
+ *
+ * É a linha que a empresa TEM, com a porta aberta ou não: a tela usa para
+ * dizer "a linha está pronta, falta conectar", e o botão de teste do dono
+ * (que só manda para o número de quem clicou) usa para provar a linha antes
+ * de conectar. Para falar com CLIENTE, sempre `escolherCanal`.
  *
  * O oficial só vale com o app da Meta configurado AQUI (as variáveis META_*),
  * e o QR só com o conector: sem eles, a empresa cai para o que tiver de Z-API
  * (ou para o de mentira, e a tela diz). Uma variável esquecida no deploy não
  * derruba nada — só troca o caminho, e a tela mostra qual.
  */
-export function escolherCanal(
+export function linhaDaEmpresa(
   org: { id: string; slug: string },
   linha: LinhaDoAgente | null | undefined,
   buscar: typeof fetch = fetch,

@@ -8,8 +8,9 @@
 // vezes por ano, e o esquecimento que vira multa.
 //
 // ── quando gera ──────────────────────────────────────────────
-// Ao abrir o Financeiro: o mês corrente e o próximo, se faltarem — é o que
-// "A vencer" (15 dias) precisa enxergar na virada do mês. E o mês que a
+// Ao abrir o Financeiro, se quem abre pode lançar: o mês corrente e o
+// próximo, se faltarem — é o que "A vencer" (15 dias) precisa enxergar na
+// virada do mês. E o mês que a
 // pessoa estiver olhando, se for futuro: quem abre fevereiro para saber
 // quanto vai pagar quer ver o aluguel de fevereiro lá. `gerarRecorrentesDoMes`
 // é exportada sozinha para um agendador (cron) chamar no dia 1º no futuro,
@@ -41,7 +42,7 @@
 
 import type { TipoLancamento } from '@prisma/client'
 import { comoOrg } from './banco'
-import { exigir, pode, SemPermissao, unidadesQuePodem, type Sessao } from './permissao'
+import { exigir, exigirNoAlcance, pode, unidadesQuePodem, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
 import { registrarErro } from './registro'
 
@@ -239,6 +240,16 @@ function escopo(sessao: Sessao) {
   return permitidas === 'todas' ? {} : { OR: [{ unidadeId: null }, { unidadeId: { in: permitidas } }] }
 }
 
+/**
+ * As contas cujo lançamento esta pessoa pode ESCREVER: as das lojas em que
+ * lança e, só para quem lança na empresa inteira, as sem loja — a mesma
+ * régua de `exigirNoAlcance`.
+ */
+function escopoDeLancar(sessao: Sessao) {
+  const permitidas = unidadesQuePodem(sessao, 'financeiro.lancar')
+  return permitidas === 'todas' ? {} : { unidadeId: { in: permitidas } }
+}
+
 export async function listarRecorrentes(sessao: Sessao, unidadeIds: string[]): Promise<RecorrenteNaLista[]> {
   exigir(sessao, 'financeiro.ver')
   return comoOrg(sessao.orgId, async (db) => {
@@ -274,15 +285,15 @@ export async function listarRecorrentes(sessao: Sessao, unidadeIds: string[]): P
 /**
  * Escreve os lançamentos de `mes` que faltam. Devolve quantos escreveu.
  *
- * Pede só `financeiro.ver`, e é de propósito: quem DECIDIU a conta foi quem a
- * cadastrou, com `financeiro.lancar`. Aqui é o calendário virando a folha — o
- * gerente que abre o Financeiro no dia 1º não está lançando nada, está vendo
- * o mês que chegou. Gera só as contas das lojas que a pessoa alcança (e as da
- * empresa inteira); a de outra loja é gerada quando alguém de lá abrir, ou
- * pelo agendador.
+ * Pede `financeiro.lancar`. Já pediu só `financeiro.ver` ("é o calendário
+ * virando a folha"), e aí o contador, o suporte e o gerente que só lê o
+ * financeiro escreviam lançamentos — com o nome deles na auditoria — só por
+ * abrir a tela. Gera as contas das lojas em que a pessoa lança (e as da
+ * empresa inteira, se ela lança na empresa inteira); o resto nasce quando
+ * alguém que lança lá abrir o Financeiro.
  */
 export async function gerarRecorrentesDoMes(sessao: Sessao, mes: string): Promise<number> {
-  exigir(sessao, 'financeiro.ver')
+  exigir(sessao, 'financeiro.lancar')
   if (!mesValido(mes)) throw new Error('Mês inválido.')
   const [ano, m] = mes.split('-').map(Number) as [number, number]
   const de = new Date(Date.UTC(ano, m - 1, 1))
@@ -293,7 +304,7 @@ export async function gerarRecorrentesDoMes(sessao: Sessao, mes: string): Promis
     await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`recorrentes:${sessao.orgId}:${mes}`}))`
 
     const recorrentes = await db.recorrente.findMany({
-      where: { ativo: true, ...escopo(sessao) },
+      where: { ativo: true, ...escopoDeLancar(sessao) },
       select: {
         id: true, ativo: true, diaVencimento: true, ateEm: true, criadoEm: true,
         categoriaId: true, unidadeId: true, tipo: true, descricao: true, valor: true, fornecedor: true,
@@ -357,6 +368,8 @@ export async function gerarRecorrentesDoMes(sessao: Sessao, mes: string): Promis
  */
 export async function garantirRecorrentes(sessao: Sessao, mesOlhado?: string | null, agora = new Date()): Promise<number> {
   exigir(sessao, 'financeiro.ver')
+  // Quem só lê o financeiro não escreve nada ao abrir a tela.
+  if (!pode(sessao, 'financeiro.lancar', undefined, agora)) return 0
   const atual = hojeNaLoja(agora).slice(0, 7)
   const meses = [atual, mesSeguinte(atual)]
   let limite = atual
@@ -377,7 +390,8 @@ export async function garantirRecorrentes(sessao: Sessao, mesOlhado?: string | n
 /* ── cadastrar, editar, pausar ─────────────────────────────── */
 
 export async function criarRecorrente(sessao: Sessao, d: DadosRecorrente): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
-  exigir(sessao, 'financeiro.lancar', d.unidadeId || undefined)
+  // Conta sem loja é da empresa inteira: só quem lança na empresa inteira.
+  exigirNoAlcance(sessao, 'financeiro.lancar', d.unidadeId || null)
   const v = validarRecorrente(d)
   if (!v.ok) return v
   const r = v.limpo
@@ -457,12 +471,12 @@ export async function editarRecorrente(
       },
     })
     if (!antes) return { ok: false as const, erro: 'Essa conta não existe mais.' }
-    if (!pode(sessao, 'financeiro.lancar', antes.unidadeId ?? undefined)) {
-      throw new SemPermissao('financeiro.lancar', antes.unidadeId ?? undefined)
-    }
-    if (r.unidadeId && !pode(sessao, 'financeiro.lancar', r.unidadeId)) {
-      throw new SemPermissao('financeiro.lancar', r.unidadeId)
-    }
+    // A conta como ESTAVA e como vai ficar: as duas precisam estar no
+    // alcance. Sem loja é a empresa inteira — o financeiro da loja 3 pausava
+    // o aluguel do escritório, ou tirava a conta da loja 3 e a deixava "da
+    // empresa", fora do alcance de quem a cuidava.
+    exigirNoAlcance(sessao, 'financeiro.lancar', antes.unidadeId)
+    exigirNoAlcance(sessao, 'financeiro.lancar', r.unidadeId ?? null)
     const cat = await db.categoriaFinanceira.findFirst({ where: { id: r.categoriaId, ativa: true }, select: { tipo: true } })
     if (!cat) return { ok: false as const, erro: 'Essa categoria não existe.' }
 

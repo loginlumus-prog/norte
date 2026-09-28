@@ -9,6 +9,7 @@ import { Secao } from '@/ui/painel'
 import { Cartao } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { TrocarSenha } from './TrocarSenha'
+import { TrocarNome } from './TrocarNome'
 
 // Minha conta: quem eu sou aqui, e trocar a minha senha.
 //
@@ -34,6 +35,7 @@ export default async function MinhaConta({ params }: { params: Promise<{ empresa
     }),
   )
   const papeis = [...new Set(sessao.acessos.map((a) => NOME_DO_PAPEL[a.papel]))].join(', ')
+  const soSuporte = sessao.acessos.length > 0 && sessao.acessos.every((a) => a.papel === 'SUPORTE')
 
   return (
     <Estrutura
@@ -60,9 +62,18 @@ export default async function MinhaConta({ params }: { params: Promise<{ empresa
           )}
         </dl>
         <p className="max-w-xl text-xs leading-relaxed text-tinta-3">
-          Nome, e-mail e papel quem muda é quem administra a equipe, na tela Equipe.
+          O papel quem muda é quem administra a equipe, na tela Equipe. O e-mail é o seu login e não muda
+          por aqui: para usar outro, quem administra a equipe convida o e-mail novo e tira o acesso deste.
         </p>
       </Secao>
+
+      {!soSuporte && (
+        <Secao titulo="Meu nome" resumo="É como você aparece nas vendas, nas tarefas e no livro de auditoria.">
+          <Cartao caixa>
+            <TrocarNome slug={slug} nome={eu?.nome ?? sessao.nome} />
+          </Cartao>
+        </Secao>
+      )}
 
       <Secao
         titulo="Trocar minha senha"

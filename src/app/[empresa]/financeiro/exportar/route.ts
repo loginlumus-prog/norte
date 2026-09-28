@@ -9,7 +9,7 @@
 import { sessaoViva } from '@/servidor/pagina'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import { escolherUnidade } from '@/servidor/unidade'
-import { listarLancamentos } from '@/servidor/financeiro'
+import { lerMes, listarLancamentos, mesDeAgora } from '@/servidor/financeiro'
 import { SemPermissao } from '@/servidor/permissao'
 import { csv, respostaCsv } from '@/servidor/csv'
 import { filtrosUsados, podeExportar, registrarExportacao } from '@/servidor/exportacao'
@@ -23,12 +23,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ empresa:
   if (!podeExportar(sessao, 'financeiro')) return new Response('Sem permissão para ver o financeiro.', { status: 403 })
 
   const q = new URL(req.url).searchParams
-  // O mês como a tela lê: fora do formato, o corrente.
-  const mesBruto = q.get('mes') ?? ''
-  const agora = new Date()
-  const [ano, mes] = (/^\d{4}-(0?[1-9]|1[0-2])$/.test(mesBruto) ? mesBruto : `${agora.getFullYear()}-${agora.getMonth() + 1}`)
-    .split('-')
-    .map(Number) as [number, number]
+  // O mês como a tela lê: fora do formato, o corrente — em São Paulo, não no
+  // relógio da máquina (num servidor em UTC, às 22h do dia 30 a planilha já
+  // saía do mês seguinte, vazia).
+  const [ano, mes] = (lerMes(q.get('mes')) ?? mesDeAgora()).split('-').map(Number) as [number, number]
   const tipo = q.get('tipo')
   const situacao = q.get('situacao')
   const onde = await escolherUnidade(sessao, empresa, q.get('unidade') ?? undefined, 'financeiro.ver')

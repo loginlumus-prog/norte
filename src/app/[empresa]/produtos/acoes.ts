@@ -7,24 +7,61 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { criarProduto, editarProduto, ajustarGrade, type EixoEscolhido } from '@/servidor/produto'
+import { criarProduto, editarProduto, ajustarGrade, GradeRecusada, type EixoEscolhido } from '@/servidor/produto'
 import { SemPermissao, unidadesQuePodem, type Sessao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { alcanceComum, normalizarVendidoEm, vendidoEmDoGerente } from '@/servidor/catalogo-loja'
 import { palavra, plural } from '@/ui/texto'
+import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 import type { Medida } from '@prisma/client'
 
-export type EstadoProduto = { erro?: string; ok?: string }
+export type EstadoProduto = {
+  erro?: string
+  ok?: string
+  /** O erro de cada campo, pelo `name` dele — a tela pinta o campo e diz o que houve. */
+  campos?: Record<string, string>
+}
 
 const MEDIDAS: Medida[] = ['UN', 'KG', 'G', 'L', 'ML', 'M', 'PAR', 'CX']
 
-/** Vírgula é como se digita dinheiro aqui. Ponto também passa. */
-const preco = (f: FormData, k: string): number | null => {
-  const bruto = String(f.get(k) ?? '').trim()
-  if (!bruto) return null
-  const v = Number(bruto.replace(/\./g, '').replace(',', '.'))
-  return Number.isFinite(v) && v >= 0 ? v : null
+const CAMPOS_DE_DINHEIRO = ['precoVista', 'precoCartao', 'precoCrediario', 'custo'] as const
+type CampoDeDinheiro = (typeof CAMPOS_DE_DINHEIRO)[number]
+
+/**
+ * Os quatro campos de dinheiro da ficha, lidos por `lerDinheiro`.
+ *
+ * Vazio é "não informado" (nulo). O que tem texto e não se lê vira ERRO no
+ * próprio campo — antes o custo ilegível virava vazio em silêncio, e o
+ * preço "49.90" virava 4.990 reais porque todo ponto era jogado fora.
+ * `undefined` = o campo nem veio no formulário (a tela não o mostrou).
+ */
+function precosDo(
+  f: FormData,
+): { valores: Record<CampoDeDinheiro, number | null | undefined> } | { campos: Record<string, string> } {
+  const valores = {} as Record<CampoDeDinheiro, number | null | undefined>
+  const campos: Record<string, string> = {}
+  for (const k of CAMPOS_DE_DINHEIRO) {
+    if (!f.has(k)) {
+      valores[k] = undefined
+      continue
+    }
+    const bruto = String(f.get(k) ?? '').trim()
+    if (!bruto) {
+      valores[k] = null
+      continue
+    }
+    const v = lerDinheiro(bruto)
+    if (v === null) campos[k] = DINHEIRO_ILEGIVEL
+    valores[k] = v
+  }
+  if (!campos.precoVista && !(valores.precoVista! > 0)) {
+    campos.precoVista = 'Informe o preço à vista, maior que zero.'
+  }
+  return Object.keys(campos).length > 0 ? { campos } : { valores }
 }
+
+/** O erro geral que acompanha os erros de campo: diz onde olhar. */
+const ERRO_NOS_CAMPOS = 'Confira o campo marcado em vermelho.'
 
 const PRAZO_MAXIMO_DIAS = 365
 
@@ -43,6 +80,22 @@ const prazo = (f: FormData): { valor: number | null } | { erro: string } => {
     return { erro: `O prazo de reposição é em dias inteiros, de 0 a ${PRAZO_MAXIMO_DIAS}.` }
   }
   return { valor: Number(bruto) }
+}
+
+/**
+ * Serviço e duração. O campo marcador `servicoNaTela` diz que a tela mostrou
+ * a pergunta — sem ele (tela antiga, formulário montado na mão), nada muda.
+ * Duração em minutos inteiros, de 5 a 720; vazio = não informado.
+ */
+const servicoDo = (f: FormData): { servico?: boolean; duracaoMin?: number | null } | { erro: string } => {
+  if (!f.has('servicoNaTela')) return {}
+  const servico = f.get('servico') === 'on'
+  const bruto = String(f.get('duracaoMin') ?? '').trim()
+  if (!bruto) return { servico, duracaoMin: null }
+  if (!/^\d+$/.test(bruto) || Number(bruto) < 5 || Number(bruto) > 720) {
+    return { erro: 'A duração é em minutos inteiros, de 5 a 720.' }
+  }
+  return { servico, duracaoMin: Number(bruto) }
 }
 
 /**
@@ -122,10 +175,20 @@ export async function criar(
 ): Promise<EstadoProduto> {
   const sessao = await exigirSessao(slug)
 
-  const vista = preco(form, 'precoVista')
-  if (vista == null || vista <= 0) return { erro: 'Informe o preço à vista.' }
+  const precos = precosDo(form)
   const reposicao = prazo(form)
-  if ('erro' in reposicao) return { erro: reposicao.erro }
+  const comoServico = servicoDo(form)
+  if ('campos' in precos || 'erro' in reposicao || 'erro' in comoServico) {
+    return {
+      erro: ERRO_NOS_CAMPOS,
+      campos: {
+        ...('campos' in precos ? precos.campos : {}),
+        ...('erro' in reposicao ? { prazoReposicaoDias: reposicao.erro } : {}),
+        ...('erro' in comoServico ? { duracaoMin: comoServico.erro } : {}),
+      },
+    }
+  }
+  const p = precos.valores
   const vendido = await vendidoEmDo(form, sessao, null)
   if (vendido.erro) return { erro: vendido.erro }
 
@@ -142,11 +205,12 @@ export async function criar(
         descricao: String(form.get('descricao') ?? ''),
         categoriaId: String(form.get('categoriaId') ?? '') || null,
         medida,
-        precoVista: vista,
-        precoCartao: preco(form, 'precoCartao'),
-        precoCrediario: preco(form, 'precoCrediario'),
-        custo: preco(form, 'custo'),
+        precoVista: p.precoVista!,
+        precoCartao: p.precoCartao ?? null,
+        precoCrediario: p.precoCrediario ?? null,
+        custo: p.custo ?? null,
         prazoReposicaoDias: reposicao.valor,
+        ...comoServico,
         vendidoEm: vendido.valor,
       },
       eixosDoFormulario(form, eixosDaEmpresa),
@@ -173,10 +237,21 @@ export async function editar(
 ): Promise<EstadoProduto> {
   const sessao = await exigirSessao(slug)
 
-  const vista = preco(form, 'precoVista')
-  if (vista == null || vista <= 0) return { erro: 'Informe o preço à vista.' }
+  const precos = precosDo(form)
   const reposicao = prazo(form)
-  if ('erro' in reposicao) return { erro: reposicao.erro }
+  const comoServico = servicoDo(form)
+  if ('campos' in precos || 'erro' in reposicao || 'erro' in comoServico) {
+    return {
+      erro: ERRO_NOS_CAMPOS,
+      campos: {
+        ...('campos' in precos ? precos.campos : {}),
+        ...('erro' in reposicao ? { prazoReposicaoDias: reposicao.erro } : {}),
+        ...('erro' in comoServico ? { duracaoMin: comoServico.erro } : {}),
+      },
+    }
+  }
+  const p = precos.valores
+  const vista = p.precoVista!
   const atual = await comoOrg(sessao.orgId, (db) =>
     db.produto.findUnique({ where: { id: produtoId }, select: { vendidoEm: true } }),
   )
@@ -195,10 +270,13 @@ export async function editar(
       categoriaId: String(form.get('categoriaId') ?? '') || null,
       medida,
       precoVista: vista,
-      precoCartao: preco(form, 'precoCartao') ?? vista,
-      precoCrediario: preco(form, 'precoCrediario') ?? vista,
-      custo: preco(form, 'custo'),
+      // Em branco fica igual ao à vista; fora do formulário, fica como está.
+      precoCartao: p.precoCartao === undefined ? undefined : (p.precoCartao ?? vista),
+      precoCrediario: p.precoCrediario === undefined ? undefined : (p.precoCrediario ?? vista),
+      // Sem o campo na tela (quem não vê custo deste produto), nada muda.
+      custo: p.custo,
       prazoReposicaoDias: reposicao.valor,
+      ...comoServico,
       vendidoEm: vendido.valor,
       ativo: form.get('ativo') === 'on',
     })
@@ -207,10 +285,21 @@ export async function editar(
     // Grade travada (produto de lojas que a pessoa não cuida): a tela mostra
     // as opções sem campo, e aí o formulário chegaria "sem nada marcado".
     // `ajustarGrade` recusaria de qualquer jeito; pular é não gritar à toa.
-    const g =
-      form.get('gradeTravada') === '1'
-        ? { criadas: 0, reativadas: 0, desativadas: 0, apagadas: 0 }
-        : await ajustarGrade(sessao, produtoId, eixosDoFormulario(form, eixosDaEmpresa))
+    let g = { criadas: 0, reativadas: 0, desativadas: 0, apagadas: 0 }
+    if (form.get('gradeTravada') !== '1') {
+      try {
+        g = await ajustarGrade(sessao, produtoId, eixosDoFormulario(form, eixosDaEmpresa))
+      } catch (e) {
+        // A ficha já foi gravada (outra transação): a tela precisa dizer que
+        // o resto entrou e só a grade ficou como estava — senão a pessoa
+        // redigita preço e nome achando que nada foi salvo.
+        if (e instanceof GradeRecusada) {
+          revalidatePath(`/${slug}/produtos/${produtoId}`)
+          return { erro: `O resto da ficha foi salvo, mas a grade não mudou. ${e.message}` }
+        }
+        throw e
+      }
+    }
 
     revalidatePath(`/${slug}/produtos`)
     revalidatePath(`/${slug}/produtos/${produtoId}`)
@@ -231,5 +320,24 @@ export async function editar(
       return { erro: 'Você não tem permissão para essa alteração. O preço exige permissão própria.' }
     }
     return { erro: recadoDoErro(e, 'Não deu para salvar.') }
+  }
+}
+
+/**
+ * Pôr de volta à venda o produto que foi tirado. A regra inteira (quem
+ * pode, em que lojas) é a de `editarProduto` — situação vale para toda loja
+ * onde o produto é vendido.
+ */
+export async function voltarAVenda(slug: string, produtoId: string): Promise<EstadoProduto> {
+  const sessao = await exigirSessao(slug)
+  try {
+    const r = await editarProduto(sessao, produtoId, { ativo: true })
+    if (!r.ok) return { erro: r.motivo }
+    revalidatePath(`/${slug}/produtos`)
+    revalidatePath(`/${slug}/produtos/${produtoId}`)
+    return { ok: 'De volta à venda.' }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para mexer neste produto.' }
+    return { erro: recadoDoErro(e, 'Não deu para pôr de volta à venda.') }
   }
 }

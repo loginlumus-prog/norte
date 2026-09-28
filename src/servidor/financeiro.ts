@@ -12,13 +12,13 @@
 // relatório, então o dono pode criar quantas categorias quiser sem quebrar o
 // formato que o contador espera.
 
-import { comoOrg } from './banco'
-import { exigir, pode, soAsQuePode, textoDaBusca, type Sessao } from './permissao'
-import { colunaDoDia, diaEmSP } from './dia'
+import { comoOrg, type BancoDaOrg } from './banco'
+import { exigir, exigirNoAlcance, pode, soAsQuePode, textoDaBusca, type Sessao } from './permissao'
+import { colunaDoDia, diaDaColuna, diaEmSP, inicioDoDiaEmSP } from './dia'
 import { centavos, reais } from './dinheiro'
-import { lerTaxas, taxaDe, taxaEmCentavos, taxasDoPeriodo } from './taxas'
+import { taxasDoPeriodo } from './taxas'
 import { hojeNaLoja, situacaoDoVencimento } from './recorrentes'
-import type { FormaPagamento, GrupoDRE, TipoLancamento } from '@prisma/client'
+import type { GrupoDRE, TipoLancamento } from '@prisma/client'
 
 /* ── categorias que toda empresa começa tendo ─────────────── */
 
@@ -85,7 +85,9 @@ export type NovoLancamento = {
 }
 
 export async function lancar(sessao: Sessao, l: NovoLancamento) {
-  exigir(sessao, 'financeiro.lancar', l.unidadeId ?? undefined)
+  // Sem loja é da empresa inteira, e isso só lança quem alcança a empresa
+  // inteira — ver `exigirNoAlcance`.
+  exigirNoAlcance(sessao, 'financeiro.lancar', l.unidadeId || null)
   if (!Number.isFinite(l.valor) || l.valor <= 0) throw new Error('O valor precisa ser maior que zero.')
   if (!l.descricao.trim()) throw new Error('Todo lançamento precisa de descrição.')
   if (l.tipo !== 'DESPESA' && l.tipo !== 'RECEITA') throw new Error('Escolha se é despesa ou receita.')
@@ -120,7 +122,7 @@ export async function lancar(sessao: Sessao, l: NovoLancamento) {
     const criado = await db.lancamento.create({
       data: {
         orgId: sessao.orgId,
-        unidadeId: l.unidadeId ?? null,
+        unidadeId: l.unidadeId || null,
         categoriaId: l.categoriaId,
         contaId: l.contaId ?? null,
         tipo: l.tipo,
@@ -162,9 +164,23 @@ export async function lancar(sessao: Sessao, l: NovoLancamento) {
  */
 export const hojeParaColuna = (agora: Date = new Date()) => colunaDoDia(diaEmSP(agora))
 
-/** Marca como pago (ou desmarca, se a pessoa se enganou). */
-export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null) {
+/**
+ * Marca como pago num dia (ou desfaz a baixa, com `null`).
+ *
+ * O dia é escolhido: a conta de luz paga no sábado e marcada na segunda tem
+ * de entrar no dia em que o dinheiro saiu — é por ele que o DRE conta, e a
+ * conta paga em 31/08 e marcada em 02/09 mudava de mês. E a baixa se desfaz:
+ * sem isso, um toque na conta errada ficava para sempre.
+ *
+ * `pagoEm` é o dia numa coluna `date` (`colunaDoDia`). Dia depois de hoje
+ * não é pagamento, é agendamento, e é recusado.
+ */
+export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null, agora = new Date()) {
   exigir(sessao, 'financeiro.lancar')
+  if (pagoEm) {
+    if (Number.isNaN(pagoEm.getTime())) throw new Error('A data do pagamento não é uma data.')
+    if (diaDaColuna(pagoEm) > diaEmSP(agora)) throw new Error('A data do pagamento não pode ser depois de hoje.')
+  }
 
   await comoOrg(sessao.orgId, async (db) => {
     const antes = await db.lancamento.findUnique({
@@ -174,13 +190,14 @@ export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null
     if (!antes) return
     // A LOJA do lançamento decide, e ela só se sabe depois de achar. Sem isto
     // o financeiro da loja 3 dava baixa na conta da loja 5 colando o id —
-    // `exigir` sem loja passa para quem pode lançar em QUALQUER uma.
-    // Lançamento sem loja é da empresa inteira, e segue a regra de `lancar`.
-    if (antes.unidadeId) exigir(sessao, 'financeiro.lancar', antes.unidadeId)
+    // `exigir` sem loja passa para quem pode lançar em QUALQUER uma. E sem
+    // loja é da empresa inteira: só quem alcança a empresa inteira dá baixa.
+    exigirNoAlcance(sessao, 'financeiro.lancar', antes.unidadeId)
 
-    // Clique duplo, ou duas abas: dar baixa no que já está pago não troca a
-    // data do pagamento nem escreve outra linha no livro.
-    if ((antes.pagoEm === null) === (pagoEm === null)) return
+    // Clique duplo, ou duas abas: dar baixa no mesmo dia no que já está pago
+    // (ou desfazer o que já está em aberto) não escreve outra linha no livro.
+    const dia = (d: Date | null) => (d ? diaDaColuna(d) : null)
+    if (dia(antes.pagoEm) === dia(pagoEm)) return
 
     await db.lancamento.update({ where: { id }, data: { pagoEm } })
     await db.auditoria.create({
@@ -194,8 +211,8 @@ export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null
         alvoId: id,
         alvoNome: antes.descricao,
         valor: Number(antes.valor),
-        antes: { pagoEm: antes.pagoEm },
-        depois: { pagoEm },
+        antes: { pagoEm: dia(antes.pagoEm) },
+        depois: { pagoEm: dia(pagoEm) },
       },
     })
   })
@@ -204,9 +221,9 @@ export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null
 /* ── contas a vencer ──────────────────────────────────────── */
 
 export type AVencer = {
-  vencidas: { id: string; descricao: string; valor: number; vencimento: Date; dias: number }[]
-  hoje: { id: string; descricao: string; valor: number; vencimento: Date }[]
-  proximas: { id: string; descricao: string; valor: number; vencimento: Date; dias: number }[]
+  vencidas: { id: string; descricao: string; valor: number; vencimento: Date; unidadeId: string | null; dias: number }[]
+  hoje: { id: string; descricao: string; valor: number; vencimento: Date; unidadeId: string | null }[]
+  proximas: { id: string; descricao: string; valor: number; vencimento: Date; unidadeId: string | null; dias: number }[]
   totalVencido: number
   totalProximos: number
 }
@@ -242,7 +259,7 @@ export async function aVencer(sessao: Sessao, pedidas: string[], dias = 15, agor
         OR: [{ unidadeId: { in: unidadeIds } }, { unidadeId: null }],
       },
       orderBy: { vencimento: 'asc' },
-      select: { id: true, descricao: true, valor: true, vencimento: true },
+      select: { id: true, descricao: true, valor: true, vencimento: true, unidadeId: true },
     })
 
     const diasEntre = (d: Date) => Math.round((hoje.getTime() - d.getTime()) / 864e5)
@@ -317,12 +334,22 @@ export async function montarDRE(
   sessao: Sessao,
   pedidas: string[],
   de: Date,
+  /** INCLUSIVO: o último instante do período. Para um mês, `janelaDoMes(mes).ate − 1 ms`. */
   ate: Date,
 ): Promise<DRE> {
   exigir(sessao, 'financeiro.ver')
   const unidadeIds = soAsQuePode(sessao, 'financeiro.ver', pedidas)
+  return comoOrg(sessao.orgId, (db) => calcularDRE(db, unidadeIds, de, ate))
+}
 
-  return comoOrg(sessao.orgId, async (db) => {
+/**
+ * A conta do DRE, dentro de uma transação que já existe. É a MESMA para a
+ * tela do mês, o fechamento e o gráfico dos seis meses — o gráfico já teve a
+ * conta dele, e mostrava um resultado diferente do quadro logo acima (deixava
+ * de fora as outras receitas, o sinal de encomenda e o juro do crediário).
+ */
+async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: Date): Promise<DRE> {
+  {
     const venda = await db.venda.aggregate({
       where: { unidadeId: { in: unidadeIds }, situacao: 'CONCLUIDA', criadaEm: { gte: de, lte: ate } },
       _sum: { total: true },
@@ -332,6 +359,18 @@ export async function montarDRE(
         from venda_itens i join vendas v on v.id = i.venda_id
        where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
          and v.criada_em >= ${de} and v.criada_em <= ${ate}
+    `
+    // O custo do que VOLTOU sai do CMV, pela data da devolução — a mesma em
+    // que a receita dela sai. Sem isto a devolução tirava a receita e deixava
+    // o custo: a peça que voltou para a arara contava como vendida a preço
+    // zero, e o resultado do mês saía menor do que foi.
+    const cmvDevolvido = await db.$queryRaw<{ custo: string }[]>`
+      select coalesce(sum(di.quantidade * coalesce(vi.custo_unit, 0)), 0) as custo
+        from devolucao_itens di
+        join devolucoes d on d.id = di.devolucao_id
+        join venda_itens vi on vi.id = di.venda_item_id
+       where d.unidade_id = any(${unidadeIds})
+         and d.criada_em >= ${de} and d.criada_em <= ${ate}
     `
     // Regime de CAIXA: conta o que foi pago no período, não o que venceu.
     // É como o comércio pequeno enxerga o mês, e é o que bate com o extrato.
@@ -382,7 +421,7 @@ export async function montarDRE(
     }
 
     const imposto = porGrupo('IMPOSTO')
-    const cmvC = centavos(cmv[0]?.custo ?? 0)
+    const cmvC = centavos(cmv[0]?.custo ?? 0) - centavos(cmvDevolvido[0]?.custo ?? 0)
 
     const receitaBrutaC = receitaVendaC + outrasReceitas.valor
     const receitaLiquidaC = receitaBrutaC - imposto.valor
@@ -455,7 +494,7 @@ export async function montarDRE(
       devolucoes: reais(devolC),
       taxasCalculadas: reais(taxas.totalCent),
     }
-  })
+  }
 }
 
 /* ── mês a mês ────────────────────────────────────────────── */
@@ -472,95 +511,97 @@ export type MesDoResultado = {
   resultado: number
 }
 
+/* ── o mês no calendário da loja ──────────────────────────── */
+
+/**
+ * Início e fim (exclusivo) de "AAAA-MM", à meia-noite de São Paulo.
+ *
+ * Já foi a meia-noite da máquina: num servidor em UTC o mês começava às 21h
+ * do último dia do anterior, e a venda da noite de 31/08 entrava no
+ * fechamento de setembro. Para o DRE, que fecha com `<=`, o fim é
+ * `ate − 1 ms` — e não 23:59:59, que deixava de fora a venda do último
+ * segundo do mês.
+ */
+export function janelaDoMes(mes: string) {
+  return { de: inicioDoDiaEmSP(`${mes}-01`), ate: inicioDoDiaEmSP(`${outroMes(mes, 1)}-01`) }
+}
+
+/** O mês "AAAA-MM" somado de `n`. Aritmética de calendário, sem relógio. */
+export function outroMes(mes: string, n: number): string {
+  const [a, m] = mes.split('-').map(Number)
+  return new Date(Date.UTC(a!, m! - 1 + n, 1)).toISOString().slice(0, 7)
+}
+
+/** O mês de agora no calendário de São Paulo. */
+export const mesDeAgora = (agora: Date = new Date()) => diaEmSP(agora).slice(0, 7)
+
+/**
+ * O mês que veio do endereço, normalizado para "AAAA-MM" — ou nulo.
+ *
+ * Aceita "2026-9" (os links antigos escreviam assim). `?mes=lixo`,
+ * `?mes=2026-13` e o parâmetro repetido (que o Next entrega como lista) são
+ * nulo, e quem chama usa o mês corrente.
+ */
+export function lerMes(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const m = /^(\d{4})-(0?[1-9]|1[0-2])$/.exec(v)
+  return m ? `${m[1]}-${m[2]!.padStart(2, '0')}` : null
+}
+
 const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
 /**
  * O resultado dos últimos N meses, para o gráfico "entrou × saiu".
  *
- * A mesma conta do DRE, mês a mês, em quatro consultas agrupadas — não em N
- * chamadas de `montarDRE`. Receita já líquida de devoluções; saída = custo da
- * mercadoria vendida + despesas pagas (menos compra de mercadoria, que já
- * está no CMV) + taxas calculadas.
+ * Cada mês é o DRE daquele mês — a mesma `calcularDRE` do quadro de cima, e
+ * não uma conta paralela. A conta paralela já existiu e discordava do
+ * resultado do mês: deixava de fora as receitas lançadas (sinal de
+ * encomenda, "outras receitas"), o juro do crediário e os impostos. Seis
+ * DREs numa transação só custam mais consultas, e é uma tela que se abre
+ * poucas vezes por dia.
+ *
+ * "Entrou" é a receita bruta (venda menos devolução, mais outras receitas);
+ * "saiu" é tudo que o DRE desconta até o resultado: imposto, custo da
+ * mercadoria vendida, despesas operacionais e financeiras (com as taxas).
  */
 export async function resultadoPorMes(
   sessao: Sessao,
   pedidas: string[],
   meses = 6,
+  agora = new Date(),
 ): Promise<MesDoResultado[]> {
   exigir(sessao, 'financeiro.ver')
   const unidadeIds = soAsQuePode(sessao, 'financeiro.ver', pedidas)
 
-  const agora = new Date()
-  const de = new Date(agora.getFullYear(), agora.getMonth() - (meses - 1), 1)
-  const ate = new Date(agora.getFullYear(), agora.getMonth() + 1, 0, 23, 59, 59)
-  const chaves: string[] = []
-  for (let i = 0; i < meses; i++) {
-    const d = new Date(de.getFullYear(), de.getMonth() + i, 1)
-    chaves.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
+  // O mês de agora em SÃO PAULO: às 22h do dia 30, num servidor em UTC, o
+  // gráfico já andava para o mês seguinte, vazio.
+  const atual = mesDeAgora(agora)
+  const chaves = Array.from({ length: meses }, (_, i) => outroMes(atual, i - (meses - 1)))
 
   return comoOrg(sessao.orgId, async (db) => {
-    const vendas = await db.$queryRaw<{ mes: string; total: string }[]>`
-      select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, sum(v.total) as total
-        from vendas v
-       where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
-         and v.criada_em >= ${de} and v.criada_em <= ${ate}
-       group by 1
-    `
-    const devol = await db.$queryRaw<{ mes: string; total: string }[]>`
-      select to_char(d.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, sum(d.valor) as total
-        from devolucoes d
-       where d.unidade_id = any(${unidadeIds})
-         and d.criada_em >= ${de} and d.criada_em <= ${ate}
-       group by 1
-    `
-    const cmv = await db.$queryRaw<{ mes: string; total: string }[]>`
-      select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes,
-             coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as total
-        from venda_itens i join vendas v on v.id = i.venda_id
-       where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
-         and v.criada_em >= ${de} and v.criada_em <= ${ate}
-       group by 1
-    `
-    const despesas = await db.$queryRaw<{ mes: string; total: string }[]>`
-      select to_char(l.pago_em, 'YYYY-MM') as mes, sum(l.valor) as total
-        from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
-       where l.tipo = 'DESPESA' and l.pago_em is not null
-         and c.grupo <> 'MERCADORIA'
-         and l.pago_em >= ${diaEmSP(de)}::date and l.pago_em <= ${diaEmSP(ate)}::date
-         and (l.unidade_id = any(${unidadeIds}) or l.unidade_id is null)
-       group by 1
-    `
-    const pagamentos = await db.$queryRaw<{ mes: string; forma: FormaPagamento; parcelado: boolean; total: string }[]>`
-      select to_char(v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo', 'YYYY-MM') as mes, p.forma,
-             (p.forma = 'CREDITO' and p.parcelas >= 2) as parcelado, sum(p.valor) as total
-        from pagamentos p join vendas v on v.id = p.venda_id
-       where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
-         and v.criada_em >= ${de} and v.criada_em <= ${ate}
-       group by 1, 2, 3
-    `
-    const taxas = await lerTaxas(db)
-
-    const soma = (linhas: { mes: string; total: string }[], mes: string) =>
-      linhas.filter((l) => l.mes === mes).reduce((s, l) => s + centavos(l.total), 0)
-
-    return chaves.map((mes) => {
-      const receitaC = soma(vendas, mes) - soma(devol, mes)
-      const cmvC = soma(cmv, mes)
-      const despC = soma(despesas, mes)
-      const taxaC = pagamentos
-        .filter((p) => p.mes === mes)
-        .reduce((s, p) => s + taxaEmCentavos(centavos(p.total), taxaDe(taxas, p.forma, p.parcelado ? 2 : 1)), 0)
-      return {
+    const saida: MesDoResultado[] = []
+    // Um de cada vez: consultas dentro da mesma transação não andam em paralelo.
+    for (const mes of chaves) {
+      const { de, ate } = janelaDoMes(mes)
+      const dre = await calcularDRE(db, unidadeIds, de, new Date(ate.getTime() - 1))
+      const valor = (chave: string) => dre.linhas.find((l) => l.chave === chave)?.valor ?? 0
+      const receita = valor('bruta')
+      const cmv = -valor('cmv')
+      const taxas = dre.taxasCalculadas
+      // Imposto + despesas operacionais + financeiras lançadas; a taxa
+      // calculada vem separada para o gráfico poder dizer o que é.
+      const despesas = reais(centavos(receita) - centavos(cmv) - centavos(taxas) - centavos(dre.resultado))
+      saida.push({
         mes,
         rotulo: MES_CURTO[Number(mes.slice(5)) - 1]!,
-        receita: reais(receitaC),
-        cmv: reais(cmvC),
-        despesas: reais(despC),
-        taxas: reais(taxaC),
-        resultado: reais(receitaC - cmvC - despC - taxaC),
-      }
-    })
+        receita,
+        cmv,
+        despesas,
+        taxas,
+        resultado: dre.resultado,
+      })
+    }
+    return saida
   })
 }
 
@@ -585,6 +626,8 @@ export type LancamentoNaLista = {
   valor: number
   vencimento: Date
   pagoEm: Date | null
+  /** Nulo = da empresa inteira. */
+  unidadeId: string | null
   categoria: string
   fornecedor: string | null
   documento: string | null
@@ -658,7 +701,7 @@ export async function listarLancamentos(
       take: limite,
       select: {
         id: true, tipo: true, descricao: true, valor: true, vencimento: true, pagoEm: true,
-        fornecedor: true, documento: true, quem: true, recorrenteId: true,
+        fornecedor: true, documento: true, quem: true, recorrenteId: true, unidadeId: true,
         categoria: { select: { nome: true } },
       },
     })
@@ -669,6 +712,7 @@ export async function listarLancamentos(
       valor: Number(l.valor),
       vencimento: l.vencimento,
       pagoEm: l.pagoEm,
+      unidadeId: l.unidadeId,
       categoria: l.categoria.nome,
       fornecedor: l.fornecedor,
       documento: l.documento,

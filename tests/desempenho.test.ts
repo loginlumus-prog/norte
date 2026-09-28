@@ -81,28 +81,40 @@ describe('só as tarefas', () => {
   })
 })
 
-describe('só a presença', () => {
-  it('é a fração dos dias, arredondada ao meio', () => {
-    // 18/20 = 0,9 → 4,5
-    const n = estrelas(so({ presenca: { dias: 18, de: 20 } }))
-    expect(n.estrelas).toBe(4.5)
-    expect(n.pesos).toEqual({ presenca: 1 })
-    expect(n.motivos).toEqual(['faltou 2 dias'])
+describe('entrar no sistema não é presença', () => {
+  // A dona logada a semana inteira no computador da loja levava "faltou 21
+  // dias". Login não é ponto: as entradas aparecem na tela e não na nota.
+  it('não entra na nota, nem nos motivos', () => {
+    const n = estrelas(so({ meta: 1, presenca: { dias: 5, de: 26 } }))
+    expect(n.estrelas).toBe(5)
+    expect(n.pesos).toEqual({ meta: 1 })
+    expect(n.motivos).toEqual(['bateu 100% da meta'])
+    expect(n.motivos.join(' ')).not.toMatch(/faltou/)
   })
 
-  it('todo dia presente é cinco, e entrar mais que o teto não passa de 1', () => {
-    expect(estrelas(so({ presenca: { dias: 26, de: 26 } })).estrelas).toBe(5)
-    expect(estrelas(so({ presenca: { dias: 30, de: 26 } })).notas.presenca).toBe(1)
-    expect(estrelas(so({ presenca: { dias: 26, de: 26 } })).motivos).toEqual(['sem falta em 26 dias'])
+  it('sozinha não dá nota', () => {
+    expect(semDados(estrelas(so({ presenca: { dias: 18, de: 20 } })))).toBe(true)
   })
+})
 
-  it('um dia de falta fala no singular', () => {
-    expect(estrelas(so({ presenca: { dias: 19, de: 20 } })).motivos).toEqual(['faltou 1 dia'])
-  })
-
-  it('mês sem dia contado tira a presença da conta', () => {
-    const n = estrelas(so({ presenca: { dias: 0, de: 0 } }))
+describe('vendeu sem ter meta', () => {
+  // O Carlos vendeu R$ 2.394,20 (a seção de metas mostrava) e o desempenho
+  // dizia "sem dados no mês".
+  it('fica sem nota, mas diz quanto vendeu', () => {
+    const n = estrelas(so({ vendido: 2394.2 }))
     expect(semDados(n)).toBe(true)
+    expect(n.motivos).toEqual(['vendeu R$ 2.394,20 no mês, sem meta para comparar'])
+  })
+
+  it('com tarefa, a nota é das tarefas e a venda é dita', () => {
+    const n = estrelas(so({ vendido: 100, tarefas: { atribuidas: 2, feitas: 2, noPrazo: 2, atrasadasAbertas: 0 } }))
+    expect(n.estrelas).toBe(5)
+    expect(n.motivos).toContain('2 de 2 tarefas no prazo')
+    expect(n.motivos.some((m) => m.startsWith('vendeu'))).toBe(true)
+  })
+
+  it('com meta, a venda já está no porcento', () => {
+    expect(estrelas(so({ meta: 0.5, vendido: 500 })).motivos).toEqual(['fez 50% da meta'])
   })
 })
 
@@ -110,63 +122,37 @@ describe('só a presença', () => {
 // JUNTANDO
 // ─────────────────────────────────────────────────────────────
 
-describe('os três juntos', () => {
-  const tudo = (meta: number, tarefas: number, presenca: number): Insumos => ({
+describe('meta e tarefas juntas', () => {
+  const tudo = (meta: number, tarefas: number): Insumos => ({
     meta,
     tarefas: { atribuidas: 10, feitas: Math.round(tarefas * 10), noPrazo: Math.round(tarefas * 10), atrasadasAbertas: 0 },
-    presenca: { dias: Math.round(presenca * 20), de: 20 },
+    presenca: { dias: 3, de: 20 },
   })
 
-  it('tudo perfeito é cinco estrelas', () => {
-    const n = estrelas(tudo(1, 1, 1))
+  it('tudo perfeito é cinco estrelas, com os pesos de partida', () => {
+    const n = estrelas(tudo(1, 1))
     expect(n.estrelas).toBe(5)
     expect(n.pesos).toEqual(PESOS)
   })
 
-  it('soma peso × nota: meta 0,5 + tarefas 0,15 + presença 0,2 = 0,85 → 4,5', () => {
-    const n = estrelas(tudo(1, 0.5, 1))
-    expect(n.estrelas).toBe(4.5)
+  it('soma peso × nota: meta 0,6 + tarefas 0,2 = 0,8 → 4', () => {
+    expect(estrelas(tudo(1, 0.5)).estrelas).toBe(4)
   })
 
-  it('a meta pesa mais que as outras duas somadas', () => {
-    expect(estrelas(tudo(1, 0, 0)).estrelas).toBe(2.5)
-    expect(estrelas(tudo(0, 1, 1)).estrelas).toBe(2.5)
+  it('a meta pesa mais que as tarefas', () => {
+    expect(estrelas(tudo(1, 0)).estrelas).toBe(3)
+    expect(estrelas(tudo(0, 1)).estrelas).toBe(2)
   })
 
-  it('os motivos vêm na ordem meta, tarefas, presença', () => {
-    expect(estrelas(tudo(1.1, 0.8, 0.9)).motivos).toEqual(['bateu 110% da meta', '8 de 10 tarefas no prazo', 'faltou 2 dias'])
-  })
-})
-
-describe('quem falta sai dos pesos', () => {
-  it('sem presença: meta 0,625 e tarefas 0,375', () => {
-    const n = estrelas(so({ meta: 1, tarefas: { atribuidas: 4, feitas: 0, noPrazo: 0, atrasadasAbertas: 0 } }))
-    expect(n.pesos.meta).toBeCloseTo(0.625)
-    expect(n.pesos.tarefas).toBeCloseTo(0.375)
-    expect(n.pesos.presenca).toBeUndefined()
-    // 0,625 → 6,25 → 6 → 3
-    expect(n.estrelas).toBe(3)
-  })
-
-  it('sem meta: tarefas 0,6 e presença 0,4', () => {
-    const n = estrelas(so({ tarefas: { atribuidas: 5, feitas: 5, noPrazo: 5, atrasadasAbertas: 0 }, presenca: { dias: 10, de: 20 } }))
-    expect(n.pesos.tarefas).toBeCloseTo(0.6)
-    expect(n.pesos.presenca).toBeCloseTo(0.4)
-    // 0,6 + 0,2 = 0,8 → 4
-    expect(n.estrelas).toBe(4)
-  })
-
-  it('sem tarefas: meta e presença dividem 5 para 2', () => {
-    const n = estrelas(so({ meta: 0.5, presenca: { dias: 20, de: 20 } }))
-    expect(n.pesos.meta).toBeCloseTo(5 / 7)
-    expect(n.pesos.presenca).toBeCloseTo(2 / 7)
+  it('os motivos vêm na ordem meta, tarefas', () => {
+    expect(estrelas(tudo(1.1, 0.8)).motivos).toEqual(['bateu 110% da meta', '8 de 10 tarefas no prazo'])
   })
 
   it('os pesos que ficam sempre somam 1', () => {
     const casos: Insumos[] = [
       so({ meta: 0.3 }),
-      so({ meta: 0.3, presenca: { dias: 1, de: 2 } }),
-      so({ tarefas: { atribuidas: 1, feitas: 1, noPrazo: 0, atrasadasAbertas: 0 }, presenca: { dias: 1, de: 2 } }),
+      so({ tarefas: { atribuidas: 1, feitas: 1, noPrazo: 0, atrasadasAbertas: 0 } }),
+      tudo(0.4, 0.7),
     ]
     for (const c of casos) {
       const soma = Object.values(estrelas(c).pesos).reduce((s, p) => s + p, 0)

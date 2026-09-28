@@ -51,6 +51,9 @@ import {
 import { empresasComAgente } from './portaria'
 import { mostrarTelefone } from '../cliente'
 import { plural } from '../texto'
+import { moduloLigado } from '../modulos'
+import { diaEmSP, inicioDoDiaEmSP, somarDias } from '../dia'
+import { horaEmSP, listarAgenda, ocupa } from '../agenda'
 
 export type Rotina = 'relatorio_manha' | 'ruptura' | 'cliente_sumido' | 'relatorio_noite'
 
@@ -117,6 +120,12 @@ export function textoDoRelatorio(p: {
   resumo: Pick<Resumo, 'atual' | 'anterior' | 'maisVendidos' | 'porUnidade'>
   contas?: { vencidas: number; totalVencido: number; hoje: number }
   vaiFaltar?: number
+  /**
+   * A agenda de HOJE (só de manhã, e só com o módulo Agenda): quantos
+   * horários, quantos confirmados e o primeiro. Quem atende com hora marcada
+   * começa o dia pela agenda, não pelo faturamento de ontem.
+   */
+  agenda?: { total: number; confirmados: number; primeiro: string | null }
   /** Só convida a perguntar se ele tem a ferramenta para responder. */
   respondeResumo?: boolean
 }): string {
@@ -149,6 +158,14 @@ export function textoDoRelatorio(p: {
     if (p.contas.vencidas > 0) partes.push(`${plural(p.contas.vencidas, 'vencida', 'vencidas')}, ${brl(p.contas.totalVencido)}`)
     if (p.contas.hoje > 0) partes.push(`${p.contas.hoje} vencendo hoje`)
     linhas.push(`Contas: ${partes.join('; ')}.`)
+  }
+  if (p.agenda) {
+    linhas.push(
+      p.agenda.total === 0
+        ? 'Agenda de hoje: nenhum horário marcado ainda.'
+        : `Agenda de hoje: ${plural(p.agenda.total, 'horário', 'horários')} (${plural(p.agenda.confirmados, 'confirmado', 'confirmados')})` +
+            `${p.agenda.primeiro ? `, o primeiro às ${p.agenda.primeiro}` : ''}.`,
+    )
   }
   if (p.vaiFaltar && p.vaiFaltar > 0) {
     linhas.push(`${plural(p.vaiFaltar, 'peça vai', 'peças vão')} faltar pelo ritmo de venda.`)
@@ -223,6 +240,10 @@ export async function rodarNaEmpresa(
     }
   }
 
+  // WhatsApp desconectado: o relatório não sai "pelo histórico" fingindo que
+  // foi, nem reivindica a hora — quando a loja reconectar, o próximo sai.
+  if (agente.canal === 'NENHUM') return saida
+
   const donos = await donosComTelefone(orgId)
   if (donos.length === 0) return saida
 
@@ -237,7 +258,7 @@ export async function rodarNaEmpresa(
     if (rotina === 'relatorio_manha' || rotina === 'relatorio_noite') {
       const quando = rotina === 'relatorio_manha' ? 'manha' : 'noite'
       for (const d of donos) {
-        const texto = await relatorio(d, quando, agora, agente.poderes.includes('ver.resumo'))
+        const texto = await relatorio(d, quando, agora, agente.poderes.includes('ver.resumo'), ctx.org.modulos)
         if (texto) mensagens.push({ para: d, texto, modelo: modeloDoRelatorio(d.nome, quando, texto) })
       }
     } else if (rotina === 'ruptura') {
@@ -309,6 +330,7 @@ async function relatorio(
   quando: 'manha' | 'noite',
   agora: Date,
   respondeResumo: boolean,
+  modulos: string[] = [],
 ): Promise<string | null> {
   if (!pode(d.sessao, 'relatorio.ver')) return null
   const unidades = await unidadesVisiveis(d.sessao, 'relatorio.ver')
@@ -325,7 +347,23 @@ async function relatorio(
     const linhas = await previsaoDeRuptura(d.sessao, await unidadesVisiveis(d.sessao, 'estoque.ver'))
     vaiFaltar = linhas.filter((l) => l.previsao.situacao === 'pedir_agora').length
   }
-  return textoDoRelatorio({ nome: d.nome, quando, resumo, contas, vaiFaltar, respondeResumo })
+  let agenda: { total: number; confirmados: number; primeiro: string | null } | undefined
+  if (quando === 'manha' && moduloLigado({ modulos }, 'agenda') && pode(d.sessao, 'agenda.ver')) {
+    const hoje = diaEmSP(agora)
+    const lista = (
+      await listarAgenda(d.sessao, {
+        unidadeIds: await unidadesVisiveis(d.sessao, 'agenda.ver'),
+        de: inicioDoDiaEmSP(hoje),
+        ate: inicioDoDiaEmSP(somarDias(hoje, 1)),
+      })
+    ).filter((a) => ocupa(a.situacao))
+    agenda = {
+      total: lista.length,
+      confirmados: lista.filter((a) => a.situacao === 'CONFIRMADO').length,
+      primeiro: lista[0] ? horaEmSP(lista[0].inicio) : null,
+    }
+  }
+  return textoDoRelatorio({ nome: d.nome, quando, resumo, contas, vaiFaltar, agenda, respondeResumo })
 }
 
 // ── vai faltar, e a reposição ────────────────────────────────

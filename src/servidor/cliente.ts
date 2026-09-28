@@ -17,6 +17,7 @@ import type { ConsentimentoOfertas } from '@prisma/client'
 import { comoOrg } from './banco'
 import { exigir, textoDaBusca, unidadesQuePodem, type Sessao } from './permissao'
 import { situacaoDosClientes } from './crediario'
+import { janelaDoMes, mesDeAgora, outroMes } from './financeiro'
 import { chaveTelefone } from './assistente/telefone'
 import {
   conferirAceite,
@@ -348,13 +349,11 @@ export async function listarClientes(
 export async function comprasPorMes(sessao: Sessao, clienteId: string, meses = 12) {
   exigir(sessao, 'cliente.ver')
   const lojas = lojasDasCompras(sessao)
-  const agora = new Date()
-  const de = new Date(agora.getFullYear(), agora.getMonth() - (meses - 1), 1)
-  const chaves: string[] = []
-  for (let i = 0; i < meses; i++) {
-    const d = new Date(de.getFullYear(), de.getMonth() + i, 1)
-    chaves.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
+  // Os meses de São Paulo, não os da máquina: num servidor em UTC, às 22h do
+  // dia 30 o gráfico já começava no mês seguinte e a compra da noite sumia.
+  const atual = mesDeAgora()
+  const chaves = Array.from({ length: meses }, (_, i) => outroMes(atual, i - (meses - 1)))
+  const de = janelaDoMes(chaves[0]!).de
   const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
   return comoOrg(sessao.orgId, async (db) => {

@@ -43,6 +43,8 @@ export type Guardado = {
   desconto: number
   cliente: ClienteNoBalcao | null
   pontosUsar: number
+  /** O horário da agenda que esta venda cobra, quando veio de "Atender e cobrar". */
+  agendamentoId?: string | null
   /**
    * A venda estava sendo concluída quando isto foi guardado. Se a tela voltar
    * com esta marca, o servidor PODE ter registrado a venda antes de a tela

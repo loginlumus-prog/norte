@@ -11,9 +11,17 @@
 
 import { revalidatePath } from 'next/cache'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { exigir } from '@/servidor/permissao'
+import { exigir, pode, SemPermissao } from '@/servidor/permissao'
+import { horarioParaCobrar } from '@/servidor/agenda'
 import { comoOrg, type BancoDaOrg } from '@/servidor/banco'
-import { registrarVenda, type PagamentoDaVenda } from '@/servidor/venda'
+import {
+  registrarVenda,
+  EstoqueSumiu,
+  PontosDisputados,
+  ValeDisputado,
+  type PagamentoDaVenda,
+  type ResultadoVenda,
+} from '@/servidor/venda'
 import { abrirCaixa, fecharCaixa, movimentarCaixa } from '@/servidor/caixa'
 import { listarClientes, criarCliente } from '@/servidor/cliente'
 import { escada, type Tabela } from '@/servidor/preco'
@@ -49,7 +57,16 @@ export type Achado = {
    * explica em vez de lançar.
    */
   foraDaLoja?: boolean
+  /**
+   * É serviço (a manicure, a consulta): não tem estoque. O saldo vem com um
+   * número de folga (SALDO_DE_SERVICO) para nenhuma conta da tela dizer
+   * "acabou", e a tela mostra "serviço" no lugar do número.
+   */
+  servico?: boolean
 }
+
+/** O saldo que o serviço leva para a tela: grande o bastante para nunca "acabar". */
+const SALDO_DE_SERVICO = 999_999
 
 type VariacaoLida = {
   id: string
@@ -62,6 +79,7 @@ type VariacaoLida = {
     precoCartao: { toString(): string } | null
     precoCrediario: { toString(): string } | null
     vendidoEm?: string[]
+    servico?: boolean
   }
   opcoes: { opcao: { valor: string } }[]
   estoques: { quantidade: { toString(): string } }[]
@@ -72,7 +90,7 @@ const SELECAO_DA_VARIACAO = {
   codigo: true,
   ajustePreco: true,
   produto: {
-    select: { nome: true, medida: true, precoVista: true, precoCartao: true, precoCrediario: true, vendidoEm: true },
+    select: { nome: true, medida: true, precoVista: true, precoCartao: true, precoCrediario: true, vendidoEm: true, servico: true },
   },
   opcoes: { select: { opcao: { select: { valor: true } } } },
 } as const
@@ -95,8 +113,9 @@ function montarAchado(v: VariacaoLida): Achado {
         : v.produto.nome,
     preco: e.vista + ajuste,
     precos: { vista: e.vista + ajuste, cartao: e.cartao + ajuste, crediario: e.crediario + ajuste },
-    saldo: Number(v.estoques[0]?.quantidade ?? 0),
+    saldo: v.produto.servico ? SALDO_DE_SERVICO : Number(v.estoques[0]?.quantidade ?? 0),
     vendidoEm: v.produto.vendidoEm ?? [],
+    ...(v.produto.servico ? { servico: true } : {}),
   }
 }
 
@@ -311,6 +330,7 @@ export async function vitrine(
         precoCartao: true,
         precoCrediario: true,
         vendidoEm: true,
+        servico: true,
         categoriaId: true,
         variacoes: {
           where: { ativa: true },
@@ -378,12 +398,52 @@ export async function fecharVenda(
     pontosUsar?: number
     /** "Entregar às 15h", "retira a mãe". Vai para a venda como está, aparado. */
     observacoes?: string
+    /** O horário da agenda que esta venda cobra ("Atender e cobrar"). */
+    agendamentoId?: string | null
+    /** A encomenda que esta venda recebe. O valor dela o servidor lê sozinho. */
+    encomendaId?: string | null
   },
-) {
+): Promise<ResultadoVenda | { ok: false; motivo: 'recusa'; recado: string; soltar?: 'vale' | 'pontos' }> {
   const s = await exigirSessao(slug)
   const obs = dados.observacoes?.trim().slice(0, 500)
 
+  // A venda que estoura no meio — a última peça levada por outro caixa, o
+  // vale ou os pontos gastos no mesmo segundo em outra máquina — desfaz tudo
+  // e LANÇA. Lançado de uma Server Action, o erro chega à tela sem a frase, e
+  // a tela, sem saber se a venda entrou, dizia "a conexão caiu, confira em
+  // Vendas". Aqui ele vira resposta: nada foi gravado, e a tela diz por quê.
+  let r: ResultadoVenda
+  try {
+    r = await registrarVendaDoBalcao(slug, s, dados, obs)
+  } catch (e) {
+    if (e instanceof EstoqueSumiu) {
+      return { ok: false, motivo: 'recusa', recado: `${e.message} Confira o estoque do pedido e conclua de novo.` }
+    }
+    if (e instanceof ValeDisputado) return { ok: false, motivo: 'recusa', recado: e.message, soltar: 'vale' }
+    if (e instanceof PontosDisputados) return { ok: false, motivo: 'recusa', recado: e.message, soltar: 'pontos' }
+    if (e instanceof SemPermissao) {
+      return { ok: false, motivo: 'recusa', recado: 'Você não pode vender nesta loja. Nada foi gravado.' }
+    }
+    return {
+      ok: false,
+      motivo: 'recusa',
+      recado: recadoDoErro(e, 'Não deu para fechar a venda, e nada foi gravado. Tente de novo.'),
+    }
+  }
+
+  if (r.ok && dados.encomendaId) revalidatePath(`/${slug}/encomendas`)
+  return r
+}
+
+/** A chamada da venda em si. Separada só para o `try` de cima caber inteiro. */
+async function registrarVendaDoBalcao(
+  slug: string,
+  s: Awaited<ReturnType<typeof exigirSessao>>,
+  dados: Parameters<typeof fecharVenda>[1],
+  obs: string | undefined,
+): Promise<ResultadoVenda> {
   const r = await registrarVenda(s, {
+    encomendaId: typeof dados.encomendaId === 'string' && /^[\w-]{1,64}$/.test(dados.encomendaId) ? dados.encomendaId : null,
     unidadeId: dados.unidadeId,
     caixaId: dados.caixaId,
     itens: dados.itens.map((i) =>
@@ -396,6 +456,7 @@ export async function fecharVenda(
     vendedorId: dados.vendedorId ?? null,
     pontosUsar: dados.pontosUsar ?? 0,
     observacoes: obs || undefined,
+    agendamentoId: typeof dados.agendamentoId === 'string' && /^[\w-]{1,64}$/.test(dados.agendamentoId) ? dados.agendamentoId : null,
     pagamentos: dados.pagamentos.map((p) => ({
       forma: p.forma as FormaPagamento,
       valor: p.valor,
@@ -404,8 +465,79 @@ export async function fecharVenda(
     })) as PagamentoDaVenda[],
   })
 
-  if (r.ok) revalidatePath(`/${slug}/balcao`)
+  if (r.ok) {
+    revalidatePath(`/${slug}/balcao`)
+    if (dados.agendamentoId) revalidatePath(`/${slug}/agenda`)
+  }
   return r
+}
+
+// ── "Atender e cobrar", vindo da Agenda ──────────────────────
+
+export type InicialDoBalcao = {
+  agendamentoId: string
+  /** "Joana — Manicure com Bia, sex 26/09 às 15:00" */
+  rotulo: string
+  cliente: ClienteNoBalcao | null
+  itens: Achado[]
+}
+
+/**
+ * O balcão aberto pela Agenda: o serviço do horário já lançado e o cliente
+ * já escolhido. É a MESMA venda de sempre — a pessoa pode mudar tudo, somar
+ * um esmalte, dar o desconto que pode. A venda, quando fecha, carimba o
+ * horário (ver venda.ts). Chamada pela página do balcão, no servidor.
+ */
+export async function paraCobrarHorario(slug: string, agendamentoId: string, unidadeId: string): Promise<InicialDoBalcao | null> {
+  const s = await exigirSessao(slug)
+  exigir(s, 'venda.criar', unidadeId)
+  if (!/^[\w-]{1,64}$/.test(agendamentoId)) return null
+  const h = await horarioParaCobrar(s, agendamentoId)
+  if (!h || h.unidadeId !== unidadeId) return null
+
+  const itens: Achado[] = []
+  if (h.variacaoId && pode(s, 'produto.ver', unidadeId)) {
+    const v = await comoOrg(s.orgId, (db) =>
+      db.variacao.findFirst({
+        where: { id: h.variacaoId!, ativa: true, produto: { ativo: true, ...soDaLoja(unidadeId) } },
+        select: { ...SELECAO_DA_VARIACAO, estoques: { where: { unidadeId }, select: { quantidade: true } } },
+      }),
+    )
+    if (v) itens.push(montarAchado(v))
+  }
+
+  let cliente: ClienteNoBalcao | null = null
+  if (h.clienteId && pode(s, 'cliente.ver')) {
+    const c = await comoOrg(s.orgId, async (db) => {
+      const ficha = await db.cliente.findUnique({
+        where: { id: h.clienteId! },
+        select: { id: true, nome: true, telefone: true, pontos: true, ativo: true, anonimizadoEm: true },
+      })
+      if (!ficha || !ficha.ativo || ficha.anonimizadoEm) return null
+      const compras = await db.venda.aggregate({
+        where: { clienteId: ficha.id, situacao: 'CONCLUIDA' },
+        _count: { _all: true },
+        _sum: { total: true },
+        _max: { criadaEm: true },
+      })
+      const sit = await situacaoDosClientes(db, [ficha.id])
+      return { ficha, compras, sit: sit.get(ficha.id) }
+    })
+    if (c) {
+      cliente = {
+        id: c.ficha.id,
+        nome: c.ficha.nome,
+        telefone: c.ficha.telefone,
+        compras: c.compras._count._all,
+        gastou: Number(c.compras._sum.total ?? 0),
+        pontos: c.ficha.pontos,
+        diasSemVir: c.compras._max.criadaEm ? Math.floor((Date.now() - c.compras._max.criadaEm.getTime()) / 864e5) : null,
+        devendo: c.sit?.devendo ?? 0,
+        vencido: c.sit?.vencido ?? 0,
+      }
+    }
+  }
+  return { agendamentoId: h.id, rotulo: h.rotulo, cliente, itens }
 }
 
 // ── o caixa ──────────────────────────────────────────────────

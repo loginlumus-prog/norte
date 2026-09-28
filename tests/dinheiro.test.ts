@@ -136,4 +136,24 @@ describe('lerDinheiro', () => {
     expect(lerDinheiro('')).toBeNull()
     expect(lerDinheiro('-5')).toBeNull()
   })
+
+  // Auditoria de 27/09: a ficha do produto tirava todo ponto antes de ler, e
+  // "49.90" virava 4.990 reais — gravado sem aviso nenhum.
+  it('"49.90" é quarenta e nove e noventa, não quatro mil novecentos e noventa', () => {
+    expect(lerDinheiro('49.90')).toBe(49.9)
+    expect(lerDinheiro('49,90')).toBe(49.9)
+    expect(lerDinheiro('R$ 49,90')).toBe(49.9)
+    expect(lerDinheiro('R$49,90')).toBe(49.9)
+    expect(lerDinheiro('1234.5')).toBe(1234.5)
+    expect(lerDinheiro('1.500,00')).toBe(1500)
+  })
+
+  it('milhar só de três em três; dois pontos sem vírgula é milhar sem dúvida', () => {
+    expect(lerDinheiro('1.234.567')).toBe(1234567)
+    expect(lerDinheiro('1.234.567,89')).toBe(1234567.89)
+    expect(lerDinheiro('12.34,56')).toBeNull()
+    expect(lerDinheiro('1,234.56')).toBeNull()
+    expect(lerDinheiro('1,2,3')).toBeNull()
+    expect(lerDinheiro('49,999')).toBeNull()
+  })
 })

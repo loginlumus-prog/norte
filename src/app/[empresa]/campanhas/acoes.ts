@@ -73,7 +73,11 @@ export async function ativarAcao(slug: string, id: string, ativa: boolean): Prom
     const r = await ativarCampanha(sessao, id, ativa)
     revalidatePath(`/${slug}/campanhas`)
     revalidatePath(`/${slug}/campanhas/${id}`)
-    return deSalvamento(r, ativa ? 'Campanha ativa: quem escrever a frase já entra.' : 'Campanha pausada.')
+    const saiu =
+      r.ok && r.encerradas
+        ? ` ${r.encerradas === 1 ? '1 pessoa que estava parada nela há mais de 24 horas saiu' : `${r.encerradas} pessoas que estavam paradas nela há mais de 24 horas saíram`} (não recebem o resto do roteiro de uma vez).`
+        : ''
+    return deSalvamento(r, ativa ? `Campanha ativa: quem escrever a frase já entra.${saiu}` : 'Campanha pausada.')
   } catch (e) {
     return falhou(e)
   }

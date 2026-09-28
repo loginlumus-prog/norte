@@ -446,7 +446,7 @@ describe('equipe: ninguém mexe em quem está acima ou em outra loja', () => {
     expect(r.ok).toBe(false)
     await expect(
       m.convite.convidar(GER_CENTRO, { email: 'nova@a.com', papel: 'BALCAO', unidadeId: null }, 'http://x/loja-a'),
-    ).rejects.toThrow(/todas as lojas/)
+    ).rejects.toThrow(/Balcão para a empresa inteira/)
   })
 
   it('na própria loja ele continua podendo', async () => {

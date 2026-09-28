@@ -2,10 +2,10 @@
 
 import { redirect } from 'next/navigation'
 import { fecharSessao } from '@/servidor/sessao'
-import { sessaoViva, exigirSessao } from '@/servidor/pagina'
-import { liberarVaga, sinal } from '@/servidor/presenca'
-import { acharOrgPorSlug, comoOrg } from '@/servidor/banco'
-import { conferirSenha } from '@/servidor/senha'
+import { conferirSessao, cortarSessoes, destrancar, exigirSessao } from '@/servidor/pagina'
+import { liberarVaga } from '@/servidor/presenca'
+import { acharOrgPorSlug } from '@/servidor/banco'
+import { deOndeVeio } from '@/servidor/requisicao'
 import { pode, CAPACIDADES } from '@/servidor/permissao'
 import {
   buscarNoGuia,
@@ -17,26 +17,12 @@ import {
 } from '@/servidor/guia'
 import { perguntar, temChaveIA } from '@/servidor/ia'
 
-/**
- * Destrancar a tela: a senha de quem já está dentro, de novo.
- *
- * Não é login — a sessão continua a mesma. Só confere que quem está na
- * frente da tela é quem entrou. Erro espera meio segundo, para não dar
- * para testar senhas em série; e a tela sai sozinha na quinta errada.
- */
-export async function destrancarAcao(slug: string, senha: string): Promise<{ ok: boolean }> {
-  const sessao = await sessaoViva(slug)
-  if (!sessao || !senha) return { ok: false }
-
-  const u = await comoOrg(sessao.orgId, (db) =>
-    db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { senhaHash: true } }),
-  )
-  if (!u?.senhaHash || !(await conferirSenha(senha, u.senhaHash))) {
-    await new Promise((r) => setTimeout(r, 600))
-    return { ok: false }
-  }
-  void sinal(sessao.orgId, sessao.usuarioId).catch(() => {})
-  return { ok: true }
+/** Destrancar a tela: a senha de quem já está dentro, de novo (ver `destrancar`). */
+export async function destrancarAcao(
+  slug: string,
+  senha: string,
+): Promise<{ ok: boolean; erro?: string; sair?: boolean }> {
+  return destrancar(slug, String(senha ?? ''), await deOndeVeio())
 }
 
 // Sair é Server Action, não rota POST: numa rota, o redirect() sai como 307 e
@@ -48,8 +34,17 @@ export async function sairAcao(form: FormData) {
   // A vaga é liberada ANTES do cookie morrer, porque depois disso não dá mais
   // para saber quem estava saindo. Sair é o caminho limpo: quem clica aqui
   // devolve a vaga na hora, sem esperar os dez minutos de inatividade.
-  const sessao = await sessaoViva(empresa)
-  if (sessao) await liberarVaga(sessao.orgId, sessao.usuarioId)
+  //
+  // E sair MATA a sessão no servidor, não só no navegador: o cookie está
+  // preso à vaga (ver `sessaoViva`), e a vaga acabou de deixar de existir.
+  // Uma cópia do cookie — o outro aparelho da mesma pessoa, ou alguém que
+  // guardou o valor — cai na próxima tela. Quem entra só com SUPORTE não tem
+  // vaga: nele, o corte de sessões faz o mesmo papel.
+  const { sessao } = await conferirSessao(empresa)
+  if (sessao) {
+    if (sessao.vaga) await liberarVaga(sessao.orgId, sessao.usuarioId)
+    else await cortarSessoes(sessao.orgId, sessao.usuarioId)
+  }
 
   await fecharSessao(empresa)
   redirect(`/${empresa}/entrar`)

@@ -18,6 +18,7 @@
 // lê cookie já era dinâmica.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { CABECALHO_CAMINHO, CABECALHO_SELO, selarCaminho } from './servidor/carimbo'
 
 const DEV = process.env.NODE_ENV === 'development'
 
@@ -101,7 +102,18 @@ export function proxy(request: NextRequest) {
   // da tela. `set`, e não `append`: um cabeçalho com este nome vindo do
   // navegador é substituído aqui, e não dá para mentir o caminho no livro.
   // Só o caminho, sem a busca — a busca pode ter nome de cliente.
-  cabecalhos.set('x-norte-caminho', request.nextUrl.pathname)
+  //
+  // E SELADO: a pré-carga de link não passa por aqui (ver `matcher` lá
+  // embaixo), e nela o cabeçalho que chega é o do navegador. Sem o selo, quem
+  // tem acesso de suporte mandava `purpose: prefetch` com um caminho
+  // inventado e o livro da loja registrava a tela errada. A página só acredita
+  // no caminho cujo selo confere (ver carimbo.ts). O selo de fora, se vier,
+  // é apagado junto.
+  cabecalhos.delete(CABECALHO_SELO)
+  const caminho = request.nextUrl.pathname
+  const selo = selarCaminho(caminho)
+  cabecalhos.set(CABECALHO_CAMINHO, caminho)
+  if (selo) cabecalhos.set(CABECALHO_SELO, selo)
   cabecalhos.set('Content-Security-Policy', politica)
 
   const resposta = NextResponse.next({ request: { headers: cabecalhos } })

@@ -21,6 +21,8 @@ export type ItemDevolvivel = {
   id: string
   descricao: string
   medida: string
+  /** Peça, par, caixa: volta inteiro. Ver `pedeInteiro` em servidor/devolucao.ts. */
+  inteiro: boolean
   /** Quanto ainda pode voltar. */
   restante: number
   precoUnit: number
@@ -124,7 +126,7 @@ export function Devolver({
                 name={`qtd-${i.id}`}
                 min={0}
                 max={i.restante}
-                step={i.medida === 'UN' ? 1 : 0.001}
+                step={i.inteiro ? 1 : 0.001}
                 defaultValue={0}
                 onChange={(e) => setQtds((q) => ({ ...q, [i.id]: Math.min(Number(e.target.value) || 0, i.restante) }))}
                 className="numero w-20 rounded border border-borda bg-superficie px-2 py-1 text-sm text-tinta"

@@ -34,11 +34,19 @@ export async function devolverAcao(
     destinoBruto === 'VALE' || destinoBruto === 'DINHEIRO' || destinoBruto === 'ESTORNO' ? destinoBruto : null
   if (!destino) return { erro: 'Escolha para onde vai o valor.' }
 
+  // Um campo por item. O formulário é do navegador: o mesmo `qtd-<id>` duas
+  // vezes é pedido montado na mão, e é recusado aqui — o servidor recusa de
+  // novo (`item_repetido`), porque esta ação não é a única porta.
   const itens: { vendaItemId: string; quantidade: number }[] = []
+  const vistos = new Set<string>()
   for (const [chave, valor] of form.entries()) {
     if (!chave.startsWith('qtd-')) continue
+    const id = chave.slice(4)
+    if (vistos.has(id)) return { erro: 'O mesmo item veio duas vezes. Recarregue a tela e marque de novo.' }
+    vistos.add(id)
     const q = Number(String(valor).replace(',', '.'))
-    if (q > 0) itens.push({ vendaItemId: chave.slice(4), quantidade: q })
+    if (!Number.isFinite(q)) return { erro: 'Uma das quantidades não é um número.' }
+    if (q > 0) itens.push({ vendaItemId: id, quantidade: q })
   }
 
   const sessao = await exigirSessao(slug)
@@ -54,6 +62,8 @@ export async function devolverAcao(
         sem_motivo: 'Diga o motivo. Ele vai para o livro.',
         caixa_fechado: 'Para devolver em dinheiro o caixa desta loja precisa estar aberto.',
         sem_permissao: 'Devolver em dinheiro ou estorno é para quem pode cancelar venda. Troca por vale, todo mundo pode.',
+        item_repetido: 'O mesmo item veio duas vezes. Recarregue a tela e marque de novo.',
+        quantidade_fracionada: 'Peça, par e caixa voltam inteiros: 1, 2, 3. Fração só em quilo, litro ou metro.',
       }[r.motivo],
     }
   }
@@ -99,11 +109,20 @@ export async function cancelarAcao(
           'Esta venda já teve devolução, e cancelar faria o estoque e os pontos voltarem de novo. Devolva o que falta.',
         crediario_recebido:
           'Esta venda no crediário já recebeu parcela. Devolva os itens: o valor abate o que o cliente ainda deve.',
+        caixa_fechado:
+          'Esta venda foi em dinheiro num turno que já fechou, e o dinheiro volta ao cliente pela gaveta de agora. Abra o caixa desta loja para cancelar.',
       }[r.motivo],
     }
   }
 
   revalidatePath(`/${slug}/vendas/${vendaId}`)
   revalidatePath(`/${slug}/vendas`)
-  return { ok: `Venda ${r.numero} cancelada. O estoque e os pontos voltaram.` }
+  revalidatePath(`/${slug}/balcao`)
+  return {
+    ok:
+      `Venda ${r.numero} cancelada. O estoque e os pontos voltaram.` +
+      (r.sangria > 0
+        ? ` Saída de ${r.sangria.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} registrada no caixa aberto: é o dinheiro que volta ao cliente.`
+        : ''),
+  }
 }

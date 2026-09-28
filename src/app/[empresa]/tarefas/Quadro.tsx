@@ -491,8 +491,12 @@ function Titulo({ t, podeGerir, rodar }: { t: TarefaNaTela; podeGerir: boolean; 
     >
       {t.titulo}
       {t.descricao && (
-        <span aria-label="tem descrição" title={t.descricao} className="ml-1.5 text-xs text-tinta-3">
-          ¶
+        // A marca de "tem descrição": três linhas de texto, pequenas. O "¶" que
+        // estava aqui parecia um caractere perdido no fim do título.
+        <span role="img" aria-label="tem descrição" title={t.descricao} className="ml-1.5 inline-block align-middle text-tinta-3">
+          <svg viewBox="0 0 12 12" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden>
+            <path d="M2 3h8M2 6h8M2 9h5" />
+          </svg>
         </span>
       )}
     </button>

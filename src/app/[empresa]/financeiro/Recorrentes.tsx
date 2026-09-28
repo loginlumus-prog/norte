@@ -12,6 +12,8 @@ import { brl } from '@/ui/painel'
 import { alternarRecorrenteAcao, salvarRecorrenteAcao, type EstadoRecorrente } from './acoes'
 
 export type RecorrenteNaTela = {
+  /** Quem olha pode mudar/pausar esta conta? Conta da empresa inteira só quem lança na empresa inteira. */
+  editavel?: boolean
   id: string
   descricao: string
   categoriaId: string
@@ -37,6 +39,7 @@ export function Recorrentes({
   lojas,
   lojaAtual,
   podeLancar,
+  empresaInteira = true,
 }: {
   slug: string
   lista: RecorrenteNaTela[]
@@ -45,6 +48,8 @@ export function Recorrentes({
   lojas: { id: string; nome: string }[]
   lojaAtual: string | null
   podeLancar: boolean
+  /** A opção "Empresa inteira" só para quem lança na empresa inteira. */
+  empresaInteira?: boolean
 }) {
   const [editando, setEditando] = useState<RecorrenteNaTela | 'nova' | null>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -114,7 +119,7 @@ export function Recorrentes({
                     {r.tipo === 'RECEITA' ? '+ ' : ''}
                     {brl(r.valor)}
                   </span>
-                  {podeLancar && (
+                  {podeLancar && r.editavel !== false && (
                     <>
                       <Botao tom="discreto" className="px-2 py-1 text-xs" onClick={() => setEditando(r)}>
                         Mudar
@@ -140,6 +145,7 @@ export function Recorrentes({
             categorias={categorias}
             lojas={lojas}
             lojaAtual={lojaAtual}
+            empresaInteira={empresaInteira}
             aoFechar={() => setEditando(null)}
           />
         ) : (
@@ -159,6 +165,7 @@ function FormRecorrente({
   categorias,
   lojas,
   lojaAtual,
+  empresaInteira,
   aoFechar,
 }: {
   slug: string
@@ -166,6 +173,7 @@ function FormRecorrente({
   categorias: { id: string; nome: string; tipo: string }[]
   lojas: { id: string; nome: string }[]
   lojaAtual: string | null
+  empresaInteira: boolean
   aoFechar: () => void
 }) {
   const acao = salvarRecorrenteAcao.bind(null, slug)
@@ -260,8 +268,12 @@ function FormRecorrente({
               <Selecao
                 rotulo="Loja"
                 name="unidadeId"
+                required={!empresaInteira}
                 defaultValue={inicial ? (inicial.unidadeId ?? '') : (lojaAtual ?? '')}
-                opcoes={[{ valor: '', titulo: 'Empresa inteira' }, ...lojas.map((l) => ({ valor: l.id, titulo: l.nome }))]}
+                opcoes={[
+                  empresaInteira ? { valor: '', titulo: 'Empresa inteira' } : { valor: '', titulo: 'Escolha...' },
+                  ...lojas.map((l) => ({ valor: l.id, titulo: l.nome })),
+                ]}
               />
             )}
             {lojas.length === 1 && <input type="hidden" name="unidadeId" value={lojas[0]!.id} />}

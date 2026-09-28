@@ -27,6 +27,16 @@ export const CAPACIDADES = [
   'produto.preco', // separado: mexer em preço não é editar descrição
   'estoque.ver',
   'estoque.ajustar',
+  'estoque.consumir', // anotar o material usado dentro de casa (esmalte, luva)
+  // compras
+  'compra.ver', // ver pedidos e fornecedores — com o CUSTO do que se compra
+  'compra.gerir', // montar, mandar, receber e cancelar pedido; cadastrar fornecedor
+  // atendimento
+  'agenda.ver', // ver a agenda de todos os profissionais da loja
+  'agenda.marcar', // marcar, confirmar, remarcar, desmarcar, anotar falta
+  'ponto.proprio', // bater o PRÓPRIO ponto e ver as próprias horas
+  'ponto.ver', // ver as horas de todo mundo (é dado de folha de pagamento)
+  'ponto.gerir', // bater por quem não tem login, ajustar e anular com motivo
   // pessoas
   'cliente.ver',
   'cliente.editar',
@@ -63,6 +73,9 @@ const SO_LEITURA: Capacidade[] = [
   'equipe.ver',
   'auditoria.ver',
   'tarefa.ver',
+  'compra.ver',
+  'agenda.ver',
+  'ponto.ver',
 ]
 
 export const PODERES: Record<Papel, readonly Capacidade[]> = {
@@ -75,7 +88,10 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
     'venda.ver', 'venda.criar', 'venda.cancelar', 'venda.desconto',
     'caixa.ver', 'caixa.operar',
     'produto.ver', 'produto.editar', 'produto.preco',
-    'estoque.ver', 'estoque.ajustar',
+    'estoque.ver', 'estoque.ajustar', 'estoque.consumir',
+    'compra.ver', 'compra.gerir',
+    'agenda.ver', 'agenda.marcar',
+    'ponto.proprio', 'ponto.ver', 'ponto.gerir',
     'cliente.ver', 'cliente.editar',
     'crediario.ver', 'crediario.cobrar', 'crediario.receber',
     'financeiro.ver', 'relatorio.ver',
@@ -88,27 +104,40 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
   // frente — a mesma coisa que uma venda.
   // Vê o quadro e dá baixa no que é dela — a lista de abertura da loja é
   // trabalho de quem abre a loja. Criar tarefa para os outros é do gerente.
+  //
+  // Na recepção do salão e da clínica, é ela quem toca a agenda: vê a de
+  // todos e marca. Bate o PRÓPRIO ponto e vê as próprias horas — as dos
+  // colegas são dado de folha de pagamento, não dela. E anota o material que
+  // usou; o que ele CUSTOU (o pedido ao fornecedor) fica fora da vista.
   BALCAO: [
     'venda.ver', 'venda.criar',
     'caixa.ver', 'caixa.operar',
-    'produto.ver', 'estoque.ver',
+    'produto.ver', 'estoque.ver', 'estoque.consumir',
+    'agenda.ver', 'agenda.marcar',
+    'ponto.proprio',
     'cliente.ver', 'cliente.editar',
     'crediario.ver', 'crediario.receber',
     'tarefa.ver',
   ],
 
   // Financeiro: o dinheiro. Não mexe em produto nem vende.
+  // Vê as compras (é conta a pagar que vem aí) e as horas de todos (é a
+  // folha), sem mexer em nenhuma das duas.
   FINANCEIRO: [
     'venda.ver', 'caixa.ver',
     'cliente.ver',
     'crediario.ver', 'crediario.cobrar', 'crediario.receber',
     'financeiro.ver', 'financeiro.lancar',
+    'compra.ver',
+    'ponto.proprio', 'ponto.ver',
     'relatorio.ver', 'auditoria.ver',
     'tarefa.ver',
   ],
 
   // Contador: convidado. Só olha o dinheiro, não escreve nada em lugar nenhum.
-  CONTADOR: ['financeiro.ver', 'relatorio.ver'],
+  // As compras e as horas do mês entram porque são dinheiro também — a conta
+  // do fornecedor e a folha de pagamento, que costuma ser ele quem fecha.
+  CONTADOR: ['financeiro.ver', 'relatorio.ver', 'compra.ver', 'ponto.ver'],
 
   // Suporte (nós): só leitura, com prazo e motivo obrigatórios, e tudo o que
   // fizer aparece no livro de auditoria do cliente, igual a qualquer pessoa.
@@ -218,7 +247,8 @@ export const sessaoAindaVale = (
 
 const valeAgora = (a: Acesso, agora: Date) => !a.expiraEm || a.expiraEm > agora
 
-const concede = (a: Acesso, c: Capacidade) => PODERES[a.papel].includes(c)
+const concede = (a: Acesso, c: Capacidade) =>
+  PODERES[a.papel].includes(c) && (a.unidadeId === null || !SO_DA_EMPRESA_INTEIRA.includes(c))
 
 /**
  * Pode fazer isso?
@@ -336,3 +366,48 @@ export function numeroDaBusca(q: string): number | null {
   const n = Number(q)
   return n <= 2_147_483_647 ? n : null
 }
+
+/**
+ * Pode isso NESTA loja — ou, com `null`, na empresa inteira?
+ *
+ * `pode(sessao, c, undefined)` quer dizer "em alguma loja", e registro sem
+ * loja (`unidadeId = null`) quer dizer "da empresa inteira": o financeiro da
+ * loja 3 lançava o aluguel do escritório, dava baixa na conta do contador e
+ * pausava a conta recorrente da empresa, porque "alguma loja" ele tem. É a
+ * mesma régua de `podeConcederAcesso`: `null` só para quem tem acesso SEM
+ * loja.
+ */
+export function podeNoAlcance(
+  sessao: Sessao,
+  capacidade: Capacidade,
+  unidadeId: string | null,
+  agora = new Date(),
+): boolean {
+  if (unidadeId !== null) return pode(sessao, capacidade, unidadeId, agora)
+  return unidadesQuePodem(sessao, capacidade, agora) === 'todas'
+}
+
+/** `podeNoAlcance`, levantando `SemPermissao`. */
+export function exigirNoAlcance(
+  sessao: Sessao,
+  capacidade: Capacidade,
+  unidadeId: string | null,
+  agora = new Date(),
+): void {
+  if (!podeNoAlcance(sessao, capacidade, unidadeId, agora)) {
+    throw new SemPermissao(capacidade, unidadeId ?? undefined)
+  }
+}
+
+/**
+ * Capacidades que só valem num acesso da EMPRESA INTEIRA (`unidadeId: null`).
+ *
+ * Configurar a empresa (plano, lojas, fechar uma loja, anonimizar cliente) e
+ * o assistente (campanha para todos os clientes) não tem "nesta loja": é a
+ * empresa. Um DONO preso a uma loja só — que a tela de equipe deixava criar —
+ * passava em todo `exigir(sessao, 'empresa.configurar')`, porque "alguma
+ * loja" ele tem, e fechava a loja do outro sócio ou trocava o plano. Com
+ * isto, acesso preso a loja nunca concede estas duas, em `pode` nem em
+ * `unidadesQuePodem`. O resto do que o papel dá continua valendo na loja dele.
+ */
+const SO_DA_EMPRESA_INTEIRA: readonly Capacidade[] = ['empresa.configurar', 'agente.configurar']

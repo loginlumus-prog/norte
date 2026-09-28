@@ -49,8 +49,15 @@ describe('o caixa', () => {
     expect(achar(com({ diferencaGaveta: 350 }), 'gaveta').situacao).toBe('pendente')
   })
 
-  it('mês sem turno fechado não acusa diferença', () => {
-    expect(achar(com({ turnosFechados: 0, diferencaGaveta: 0 }), 'gaveta').situacao).toBe('ok')
+  it('mês sem turno fechado não diz que a gaveta bateu — ninguém contou gaveta', () => {
+    const i = achar(com({ turnosFechados: 0, diferencaGaveta: 0 }), 'gaveta')
+    expect(i.situacao).toBe('atencao')
+    expect(i.detalhe).toMatch(/não houve gaveta/)
+  })
+
+  it('quem não vê o caixa não recebe as linhas do caixa', () => {
+    const itens = com({ caixasAbertos: null })
+    expect(itens.some((i) => i.chave === 'caixas' || i.chave === 'gaveta')).toBe(false)
   })
 })
 
@@ -120,8 +127,8 @@ describe('texto e caminho de cada linha', () => {
   it('singular e plural de verdade, sem "(s)"', () => {
     const itens = com({ caixasAbertos: 1, contasVencidas: 2, valorVencido: 10, parcelasVencidas: 1 })
     expect(achar(itens, 'caixas').detalhe).toBe('1 caixa ainda aberto')
-    expect(achar(itens, 'contas').detalhe).toMatch(/^2 vencidas, somando/)
-    expect(achar(itens, 'crediario').detalhe).toMatch(/^1 parcela vencida,/)
+    expect(achar(itens, 'contas').detalhe).toMatch(/^2 vencidas sem baixa, somando/)
+    expect(achar(itens, 'crediario').detalhe).toMatch(/^1 parcela vencida em aberto,/)
     expect(itens.map((i) => i.detalhe).join(' ')).not.toMatch(/\(s\)/)
   })
 

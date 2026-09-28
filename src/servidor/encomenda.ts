@@ -44,12 +44,14 @@
 //
 // Puro em cima (datas, grupos, validação, transições), banco embaixo.
 
-import type { SituacaoEncomenda, TipoLancamento } from '@prisma/client'
+import type { Plano, SituacaoEncomenda, TipoLancamento } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, SemPermissao, unidadesQuePodem, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
 import { CATEGORIAS_PADRAO } from './financeiro'
 import { soDigitos } from './cliente'
+import { moduloLigado } from './modulos'
+import { planoLibera } from './planos'
 
 export type { SituacaoEncomenda }
 
@@ -674,6 +676,29 @@ async function registrarSinal(
   })
 }
 
+/* ── o módulo, conferido no servidor ─────────────────────────── */
+
+/**
+ * A encomenda é módulo — e módulo de plano pago. O menu e a página já somem
+ * sem ele, mas a Server Action é endereço público: sem esta conferência, a
+ * empresa no Grátis (ou com a chave desligada) anotava encomenda e lançava
+ * sinal no financeiro pelo POST montado na mão. Devolve a frase da recusa,
+ * ou null quando pode.
+ */
+async function recusaDoModulo(db: BancoDaOrg, orgId: string): Promise<string | null> {
+  const org = await db.org.findUnique({ where: { id: orgId }, select: { plano: true, modulos: true } })
+  return recusaDoModuloEm(org)
+}
+
+/** A mesma régua, para quem já leu a empresa (a venda). */
+export function recusaDoModuloEm(org: { plano: Plano; modulos: string[] } | null): string | null {
+  if (!org || !moduloLigado(org, 'encomenda')) {
+    return 'As encomendas estão desligadas nesta empresa. Quem responde pela empresa liga em Configurações.'
+  }
+  if (!planoLibera(org.plano, 'encomenda')) return 'Encomenda não faz parte do plano desta empresa.'
+  return null
+}
+
 /* ── anotar e editar ─────────────────────────────────────────── */
 
 export type Resultado = { ok: true; id: string } | { ok: false; erro: string; pedeConfirmacao?: boolean }
@@ -688,6 +713,8 @@ export async function criarEncomenda(sessao: Sessao, d: DadosEncomenda, agora = 
   const e = v.limpo
 
   return comoOrg(sessao.orgId, async (db) => {
+    const recusa = await recusaDoModulo(db, sessao.orgId)
+    if (recusa) return { ok: false as const, erro: recusa }
     const loja = await db.unidade.findFirst({ where: { id: e.unidadeId, ativa: true }, select: { id: true } })
     if (!loja) return { ok: false as const, erro: 'Essa loja não existe ou está desativada.' }
 
@@ -767,6 +794,8 @@ export async function editarEncomenda(
   exigir(sessao, 'venda.criar')
 
   return comoOrg(sessao.orgId, async (db) => {
+    const recusa = await recusaDoModulo(db, sessao.orgId)
+    if (recusa) return { ok: false as const, erro: recusa }
     const antes = await db.encomenda.findUnique({
       where: { id },
       select: {
@@ -783,6 +812,17 @@ export async function editarEncomenda(
     const v = validarEncomenda({ ...d, unidadeId: antes.unidadeId }, agora, antes.para)
     if (!v.ok) return v
     const e = v.limpo
+
+    // Baixar o sinal é DEVOLVER dinheiro ao cliente — sai do financeiro como
+    // despesa de hoje. É o mesmo gesto de cancelar venda ou devolver em
+    // dinheiro, e pede o mesmo poder: sem isto, o balcão "editava" o sinal de
+    // 100 para 0 e o dinheiro saía sem ninguém que pudesse autorizar.
+    if (e.sinalC < centavos(antes.sinal) && !pode(sessao, 'venda.cancelar', antes.unidadeId)) {
+      return {
+        ok: false as const,
+        erro: 'Diminuir o sinal é devolver dinheiro ao cliente, e isso é com quem pode cancelar venda. Chame a gerência.',
+      }
+    }
 
     let nome = e.clienteNome
     let telefone = e.telefone
@@ -895,6 +935,8 @@ export async function mudarSituacao(
   }
 
   return comoOrg(sessao.orgId, async (db) => {
+    const recusa = await recusaDoModulo(db, sessao.orgId)
+    if (recusa) return { ok: false as const, erro: recusa }
     const antes = await db.encomenda.findUnique({
       where: { id },
       select: {
@@ -953,5 +995,160 @@ export async function mudarSituacao(
       },
     })
     return { ok: true as const, falta: faltaPagar(antes.valor, antes.sinal) }
+  })
+}
+
+/* ── receber no balcão ───────────────────────────────────────── */
+//
+// "Receber no balcão" era: marcar entregue aqui e abrir o balcão vazio, para a
+// pessoa lançar o que falta à mão. Só que lançar à mão não tinha como: item
+// avulso pede `venda.desconto` (que o balcão não tem), e baixar o preço de
+// um produto qualquer até o valor que falta contava como desconto acima do
+// teto. E a encomenda já estava "entregue" antes de o dinheiro entrar.
+//
+// Agora o balcão abre COM a encomenda: a linha "Encomenda: bolo de
+// chocolate" entra no pedido pelo valor que falta, e o servidor — não a tela
+// — é quem lê esse valor, lança a linha e marca a encomenda entregue, tudo na
+// transação da venda. Venda que não fecha deixa a encomenda como estava.
+//
+// O vínculo fica escrito dos dois lados (código ENC-… na observação da venda,
+// número da venda na observação da encomenda) e no livro. Um campo de verdade
+// ligando as duas é migração — anotado para a próxima.
+
+export type EncomendaNoBalcao = {
+  id: string
+  codigo: string
+  descricao: string
+  clienteNome: string
+  /** Em reais. É o que a linha do pedido cobra. */
+  falta: number
+}
+
+/** A linha do pedido: "Encomenda ENC-3F9K2A: Bolo de chocolate 2 kg". */
+export const descricaoDaLinha = (e: { id: string; descricao: string }) =>
+  `Encomenda ${codigoEncomenda(e.id)}: ${e.descricao}`.slice(0, 200)
+
+type EncomendaTravada = {
+  id: string
+  unidade_id: string
+  situacao: string
+  valor: { toString(): string }
+  sinal: { toString(): string }
+  descricao: string
+  cliente_nome: string
+  observacao: string | null
+}
+
+/**
+ * Por que esta encomenda não pode ser recebida nesta loja agora — ou null.
+ * Uma régua só para a tela do balcão e para a venda.
+ */
+function recusaDoRecebimento(e: EncomendaTravada | undefined, unidadeId: string): string | null {
+  if (!e) return 'Essa encomenda não existe mais.'
+  if (e.unidade_id !== unidadeId) return 'Essa encomenda é de outra loja. Receba no balcão de lá.'
+  if (e.situacao === 'ENTREGUE') return 'Essa encomenda já foi entregue. Confira em Vendas se o que faltava já entrou.'
+  if (e.situacao === 'CANCELADA') return 'Essa encomenda foi cancelada.'
+  if (centavos(e.valor) - centavos(e.sinal) <= 0) {
+    return 'Essa encomenda já está paga. Marque a entrega em Encomendas — não há o que cobrar.'
+  }
+  return null
+}
+
+/**
+ * Para a tela do balcão: a encomenda do endereço (`?encomenda=`), pronta para
+ * virar a linha do pedido. O valor que vai para a tela é só para mostrar — a
+ * venda lê de novo, travada, na hora de fechar.
+ */
+export async function encomendaParaReceber(
+  sessao: Sessao,
+  id: string,
+  unidadeId: string,
+): Promise<{ ok: true; encomenda: EncomendaNoBalcao } | { ok: false; erro: string }> {
+  if (!pode(sessao, 'venda.criar', unidadeId)) return { ok: false, erro: 'Você não pode vender nesta loja.' }
+  return comoOrg(sessao.orgId, async (db) => {
+    const recusa = await recusaDoModulo(db, sessao.orgId)
+    if (recusa) return { ok: false as const, erro: recusa }
+    const [e] = await db.$queryRaw<EncomendaTravada[]>`
+      select id, unidade_id, situacao::text as situacao, valor, sinal, descricao, cliente_nome, observacao
+        from encomendas where id = ${id}
+    `
+    const nao = recusaDoRecebimento(e, unidadeId)
+    if (nao) return { ok: false as const, erro: nao }
+    return {
+      ok: true as const,
+      encomenda: {
+        id: e!.id,
+        codigo: codigoEncomenda(e!.id),
+        descricao: e!.descricao,
+        clienteNome: e!.cliente_nome,
+        falta: faltaPagar(e!.valor, e!.sinal),
+      },
+    }
+  })
+}
+
+/**
+ * Dentro da transação da venda: trava a encomenda (`for update`) e diz quanto
+ * falta, em centavos. Duas abas recebendo a mesma encomenda esperam uma pela
+ * outra, e a segunda encontra a encomenda já entregue — o cliente não paga o
+ * restante duas vezes.
+ */
+export async function travarParaVenda(
+  db: BancoDaOrg,
+  empresa: { plano: Plano; modulos: string[] } | null,
+  id: string,
+  unidadeId: string,
+): Promise<{ ok: true; faltaC: number; linha: string; observacao: string | null } | { ok: false; recado: string }> {
+  const recusa = recusaDoModuloEm(empresa)
+  if (recusa) return { ok: false, recado: recusa }
+  const [e] = await db.$queryRaw<EncomendaTravada[]>`
+    select id, unidade_id, situacao::text as situacao, valor, sinal, descricao, cliente_nome, observacao
+      from encomendas where id = ${id} for update
+  `
+  const nao = recusaDoRecebimento(e, unidadeId)
+  if (nao) return { ok: false, recado: nao }
+  return {
+    ok: true,
+    faltaC: centavos(e!.valor) - centavos(e!.sinal),
+    linha: descricaoDaLinha(e!),
+    observacao: e!.observacao,
+  }
+}
+
+/**
+ * A venda gravou: a encomenda sai. Só se ainda estiver a fazer ou pronta —
+ * se não, lança, e a venda inteira volta (é a segunda trava, depois do
+ * `for update`).
+ */
+export async function entregarPelaVenda(
+  db: BancoDaOrg,
+  sessao: Sessao,
+  id: string,
+  venda: { id: string; numero: number; unidadeId: string; faltaC: number; observacao: string | null },
+  agora = new Date(),
+) {
+  const r = await db.encomenda.updateMany({
+    where: { id, situacao: { in: ['ABERTA', 'PRONTA'] } },
+    data: {
+      situacao: 'ENTREGUE',
+      concluidaEm: agora,
+      observacao: [venda.observacao, `Recebida no balcão: venda ${venda.numero}.`].filter(Boolean).join('\n').slice(0, 1300),
+    },
+  })
+  if (r.count === 0) throw new Error('A encomenda mudou enquanto a venda era registrada. Nada foi gravado.')
+  await db.auditoria.create({
+    data: {
+      orgId: sessao.orgId,
+      unidadeId: venda.unidadeId,
+      usuarioId: sessao.usuarioId,
+      quem: sessao.nome,
+      acao: 'encomenda.entregou',
+      alvoTipo: 'encomenda',
+      alvoId: id,
+      alvoNome: codigoEncomenda(id),
+      valor: reais(venda.faltaC),
+      depois: { situacao: 'ENTREGUE', vendaId: venda.id, vendaNumero: venda.numero },
+      motivo: `recebido na venda ${venda.numero}`,
+    },
   })
 }

@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
-import { contaComoFalta } from '@/servidor/catalogo-loja'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
-import { pode, podeVerPlanos } from '@/servidor/permissao'
+import { pode, podeVerPlanos, textoDaBusca, unidadesQuePodem } from '@/servidor/permissao'
+import { saldoNaVista } from '@/servidor/produto'
+import { plural } from '@/ui/texto'
 import { escolherUnidade } from '@/servidor/unidade'
 import { conferirSaldos, listarMovimentos, ROTULO_MOVIMENTO, type MovimentoNaLista } from '@/servidor/estoque'
 import { janela, lerPeriodo } from '@/servidor/periodo'
@@ -27,13 +28,14 @@ import type { TipoMovimento } from '@prisma/client'
 type SituacaoItem = 'acabaram' | 'minimo' | 'ok'
 import { Entrada } from './Entrada'
 import { Corrigir } from './Corrigir'
+import { Minimo } from './Minimo'
 import { Transferir } from './Transferir'
 
 export const metadata: Metadata = { title: 'Estoque' }
 
-const TIPOS: TipoMovimento[] = ['ENTRADA', 'VENDA', 'DEVOLUCAO', 'AJUSTE', 'PERDA', 'TRANSFERENCIA', 'BALANCO']
+const TIPOS: TipoMovimento[] = ['ENTRADA', 'VENDA', 'DEVOLUCAO', 'AJUSTE', 'PERDA', 'TRANSFERENCIA', 'BALANCO', 'CONSUMO']
 const quando = (d: Date) =>
-  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d)
+  new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d)
 
 // A tela do estoque.
 //
@@ -53,7 +55,7 @@ const qtd = (v: number, medida: string) => {
 
 // ── vai faltar ───────────────────────────────────────────────
 
-const diaMes = (d: Date) => new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(d)
+const diaMes = (d: Date) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(d)
 
 /**
  * A amostra do plano sem previsão. Inventada, e é isso que a tranca exige:
@@ -94,8 +96,15 @@ export default async function TelaEstoque({
   searchParams: Promise<{ unidade?: string; q?: string; situacao?: string; periodo?: string; tipo?: string }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, q: qBruto, situacao: sitPedida, periodo: periodoPedido, tipo: tipoPedido } = await searchParams
-  const q = (qBruto ?? '').trim()
+  const bruto = await searchParams
+  // O endereço é do usuário: `?q=a&q=b` chega como LISTA e derrubava a tela
+  // no `.trim()`. Só texto passa daqui; ver `textoDaBusca`.
+  const texto = (v: unknown) => (typeof v === 'string' ? v : undefined)
+  const pedida = texto(bruto.unidade)
+  const sitPedida = texto(bruto.situacao)
+  const periodoPedido = texto(bruto.periodo)
+  const tipoPedido = texto(bruto.tipo)
+  const q = textoDaBusca(bruto.q)
   const situacao: SituacaoItem | null =
     sitPedida === 'acabaram' || sitPedida === 'minimo' || sitPedida === 'ok' ? sitPedida : null
   const tipo = TIPOS.find((t) => t === tipoPedido) ?? null
@@ -124,28 +133,27 @@ export default async function TelaEstoque({
   const podeMexer = unidadeAlvo ? pode(sessao, 'estoque.ajustar', unidadeAlvo) : false
   const podeLancarConta = unidadeAlvo ? pode(sessao, 'financeiro.lancar', unidadeAlvo) : false
 
-  const [linhas, categorias, divergencia] = await Promise.all([
+  const [variacoes, categorias, divergencia] = await Promise.all([
+    // Por VARIAÇÃO, e não por linha de saldo: o item que nunca teve entrada
+    // não tem linha nenhuma, e antes sumia daqui enquanto a tela de Produtos
+    // o contava como "acabou". Agora as duas contam por `saldoNaVista`.
     comoOrg(sessao.orgId, (db) =>
-      db.estoque.findMany({
-        where: { unidadeId: { in: onde.ids }, variacao: { ativa: true, produto: { ativo: true } } },
+      db.variacao.findMany({
+        where: { ativa: true, produto: { ativo: true } },
         select: {
-          quantidade: true,
-          minimo: true,
-          unidadeId: true,
-          unidade: { select: { ehDeposito: true } },
-          variacao: {
+          id: true,
+          codigo: true,
+          produto: { select: { nome: true, medida: true, custo: true, vendidoEm: true } },
+          opcoes: {
             select: {
-              id: true,
-              codigo: true,
-              produto: { select: { nome: true, medida: true, custo: true, vendidoEm: true } },
-              opcoes: {
-                select: {
-                  opcao: {
-                    select: { valor: true, hex: true, eixo: { select: { ordem: true } } },
-                  },
-                },
+              opcao: {
+                select: { valor: true, hex: true, eixo: { select: { ordem: true } } },
               },
             },
+          },
+          estoques: {
+            where: { unidadeId: { in: onde.ids } },
+            select: { quantidade: true, minimo: true, unidadeId: true },
           },
         },
       }),
@@ -162,55 +170,48 @@ export default async function TelaEstoque({
     pode(sessao, 'estoque.ajustar') ? conferirSaldos(sessao, onde.unidadeId ?? undefined) : null,
   ])
 
-  // Consolidado soma as lojas; por loja, cada linha já é a da loja.
-  const porVariacao = new Map<
-    string,
-    { id: string; codigo: string | null; nome: string; medida: string; custo: number; opcoes: { valor: string; hex: string | null; ordem: number }[]; saldo: number; minimo: number }
-  >()
-  for (const l of linhas) {
-    const v = l.variacao
-    // Linha zerada de produto que esta loja não vende não é "acabou" — é
-    // sobra de transferência ou de balanço. A mesma régua do "Precisa de
-    // você" do painel (ver `contaComoFalta`), senão o "Ver" levaria a uma
-    // lista de tamanho diferente do número prometido.
-    if (
-      !contaComoFalta(
-        { quantidade: Number(l.quantidade), unidadeId: l.unidadeId, ehDeposito: l.unidade.ehDeposito },
+  // Consolidado soma as lojas; por loja, é o saldo da loja. Linha zerada de
+  // produto que a loja não vende não é "acabou" — é sobra de transferência
+  // ou de balanço. A conta é `saldoNaVista`, a mesma da tela de Produtos e
+  // a mesma régua do "Precisa de você" do painel (`contaComoFalta`).
+  const lojasDaVista = onde.opcoes.filter((u) => onde.ids.includes(u.id))
+  const vistaInteira = onde.unidadeId === null && unidadesQuePodem(sessao, 'estoque.ver') === 'todas'
+  const itens = variacoes
+    .map((v) => {
+      const na = saldoNaVista(
         v.produto.vendidoEm,
+        v.estoques.map((e) => ({ unidadeId: e.unidadeId, quantidade: Number(e.quantidade), minimo: e.minimo === null ? null : Number(e.minimo) })),
+        lojasDaVista,
+        vistaInteira,
       )
-    ) {
-      continue
-    }
-    const atual = porVariacao.get(v.id)
-    const saldo = Number(l.quantidade)
-    if (atual) {
-      atual.saldo += saldo
-      atual.minimo = Math.max(atual.minimo, Number(l.minimo))
-      continue
-    }
-    porVariacao.set(v.id, {
-      id: v.id,
-      codigo: v.codigo,
-      nome: v.produto.nome,
-      medida: v.produto.medida,
-      custo: Number(v.produto.custo ?? 0),
-      opcoes: v.opcoes.map((o) => ({
-        valor: o.opcao.valor,
-        hex: o.opcao.hex,
-        ordem: o.opcao.eixo.ordem,
-      })),
-      saldo,
-      minimo: Number(l.minimo),
+      return {
+        id: v.id,
+        codigo: v.codigo,
+        nome: v.produto.nome,
+        medida: v.produto.medida,
+        custo: Number(v.produto.custo ?? 0),
+        opcoes: v.opcoes.map((o) => ({
+          valor: o.opcao.valor,
+          hex: o.opcao.hex,
+          ordem: o.opcao.eixo.ordem,
+        })),
+        aparece: na.aparece,
+        saldo: na.saldo,
+        minimo: na.minimo,
+        nivel: na.nivel,
+      }
     })
-  }
-
-  const itens = [...porVariacao.values()].sort((a, b) => a.nome.localeCompare(b.nome))
-  const nivelDe = (i: { saldo: number; minimo: number }) =>
-    i.saldo <= 0 ? ('critico' as const) : i.minimo > 0 && i.saldo <= i.minimo ? ('atencao' as const) : ('bom' as const)
+    .filter((i) => i.aparece)
+    .sort((a, b) => a.nome.localeCompare(b.nome))
+  const nivelDe = (i: { nivel: 'critico' | 'atencao' | 'bom' }) => i.nivel
 
   const acabaram = itens.filter((i) => nivelDe(i) === 'critico')
   const noMinimo = itens.filter((i) => nivelDe(i) === 'atencao')
-  const valorParado = itens.reduce((s, i) => s + i.saldo * i.custo, 0)
+  // Dinheiro parado a preço de CUSTO é custo — a mesma regra da planilha
+  // (`estoque/exportar`): só quem mexe em preço ou vê o financeiro. Antes
+  // aparecia para qualquer um com `estoque.ver`, inclusive o balcão.
+  const verCusto = pode(sessao, 'produto.preco') || pode(sessao, 'financeiro.ver')
+  const valorParado = verCusto ? itens.reduce((s, i) => s + Math.max(i.saldo, 0) * i.custo, 0) : 0
 
   // ── vai faltar ───────────────────────────────────────────
   // Plano e previsão em sequência, cada um na própria transação. No plano
@@ -222,7 +223,7 @@ export default async function TelaEstoque({
   const vaiFaltar = ruptura.filter((l) => URGENTES.includes(l.previsao.situacao))
   const contar = (s: LinhaRuptura['previsao']['situacao']) => vaiFaltar.filter((l) => l.previsao.situacao === s).length
   const resumoRuptura = [
-    contar('ja_faltou') && `${contar('ja_faltou')} já faltaram`,
+    contar('ja_faltou') && `${contar('ja_faltou')} já ${contar('ja_faltou') === 1 ? 'faltou' : 'faltaram'}`,
     contar('pedir_agora') && `${contar('pedir_agora')} para pedir agora`,
     contar('atencao') && `${contar('atencao')} em atenção`,
   ]
@@ -333,6 +334,9 @@ export default async function TelaEstoque({
   )
 
   const atuais = { unidade: onde.unidadeId, q, situacao, periodo: periodoPedido ?? null, tipo }
+  // A busca leva escondido TODO filtro da tela menos o próprio `q` — antes
+  // buscar apagava o período e o tipo de movimento escolhidos.
+  const { q: _q, ...manterNaBusca } = atuais
   const link = (mudanca: Record<string, string | null>) =>
     enderecoCom(`/${slug}/estoque`, atuais, mudanca)
 
@@ -368,9 +372,15 @@ export default async function TelaEstoque({
       titulo: 'Mínimo',
       numero: true,
       largura: '6rem',
-      celula: (i: (typeof itens)[number]) => (
-        <span className="numero text-xs text-tinta-3">{i.minimo > 0 ? i.minimo : '—'}</span>
-      ),
+      // Com loja escolhida e permissão, o mínimo se define ali mesmo: ele é o
+      // que decide o "no mínimo" e o "precisa comprar", e não tinha tela.
+      // No consolidado ele é o MAIOR entre as lojas, e só se lê.
+      celula: (i: (typeof itens)[number]) =>
+        podeMexer && onde.unidadeId ? (
+          <Minimo slug={slug} variacaoId={i.id} unidadeId={onde.unidadeId} minimo={i.minimo} medida={i.medida} />
+        ) : (
+          <span className="numero text-xs text-tinta-3">{i.minimo > 0 ? qtd(i.minimo, i.medida) : '—'}</span>
+        ),
     },
     {
       chave: 'saldo',
@@ -464,7 +474,7 @@ export default async function TelaEstoque({
             titulo={onde.unidadeId ? onde.titulo : 'Somando as lojas'}
             acao={
               <span className="text-xs text-tinta-3">
-                {acabaram.length} acabaram · {noMinimo.length} no mínimo
+                {acabaram.length} {acabaram.length === 1 ? 'acabou' : 'acabaram'} · {noMinimo.length} no mínimo
               </span>
             }
           >
@@ -526,14 +536,14 @@ export default async function TelaEstoque({
           valor={q}
           placeholder="Nome ou etiqueta"
           rotulo="Buscar no estoque"
-          manter={{ unidade: onde.unidadeId, situacao }}
+          manter={manterNaBusca}
           limparEm={link({ q: null })}
         />
         <Cartao
           titulo={
             q || situacao
-              ? `${listados.length} de ${itens.length} ${itens.length === 1 ? 'item' : 'itens'}`
-              : `${itens.length} ${itens.length === 1 ? 'item' : 'itens'}`
+              ? `${listados.length} de ${plural(itens.length, 'item', 'itens')}`
+              : plural(itens.length, 'item', 'itens')
           }
           acao={
             valorParado > 0 ? (
@@ -629,7 +639,7 @@ export default async function TelaEstoque({
                   nivel={
                     m.tipo === 'ENTRADA' || m.tipo === 'DEVOLUCAO' ? 'bom'
                     : m.tipo === 'PERDA' ? 'critico'
-                    : m.tipo === 'AJUSTE' || m.tipo === 'BALANCO' ? 'atencao'
+                    : m.tipo === 'AJUSTE' || m.tipo === 'BALANCO' || m.tipo === 'CONSUMO' ? 'atencao'
                     : 'neutro'
                   }
                 >

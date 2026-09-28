@@ -21,6 +21,7 @@
 import { comoOrg } from './banco'
 import { exigir, soAsQuePode, type Sessao } from './permissao'
 import { PLANOS } from './planos'
+import { vencerTesteSeAcabou } from './assinatura'
 import type { Plano } from '@prisma/client'
 
 /** Número vindo do banco (Decimal, string ou nulo) em reais. */
@@ -44,6 +45,8 @@ export function temAnaliseAvancada(plano: Plano): boolean {
  * em toda página, inclusive na porta. Quem precisa dele pede.
  */
 export async function planoDaEmpresa(sessao: Sessao): Promise<Plano> {
+  // O teste vencido desce para o Grátis antes de o plano decidir alguma coisa.
+  await vencerTesteSeAcabou(sessao.orgId)
   return comoOrg(sessao.orgId, async (db) => {
     const org = await db.org.findUniqueOrThrow({
       where: { id: sessao.orgId },
@@ -59,7 +62,9 @@ export type LojaComparada = {
   unidadeId: string
   nome: string
   vendas: number
+  /** Venda menos o que voltou em devolução na janela. */
   receita: number
+  /** Custo do que ficou vendido: o das vendas menos o das peças devolvidas. */
   custo: number
   margem: number
   /** Margem em porcento da receita. Nulo quando não vendeu nada. */
@@ -138,14 +143,36 @@ export async function compararLojas(
        group by 1
     `
 
+    // O que voltou sai dos dois lados, pela data da devolução — a mesma régua
+    // do DRE. Sem isto a loja que mais troca parecia a que mais vende, e com
+    // a margem da venda cheia.
+    const devolucoes = await db.$queryRaw<{ unidade_id: string; valor: string }[]>`
+      select d.unidade_id, sum(d.valor) as valor
+        from devolucoes d
+       where d.unidade_id = any(${uni})
+         and d.criada_em >= ${de} and d.criada_em < ${ate}
+       group by 1
+    `
+    const custosDevolvidos = await db.$queryRaw<{ unidade_id: string; custo: string }[]>`
+      select d.unidade_id, sum(di.quantidade * coalesce(vi.custo_unit, 0)) as custo
+        from devolucao_itens di
+        join devolucoes d on d.id = di.devolucao_id
+        join venda_itens vi on vi.id = di.venda_item_id
+       where d.unidade_id = any(${uni})
+         and d.criada_em >= ${de} and d.criada_em < ${ate}
+       group by 1
+    `
+
     const receitaDe = new Map(receitas.map((r) => [r.unidade_id, r]))
+    const devolvidoDe = new Map(devolucoes.map((d) => [d.unidade_id, n(d.valor)]))
+    const custoDevolvidoDe = new Map(custosDevolvidos.map((c) => [c.unidade_id, n(c.custo)]))
     const custoDe = new Map(custos.map((c) => [c.unidade_id, n(c.custo)]))
     const estoqueDe = new Map(estoques.map((e) => [e.unidade_id, e]))
 
     return lojas.map((l) => {
       const r = receitaDe.get(l.id)
-      const receita = n(r?.receita)
-      const custo = custoDe.get(l.id) ?? 0
+      const receita = n(r?.receita) - (devolvidoDe.get(l.id) ?? 0)
+      const custo = (custoDe.get(l.id) ?? 0) - (custoDevolvidoDe.get(l.id) ?? 0)
       const vendas = r?.vendas ?? 0
       const est = estoqueDe.get(l.id)
       return {
@@ -262,16 +289,43 @@ export async function curvaAbc(
        order by receita desc
     `
 
+    // O que voltou em devolução na janela sai do produto: receita, custo e
+    // quantidade. Peça devolvida não sustenta a casa — sem isto, o produto
+    // que mais volta subia na curva como se vendesse.
+    const devolvidos = await db.$queryRaw<{ produto_id: string; quantidade: string; receita: string; custo: string }[]>`
+      select p.id as produto_id,
+             sum(di.quantidade) as quantidade,
+             sum(di.valor) as receita,
+             sum(di.quantidade * coalesce(vi.custo_unit, 0)) as custo
+        from devolucao_itens di
+        join devolucoes d on d.id = di.devolucao_id
+        join venda_itens vi on vi.id = di.venda_item_id
+        join variacoes vr on vr.id = vi.variacao_id
+        join produtos p on p.id = vr.produto_id
+       where d.unidade_id = any(${uni})
+         and d.criada_em >= ${de} and d.criada_em < ${ate}
+       group by 1
+    `
+    const voltou = new Map(devolvidos.map((d) => [d.produto_id, d]))
+
     return classificarAbc(
-      linhas.map((l) => ({
-        produtoId: l.produto_id,
-        nome: l.nome,
-        marca: l.marca ?? '',
-        medida: l.medida,
-        quantidade: n(l.quantidade),
-        receita: n(l.receita),
-        margem: n(l.receita) - n(l.custo),
-      })),
+      linhas
+        .map((l) => {
+          const d = voltou.get(l.produto_id)
+          const receita = n(l.receita) - n(d?.receita)
+          return {
+            produtoId: l.produto_id,
+            nome: l.nome,
+            marca: l.marca ?? '',
+            medida: l.medida,
+            quantidade: n(l.quantidade) - n(d?.quantidade),
+            receita,
+            margem: receita - (n(l.custo) - n(d?.custo)),
+          }
+        })
+        // Voltou tudo (ou mais do que saiu na janela): não é venda.
+        .filter((l) => l.receita > 0)
+        .sort((a, b) => b.receita - a.receita),
     )
   })
 }

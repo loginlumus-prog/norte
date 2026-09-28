@@ -10,6 +10,7 @@ import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, cx } from '@/ui/base'
 import { Numero, Secao, brl } from '@/ui/painel'
+import { plural } from '@/ui/texto'
 import type { Tema } from '@/ui/TrocaTema'
 
 export const metadata: Metadata = { title: 'Fechamento do mês' }
@@ -37,6 +38,9 @@ const ROTULO: Record<string, string> = {
   atencao: 'olhe',
   pendente: 'falta',
 }
+
+/** Porcentagem com vírgula, do jeito brasileiro: "12,5%". */
+const pct = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
 
 /** O mês anterior ao de hoje, em São Paulo: é ele que se fecha, não o que está correndo. */
 const mesPassado = (): string => outroMes(mesDeAgora(), -1)
@@ -106,12 +110,18 @@ export default async function FechamentoDoMes({
           principal
           rotulo={`Resultado de ${f.titulo}`}
           valor={brl(f.dre.resultado)}
-          detalhe={f.dre.margem ? `margem de ${f.dre.margem.toFixed(0)}%` : 'sem venda no mês'}
+          detalhe={f.dre.margem ? `margem líquida de ${pct(f.dre.margem)}` : 'sem venda no mês'}
         />
         <Numero
           rotulo="Conferências prontas"
           valor={`${f.prontos} de ${f.itens.length}`}
-          detalhe={f.pendentes === 0 ? 'nada travando o mês' : `${f.pendentes} ainda travam o número`}
+          // "Travam" prometia uma trava que não existe (ver o rodapé): a
+          // pendência não impede nada, ela deixa o resultado menos confiável.
+          detalhe={
+            f.pendentes === 0
+              ? 'nada pendente'
+              : `${plural(f.pendentes, 'pendência ainda pode mudar', 'pendências ainda podem mudar')} o resultado`
+          }
           nivel={f.pendentes === 0 ? 'bom' : 'critico'}
         />
         <Numero
@@ -186,8 +196,9 @@ export default async function FechamentoDoMes({
           </table>
         </Cartao>
         <p className="text-xs text-tinta-3">
-          Este quadro não tranca nada: lançamento atrasado continua entrando, e o número se
-          refaz sozinho. A lista de cima é para você saber o que ainda falta, não para impedir.
+          Fechar o mês aqui não tranca nada: lançamento atrasado continua entrando, e o número
+          se refaz sozinho. A lista de cima diz o que ainda pode mudar o resultado — não impede
+          ninguém de lançar.
         </p>
       </Secao>
     </Estrutura>

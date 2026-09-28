@@ -37,7 +37,7 @@ export async function carregarContexto(orgId: string): Promise<Contexto | null> 
   return comoOrg(orgId, async (db) => {
     const org = await db.org.findUnique({
       where: { id: orgId },
-      select: { id: true, nome: true, slug: true, plano: true, situacao: true, modulos: true },
+      select: { id: true, nome: true, slug: true, plano: true, situacao: true, modulos: true, ramo: true },
     })
     if (!org) return null
     const agente = await db.agente.findUnique({ where: { orgId } })
@@ -46,7 +46,8 @@ export async function carregarContexto(orgId: string): Promise<Contexto | null> 
       orderBy: { criadaEm: 'asc' },
       select: { nome: true, endereco: true, bairro: true, cidade: true, horario: true, telefone: true },
     })
-    return { org, agente, loja: { empresa: org.nome, unidades } }
+    const { ramo, ...resto } = org
+    return { org: resto, agente, loja: { empresa: org.nome, ramo, unidades } }
   })
 }
 

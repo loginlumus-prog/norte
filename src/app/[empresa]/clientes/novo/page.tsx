@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -10,7 +11,9 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Editor } from '../Editor'
 import { ofertasNaTela } from '../ofertasNaTela'
 
-export const metadata: Metadata = { title: 'Novo cliente' }
+export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
+  return { title: (await vocabularioDoEndereco((await params).empresa)).novo }
+}
 
 export default async function NovoCliente({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params
@@ -29,7 +32,7 @@ export default async function NovoCliente({ params }: { params: Promise<{ empres
       itens={MENU(slug)}
       ativo={`/${slug}/clientes`}
       tema={tema}
-      titulo="Novo cliente"
+      titulo={(await vocabularioDaEmpresa(sessao.orgId)).novo}
     >
       <Secao titulo="Cadastro">
         <Editor slug={slug} ofertas={ofertas} />

@@ -151,6 +151,7 @@ export default async function Encomendas({
     <AcoesEncomenda
       slug={slug}
       id={e.id}
+      unidadeId={e.unidadeId}
       resumo={`${e.clienteNome} — ${e.descricao}`}
       situacao={e.situacao}
       falta={e.falta}

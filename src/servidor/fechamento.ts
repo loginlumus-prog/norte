@@ -21,14 +21,17 @@
 // que decide o que aparece em vermelho, e é o que tem teste.
 
 import { comoOrg } from './banco'
-import { exigir, pode, type Capacidade, type Sessao } from './permissao'
+import { exigir, pode, soAsQuePode, type Capacidade, type Sessao } from './permissao'
 import { plural } from './texto'
-import { diaEmSP, inicioDoDiaEmSP } from './dia'
-import { montarDRE, aVencer, type DRE } from './financeiro'
+import { colunaDoDia, diaEmSP, somarDias } from './dia'
+import { centavos, reais } from './dinheiro'
+import { montarDRE, janelaDoMes, outroMes, mesDeAgora, type DRE } from './financeiro'
 import { listarCaixas } from './caixa'
-import { resumoCrediario } from './crediario'
 import { taxasDaEmpresa } from './taxas'
 import { mesValido, nomeDoMes } from './metas'
+
+// A régua do mês mora em `financeiro.ts` (o DRE e o gráfico usam a mesma).
+export { janelaDoMes, outroMes, mesDeAgora }
 
 export type Situacao = 'ok' | 'atencao' | 'pendente'
 
@@ -56,13 +59,22 @@ export type ItemDoFechamento = {
  * ideia com o tempo e precisa de teste.
  */
 export type FatosDoMes = {
-  caixasAbertos: number
+  /**
+   * Turnos ABERTOS NO MÊS que ainda não fecharam. Nulo quando quem olha não
+   * vê o caixa: aí as duas linhas do caixa não aparecem — "0 turnos" para
+   * quem não enxerga turno nenhum seria mentira.
+   */
+  caixasAbertos: number | null
   /** Soma do que faltou ou sobrou nas gavetas, em módulo. */
   diferencaGaveta: number
   turnosFechados: number
+  /** Contas que venceram NO MÊS (até ontem) e seguem sem baixa. */
   contasVencidas: number
   valorVencido: number
-  /** Nulo quando a empresa não usa crediário. */
+  /**
+   * Parcelas que venceram NO MÊS (até ontem) e seguem em aberto. Nulo quando
+   * a empresa não usa crediário (ou quem olha não o vê).
+   */
   parcelasVencidas: number | null
   valorParcelasVencidas: number
   /** A loja recebeu em cartão ou Pix neste mês? */
@@ -80,7 +92,9 @@ export function conferir(f: FatosDoMes, slug: string): ItemDoFechamento[] {
   const brl = (v: number) =>
     v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-  const itens: ItemDoFechamento[] = [
+  const itens: ItemDoFechamento[] = []
+  // O caixa só entra para quem o vê. Ver o comentário em `FatosDoMes`.
+  if (f.caixasAbertos !== null) itens.push(
     {
       chave: 'caixas',
       titulo: 'Todo caixa do mês foi fechado',
@@ -98,28 +112,34 @@ export function conferir(f: FatosDoMes, slug: string): ItemDoFechamento[] {
       titulo: 'A gaveta bateu com o sistema',
       detalhe:
         f.turnosFechados === 0
-          ? 'nenhum turno fechado no mês'
+          ? 'nenhum turno fechado no mês: não houve gaveta para conferir'
           : f.diferencaGaveta === 0
             ? 'bateu em todos os turnos'
             : `${brl(f.diferencaGaveta)} de diferença somada`,
       porque:
         'Diferença pequena é troco. Diferença que repete é sangria que ninguém anotou, venda registrada errada, ou dinheiro saindo.',
+      // Sem turno fechado não há o que ter batido: "pronto" ali dizia que a
+      // gaveta foi conferida quando ninguém contou gaveta nenhuma.
       situacao:
-        f.turnosFechados === 0 || f.diferencaGaveta === 0
-          ? 'ok'
-          : f.diferencaGaveta <= GAVETA_TOLERANCIA
-            ? 'atencao'
-            : 'pendente',
+        f.turnosFechados === 0
+          ? 'atencao'
+          : f.diferencaGaveta === 0
+            ? 'ok'
+            : f.diferencaGaveta <= GAVETA_TOLERANCIA
+              ? 'atencao'
+              : 'pendente',
       onde:
         f.diferencaGaveta > 0 ? { texto: 'Conferir os turnos', href: `/${slug}/caixa` } : undefined,
     },
+  )
+  itens.push(
     {
       chave: 'contas',
       titulo: 'As contas do mês estão pagas',
       detalhe:
         f.contasVencidas === 0
-          ? 'nenhuma conta vencida em aberto'
-          : `${plural(f.contasVencidas, 'vencida', 'vencidas')}, somando ${brl(f.valorVencido)}`,
+          ? 'nenhuma conta do mês vencida em aberto'
+          : `${plural(f.contasVencidas, 'vencida', 'vencidas')} sem baixa, somando ${brl(f.valorVencido)}`,
       porque:
         'Conta vencida corre juro e multa enquanto fica parada, e some do resultado do mês em que era para ter sido paga.',
       situacao: f.contasVencidas === 0 ? 'ok' : 'pendente',
@@ -142,7 +162,7 @@ export function conferir(f: FatosDoMes, slug: string): ItemDoFechamento[] {
           ? { texto: 'Escrever as taxas', href: `/${slug}/configuracoes` }
           : undefined,
     },
-  ]
+  )
 
   // O crediário só aparece para quem usa. Linha de conferência sobre coisa
   // que a loja não faz é ruído, e ruído ensina a pular a lista inteira.
@@ -152,8 +172,8 @@ export function conferir(f: FatosDoMes, slug: string): ItemDoFechamento[] {
       titulo: 'O fiado do mês foi cobrado',
       detalhe:
         f.parcelasVencidas === 0
-          ? 'nenhuma parcela vencida'
-          : `${plural(f.parcelasVencidas, 'parcela vencida', 'parcelas vencidas')}, somando ${brl(f.valorParcelasVencidas)}`,
+          ? 'nenhuma parcela do mês vencida em aberto'
+          : `${plural(f.parcelasVencidas, 'parcela vencida', 'parcelas vencidas')} em aberto, somando ${brl(f.valorParcelasVencidas)}`,
       porque:
         'Parcela vencida é venda que já saiu do estoque e ainda não virou dinheiro. Quanto mais velha, menos se recebe.',
       situacao: f.parcelasVencidas === 0 ? 'ok' : 'atencao',
@@ -192,28 +212,6 @@ export type Fechamento = {
   pendentes: number
 }
 
-/**
- * Início e fim (exclusivo) de "AAAA-MM", à meia-noite de São Paulo.
- *
- * Já foi a meia-noite da máquina: num servidor em UTC o mês começava às 21h
- * do último dia do anterior, e a venda da noite de 31/08 entrava no
- * fechamento de setembro.
- */
-export function janelaDoMes(mes: string) {
-  const [a, m] = mes.split('-').map(Number)
-  const seguinte = new Date(Date.UTC(a!, m!, 1)).toISOString().slice(0, 7)
-  return { de: inicioDoDiaEmSP(`${mes}-01`), ate: inicioDoDiaEmSP(`${seguinte}-01`) }
-}
-
-/** O mês "AAAA-MM" somado de `n`. Aritmética de calendário, sem relógio. */
-export function outroMes(mes: string, n: number): string {
-  const [a, m] = mes.split('-').map(Number)
-  return new Date(Date.UTC(a!, m! - 1 + n, 1)).toISOString().slice(0, 7)
-}
-
-/** O mês de agora no calendário de São Paulo. */
-export const mesDeAgora = (agora: Date = new Date()) => diaEmSP(agora).slice(0, 7)
-
 // Quem abre cada tela para onde o fechamento aponta — a mesma régua que a
 // própria tela usa para não abrir.
 const QUEM_ABRE: { fim: string; capacidade: Capacidade; tela: string; quem: string }[] = [
@@ -242,6 +240,7 @@ export async function montarFechamento(
   mes: string,
   slug: string,
   usaCrediario: boolean,
+  agora: Date = new Date(),
 ): Promise<Fechamento> {
   exigir(sessao, 'financeiro.ver')
   if (!mesValido(mes)) throw new Error('Mês inválido.')
@@ -252,16 +251,57 @@ export async function montarFechamento(
   const fimDoMes = new Date(ate.getTime() - 1)
 
   const dre = await montarDRE(sessao, unidadeIds, de, fimDoMes)
-  const contas = await aVencer(sessao, unidadeIds, 15)
+
+  // TODA conferência é do mês que se fecha, não de hoje. Antes, abrir agosto
+  // em outubro mostrava o caixa que ficou aberto ontem e as contas que
+  // vencem esta semana — pendências de outro mês, pesando num mês que estava
+  // limpo. "Vencida" é o que venceu dentro do mês e antes de hoje: num mês
+  // que ainda corre, a conta que vence hoje ou amanhã não está atrasada.
+  const primeiroDia = `${mes}-01`
+  const ultimoDia = somarDias(`${outroMes(mes, 1)}-01`, -1)
+  const ontem = somarDias(diaEmSP(agora), -1)
+  const ateDia = ultimoDia < ontem ? ultimoDia : ontem
 
   const turnos = pode(sessao, 'caixa.ver')
-    ? await listarCaixas(sessao, { unidadeIds, de, ate })
-    : []
-  const fechados = turnos.filter((t) => !t.aberto)
-
-  const fiado = usaCrediario && pode(sessao, 'crediario.ver')
-    ? await resumoCrediario(sessao, unidadeIds)
+    ? await listarCaixas(sessao, { unidadeIds, de, ate, soDaJanela: true })
     : null
+  const fechados = (turnos ?? []).filter((t) => !t.aberto)
+
+  const lojasFin = soAsQuePode(sessao, 'financeiro.ver', unidadeIds)
+  const lojasCred = usaCrediario ? soAsQuePode(sessao, 'crediario.ver', unidadeIds) : []
+  const nada = ateDia < primeiroDia
+  const { contas, fiado } = await comoOrg(sessao.orgId, async (db) => {
+    const soma = nada
+      ? null
+      : await db.lancamento.aggregate({
+          where: {
+            tipo: 'DESPESA',
+            pagoEm: null,
+            vencimento: { gte: colunaDoDia(primeiroDia), lte: colunaDoDia(ateDia) },
+            OR: [{ unidadeId: { in: lojasFin } }, { unidadeId: null }],
+          },
+          _count: true,
+          _sum: { valor: true },
+        })
+    const contas = { quantas: soma?._count ?? 0, valor: Number(soma?._sum.valor ?? 0) }
+
+    if (lojasCred.length === 0) return { contas, fiado: null }
+    const parcelas = nada
+      ? []
+      : await db.parcela.findMany({
+          where: {
+            unidadeId: { in: lojasCred },
+            quitadaEm: null,
+            vencimento: { gte: colunaDoDia(primeiroDia), lte: colunaDoDia(ateDia) },
+          },
+          select: { valor: true, pago: true },
+        })
+    const abertas = parcelas.map((p) => centavos(p.valor) - centavos(p.pago)).filter((r) => r > 0)
+    return {
+      contas,
+      fiado: { parcelasVencidas: abertas.length, vencido: reais(abertas.reduce((s, r) => s + r, 0)) },
+    }
+  })
 
   const taxas = await taxasDaEmpresa(sessao)
 
@@ -289,11 +329,11 @@ export async function montarFechamento(
 
   const itens = soOQueAbre(conferir(
     {
-      caixasAbertos: turnos.length - fechados.length,
+      caixasAbertos: turnos ? turnos.length - fechados.length : null,
       diferencaGaveta: fechados.reduce((s, t) => s + Math.abs(t.diferenca ?? 0), 0),
       turnosFechados: fechados.length,
-      contasVencidas: contas.vencidas.length,
-      valorVencido: contas.totalVencido,
+      contasVencidas: contas.quantas,
+      valorVencido: contas.valor,
       parcelasVencidas: fiado ? fiado.parcelasVencidas : null,
       valorParcelasVencidas: fiado ? fiado.vencido : 0,
       recebeuEmMaquina,

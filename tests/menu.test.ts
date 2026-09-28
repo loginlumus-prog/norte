@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { MENU, noModo } from '../src/ui/menu'
-import { pode, type Sessao, type Papel } from '../src/servidor/permissao'
-import { moduloLigado, TODOS } from '../src/servidor/modulos'
+import { MENU, itemNaEmpresa, noModo, podeVerItem } from '../src/ui/menu'
+import { type Sessao, type Papel } from '../src/servidor/permissao'
+import { TODOS } from '../src/servidor/modulos'
 
 // O menu é a primeira coisa que cada perfil vê. Este teste é a lista do que
 // cada um DEVE ver — e, mais importante, do que NÃO deve. O balconista que
@@ -15,14 +15,15 @@ const sessao = (papel: Papel): Sessao => ({
 
 const visiveis = (papel: Papel, modulos: string[] = TODOS) =>
   MENU('x')
-    .filter((i) => pode(sessao(papel), i.exige) && (!i.modulo || moduloLigado({ modulos }, i.modulo)))
+    .filter((i) => podeVerItem(sessao(papel), i) && itemNaEmpresa(i, { modulos }))
     .map((i) => i.titulo)
 
 describe('o que cada perfil vê no menu', () => {
   it('o dono vê tudo', () => {
     expect(visiveis('DONO')).toEqual([
-      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Produtos', 'Estoque', 'Preços', 'Clientes', 'Equipe',
-      'Tarefas', 'Financeiro', 'Análise', 'Assistente', 'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
+      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Agenda', 'Funcionários', 'Produtos', 'Estoque',
+      'Compras', 'Material usado', 'Preços', 'Clientes', 'Equipe', 'Tarefas', 'Financeiro', 'Análise', 'Assistente',
+      'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
     ])
   })
 
@@ -31,7 +32,14 @@ describe('o que cada perfil vê no menu', () => {
     // Tarefas entra: a lista de abertura da loja é trabalho de quem abre a
     // loja, e ela dá baixa no que é dela. Preços não: quem não mexe em preço
     // não precisa ver o custo.
-    expect(v).toEqual(['Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Produtos', 'Estoque', 'Clientes', 'Tarefas'])
+    // Agenda, Funcionários (o próprio ponto) e Material usado entram: na
+    // recepção do salão é ela quem marca, bate o ponto e anota o esmalte.
+    // Compras não: é onde mora o CUSTO do que se compra.
+    expect(v).toEqual([
+      'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Agenda', 'Funcionários', 'Produtos', 'Estoque',
+      'Material usado', 'Clientes', 'Tarefas',
+    ])
+    expect(v).not.toContain('Compras')
     expect(v).not.toContain('Preços')
     expect(v).not.toContain('Painel')
     expect(v).not.toContain('Financeiro')
@@ -55,7 +63,11 @@ describe('o que cada perfil vê no menu', () => {
     // A Análise entra porque ela é leitura de resultado, que é o trabalho
     // dele. Lá dentro a escala dos turnos não aparece: aquela parte pede
     // `caixa.ver`, e quem fecha o mês não precisa saber quem abriu a gaveta.
-    expect(visiveis('CONTADOR')).toEqual(['Painel', 'Financeiro', 'Análise'])
+    //
+    // Funcionários e Compras também são dinheiro: as horas do mês são a folha
+    // de pagamento (que costuma ser ele quem fecha) e a compra é conta a
+    // pagar. Ele LÊ as duas — não bate ponto de ninguém, não pede nada.
+    expect(visiveis('CONTADOR')).toEqual(['Painel', 'Funcionários', 'Compras', 'Financeiro', 'Análise'])
   })
 
   it('o financeiro vê vendas e caixa, e não vende', () => {
@@ -73,6 +85,28 @@ describe('o que cada perfil vê no menu', () => {
     expect(visiveis('DONO', [])).not.toContain('Campanhas')
     expect(visiveis('BALCAO', [])).not.toContain('Crediário')
     expect(visiveis('DONO', [])).not.toContain('Encomendas')
+  })
+})
+
+describe('o atendimento no menu', () => {
+  it('Funcionários existe com o Ponto OU com a Agenda — é a lista de quem atende', () => {
+    expect(visiveis('DONO', ['agenda'])).toContain('Funcionários')
+    expect(visiveis('DONO', ['ponto'])).toContain('Funcionários')
+    expect(visiveis('DONO', ['compras'])).not.toContain('Funcionários')
+    expect(visiveis('DONO', ['ponto'])).not.toContain('Agenda')
+  })
+
+  it('o item de clientes leva a marca de vocabulário (vira "Pacientes" na clínica)', () => {
+    const c = MENU('x').find((i) => i.href === '/x/clientes')!
+    expect(c.vocabulario).toBe(true)
+    expect(MENU('x').filter((i) => i.vocabulario)).toHaveLength(1)
+  })
+
+  it('sem o módulo, nada do atendimento aparece', () => {
+    for (const papel of ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR'] as Papel[]) {
+      const v = visiveis(papel, [])
+      for (const t of ['Agenda', 'Funcionários', 'Compras', 'Material usado']) expect(v, papel).not.toContain(t)
+    }
   })
 })
 

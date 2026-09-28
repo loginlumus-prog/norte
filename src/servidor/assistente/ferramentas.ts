@@ -26,6 +26,9 @@ import { propor, AcimaDoTeto, PoderNegado, PODERES, type ChavePoder, type Poder 
 import { resumoDoPainel } from '../painel'
 import { janela, type Periodo } from '../periodo'
 import { previsaoDeRuptura } from '../ruptura'
+import { liberado } from '../planos'
+import { planoDaEmpresa } from '../relatorios'
+import { diaEmSP, inicioDoDiaEmSP, somarDias } from '../dia'
 import { listarCaixas } from '../caixa'
 import { aVencer } from '../financeiro'
 import { mostrar } from '../dinheiro'
@@ -35,6 +38,7 @@ import { unidadesVisiveis } from './contexto'
 import { buscarNoGuia } from '../guia'
 import { CAPACIDADES } from '../permissao'
 import type { Equipe } from './regras'
+import { consultarAgenda, consultarPagamentos, consultarPonto, proporDesmarcar, proporMarcar } from './ferramentas-atendimento'
 
 export type ResultadoFerramenta = { texto: string; erro?: boolean; propostaId?: string }
 
@@ -83,6 +87,16 @@ export async function executarFerramenta(
         return await proporLancamento(orgId, empresa, poder, entrada)
       case 'ajustar.estoque':
         return await proporAjuste(orgId, empresa, quem.sessao, entrada)
+      case 'agenda.consultar':
+        return await consultarAgenda(quem.sessao, entrada)
+      case 'agenda.marcar':
+        return await proporMarcar(orgId, empresa, quem.sessao, entrada)
+      case 'agenda.desmarcar':
+        return await proporDesmarcar(orgId, empresa, quem.sessao, entrada)
+      case 'pagamentos.consultar':
+        return await consultarPagamentos(quem.sessao, empresa, entrada)
+      case 'ponto.consultar':
+        return await consultarPonto(quem.sessao, entrada)
       default:
         return falha('Ferramenta indisponível nesta conversa.')
     }
@@ -134,6 +148,14 @@ async function verEstoque(sessao: Sessao, busca: string): Promise<ResultadoFerra
   if (unidades.length === 0) return falha('Nenhuma loja visível para esta pessoa.')
 
   if (!busca) {
+    // A previsão é do plano Rede para cima — a tela do estoque mostra a
+    // tranca; o assistente não pode entregar pela conversa o que a tela tranca.
+    if (!liberado(await planoDaEmpresa(sessao), 'ruptura.previsao')) {
+      return json({
+        trancado: true,
+        recado: 'A previsão do que vai faltar não está no plano desta empresa. Dá para procurar uma peça pelo nome ou código.',
+      })
+    }
     const linhas = await previsaoDeRuptura(sessao, unidades)
     const urgentes = linhas.filter((l) => ['ja_faltou', 'pedir_agora', 'atencao'].includes(l.previsao.situacao))
     return json({
@@ -182,9 +204,11 @@ async function verEstoque(sessao: Sessao, busca: string): Promise<ResultadoFerra
 
 async function verCaixa(sessao: Sessao): Promise<ResultadoFerramenta> {
   const unidades = await unidadesVisiveis(sessao, 'caixa.ver')
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0)
-  const amanha = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1)
+  // O dia de São Paulo, não o da máquina: num servidor em UTC o "hoje"
+  // começava às 21h da véspera.
+  const dia = diaEmSP()
+  const hoje = inicioDoDiaEmSP(dia)
+  const amanha = inicioDoDiaEmSP(somarDias(dia, 1))
   const turnos = await listarCaixas(sessao, { unidadeIds: unidades, de: hoje, ate: amanha })
   return json({
     turnosHoje: turnos.slice(0, 10).map((t) => ({

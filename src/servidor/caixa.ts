@@ -37,6 +37,40 @@ export async function caixaAberto(
   ).then((c) => (c ? { ...c, saldoAbertura: Number(c.saldoAbertura) } : null))
 }
 
+/**
+ * O caixa aberto da loja, preso até o fim da transação de quem chama.
+ *
+ * Venda em dinheiro, parcela recebida em dinheiro, sangria de devolução: tudo
+ * isso pendura dinheiro num turno. Sem a trava, o fechamento (outra aba,
+ * outro tablet) contava a gaveta e fechava o turno ENQUANTO a venda ainda
+ * gravava — a venda caía num turno já fechado, fora do esperado, e o turno
+ * seguinte "sobrava" o valor dela sem ninguém saber de onde.
+ *
+ * `for share`: duas vendas da mesma loja passam juntas (nenhuma muda o caixa),
+ * mas o fechamento — que pede `for update` — espera todas terminarem, e quem
+ * chega depois dele relê a linha, já fechada, e não acha caixa aberto.
+ *
+ * Com `caixaId`, confere que é DESTA loja e que continua aberto; sem ele,
+ * pega o aberto da loja. Devolve o id, ou null quando não há caixa aberto.
+ */
+export async function travarCaixaAberto(
+  db: Pick<BancoDaOrg, '$queryRaw'>,
+  unidadeId: string,
+  caixaId?: string | null,
+): Promise<string | null> {
+  const linhas = caixaId
+    ? await db.$queryRaw<{ id: string; unidade_id: string; aberto: boolean }[]>`
+        select id, unidade_id, aberto from caixas where id = ${caixaId} for share`
+    : await db.$queryRaw<{ id: string; unidade_id: string; aberto: boolean }[]>`
+        select id, unidade_id, aberto from caixas
+         where unidade_id = ${unidadeId} and aberto
+         order by aberto_em desc limit 1
+           for share`
+  const c = linhas[0]
+  if (!c || !c.aberto || c.unidade_id !== unidadeId) return null
+  return c.id
+}
+
 export type Abertura =
   | { ok: true; caixaId: string }
   | { ok: false; motivo: 'ja_aberto'; caixaId: string; abertoPor: string }
@@ -66,6 +100,14 @@ export async function abrirCaixa(
   if (!Number.isFinite(saldoAbertura) || saldoAbertura < 0) {
     throw new Error('O troco da abertura precisa ser um valor, zero ou mais.')
   }
+
+  // Depósito não vende, e loja desativada também não: caixa aberto ali seria
+  // a porta para uma venda que baixa estoque de onde ninguém atende.
+  const loja = await comoOrg(sessao.orgId, (db) =>
+    db.unidade.findUnique({ where: { id: unidadeId }, select: { ativa: true, ehDeposito: true } }),
+  )
+  if (!loja || !loja.ativa) throw new Error('Esta loja está desativada: não abre caixa.')
+  if (loja.ehDeposito) throw new Error('Depósito guarda estoque, não vende: não abre caixa. Escolha uma loja.')
 
   // Confere fora da transação: dois caixas abertos na mesma loja seria um
   // estado sem conserto, e recusar é resposta esperada, não erro.
@@ -155,6 +197,9 @@ export async function movimentarCaixa(
     })
     if (!caixa?.aberto) throw new CaixaFechado()
     exigir(sessao, 'caixa.operar', caixa.unidadeId)
+    // A trava do turno — ver `travarCaixaAberto`. A sangria digitada no
+    // segundo em que o outro tablet fecha não pode cair num turno já contado.
+    if (!(await travarCaixaAberto(db, caixa.unidadeId, caixaId))) throw new CaixaFechado()
 
     await db.caixaMovimento.create({
       data: {
@@ -263,6 +308,12 @@ export type Fechamento = {
   contado: number
   /** Positiva sobra, negativa falta. */
   diferenca: number
+  /**
+   * A conta inteira, como estava no fechamento. Só sai DEPOIS de fechar: a
+   * tela de fechamento não recebe o esperado antes (contagem às cegas — ver
+   * balcao/Caixa.tsx), e é daqui que ela mostra a conta.
+   */
+  conferencia: Conferencia
 }
 
 export async function fecharCaixa(
@@ -277,6 +328,13 @@ export async function fecharCaixa(
   const contadoC = centavos(saldoContado)
 
   return comoOrg(sessao.orgId, async (db) => {
+    // Trava a linha do turno ANTES de contar. Venda, recebimento e sangria
+    // que estão gravando neste instante seguram a mesma linha (`for share`,
+    // em `travarCaixaAberto`): o fechamento espera eles terminarem e conta
+    // com eles dentro; os que chegam depois esperam o fechamento e já
+    // encontram o turno fechado. Sem isto, a venda gravada entre a conta e o
+    // `update` ficava num turno fechado e fora do esperado.
+    await db.$queryRaw`select id from caixas where id = ${caixaId} for update`
     const caixa = await db.caixa.findUnique({
       where: { id: caixaId },
       select: { unidadeId: true, aberto: true },
@@ -325,7 +383,7 @@ export async function fecharCaixa(
       },
     })
 
-    return { esperado: reais(esperadoC), contado: reais(contadoC), diferenca: reais(difC) }
+    return { esperado: reais(esperadoC), contado: reais(contadoC), diferenca: reais(difC), conferencia: conf }
   })
 }
 
@@ -369,7 +427,18 @@ export type TurnoDeCaixa = {
 
 export async function listarCaixas(
   sessao: Sessao,
-  f: { unidadeIds: string[]; de: Date; ate: Date },
+  f: {
+    unidadeIds: string[]
+    de: Date
+    ate: Date
+    /**
+     * Só os turnos ABERTOS na janela, mesmo os que seguem abertos. Sem isto,
+     * o turno aberto agora entra em qualquer janela — que é o que a tela do
+     * caixa quer, e o que o fechamento de um mês passado não quer: o caixa
+     * esquecido ontem aparecia travando o fechamento de agosto.
+     */
+    soDaJanela?: boolean
+  },
 ): Promise<TurnoDeCaixa[]> {
   exigir(sessao, 'caixa.ver')
 
@@ -411,7 +480,7 @@ export async function listarCaixas(
         from caixas c
         join unidades u on u.id = c.unidade_id
        where c.unidade_id = any(${permitidas})
-         and (c.aberto or (c.aberto_em >= ${f.de} and c.aberto_em < ${f.ate}))
+         and (${!f.soDaJanela} and c.aberto or (c.aberto_em >= ${f.de} and c.aberto_em < ${f.ate}))
        order by c.aberto desc, c.aberto_em desc
        limit 300
     `

@@ -306,10 +306,15 @@ describe('guardar a linha própria', () => {
     expect((await estadoDaConexao(DONA_B)).linha.token).toEqual({ guardado: true, final: 'ab12' })
   })
 
-  it('canalPara lê a linha do banco e sai pela instância da própria empresa', async () => {
+  it('canalPara lê a linha do banco; com a porta fechada (canal NENHUM) nada sai, nem pela linha guardada', async () => {
     comChave()
+    // A B guardou a linha mas não conectou: a linha existe (a tela diz "falta
+    // conectar"), e mesmo assim campanha e rotina não saem por ela.
+    expect((await canalPara({ id: 'org-b', slug: 'vizinha-b' })).real).toBe(false)
+    await db.query(`update agentes set canal = 'ZAPI' where id = 'ag-b'`)
     const canal = await canalPara({ id: 'org-b', slug: 'vizinha-b' })
     expect(canal.real).toBe(true)
+    await db.query(`update agentes set canal = 'NENHUM' where id = 'ag-b'`)
     // e a A, sem linha e sem global, continua no de mentira
     expect((await canalPara({ id: 'org-a', slug: 'loja-a' })).real).toBe(false)
   })

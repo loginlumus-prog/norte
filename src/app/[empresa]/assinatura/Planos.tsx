@@ -28,7 +28,11 @@ import type { Plano } from '@prisma/client'
 import { MODULOS, type Modulo } from '@/servidor/modulos'
 import { PLANOS, RECOMENDADO, RECURSOS, temRecurso, type Mudanca } from '@/servidor/planos'
 import { Botao, Aviso } from '@/ui/base'
+import { Confirmar } from '@/ui/Confirmar'
 import { trocar, type EstadoAssinatura } from './acoes'
+
+/** Os nomes dos módulos, para gente: "Crediário", e não "crediario". */
+const nomes = (lista: string[]) => lista.map((x) => MODULOS[x as Modulo]?.titulo ?? x).join(', ')
 
 const brl = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -183,25 +187,59 @@ export function Planos({
                     </span>
                   )
                 ) : (
-                  <form action={agir}>
-                    <input type="hidden" name="plano" value={m.para} />
-                    <Botao
-                      type="submit"
-                      largo
-                      tom={eRecomendado ? 'principal' : 'secundario'}
-                      disabled={!podeTrocar || travado || pendente}
-                      carregando={pendente}
-                      className="py-2.5"
-                    >
-                      {m.sentido === 'subir' ? 'Mudar para este' : 'Voltar para este'}
-                    </Botao>
+                  <div>
+                    {m.sentido === 'descer' && podeTrocar && !travado ? (
+                      // Descer desliga módulos NA HORA — e era um clique só.
+                      // Agora pergunta, dizendo o que sai.
+                      <Confirmar
+                        tom="secundario"
+                        tomSim="perigo"
+                        className="w-full py-2.5"
+                        pergunta={
+                          <span className="block text-left">
+                            {m.perde.length > 0
+                              ? `Desliga agora: ${nomes(m.perde)}.`
+                              : 'Nenhum módulo sai.'}
+                            {PLANOS[atual].creditoMensal !== 0 && p.creditoMensal === 0
+                              ? ' O assistente para de responder.'
+                              : ''}{' '}
+                            Trocar mesmo?
+                          </span>
+                        }
+                        sim="Sim, trocar"
+                        aoConfirmar={() => {
+                          const fd = new FormData()
+                          fd.set('plano', m.para)
+                          agir(fd)
+                        }}
+                      >
+                        Voltar para este
+                      </Confirmar>
+                    ) : (
+                      // Fora do <form> o Confirmar: botão sem `type` dentro de
+                      // formulário é "submit", e o "Voltar para este" trocaria
+                      // o plano antes de perguntar.
+                      <form action={agir}>
+                        <input type="hidden" name="plano" value={m.para} />
+                        <Botao
+                          type="submit"
+                          largo
+                          tom={eRecomendado ? 'principal' : 'secundario'}
+                          disabled={!podeTrocar || travado || pendente}
+                          carregando={pendente}
+                          className="py-2.5"
+                        >
+                          {m.sentido === 'subir' ? 'Mudar para este' : 'Voltar para este'}
+                        </Botao>
+                      </form>
+                    )}
                     {m.diferenca !== null && m.diferenca !== 0 && (
                       <p className="numero pt-1.5 text-center text-[11px] text-tinta-3">
                         {m.diferenca > 0 ? '+' : ''}
                         {brl(m.diferenca)} por mês
                       </p>
                     )}
-                  </form>
+                  </div>
                 )}
               </div>
 
@@ -244,12 +282,12 @@ export function Planos({
                 <div className="flex flex-col gap-1 text-[11px]">
                   {m.ganha.length > 0 && (
                     <span className="text-bom">
-                      Passa a ter: {m.ganha.map((x) => MODULOS[x as Modulo].titulo).join(', ')}
+                      Passa a ter: {nomes(m.ganha)}
                     </span>
                   )}
                   {m.perde.length > 0 && (
                     <span className="text-critico">
-                      Deixa de ter: {m.perde.map((x) => MODULOS[x as Modulo].titulo).join(', ')}
+                      Deixa de ter: {nomes(m.perde)}
                     </span>
                   )}
                 </div>

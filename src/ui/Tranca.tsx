@@ -14,6 +14,19 @@
 // a vaga da pessoa pode ser tomada por outra: a tela tranca aos 30, a vaga
 // solta aos 10 — quem sai para almoçar volta e encontra a tela trancada,
 // nunca a sessão de outra pessoa.
+//
+// ── o que é do navegador e o que é do servidor ───────────────
+// A TRANCA em si mora só aqui, no navegador: quem abre as ferramentas do
+// navegador e apaga este quadro volta a mexer na tela. É uma escolha, não um
+// esquecimento. O servidor não sabe se a pessoa está mexendo — só sabe quando
+// ela PEDE alguma coisa —, e trancar pelo relógio do servidor derrubaria a
+// venda de quem passou meia hora montando um carrinho sem salvar nada. O que
+// é segurança de verdade está no servidor: a senha para destrancar passa pelo
+// freio do login (`destrancarAcao`), a vaga tomada por outra pessoa derruba a
+// sessão, e "Sair" mata o cookie no servidor. Se um dia a tranca precisar
+// valer contra quem mexe no navegador, o caminho é este componente mandar um
+// "ainda estou aqui" periódico enquanto há toque, e o servidor recusar ação
+// de sessão sem sinal há mais de TRANCA_MIN.
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { destrancarAcao, sairAcao } from '@/app/[empresa]/acoes'
@@ -97,8 +110,12 @@ export function Tranca({
       const n = erros + 1
       setErros(n)
       setSenha('')
-      setErro(n >= 5 ? 'Cinco tentativas erradas. Saindo.' : 'Senha errada.')
-      if (n >= 5) {
+      // O servidor manda sair quando a sessão acabou (a vaga foi usada por
+      // outra pessoa) ou quando o freio de tentativas segurou a conta.
+      const sair = r.sair || n >= 5
+      setErro(r.sair ? (r.erro ?? 'Saindo.') : n >= 5 ? 'Cinco tentativas erradas. Saindo.' : (r.erro ?? 'Senha errada.'))
+      if (sair) {
+        if (r.sair) await new Promise((fim) => setTimeout(fim, 2500))
         const form = new FormData()
         form.set('empresa', slug)
         await sairAcao(form)

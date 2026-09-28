@@ -38,7 +38,15 @@ function segredo(): string {
 // `nasceu` é o instante em que a sessão foi emitida. É o que permite matar
 // sessão antiga sem trocar o segredo do sistema inteiro: basta o usuário ter
 // um corte (`sessoes_desde`) mais recente que isto — ver `pagina.ts`.
-type Conteudo = Sessao & { exp: number; nasceu: number }
+//
+// `vaga` é a marca da vaga que esta sessão ocupa (ver `marcaDaVaga` em
+// presenca.ts). É ela que faz o teto de pessoas dentro valer DEPOIS do login:
+// a vaga tomada por outra pessoa, ou devolvida no "Sair", derruba o cookie na
+// próxima tela. `null` só para quem entra só com SUPORTE, que não ocupa vaga.
+type Conteudo = Sessao & { exp: number; nasceu: number; vaga?: string | null }
+
+/** A sessão com a marca da vaga que ela ocupa — é o que vai no cookie. */
+export type SessaoComVaga = Sessao & { vaga?: string | null }
 
 // A assinatura inclui o slug da empresa. Sem isso, alguém poderia pegar o
 // cookie válido da empresa A, renomear para o da empresa B e a assinatura
@@ -48,15 +56,23 @@ type Conteudo = Sessao & { exp: number; nasceu: number }
 const assinar = (slug: string, corpo: string) =>
   createHmac('sha256', segredo()).update(`${slug}.${corpo}`).digest('base64url')
 
-function empacotar(slug: string, sessao: Sessao): string {
+function empacotar(slug: string, sessao: SessaoComVaga): string {
   const agora = Date.now()
-  const conteudo: Conteudo = { ...sessao, nasceu: agora, exp: agora + DURACAO_HORAS * 36e5 }
+  const conteudo: Conteudo = {
+    orgId: sessao.orgId,
+    usuarioId: sessao.usuarioId,
+    nome: sessao.nome,
+    acessos: sessao.acessos,
+    vaga: sessao.vaga ?? null,
+    nasceu: agora,
+    exp: agora + DURACAO_HORAS * 36e5,
+  }
   const corpo = Buffer.from(JSON.stringify(conteudo)).toString('base64url')
   return `${corpo}.${assinar(slug, corpo)}`
 }
 
-/** O que o cookie devolve: a sessão mais o instante em que ela foi emitida. */
-export type SessaoNoCookie = Sessao & { nasceu: Date }
+/** O que o cookie devolve: a sessão, o instante em que foi emitida e a vaga. */
+export type SessaoNoCookie = Sessao & { nasceu: Date; vaga: string | null }
 
 function desempacotar(slug: string, valor: string): SessaoNoCookie | null {
   const [corpo, assinatura] = valor.split('.')
@@ -82,6 +98,10 @@ function desempacotar(slug: string, valor: string): SessaoNoCookie | null {
       // começo dos tempos" — ou seja, o primeiro corte o derruba. É o que a
       // gente quer: na dúvida, manda entrar de novo.
       nasceu: new Date(c.nasceu ?? 0),
+      // Cookie de antes da vaga ir no cookie: sem marca. Para quem ocupa vaga,
+      // isso não confere com presença nenhuma e ele cai — é a mesma regra do
+      // `nasceu`: na dúvida, entra de novo.
+      vaga: typeof c.vaga === 'string' ? c.vaga : null,
       acessos: c.acessos.map((a) => ({
         papel: a.papel,
         unidadeId: a.unidadeId,
@@ -93,7 +113,7 @@ function desempacotar(slug: string, valor: string): SessaoNoCookie | null {
   }
 }
 
-export async function abrirSessao(slugEmpresa: string, sessao: Sessao) {
+export async function abrirSessao(slugEmpresa: string, sessao: SessaoComVaga) {
   const cookieStore = await cookies()
   cookieStore.set(PREFIXO + slugEmpresa, empacotar(slugEmpresa, sessao), {
     httpOnly: true, // JavaScript da página não alcança

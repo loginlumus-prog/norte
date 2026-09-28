@@ -9,7 +9,9 @@
 //   GET  /sessoes/:orgId           o estado; com o QR (PNG em data URL) quando
 //                                  aguardando_qr; o número mascarado
 //   POST /sessoes/:orgId/sair      desconecta o aparelho e apaga a sessão
-//   POST /sessoes/:orgId/enviar    { numero, texto } ou { numero, midia }
+//   POST /sessoes/:orgId/enviar    { numero, texto } ou { numero, midia }, e
+//                                  `chave` opcional: o mesmo envio repetido
+//                                  (mesma chave) não sai duas vezes
 //   GET  /saude                    está vivo? quantas conectadas?
 //
 // NÃO existe envio em massa, e é de propósito: um destino por pedido, e cada
@@ -21,6 +23,7 @@ import { lerConfig } from './config'
 import { log, resumoDoErro } from './log'
 import { ClienteNorte } from './norte'
 import { ID_EMPRESA, Sessoes, type Conteudo, type Midia } from './sessoes'
+import { CHAVE_ENVIO } from './idempotencia'
 import { ligarRelogio, type Relogio } from './relogio'
 
 const lido = lerConfig(process.env)
@@ -54,15 +57,17 @@ async function lerCorpo(req: IncomingMessage): Promise<unknown> {
 }
 
 /** O que o Norte pediu para mandar, conferido campo a campo. */
-function lerEnvio(c: unknown): { numero: string; conteudo: Conteudo } | { erro: string } {
+function lerEnvio(c: unknown): { numero: string; conteudo: Conteudo; chave: string | null } | { erro: string } {
   if (!c || typeof c !== 'object') return { erro: 'corpo vazio' }
   const o = c as Record<string, unknown>
   const numero = typeof o.numero === 'string' ? o.numero.replace(/\D/g, '') : ''
   if (numero.length < 10 || numero.length > 15) return { erro: 'número inválido' }
+  // Chave fora do formato não derruba o envio: só não protege contra repetição.
+  const chave = typeof o.chave === 'string' && CHAVE_ENVIO.test(o.chave) ? o.chave : null
   if (typeof o.texto === 'string') {
     const texto = o.texto.trim()
     if (!texto) return { erro: 'texto vazio' }
-    return { numero, conteudo: { texto: texto.slice(0, MAXIMO_TEXTO) } }
+    return { numero, conteudo: { texto: texto.slice(0, MAXIMO_TEXTO) }, chave }
   }
   const m = o.midia as Record<string, unknown> | undefined
   if (m && typeof m === 'object') {
@@ -81,7 +86,7 @@ function lerEnvio(c: unknown): { numero: string; conteudo: Conteudo } | { erro: 
       ...(typeof m.legenda === 'string' && m.legenda.trim() ? { legenda: m.legenda.trim().slice(0, 1_000) } : {}),
       ...(m.comoGravado === true ? { comoGravado: true } : {}),
     }
-    return { numero, conteudo: { midia } }
+    return { numero, conteudo: { midia }, chave }
   }
   return { erro: 'mande texto ou mídia' }
 }
@@ -125,7 +130,7 @@ const servidor = createServer(async (req, res) => {
           status = 400
           return responder(res, 400, { ok: false, motivo: pedido.erro })
         }
-        const r = await sessoes.enviar(orgId, pedido.numero, pedido.conteudo)
+        const r = await sessoes.enviar(orgId, pedido.numero, pedido.conteudo, pedido.chave)
         status = r.ok ? 200 : r.status
         return responder(res, status, r.ok ? { ok: true, id: r.id } : { ok: false, motivo: r.motivo })
       }

@@ -63,7 +63,7 @@ export default async function TelaLojas({ params }: { params: Promise<{ empresa:
       <p className="max-w-2xl text-sm leading-relaxed text-tinta-2">
         {limite === null
           ? `O plano ${plano.titulo} não tem limite de lojas.`
-          : `O plano ${plano.titulo} comporta ${limite === 1 ? '1 loja' : `até ${limite} lojas`} abertas — você tem ${ativas}.`}{' '}
+          : `O plano ${plano.titulo} comporta ${limite === 1 ? '1 loja aberta' : `até ${limite} lojas abertas`} — você tem ${ativas}.`}{' '}
         Cada loja tem o próprio estoque, o próprio caixa e o próprio balcão. O que cada uma vende
         se escolhe na ficha do produto, em &ldquo;Vendido em&rdquo;.
       </p>

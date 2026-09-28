@@ -72,6 +72,14 @@ export const NOME_DA_CAPACIDADE: Record<Capacidade, string> = {
   'produto.preco': 'mexer em preço',
   'estoque.ver': 'ver o estoque',
   'estoque.ajustar': 'ajustar o estoque',
+  'estoque.consumir': 'anotar o material usado',
+  'compra.ver': 'ver as compras e os fornecedores',
+  'compra.gerir': 'fazer e receber pedidos de compra',
+  'agenda.ver': 'ver a agenda',
+  'agenda.marcar': 'marcar e desmarcar horários',
+  'ponto.proprio': 'bater o próprio ponto',
+  'ponto.ver': 'ver as horas de todos',
+  'ponto.gerir': 'bater, ajustar e anular o ponto dos outros',
   'cliente.ver': 'ver clientes',
   'cliente.editar': 'cadastrar e editar clientes',
   'tarefa.ver': 'ver o quadro de tarefas',
@@ -116,7 +124,7 @@ export const GUIA: Entrada[] = [
     titulo: 'Painel',
     caminho: '',
     oQueE:
-      'A primeira tela do dia, em dois modos. No SIMPLES: quanto vendeu hoje (comparado com o mesmo dia da semana passada até a mesma hora), o que precisa de você agora — o que acabou, conta vencida ou que vence hoje, fiado vencido, tarefa atrasada, caixa esquecido aberto, proposta do assistente —, atalhos para o que se faz mais e os mais vendidos da semana. Nos dois modos, o bloco "Hoje na sua…" muda com o RAMO da loja: grade quebrada na loja de roupa, sabores na sorveteria, encomendas e produção na padaria, o que repor na mercearia. No AVANÇADO: o resumo do período escolhido, com todos os gráficos — movimento por dia e por hora, formas de pagamento, categorias, parados, estoque, crediário, equipe e clientes. Exige a permissão de ler relatório — quem só vende cai direto no Balcão.',
+      'A primeira tela do dia, em dois modos. No SIMPLES: quanto vendeu hoje (comparado com o mesmo dia da semana passada até a mesma hora), o que precisa de você agora — o que acabou, conta vencida ou que vence hoje, fiado vencido, tarefa atrasada, caixa esquecido aberto, proposta do assistente —, atalhos para o que se faz mais e os mais vendidos da semana. Nos dois modos, o bloco "Hoje na sua…" muda com o RAMO da loja: grade quebrada na loja de roupa, sabores na sorveteria, encomendas e produção na padaria, o que repor na mercearia, e, no salão e na clínica, a agenda do dia — próximos horários, onde ainda cabe alguém, faltas, o que foi atendido e recebido. No AVANÇADO: o resumo do período escolhido, com todos os gráficos — movimento por dia e por hora, formas de pagamento, categorias, parados, estoque, crediário, equipe e clientes. Exige a permissão de ler relatório — quem só vende cai direto no Balcão.',
     comoFazer: [
       {
         titulo: 'Trocar entre o modo simples e o avançado',
@@ -618,6 +626,156 @@ export const GUIA: Entrada[] = [
   },
 
   // ── Produtos ──
+  // ── Agenda ──
+  {
+    chave: 'agenda',
+    titulo: 'Agenda',
+    caminho: '/agenda',
+    abre: ['agenda.ver'],
+    modulo: 'agenda',
+    oQueE:
+      'Os horários marcados de uma loja. No DIA, uma coluna por profissional (quem tem “atende com horário marcado” na ficha, em Funcionários), com os horários do dia e, embaixo, os LIVRES que ainda cabem — tocar num livre abre o “Novo horário” já preenchido. Na SEMANA, os sete dias lado a lado, com filtro por profissional. Cada horário anda: marcado → confirmado → atendido; ou faltou; ou desmarcado (com motivo). Nada se apaga. “Atender e cobrar” abre o Balcão com o serviço e o cliente já na venda; ao concluir, o horário fica atendido e ligado à venda. Duas pessoas não marcam a mesma profissional na mesma hora: o sistema trava e confere. Só existe com o módulo Agenda ligado em Configurações › Módulos (planos pagos).',
+    comoFazer: [
+      {
+        titulo: 'Marcar um horário',
+        passos: [
+          '“+ Novo horário”, ou toque num horário livre na coluna da profissional (já vem com ela, o dia e a hora).',
+          'Escolha quem atende e o serviço do catálogo — a duração vem do serviço (“Duração na agenda”, na ficha do produto). Serviço fora do catálogo: “Outro (escrever)”.',
+          'Dia e hora no relógio da loja. Fora do horário de funcionamento (escrito em Lojas) ou no passado, a tela pede “é isso mesmo”.',
+          'Para quem: busque no cadastro ou escreva só o nome e o WhatsApp.',
+          'Observação só para combinados do atendimento. Na clínica, a tela lembra: informação de saúde não entra ali.',
+          '“Marcar horário”. Se a profissional já tiver alguém nesse horário, a tela diz quem e não marca.',
+        ],
+        capacidade: 'agenda.marcar',
+        plano: 'BALCAO',
+      },
+      {
+        titulo: 'Confirmar, anotar falta, remarcar e desmarcar',
+        passos: [
+          '“Confirmar” quando o cliente disser que vem (fica verde). Confirmou por engano? “Desfazer confirmação”.',
+          '“Faltou” pergunta antes e fica na história do dia — o horário volta a ficar livre.',
+          '“Remarcar” abre o formulário preenchido: troque dia, hora, profissional ou serviço. O lembrete volta a valer para o horário novo.',
+          '“Desmarcar” pede o motivo, que fica no livro de auditoria. Desmarcado não volta: se foi engano, marque de novo.',
+        ],
+        capacidade: 'agenda.marcar',
+      },
+      {
+        titulo: 'Atender e cobrar',
+        passos: [
+          '“Atender e cobrar” no horário abre o Balcão da loja com o serviço (se é do catálogo) e o cliente já na venda.',
+          'Acrescente o que mais for vendido — um esmalte, um produto — e receba como qualquer venda.',
+          'Ao concluir, o horário fica “Atendido” e ligado à venda (“Cobrado · ver a venda”). O mesmo horário não se cobra duas vezes.',
+          'Atendeu sem cobrar agora (retorno, cortesia)? “Atendido” marca sem venda; dá para cobrar depois pelo mesmo botão.',
+        ],
+        capacidade: 'venda.criar',
+      },
+      {
+        titulo: 'Ver a semana e achar vaga',
+        passos: [
+          'No alto, “Semana”: os sete dias, com quantos horários cada um tem.',
+          'Filtre por quem atende para ver a semana de uma pessoa só.',
+          'Toque no dia para abrir o dia, com os horários livres de cada profissional.',
+          '‹ e › andam dia a dia (ou semana a semana); “Hoje” volta para hoje.',
+        ],
+        capacidade: 'agenda.ver',
+      },
+      {
+        titulo: 'Quem aparece como coluna',
+        passos: [
+          'Em Funcionários, abra a ficha da pessoa e marque “Atende com horário marcado”.',
+          'A pessoa não precisa ter login no sistema: a manicure que nunca abre o Norte tem agenda do mesmo jeito.',
+          'Quem circula entre as lojas (ficha sem loja) aparece na agenda de todas.',
+          'Quem saiu (ficha desmarcada em “Trabalha aqui”) some das colunas; os horários dela continuam na história.',
+        ],
+        capacidade: 'equipe.gerir',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'O cliente recebe lembrete do horário?',
+        r: 'Só se a loja ligar em Configurações › Lembrete do horário (desligado por padrão), e só para quem aceitou receber mensagens da loja no WhatsApp e não pediu para parar. Texto fixo, sem IA; a resposta do cliente vai para a equipe. Sai pelo WhatsApp do assistente.',
+      },
+      {
+        p: 'Posso anotar sintoma ou diagnóstico na observação?',
+        r: 'Não. O Norte não guarda prontuário: informação de saúde é dado sensível e fica com o profissional, no sistema próprio dele. A observação é para combinados do atendimento.',
+      },
+      {
+        p: 'Por que o horário das 19h não aparece como livre?',
+        r: 'Os livres seguem o horário de funcionamento escrito na ficha da loja (em Lojas). Fora dele dá para marcar mesmo assim — a tela pede “é isso mesmo”.',
+      },
+    ],
+    palavras: ['horario', 'marcar', 'agendamento', 'agendar', 'consulta', 'hora marcada', 'remarcar', 'desmarcar', 'falta', 'faltou', 'profissional', 'manicure', 'paciente', 'livre', 'vaga'],
+  },
+
+  // ── Funcionários e ponto ──
+  {
+    chave: 'funcionarios',
+    titulo: 'Funcionários',
+    caminho: '/funcionarios',
+    abre: ['ponto.proprio', 'ponto.ver', 'equipe.ver'],
+    oQueE:
+      'Quem trabalha na empresa — com ou sem login no sistema — e, com o módulo “Funcionários e ponto”, as horas de cada um. Quem tem a conta ligada à ficha bate o PRÓPRIO ponto no botão grande do alto e vê a própria folha; quem gere a equipe cadastra as fichas, bate o ponto de quem não tem login, lança a batida que faltou e anula a errada, sempre com motivo; o dono e o contador leem o mês de todos: horas trabalhadas contra as combinadas, extras, faltas e o que falta ajustar. É CONTROLE INTERNO da empresa, não um ponto eletrônico certificado (REP, Portaria MTP 671/2021). Com o Ponto desligado e a Agenda ligada, a tela é a lista de quem atende na agenda.',
+    comoFazer: [
+      {
+        titulo: 'Cadastrar quem trabalha',
+        passos: [
+          '“+ Cadastrar quem trabalha”: nome, cargo, telefone e a loja (ou “todas as lojas”, para quem circula — só quem responde por todas cadastra assim).',
+          'Conta no sistema: ligue a conta da pessoa, se ela entra no Norte. Sem conta, quem bate o ponto dela é o gestor.',
+          'Com a Agenda ligada, marque “Atende com horário marcado” para ela virar coluna na agenda.',
+          'Jornada combinada: as horas de cada dia da semana (vazio é folga). Sem jornada, a folha mostra só as horas trabalhadas.',
+          'Quem saiu: abra a “Ficha” e desmarque “Trabalha aqui”. Nada se apaga.',
+        ],
+        capacidade: 'equipe.gerir',
+        plano: 'BALCAO',
+      },
+      {
+        titulo: 'Bater o ponto',
+        passos: [
+          'Com a conta ligada à sua ficha, o alto da tela mostra “Meu ponto” e o botão “Bater entrada” (ou “Bater saída”, se você já entrou).',
+          'O botão bate o que ele mostra: se outra aba já bateu, a tela avisa em vez de gravar duas vezes.',
+          'Para quem não tem login, o gestor bate na linha da pessoa (“Bater entrada”/“Bater saída”) — a folha diz que foi batido por ele.',
+          'O turno que passa da meia-noite conta no dia em que começou.',
+        ],
+        capacidade: 'ponto.proprio',
+      },
+      {
+        titulo: 'Corrigir o ponto: batida que faltou e batida errada',
+        passos: [
+          'Abra a “Folha” da pessoa.',
+          '“Lançar batida que faltou”: entrada ou saída, dia, hora e o motivo (obrigatório). Entra como AJUSTE, com o seu nome.',
+          'Batida errada: em “Todas as batidas do mês”, “Anular”, com o motivo. Ela continua na folha, riscada.',
+          'Nada se apaga nem se reescreve — nem pelo sistema, nem por fora dele.',
+        ],
+        capacidade: 'ponto.gerir',
+      },
+      {
+        titulo: 'Fechar o mês',
+        passos: [
+          'A lista mostra, para cada pessoa, as horas trabalhadas contra as combinadas até hoje, os extras, as faltas e o que falta ajustar.',
+          '‹ e › trocam o mês.',
+          '“Folha” abre o dia a dia: cada turno, entrada e saída, o que passou do combinado e os dias sem batida em dia de trabalho (falta).',
+          '“A ajustar” é turno sem saída (ou saída sem entrada): alguém esqueceu de bater. Corrija antes de fechar.',
+        ],
+        capacidade: 'ponto.ver',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'Este ponto vale para a fiscalização do trabalho?',
+        r: 'Não. É controle interno da empresa: não é um registrador eletrônico de ponto certificado (REP, Portaria MTP 671/2021) e não emite comprovante com valor de fiscalização. O que ele garante é a trilha: nada se apaga, e toda correção tem motivo e nome.',
+      },
+      {
+        p: 'A balconista vê as horas dos colegas?',
+        r: 'Não. Cada um vê a própria folha. As horas de todos são para quem vê o ponto da equipe (dono, gerente, financeiro e o contador).',
+      },
+      {
+        p: 'Esqueci de bater a saída ontem. E agora?',
+        r: 'O dia fica “a ajustar”. Quem gere a equipe lança a saída em “Lançar batida que faltou”, com o motivo.',
+      },
+    ],
+    palavras: ['ponto', 'bater ponto', 'folha', 'horas', 'hora extra', 'jornada', 'funcionario', 'colaborador', 'entrada', 'saida', 'falta', 'turno', 'escala', 'profissionais'],
+  },
+
   {
     chave: 'produtos',
     titulo: 'Produtos',
@@ -803,6 +961,128 @@ export const GUIA: Entrada[] = [
   },
 
   // ── Preços ──
+  // ── Compras ──
+  {
+    chave: 'compras',
+    titulo: 'Compras',
+    caminho: '/compras',
+    abre: ['compra.ver'],
+    modulo: 'compras',
+    oQueE:
+      'Os pedidos ao fornecedor: o que se pediu, o custo combinado, o que já chegou e o que falta. O pedido nasce RASCUNHO, vira “mandado” quando vai ao fornecedor, “chegou em parte” e “recebido”. RECEBER dá entrada no estoque pelo MESMO caminho da entrada de mercadoria da tela de Estoque: o saldo sobe, o custo do produto passa a ser o desta compra e, se marcado, a conta a pagar do fornecedor vai para o Financeiro. O mesmo recebimento enviado duas vezes (clique duplo) entra uma vez só. Embaixo, o cadastro de fornecedores. Só existe com o módulo Compras ligado em Configurações › Módulos (planos pagos).',
+    comoFazer: [
+      {
+        titulo: 'Fazer um pedido',
+        passos: [
+          '“+ Novo pedido de compra”.',
+          'A loja (ou o depósito) onde a mercadoria vai entrar, o fornecedor e, se quiser, a data prevista.',
+          'Procure cada item pelo nome ou código; ponha a quantidade e o custo combinado (vem o custo atual do produto). Serviço não entra.',
+          '“Salvar pedido”: ele abre na tela dele, como rascunho.',
+          'Quando mandar ao fornecedor, “Mandei o pedido ao fornecedor”.',
+        ],
+        capacidade: 'compra.gerir',
+        plano: 'BALCAO',
+      },
+      {
+        titulo: 'Receber o que chegou',
+        passos: [
+          'Abra o pedido e toque em “Chegou — dar entrada”.',
+          'Cada item vem com o que falta; mude para o que chegou de verdade (chegou em parte é normal). Não dá para receber mais do que falta.',
+          'Confira o custo desta entrega: ele passa a ser o custo do produto (para quem pode mexer em preço).',
+          'Marque “Lançar a conta a pagar” com a categoria e o vencimento, se quiser — vai para o Financeiro com o valor desta entrega.',
+          '“Dar entrada no estoque”. O pedido vira “recebido” ou “chegou em parte”, e cada recebimento fica listado.',
+        ],
+        capacidade: 'compra.gerir',
+      },
+      {
+        titulo: 'Encerrar ou cancelar',
+        passos: [
+          'Chegou em parte e o resto não vem mais: “Dar por encerrado”.',
+          'Nada chegou e o pedido morreu: “Cancelar pedido”, com o motivo.',
+          'O que já entrou no estoque não se cancela aqui — corrija pela tela de Estoque, se preciso.',
+        ],
+        capacidade: 'compra.gerir',
+      },
+      {
+        titulo: 'Cadastrar fornecedor',
+        passos: [
+          '“+ Fornecedor” embaixo da lista.',
+          'Nome; telefone e CNPJ/CPF são opcionais.',
+          'Com ele, o pedido, a entrada no estoque e a conta a pagar levam o nome do fornecedor.',
+        ],
+        capacidade: 'compra.gerir',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'Receber o pedido e dar entrada no Estoque é a mesma coisa?',
+        r: 'É o mesmo caminho: receber o pedido chama a entrada de mercadoria. Não dê entrada de novo na tela de Estoque, senão conta duas vezes.',
+      },
+      {
+        p: 'Cliquei duas vezes em “Dar entrada”. Entrou em dobro?',
+        r: 'Não. Cada recebimento leva uma chave; o mesmo envio repetido é reconhecido e nada entra de novo.',
+      },
+      {
+        p: 'A balconista vê quanto custou?',
+        r: 'Não. Compras mostra o custo, e abre para quem gere as compras, o financeiro e o contador. Para anotar o material usado, existe a tela Material usado, sem custo.',
+      },
+    ],
+    palavras: ['compra', 'pedido', 'fornecedor', 'receber', 'recebimento', 'chegou', 'mercadoria', 'insumo', 'reposicao', 'nota'],
+  },
+
+  // ── Material usado ──
+  {
+    chave: 'consumo',
+    titulo: 'Material usado',
+    caminho: '/compras/consumo',
+    abre: ['estoque.consumir'],
+    modulo: 'compras',
+    oQueE:
+      'O material que se gasta dentro de casa: o esmalte e a acetona do salão, a luva e a seringa da clínica, o algodão. Sai do estoque como CONSUMO — não é venda (não entra no faturamento) e não é perda (não é sumiço). Quem atende anota; o saldo fica certo sem balanço, e o que acaba aparece no estoque a tempo de pedir de novo. Embaixo, o que foi anotado nos últimos 30 dias, e quem anotou.',
+    comoFazer: [
+      {
+        titulo: 'Anotar o que foi usado',
+        passos: [
+          'Procure o material pelo nome ou código.',
+          'Ponha quanto foi usado (na medida do produto: unidade, ml, grama).',
+          'Se quiser, “Para quê” (“atendimentos da manhã”) — aparece no histórico do estoque.',
+          '“Anotar consumo”. Sem saldo em um item, nada é anotado e a tela diz qual.',
+        ],
+        capacidade: 'estoque.consumir',
+        plano: 'BALCAO',
+      },
+      {
+        titulo: 'Conferir o que foi gasto',
+        passos: [
+          'A lista de baixo mostra os últimos 30 dias: o quê, quanto, quando e quem anotou.',
+          'Na tela de Estoque, o histórico do produto mostra cada consumo como “Consumo interno”.',
+          'Anotou errado? Corrija pela tela de Estoque (ajuste), com motivo.',
+        ],
+        capacidade: 'estoque.ver',
+      },
+      {
+        titulo: 'Deixar o material pronto para anotar',
+        passos: [
+          'Cadastre o material em Produtos (categoria “Material de uso” ou “Insumos”, por exemplo), com a medida certa.',
+          'Dê entrada pelo pedido de compra (Compras) ou pela entrada de mercadoria (Estoque).',
+          'Esmalte e tinta por cor: use o eixo Cor na ficha do produto.',
+        ],
+        capacidade: 'produto.editar',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'Consumo entra no faturamento ou como perda?',
+        r: 'Nenhum dos dois. É material usado para atender: sai do estoque como consumo interno, separado de venda e de perda.',
+      },
+      {
+        p: 'Posso anotar um serviço como consumo?',
+        r: 'Não. Serviço não tem estoque; só mercadoria (o que tem saldo) se anota aqui.',
+      },
+    ],
+    palavras: ['consumo', 'consumo interno', 'material', 'insumo', 'esmalte', 'luva', 'algodao', 'acetona', 'gasto', 'usei'],
+  },
+
   {
     chave: 'precos',
     titulo: 'Preços',
@@ -867,7 +1147,7 @@ export const GUIA: Entrada[] = [
     caminho: '/clientes',
     abre: ['cliente.ver'],
     oQueE:
-      'Quem compra: nome, WhatsApp, quanto gastou, quantas compras, há quanto tempo não vem, pontos e dívida no crediário. Filtros por quem some há 60+ dias, quem nunca comprou, cadastrados há 30 dias, aniversariantes do mês, com pontos, devendo. A ficha mostra as compras mês a mês, o que a pessoa mais leva, vales de troca, parcelas e o extrato de pontos.',
+      'Quem compra — na clínica a tela se chama Pacientes, na escola Alunos, e é a mesma: nome, WhatsApp, quanto gastou, quantas compras, há quanto tempo não vem, pontos e dívida no crediário. Filtros por quem some há 60+ dias, quem nunca comprou, cadastrados há 30 dias, aniversariantes do mês, com pontos, devendo. A ficha mostra as compras mês a mês, o que a pessoa mais leva, vales de troca, parcelas e o extrato de pontos.',
     comoFazer: [
       {
         titulo: 'Cadastrar um cliente',
@@ -1690,7 +1970,7 @@ export const GUIA: Entrada[] = [
     caminho: '/configuracoes',
     abre: ['empresa.configurar'],
     oQueE:
-      'O que a empresa usa: os módulos (crediário, nota fiscal, mais de uma unidade, agente no WhatsApp, metas e comissão, encomenda) e o jeito de vender no balcão (botões ou etiqueta); o programa de pontos; as taxas de maquininha e Pix; as regras do crediário; e os dados da empresa. Só quem configura a empresa mexe.',
+      'O que a empresa usa: os módulos (crediário, nota fiscal, mais de uma unidade, agente no WhatsApp, metas e comissão, encomenda, agenda, funcionários e ponto, compras) e o jeito de vender no balcão (botões ou etiqueta); o lembrete do horário no WhatsApp (com a Agenda ligada: desligado por padrão, texto fixo, só para quem aceitou mensagens); o programa de pontos; as taxas de maquininha e Pix; as regras do crediário; e os dados da empresa. Só quem configura a empresa mexe.',
     comoFazer: [
       {
         titulo: 'Ligar e desligar módulos',

@@ -39,6 +39,10 @@ export type ProdutoNaTela = {
   custo: string
   /** Dias, como texto do campo. Vazio = não informado. */
   prazoReposicaoDias: string
+  /** É serviço (sem estoque). */
+  servico?: boolean
+  /** Minutos na agenda, como texto do campo. */
+  duracaoMin?: string
   /** Ids das lojas onde é vendido. Vazio = todas. */
   vendidoEm: string[]
   ativo: boolean
@@ -46,6 +50,8 @@ export type ProdutoNaTela = {
   marcadas: Record<string, string[]>
   /** Combinações que já têm venda ou movimento — não somem, desativam. */
   comHistorico: number
+  /** Falso = quem abre não vê o custo deste produto; o campo nem aparece. */
+  verCusto?: boolean
   /**
    * Vendido em lojas que quem abre a ficha não cuida: preço, custo, lojas,
    * medida, situação e grade ficam só para ler (o servidor recusa de todo
@@ -183,18 +189,23 @@ export function Editor({
           iguais a ele.
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Campo rotulo="À vista" name="precoVista" required readOnly={travado} defaultValue={produto?.precoVista ?? ''} placeholder="49,90" inputMode="decimal" />
-          <Campo rotulo="No cartão" name="precoCartao" readOnly={travado} defaultValue={produto?.precoCartao ?? ''} placeholder="54,90" inputMode="decimal" />
-          <Campo rotulo="No crediário" name="precoCrediario" readOnly={travado} defaultValue={produto?.precoCrediario ?? ''} placeholder="59,90" inputMode="decimal" />
-          <Campo
-            rotulo="Custo"
-            name="custo"
-            readOnly={travado}
-            defaultValue={produto?.custo ?? ''}
-            placeholder="22,00"
-            inputMode="decimal"
-            dica="Sem ele o relatório não sabe calcular margem."
-          />
+          <Campo rotulo="À vista" name="precoVista" required readOnly={travado} defaultValue={produto?.precoVista ?? ''} placeholder="49,90" inputMode="decimal" erro={estado.campos?.precoVista} />
+          <Campo rotulo="No cartão" name="precoCartao" readOnly={travado} defaultValue={produto?.precoCartao ?? ''} placeholder="54,90" inputMode="decimal" erro={estado.campos?.precoCartao} />
+          <Campo rotulo="No crediário" name="precoCrediario" readOnly={travado} defaultValue={produto?.precoCrediario ?? ''} placeholder="59,90" inputMode="decimal" erro={estado.campos?.precoCrediario} />
+          {/* Sem o campo, o custo não vai no formulário e fica como está: quem
+              não responde por nenhuma loja deste produto não lê o custo dele. */}
+          {produto?.verCusto !== false && (
+            <Campo
+              rotulo="Custo"
+              name="custo"
+              readOnly={travado}
+              defaultValue={produto?.custo ?? ''}
+              placeholder="22,00"
+              inputMode="decimal"
+              erro={estado.campos?.custo}
+              dica="Sem ele o relatório não sabe calcular margem."
+            />
+          )}
           {/* Ao lado do custo porque é a outra metade da conta de compra:
               quanto custa e quanto demora. Sem ele a previsão de ruptura usa
               um prazo padrão e avisa que é padrão. */}
@@ -208,7 +219,36 @@ export function Editor({
             defaultValue={produto?.prazoReposicaoDias ?? ''}
             placeholder="7"
             inputMode="numeric"
+            erro={estado.campos?.prazoReposicaoDias}
             dica="Quantos dias o fornecedor leva para entregar. É o que transforma 'está acabando' em 'vai faltar'."
+          />
+        </div>
+      </Cartao>
+
+      {/* SERVIÇO. A manicure, a consulta, a aula: vende no balcão como
+          qualquer produto, mas não tem estoque — não baixa saldo e nunca
+          aparece como "acabou". A duração é o padrão do horário na Agenda. */}
+      <Cartao titulo="Serviço">
+        <input type="hidden" name="servicoNaTela" value="1" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Marcar
+            name="servico"
+            defaultChecked={produto?.servico ?? false}
+            titulo="É serviço (não tem estoque)"
+            resumo="Manicure, consulta, aula avulsa. Vende no balcão sem mexer em saldo."
+          />
+          <Campo
+            rotulo="Duração na agenda (min)"
+            name="duracaoMin"
+            type="number"
+            min={5}
+            max={720}
+            step={5}
+            defaultValue={produto?.duracaoMin ?? ''}
+            placeholder="45"
+            inputMode="numeric"
+            erro={estado.campos?.duracaoMin}
+            dica="Só para serviço com horário marcado. É o tempo que a Agenda reserva."
           />
         </div>
       </Cartao>

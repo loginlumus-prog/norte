@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { mostrarDiaDaColuna } from '@/servidor/dia'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -23,7 +24,9 @@ import { PALAVRA_CONFIRMA } from '@/servidor/anonimizar'
 import { colunaDoDia, diaEmSP } from '@/servidor/dia'
 import { plural, quantidade } from '@/ui/texto'
 
-export const metadata: Metadata = { title: 'Cliente' }
+export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
+  return { title: (await vocabularioDoEndereco((await params).empresa)).Pessoa }
+}
 
 // A ficha do cliente.
 //
@@ -33,7 +36,7 @@ export const metadata: Metadata = { title: 'Cliente' }
 // mesmo que se quer.
 
 const data = (d: Date) =>
-  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(d)
+  new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit' }).format(d)
 
 export default async function FichaCliente({
   params,

@@ -7,7 +7,8 @@ import { listarVendedores } from '@/servidor/equipe'
 import { configCrediario } from '@/servidor/crediario'
 import { minhaMeta, mesChave } from '@/servidor/metas'
 import { moduloLigado, RAMOS } from '@/servidor/modulos'
-import { pode } from '@/servidor/permissao'
+import { pode, podeVerPlanos } from '@/servidor/permissao'
+import { encomendaParaReceber } from '@/servidor/encomenda'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Aviso } from '@/ui/base'
@@ -20,6 +21,7 @@ import { BarraCaixa } from './BarraCaixa'
 import { comoOrg } from '@/servidor/banco'
 import { programaNoPlano, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
+import { paraCobrarHorario } from './acoes'
 
 export const metadata: Metadata = { title: 'Balcão' }
 
@@ -28,18 +30,38 @@ export default async function BalcaoPagina({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string; caixa?: string }>
+  searchParams: Promise<{ unidade?: string; caixa?: string; agendamento?: string; encomenda?: string }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, caixa: aba } = await searchParams
+  const { unidade: pedida, caixa: aba, agendamento, encomenda: encomendaPedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'venda.criar' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   // Vender é sempre EM uma loja — não existe venda "consolidada". Por isso
   // aqui o seletor nunca cai em "todas": pega a primeira que a pessoa alcança.
-  const onde = await escolherUnidade(sessao, empresa, pedida, 'venda.criar')
+  //
+  // E só LOJA: depósito guarda estoque, não tem balcão. Ele saía no seletor
+  // (e às vezes como a única opção), abria caixa e vendia — baixando estoque
+  // de onde ninguém atende. O servidor recusa de novo (`loja_nao_vende`).
+  const escolha = await escolherUnidade(sessao, empresa, pedida, 'venda.criar')
+  const lojas = escolha.opcoes.filter((u) => !u.ehDeposito)
+  const onde = {
+    ...escolha,
+    opcoes: lojas,
+    unidadeId: escolha.unidadeId && lojas.some((u) => u.id === escolha.unidadeId) ? escolha.unidadeId : null,
+    mostrarSeletor: escolha.mostrarSeletor && lojas.length > 1,
+  }
   const unidadeId = onde.unidadeId ?? onde.opcoes[0]?.id ?? null
   const unidadeNome = onde.opcoes.find((u) => u.id === unidadeId)?.nome ?? ''
+
+  // "Receber no balcão", vindo de Encomendas: a linha do que falta entra no
+  // pedido. Aqui é só para MOSTRAR — a venda lê a encomenda de novo, travada.
+  const recebendo =
+    unidadeId && encomendaPedida && /^[\w-]{1,64}$/.test(encomendaPedida)
+      ? await encomendaParaReceber(sessao, encomendaPedida, unidadeId)
+      : null
+  const encomenda = recebendo?.ok ? recebendo.encomenda : null
+  const veAssinatura = podeVerPlanos(sessao)
 
   // O programa de pontos vem do servidor junto com a tela. A conta de quanto
   // a pessoa pode abater roda no navegador, para responder no ato — mas ela é
@@ -72,9 +94,29 @@ export default async function BalcaoPagina({
   const ramo = loja?.ramo && loja.ramo in RAMOS ? loja.ramo : conf?.ramo && conf.ramo in RAMOS ? conf.ramo : null
 
   const caixa = unidadeId ? await caixaAberto(sessao, unidadeId) : null
+
+  // "Atender e cobrar", vindo da Agenda: o serviço e o cliente do horário já
+  // entram na venda. Só com a Agenda ligada, e só o horário desta loja que
+  // ainda não foi cobrado — o resto cai no balcão de sempre.
+  const inicial =
+    unidadeId && typeof agendamento === 'string' && moduloLigado(empresa, 'agenda')
+      ? await paraCobrarHorario(slug, agendamento, unidadeId)
+      : null
   const conferencia = caixa ? await conferirCaixa(sessao, caixa.id) : null
 
   const podeOperarCaixa = unidadeId ? pode(sessao, 'caixa.operar', unidadeId) : false
+  // Quanto a loja vendeu e quanto deveria ter na gaveta são números de dono
+  // (ver o Painel em ui/menu.ts). Quem opera o caixa conta a gaveta às cegas.
+  const veReceita = unidadeId ? pode(sessao, 'relatorio.ver', unidadeId) : false
+  // O que vai para a barra. Sem `relatorio.ver`, os valores nem saem do
+  // servidor: esconder só na tela deixaria o esperado no HTML da página.
+  const naBarra = conferencia
+    ? {
+        vendas: conferencia.vendas,
+        vendidoTotal: veReceita ? conferencia.vendidoTotal : 0,
+        esperado: veReceita ? conferencia.esperado : 0,
+      }
+    : null
 
   // "Quem vendeu" só existe com o módulo de metas: sem meta e sem comissão,
   // a pergunta não tem para que servir, e o seletor seria mais um campo.
@@ -114,10 +156,12 @@ export default async function BalcaoPagina({
         onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={unidadeId} /> : undefined
       }
     >
+      {recebendo && !recebendo.ok && aba !== 'fechar' && <Aviso nivel="atencao">{recebendo.erro}</Aviso>}
       {!unidadeId ? (
         <Aviso nivel="atencao">
-          Você não tem acesso de venda em nenhuma unidade. Peça para quem responde pela
-          empresa liberar.
+          {escolha.opcoes.length > 0
+            ? 'Aqui só há depósito, e depósito não vende. Para vender, a empresa precisa de uma loja.'
+            : 'Você não tem acesso de venda em nenhuma unidade. Peça para quem responde pela empresa liberar.'}
         </Aviso>
       ) : !caixa ? (
         podeOperarCaixa ? (
@@ -130,7 +174,14 @@ export default async function BalcaoPagina({
         )
       ) : aba === 'fechar' ? (
         <div className="flex flex-col gap-4">
-          <FecharCaixa slug={slug} caixaId={caixa.id} conferencia={conferencia!} />
+          <FecharCaixa
+            slug={slug}
+            caixaId={caixa.id}
+            turno={{
+              vendas: conferencia!.vendas,
+              foraDaGaveta: conferencia!.porForma.filter((f) => f.forma !== 'DINHEIRO'),
+            }}
+          />
           <Movimento slug={slug} caixaId={caixa.id} />
         </div>
       ) : simples ? (
@@ -145,6 +196,9 @@ export default async function BalcaoPagina({
           vendedores={vendedores}
           podeAvulso={podeAvulso}
           crediario={crediario}
+          inicial={inicial}
+          encomenda={encomenda}
+          veAssinatura={veAssinatura}
           colada
           barra={
             <BarraCaixa
@@ -152,8 +206,9 @@ export default async function BalcaoPagina({
               slug={slug}
               unidadeId={unidadeId}
               caixa={caixa}
-              conferencia={conferencia!}
+              conferencia={naBarra!}
               podeOperar={podeOperarCaixa}
+              veReceita={veReceita}
               meta={meta && meta.valor > 0 ? { valor: meta.valor, vendido: meta.vendido } : null}
             />
           }
@@ -164,8 +219,9 @@ export default async function BalcaoPagina({
             slug={slug}
             unidadeId={unidadeId}
             caixa={caixa}
-            conferencia={conferencia!}
+            conferencia={naBarra!}
             podeOperar={podeOperarCaixa}
+            veReceita={veReceita}
             meta={meta && meta.valor > 0 ? { valor: meta.valor, vendido: meta.vendido } : null}
           />
           <Balcao
@@ -179,6 +235,9 @@ export default async function BalcaoPagina({
             vendedores={vendedores}
             podeAvulso={podeAvulso}
             crediario={crediario}
+            inicial={inicial}
+            encomenda={encomenda}
+            veAssinatura={veAssinatura}
           />
         </>
       )}

@@ -19,7 +19,7 @@
 // resto simplesmente não acontece — o resultado diz o que foi feito, para a
 // tela não mentir que gravou tudo.
 
-import { comoOrg } from './banco'
+import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, unidadesQuePodem, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, multiplicar, reais } from './dinheiro'
@@ -65,6 +65,24 @@ export async function registrarEntrada(
   e: NovaEntrada,
 ): Promise<ResultadoEntrada> {
   exigir(sessao, 'estoque.ajustar', e.unidadeId)
+  return comoOrg(sessao.orgId, (db) => registrarEntradaEm(db, sessao, e))
+}
+
+/**
+ * A mesma entrada, DENTRO de uma transação que já está aberta.
+ *
+ * O recebimento de um pedido de compra (compras.ts) precisa disto: dar
+ * entrada e marcar o pedido como recebido têm de acontecer juntos, ou nenhum
+ * dos dois — senão o clique duplo dá entrada duas vezes, ou o pedido fica
+ * "recebido" sem a mercadoria no estoque. É o mesmo caminho da tela de
+ * entrada, sem cópia: saldo, custo e conta a pagar, com as mesmas travas.
+ */
+export async function registrarEntradaEm(
+  db: BancoDaOrg,
+  sessao: Sessao,
+  e: NovaEntrada,
+): Promise<ResultadoEntrada> {
+  exigir(sessao, 'estoque.ajustar', e.unidadeId)
 
   const itens = e.itens.filter((i) => i.quantidade > 0)
   if (itens.length === 0) return { ok: false, motivo: 'Nenhum item com quantidade.' }
@@ -88,7 +106,7 @@ export async function registrarEntrada(
     naoFeito.push('a conta a pagar do fornecedor (precisa de permissão do financeiro)')
   }
 
-  return comoOrg(sessao.orgId, async (db) => {
+  {
     // Tudo numa transação: ou o saldo sobe, o custo muda e a conta nasce, ou
     // nada disso acontece. Meio-termo aqui é estoque que existe no sistema e
     // não foi pago, ou conta paga de mercadoria que não entrou.
@@ -229,7 +247,7 @@ export async function registrarEntrada(
       contaLancada,
       naoFeito,
     }
-  })
+  }
 }
 
 /**

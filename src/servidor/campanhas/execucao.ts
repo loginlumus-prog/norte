@@ -42,7 +42,7 @@ import {
 import { inicioDo, lerGrafo } from './grafo'
 import { lerHorario, type Horario } from './horario'
 import { rodar, type Deps, type Envio, type EstadoExecucao, type Evento, type Resultado } from './motor'
-import { esperaMinima, podeEnviar } from './freios'
+import { dentroDaJanela, esperaMinima, podeEnviar } from './freios'
 import { urlDaMidia } from './midia'
 import { humanoAteDoTelefone, humanoNoComando, marcarComHumano } from './humano'
 import { estaNaLista, podeReceberOfertas } from '../ofertas'
@@ -116,20 +116,41 @@ export async function horarioDaEmpresa(orgId: string): Promise<{ texto: string |
 // TRAVA E GRAVAÇÃO
 // ─────────────────────────────────────────────────────────────
 
-async function travar(orgId: string, id: string, agora: Date): Promise<string | null> {
+// ── o relógio da trava é o da MÁQUINA ────────────────────────
+// O `agora` da rodada é fixo: o do minuto da batida, ou o da chegada da
+// mensagem. Serve para o roteiro (quando vence a espera), não para a trava.
+// Até 27/09 a trava era carimbada com ele — e uma rodada que começou há dois
+// minutos, ainda mandando, tinha a trava com cara de "vencida" para a batida
+// seguinte, que a tomava e mandava a mesma mensagem de novo. Agora o carimbo,
+// a renovação e o vencimento são todos `new Date()`.
+const agoraDaMaquina = () => new Date()
+const vencimentoDaTrava = () => new Date(Date.now() - TRAVA_VENCE_SEG * 1000)
+
+async function travar(orgId: string, id: string): Promise<string | null> {
   const token = randomUUID()
-  const vence = new Date(agora.getTime() - TRAVA_VENCE_SEG * 1000)
   const r = await comoOrg(orgId, (db) =>
     db.campanhaExecucao.updateMany({
       where: {
         id,
         status: { in: [...STATUS_VIVOS] },
-        OR: [{ trava: null }, { travaEm: { lt: vence } }],
+        OR: [{ trava: null }, { travaEm: { lt: vencimentoDaTrava() } }],
       },
-      data: { trava: token, travaEm: agora },
+      data: { trava: token, travaEm: agoraDaMaquina() },
     }),
   )
   return r.count === 1 ? token : null
+}
+
+/**
+ * A trava ainda é desta rodada? Se é, renova o carimbo — é chamada logo
+ * antes de cada envio. Falso = alguém tirou a pessoa (PARAR, "Tirar" na
+ * tela, a lista de ofertas) ou outra rodada assumiu: não manda.
+ */
+async function aindaMinha(orgId: string, id: string, token: string): Promise<boolean> {
+  const r = await comoOrg(orgId, (db) =>
+    db.campanhaExecucao.updateMany({ where: { id, trava: token }, data: { travaEm: agoraDaMaquina() } }),
+  )
+  return r.count === 1
 }
 
 async function soltar(orgId: string, id: string, token: string) {
@@ -225,27 +246,42 @@ async function rodarTravada(
   let ultimoEnvio: Date | null = c.exec.ultimoEnvioEm
   const ultimaEntrada = c.exec.ultimaEntradaEm
 
-  /** Os freios, e o ritmo. 'limite' = não sai, e a execução para. */
-  const liberar = async (): Promise<boolean> => {
+  /**
+   * Tudo o que é conferido logo ANTES de cada mensagem sair, nesta ordem: os
+   * freios (teto do dia, a janela de 24 horas), o ritmo, a trava (a pessoa
+   * ainda é desta rodada?) e a lista de quem não recebe. As duas últimas vêm
+   * por último de propósito: a pessoa que manda PARAR enquanto o bloco
+   * espera o ritmo não recebe a mensagem seguinte depois da confirmação.
+   */
+  const liberar = async (): Promise<Envio> => {
     const n = await contarHoje(orgId, chave, agora())
+    // Passou de 24 horas sem a pessoa escrever (a espera de três dias, a
+    // campanha que ficou pausada, o assistente que ficou desligado): a
+    // mensagem já não responde ao pedido dela, e só sai com aceite de
+    // ofertas — em qualquer canal, não só no oficial. O teste do dono passa
+    // (o número é dele).
+    const fora = !c.exec.teste && !dentroDaJanela(ultimaEntrada, agora())
     const v = podeEnviar({
       ajustes,
       enviadasHojeContato: n.contato,
       enviadasHojeEmpresa: n.empresa,
       teste: c.exec.teste,
-      // Toda execução nasce de uma mensagem da própria pessoa (a frase, o
-      // anúncio) ou do teste do dono; "Ir para outra campanha" herda.
-      iniciadaPeloContato: true,
+      iniciadaPeloContato: false,
       ultimaEntradaEm: ultimaEntrada,
       agora: agora(),
+      aceitaOfertas: fora ? await podeReceberOfertas(orgId, chave) : undefined,
     })
     if (v !== 'ok') {
       console.warn(`[campanhas] ${orgId}: envio segurado (${v}) na execução ${c.exec.id}`)
-      return false
+      return v === 'fora_da_janela' ? 'janela' : 'limite'
     }
     const espera = esperaMinima(ultimoEnvio, agora(), ajustes.intervaloSeg)
     if (espera > 0) await relogio.dormir(espera)
-    return true
+    if (!(await aindaMinha(orgId, c.exec.id, token))) return 'perdida'
+    // Também no teste: o número do dono pode estar na lista (foi cliente,
+    // alguém anotou), e a lista vale para todo mundo.
+    if (await estaNaLista(orgId, chave)) return 'na_lista'
+    return 'ok'
   }
 
   const depois = (r: EnvioDoCanal): Envio => {
@@ -257,6 +293,14 @@ async function rodarTravada(
         console.warn(`[campanhas] ${orgId}: janela de 24 h fechada na execução ${c.exec.id}; sem modelo aprovado (ou sem aceite de ofertas para o modelo), a execução termina`)
         return 'janela'
       }
+      // Pode ter saído. Com o conector (que reconhece a chave) a nova
+      // tentativa é segura; nos outros, mandar de novo seria em dobro.
+      if (r.codigo === 'incerto') {
+        if (ctx.canal.semDuplicar) return 'falha'
+        ultimoEnvio = ctx.agora ?? new Date()
+        console.warn(`[campanhas] ${orgId}: envio sem confirmação na execução ${c.exec.id}; não repete`)
+        return 'incerto'
+      }
       return 'falha'
     }
     ultimoEnvio = ctx.agora ?? new Date()
@@ -267,8 +311,9 @@ async function rodarTravada(
     agora,
     dormir: relogio.dormir,
     horario,
-    async enviarTexto(texto, modelo) {
-      if (!(await liberar())) return 'limite'
+    async enviarTexto(texto, modelo, chaveDoEnvio) {
+      const pode = await liberar()
+      if (pode !== 'ok') return pode
       // Com modelo aprovado no bloco, fora da janela sai o modelo; sem, o
       // canal oficial recusa e a execução termina ('janela_fechada').
       //
@@ -279,14 +324,19 @@ async function rodarTravada(
       // o texto é recusado fora da janela e a execução termina como sem
       // modelo. O teste do dono passa (o número é dele).
       const modeloQuePode = modelo && (c.exec.teste || (await podeReceberOfertas(orgId, chave))) ? modelo : null
-      const r = await enviarOuModelo(ctx.canal, envio, texto, modeloQuePode)
+      const r = await enviarOuModelo(ctx.canal, envio, texto, modeloQuePode, { chave: chaveDoEnvio })
       return depois(r)
     },
-    async enviarMidia(d: DadosMidia, legenda: string) {
-      if (!(await liberar())) return 'limite'
+    async enviarMidia(d: DadosMidia, legenda: string, chaveDoEnvio?: string) {
+      const pode = await liberar()
+      if (pode !== 'ok') return pode
       const url = d.midiaId ? urlDaMidia(orgId, d.midiaId, agora()) : null
       if (ctx.canal.enviarMidia && url && d.tipo) {
-        const r = await ctx.canal.enviarMidia(envio, { tipo: d.tipo, url, legenda: legenda || undefined, comoGravado: d.comoGravado })
+        const r = await ctx.canal.enviarMidia(
+          envio,
+          { tipo: d.tipo, url, legenda: legenda || undefined, comoGravado: d.comoGravado },
+          { chave: chaveDoEnvio },
+        )
         return depois(r)
       }
       // Canal sem mídia (ou servidor sem NORTE_URL): vai a legenda, e o log diz.
@@ -294,7 +344,7 @@ async function rodarTravada(
         `[campanhas] ${orgId}: ${ctx.canal.enviarMidia ? 'sem NORTE_URL para assinar a mídia' : `o canal ${ctx.canal.nome} não manda mídia`}; foi só a legenda`,
       )
       if (!legenda) return 'ok'
-      const r = await ctx.canal.enviar(envio, legenda)
+      const r = await ctx.canal.enviar(envio, legenda, { chave: chaveDoEnvio })
       return depois(r)
     },
     async passarParaPessoa(d: DadosPassar, vars: Vars) {
@@ -321,6 +371,9 @@ async function rodarTravada(
       for (const p of pessoas) {
         const numero = paraEnvio(p.telefone ?? '')
         if (!numero) continue
+        // Cada aviso pode levar segundos (até 120 no conector): a trava é
+        // renovada antes de cada um, e perdida, para.
+        if (!(await aindaMinha(orgId, c.exec.id, token))) break
         // No WhatsApp oficial a pessoa da equipe raramente está dentro da
         // janela de 24 horas: fora dela, o aviso sai pelo modelo `norte_aviso`.
         const r = await enviarOuModelo(ctx.canal, numero, texto, modeloDeAviso(loja?.nome ?? 'loja', texto))
@@ -360,7 +413,7 @@ async function rodarTravada(
             vars: e.vars as object,
             motivoFim: e.motivoFim,
             ultimoEnvioEm: ultimoEnvio,
-            ...(final ? { finalizadaEm: agora(), trava: null, travaEm: null } : { travaEm: agora() }),
+            ...(final ? { finalizadaEm: agora(), trava: null, travaEm: null } : { travaEm: agoraDaMaquina() }),
           },
         }),
       )
@@ -382,12 +435,12 @@ async function rodarTravada(
  */
 export async function andar(orgId: string, execucaoId: string, evento: Evento, ctx: Contexto): Promise<Resultado | null> {
   const agora = ctx.agora ?? new Date()
-  let token = await travar(orgId, execucaoId, agora)
+  let token = await travar(orgId, execucaoId)
   // Resposta chegando enquanto a rodada anterior ainda manda o "digitando":
   // espera um pouco em vez de perder a resposta.
   for (let i = 0; !token && evento.tipo === 'resposta' && i < 6; i++) {
     await relogio.dormir(500)
-    token = await travar(orgId, execucaoId, ctx.agora ?? new Date())
+    token = await travar(orgId, execucaoId)
   }
   if (!token) return null
 
@@ -446,8 +499,10 @@ export async function iniciar(
   if (!campanha.ativa && !opcoes.teste) return null
   // Quem pediu para não receber oferta não entra — por nenhum caminho: nem a
   // palavra-chave (a entrada já confere), nem "Ir para outra campanha", nem
-  // um recurso novo que chame isto direto. A volta é só pelo VOLTAR.
-  if (!opcoes.teste && (await estaNaLista(orgId, contato.chave))) return null
+  // um recurso novo que chame isto direto. A volta é só pelo VOLTAR. Vale
+  // também para o teste do dono: "Testar com meu número" num número que está
+  // na lista mandaria justamente para quem pediu para não receber.
+  if (await estaNaLista(orgId, contato.chave)) return null
   const inicio = inicioDo(lerGrafo(campanha.grafo))
   if (!inicio) return null
 
@@ -467,7 +522,7 @@ export async function iniciar(
           vars: { nome: contato.nome, ...(opcoes.saltos ? { _saltos: opcoes.saltos } : {}) },
           teste: opcoes.teste,
           trava: token,
-          travaEm: agora,
+          travaEm: agoraDaMaquina(),
           ultimaEntradaEm: opcoes.ultimaEntradaEm ?? agora,
           iniciadaEm: agora,
         },
@@ -507,7 +562,7 @@ export async function devidas(orgId: string, agora: Date, limite = 100): Promise
               { status: 'rodando', iniciadaEm: { lt: vence } },
             ],
           },
-          { OR: [{ trava: null }, { travaEm: { lt: vence } }] },
+          { OR: [{ trava: null }, { travaEm: { lt: vencimentoDaTrava() } }] },
           { OR: [{ teste: true }, { campanha: { ativa: true } }] },
         ],
       },

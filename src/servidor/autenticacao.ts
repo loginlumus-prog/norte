@@ -19,16 +19,18 @@
 //    impedem. Quem tem tempo e uma lista de senhas comuns entra.
 
 import { comoOrg, acharOrgPorSlug } from './banco'
-import { ocuparVaga, type Ocupante, type Veredito } from './presenca'
+import { ocuparVaga, type Ocupante, type Ocupacao } from './presenca'
 import { conferirSenha, precisaTrocar, HASH_ISCA } from './senha'
 import { reservarTentativa, concluirTentativa } from './limite'
 import { emailConfigurado } from './email'
-import type { Sessao, Papel } from './permissao'
+import type { Papel } from './permissao'
+import type { SessaoComVaga } from './sessao'
 
 export type Entrada =
   | {
       ok: true
-      sessao: Sessao
+      /** Com a marca da vaga: é ela que o cookie leva (ver `abrirSessao`). */
+      sessao: SessaoComVaga
       senhaPrecisaTrocar: boolean
       /** Alguém saiu para esta pessoa entrar. A tela avisa quem. */
       derrubou?: { nome: string; paradaMin: number }
@@ -139,7 +141,7 @@ export async function entrar(
     return { ok: false, motivo: 'sem_acesso' }
   }
 
-  const sessao: Sessao = {
+  const sessao: SessaoComVaga = {
     orgId: org.id,
     usuarioId: achado.usuario.id,
     nome: achado.usuario.nome,
@@ -168,8 +170,8 @@ export async function entrar(
     db.org.findUniqueOrThrow({ where: { id: org.id }, select: { plano: true } }),
   )
 
-  const vaga = soSuporte
-    ? ({ pode: true, derrubar: null } satisfies Veredito)
+  const vaga: Ocupacao = soSuporte
+    ? { pode: true, derrubar: null }
     : await ocuparVaga(org.id, plano.plano, {
         usuarioId: sessao.usuarioId,
         ehDono: acessos.some((a) => a.papel === 'DONO'),
@@ -182,6 +184,10 @@ export async function entrar(
     await concluirTentativa(org.id, tentativa, true)
     return { ok: false, motivo: 'sem_vaga', ocupantes: vaga.ocupantes }
   }
+
+  // A sessão fica presa a esta vaga: se outra pessoa a tomar, ou se esta
+  // pessoa clicar em Sair, o cookie morre na próxima tela (ver `sessaoViva`).
+  sessao.vaga = vaga.vaga ?? null
 
   await concluirTentativa(org.id, tentativa, true)
   await registrarEntrada(sessao)
@@ -204,7 +210,7 @@ export async function entrar(
  * o tempo todo: "essa pessoa ainda usa o sistema?". Quem nunca entrou é
  * conta esquecida, e conta esquecida é porta aberta.
  */
-async function registrarEntrada(sessao: Sessao) {
+async function registrarEntrada(sessao: SessaoComVaga) {
   await comoOrg(sessao.orgId, async (db) => {
     await db.usuario.update({
       where: { id: sessao.usuarioId },

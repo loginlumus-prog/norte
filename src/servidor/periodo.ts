@@ -15,6 +15,8 @@
 // termina às 00:00 do dia seguinte ao último. E a janela de comparação tem
 // exatamente o MESMO tamanho, encostada imediatamente antes.
 
+import { diaEmSP, diasEntre, inicioDoDiaEmSP, primeiroDoMes, somarDias } from './dia'
+
 export type Periodo = 'hoje' | '7d' | '30d' | '90d' | 'mes' | 'mes-passado'
 
 export type Janela = {
@@ -55,37 +57,36 @@ export function lerPeriodo(v: string | undefined | null): Periodo {
   return v && VALIDOS.has(v) ? (v as Periodo) : '30d'
 }
 
-/** 00:00 do dia de `d`, sem mexer em fuso. */
-const meiaNoite = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+// ── o fuso ───────────────────────────────────────────────────
+// "Hoje" é o dia em São Paulo, e a meia-noite é a de São Paulo — nunca a da
+// máquina. Esta conta já foi feita com `new Date(ano, mes, dia)`, que é a
+// meia-noite do fuso do SERVIDOR: na Vercel (UTC) o "hoje" do painel começava
+// às 21h da véspera, e às 22h30 do dia 30 o "este mês" já era o mês seguinte,
+// vazio. Aqui toda conta é de dia escrito ('AAAA-MM-DD', ver `dia.ts`) e só
+// no fim vira instante, pela meia-noite de São Paulo.
 
-/** Soma dias de CALENDÁRIO — não 24h. Sobrevive a horário de verão. */
-const maisDias = (d: Date, n: number) =>
-  new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
-
-const maisMeses = (d: Date, n: number) =>
-  new Date(d.getFullYear(), d.getMonth() + n, 1)
-
-/** Diferença em dias de calendário entre duas meia-noites. */
-const emDias = (de: Date, ate: Date) => Math.round((ate.getTime() - de.getTime()) / 864e5)
+/** O primeiro dia do mês anterior ao de `dia`. */
+const inicioDoMesAnterior = (dia: string) => primeiroDoMes(somarDias(primeiroDoMes(dia), -1))
 
 export function janela(chave: Periodo, agora: Date = new Date()): Janela {
-  const hoje = meiaNoite(agora)
+  const hoje = diaEmSP(agora)
   // `amanha` é o fim exclusivo de qualquer janela que inclua hoje.
-  const amanha = maisDias(hoje, 1)
+  const amanha = somarDias(hoje, 1)
+  const inst = inicioDoDiaEmSP
 
-  const montar = (de: Date, ate: Date, rotulo: string, comparacao: string): Janela => {
-    const dias = emDias(de, ate)
+  const montar = (de: string, ate: string, rotulo: string, comparacao: string): Janela => {
+    const dias = diasEntre(de, ate)
     return {
       chave,
       rotulo,
       curto: PERIODOS.find((p) => p.chave === chave)!.curto,
       comparacao,
-      de,
-      ate,
+      de: inst(de),
+      ate: inst(ate),
       // Encostada logo antes, do mesmo tamanho. É isso que faz a seta de
       // porcentagem querer dizer alguma coisa.
-      deAnterior: maisDias(de, -dias),
-      ateAnterior: de,
+      deAnterior: inst(somarDias(de, -dias)),
+      ateAnterior: inst(de),
       dias,
       temGrafico: dias > 1,
     }
@@ -96,38 +97,35 @@ export function janela(chave: Periodo, agora: Date = new Date()): Janela {
       return montar(hoje, amanha, 'Hoje', 'vs ontem')
 
     case '7d':
-      return montar(maisDias(hoje, -6), amanha, 'Últimos 7 dias', 'vs 7 dias antes')
+      return montar(somarDias(hoje, -6), amanha, 'Últimos 7 dias', 'vs 7 dias antes')
 
     case '30d':
-      return montar(maisDias(hoje, -29), amanha, 'Últimos 30 dias', 'vs 30 dias antes')
+      return montar(somarDias(hoje, -29), amanha, 'Últimos 30 dias', 'vs 30 dias antes')
 
     case '90d':
-      return montar(maisDias(hoje, -89), amanha, 'Últimos 90 dias', 'vs 90 dias antes')
+      return montar(somarDias(hoje, -89), amanha, 'Últimos 90 dias', 'vs 90 dias antes')
 
     case 'mes': {
-      const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+      const inicio = primeiroDoMes(hoje)
       // O mês em curso termina HOJE, não no dia 31: comparar 7 dias corridos
       // com um mês inteiro faria o painel anunciar queda todo dia 2.
       const j = montar(inicio, amanha, 'Este mês', 'vs mesmo tempo do mês passado')
       // E a comparação anda para o mês anterior, no mesmo dia — não 30 dias
-      // para trás, que cairia no meio de outro mês.
-      const inicioAnterior = maisMeses(inicio, -1)
+      // para trás, que cairia no meio de outro mês. No dia 31 de março o
+      // pedaço de fevereiro para no fim de fevereiro.
+      const inicioAnterior = inicioDoMesAnterior(hoje)
+      const tamanhoAnterior = diasEntre(inicioAnterior, inicio)
       return {
         ...j,
-        deAnterior: inicioAnterior,
-        ateAnterior: new Date(
-          inicioAnterior.getFullYear(),
-          inicioAnterior.getMonth(),
-          Math.min(hoje.getDate() + 1, emDias(inicioAnterior, maisMeses(inicio, 0)) + 1),
-        ),
+        deAnterior: inst(inicioAnterior),
+        ateAnterior: inst(somarDias(inicioAnterior, Math.min(Number(hoje.slice(8, 10)), tamanhoAnterior))),
       }
     }
 
     case 'mes-passado': {
-      const inicio = maisMeses(hoje, -1)
-      const fim = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
-      const j = montar(inicio, fim, 'Mês passado', 'vs o mês anterior')
-      return { ...j, deAnterior: maisMeses(inicio, -1), ateAnterior: inicio }
+      const inicio = inicioDoMesAnterior(hoje)
+      const j = montar(inicio, primeiroDoMes(hoje), 'Mês passado', 'vs o mês anterior')
+      return { ...j, deAnterior: inst(inicioDoMesAnterior(inicio)), ateAnterior: inst(inicio) }
     }
   }
 }

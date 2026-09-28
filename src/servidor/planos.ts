@@ -123,7 +123,12 @@ export const PLANOS: Record<Plano, Limite> = {
     mensal: 100,
     porUnidadeExtra: null,
     porVagaExtra: 40,
-    modulos: ['notaFiscal', 'encomenda', 'multiUnidade'],
+    // Agenda, ponto e compras entram já no primeiro plano pago: salão e
+    // consultório pequenos vivem deles, e deixar a agenda para o plano de
+    // R$ 350 seria vender a esse cliente o balcão sem a tela que ele abre o
+    // dia inteiro. O lembrete ao cliente sai pelo WhatsApp do assistente, e
+    // por isso só existe onde o assistente existe.
+    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras'],
     creditoMensal: 0,
     tetoVendasMes: null,
     degrau: 1,
@@ -142,7 +147,7 @@ export const PLANOS: Record<Plano, Limite> = {
     mensal: 350,
     porUnidadeExtra: null,
     porVagaExtra: 40,
-    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agente', 'metas'],
+    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'agente', 'metas'],
     // ── este numero e apertado, e vale saber por que ────────
     // O consumo foi MEDIDO, nao estimado: uma loja de movimento normal gasta
     // ~R$ 36/mes de custo bruto com cache e roteamento de modelo, o que da
@@ -174,7 +179,7 @@ export const PLANOS: Record<Plano, Limite> = {
     mensal: 1500,
     porUnidadeExtra: null,
     porVagaExtra: null,
-    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agente', 'metas', 'crediario'],
+    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'agente', 'metas', 'crediario'],
     // Rede sao varias lojas conversando ao mesmo tempo.
     creditoMensal: 300,
     tetoVendasMes: null,
@@ -193,7 +198,7 @@ export const PLANOS: Record<Plano, Limite> = {
     // promessa que a gente não sabe se consegue cumprir antes de olhar.
     porUnidadeExtra: null,
     porVagaExtra: null,
-    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agente', 'metas', 'crediario'],
+    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'agente', 'metas', 'crediario'],
     // Sem numero de tabela, pelo mesmo motivo do preco: o volume de conversa
     // de um cliente Corporativo nao se parece com o de outro, e chutar aqui
     // seria prometer antes de olhar a operacao. Sai no contrato.
@@ -488,6 +493,18 @@ export const RECURSOS: Recurso[] = [
     quando: 'breve',
   },
   { titulo: 'Encomenda e entrega', grupo: 'Operação', em: PAGOS },
+  // Para quem vende serviço com hora marcada: salão, clínica, escola.
+  { titulo: 'Agenda por profissional, com falta e "atender e cobrar"', grupo: 'Operação', em: PAGOS },
+  {
+    // Texto fixo, sem IA, só para quem aceitou — e sai pelo WhatsApp do
+    // assistente, então existe onde ele existe.
+    titulo: 'Lembrete do horário no WhatsApp do cliente',
+    grupo: 'Assistente',
+    em: COM_AGENTE,
+  },
+  { titulo: 'Compras, fornecedores e material usado', grupo: 'Operação', em: PAGOS },
+  // Controle interno de entrada e saída — não é REP certificado, e a tela diz.
+  { titulo: 'Ponto de quem trabalha, com ou sem login', grupo: 'Equipe', em: PAGOS },
   {
     // Deixou de ser "em breve" em 16/09: o prazo mora no PRODUTO (dias que o
     // fornecedor leva para repor), não num cadastro de fornecedor — que

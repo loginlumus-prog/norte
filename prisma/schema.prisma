@@ -113,6 +113,14 @@ model Org {
   /// relatorio nunca acusa. Zero = balcao nao da desconto nenhum.
   descontoMaximo Decimal @default(10) @map("desconto_maximo") @db.Decimal(5, 2)
 
+  // ── lembrete do horário (Agenda) ─────────────────────────
+  /// Desligado até a loja decidir. Quando ligado, o cliente que ACEITOU
+  /// receber mensagem no WhatsApp (e não pediu para sair) recebe um texto
+  /// FIXO antes do horário marcado — sem IA, e a resposta vai para a equipe.
+  lembreteAtivo Boolean @default(false) @map("lembrete_ativo")
+  /// Quantas horas antes do horário o lembrete sai.
+  lembreteHoras Int     @default(24) @map("lembrete_horas")
+
   // ── programa de pontos ───────────────────────────────────
   /// Desligado ate a loja decidir. Programa de fidelidade e divida: cada ponto
   /// entregue e desconto que a loja vai pagar depois. Ligar por engano seria
@@ -214,6 +222,13 @@ model Org {
   campanhaAjustes   CampanhaAjustes?
   midias            Midia[]
   semOfertas        OptOutWhatsapp[]
+  colaboradores     Colaborador[]
+  registrosPonto    RegistroPonto[]
+  agendamentos      Agendamento[]
+  fornecedores      Fornecedor[]
+  pedidosCompra     PedidoCompra[]
+  itensCompra       ItemCompra[]
+  recebimentosCompra RecebimentoCompra[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -270,6 +285,10 @@ model Unidade {
   lancamentos Lancamento[]
   quadros     Quadro[]
   encomendas  Encomenda[]
+  colaboradores  Colaborador[]
+  registrosPonto RegistroPonto[]
+  agendamentos   Agendamento[]
+  pedidosCompra  PedidoCompra[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -320,6 +339,7 @@ model Usuario {
   metas     Meta[]
   tarefas   Tarefa[]
   tokens    TokenConta[]
+  colaborador Colaborador?
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -751,10 +771,19 @@ model Produto {
   /// = a loja não informou, e a previsão usa só o ritmo de venda.
   prazoReposicaoDias Int? @map("prazo_reposicao_dias")
 
+  /// É SERVIÇO: não é mercadoria, não tem estoque. A manicure, a consulta, a
+  /// aula avulsa. Vende no balcão como qualquer produto, mas não baixa saldo
+  /// nem aparece como "acabou" — serviço não acaba na prateleira.
+  servico Boolean @default(false)
+  /// Quanto tempo o serviço ocupa na agenda, em minutos. É o padrão do
+  /// horário marcado; quem marca pode mudar naquele horário.
+  duracaoMin Int? @map("duracao_min")
+
   ativo Boolean @default(true)
 
   eixos     ProdutoEixo[]
   variacoes Variacao[]
+  agendamentos Agendamento[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -806,6 +835,7 @@ model Variacao {
   estoques   Estoque[]
   movimentos MovimentoEstoque[]
   vendaItens VendaItem[]
+  itensCompra ItemCompra[]
 
   criadaEm DateTime @default(now()) @map("criada_em")
 
@@ -901,6 +931,9 @@ enum TipoMovimento {
   PERDA
   TRANSFERENCIA
   BALANCO
+  /// Material usado dentro de casa: o esmalte da manicure, a luva da
+  /// clínica. Sai do estoque sem ser venda nem perda.
+  CONSUMO
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -963,6 +996,7 @@ model Cliente {
   vales  Vale[]
   parcelas Parcela[]
   encomendas Encomenda[]
+  agendamentos Agendamento[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   conversas ConversaAgente[]
@@ -1122,6 +1156,8 @@ model Venda {
   pagamentos Pagamento[]
   devolucoes Devolucao[]
   parcelas   Parcela[]
+  /// O horário da agenda que esta venda cobrou ("Atender e cobrar").
+  agendamento Agendamento?
 
   criadaEm    DateTime  @default(now()) @map("criada_em")
   concluidaEm DateTime? @map("concluida_em")
@@ -2386,4 +2422,304 @@ model Midia {
   @@unique([orgId, sha256])
   @@index([orgId, criadaEm])
   @@map("midias")
+}
+
+// ═════════════════════════════════════════════════════════════
+// ATENDIMENTO — agenda, funcionários e ponto, compras
+// ═════════════════════════════════════════════════════════════
+//
+// Para quem vende SERVIÇO com hora marcada (salão, clínica, escola) e para
+// quem compra material que consome dentro de casa. Três módulos grossos
+// (ver modulos.ts), que dividem uma coisa só: o COLABORADOR — a pessoa que
+// trabalha ali, com ou sem login no sistema. A manicure que nunca vai abrir o
+// sistema tem agenda e bate ponto do mesmo jeito.
+
+/// Quem trabalha na empresa — com conta no sistema ou sem.
+///
+/// Não é o `Usuario`: usuário é quem ENTRA no sistema, e muita gente que
+/// trabalha num salão nunca entra. Quando a pessoa tem conta, as duas fichas
+/// se ligam (`usuarioId`) e ela bate o próprio ponto; sem conta, quem bate é
+/// o gestor, e o livro diz isso.
+model Colaborador {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// A loja onde trabalha. Nulo = circula entre as lojas.
+  unidadeId String?  @map("unidade_id")
+  unidade   Unidade? @relation(fields: [unidadeId], references: [id], onDelete: SetNull)
+
+  /// A conta no sistema, quando a pessoa entra. Uma conta, uma ficha.
+  usuarioId String?  @unique @map("usuario_id")
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  nome     String
+  cargo    String?
+  telefone String?
+
+  /// Atende com hora marcada: vira uma coluna na Agenda.
+  atende Boolean @default(false)
+
+  /// Minutos combinados por dia da semana, de domingo (0) a sábado (6).
+  /// Vazio = sem jornada combinada: a folha mostra só o que foi trabalhado.
+  jornadaMin Int[] @default([]) @map("jornada_min")
+
+  /// Nunca se apaga: quem saiu vira inativo, e o ponto e a agenda dele
+  /// continuam contando a história.
+  ativo Boolean @default(true)
+
+  agendamentos Agendamento[]
+  registros    RegistroPonto[]
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, ativo])
+  @@map("colaboradores")
+}
+
+/// Uma batida de ponto: entrou ou saiu, e quando.
+///
+/// CONTROLE INTERNO da empresa — não é um REP certificado (Portaria MTP
+/// 671/2021), e a tela diz isso. O que ele garante é a trilha: toda batida
+/// diz quem registrou e por qual caminho, NADA se apaga (o banco recusa
+/// DELETE, ver prisma/sql/rls.sql), e o erro se corrige com uma batida nova
+/// de ajuste, com motivo, ou anulando a errada — também com motivo.
+model RegistroPonto {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  colaboradorId String      @map("colaborador_id")
+  colaborador   Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: NoAction)
+
+  /// Onde bateu. Nulo quando o ajuste foi feito de fora da loja.
+  unidadeId String?  @map("unidade_id")
+  unidade   Unidade? @relation(fields: [unidadeId], references: [id], onDelete: SetNull)
+
+  tipo TipoPonto
+  /// O instante da entrada ou da saída — no ajuste, o que a pessoa diz que foi.
+  em   DateTime
+
+  origem OrigemPonto
+  /// Obrigatório no AJUSTE: por que a batida entrou depois.
+  motivo String?
+
+  /// Quem registrou: a própria pessoa, o gestor, ou quem ajustou.
+  quemId String? @map("quem_id")
+  quem   String
+
+  // ── anular é a única mudança que existe ──
+  anuladoEm      DateTime? @map("anulado_em")
+  anuladoPor     String?   @map("anulado_por")
+  motivoAnulacao String?   @map("motivo_anulacao")
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, colaboradorId, em])
+  @@index([orgId, em])
+  @@map("registros_ponto")
+}
+
+enum TipoPonto {
+  ENTRADA
+  SAIDA
+}
+
+enum OrigemPonto {
+  PROPRIO /// a própria pessoa, pela conta dela
+  GESTOR /// o gestor, na hora, por quem não tem conta (ou esqueceu o celular)
+  AJUSTE /// depois do fato, com motivo — a batida que faltou
+}
+
+/// Um horário marcado.
+///
+/// Nome e telefone ficam gravados junto (fotografia), porque metade de quem
+/// marca por telefone nunca foi cadastrado. A observação é para combinados de
+/// atendimento ("prefere a cadeira da janela") — NUNCA para informação de
+/// saúde: prontuário não mora neste sistema, e a tela diz isso.
+model Agendamento {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  /// Quem atende.
+  colaboradorId String      @map("colaborador_id")
+  colaborador   Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: NoAction)
+
+  clienteId   String?  @map("cliente_id")
+  cliente     Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  clienteNome String   @map("cliente_nome")
+  telefone    String?
+
+  /// O serviço do catálogo, quando existe — é ele que vai para o balcão no
+  /// "Atender e cobrar". O texto fica sempre (fotografia).
+  produtoId String?  @map("produto_id")
+  produto   Produto? @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  servico   String
+
+  inicio DateTime
+  fim    DateTime
+
+  situacao   SituacaoAgendamento @default(MARCADO)
+  observacao String?
+  /// Por que desmarcou (obrigatório no cancelamento).
+  motivo     String?
+
+  /// A venda que cobrou este horário. Única: o mesmo horário não se cobra
+  /// duas vezes.
+  vendaId String? @unique @map("venda_id")
+  venda   Venda?  @relation(fields: [vendaId], references: [id], onDelete: SetNull)
+
+  /// O lembrete ao cliente: carimbado ANTES de sair (é a reivindicação que
+  /// impede sair duas vezes) e com o desfecho ao lado.
+  lembreteEm DateTime? @map("lembrete_em")
+  /// enviando | enviado | sem_aceite | sem_telefone | nao_saiu
+  lembrete   String?
+
+  quemId String? @map("quem_id")
+  quem   String
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, unidadeId, inicio])
+  @@index([orgId, colaboradorId, inicio])
+  @@index([orgId, clienteId, inicio])
+  @@index([orgId, situacao, inicio])
+  @@map("agendamentos")
+}
+
+enum SituacaoAgendamento {
+  MARCADO
+  CONFIRMADO
+  ATENDIDO
+  FALTOU
+  CANCELADO
+}
+
+/// De quem a empresa compra.
+model Fornecedor {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome       String
+  telefone   String?
+  /// CNPJ ou CPF, se a loja quiser guardar. Opcional de propósito.
+  documento  String?
+  observacao String?
+  ativo      Boolean @default(true)
+
+  pedidos PedidoCompra[]
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, nome])
+  @@map("fornecedores")
+}
+
+/// Um pedido ao fornecedor: o que se pediu, o que chegou e o que custou.
+///
+/// Receber é dar ENTRADA — pelo mesmo caminho da entrada de mercadoria
+/// (src/servidor/entrada.ts): saldo, custo e conta a pagar. Pode chegar em
+/// partes; cada recebimento é uma linha em `recebimentos_compra`, com a
+/// chave que impede o clique duplo de dar entrada duas vezes.
+model PedidoCompra {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// A loja (ou depósito) onde a mercadoria entra.
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  fornecedorId String?     @map("fornecedor_id")
+  fornecedor   Fornecedor? @relation(fields: [fornecedorId], references: [id], onDelete: SetNull)
+
+  situacao   SituacaoCompra @default(RASCUNHO)
+  observacao String?
+  /// Quando o fornecedor prometeu entregar.
+  previsto   DateTime?      @db.Date
+
+  quemId String? @map("quem_id")
+  quem   String
+
+  enviadoEm          DateTime? @map("enviado_em")
+  recebidoEm         DateTime? @map("recebido_em")
+  canceladoEm        DateTime? @map("cancelado_em")
+  motivoCancelamento String?   @map("motivo_cancelamento")
+
+  itens        ItemCompra[]
+  recebimentos RecebimentoCompra[]
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, situacao])
+  @@index([orgId, unidadeId, criadoEm])
+  @@map("pedidos_compra")
+}
+
+enum SituacaoCompra {
+  RASCUNHO /// montando, ainda não foi ao fornecedor
+  ENVIADO /// pedido feito, esperando chegar
+  PARCIAL /// chegou uma parte
+  RECEBIDO /// chegou tudo (ou a loja deu por encerrado)
+  CANCELADO
+}
+
+model ItemCompra {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  pedidoId String       @map("pedido_id")
+  pedido   PedidoCompra @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  variacaoId String   @map("variacao_id")
+  variacao   Variacao @relation(fields: [variacaoId], references: [id], onDelete: NoAction)
+
+  /// Fotografia do nome na hora do pedido.
+  descricao  String
+  quantidade Decimal  @db.Decimal(14, 3)
+  /// Quanto já chegou. Só sobe, e só pelo recebimento.
+  recebido   Decimal  @default(0) @db.Decimal(14, 3)
+  /// Custo combinado por unidade. Nulo = a loja não informou.
+  custoUnit  Decimal? @map("custo_unit") @db.Decimal(12, 2)
+
+  @@index([orgId, pedidoId])
+  @@map("itens_compra")
+}
+
+/// Um recebimento (total ou parcial) de um pedido.
+///
+/// `chave` vem do formulário, sorteada quando a tela abriu: o mesmo envio
+/// repetido (clique duplo, a rede que devolve o POST duas vezes) bate no
+/// único e não dá entrada de novo.
+model RecebimentoCompra {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  pedidoId String       @map("pedido_id")
+  pedido   PedidoCompra @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  chave        String
+  /// O que chegou: [{ itemId, quantidade, custoUnit }].
+  itens        Json
+  total        Decimal @default(0) @db.Decimal(14, 2)
+  contaLancada Boolean @default(false) @map("conta_lancada")
+
+  quemId   String?  @map("quem_id")
+  quem     String
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@unique([pedidoId, chave])
+  @@index([orgId, criadoEm])
+  @@map("recebimentos_compra")
 }

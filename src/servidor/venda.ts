@@ -39,13 +39,15 @@
 
 import { vendidoNaLoja } from './catalogo-loja'
 import { comoOrg } from './banco'
-import type { SituacaoVenda } from '@prisma/client'
+import type { Prisma, SituacaoVenda } from '@prisma/client'
 import { exigir, numeroDaBusca, pode, PODERES, textoDaBusca, type Papel, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, reais, multiplicar, mostrar } from './dinheiro'
 import { tabelaDe, precoNaTabela, ROTULO_TABELA, type Tabela } from './preco'
-import { normalizarCodigo, travarVenda, venceu } from './devolucao'
+import { normalizarCodigo, pedeInteiro, travarVenda, venceu } from './devolucao'
 import { montarParcelas } from './crediario'
+import { travarCaixaAberto } from './caixa'
+import { codigoEncomenda, entregarPelaVenda, travarParaVenda } from './encomenda'
 import {
   programaNoPlano,
   conferirUso,
@@ -99,6 +101,18 @@ export type NovaVenda = {
   /** Desconto sobre o total da venda, além dos descontos por item. */
   desconto?: number
   observacoes?: string
+  /**
+   * O horário da agenda que esta venda cobra ("Atender e cobrar"). A venda
+   * carimba o horário como atendido e guarda o próprio id nele — na mesma
+   * transação, e só se ninguém cobrou antes (ver agenda.ts).
+   */
+  agendamentoId?: string | null
+  /**
+   * A encomenda que esta venda recebe ("Receber no balcão"). O servidor lança
+   * sozinho a linha do que FALTA pagar — valor lido da encomenda, nunca do
+   * navegador — e marca a encomenda entregue na mesma transação.
+   */
+  encomendaId?: string | null
 }
 
 export type ResultadoVenda =
@@ -124,6 +138,16 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'fora_da_loja'; itens: string[] }
   /** O plano tem teto de vendas no mês (o Grátis) e ele foi alcançado. */
   | { ok: false; motivo: 'teto_do_plano'; recado: string }
+  /** Depósito ou loja desativada: ali não se vende. */
+  | { ok: false; motivo: 'loja_nao_vende' }
+  /** Produto ou variação desativados no cadastro depois de entrarem no pedido. */
+  | { ok: false; motivo: 'item_inativo'; itens: string[] }
+  /** Peça, par ou caixa com quantidade quebrada (1,5 camiseta). */
+  | { ok: false; motivo: 'quantidade_fracionada'; itens: string[] }
+  /** A encomenda não pode ser recebida (já entregue, de outra loja, sem saldo). */
+  | { ok: false; motivo: 'encomenda_recusada'; recado: string }
+  /** O horário da agenda já foi cobrado (outra aba, outro caixa) ou não está mais de pé. */
+  | { ok: false; motivo: 'agendamento_recusado'; recado: string }
 
 /** Os papéis que podem vender. Derivado da tabela de poderes, não escrito à mão. */
 const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) =>
@@ -158,7 +182,7 @@ export async function registrarVenda(
     pagamentos: pedido.pagamentos.filter((p) => centavos(p.valor) > 0),
   }
 
-  if (v.itens.length === 0) return { ok: false, motivo: 'sem_itens' }
+  if (v.itens.length === 0 && !v.encomendaId) return { ok: false, motivo: 'sem_itens' }
 
   // ── 0. item avulso é privilégio, não é atalho ──
   // Quem lança "Conserto — R$ 30" está inventando um preço. É exatamente o
@@ -170,6 +194,11 @@ export async function registrarVenda(
       if (!a.avulso || !a.avulso.descricao.trim() || !(a.avulso.precoUnit >= 0) || !(a.quantidade > 0)) {
         return { ok: false, motivo: 'avulso_negado' }
       }
+    }
+    // O avulso é gravado como UN: conta-se, não se pesa.
+    const quebrados = avulsos.filter((a) => !Number.isInteger(a.quantidade))
+    if (quebrados.length > 0) {
+      return { ok: false, motivo: 'quantidade_fracionada', itens: quebrados.map((a) => a.avulso!.descricao.trim()) }
     }
   }
   const doCatalogo = v.itens.filter((i): i is ItemDaVenda & { variacaoId: string } => !!i.variacaoId)
@@ -188,6 +217,16 @@ export async function registrarVenda(
         crediarioMaxParcelas: true, crediarioDiasEntre: true,
       },
     })
+    // ── 0.01 onde se vende ──
+    // O id da loja vem do navegador. Depósito guarda estoque e não tem
+    // balcão; loja desativada fechou. Vender ali baixava estoque de onde
+    // ninguém atende — e com um caixa aberto por engano, até em dinheiro.
+    const loja = await db.unidade.findUnique({
+      where: { id: v.unidadeId },
+      select: { ativa: true, ehDeposito: true },
+    })
+    if (!loja || !loja.ativa || loja.ehDeposito) return { ok: false as const, motivo: 'loja_nao_vende' as const }
+
     const teto = Number(empresa?.descontoMaximo ?? 0)
     // Pontos são do plano pago (`RECURSOS`). Plano que não abre o programa não
     // pontua nem desconta, mesmo com o programa ligado de antes da troca.
@@ -207,10 +246,46 @@ export async function registrarVenda(
           ok: false as const,
           motivo: 'teto_do_plano' as const,
           recado:
+            // Sem "veja em Assinatura": quem está no balcão quase nunca abre
+            // aquela tela. A tela do balcão completa a frase — o link para
+            // quem pode ver o plano, "fale com quem responde pela empresa"
+            // para quem não pode.
             `O plano ${PLANOS[empresa!.plano].titulo} vai até ${tetoMes} vendas por mês, e este mês chegou lá. ` +
-            `Para continuar vendendo hoje, o caminho é o plano ${PLANOS.BALCAO.titulo} — veja em Assinatura.`,
+            `Para continuar vendendo hoje, o caminho é o plano ${PLANOS.BALCAO.titulo}.`,
         }
       }
+    }
+
+    // ── 0.15 o horário da agenda, se esta venda cobra um ──
+    // Travado aqui (FOR UPDATE) e conferido antes de qualquer escrita: duas
+    // abas cobrando o mesmo horário esperam uma pela outra, e a segunda acha
+    // o horário já cobrado — em vez de o cliente pagar a manicure duas vezes.
+    if (v.agendamentoId) {
+      const [ag] = await db.$queryRaw<{ unidade_id: string; venda_id: string | null; situacao: string }[]>`
+        select unidade_id, venda_id, situacao::text as situacao
+          from agendamentos where id = ${v.agendamentoId} for update
+      `
+      if (!ag || ag.unidade_id !== v.unidadeId) {
+        return { ok: false as const, motivo: 'agendamento_recusado' as const, recado: 'Esse horário não é desta loja. A venda pode ser feita sem ele.' }
+      }
+      if (ag.venda_id) {
+        return { ok: false as const, motivo: 'agendamento_recusado' as const, recado: 'Esse horário já foi cobrado em outra venda. Confira em Vendas antes de cobrar de novo.' }
+      }
+      if (!['MARCADO', 'CONFIRMADO', 'ATENDIDO'].includes(ag.situacao)) {
+        return { ok: false as const, motivo: 'agendamento_recusado' as const, recado: 'Esse horário foi desmarcado ou anotado como falta. Para cobrar assim mesmo, tire o horário da venda.' }
+      }
+    }
+
+    // ── 0.16 a encomenda, se esta venda recebe uma ──
+    // O valor da linha vem da encomenda, travada aqui — nunca do navegador.
+    // Sem `venda.desconto`: não é preço inventado por quem opera, é o saldo
+    // de um pedido que a loja já anotou (o avulso pede o poder porque o preço
+    // dele é digitado na hora; este não é).
+    let daEncomenda: { faltaC: number; linha: string; observacao: string | null } | null = null
+    if (v.encomendaId) {
+      const e = await travarParaVenda(db, empresa, v.encomendaId, v.unidadeId)
+      if (!e.ok) return { ok: false as const, motivo: 'encomenda_recusada' as const, recado: e.recado }
+      daEncomenda = e
     }
 
     // ── 0.2 crediário é módulo, e é dívida com nome ──
@@ -271,18 +346,48 @@ export async function registrarVenda(
     const variacoes = await db.variacao.findMany({
       where: { id: { in: doCatalogo.map((i) => i.variacaoId) } },
       select: {
-        id: true, codigo: true, ajustePreco: true,
+        id: true, codigo: true, ajustePreco: true, ativa: true,
         produto: {
           select: {
-            nome: true, medida: true, custo: true,
+            nome: true, medida: true, custo: true, ativo: true,
             precoVista: true, precoCartao: true, precoCrediario: true,
-            vendidoEm: true,
+            vendidoEm: true, servico: true,
           },
         },
         opcoes: { select: { opcao: { select: { valor: true } } } },
       },
     })
     const porId = new Map(variacoes.map((x) => [x.id, x]))
+
+    // ── 1a. só o que ainda está no cadastro ──
+    // Produto desativado (ou a variação: a cor que saiu de linha) some da
+    // busca e da grade — mas o pedido montado antes, o guardado no navegador
+    // ou o POST na mão ainda o traziam, e a venda baixava estoque de uma peça
+    // que a loja tirou de circulação. Variação que nem existe mais entra aqui
+    // também, em vez de virar "item removido" sem preço.
+    const inativos = [
+      ...new Set(
+        doCatalogo
+          .filter((i) => {
+            const x = porId.get(i.variacaoId)
+            return !x || !x.ativa || !x.produto.ativo
+          })
+          .map((i) => descrever(porId.get(i.variacaoId))),
+      ),
+    ]
+    if (inativos.length > 0) return { ok: false as const, motivo: 'item_inativo' as const, itens: inativos }
+
+    // ── 1a'. peça se conta, quilo se pesa ──
+    // `pedeInteiro`: UN, PAR e CX só em número inteiro. "1,5 camiseta"
+    // deixava o estoque em 48,5 peças e abria a devolução de meia peça.
+    const quebrados = [
+      ...new Set(
+        doCatalogo
+          .filter((i) => pedeInteiro(porId.get(i.variacaoId)?.produto.medida) && !Number.isInteger(i.quantidade))
+          .map((i) => descrever(porId.get(i.variacaoId))),
+      ),
+    ]
+    if (quebrados.length > 0) return { ok: false as const, motivo: 'quantidade_fracionada' as const, itens: quebrados }
 
     // ── 1b. só o que ESTA loja vende ──
     // A tela do balcão já só mostra o catálogo da loja; esta conferência é a
@@ -300,13 +405,16 @@ export async function registrarVenda(
     if (foraDaLoja.length > 0) return { ok: false as const, motivo: 'fora_da_loja' as const, itens: foraDaLoja }
 
     // ── 2. estoque: confere TUDO antes de escrever qualquer coisa ──
+    // Serviço não tem estoque: a manicure não "acaba". Fica fora da
+    // conferência e da baixa (ver `mexerEstoqueEm`).
+    const deEstoque = doCatalogo.filter((i) => !porId.get(i.variacaoId)?.produto.servico)
     const saldos = await db.estoque.findMany({
-      where: { unidadeId: v.unidadeId, variacaoId: { in: doCatalogo.map((i) => i.variacaoId) } },
+      where: { unidadeId: v.unidadeId, variacaoId: { in: deEstoque.map((i) => i.variacaoId) } },
       select: { variacaoId: true, quantidade: true },
     })
     const saldoDe = new Map(saldos.map((e) => [e.variacaoId, Number(e.quantidade)]))
 
-    const faltando = doCatalogo
+    const faltando = deEstoque
       .filter((i) => (saldoDe.get(i.variacaoId) ?? 0) < i.quantidade)
       .map((i) => ({
         descricao: descrever(porId.get(i.variacaoId)),
@@ -372,6 +480,24 @@ export async function registrarVenda(
         _tabelaCent: multiplicar(tabelaCent, i.quantidade),
       }
     })
+
+    // A linha da encomenda: o que falta, lido lá em cima com a encomenda
+    // travada. Entra como tabela dela mesma — não é desconto de ninguém.
+    if (daEncomenda) {
+      itens.push({
+        variacaoId: null,
+        descricao: daEncomenda.linha,
+        codigo: null,
+        medida: 'UN' as const,
+        quantidade: 1,
+        precoUnit: reais(daEncomenda.faltaC),
+        desconto: 0,
+        total: reais(daEncomenda.faltaC),
+        custoUnit: null,
+        _cent: daEncomenda.faltaC,
+        _tabelaCent: daEncomenda.faltaC,
+      })
+    }
 
     const subtotalCent = itens.reduce((s, i) => s + i._cent, 0)
     const descontoCent = centavos(v.desconto ?? 0)
@@ -466,23 +592,17 @@ export async function registrarVenda(
     // vizinha — e as duas fechavam errado, uma sobrando e a outra faltando.
     // Sem id, vale o caixa aberto da loja; e venda com dinheiro precisa dele,
     // senão o dinheiro entra no sistema sem gaveta nenhuma para conferir.
+    //
+    // E o turno fica PRESO até a venda terminar (`travarCaixaAberto`): o
+    // fechamento feito no outro tablet no mesmo segundo espera esta venda e
+    // a conta dentro — em vez de fechar a gaveta sem ela e deixar a venda
+    // pendurada num turno já contado.
     let caixaId: string | null = null
     if (v.caixaId) {
-      const caixa = await db.caixa.findUnique({
-        where: { id: v.caixaId },
-        select: { aberto: true, unidadeId: true },
-      })
-      if (!caixa?.aberto || caixa.unidadeId !== v.unidadeId) {
-        return { ok: false as const, motivo: 'caixa_fechado' as const }
-      }
-      caixaId = v.caixaId
+      caixaId = await travarCaixaAberto(db, v.unidadeId, v.caixaId)
+      if (!caixaId) return { ok: false as const, motivo: 'caixa_fechado' as const }
     } else {
-      const aberto = await db.caixa.findFirst({
-        where: { unidadeId: v.unidadeId, aberto: true },
-        orderBy: { abertoEm: 'desc' },
-        select: { id: true },
-      })
-      caixaId = aberto?.id ?? null
+      caixaId = await travarCaixaAberto(db, v.unidadeId)
       if (!caixaId && v.pagamentos.some((p) => p.forma === 'DINHEIRO')) {
         return { ok: false as const, motivo: 'caixa_fechado' as const }
       }
@@ -562,7 +682,12 @@ export async function registrarVenda(
         pontosUsados,
         pontosGanhos: ganhos,
         total,
-        observacoes: v.observacoes,
+        // A venda que recebeu uma encomenda diz qual, com o mesmo código que
+        // o financeiro usa no lançamento do sinal (ENC-…).
+        observacoes:
+          [v.encomendaId ? `Encomenda ${codigoEncomenda(v.encomendaId)}` : null, v.observacoes]
+            .filter(Boolean)
+            .join(' · ') || undefined,
         concluidaEm: new Date(),
         itens: {
           create: itens.map(({ _cent, _tabelaCent, ...i }) => ({ orgId: sessao.orgId, ...i })),
@@ -603,6 +728,44 @@ export async function registrarVenda(
           vencimento: x.vencimento,
           valor: reais(x.valorCent),
         })),
+      })
+    }
+
+    // ── 5.2 o horário da agenda que esta venda cobrou ──
+    // A condição `vendaId: null` é a segunda trava (a primeira é o FOR UPDATE
+    // lá em cima): se por qualquer caminho o horário já tiver venda, esta
+    // desiste inteira em vez de cobrar duas vezes.
+    if (v.agendamentoId) {
+      const marcou = await db.agendamento.updateMany({
+        where: { id: v.agendamentoId, vendaId: null },
+        data: { vendaId: venda.id, situacao: 'ATENDIDO' },
+      })
+      if (marcou.count === 0) throw new AgendamentoJaCobrado()
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          unidadeId: v.unidadeId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          acao: 'agenda.atendeu',
+          alvoTipo: 'agendamento',
+          alvoId: v.agendamentoId,
+          alvoNome: `Venda ${numero}`,
+          valor: total,
+          depois: { situacao: 'ATENDIDO', vendaId: venda.id },
+        },
+      })
+    }
+
+    // ── 5.3 a encomenda que esta venda recebeu sai como entregue ──
+    // Na mesma transação: venda que não fecha deixa a encomenda como estava.
+    if (v.encomendaId && daEncomenda) {
+      await entregarPelaVenda(db, sessao, v.encomendaId, {
+        id: venda.id,
+        numero,
+        unidadeId: v.unidadeId,
+        faltaC: daEncomenda.faltaC,
+        observacao: daEncomenda.observacao,
       })
     }
 
@@ -690,6 +853,7 @@ export async function registrarVenda(
             vendedor.id !== sessao.usuarioId ? `vendedor: ${vendedor.nome}` : null,
             tabela !== 'vista' ? `preço ${ROTULO_TABELA[tabela]}` : null,
             fiado.length > 0 ? `crediário em ${fiado[0]!.parcelas ?? 1}×` : null,
+            v.encomendaId ? `encomenda ${codigoEncomenda(v.encomendaId)}` : null,
           ]
             .filter(Boolean)
             .join(' · ') || null,
@@ -720,6 +884,14 @@ export class PontosDisputados extends Error {
   constructor() {
     super('Os pontos deste cliente acabaram de ser usados em outro caixa. Nada foi gravado.')
     this.name = 'PontosDisputados'
+  }
+}
+
+/** O horário da agenda foi cobrado por outra venda no mesmo instante. */
+export class AgendamentoJaCobrado extends Error {
+  constructor() {
+    super('Esse horário acabou de ser cobrado em outra venda. Nada foi gravado.')
+    this.name = 'AgendamentoJaCobrado'
   }
 }
 
@@ -781,32 +953,73 @@ export type VendaNaLista = {
   devolvido: number
 }
 
-export async function listarVendas(sessao: Sessao, f: FiltroVendas): Promise<VendaNaLista[]> {
-  exigir(sessao, 'venda.ver')
-
+/**
+ * O `where` da lista, da planilha e do resumo — um lugar só, para os três
+ * contarem as mesmas vendas. Null quando a pessoa não alcança loja nenhuma.
+ */
+function ondeDasVendas(sessao: Sessao, f: FiltroVendas): Prisma.VendaWhereInput | null {
   // A unidade vem do endereço, e o endereço é de quem digita. Só entram as
   // unidades em que a pessoa pode VER venda — o gerente da loja 3 não lista a
   // loja 5 trocando o número na URL.
   const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'venda.ver', u))
-  if (permitidas.length === 0) return []
-
+  if (permitidas.length === 0) return null
   const q = textoDaBusca(f.q)
   const numero = numeroDaBusca(q)
+  return {
+    unidadeId: { in: permitidas },
+    criadaEm: { gte: f.de, lt: f.ate },
+    ...(f.situacao ? { situacao: f.situacao } : {}),
+    ...(f.vendedorId ? { vendedorId: f.vendedorId } : {}),
+    ...(f.forma ? { pagamentos: { some: { forma: f.forma } } } : {}),
+    ...(numero !== null
+      ? { numero }
+      : q
+        ? { cliente: { nome: { contains: q, mode: 'insensitive' } } }
+        : {}),
+  }
+}
+
+export type ResumoVendas = {
+  concluidas: number
+  /** Soma das concluídas, em reais. */
+  total: number
+  canceladas: number
+  totalCanceladas: number
+}
+
+/**
+ * Os números do alto da tela de Vendas, somados NO BANCO e sem teto.
+ *
+ * Antes eles saíam da lista, que para em 500: num mês de loja movimentada o
+ * "Vendido" e o ticket médio eram os das 500 vendas mais recentes, e o número
+ * grande — o que a pessoa veio ver — ficava menor do que a loja vendeu.
+ */
+export async function resumoVendas(sessao: Sessao, f: FiltroVendas): Promise<ResumoVendas> {
+  exigir(sessao, 'venda.ver')
+  const vazio = { concluidas: 0, total: 0, canceladas: 0, totalCanceladas: 0 }
+  const where = ondeDasVendas(sessao, f)
+  if (!where) return vazio
+  const grupos = await comoOrg(sessao.orgId, (db) =>
+    db.venda.groupBy({ by: ['situacao'], where, _count: { _all: true }, _sum: { total: true } }),
+  )
+  const de = (s: SituacaoVenda) => grupos.find((g) => g.situacao === s)
+  return {
+    concluidas: de('CONCLUIDA')?._count._all ?? 0,
+    total: reais(centavos(de('CONCLUIDA')?._sum.total ?? 0)),
+    canceladas: de('CANCELADA')?._count._all ?? 0,
+    totalCanceladas: reais(centavos(de('CANCELADA')?._sum.total ?? 0)),
+  }
+}
+
+export async function listarVendas(sessao: Sessao, f: FiltroVendas): Promise<VendaNaLista[]> {
+  exigir(sessao, 'venda.ver')
+
+  const where = ondeDasVendas(sessao, f)
+  if (!where) return []
 
   return comoOrg(sessao.orgId, async (db) => {
     const vendas = await db.venda.findMany({
-      where: {
-        unidadeId: { in: permitidas },
-        criadaEm: { gte: f.de, lt: f.ate },
-        ...(f.situacao ? { situacao: f.situacao } : {}),
-        ...(f.vendedorId ? { vendedorId: f.vendedorId } : {}),
-        ...(f.forma ? { pagamentos: { some: { forma: f.forma } } } : {}),
-        ...(numero !== null
-          ? { numero }
-          : q
-            ? { cliente: { nome: { contains: q, mode: 'insensitive' } } }
-            : {}),
-      },
+      where,
       orderBy: { criadaEm: 'desc' },
       // Um dia cheio de loja grande são umas 300 vendas. Quinhentas cobrem
       // qualquer filtro razoável; acima disso a pessoa está pedindo relatório,
@@ -974,8 +1187,25 @@ export async function acharVenda(sessao: Sessao, vendaId: string) {
 }
 
 export type Cancelamento =
-  | { ok: true; numero: number }
-  | { ok: false; motivo: 'nao_achada' | 'ja_cancelada' | 'sem_motivo' | 'ja_devolvida' | 'crediario_recebido' }
+  | {
+      ok: true
+      numero: number
+      /** O dinheiro que saiu da gaveta de AGORA (a venda era de um turno já fechado). */
+      sangria: number
+    }
+  | { ok: false; motivo: 'nao_achada' | 'ja_cancelada' | 'sem_motivo' | 'ja_devolvida' | 'crediario_recebido' | 'caixa_fechado' }
+
+/**
+ * Uma parcela desta venda recebeu dinheiro entre a leitura e o apagar. Lançado
+ * para desfazer a transação inteira (o estoque já tinha voltado) e virar a
+ * mesma resposta de "crediário recebido" do lado de fora.
+ */
+class ParcelaRecebidaNoCaminho extends Error {
+  constructor() {
+    super('Uma parcela desta venda acabou de ser recebida. Nada foi cancelado.')
+    this.name = 'ParcelaRecebidaNoCaminho'
+  }
+}
 
 /**
  * Desfaz uma venda: o estoque volta, os pontos voltam, e a venda fica marcada
@@ -985,7 +1215,8 @@ export type Cancelamento =
  * O dinheiro não volta sozinho. Se a venda foi em Pix ou cartão, devolver é
  * ato de gente, feito por fora, e o sistema não tem como saber se aconteceu.
  * Por isso o motivo é obrigatório: é ele que, no livro, conta o que foi feito
- * com o dinheiro.
+ * com o dinheiro. A exceção é o DINHEIRO de um turno já fechado: esse volta
+ * pela gaveta aberta agora, como sangria (ver "o dinheiro da gaveta").
  *
  * E a venda cancelada some do DRE, do painel e do fechamento do caixa sozinha:
  * todos eles só somam `CONCLUIDA`. Não existe "estorno" a lançar — a venda
@@ -1000,6 +1231,15 @@ export async function cancelarVenda(
   const texto = motivo.trim()
   if (texto.length < 3) return { ok: false, motivo: 'sem_motivo' }
 
+  try {
+    return await cancelarNaTransacao(sessao, vendaId, texto)
+  } catch (e) {
+    if (e instanceof ParcelaRecebidaNoCaminho) return { ok: false, motivo: 'crediario_recebido' }
+    throw e
+  }
+}
+
+async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: string): Promise<Cancelamento> {
   return comoOrg(sessao.orgId, async (db) => {
     // Trava a linha da venda até o fim da transação. Dois cliques em
     // "Cancelar" (ou cancelar enquanto outra pessoa devolve) liam os dois
@@ -1017,6 +1257,7 @@ export async function cancelarVenda(
         pontosGanhos: true,
         pontosUsados: true,
         total: true,
+        caixaId: true,
         itens: { select: { variacaoId: true, quantidade: true } },
         devolucoes: { select: { id: true } },
         pagamentos: { select: { forma: true, valor: true, valeId: true } },
@@ -1042,6 +1283,24 @@ export async function cancelarVenda(
     // mostra o que sobra para acertar com o cliente.
     if (v.parcelas.some((p) => centavos(p.pago) > 0 || centavos(p.juros) > 0)) {
       return { ok: false as const, motivo: 'crediario_recebido' as const }
+    }
+
+    // ── 0. o dinheiro da gaveta ──
+    // Venda em dinheiro de um turno AINDA ABERTO: cancelada, ela sai sozinha
+    // da conta daquela gaveta (o esperado só soma CONCLUIDA), e o dinheiro
+    // volta ao cliente dali mesmo. Mas a venda de ontem, de um turno já
+    // fechado e conferido, não: a gaveta de ontem já foi contada com esse
+    // dinheiro dentro, e o dinheiro que volta ao cliente hoje sai da gaveta
+    // de HOJE. Sem a sangria, o turno de hoje fechava sobrando exatamente o
+    // valor devolvido — e o turno fechado mudava de cara depois de conferido.
+    const dinheiroC = v.pagamentos.filter((p) => p.forma === 'DINHEIRO').reduce((s, p) => s + centavos(p.valor), 0)
+    let caixaDaSangria: string | null = null
+    if (dinheiroC > 0) {
+      const turnoDaVenda = v.caixaId ? await travarCaixaAberto(db, v.unidadeId, v.caixaId) : null
+      if (!turnoDaVenda) {
+        caixaDaSangria = await travarCaixaAberto(db, v.unidadeId)
+        if (!caixaDaSangria) return { ok: false as const, motivo: 'caixa_fechado' as const }
+      }
     }
 
     // ── 1. o estoque volta ──
@@ -1104,9 +1363,31 @@ export async function cancelarVenda(
     // seguia "devendo" uma venda que não aconteceu, e aparecia na cobrança e
     // no "fiado vencido" do painel. Sem recebimento nenhum (conferido acima),
     // apagar é seguro: não leva dinheiro de ninguém junto.
+    //
+    // E o apagar CONFERE de novo, na própria condição: só sai parcela sem
+    // pago e sem juros. Se alguma recebeu no caminho (o recebimento também
+    // trava a venda, mas esta é a garantia), a contagem não bate e o
+    // cancelamento inteiro volta — apagar parcela recebida apagaria junto o
+    // recebimento, e o dinheiro que entrou na gaveta ficaria sem dono.
     if (v.parcelas.length > 0) {
-      await db.parcela.deleteMany({ where: { vendaId: v.id } })
+      const apagou = await db.parcela.deleteMany({ where: { vendaId: v.id, pago: 0, juros: 0 } })
+      if (apagou.count !== v.parcelas.length) throw new ParcelaRecebidaNoCaminho()
       notas.push(`${plural(v.parcelas.length, 'parcela do crediário cancelada', 'parcelas do crediário canceladas')}`)
+    }
+
+    // ── 2.3 o dinheiro volta ao cliente pela gaveta de agora ──
+    if (caixaDaSangria) {
+      await db.caixaMovimento.create({
+        data: {
+          orgId: sessao.orgId,
+          caixaId: caixaDaSangria,
+          tipo: 'SANGRIA',
+          valor: reais(dinheiroC),
+          motivo: `Cancelamento da venda ${v.numero} (de um turno já fechado)`,
+          quem: sessao.nome,
+        },
+      })
+      notas.push(`${mostrar(dinheiroC)} devolvido em dinheiro pela gaveta aberta`)
     }
 
     // ── 3. a marca ──
@@ -1130,6 +1411,6 @@ export async function cancelarVenda(
       },
     })
 
-    return { ok: true as const, numero: v.numero }
+    return { ok: true as const, numero: v.numero, sangria: caixaDaSangria ? reais(dinheiroC) : 0 }
   })
 }

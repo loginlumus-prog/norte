@@ -14,6 +14,32 @@
 
 import type { Instrumentation } from 'next'
 
+/**
+ * Avisa no log quando a máquina não está no fuso de São Paulo.
+ *
+ * Não derruba nada: toda conta de "hoje" e "este mês" usa `servidor/dia.ts`,
+ * que não depende do fuso da máquina. O aviso existe para quem for depurar
+ * saber que um `new Date(ano, mes, dia)` ou um `getHours()` esquecido em
+ * algum canto vai dar o dia de Londres aqui — na Vercel, o padrão é UTC.
+ */
+export function register() {
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return
+  const fuso = Intl.DateTimeFormat().resolvedOptions().timeZone
+  // Janeiro e julho: o mesmo deslocamento de São Paulo (-3h, sem horário de verão).
+  const comoSP = [new Date(Date.UTC(2026, 0, 15)), new Date(Date.UTC(2026, 6, 15))].every(
+    (d) => d.getTimezoneOffset() === 180,
+  )
+  if (!comoSP) {
+    console.warn(
+      JSON.stringify({
+        nivel: 'aviso',
+        recado: 'O servidor não está no fuso de São Paulo. As contas de dia e mês usam servidor/dia.ts e não dependem disto.',
+        fuso,
+      }),
+    )
+  }
+}
+
 export const onRequestError: Instrumentation.onRequestError = async (erro, pedido, contexto) => {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
   const { resumoDoErro, semBusca } = await import('./servidor/registro')

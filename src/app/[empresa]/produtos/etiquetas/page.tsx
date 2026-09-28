@@ -3,11 +3,12 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
-import { pode } from '@/servidor/permissao'
+import { pode, textoDaBusca } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
 import { svgCode128 } from '@/servidor/codigo-barras'
 import { Imprimir } from '@/ui/Imprimir'
 import { headers } from 'next/headers'
+import { plural } from '@/ui/texto'
 
 export const metadata: Metadata = { title: 'Etiquetas' }
 
@@ -43,18 +44,54 @@ export default async function Etiquetas({
 }) {
   const nonce = (await headers()).get('x-nonce') ?? undefined
   const { empresa: slug } = await params
-  const p = await searchParams
+  const bruto = await searchParams
+  // O endereço é do usuário: `?produto=a&produto=b` chega como LISTA, e lista
+  // no `where` do Prisma derrubava a tela. Aqui só texto passa; o resto some.
+  const p = Object.fromEntries(
+    Object.entries(bruto).map(([k, v]) => [k, typeof v === 'string' ? v.trim().slice(0, 200) : undefined]),
+  ) as Record<keyof typeof bruto, string | undefined>
   const { empresa, sessao } = await exigirEntrada(slug)
   if (!pode(sessao, 'produto.ver')) notFound()
 
   const onde = await escolherUnidade(sessao, empresa, p.unidade, 'produto.ver')
   const formato = p.formato === 'termica' ? 'termica' : 'a4'
   const copias = p.copias === 'estoque' ? 'estoque' : 'uma'
-  const q = (p.q ?? '').trim()
+  const q = textoDaBusca(p.q)
 
   // Algum recorte é obrigatório: imprimir o catálogo inteiro sem querer são
-  // oitocentas etiquetas e uma folha de adesivo perdida.
-  if (!p.produto && !p.variacao && !p.categoria && !q) notFound()
+  // oitocentas etiquetas e uma folha de adesivo perdida. Sem recorte, a
+  // tela diz como escolher — antes caía no "link errado ou sem acesso", que
+  // parece sistema quebrado para quem só clicou em "Etiquetas".
+  if (!p.produto && !p.variacao && !p.categoria && !q) {
+    return (
+      <div className="mx-auto flex max-w-xl flex-col gap-4 p-6">
+        <h1 className="text-lg font-bold tracking-tight text-tinta">Etiquetas</h1>
+        <p className="text-sm leading-relaxed text-tinta-2">
+          Escolha o que etiquetar: busque pelo nome ou pela etiqueta abaixo, ou abra um produto
+          em Produtos e clique em &ldquo;Etiquetas&rdquo;. Imprimir o catálogo inteiro de uma vez
+          não é oferecido de propósito — são centenas de etiquetas e uma folha de adesivo perdida.
+        </p>
+        <form className="flex flex-wrap gap-2">
+          {onde.unidadeId && <input type="hidden" name="unidade" value={onde.unidadeId} />}
+          <input
+            name="q"
+            placeholder="Nome ou etiqueta"
+            aria-label="O que etiquetar"
+            className="min-w-[14rem] flex-1 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
+          />
+          <button
+            type="submit"
+            className="rounded-norte border border-borda bg-superficie px-4 py-2 text-sm font-semibold text-tinta hover:bg-superficie-2"
+          >
+            Ver etiquetas
+          </button>
+        </form>
+        <Link href={`/${slug}/produtos`} className="text-sm font-medium text-marca underline-offset-2 hover:underline">
+          ← voltar para Produtos
+        </Link>
+      </div>
+    )
+  }
 
   const variacoes = await comoOrg(sessao.orgId, (db) =>
     db.variacao.findMany({
@@ -133,7 +170,7 @@ export default async function Etiquetas({
       <div className="nao-imprime mb-4 flex flex-wrap items-center justify-between gap-3 rounded-norte border border-borda bg-superficie p-3">
         <div className="flex flex-col gap-1 text-sm">
           <b className="text-tinta">
-            {etiquetas.length} etiqueta{etiquetas.length === 1 ? '' : 's'}
+            {plural(etiquetas.length, 'etiqueta', 'etiquetas')}
             {etiquetas.length === 400 ? ' (o máximo por vez)' : ''}
           </b>
           <span className="flex flex-wrap gap-x-3 text-xs text-tinta-2">

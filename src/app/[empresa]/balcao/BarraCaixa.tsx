@@ -7,9 +7,13 @@
 // ter na gaveta AGORA — e os quatro gestos do turno (sangria, suprimento,
 // troca, fechar) a um toque, em vez de escondidos numa outra tela.
 //
-// "Na gaveta" é o número que a pessoa mais olha durante o dia: é o que
-// decide se já está na hora de fazer uma sangria antes de acumular dinheiro
-// demais no balcão.
+// "Na gaveta" é o número que o dono mais olha durante o dia: é o que decide
+// se já está na hora de fazer uma sangria antes de acumular dinheiro demais
+// no balcão. Mas é também o ESPERADO do fechamento — e quem vai contar a
+// gaveta no fim do turno não pode tê-lo diante dos olhos o dia inteiro, senão
+// a contagem às cegas (ver Caixa.tsx) vira copiar o número da barra. Por isso
+// ele, e o total vendido do turno, só aparecem para quem vê relatório: o dono
+// e a gerência. Quem opera vê quantas vendas passaram, não quanto.
 
 import Link from 'next/link'
 import { useState } from 'react'
@@ -18,7 +22,7 @@ import { Movimento } from './Caixa'
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const hora = (d: Date) =>
-  new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(d)
+  new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).format(d)
 
 export function BarraCaixa({
   slug,
@@ -26,6 +30,7 @@ export function BarraCaixa({
   caixa,
   conferencia,
   podeOperar,
+  veReceita = false,
   meta = null,
   compacta = false,
 }: {
@@ -34,6 +39,8 @@ export function BarraCaixa({
   caixa: { id: string; abertoEm: Date; abertoPor: string }
   conferencia: { vendas: number; vendidoTotal: number; esperado: number }
   podeOperar: boolean
+  /** Vê o dinheiro do turno (`relatorio.ver`): o total vendido e o "na gaveta". */
+  veReceita?: boolean
   /** A meta do mês de quem está no caixa. Nula sem módulo de metas ou sem meta. */
   meta?: { valor: number; vendido: number } | null
   /**
@@ -66,13 +73,16 @@ export function BarraCaixa({
             caixa desde {hora(new Date(caixa.abertoEm))}
           </span>
           <span className="numero text-sm font-semibold text-tinta">
-            {conferencia.vendas} venda{conferencia.vendas === 1 ? '' : 's'} · {brl(conferencia.vendidoTotal)}
+            {conferencia.vendas} venda{conferencia.vendas === 1 ? '' : 's'}
+            {veReceita && <> · {brl(conferencia.vendidoTotal)}</>}
           </span>
         </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">na gaveta</span>
-          <span className="numero text-sm font-semibold text-tinta">{brl(conferencia.esperado)}</span>
-        </div>
+        {veReceita && (
+          <div className="flex flex-col">
+            <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">na gaveta</span>
+            <span className="numero text-sm font-semibold text-tinta">{brl(conferencia.esperado)}</span>
+          </div>
+        )}
         <span className={cx('text-xs text-tinta-3', compacta && 'hidden sm:inline')}>{caixa.abertoPor}</span>
         {meta && (
           <div className={cx('flex-col', compacta ? 'hidden md:flex' : 'flex')} title="Sua meta do mês, líquida de devolução">

@@ -2,7 +2,10 @@ import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
-import { aVencer, montarDRE, listarLancamentos, prepararFinanceiro, resultadoPorMes } from '@/servidor/financeiro'
+import {
+  aVencer, janelaDoMes, lerMes, listarLancamentos, mesDeAgora, montarDRE, outroMes, prepararFinanceiro, resultadoPorMes,
+} from '@/servidor/financeiro'
+import { diaEmSP } from '@/servidor/dia'
 import { garantirRecorrentes, listarRecorrentes, situacaoDoVencimento } from '@/servidor/recorrentes'
 import { BarrasMeses, Rosca } from '@/ui/Graficos'
 import Link from 'next/link'
@@ -10,14 +13,14 @@ import { Tabela } from '@/ui/Tabela'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { TipoLancamento } from '@prisma/client'
 import { comoOrg } from '@/servidor/banco'
-import { pode } from '@/servidor/permissao'
+import { pode, podeNoAlcance, unidadesQuePodem } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, Aviso, Ponto, cx } from '@/ui/base'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
-import { Lancar, Pagar } from './Lancar'
+import { DesfazerPagamento, Lancar, Pagar } from './Lancar'
 import { Recorrentes } from './Recorrentes'
 import { palavra, plural } from '@/ui/texto'
 import { registrarErro } from '@/servidor/registro'
@@ -35,6 +38,9 @@ const MES = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ]
 
+/** Porcentagem com vírgula, do jeito brasileiro: "-47,5%". */
+const pct = (v: number) => `${v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+
 export default async function Financeiro({
   params,
   searchParams,
@@ -50,13 +56,16 @@ export default async function Financeiro({
   }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, mes: mesBruto, q: qBruto, tipo: tipoPedido, situacao: sitPedida, categoria: catPedida } =
+  const { unidade: pedida, mes: mesBruto, q: qBruto, tipo: tipoPedido, situacao: sitPedida, categoria: catBruta } =
     await searchParams
   // O mês vem do endereço. `?mes=lixo`, `?mes=2026-13` ou o parâmetro repetido
   // viravam "Invalid Date" no DRE e a tela de erro no lugar do financeiro;
   // fora do formato, vale o mês corrente.
-  const mes = typeof mesBruto === 'string' && /^\d{4}-(0?[1-9]|1[0-2])$/.test(mesBruto) ? mesBruto : undefined
+  const mes = lerMes(mesBruto) ?? undefined
   const q = (typeof qBruto === 'string' ? qBruto : '').trim()
+  // `?categoria=a&categoria=b` chega como LISTA, e a lista ia direto para o
+  // Prisma — tela de erro. Só texto com cara de id passa; o resto é "todas".
+  const catPedida = typeof catBruta === 'string' && /^[\w-]{1,64}$/.test(catBruta) ? catBruta : null
   const tipo: TipoLancamento | null = tipoPedido === 'DESPESA' || tipoPedido === 'RECEITA' ? tipoPedido : null
   const situacaoL: 'aberto' | 'pago' | null = sitPedida === 'aberto' || sitPedida === 'pago' ? sitPedida : null
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'financeiro.ver' })
@@ -76,22 +85,28 @@ export default async function Financeiro({
     <b className="font-medium text-tinta-2">Configurações</b>
   )
 
-  // Mês do relatório: o corrente, ou o que veio no endereço (YYYY-MM).
-  const agora = new Date()
-  const [ano, mesNum] = (mes ?? `${agora.getFullYear()}-${agora.getMonth() + 1}`)
-    .split('-')
-    .map(Number)
-  const de = new Date(ano!, mesNum! - 1, 1)
-  const ate = new Date(ano!, mesNum!, 0, 23, 59, 59)
-  const mesOlhado = `${ano}-${String(mesNum).padStart(2, '0')}`
+  // Mês do relatório: o corrente EM SÃO PAULO, ou o que veio no endereço.
+  // Era o relógio da máquina, e num servidor em UTC às 22h do dia 30 a tela
+  // já abria no mês seguinte, vazio. O fim do DRE é o último milissegundo do
+  // mês — o `23:59:59` de antes deixava de fora a venda do último segundo.
+  const mesOlhado = mes ?? mesDeAgora()
+  const [ano, mesNum] = mesOlhado.split('-').map(Number) as [number, number]
+  const { de, ate: inicioDoSeguinte } = janelaDoMes(mesOlhado)
+  const ate = new Date(inicioDoSeguinte.getTime() - 1)
+  const nomeDoMes = MES[mesNum - 1]!
+  const hoje = diaEmSP()
 
   // Antes de ler: empresa sem categoria nenhuma ganha as padrão (sem elas não
   // dá para lançar nem cadastrar conta recorrente — o cadastro inicial não as
   // cria), e as contas recorrentes do mês, do seguinte e do mês olhado (se
   // futuro) nascem se faltarem. Um de cada vez e FORA do Promise.all: cada um
   // abre a própria transação e escreve; e nenhum deles pode derrubar a tela.
-  if (podeLancar) await prepararFinanceiro(sessao).catch((e) => registrarErro('financeiro.preparar', e))
-  await garantirRecorrentes(sessao, mesOlhado).catch((e) => registrarErro('financeiro.recorrentes', e))
+  // Só para quem lança: abrir a tela para LER (contador, suporte, gerente que
+  // só vê) não escreve nada no banco.
+  if (podeLancar) {
+    await prepararFinanceiro(sessao).catch((e) => registrarErro('financeiro.preparar', e))
+    await garantirRecorrentes(sessao, mesOlhado).catch((e) => registrarErro('financeiro.recorrentes', e))
+  }
 
   const [contas, dre, categorias, unidades, lancamentos, meses, recorrentes] = await Promise.all([
     aVencer(sessao, onde.ids),
@@ -112,11 +127,11 @@ export default async function Financeiro({
     ),
     listarLancamentos(sessao, {
       unidadeIds: onde.ids,
-      ano: ano!,
-      mes: mesNum!,
+      ano,
+      mes: mesNum,
       tipo,
       situacao: situacaoL,
-      categoriaId: catPedida ?? null,
+      categoriaId: catPedida,
       q,
     }),
     resultadoPorMes(sessao, onde.ids, 6),
@@ -129,7 +144,7 @@ export default async function Financeiro({
     .filter((l) => !l.total && !l.fora && l.valor < 0 && l.chave !== 'devolucoes')
     .map((l) => ({ rotulo: l.rotulo.replace('(−) ', ''), valor: -l.valor }))
 
-  const categoriaL = categorias.some((c) => c.id === catPedida) ? catPedida! : null
+  const categoriaL = categorias.some((c) => c.id === catPedida) ? catPedida : null
   const atuais = {
     unidade: onde.unidadeId,
     mes: mes ?? null,
@@ -154,11 +169,21 @@ export default async function Financeiro({
       : i,
   )
 
-  const mesAnterior = new Date(ano!, mesNum! - 2, 1)
-  const mesSeguinte = new Date(ano!, mesNum!, 1)
-  const link = (d: Date) =>
-    `/${slug}/financeiro?mes=${d.getFullYear()}-${d.getMonth() + 1}` +
-    (onde.unidadeId ? `&unidade=${onde.unidadeId}` : '')
+  const link = (m: string) =>
+    `/${slug}/financeiro?mes=${m}` + (onde.unidadeId ? `&unidade=${onde.unidadeId}` : '')
+
+  // Onde o lançamento novo cai. Olhando uma loja, nela. Olhando o conjunto,
+  // "sem loja" é da empresa inteira — e isso só lança quem alcança a empresa
+  // inteira; os outros escolhem uma das lojas em que lançam.
+  const lojasDeLancar =
+    podeLancar && onde.unidadeId === null && !podeNoAlcance(sessao, 'financeiro.lancar', null)
+      ? onde.opcoes.filter((u) => pode(sessao, 'financeiro.lancar', u.id)).map((u) => ({ id: u.id, nome: u.nome }))
+      : undefined
+  // Baixa e "desfazer" só aparecem onde a pessoa pode mexer: na conta da
+  // empresa inteira, só quem lança na empresa inteira.
+  const lancaNaEmpresa = unidadesQuePodem(sessao, 'financeiro.lancar') === 'todas'
+  const podeMexer = (unidadeId: string | null) =>
+    podeLancar && (unidadeId === null ? lancaNaEmpresa : pode(sessao, 'financeiro.lancar', unidadeId))
 
   return (
     <Estrutura
@@ -182,7 +207,7 @@ export default async function Financeiro({
           </Link>
           <a
             href={`/${slug}/financeiro/exportar?${new URLSearchParams(
-              Object.entries({ mes: mesOlhado, tipo, situacao: situacaoL, categoria: catPedida, q, unidade: onde.unidadeId }).filter(
+              Object.entries({ mes: mesOlhado, tipo, situacao: situacaoL, categoria: categoriaL, q, unidade: onde.unidadeId }).filter(
                 (par): par is [string, string] => typeof par[1] === 'string' && par[1] !== '',
               ),
             )}`}
@@ -201,7 +226,7 @@ export default async function Financeiro({
           itens={[
             { rotulo: 'vencidas', um: 'vencida', quantos: contas.vencidas.length, nivel: 'critico' },
             { rotulo: 'vencem hoje', um: 'vence hoje', quantos: contas.hoje.length, nivel: 'atencao' },
-            { rotulo: 'próximos 15 dias', quantos: contas.proximas.length, nivel: 'neutro' },
+            { rotulo: 'vencem nos próximos 15 dias', um: 'vence nos próximos 15 dias', quantos: contas.proximas.length, nivel: 'neutro' },
           ]}
         />
 
@@ -252,7 +277,7 @@ export default async function Financeiro({
                     <span className="numero ml-auto text-sm font-semibold text-tinta sm:ml-0 sm:w-24 sm:text-right">
                       {brl(c.valor)}
                     </span>
-                    {podeLancar && <Pagar slug={slug} id={c.id} />}
+                    {podeMexer(c.unidadeId) && <Pagar slug={slug} id={c.id} hoje={hoje} />}
                   </span>
                 </li>
               ))}
@@ -266,6 +291,8 @@ export default async function Financeiro({
             categorias={categorias}
             contas={unidades}
             unidadeId={onde.unidadeId}
+            lojas={lojasDeLancar}
+            hoje={hoje}
           />
         )}
       </Secao>
@@ -282,11 +309,13 @@ export default async function Financeiro({
           lista={recorrentes.map((r) => ({
             ...r,
             unidadeNome: r.unidadeId ? (nomeDaLoja.get(r.unidadeId) ?? null) : null,
+            editavel: podeMexer(r.unidadeId),
           }))}
           categorias={categorias}
           lojas={onde.opcoes.filter((u) => pode(sessao, 'financeiro.lancar', u.id)).map((u) => ({ id: u.id, nome: u.nome }))}
           lojaAtual={onde.unidadeId}
           podeLancar={podeLancar}
+          empresaInteira={lancaNaEmpresa}
         />
       </Secao>
 
@@ -294,8 +323,8 @@ export default async function Financeiro({
           O DRE agrega; isto é a prova dele. "Quanto paguei de fornecedor em
           agosto" e "esse R$ 1.200 é o quê" não tinham onde ser olhados. */}
       <Secao
-        titulo={`Lançamentos de ${MES[de.getMonth()]}`}
-        resumo="Tudo que foi lançado com vencimento neste mês. É daqui que sai o resultado logo abaixo."
+        titulo={`Lançamentos de ${nomeDoMes}`}
+        resumo="Tudo que vence neste mês, pago ou não. O resultado logo abaixo conta pelo dia em que foi pago: a conta deste mês paga no seguinte entra no resultado do seguinte."
         acao={
           <Fichas
             opcoes={[
@@ -440,7 +469,11 @@ export default async function Financeiro({
                       titulo: '',
                       largura: '6rem',
                       celula: (l: (typeof lancamentos)[number]) =>
-                        l.pagoEm ? null : <Pagar slug={slug} id={l.id} />,
+                        !podeMexer(l.unidadeId) ? null : l.pagoEm ? (
+                          <DesfazerPagamento slug={slug} id={l.id} />
+                        ) : (
+                          <Pagar slug={slug} id={l.id} hoje={hoje} />
+                        ),
                     },
                   ]
                 : []),
@@ -456,13 +489,13 @@ export default async function Financeiro({
       <Secao titulo="Resultado do mês">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
-            <a href={link(mesAnterior)} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
+            <a href={link(outroMes(mesOlhado, -1))} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
               ←
             </a>
             <span className="font-semibold text-tinta">
-              {MES[de.getMonth()]} de {de.getFullYear()}
+              {nomeDoMes} de {ano}
             </span>
-            <a href={link(mesSeguinte)} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
+            <a href={link(outroMes(mesOlhado, 1))} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
               →
             </a>
           </div>
@@ -476,9 +509,9 @@ export default async function Financeiro({
             nivel={dre.resultado >= 0 ? 'bom' : 'critico'}
           />
           <Numero
-            rotulo="Margem"
-            valor={`${dre.margem.toFixed(1)}%`}
-            detalhe="do que entrou, quanto ficou"
+            rotulo="Margem líquida"
+            valor={pct(dre.margem)}
+            detalhe="do que entrou, quanto sobrou depois de tudo"
             nivel={dre.margem >= 15 ? 'bom' : dre.margem >= 5 ? 'atencao' : 'critico'}
           />
         </div>
@@ -546,7 +579,7 @@ export default async function Financeiro({
               rotulos={meses.map((m) => m.rotulo)}
               series={[
                 { nome: 'Receita', cor: 'var(--bom-vivo)', valores: meses.map((m) => m.receita) },
-                { nome: 'Saiu (mercadoria, despesas, taxas)', cor: 'var(--critico-vivo)', valores: meses.map((m) => m.cmv + m.despesas + m.taxas) },
+                { nome: 'Saiu (mercadoria, impostos, despesas, taxas)', cor: 'var(--critico-vivo)', valores: meses.map((m) => m.cmv + m.despesas + m.taxas) },
               ]}
             />
             <ul className="mt-3 grid grid-cols-3 gap-1 text-xs sm:grid-cols-6">
@@ -560,9 +593,11 @@ export default async function Financeiro({
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-xs text-tinta-3">Embaixo de cada mês, o resultado: o que sobrou ou faltou.</p>
+            <p className="mt-2 text-xs text-tinta-3">
+              Embaixo de cada mês, o resultado: o que sobrou ou faltou. É a mesma conta do quadro acima, mês a mês.
+            </p>
           </Cartao>
-          <Cartao caixa titulo={`Para onde foi o dinheiro em ${MES[de.getMonth()]}`}>
+          <Cartao caixa titulo={`Para onde foi o dinheiro em ${nomeDoMes}`}>
             <Rosca fatias={saidas} vazio="Nada saiu neste mês." />
           </Cartao>
         </div>

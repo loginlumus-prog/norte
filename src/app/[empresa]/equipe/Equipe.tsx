@@ -14,8 +14,10 @@
 import { useActionState, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao, Campo, Selecao, Aviso, Cartao, Situacao, cx } from '@/ui/base'
+import { Confirmar } from '@/ui/Confirmar'
 import {
   convidarPessoa,
+  cortarSuporte,
   gerarLinkSenha,
   revogar,
   trocarPapel,
@@ -36,6 +38,23 @@ export type PessoaNaTela = {
   souEu: boolean
   /** Celular com DDD: é por ele que o assistente reconhece a pessoa no WhatsApp. */
   telefone: string | null
+  /**
+   * Quem está vendo pode mexer no acesso desta pessoa? Vem do servidor
+   * (`podeMexerEm`): o gerente não mexe na linha da dona, e mostrar o botão
+   * que o servidor recusa só ensina que o sistema "não funciona".
+   */
+  podeMexer: boolean
+  /** Pode mudar o telefone desta linha: o próprio (se não é só leitura) ou quem pode mexer. */
+  podeTelefone: boolean
+}
+
+/** Uma conta do NOSSO suporte com acesso valendo. Mostrada à parte da equipe. */
+export type SuporteNaTela = {
+  id: string
+  nome: string
+  /** "28/09, 14:00" — o acesso de suporte sempre tem prazo. */
+  ate: string | null
+  motivo: string | null
 }
 
 /** "71999990000" → "(71) 99999-0000". O que não tiver forma de celular fica como veio. */
@@ -153,6 +172,80 @@ const RESUMO: Record<string, string> = {
   CONTADOR: 'Só olha o financeiro',
 }
 
+/**
+ * O papel de alguém, com confirmação.
+ *
+ * Antes, a lista salvava ao trocar: um toque errado rolando a tela no celular
+ * rebaixava a gerente e derrubava a sessão dela. Agora escolher só PREPARA a
+ * troca; ela acontece no "Sim". E não há "Sem acesso" aqui: tirar o acesso é
+ * o botão ao lado (que guarda o papel para devolver depois).
+ */
+function TrocaDePapel({
+  slug,
+  pessoa,
+  papeis,
+  aoTerminar,
+}: {
+  slug: string
+  pessoa: PessoaNaTela
+  papeis: string[]
+  aoTerminar: (r: EstadoEquipe) => void
+}) {
+  const atual = pessoa.papel ?? ''
+  const [escolhido, setEscolhido] = useState(atual)
+  const [indo, comecar] = useTransition()
+  const router = useRouter()
+  // O papel atual entra na lista mesmo quando quem vê não pode concedê-lo —
+  // senão a lista mostraria outro nome no lugar do papel que a pessoa tem.
+  const opcoes = [
+    ...(atual ? [] : [{ valor: '', titulo: 'Escolha o papel...' }]),
+    ...(atual && !papeis.includes(atual) ? [{ valor: atual, titulo: ROTULO[atual] ?? atual }] : []),
+    ...papeis.map((v) => ({ valor: v, titulo: ROTULO[v] ?? v })),
+  ]
+  const mudou = escolhido !== atual && escolhido !== ''
+
+  return (
+    <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+      <Selecao
+        rotulo=""
+        id={`papel-${pessoa.id}`}
+        aria-label={`Papel de ${pessoa.nome}`}
+        value={escolhido}
+        disabled={indo}
+        onChange={(ev) => setEscolhido(ev.currentTarget.value)}
+        opcoes={opcoes}
+        className="py-1 text-xs"
+      />
+      {mudou && (
+        <span role="group" aria-label="Confirmar a troca de papel" className="inline-flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-medium text-tinta-2">
+            Mudar para {ROTULO[escolhido] ?? escolhido}? {pessoa.nome.split(' ')[0]} vai precisar entrar de novo.
+          </span>
+          <Botao
+            tom="confirmar"
+            className="px-2 py-1 text-xs"
+            carregando={indo}
+            autoFocus
+            onClick={() =>
+              comecar(async () => {
+                const r = await trocarPapel(slug, pessoa.id, escolhido, pessoa.unidadeId)
+                aoTerminar(r)
+                if (r.erro) setEscolhido(atual)
+                router.refresh()
+              })
+            }
+          >
+            Sim, mudar
+          </Botao>
+          <Botao tom="discreto" className="px-2 py-1 text-xs" disabled={indo} onClick={() => setEscolhido(atual)}>
+            Não
+          </Botao>
+        </span>
+      )}
+    </span>
+  )
+}
+
 export function Equipe({
   slug,
   pessoas,
@@ -160,6 +253,8 @@ export function Equipe({
   unidades,
   papeisQuePosso,
   podeGerir,
+  suportes,
+  podeCortarSuporte,
 }: {
   slug: string
   pessoas: PessoaNaTela[]
@@ -168,6 +263,10 @@ export function Equipe({
   /** Só os papéis que ESTA pessoa pode conceder. */
   papeisQuePosso: string[]
   podeGerir: boolean
+  /** O nosso suporte com acesso valendo — fora da lista da equipe. */
+  suportes: SuporteNaTela[]
+  /** Só a dona da empresa inteira corta o acesso do suporte. */
+  podeCortarSuporte: boolean
 }) {
   const acao = convidarPessoa.bind(null, slug)
   const [estado, agir, pendente] = useActionState<EstadoEquipe, FormData>(acao, {})
@@ -182,6 +281,15 @@ export function Equipe({
       setRecado(r)
       router.refresh()
     })
+
+  // Para o `Confirmar`: o recado de sucesso vai para o alto da tela; o erro
+  // volta para o próprio botão, onde a pessoa está olhando.
+  const confirmado = async (fn: () => Promise<EstadoEquipe>) => {
+    const r = await fn()
+    if (r.erro) return r
+    setRecado(r)
+    router.refresh()
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -239,7 +347,7 @@ export function Equipe({
                   {p.ultimoLogin && ` · entrou ${p.ultimoLogin}`}
                   {!p.ultimoLogin && ' · nunca entrou'}
                 </span>
-                <Telefone slug={slug} pessoa={p} pode={p.souEu || podeGerir} aoSalvar={setRecado} />
+                <Telefone slug={slug} pessoa={p} pode={p.podeTelefone} aoSalvar={setRecado} />
               </span>
 
               <span className="flex flex-wrap items-center gap-2">
@@ -252,30 +360,29 @@ export function Equipe({
                   <Situacao nivel="atencao">sem acesso</Situacao>
                 )}
 
-                {podeGerir && !p.souEu && (
+                {p.podeMexer && (
                   <>
-                    <Selecao
-                      rotulo=""
-                      aria-label={`Papel de ${p.nome}`}
-                      value={p.papel ?? ''}
-                      disabled={indo}
-                      onChange={(e) =>
-                        fazer(() => trocarPapel(slug, p.id, e.currentTarget.value, p.unidadeId))
-                      }
-                      opcoes={[
-                        { valor: '', titulo: 'Sem acesso' },
-                        ...papeisQuePosso.map((v) => ({ valor: v, titulo: ROTULO[v] ?? v })),
-                      ]}
-                      className="py-1 text-xs"
-                    />
-                    <Botao
-                      tom={p.ativo ? 'secundario' : 'confirmar'}
-                      className="px-2 py-1 text-xs"
-                      carregando={indo}
-                      onClick={() => fazer(() => trocarSituacao(slug, p.id, !p.ativo))}
-                    >
-                      {p.ativo ? 'Tirar acesso' : 'Devolver'}
-                    </Botao>
+                    <TrocaDePapel slug={slug} pessoa={p} papeis={papeisQuePosso} aoTerminar={setRecado} />
+                    {p.ativo ? (
+                      <Confirmar
+                        tom="secundario"
+                        className="px-2 py-1 text-xs"
+                        pergunta={`Tirar o acesso de ${p.nome}? Sai do sistema na próxima tela.`}
+                        sim="Sim, tirar"
+                        aoConfirmar={() => confirmado(() => trocarSituacao(slug, p.id, false))}
+                      >
+                        Tirar acesso
+                      </Confirmar>
+                    ) : (
+                      <Botao
+                        tom="confirmar"
+                        className="px-2 py-1 text-xs"
+                        carregando={indo}
+                        onClick={() => fazer(() => trocarSituacao(slug, p.id, true))}
+                      >
+                        Devolver
+                      </Botao>
+                    )}
                     {p.ativo && (
                       <Botao
                         tom="discreto"
@@ -299,6 +406,44 @@ export function Equipe({
           continuam com o nome dela. Ela só para de entrar — na próxima tela que abrir.
         </p>
       </Cartao>
+
+      {/* ── o nosso suporte ── */}
+      {suportes.length > 0 && (
+        <Cartao titulo="Suporte do Norte">
+          <ul className="flex flex-col">
+            {suportes.map((s) => (
+              <li
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-borda-suave py-3 last:border-0"
+              >
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-sm font-semibold text-tinta">
+                    Suporte do Norte{s.ate ? `, até ${s.ate}` : ''}
+                  </span>
+                  <span className="text-xs text-tinta-3">
+                    {s.nome} · motivo: {s.motivo?.trim() || 'não informado'}
+                  </span>
+                </span>
+                {podeCortarSuporte && (
+                  <Confirmar
+                    tom="secundario"
+                    className="px-2 py-1 text-xs"
+                    pergunta="Cortar agora o acesso do suporte?"
+                    sim="Sim, cortar"
+                    aoConfirmar={() => confirmado(() => cortarSuporte(slug, s.id))}
+                  >
+                    Cortar acesso do suporte
+                  </Confirmar>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-tinta-3">
+            É a nossa equipe, olhando o sistema para resolver o que você pediu. Só lê, não ocupa vaga e tudo
+            o que abre fica na tela Auditoria. O acesso vence sozinho no prazo; cortar antes é com você.
+          </p>
+        </Cartao>
+      )}
 
       {/* ── convidar ── */}
       {podeGerir && abrindo && (
@@ -364,7 +509,10 @@ export function Equipe({
 
       {/* ── convites em aberto ── */}
       {convites.length > 0 && (
-        <Cartao titulo="Convites esperando" acao={<span className="text-xs text-tinta-3">{convites.length}</span>}>
+        <Cartao
+          titulo={convites.length === 1 ? 'Convite esperando' : 'Convites esperando'}
+          acao={<span className="text-xs text-tinta-3">{convites.length}</span>}
+        >
           <ul className="flex flex-col">
             {convites.map((c) => (
               <li
@@ -382,14 +530,15 @@ export function Equipe({
                     {c.vencido ? 'vencido' : 'esperando'}
                   </Situacao>
                   {podeGerir && (
-                    <Botao
+                    <Confirmar
                       tom="secundario"
                       className="px-2 py-1 text-xs"
-                      carregando={indo}
-                      onClick={() => fazer(() => revogar(slug, c.id))}
+                      pergunta="Cancelar este convite? O link para de valer."
+                      sim="Sim, cancelar"
+                      aoConfirmar={() => confirmado(() => revogar(slug, c.id))}
                     >
                       Cancelar
-                    </Botao>
+                    </Confirmar>
                   )}
                 </span>
               </li>

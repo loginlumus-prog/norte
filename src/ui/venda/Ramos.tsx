@@ -61,6 +61,9 @@ const CURTO: Partial<Record<Ramo, string>> = {
   mercearia: 'Mercearia',
   distribuidora: 'Distribuidora',
   construcao: 'Construção',
+  beleza: 'Salão e estética',
+  saude: 'Clínica',
+  escola: 'Escola e cursos',
 }
 
 export function Ramos() {

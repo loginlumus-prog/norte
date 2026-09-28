@@ -36,7 +36,7 @@
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { acharOrgPorSlug, comoOrg } from '../banco'
-import { marcarHumano, processarMensagem, type Dependencias, type Desfecho } from './conversa'
+import { marcarHumano, processarMensagem, soPedidoDeLista, type Dependencias, type Desfecho } from './conversa'
 import { escolherCanal, SELECT_LINHA, type Canal } from './canal'
 
 // ─────────────────────────────────────────────────────────────
@@ -260,8 +260,15 @@ export async function receberWebhook(slug: string, token: string, corpo: unknown
     status: 200,
     trabalho: async () => {
       // O interruptor por empresa: sem canal conectado, a porta está fechada
-      // mesmo com o token certo.
-      if (agente.canal !== 'ZAPI') return
+      // mesmo com o token certo. Fechada para tudo, MENOS para o PARAR: a
+      // pessoa respondeu ao número da loja (o token prova que é dela), e a
+      // saída vale — gravada sem confirmação, que não teria por onde sair.
+      if (agente.canal !== 'ZAPI') {
+        if (r.tipo === 'mensagem') {
+          await soPedidoDeLista({ orgId: org.id, telefone: r.telefone, nome: r.nome, texto: r.texto, idExterno: r.idExterno }, null)
+        }
+        return
+      }
       const canal = deps.canal ?? escolherCanal(org, agente).canal
 
       if (r.tipo === 'humano') return marcarHumano(org.id, agente.id, r.telefone)

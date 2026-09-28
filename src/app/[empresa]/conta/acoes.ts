@@ -5,6 +5,8 @@ import { acharOrgPorSlug } from '@/servidor/banco'
 import { exigirSessao, recadoDoErro, SessaoExpirada } from '@/servidor/pagina'
 import { abrirSessao } from '@/servidor/sessao'
 import { avisarSenhaTrocada, trocarMinhaSenha } from '@/servidor/conta'
+import { mudarMeuNome } from '@/servidor/equipe'
+import { revalidatePath } from 'next/cache'
 import { deOndeVeio, enderecoPublico } from '@/servidor/requisicao'
 
 export type EstadoTroca = { erro?: string; ok?: string }
@@ -43,5 +45,32 @@ export async function trocarSenhaAcao(slug: string, _anterior: EstadoTroca, form
     return { ok: 'Senha trocada. Se a conta estava aberta em outro aparelho, ele saiu.' }
   } catch (e) {
     return { erro: recadoDoErro(e, 'Não deu para trocar a senha agora.') }
+  }
+}
+
+export type EstadoNome = { erro?: string; ok?: string; nome?: string }
+
+/**
+ * Trocar o próprio nome. O cookie leva o nome (é ele que vai para o livro
+ * como "quem fez"), então sai um cookie novo com o nome novo — preso à mesma
+ * vaga, sem derrubar ninguém.
+ */
+export async function trocarNomeAcao(slug: string, _anterior: EstadoNome, form: FormData): Promise<EstadoNome> {
+  const digitado = String(form.get('nome') ?? '')
+  let sessao
+  try {
+    sessao = await exigirSessao(slug)
+  } catch (e) {
+    if (e instanceof SessaoExpirada) return { erro: e.message, nome: digitado }
+    throw e
+  }
+  try {
+    const r = await mudarMeuNome(sessao, digitado)
+    if (!r.ok) return { erro: r.motivo, nome: digitado }
+    if (r.nome && r.nome !== sessao.nome) await abrirSessao(slug, { ...sessao, nome: r.nome })
+    revalidatePath(`/${slug}`, 'layout')
+    return { ok: 'Nome salvo.', nome: r.nome }
+  } catch (e) {
+    return { erro: recadoDoErro(e, 'Não deu para salvar o nome agora.'), nome: digitado }
   }
 }

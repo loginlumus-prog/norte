@@ -23,12 +23,13 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Aviso, cx } from '@/ui/base'
+import type { InicialDoBalcao } from './acoes'
 import type { Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
 import { faz } from './guardar'
 import { VendaIncerta, AvisoFixo } from './VendaIncerta'
 import { brl } from './conta'
-import { useVenda, type Venda } from './useVenda'
+import { useVenda, type EncomendaNoPedido, type Venda } from './useVenda'
 import { Produtos } from './Produtos'
 import { Itens, Total, Pagamento, Concluir, Sucesso } from './Pedido'
 import { MaisOpcoes, opcoesEmUso } from './MaisOpcoes'
@@ -47,6 +48,9 @@ export function BalcaoSimples({
   vendedores,
   podeAvulso,
   crediario,
+  inicial,
+  encomenda = null,
+  veAssinatura = false,
   barra,
   colada = false,
 }: {
@@ -61,6 +65,12 @@ export function BalcaoSimples({
   vendedores: Vendedor[] | null
   podeAvulso: boolean
   crediario: { maxParcelas: number } | null
+  /** Aberto pela Agenda: o horário a cobrar, com o serviço e o cliente. */
+  inicial?: InicialDoBalcao | null
+  /** Aberto por "Receber no balcão", em Encomendas. Ver useVenda. */
+  encomenda?: EncomendaNoPedido | null
+  /** Pode abrir Assinatura: decide o link do recado de teto do plano. */
+  veAssinatura?: boolean
   /** A barra do caixa, compacta. Vem de fora porque é do servidor que sai a conferência. */
   barra?: ReactNode
   /**
@@ -69,7 +79,7 @@ export function BalcaoSimples({
    */
   colada?: boolean
 }) {
-  const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario })
+  const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario, inicial, encomenda, veAssinatura })
 
   const [telaCheia, setTelaCheia] = useState(false)
   const [pedidoAberto, setPedidoAberto] = useState(false)
@@ -227,6 +237,18 @@ export function BalcaoSimples({
       )}
       {v.alerta && <Aviso nivel="atencao">{v.alerta}</Aviso>}
       {v.aviso && <AvisoFixo texto={v.aviso} aoFechar={() => v.setAviso(null)} />}
+      {v.cobrando && (
+        <Aviso nivel="neutro">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>
+              Cobrando o horário de <b className="font-semibold">{v.cobrando}</b>. Ao concluir, ele fica como atendido na Agenda.
+            </span>
+            <button type="button" onClick={v.tirarHorario} className="font-semibold underline underline-offset-2">
+              Tirar o horário desta venda
+            </button>
+          </span>
+        </Aviso>
+      )}
 
       <div className="grid min-h-0 min-w-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
         <Produtos

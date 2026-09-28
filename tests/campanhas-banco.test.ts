@@ -67,9 +67,9 @@ const SEMENTE = `
     ('ac-ana', 'org-a', 'usr-ana', null, 'DONO'),
     ('ac-bia', 'org-b', 'usr-bia', null, 'DONO');
 
-  insert into agentes (id, org_id, nome, ativo, atualizado_em) values
-    ('ag-a', 'org-a', 'Nina', true, now()),
-    ('ag-b', 'org-b', 'Bob', true, now());
+  insert into agentes (id, org_id, nome, ativo, canal, atualizado_em) values
+    ('ag-a', 'org-a', 'Nina', true, 'ZAPI', now()),
+    ('ag-b', 'org-b', 'Bob', true, 'ZAPI', now());
 
   insert into campanhas (id, org_id, nome, ativa, gatilho, grafo, atualizada_em) values
     ('cp-cat', 'org-a', 'Catálogo', true, '${gatilho(['quero o catálogo'])}', '${CATALOGO}', now()),

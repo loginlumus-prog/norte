@@ -22,8 +22,10 @@ import { GraficoDias } from './Grafico'
 import { cx } from './base'
 import type { Pendencia } from '@/servidor/pendencias'
 
+// Zero é zero: `-0` (o "(−) Impostos" de um mês sem imposto) e o resto de
+// arredondamento (-0,001) saíam como "-R$ 0,00", que parece dívida.
 const brl = (v: number) =>
-  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  (Math.round(v * 100) === 0 ? 0 : v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 const brlCurto = (v: number) =>
   v >= 1000 ? `R$ ${(v / 1000).toFixed(1).replace('.', ',')}k` : brl(v)

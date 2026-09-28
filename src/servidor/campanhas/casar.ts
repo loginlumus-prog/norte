@@ -93,19 +93,130 @@ export function acharCampanha(
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Palavras que, SOZINHAS, tiram a pessoa da campanha. "Não quero" no meio de
- * "não quero o azul, quero o preto" é resposta, não pedido de saída — por
- * isso vale só a mensagem inteira.
- *
- * Além de tirar da campanha, o pedido grava a saída PERMANENTE (lista de quem
- * não recebe oferta, ver ../ofertas.ts) — e isso é feito pela entrada
- * (entrada.ts), antes desta decisão. Sem campanha no meio, só as que não
- * deixam dúvida valem (PARADAS_INEQUIVOCAS, em ofertas.ts).
+ * As palavras de parada, na forma mais curta — o que a tela e o texto de
+ * aceite ensinam. Quem decide se uma MENSAGEM é pedido de parada é
+ * `lerParada`, abaixo, e é ela que todo caminho usa (a entrada das
+ * campanhas, a lista de ofertas, a porta com o assistente desligado).
  */
 export const PALAVRAS_DE_PARADA = ['parar', 'pare', 'sair', 'cancelar', 'nao quero', 'stop', 'descadastrar'] as const
 
-export const ehPedidoDeParada = (texto: string): boolean =>
-  (PALAVRAS_DE_PARADA as readonly string[]).includes(normalizar(texto))
+/**
+ * 'certa'       = não deixa dúvida: vale mesmo SEM campanha em andamento
+ *                 ("parar", "quero sair", "pare de mandar", "sair da lista");
+ * 'em_campanha' = só vale DENTRO de uma campanha ("cancelar", "não quero",
+ *                 "para"): sozinhas, sem roteiro no meio, costumam ser sobre
+ *                 outra coisa (cancelar a encomenda) — e a equipe está lendo;
+ * null          = não é pedido de parada.
+ */
+export type Parada = 'certa' | 'em_campanha'
+
+/** Os verbos que sozinhos já dizem "chega". */
+const VERBOS_FORTES = new Set(['parar', 'pare', 'parem', 'sair', 'stop', 'descadastrar', 'descadastre', 'descadastra', 'descadastrem', 'unsubscribe'])
+/** Os que dizem "chega" só dentro de campanha — ou com o objeto junto ("cancelar as mensagens"). */
+const VERBOS_DE_CAMPANHA = new Set(['cancelar', 'cancela', 'cancele', 'para', 'chega'])
+/** Os que só dizem "chega" com o objeto junto ("me tira da lista"); sozinhos, nada ("tira uma foto?"). */
+const VERBOS_COM_OBJETO = new Set(['tirar', 'tira', 'tire', 'tirem', 'remover', 'remove', 'remova', 'removam', 'excluir', 'exclui', 'exclua', 'apagar', 'apaga', 'apague'])
+/** O objeto que transforma "cancela"/"tira" em pedido de saída. */
+const OBJETOS = new Set([
+  'lista', 'listas', 'mensagem', 'mensagens', 'msg', 'msgs', 'oferta', 'ofertas', 'promocao', 'promocoes',
+  'propaganda', 'propagandas', 'inscricao', 'cadastro', 'numero', 'contato', 'mandar', 'enviar', 'receber',
+  'mandarem', 'enviarem', 'notificacoes', 'novidades', 'campanha', 'campanhas',
+])
+/** O que pode vir ANTES do verbo sem mudar o pedido: "bom dia, eu quero parar". */
+const ANTES = new Set([
+  'eu', 'quero', 'queria', 'gostaria', 'de', 'pode', 'podem', 'poderia', 'poderiam', 'favor', 'por', 'pfv', 'pf',
+  'pls', 'ok', 'ta', 'so', 'me', 'agora', 'ja', 'oi', 'ola', 'bom', 'boa', 'dia', 'tarde', 'noite', 'entao', 'e',
+  'vou', 'desejo', 'preciso', 'voces', 'vcs', 'vc', 'moca', 'moco',
+])
+/**
+ * O que pode vir DEPOIS do verbo. Uma palavra fora destas listas e a mensagem
+ * já é conversa, não pedido: "parar o carro aí?", "sair mais cedo hoje",
+ * "não quero mais esse tamanho, tem o M?" — nada disso tira ninguém da lista.
+ */
+const DEPOIS = new Set([
+  ...OBJETOS,
+  'de', 'da', 'do', 'das', 'dos', 'a', 'o', 'as', 'os', 'essa', 'esse', 'essas', 'esses', 'isso', 'isto', 'disso',
+  'desse', 'dessa', 'desses', 'dessas', 'me', 'mim', 'meu', 'minha', 'com', 'por', 'favor', 'pfv', 'pf', 'pls',
+  'obrigado', 'obrigada', 'obg', 'grato', 'grata', 'valeu', 'vlw', 'agora', 'ja', 'mais', 'tudo', 'aqui', 'whatsapp',
+  'whats', 'zap', 'wpp', 'voces', 'vcs', 'sua', 'suas', 'seu', 'seus', 'e', 'pra', 'para', 'nunca', 'nada', 'ok',
+  'grupo', 'vez', 'todas', 'todos',
+])
+
+/** Depois de "não quero...", o "não" do fim é só o jeito de falar: "não quero mais receber não". */
+const DEPOIS_DO_NAO = new Set([...DEPOIS, 'nao'])
+
+const soAs = (palavras: string[], permitidas: Set<string>) => palavras.every((p) => permitidas.has(p))
+
+/**
+ * A mensagem é um pedido para parar? A ÚNICA régua — a entrada das
+ * campanhas, a lista de ofertas e a porta com o assistente desligado passam
+ * todas por aqui.
+ *
+ * Conservadora de propósito. Tirar da lista quem não pediu custa pouco (a
+ * pessoa manda VOLTAR); mandar a confirmação "você não recebe mais ofertas"
+ * no meio de uma conversa de venda custa a venda. Por isso a mensagem inteira
+ * precisa ser o pedido: o verbo, o que é educação ("por favor", "obrigada"),
+ * o objeto ("as mensagens", "da lista") — e nada mais. Mensagem longa (mais
+ * de 12 palavras) é conversa, e uma pessoa da loja lê.
+ *
+ *   "quero parar", "Parar por favor", "PARE DE MANDAR", "sair da lista",
+ *   "não quero mais receber"                        → 'certa'
+ *   "cancelar", "não quero", "não quero mais", "para" → 'em_campanha'
+ *   "para amanhã?", "não quero mais esse tamanho, tem o M?",
+ *   "não pare", "que horas vocês vão parar?"         → null
+ */
+export function lerParada(texto: string): Parada | null {
+  const palavras = normalizar(texto).split(' ').filter(Boolean)
+  if (palavras.length === 0 || palavras.length > 12) return null
+
+  // "não quero (mais) ..." / "não me mande(m) mais ..."
+  if (palavras[0] === 'nao' || (palavras[0] === 'eu' && palavras[1] === 'nao')) {
+    const resto = palavras.slice(palavras[0] === 'eu' ? 2 : 1)
+    if ((resto[0] === 'quero' || resto[0] === 'desejo') && soAs(resto.slice(1), DEPOIS_DO_NAO)) {
+      // "não quero mais receber" tem o objeto: não deixa dúvida. "Não quero"
+      // e "não quero mais" sozinhos respondem a uma pergunta — dentro de uma
+      // campanha, a pergunta era dela; fora, é da loja.
+      return resto.slice(1).some((p) => OBJETOS.has(p)) ? 'certa' : 'em_campanha'
+    }
+    if (resto[0] === 'me' && /^(mande|mandem|manda|envie|enviem|envia)$/.test(resto[1] ?? '') && soAs(resto.slice(2), DEPOIS_DO_NAO)) {
+      return 'certa'
+    }
+    return null
+  }
+
+  // O verbo, depois do que pode vir antes dele.
+  let i = 0
+  while (i < palavras.length && ANTES.has(palavras[i]!) && !VERBOS_FORTES.has(palavras[i]!)) i++
+  const verbo = palavras[i]
+  if (!verbo) return null
+  const resto = palavras.slice(i + 1)
+  if (!soAs(resto, DEPOIS)) return null
+  const temObjeto = resto.some((p) => OBJETOS.has(p))
+
+  if (VERBOS_FORTES.has(verbo)) return 'certa'
+  if (VERBOS_DE_CAMPANHA.has(verbo)) {
+    // "para de mandar" é pedido; "para" sozinho pode ser o começo de "para
+    // amanhã?" mandado pela metade — só dentro de campanha.
+    return temObjeto ? 'certa' : 'em_campanha'
+  }
+  if (VERBOS_COM_OBJETO.has(verbo)) return temObjeto ? 'certa' : null
+  return null
+}
+
+/** Pedido de parada que vale DENTRO de uma campanha (as 'certas' valem também). */
+export const ehPedidoDeParada = (texto: string): boolean => lerParada(texto) !== null
+
+/**
+ * "VOLTAR" — o caminho de volta de quem está na lista. A mesma régua
+ * conservadora: "quero voltar a receber" volta; "quero voltar ao menu" não.
+ */
+export function ehPedidoDeVolta(texto: string): boolean {
+  const palavras = normalizar(texto).split(' ').filter(Boolean)
+  let i = 0
+  while (i < palavras.length && ANTES.has(palavras[i]!)) i++
+  if (palavras[i] !== 'voltar' && palavras[i] !== 'volta' && palavras[i] !== 'volto') return false
+  return soAs(palavras.slice(i + 1), new Set(['a', 'receber', 'as', 'os', 'ofertas', 'mensagens', 'novidades', 'por', 'favor', 'pfv', 'obrigado', 'obrigada', 'quero', 'pra', 'lista']))
+}
 
 // ─────────────────────────────────────────────────────────────
 // REENTRADA

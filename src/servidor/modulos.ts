@@ -5,14 +5,37 @@
 // A chave para ligar depois mora em Configurações — some da vista de quem não
 // usa, continua existindo para quando o negócio mudar.
 //
-// ── por que só seis ──────────────────────────────────────────
-// Cada chave dobra as combinações possíveis do sistema. Com seis são 64
-// configurações, que ainda dá para raciocinar. Com trinta seriam mais de um
-// bilhão, e aí ninguém consegue afirmar que o sistema funciona — porque
-// ninguém testou a combinação do cliente.
+// ── por que só nove ──────────────────────────────────────────
+// Cada chave dobra as combinações possíveis do sistema. Com seis eram 64
+// configurações; com nove são 512, e isso já é o teto do que dá para
+// raciocinar. Com trinta seriam mais de um bilhão, e aí ninguém consegue
+// afirmar que o sistema funciona — porque ninguém testou a combinação do
+// cliente.
 //
 // Então módulo é GROSSO. Preferência miúda ("mostrar coluna de custo") é
 // configuração de tela, não módulo.
+//
+// ── e por que os três últimos valeram a conta ────────────────
+// Agenda, Funcionários e ponto, e Compras chegaram juntos, quando o Norte
+// passou a atender quem vende SERVIÇO (salão, clínica, escola). Cada um é uma
+// tela inteira com tabelas próprias — não um detalhe de outra tela —, e o
+// comerciante que não precisa dele não deveria nem ver o nome: a loja de roupa
+// não marca horário, a sorveteria de uma pessoa só não bate ponto.
+//
+// O que mantém as 512 combinações honestas é que os três quase não se tocam, e
+// onde se tocam o desenho é de mão única:
+//   • a Agenda usa a ficha de quem trabalha (o colaborador), que é da tela de
+//     Funcionários — mas a ficha existe com o Ponto desligado, porque ela é a
+//     lista de profissionais da agenda. Desligar o Ponto some com as horas,
+//     não com as pessoas;
+//   • Compras recebe mercadoria pelo MESMO caminho da entrada de mercadoria
+//     (entrada.ts), que existe sem o módulo. Não há um segundo jeito de o
+//     estoque subir;
+//   • "Atender e cobrar" abre o balcão de sempre, com o serviço já lançado.
+//     Não há um segundo jeito de o dinheiro entrar.
+// Nenhum deles muda regra de venda, de estoque ou de dinheiro: acrescenta uma
+// porta para a mesma regra. É isso que faz a chave desligada ser só menos
+// tela, e não outro sistema.
 
 export const MODULOS = {
   crediario: {
@@ -46,6 +69,21 @@ export const MODULOS = {
     titulo: 'Encomenda',
     resumo: 'Pedido que a pessoa retira ou recebe depois.',
     pergunta: 'Você trabalha com encomenda ou entrega?',
+  },
+  agenda: {
+    titulo: 'Agenda',
+    resumo: 'Horário marcado por profissional, com falta, cancelamento e "atender e cobrar" no balcão.',
+    pergunta: 'Você atende com horário marcado?',
+  },
+  ponto: {
+    titulo: 'Funcionários e ponto',
+    resumo: 'Entrada e saída de quem trabalha, com ou sem login, e as horas do mês. Controle interno.',
+    pergunta: 'Quer anotar a entrada e a saída de quem trabalha?',
+  },
+  compras: {
+    titulo: 'Compras e fornecedores',
+    resumo: 'Pedido ao fornecedor, recebimento que dá entrada no estoque e o material usado no dia a dia.',
+    pergunta: 'Você compra de fornecedor e usa material no atendimento?',
   },
 } as const
 
@@ -89,6 +127,10 @@ export function moduloLigado(empresa: ComModulos, modulo: Modulo): boolean {
  *              etiqueta: sorveteria, lanchonete, floricultura, serviço);
  *              'busca' = vende bipando a etiqueta (quem tem leitor e grade
  *              de tamanho/cor). É só o PADRÃO — o dono troca em Configurações.
+ *
+ * Como o negócio chama quem ele atende (cliente, paciente, aluno) não é campo
+ * daqui: mora em vocabulario.ts, num lugar só, e muda a PALAVRA na tela — o
+ * cadastro e a regra continuam os mesmos.
  *
  * O `manual` é o campo mais fácil de escrever errado. Ele não é propaganda do
  * ramo: é o que evita a resposta errada. Por isso quase todo um deles termina
@@ -264,6 +306,44 @@ export const RAMOS = {
       'Quem compra aqui é revendedor, não consumidor final: fala em CAIXA e em FARDO, não em unidade. ' +
       'O preço costuma mudar por quantidade, então nunca cite preço de varejo. ' +
       'Pedido em aberto e prazo de entrega são as duas perguntas mais frequentes.',
+  },
+  beleza: {
+    titulo: 'Salão, manicure e estética',
+    // O eixo que importa no material é a COR do esmalte (e da tinta): é por
+    // ela que o salão sabe o que acabou. Serviço não tem eixo — a manicure é
+    // uma só, e o preço é o dela.
+    eixos: [{ nome: 'Cor', ehCor: true, opcoes: ['Vermelho', 'Nude', 'Rosa', 'Branco', 'Preto'] }],
+    medida: 'UN',
+    sugere: ['agenda', 'compras'],
+    balcao: 'grade' as const,
+    categorias: ['Serviços', 'Unhas', 'Cabelo', 'Estética', 'Produtos para revenda', 'Material de uso'],
+    manual:
+      'Aqui se vende serviço com HORÁRIO MARCADO e alguns produtos. Horário só existe depois de conferido na agenda: nunca diga que tem vaga sem olhar, e nunca prometa uma profissional sem confirmar. ' +
+      'Esmalte, tinta e material de uso são estoque da casa — o que acabou aparece no estoque, não na conversa. ' +
+      'Não indique procedimento nem produto para alergia, irritação ou problema de pele: encaminhe para a profissional.',
+  },
+  saude: {
+    titulo: 'Clínica e consultório',
+    eixos: [],
+    medida: 'UN',
+    sugere: ['agenda', 'ponto', 'compras'],
+    balcao: 'grade' as const,
+    categorias: ['Consultas', 'Procedimentos', 'Exames', 'Insumos'],
+    manual:
+      'Aqui se atende PACIENTE com horário marcado. Você NUNCA dá orientação médica: não comenta sintoma, diagnóstico, exame, remédio ou dose — nem para a equipe, nem "só por curiosidade"; isso é com o profissional de saúde. ' +
+      'Informação de saúde é dado sensível (LGPD): não peça, não repita e não anote informação clínica em nenhum campo do sistema — o Norte não guarda prontuário. ' +
+      'Horário, profissional e valor saem da agenda e do catálogo; na dúvida, diga que a recepção confirma.',
+  },
+  escola: {
+    titulo: 'Escola e cursos',
+    eixos: [{ nome: 'Tamanho', ehCor: false, opcoes: ['4', '6', '8', '10', '12', '14', 'P', 'M', 'G'] }],
+    medida: 'UN',
+    sugere: ['ponto'],
+    balcao: 'grade' as const,
+    categorias: ['Material', 'Uniforme', 'Cursos livres'],
+    manual:
+      'Aqui quem estuda é ALUNO, e muitas vezes quem paga é outra pessoa — o responsável. Informação de aluno (nota, frequência, pagamento) só se fala com a equipe; nunca a repasse para quem não é da escola. ' +
+      'Uniforme vai por TAMANHO: confira antes de dizer que tem. Valor de curso e de mensalidade sai do cadastro, nunca de cabeça.',
   },
   servico: {
     titulo: 'Serviços',

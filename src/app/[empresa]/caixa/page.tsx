@@ -29,11 +29,12 @@ export const metadata: Metadata = { title: 'Caixa' }
 
 const quando = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(d)
 
 const hora = (d: Date) =>
-  new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(d)
+  new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).format(d)
 
 export default async function CaixaPagina({
   params,
@@ -62,6 +63,10 @@ export default async function CaixaPagina({
   const comSobra = fechados.filter((t) => (t.diferenca ?? 0) > 0.005)
   const somaDif = fechados.reduce((s, t) => s + (t.diferenca ?? 0), 0)
   const vendido = fechados.reduce((s, t) => s + t.vendido, 0)
+  // Quanto os turnos venderam é o faturamento da loja — número de dono (ver o
+  // Painel em ui/menu.ts). Quem opera o caixa vê falta, sobra e quantas vendas;
+  // o valor vendido, só quem vê relatório.
+  const veReceita = onde.ids.some((u) => pode(sessao, 'relatorio.ver', u))
   const esquecidos = abertos.filter((t) => t.horasAberto > 24)
 
   const link = (t: TurnoDeCaixa) =>
@@ -107,7 +112,15 @@ export default async function CaixaPagina({
             detalhe={`em ${fechados.length} turno${fechados.length === 1 ? '' : 's'} fechado${fechados.length === 1 ? '' : 's'}`}
             nivel={Math.abs(somaDif) < 0.005 ? 'bom' : somaDif < 0 ? 'critico' : 'atencao'}
           />
-          <Numero rotulo="Vendido nos turnos" valor={brl(vendido)} detalhe="todas as formas" />
+          {veReceita ? (
+            <Numero rotulo="Vendido nos turnos" valor={brl(vendido)} detalhe="todas as formas" />
+          ) : (
+            <Numero
+              rotulo="Vendas nos turnos"
+              valor={String(fechados.reduce((s, t) => s + t.vendas, 0))}
+              detalhe="nos turnos fechados"
+            />
+          )}
           <Numero
             rotulo="Turnos com falta"
             valor={String(comFalta.length)}
@@ -175,8 +188,10 @@ export default async function CaixaPagina({
               largura: '8rem',
               celula: (t: TurnoDeCaixa) => (
                 <span className="flex flex-col items-end">
-                  <span className="numero font-semibold text-tinta">{brl(t.vendido)}</span>
-                  <span className="text-xs text-tinta-3">{t.vendas} venda{t.vendas === 1 ? '' : 's'}</span>
+                  {veReceita && <span className="numero font-semibold text-tinta">{brl(t.vendido)}</span>}
+                  <span className={veReceita ? 'text-xs text-tinta-3' : 'numero text-tinta'}>
+                    {t.vendas} venda{t.vendas === 1 ? '' : 's'}
+                  </span>
                 </span>
               ),
             },

@@ -15,12 +15,19 @@
 
 import { comoOrg } from './banco'
 import { exigir, podeConcederAcesso, PODERES, unidadesQuePodem, type Papel, type Sessao } from './permissao'
-import { inicioDoDiaEmSP } from './dia'
+import { diaEmSP, inicioDoDiaEmSP } from './dia'
 import { planoLibera } from './planos'
 import { centavos, reais } from './dinheiro'
 
-/** "2026-09" */
-export const mesChave = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+/**
+ * "2026-09" — o mês de um instante no calendário de São Paulo.
+ *
+ * Era `getFullYear()`/`getMonth()`, o relógio da máquina: num servidor em UTC,
+ * às 22h do dia 30 a tela da equipe e o balcão já mostravam a meta do mês
+ * seguinte, zerada. Para andar de mês em mês, use `outroMes` (fechamento.ts),
+ * que é conta de calendário e não passa por instante nenhum.
+ */
+export const mesChave = (d: Date) => diaEmSP(d).slice(0, 7)
 
 export const MES_NOME = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',

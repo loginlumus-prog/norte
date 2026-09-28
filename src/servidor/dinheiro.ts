@@ -75,11 +75,33 @@ export function mostrar(cent: number): string {
  * um real e vinte e três (ponto decimal, como vem de planilha). Adivinhar
  * errado é gravar um valor mil vezes menor sem aviso; recusar é pedir para a
  * pessoa escrever de novo.
+ *
+ * Com vírgula, o ponto só vale como milhar de verdade, de três em três:
+ * "12.34,56" é dedo que escorregou, não mil duzentos e trinta e quatro.
+ * Sem vírgula e com DOIS pontos ou mais ("1.234.567") não há dúvida: é
+ * milhar, porque número com dois pontos decimais não existe.
+ *
+ * É a régua de todo campo de dinheiro digitado — preço, custo, meta,
+ * lançamento. A ficha do produto já leu "49.90" como 4.990 reais porque
+ * tirava todo ponto antes de olhar; aqui "49.90" é quarenta e nove e noventa.
  */
 export function lerDinheiro(bruto: string): number | null {
-  const t = bruto.trim().replace(/^R\$\s*/i, '')
+  const t = String(bruto ?? '').trim().replace(/^R\$\s*/i, '')
   if (!t) return null
-  const normal = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t
+  let normal: string
+  if (t.includes(',')) {
+    const [inteiro = '', ...resto] = t.split(',')
+    if (resto.length !== 1) return null
+    if (inteiro.includes('.') && !/^\d{1,3}(\.\d{3})+$/.test(inteiro)) return null
+    normal = `${inteiro.replace(/\./g, '')}.${resto[0]}`
+  } else if (/^\d{1,3}(\.\d{3}){2,}$/.test(t)) {
+    normal = t.replace(/\./g, '')
+  } else {
+    normal = t
+  }
   if (!/^\d+(\.\d{1,2})?$/.test(normal)) return null
   return Number(normal)
 }
+
+/** A frase que o campo de dinheiro mostra quando `lerDinheiro` recusa. */
+export const DINHEIRO_ILEGIVEL = 'Não deu para ler este valor. Escreva assim: 49,90 ou 1.234,56.'

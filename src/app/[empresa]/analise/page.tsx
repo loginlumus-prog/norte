@@ -5,6 +5,7 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { unidadesVisiveis } from '@/servidor/unidade'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { pode, podeVerPlanos } from '@/servidor/permissao'
+import { comoOrg } from '@/servidor/banco'
 import {
   compararLojas,
   curvaAbc,
@@ -43,12 +44,24 @@ export const metadata: Metadata = { title: 'Análise' }
 // parado é "não saiu no período que estou lendo" — é um recorte. Na lista de
 // dinheiro parado, é "não sai há tanto tempo" — é uma propriedade do produto.
 // Misturar os dois faria a lista dizer que a loja inteira está parada quando
-// alguém escolhesse ver 7 dias.
+// alguém escolhesse ver 7 dias. E nenhum dos dois é o "Dinheiro parado" do
+// Painel, que é TODO o estoque a preço de custo — por isso aqui a seção se
+// chama pelo que mede: parado sem vender há tantos dias.
+//
+// ── margem ───────────────────────────────────────────────────
+// "Margem bruta" é venda menos custo da mercadoria, e é a que esta tela
+// mostra (a mesma do Painel). A margem líquida — depois de despesa, imposto
+// e taxa — é a do DRE, no Financeiro.
 
 const dataHora = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(d)
+
+/** Porcentagem com vírgula, do jeito brasileiro: "89,3%". */
+const pct = (v: number, casas = 0) =>
+  `${v.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`
 
 const PARADO_LIMITE = 25
 const ABC_LIMITE = 60
@@ -70,6 +83,13 @@ export default async function Analise({
   const liberado = temAnaliseAvancada(plano)
   const unidades = await unidadesVisiveis(sessao, 'relatorio.ver')
   const ids = unidades.map((u) => u.id)
+  // Quantas lojas a EMPRESA tem, para a frase de "uma loja só" dizer a
+  // verdade: o gerente de uma das três lojas não "tem uma loja só" — ele
+  // acompanha uma. Depósito não conta como loja para comparar.
+  const lojasDaEmpresa =
+    unidades.length < 2
+      ? await comoOrg(sessao.orgId, (db) => db.unidade.count({ where: { ativa: true, ehDeposito: false } }))
+      : unidades.length
 
   // A escala pede `caixa.ver` além de `relatorio.ver` — o contador lê o
   // resultado da empresa e não precisa saber quem abriu a gaveta.
@@ -87,7 +107,7 @@ export default async function Analise({
     { chave: 'nome', titulo: 'Loja', celula: (l) => <span className="font-medium text-tinta">{l.nome}</span> },
     { chave: 'vendas', titulo: 'Vendas', numero: true, celula: (l) => l.vendas },
     { chave: 'receita', titulo: 'Entrou', numero: true, celula: (l) => brl(l.receita) },
-    { chave: 'margem', titulo: 'Margem', numero: true, celula: (l) => brl(l.margem) },
+    { chave: 'margem', titulo: 'Margem bruta', numero: true, celula: (l) => brl(l.margem) },
     {
       chave: 'pct',
       titulo: '%',
@@ -97,7 +117,7 @@ export default async function Analise({
           <span className="text-tinta-3">—</span>
         ) : (
           <Situacao nivel={l.margemPct >= 40 ? 'bom' : l.margemPct >= 25 ? 'atencao' : 'critico'}>
-            {l.margemPct.toFixed(0)}%
+            {pct(l.margemPct)}
           </Situacao>
         ),
     },
@@ -132,18 +152,18 @@ export default async function Analise({
     // somava os dois como se fossem a mesma coisa.
     { chave: 'qtd', titulo: 'Saiu', numero: true, celula: (l) => quantidade(l.quantidade, l.medida) },
     { chave: 'receita', titulo: 'Entrou', numero: true, celula: (l) => brl(l.receita) },
-    { chave: 'margem', titulo: 'Margem', numero: true, celula: (l) => brl(l.margem) },
+    { chave: 'margem', titulo: 'Margem bruta', numero: true, celula: (l) => brl(l.margem) },
     {
       chave: 'fatia',
       titulo: 'Fatia',
       numero: true,
-      celula: (l) => `${l.fatiaPct.toFixed(1)}%`,
+      celula: (l) => pct(l.fatiaPct, 1),
     },
     {
       chave: 'acum',
       titulo: 'Acumulado',
       numero: true,
-      celula: (l) => <span className="text-tinta-3">{l.acumuladoPct.toFixed(0)}%</span>,
+      celula: (l) => <span className="text-tinta-3">{pct(l.acumuladoPct)}</span>,
     },
   ]
 
@@ -164,7 +184,7 @@ export default async function Analise({
           <Situacao nivel="critico">nunca vendeu</Situacao>
         ) : (
           <Situacao nivel={l.diasParado >= 90 ? 'critico' : l.diasParado >= 30 ? 'atencao' : 'neutro'}>
-            {l.diasParado} dias
+            {plural(l.diasParado, 'dia', 'dias')}
           </Situacao>
         ),
     },
@@ -178,7 +198,12 @@ export default async function Analise({
       chave: 'horas',
       titulo: 'Ficou',
       numero: true,
-      celula: (t) => (t.horas === null ? <Situacao nivel="atencao">aberto</Situacao> : `${t.horas.toFixed(1)} h`),
+      celula: (t) =>
+        t.horas === null ? (
+          <Situacao nivel="atencao">aberto</Situacao>
+        ) : (
+          `${t.horas.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h`
+        ),
     },
     { chave: 'vendas', titulo: 'Vendas', numero: true, celula: (t) => t.vendas },
     { chave: 'total', titulo: 'Saiu no turno', numero: true, celula: (t) => brl(t.total) },
@@ -224,7 +249,7 @@ export default async function Analise({
             </p>
             <p className="mx-auto max-w-prose text-sm text-tinta-2">
               São três leituras que o painel não dá: as suas lojas lado a lado com venda, margem
-              e estoque parado; a curva ABC, que separa o que sustenta a casa do que só ocupa
+              bruta e estoque parado; a curva ABC, que separa o que sustenta a casa do que só ocupa
               prateleira; e a escala, que mostra quem abriu o caixa, por quanto tempo, e quanto
               saiu naquele turno.
             </p>
@@ -257,23 +282,24 @@ export default async function Analise({
           {/* ── entre as lojas ── */}
           <Secao
             titulo={`Entre as lojas · ${j.rotulo.toLowerCase()}`}
-            resumo="A mesma régua para todas: o que entrou, o que sobrou depois do custo, e quanto de dinheiro está parado na prateleira de cada uma."
+            resumo="A mesma régua para todas: o que entrou (já sem as devoluções), o que sobrou depois do custo da mercadoria, e quanto de estoque ficou sem saída no período em cada uma."
           >
             {unidades.length < 2 ? (
               <Cartao>
                 <p className="py-6 text-center text-sm text-tinta-2">
-                  Você tem uma loja só, então não há o que comparar ainda. Quando abrir a segunda,
-                  as duas aparecem aqui lado a lado.
+                  {lojasDaEmpresa > 1
+                    ? `Você acompanha uma das ${lojasDaEmpresa} lojas da empresa${unidades[0] ? ` (${unidades[0].nome})` : ''}, então não há o que comparar aqui. Os números dela estão logo abaixo; a comparação entre as lojas aparece para quem acompanha mais de uma.`
+                    : 'A empresa tem uma loja só, então não há o que comparar ainda. Quando abrir a segunda, as duas aparecem aqui lado a lado.'}
                 </p>
               </Cartao>
             ) : (
               <>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <Numero principal rotulo="Entrou no período" valor={brl(receitaTotal)} detalhe={`${lojas.reduce((s, l) => s + l.vendas, 0)} vendas somando as lojas`} />
+                  <Numero principal rotulo="Entrou no período" valor={brl(receitaTotal)} detalhe={`${plural(lojas.reduce((s, l) => s + l.vendas, 0), 'venda', 'vendas')} somando as lojas`} />
                   <Numero
-                    rotulo="Margem somada"
+                    rotulo="Margem bruta somada"
                     valor={brl(margemTotal)}
-                    detalhe={receitaTotal > 0 ? `${((margemTotal / receitaTotal) * 100).toFixed(0)}% do que entrou` : 'sem venda no período'}
+                    detalhe={receitaTotal > 0 ? `${pct((margemTotal / receitaTotal) * 100)} do que entrou` : 'sem venda no período'}
                     nivel="bom"
                   />
                   <Numero
@@ -291,7 +317,7 @@ export default async function Analise({
                       .map((l) => ({
                         rotulo: l.nome,
                         valor: l.receita,
-                        detalhe: `${l.vendas} vendas · margem ${l.margemPct === null ? '—' : `${l.margemPct.toFixed(0)}%`}`,
+                        detalhe: `${plural(l.vendas, 'venda', 'vendas')} · margem bruta ${l.margemPct === null ? '—' : pct(l.margemPct)}`,
                       }))}
                   />
                 </Cartao>
@@ -329,10 +355,12 @@ export default async function Analise({
             )}
           </Secao>
 
-          {/* ── dinheiro parado ── */}
+          {/* ── parado sem vender ──
+              Não é o "Dinheiro parado" do Painel (todo o estoque a custo):
+              aqui é só o que não vende há um mês ou mais. */}
           <Secao
-            titulo="Dinheiro parado"
-            resumo={`Peças com estoque que não vendem há ${PARADO_DIAS} dias ou mais. Aqui o tempo não segue o filtro de cima de propósito: parado é uma característica do produto, não do recorte que você escolheu para ler.`}
+            titulo={`Parado sem vender há ${PARADO_DIAS}+ dias`}
+            resumo={`Peças com estoque que não vendem há ${PARADO_DIAS} dias ou mais, a preço de custo. Não é o estoque inteiro (esse está no Painel), só o que não gira. Aqui o tempo não segue o filtro de cima de propósito: parado é uma característica do produto, não do recorte que você escolheu para ler.`}
           >
             <div className="grid gap-2 sm:grid-cols-2">
               <Numero

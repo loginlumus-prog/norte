@@ -4,7 +4,10 @@ import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
 import { lerModo } from '@/servidor/modo'
 import { comoOrg } from '@/servidor/banco'
-import { pode } from '@/servidor/permissao'
+import { pode, textoDaBusca, unidadesQuePodem } from '@/servidor/permissao'
+import { podeVerCustoDe, saldoNaVista } from '@/servidor/produto'
+import { palavra } from '@/ui/texto'
+import { VoltarAVenda } from './VoltarAVenda'
 import { Estrutura } from '@/ui/Estrutura'
 import { Cartao, Situacao, Vazio, Ponto, cx } from '@/ui/base'
 import { Tira } from '@/ui/painel'
@@ -48,14 +51,20 @@ export default async function Produtos({
     marca?: string
     ordem?: string
     pendencia?: string
+    mostrar?: string
   }>
 }) {
   const { empresa: slug } = await params
   const {
     unidade: pedida, q: qBruto, categoria: categoriaPedida, situacao: sitPedida,
-    marca: marcaPedida, ordem: ordemPedida, pendencia: pendenciaPedida,
+    marca: marcaPedida, ordem: ordemPedida, pendencia: pendenciaPedida, mostrar: mostrarPedido,
   } = await searchParams
-  const q = (qBruto ?? '').trim()
+  // `?q=a&q=b` chega como lista; ver `textoDaBusca`.
+  const q = textoDaBusca(qBruto)
+  // Fora de venda: o que alguém tirou do balcão. Sem esta vista, tirar de
+  // venda não tinha volta pela tela — toda lista mostra só o que está à venda.
+  const fora = mostrarPedido === 'fora'
+  const unidadePedida = typeof pedida === 'string' ? pedida : undefined
   const situacao: SituacaoItem | null =
     sitPedida === 'acabaram' || sitPedida === 'minimo' || sitPedida === 'ok' ? sitPedida : null
   const ordem: Ordem = ordemPedida === 'vendidos' || ordemPedida === 'estoque' || ordemPedida === 'preco' ? ordemPedida : 'nome'
@@ -73,7 +82,7 @@ export default async function Produtos({
 
   // O estoque é por loja. Sem este filtro, a tela somaria o saldo das duas e
   // o balconista da Loja Centro veria peça que está no Shopping.
-  const onde = await escolherUnidade(sessao, empresa, pedida, 'produto.ver')
+  const onde = await escolherUnidade(sessao, empresa, unidadePedida, 'produto.ver')
 
   // ── a lista, com o que a pessoa pediu ────────────────────
   // A busca cobre nome, marca e ETIQUETA. Etiqueta porque quem está com a
@@ -113,7 +122,7 @@ export default async function Produtos({
   const produtos = await comoOrg(sessao.orgId, (db) =>
     db.produto.findMany({
       where: {
-        ativo: true,
+        ativo: !fora,
         ...(categoriaId ? { categoriaId } : {}),
         ...(marca ? { marca } : {}),
         ...(q
@@ -134,7 +143,7 @@ export default async function Produtos({
       },
       orderBy: { nome: 'asc' },
       select: {
-        id: true, nome: true, marca: true, medida: true, custo: true,
+        id: true, nome: true, marca: true, medida: true, custo: true, vendidoEm: true,
         categoria: { select: { id: true, nome: true } },
         precoVista: true, precoCartao: true, precoCrediario: true,
         variacoes: {
@@ -157,10 +166,31 @@ export default async function Produtos({
 
   const podeVerPreco = pode(sessao, 'produto.ver')
   const podeEditar = pode(sessao, 'produto.editar')
-  const podeVerCusto = pode(sessao, 'produto.preco')
 
-  const totalDe = (p: { variacoes: { estoques: { quantidade: unknown }[] }[] }) =>
-    p.variacoes.reduce((s, v) => s + v.estoques.reduce((t, e) => t + Number(e.quantidade), 0), 0)
+  // O saldo e a situação de cada variação saem de `saldoNaVista` — a mesma
+  // conta do Estoque, para as duas telas dizerem o mesmo número à mesma
+  // pessoa. A variação que nenhuma loja da vista vende, e que não tem saldo
+  // nela, não aparece: "acabou" do que a loja nem vende é alarme falso.
+  const lojasDaVista = onde.opcoes.filter((u) => onde.ids.includes(u.id))
+  const vistaInteira = onde.unidadeId === null && unidadesQuePodem(sessao, 'produto.ver') === 'todas'
+  const comSaldo = produtos
+    .map((p) => ({
+      ...p,
+      variacoes: p.variacoes
+        .map((v) => ({
+          ...v,
+          na: saldoNaVista(
+            p.vendidoEm,
+            v.estoques.map((e) => ({ unidadeId: e.unidadeId, quantidade: Number(e.quantidade), minimo: e.minimo === null ? null : Number(e.minimo) })),
+            lojasDaVista,
+            vistaInteira || fora,
+          ),
+        }))
+        .filter((v) => v.na.aparece),
+    }))
+    .filter((p) => fora || p.variacoes.length > 0)
+
+  const totalDe = (p: { variacoes: { na: { saldo: number } }[] }) => p.variacoes.reduce((s, v) => s + v.na.saldo, 0)
   const margemDe = (p: { precoVista: unknown; custo: unknown }) => {
     const preco = Number(p.precoVista ?? 0)
     if (p.custo == null || preco <= 0) return null
@@ -169,14 +199,8 @@ export default async function Produtos({
 
   // Conta a situação de cada variação uma vez, para a tira de cima e para o
   // cabeçalho de cada produto falarem a mesma coisa.
-  const situacaoDe = (v: { estoques: { quantidade: unknown; minimo: unknown }[] }) => {
-    const q = v.estoques.reduce((t, e) => t + Number(e.quantidade), 0)
-    const min = Number(v.estoques[0]?.minimo ?? 0)
-    if (q <= 0) return 'critico' as const
-    if (min > 0 && q <= min) return 'atencao' as const
-    return 'bom' as const
-  }
-  const todas = produtos.flatMap((p) => p.variacoes)
+  const situacaoDe = (v: { na: { nivel: 'critico' | 'atencao' | 'bom' } }) => v.na.nivel
+  const todas = comSaldo.flatMap((p) => p.variacoes)
   const conta = {
     bom: todas.filter((v) => situacaoDe(v) === 'bom').length,
     atencao: todas.filter((v) => situacaoDe(v) === 'atencao').length,
@@ -192,15 +216,15 @@ export default async function Produtos({
   // aparece só com o tamanho que acabou, e não com a grade inteira.
   const nivelPedido = situacao === 'acabaram' ? 'critico' : situacao === 'minimo' ? 'atencao' : situacao === 'ok' ? 'bom' : null
   const porSituacao = nivelPedido
-    ? produtos
+    ? comSaldo
         .map((p) => ({ ...p, variacoes: p.variacoes.filter((v) => situacaoDe(v) === nivelPedido) }))
         .filter((p) => p.variacoes.length > 0)
-    : produtos
+    : comSaldo
 
   // As pendências de cadastro: o que falta preencher para o sistema fazer
   // o que promete. Sem custo não há margem; sem categoria o balcão em grade
   // não tem aba; sem código de barras o leitor não lê.
-  const pendente = (p: (typeof produtos)[number]) =>
+  const pendente = (p: (typeof comSaldo)[number]) =>
     pendencia === 'sem-categoria' ? !p.categoria
     : pendencia === 'sem-custo' ? p.custo == null
     : pendencia === 'sem-ean' ? p.variacoes.some((v) => !v.codigoBarras)
@@ -215,16 +239,20 @@ export default async function Produtos({
       : a.nome.localeCompare(b.nome),
     )
   const pendencias = {
-    semCategoria: produtos.filter((p) => !p.categoria).length,
-    semCusto: produtos.filter((p) => p.custo == null).length,
-    semEan: produtos.filter((p) => p.variacoes.some((v) => !v.codigoBarras)).length,
-    semVenda: produtos.filter((p) => !vendidos30.has(p.id)).length,
+    semCategoria: comSaldo.filter((p) => !p.categoria).length,
+    semCusto: comSaldo.filter((p) => p.custo == null).length,
+    semEan: comSaldo.filter((p) => p.variacoes.some((v) => !v.codigoBarras)).length,
+    semVenda: comSaldo.filter((p) => !vendidos30.has(p.id)).length,
   }
 
   const atuais = {
     unidade: onde.unidadeId, q, categoria: categoriaId, situacao, marca,
-    ordem: ordem === 'nome' ? null : ordem, pendencia,
+    ordem: ordem === 'nome' ? null : ordem, pendencia, mostrar: fora ? 'fora' : null,
   }
+  // O que a busca precisa carregar escondida: TODO filtro da tela menos o
+  // próprio `q`. Antes iam só loja, categoria e situação — buscar apagava a
+  // marca, a pendência, a ordem escolhidas.
+  const { q: _q, ...manterNaBusca } = atuais
   const link = (mudanca: Record<string, string | null>) =>
     enderecoCom(`/${slug}/produtos`, atuais, mudanca)
   const linkEtiquetas = enderecoCom(`/${slug}/produtos/etiquetas`, { unidade: onde.unidadeId, q, categoria: categoriaId })
@@ -269,7 +297,7 @@ export default async function Produtos({
         </span>
       }
     >
-      {produtos.length > 0 && (
+      {!fora && comSaldo.length > 0 && (
         <Tira
           itens={[
             { rotulo: 'com estoque', quantos: conta.bom, nivel: 'bom' },
@@ -285,11 +313,19 @@ export default async function Produtos({
           valor={q}
           placeholder="Nome, marca ou etiqueta"
           rotulo="Buscar produto"
-          manter={{ unidade: onde.unidadeId, categoria: categoriaId, situacao }}
+          manter={manterNaBusca}
           limparEm={link({ q: null })}
         />
+        <Fichas
+          opcoes={[
+            { valor: null, rotulo: 'à venda' },
+            { valor: 'fora', rotulo: 'fora de venda' },
+          ]}
+          atual={fora ? 'fora' : null}
+          linkDe={(v) => link({ mostrar: v, situacao: null })}
+        />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Fichas
+          {!fora && <Fichas
             opcoes={[
               { valor: null, rotulo: 'tudo' },
               { valor: 'acabaram', rotulo: 'acabaram', quantos: conta.critico },
@@ -298,7 +334,7 @@ export default async function Produtos({
             ]}
             atual={situacao}
             linkDe={(v) => link({ situacao: v })}
-          />
+          />}
           {categorias.length > 0 && (
             <Fichas
               opcoes={[
@@ -349,7 +385,21 @@ export default async function Produtos({
         )}
       </div>
 
-      {produtos.length === 0 && !q && !categoriaId && (
+      {fora && (
+        <p className="text-sm text-tinta-2">
+          Fora de venda: não aparecem no balcão nem nas listas, e continuam em todo relatório
+          antigo. &ldquo;Voltar à venda&rdquo; põe o produto de novo no balcão, com a grade e o
+          saldo que ele tem.
+        </p>
+      )}
+
+      {fora && listados.length === 0 && !q && !categoriaId && !marca && !pendencia && (
+        <Cartao>
+          <Vazio>Nenhum produto fora de venda.</Vazio>
+        </Cartao>
+      )}
+
+      {!fora && produtos.length === 0 && !q && !categoriaId && (
         <Cartao>
           <Vazio
             acao={
@@ -365,6 +415,12 @@ export default async function Produtos({
           >
             Nenhum produto cadastrado ainda.
           </Vazio>
+        </Cartao>
+      )}
+
+      {!fora && produtos.length > 0 && comSaldo.length === 0 && !q && !categoriaId && !marca && (
+        <Cartao>
+          <Vazio>Nenhum produto vendido nesta loja. O que cada loja vende se escolhe na ficha do produto, em &ldquo;Vendido em&rdquo;.</Vazio>
         </Cartao>
       )}
 
@@ -386,6 +442,9 @@ export default async function Produtos({
         const noMinimo = p.variacoes.filter((v) => situacaoDe(v) === 'atencao').length
         const margem = margemDe(p)
         const vendeu = vendidos30.get(p.id)
+        // O custo é do produto, e só quem responde por alguma loja que o
+        // vende lê — ver `podeVerCustoDe`.
+        const podeVerCusto = podeVerCustoDe(sessao, p.vendidoEm)
 
         return (
           <Cartao
@@ -401,6 +460,7 @@ export default async function Produtos({
                     editar
                   </Link>
                 )}
+                {fora && podeEditar && <VoltarAVenda slug={slug} produtoId={p.id} />}
                 {!simples && (
                   // <a>: página de impressão abre inteira — ver etiquetas/page.tsx.
                   <a
@@ -425,19 +485,23 @@ export default async function Produtos({
                     </Link>
                   ) : (
                     <span className={cx('numero', margem < 20 ? 'text-critico' : margem < 40 ? 'text-atencao' : 'text-bom')}>
-                      margem {margem.toFixed(0)}%
+                      margem bruta {margem.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%
                     </span>
                   ))}
                 {!simples && (
                   <span className="numero" title="Vendido nos últimos 30 dias, nesta loja">
-                    {vendeu ? `${quantidade(vendeu, p.medida)} vendidos em 30 dias` : 'sem venda em 30 dias'}
+                    {vendeu ? `${quantidade(vendeu, p.medida)} ${palavra(vendeu, 'vendido', 'vendidos')} em 30 dias` : 'sem venda em 30 dias'}
                   </span>
                 )}
                 {acabaram > 0 && <Ponto nivel="critico" quantos={acabaram} titulo="acabaram" />}
                 {noMinimo > 0 && <Ponto nivel="atencao" quantos={noMinimo} titulo="no mínimo" />}
-                <Situacao nivel={total > 0 ? 'bom' : 'critico'}>
-                  {quantidade(total, p.medida)} {onde.unidadeId ? 'aqui' : 'no total'}
-                </Situacao>
+                {fora ? (
+                  <Situacao nivel="neutro">fora de venda</Situacao>
+                ) : (
+                  <Situacao nivel={total > 0 ? 'bom' : 'critico'}>
+                    {quantidade(total, p.medida)} {onde.unidadeId ? 'aqui' : 'no total'}
+                  </Situacao>
+                )}
               </span>
             }
           >
@@ -480,15 +544,11 @@ export default async function Produtos({
                   chave: 'saldo',
                   titulo: 'Em estoque',
                   numero: true,
-                  celula: (v) => {
-                    const q = v.estoques.reduce((t, e) => t + Number(e.quantidade), 0)
-                    const nivel = situacaoDe(v)
-                    return (
-                      <Situacao nivel={nivel}>
-                        {q <= 0 ? 'acabou' : quantidade(q, p.medida)}
-                      </Situacao>
-                    )
-                  },
+                  celula: (v) => (
+                    <Situacao nivel={situacaoDe(v)}>
+                      {v.na.saldo <= 0 ? 'acabou' : quantidade(v.na.saldo, p.medida)}
+                    </Situacao>
+                  ),
                 },
               ]}
               linhas={p.variacoes}

@@ -11,11 +11,14 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Modulos } from './Modulos'
 import { Pontos } from './Pontos'
 import { Crediario } from './Crediario'
+import { Lembrete } from './Lembrete'
+import { planoLibera } from '@/servidor/planos'
+import { HORAS_DE_LEMBRETE, textoDoLembrete } from '@/servidor/lembretes'
 import { Taxas } from './Taxas'
 import { configCrediario } from '@/servidor/crediario'
 import { moduloLigado } from '@/servidor/modulos'
 import { taxasDaEmpresa, FORMAS_COM_TAXA } from '@/servidor/taxas'
-import { montarDRE } from '@/servidor/financeiro'
+import { janelaDoMes, mesDeAgora, montarDRE } from '@/servidor/financeiro'
 import { unidadesVisiveis } from '@/servidor/unidade'
 
 export const metadata: Metadata = { title: 'Configurações' }
@@ -25,9 +28,9 @@ export const metadata: Metadata = { title: 'Configurações' }
  * elas deram no mês corrente — o número que faz a pessoa preencher.
  */
 async function TaxasCard({ slug, sessao }: { slug: string; sessao: Parameters<typeof taxasDaEmpresa>[0] }) {
-  const agora = new Date()
-  const de = new Date(agora.getFullYear(), agora.getMonth(), 1)
-  const ate = new Date(agora.getFullYear(), agora.getMonth() + 1, 0, 23, 59, 59)
+  // O mês corrente em São Paulo (não o da máquina), até o último milissegundo.
+  const { de, ate: seguinte } = janelaDoMes(mesDeAgora())
+  const ate = new Date(seguinte.getTime() - 1)
   const [taxas, unidades] = await Promise.all([taxasDaEmpresa(sessao), unidadesVisiveis(sessao, 'financeiro.ver')])
   const dre = unidades.length
     ? await montarDRE(sessao, unidades.map((u) => u.id), de, ate)
@@ -64,7 +67,7 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
         razaoSocial: true, documento: true, inscricaoEstadual: true, regime: true,
         email: true, telefone: true, whatsapp: true, agenteNome: true, ramo: true,
         pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true,
-        balcaoGrade: true, plano: true,
+        balcaoGrade: true, plano: true, lembreteAtivo: true, lembreteHoras: true,
       },
     }),
   )
@@ -144,6 +147,19 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
           <Aviso nivel="neutro">Só quem responde pela empresa muda isto.</Aviso>
         )}
       </Cartao>
+
+      {moduloLigado(empresa, 'agenda') && (
+        <Cartao titulo="Lembrete do horário no WhatsApp">
+          <Lembrete
+            empresa={slug}
+            ativo={dados?.lembreteAtivo ?? false}
+            horas={dados?.lembreteHoras ?? 24}
+            opcoes={HORAS_DE_LEMBRETE}
+            temAssistente={moduloLigado(empresa, 'agente') && planoLibera(dados?.plano ?? 'GRATIS', 'agente')}
+            exemplo={textoDoLembrete({ nome: 'Maria', loja: empresa.nome, inicio: new Date(Date.now() + 864e5) })}
+          />
+        </Cartao>
+      )}
 
       {moduloLigado(empresa, 'crediario') && (
         <Cartao titulo="Crediário">

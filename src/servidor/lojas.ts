@@ -7,21 +7,27 @@
 // tela de abrir outra loja, a cota é lá". É aqui.
 //
 // ── três regras ──────────────────────────────────────────────
-// 1. A COTA É CONFERIDA ANTES, E FORA da transação. `exigirCotaDeUnidade`
-//    abre o próprio `comoOrg`; chamá-la de dentro de outro trava (ver o
-//    comentário longo em `banco.ts`).
+// 1. A COTA É CONFERIDA DENTRO da transação que abre a loja, com a trava da
+//    empresa (`pg_advisory_xact_lock`) e a contagem refeita ali. Conferida
+//    antes e fora, dois cliques em "Abrir" passavam os dois pela conferência
+//    (cada um via N lojas) e a empresa ficava com N+2 num plano de N+1. A
+//    trava faz o segundo clique esperar o primeiro terminar e contar de novo.
 // 2. A LOJA NASCE COM O RAMO DELA. Uma sorveteria aberta dentro de uma
 //    empresa de roupa ganha as categorias e o eixo Sabor que faltam — sem
 //    apagar nem duplicar nada do que já existe. E ela nasce sem produto
 //    nenhum À VENDA que não seja do catálogo comum: quem decide o que vai para
 //    o balcão dela é a ficha de cada produto ("Vendido em").
 // 3. FECHAR NÃO APAGA. Loja desativada some do balcão e dos seletores, e o
-//    histórico dela continua inteiro. A última loja ativa não fecha, e loja com
-//    caixa aberto também não — o dinheiro da gaveta precisa ser conferido antes.
+//    histórico dela continua inteiro. A última loja ativa não fecha, e loja
+//    com pendência também não: caixa aberto (a gaveta precisa ser conferida),
+//    mercadoria no estoque (sumiria de toda tela, que só lista loja aberta)
+//    e encomenda por entregar (o cliente vem buscar numa loja que não existe
+//    mais na tela). A recusa diz o que resolver, tudo de uma vez.
 
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, type Sessao } from './permissao'
-import { exigirCotaDeUnidade } from './assinatura'
+import { SemCota } from './assinatura'
+import { podeCriarUnidade } from './planos'
 import { RAMOS, type Ramo } from './modulos'
 
 export type DadosLoja = {
@@ -105,10 +111,13 @@ export async function listarLojas(sessao: Sessao): Promise<LojaNaLista[]> {
     const lojas = await db.unidade.findMany({
       orderBy: [{ ativa: 'desc' }, { ehDeposito: 'asc' }, { nome: 'asc' }],
     })
+    // "Só dela" é só dela: lista de UMA loja. Contar toda lista em que a
+    // loja aparece dizia "40 produtos só dela" da loja que divide os 40
+    // com a vizinha.
     const exclusivos = await db.$queryRaw<{ unidade_id: string; n: number }[]>`
-      select u as unidade_id, count(*)::int as n
-        from produtos p, unnest(p.vendido_em) as u
-       where p.ativo
+      select p.vendido_em[1] as unidade_id, count(*)::int as n
+        from produtos p
+       where p.ativo and cardinality(p.vendido_em) = 1
        group by 1
     `
     const abertos = await db.caixa.findMany({ where: { aberto: true }, select: { unidadeId: true } })
@@ -171,14 +180,29 @@ export async function semearRamo(db: BancoDaOrg, orgId: string, ramo: Ramo) {
   return { novasCategorias, novosEixos }
 }
 
+/**
+ * A cota de lojas, conferida DENTRO da transação que vai ocupar a vaga.
+ *
+ * A trava é por empresa e vive até o fim da transação: o segundo clique em
+ * "Abrir" (ou "Reabrir") espera o primeiro gravar, e aí conta as lojas de
+ * novo — já com a do primeiro. É a regra 1 do topo.
+ */
+async function travarCota(db: BancoDaOrg, orgId: string) {
+  await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`cota:unidades:${orgId}`}))`
+  const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } })
+  // Só loja ABERTA ocupa vaga — a mesma conta de `assinaturaDaEmpresa`.
+  const abertas = await db.unidade.count({ where: { ativa: true } })
+  const v = podeCriarUnidade(org.plano, abertas)
+  if (!v.pode) throw new SemCota(v.motivo, v.sugestao)
+  return { custoExtra: v.custoExtra }
+}
+
 export async function criarLoja(sessao: Sessao, dados: DadosLoja) {
   exigir(sessao, 'empresa.configurar')
   const d = limparLoja(dados)
 
-  // FORA da transação — ver a regra 1 no topo.
-  const cota = await exigirCotaDeUnidade(sessao)
-
   return comoOrg(sessao.orgId, async (db) => {
+    const cota = await travarCota(db, sessao.orgId)
     const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { ramo: true, modulos: true } })
     const loja = await db.unidade.create({ data: { orgId: sessao.orgId, ...d } })
 
@@ -252,32 +276,55 @@ export async function editarLoja(sessao: Sessao, id: string, dados: DadosLoja) {
   })
 }
 
+/**
+ * O que impede fechar a loja, em frases prontas para a tela.
+ *
+ * Tudo de uma vez: recusar pelo caixa, a pessoa fechar o caixa e aí ser
+ * recusada pelo estoque é fazer a dona tentar três vezes para descobrir a
+ * lista. Loja fechada some de toda tela — o saldo dela ficaria contado em
+ * lugar nenhum, e a encomenda, sem balcão para ser entregue.
+ */
+export async function pendenciasParaFechar(db: BancoDaOrg, unidadeId: string): Promise<string[]> {
+  const faltam: string[] = []
+  const caixa = await db.caixa.count({ where: { unidadeId, aberto: true } })
+  if (caixa > 0) faltam.push('o caixa está aberto — feche o caixa, para a gaveta ser conferida')
+  const itens = await db.estoque.count({ where: { unidadeId, quantidade: { not: 0 } } })
+  if (itens > 0) {
+    faltam.push(
+      `${itens === 1 ? 'há 1 item' : `há ${itens.toLocaleString('pt-BR')} itens`} com saldo no estoque — ` +
+        'transfira para outra loja ou para um depósito, ou corrija pelo que foi contado',
+    )
+  }
+  const encomendas = await db.encomenda.count({ where: { unidadeId, situacao: { in: ['ABERTA', 'PRONTA'] } } })
+  if (encomendas > 0) {
+    faltam.push(
+      `${encomendas === 1 ? 'há 1 encomenda' : `há ${encomendas} encomendas`} por entregar — entregue ou cancele`,
+    )
+  }
+  return faltam
+}
+
 export async function mudarSituacaoLoja(sessao: Sessao, id: string, ativa: boolean) {
   exigir(sessao, 'empresa.configurar')
-
-  // Reabrir conta cota, igual abrir — e fora da transação. Mas só se a loja
-  // estiver MESMO fechada: reabrir a que já está aberta não ocupa lugar
-  // novo, e antes recusava com "o plano atende N lojas" quem estava no teto.
-  if (ativa) {
-    const jaAberta = await comoOrg(sessao.orgId, (db) =>
-      db.unidade.findUnique({ where: { id }, select: { ativa: true } }),
-    )
-    if (!jaAberta?.ativa) await exigirCotaDeUnidade(sessao)
-  }
 
   return comoOrg(sessao.orgId, async (db) => {
     const loja = await db.unidade.findUnique({ where: { id } })
     if (!loja) throw new LojaRecusada('Loja não encontrada.')
+    // Reabrir a que já está aberta não ocupa lugar novo — antes recusava
+    // com "o plano atende N lojas" quem estava no teto.
     if (loja.ativa === ativa) return loja
+
+    // Reabrir ocupa vaga, igual abrir: a mesma trava e a mesma contagem.
+    if (ativa) await travarCota(db, sessao.orgId)
 
     if (!ativa) {
       const outras = await db.unidade.count({ where: { ativa: true, id: { not: id }, ehDeposito: false } })
       if (!loja.ehDeposito && outras === 0) {
         throw new LojaRecusada('Esta é a única loja aberta. A empresa precisa de pelo menos uma.')
       }
-      const caixa = await db.caixa.count({ where: { unidadeId: id, aberto: true } })
-      if (caixa > 0) {
-        throw new LojaRecusada('Esta loja está com o caixa aberto. Feche o caixa antes, para a gaveta ser conferida.')
+      const pendencias = await pendenciasParaFechar(db, id)
+      if (pendencias.length > 0) {
+        throw new LojaRecusada(`Antes de fechar ${loja.nome}, resolva: ${pendencias.join('; ')}.`)
       }
     }
 

@@ -18,52 +18,95 @@
 import { redirect, notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { acharOrgPorSlug, comoOrg } from './banco'
-import { lerSessao } from './sessao'
-import { sinal } from './presenca'
+import { lerSessao, type SessaoComVaga } from './sessao'
+import { sinal, vagaConfere } from './presenca'
 import { sessaoAindaVale, pode, type Capacidade, type Sessao } from './permissao'
 import { registrarErro } from './registro'
+import { conferirSenha } from './senha'
+import { reservarTentativa, concluirTentativa } from './limite'
+import { CABECALHO_CAMINHO, CABECALHO_SELO, caminhoCarimbado } from './carimbo'
+
+export { CABECALHO_CAMINHO } from './carimbo'
 
 export type Empresa = NonNullable<Awaited<ReturnType<typeof acharOrgPorSlug>>>
 
+/** A frase de quem perdeu a vaga para outra pessoa. */
+export const RECADO_VAGA = 'Sua vaga foi usada por outra pessoa. Entre de novo para continuar.'
+
 /** Erro de sessão morta. As Server Actions transformam isto em recado na tela. */
 export class SessaoExpirada extends Error {
-  constructor() {
-    super('Sua sessão expirou. Entre de novo.')
+  constructor(recado = 'Sua sessão expirou. Entre de novo.') {
+    super(recado)
     this.name = 'SessaoExpirada'
   }
 }
 
-/**
- * A sessão do cookie, já confrontada com o banco.
- * Devolve null quando não há cookie, quando a conta foi desativada ou quando
- * a sessão é anterior ao último corte.
- */
-export async function sessaoViva(slugEmpresa: string): Promise<Sessao | null> {
-  const doCookie = await lerSessao(slugEmpresa)
-  if (!doCookie) return null
+/** Por que a sessão não vale — é o que decide a frase da tela de entrar. */
+export type MotivoDaQueda = 'sem_cookie' | 'corte' | 'vaga' | 'saiu' | 'suporte'
 
-  const usuario = await comoOrg(doCookie.orgId, (db) =>
-    db.usuario.findUnique({
+/** A sessão viva: a do cookie, com a marca da vaga que ela ocupa. */
+export type SessaoViva = SessaoComVaga
+
+/** Só SUPORTE (nós): entra sem vaga (ver `entrar` em autenticacao.ts). */
+const soSuporte = (s: Sessao) => s.acessos.length > 0 && s.acessos.every((a) => a.papel === 'SUPORTE')
+
+/** Não grava sinal mais de uma vez por minuto (a mesma régua de `sinal`). */
+const SINAL_MS = 60_000
+
+/**
+ * A sessão do cookie, já confrontada com o banco — e, quando não vale, o
+ * motivo. `sessaoViva` é esta sem o motivo.
+ */
+export async function conferirSessao(
+  slugEmpresa: string,
+): Promise<{ sessao: SessaoViva; motivo?: undefined } | { sessao: null; motivo: MotivoDaQueda }> {
+  const doCookie = await lerSessao(slugEmpresa)
+  if (!doCookie) return { sessao: null, motivo: 'sem_cookie' }
+
+  const semVaga = soSuporte(doCookie)
+  const achado = await comoOrg(doCookie.orgId, async (db) => {
+    const usuario = await db.usuario.findUnique({
       where: { id: doCookie.usuarioId },
       select: { ativo: true, sessoesDesde: true },
-    }),
-  )
+    })
+    const presenca = semVaga
+      ? null
+      : await db.presenca.findUnique({
+          where: { orgId_usuarioId: { orgId: doCookie.orgId, usuarioId: doCookie.usuarioId } },
+          select: { desde: true, ultimoSinal: true },
+        })
+    return { usuario, presenca }
+  })
 
   // Usuário apagado, desativado, ou sessão emitida antes do corte.
-  if (!sessaoAindaVale(usuario, doCookie.nasceu)) return null
+  if (!sessaoAindaVale(achado.usuario, doCookie.nasceu)) return { sessao: null, motivo: 'corte' }
+
+  // ── a vaga ───────────────────────────────────────────────
+  // O teto de pessoas dentro ao mesmo tempo só valia no login: quem perdia a
+  // vaga para outra pessoa (ver `ocuparVaga`) continuava trabalhando com o
+  // cookie de antes, e o plano de uma vaga tinha duas pessoas dentro. Agora a
+  // sessão precisa segurar a MESMA vaga com que entrou. A vaga some quando é
+  // tomada (parada há mais de dez minutos) ou quando a pessoa clica em Sair.
+  if (!semVaga && !vagaConfere(achado.presenca, doCookie.vaga)) {
+    return { sessao: null, motivo: await motivoDaVagaPerdida(doCookie) }
+  }
 
   const { nasceu: _nasceu, ...sessao } = doCookie
 
   // ── "ainda estou aqui" ───────────────────────────────────
   // É este toque que segura a vaga. Ele mora aqui porque aqui é o único lugar
   // por onde TODA tela passa — pendurar num componente qualquer deixaria de
-  // fora justamente as telas que a pessoa fica olhando por mais tempo.
+  // fora justamente as telas que a pessoa fica olhando por mais tempo. Só
+  // quando o último sinal já passou de um minuto: a presença acabou de ser
+  // lida, não precisa de outra transação para descobrir isso.
   //
   // A falha é engolida de propósito. Perder um sinal custa, no pior caso, a
   // vaga ser tomada alguns minutos antes da hora; deixar o erro subir custaria
   // a tela inteira. Nenhuma tela deve morrer por causa da contabilidade de
   // vaga.
-  void sinal(sessao.orgId, sessao.usuarioId).catch(() => {})
+  if (achado.presenca && Date.now() - achado.presenca.ultimoSinal.getTime() >= SINAL_MS) {
+    void sinal(sessao.orgId, sessao.usuarioId).catch(() => {})
+  }
 
   // ── o nosso suporte deixa rastro ─────────────────────────
   // Toda tela, ação e planilha aberta com acesso de SUPORTE vira linha no
@@ -75,9 +118,14 @@ export async function sessaoViva(slugEmpresa: string): Promise<Sessao | null> {
   if (ehAcessoDeSuporte(sessao)) {
     try {
       const h = await headers()
-      // O proxy (src/proxy.ts) carimba o caminho da requisição. Pré-carga de
-      // link não passa pelo proxy: fica registrada assim mesmo, sem caminho.
-      const caminho = h.get(CABECALHO_CAMINHO) ?? `/${slugEmpresa} (pré-carregamento)`
+      // O proxy (src/proxy.ts) carimba o caminho da requisição e SELA o
+      // carimbo (ver carimbo.ts). Caminho sem selo que confira veio do
+      // navegador — a pré-carga de link não passa pelo proxy, e era por ela
+      // que dava para mandar um caminho inventado — e não entra no livro como
+      // se fosse verdade.
+      const caminho =
+        caminhoCarimbado(h.get(CABECALHO_CAMINHO), h.get(CABECALHO_SELO)) ??
+        `/${slugEmpresa} (pré-carregamento; tela não confirmada)`
       await registrarAcessoDeSuporte(sessao, {
         caminho,
         tipo: h.has('next-action') ? 'acao' : 'tela',
@@ -85,19 +133,55 @@ export async function sessaoViva(slugEmpresa: string): Promise<Sessao | null> {
       })
     } catch (e) {
       console.error('[suporte] o acesso não pôde ser registrado; entrada recusada:', e instanceof Error ? e.message : e)
-      return null
+      return { sessao: null, motivo: 'suporte' }
     }
   }
 
-  return sessao
+  return { sessao }
+}
+
+/**
+ * A sessão do cookie, já confrontada com o banco.
+ * Devolve null quando não há cookie, quando a conta foi desativada, quando
+ * a sessão é anterior ao último corte ou quando a vaga dela não existe mais.
+ */
+export async function sessaoViva(slugEmpresa: string): Promise<SessaoViva | null> {
+  return (await conferirSessao(slugEmpresa)).sessao
+}
+
+/**
+ * A vaga do cookie sumiu: foi TOMADA por outra pessoa, ou a própria pessoa
+ * saiu (em outro aparelho, ou redefiniu a senha)? Só a primeira merece a
+ * frase "sua vaga foi usada" — a outra é um "entre de novo" comum. Quem
+ * responde é o livro: tomar vaga deixa a linha `vaga.assumiu`. A consulta só
+ * roda no caminho da queda, que é raro.
+ */
+async function motivoDaVagaPerdida(doCookie: { orgId: string; usuarioId: string; vaga: string | null }): Promise<MotivoDaQueda> {
+  // Cookie de antes da vaga ir no cookie: não foi ninguém, foi a troca do sistema.
+  if (!doCookie.vaga) return 'saiu'
+  const desde = new Date(doCookie.vaga)
+  if (Number.isNaN(desde.getTime())) return 'saiu'
+  try {
+    const tomada = await comoOrg(doCookie.orgId, (db) =>
+      db.auditoria.findFirst({
+        where: { acao: 'vaga.assumiu', alvoId: doCookie.usuarioId, criadoEm: { gte: desde } },
+        select: { id: true },
+      }),
+    )
+    return tomada ? 'vaga' : 'saiu'
+  } catch {
+    return 'saiu'
+  }
+}
+
+/** O endereço da tela de entrar, com a frase certa para quem caiu. */
+export function enderecoDeEntrar(slugEmpresa: string, motivo?: MotivoDaQueda): string {
+  return motivo === 'vaga' ? `/${slugEmpresa}/entrar?saiu=vaga` : `/${slugEmpresa}/entrar`
 }
 
 // ─────────────────────────────────────────────────────────────
 // O REGISTRO DO SUPORTE
 // ─────────────────────────────────────────────────────────────
-
-/** O cabeçalho em que o proxy carimba o caminho da requisição. */
-export const CABECALHO_CAMINHO = 'x-norte-caminho'
 
 /** Uma linha por tela (ou ação) a cada tanto, por sessão — senão cada clique vira linha. */
 export const INTERVALO_REGISTRO_SUPORTE_MS = 10 * 60_000
@@ -192,11 +276,56 @@ export async function registrarAcessoDeSuporte(
   }
 }
 
+/**
+ * Destrancar a tela: a senha de quem já está dentro, de novo.
+ *
+ * Não é login — a sessão continua a mesma. Só confere que quem está na
+ * frente da tela é quem entrou.
+ *
+ * ── o mesmo freio do login ───────────────────────────────────
+ * A tela trancada é uma porta de senha como a de entrar, e com a vantagem,
+ * para quem ataca, de já estar do lado de dentro: o computador do balcão
+ * destrancado era um lugar para testar a senha da dona sem limite — a tela
+ * saía na quinta errada, mas bastava recarregar. Agora cada tentativa passa
+ * por `reservarTentativa`, contada no MESMO e-mail do login: cinco erros aqui
+ * seguram também o login daquela conta pelos mesmos quinze minutos.
+ */
+export async function destrancar(
+  slugEmpresa: string,
+  senha: string,
+  ip: string | null,
+): Promise<{ ok: boolean; erro?: string; sair?: boolean }> {
+  const conferida = await conferirSessao(slugEmpresa)
+  const sessao = conferida.sessao
+  if (!sessao) {
+    return { ok: false, sair: true, erro: conferida.motivo === 'vaga' ? RECADO_VAGA : 'Sua sessão terminou. Entre de novo.' }
+  }
+  if (!senha) return { ok: false, erro: 'Digite a sua senha.' }
+
+  const u = await comoOrg(sessao.orgId, (db) =>
+    db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { senhaHash: true, email: true } }),
+  )
+  if (!u) return { ok: false, sair: true, erro: 'Sua sessão terminou. Entre de novo.' }
+
+  const freio = await reservarTentativa(sessao.orgId, u.email, ip)
+  if (freio.bloqueado) {
+    return { ok: false, sair: true, erro: `Muitas tentativas seguidas. Entre de novo daqui a ${freio.esperarMin} min.` }
+  }
+  if (!u.senhaHash || !(await conferirSenha(senha, u.senhaHash))) {
+    // A tentativa já nasceu contada como erro (ver limite.ts).
+    await new Promise((r) => setTimeout(r, 600))
+    return { ok: false, erro: 'Senha errada.' }
+  }
+  await concluirTentativa(sessao.orgId, freio.tentativaId, true)
+  void sinal(sessao.orgId, sessao.usuarioId).catch(() => {})
+  return { ok: true }
+}
+
 /** Para Server Action: ou tem sessão viva, ou levanta. */
-export async function exigirSessao(slugEmpresa: string): Promise<Sessao> {
-  const s = await sessaoViva(slugEmpresa)
-  if (!s) throw new SessaoExpirada()
-  return s
+export async function exigirSessao(slugEmpresa: string): Promise<SessaoViva> {
+  const r = await conferirSessao(slugEmpresa)
+  if (!r.sessao) throw new SessaoExpirada(r.motivo === 'vaga' ? RECADO_VAGA : undefined)
+  return r.sessao
 }
 
 /**
@@ -210,7 +339,7 @@ export async function exigirSessao(slugEmpresa: string): Promise<Sessao> {
 export async function exigirEntrada(
   slugEmpresa: string,
   opcoes: boolean | { configurada?: boolean; capacidade?: Capacidade } = true,
-): Promise<{ empresa: Empresa; sessao: Sessao }> {
+): Promise<{ empresa: Empresa; sessao: SessaoViva }> {
   // A própria tela de cadastro passa `false`, senão entraria em laço.
   const exigirConfigurada = typeof opcoes === 'boolean' ? opcoes : (opcoes.configurada ?? true)
   const capacidade = typeof opcoes === 'boolean' ? undefined : opcoes.capacidade
@@ -218,8 +347,9 @@ export async function exigirEntrada(
   const empresa = await acharOrgPorSlug(slugEmpresa)
   if (!empresa) notFound()
 
-  const sessao = await sessaoViva(slugEmpresa)
-  if (!sessao) redirect(`/${slugEmpresa}/entrar`)
+  const conferida = await conferirSessao(slugEmpresa)
+  const sessao = conferida.sessao
+  if (!sessao) redirect(enderecoDeEntrar(slugEmpresa, conferida.motivo))
 
   if (capacidade && !pode(sessao, capacidade)) notFound()
 

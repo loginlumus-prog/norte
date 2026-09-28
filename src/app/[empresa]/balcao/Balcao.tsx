@@ -40,9 +40,9 @@ import { ROTULO_TABELA, type Tabela } from '@/servidor/preco'
 import type { Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
 import { Botao, Aviso, Situacao, cx } from '@/ui/base'
-import { grade, type Grade } from './acoes'
+import { grade, type Grade, type InicialDoBalcao } from './acoes'
 import { brl, precoDe, linhaCent } from './conta'
-import { useVenda, FORMAS, tituloDaForma, type Linha } from './useVenda'
+import { useVenda, FORMAS, tituloDaForma, type EncomendaNoPedido, type Linha } from './useVenda'
 
 const MEDIDA: Record<string, string> = {
   UN: 'un', KG: 'kg', G: 'g', L: 'l', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx',
@@ -67,6 +67,9 @@ export function Balcao({
   vendedores,
   podeAvulso,
   crediario,
+  inicial,
+  encomenda = null,
+  veAssinatura = false,
 }: {
   slug: string
   unidadeId: string
@@ -87,8 +90,14 @@ export function Balcao({
   podeAvulso: boolean
   /** O crediário da loja. Nulo = módulo desligado: a forma nem aparece. */
   crediario: { maxParcelas: number } | null
+  /** Aberto pela Agenda: o horário a cobrar, com o serviço e o cliente. */
+  inicial?: InicialDoBalcao | null
+  /** Aberto por "Receber no balcão", em Encomendas. Ver useVenda. */
+  encomenda?: EncomendaNoPedido | null
+  /** Pode abrir Assinatura: decide o link do recado de teto do plano. */
+  veAssinatura?: boolean
 }) {
-  const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario })
+  const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario, inicial, encomenda, veAssinatura })
   const {
     termo, setTermo, achados, setAchados,
     carrinho, lancar, mudarQtd, tirar, limpar, itensNaVenda, qtd, setQtd,
@@ -162,6 +171,18 @@ export function Balcao({
       )}
       {alerta && <Aviso nivel="atencao">{alerta}</Aviso>}
       {v.aviso && <AvisoFixo texto={v.aviso} aoFechar={() => v.setAviso(null)} />}
+      {v.cobrando && (
+        <Aviso nivel="neutro">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>
+              Cobrando o horário de <b className="font-semibold">{v.cobrando}</b>. Ao concluir, ele fica como atendido na Agenda.
+            </span>
+            <button type="button" onClick={v.tirarHorario} className="font-semibold underline underline-offset-2">
+              Tirar o horário desta venda
+            </button>
+          </span>
+        </Aviso>
+      )}
 
       {/* ── quem compra, quem vende ── */}
       <div className={cx('grid gap-2', vendedores ? 'sm:grid-cols-[1fr_16rem]' : '')}>
@@ -271,7 +292,7 @@ export function Balcao({
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
                           <Situacao nivel={a.saldo <= 0 ? 'critico' : 'bom'}>
-                            {a.saldo <= 0 ? 'acabou' : `${a.saldo}`}
+                            {a.servico ? 'serviço' : a.saldo <= 0 ? 'acabou' : `${a.saldo}`}
                           </Situacao>
                           <span className="numero text-sm font-semibold text-tinta">{brl(precoDe(a as Linha, tabela))}</span>
                           {i === 0 && <Tecla>Enter</Tecla>}
@@ -344,7 +365,7 @@ export function Balcao({
                       <span className="flex items-baseline justify-between gap-2 pt-1">
                         <span className="numero text-sm font-bold">{brl(precoDe(a as Linha, tabela))}</span>
                         <span className={cx('numero text-[11px]', acabou ? 'font-semibold' : 'text-tinta-3')}>
-                          {acabou ? 'acabou' : a.saldo}
+                          {a.servico ? 'serviço' : acabou ? 'acabou' : a.saldo}
                         </span>
                       </span>
                     </button>

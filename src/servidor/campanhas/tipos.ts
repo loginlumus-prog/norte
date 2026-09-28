@@ -193,6 +193,8 @@ export type Vars = {
   _digitado?: string
   /** Quantas vezes já pulou de campanha nesta cadeia (freio de laço). */
   _saltos?: number
+  /** Quantas mensagens já saíram: é a chave de cada envio (a nova tentativa usa a mesma). */
+  _envios?: number
   [k: string]: unknown
 }
 
@@ -210,8 +212,14 @@ export const DIGITANDO_MAX_SEG = 15
 export const MAX_SALTOS = 3
 /** Frase de gatilho mais curta que isto é ignorada: "oi" casaria com metade das mensagens. */
 export const FRASE_MIN = 3
-/** A trava de uma execução vence sozinha depois disto (processo que morreu no meio). */
-export const TRAVA_VENCE_SEG = 120
+/**
+ * A trava de uma execução vence sozinha depois disto (processo que morreu no
+ * meio). Medida no relógio DA MÁQUINA, e renovada antes de cada envio. Tem de
+ * passar do envio mais demorado — o conector do QR Code espera até 120 s pela
+ * vez na fila —, senão a batida seguinte acha a trava "vencida" no meio de um
+ * envio que está só demorando, e a mensagem sai duas vezes.
+ */
+export const TRAVA_VENCE_SEG = 300
 /** A janela do WhatsApp: sem a pessoa ter escrito nisto, ninguém escreve para ela. */
 export const JANELA_HORAS = 24
 

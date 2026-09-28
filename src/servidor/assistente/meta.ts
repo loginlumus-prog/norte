@@ -134,7 +134,10 @@ type RespostaEnvio = { messages?: { id?: string }[] }
 /** POST /<número>/messages. O id que volta (wamid) é o da mensagem no WhatsApp. */
 export async function enviarMensagem(g: Graph, phoneNumberId: string, corpo: unknown): Promise<Envio> {
   const r = await g.pedir<RespostaEnvio>('POST', `${phoneNumberId}/messages`, { corpo })
-  if (!r.ok) return { ok: false, motivo: r.erro.mensagem, codigo: r.erro.codigo }
+  // Status 0 = a Meta não respondeu (prazo, rede caída no meio): o POST pode
+  // ter chegado. A Cloud API não reconhece envio repetido, então é 'incerto'
+  // — quem chama não manda de novo às cegas.
+  if (!r.ok) return { ok: false, motivo: r.erro.mensagem, codigo: r.erro.status === 0 ? 'incerto' : r.erro.codigo }
   return { ok: true, id: r.dados?.messages?.[0]?.id }
 }
 

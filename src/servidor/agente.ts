@@ -5,6 +5,7 @@
 // é o que permite testar a trava sem subir banco, e testar exaustivamente é
 // o único jeito de confiar numa trava.
 
+import { marcarHorario, mudarSituacaoAgenda, type DadosHorario } from './agenda'
 import { comoOrg } from './banco'
 import { exigir, pode, type Sessao } from './permissao'
 import { type ComModulos } from './modulos'
@@ -22,6 +23,7 @@ import {
   type Poder,
 } from './poderes'
 import { garantirCreditoDoMes } from './assinatura'
+import { PLANOS, planoLibera } from './planos'
 import { inicioDeHojeEmSP } from './dia'
 import { MAXIMO_RECADO } from './assistente/recado'
 
@@ -58,6 +60,10 @@ export async function acharAgente(orgId: string) {
  */
 export async function salvarAgente(sessao: Sessao, cfg: ConfigAgente) {
   exigir(sessao, 'agente.configurar')
+  // A capacidade diz QUEM configura; o plano diz SE a empresa tem assistente.
+  // Só a capacidade deixava a empresa do Grátis montar o assistente (e dali
+  // abrir sessão de WhatsApp) — o que o plano dela não cobre.
+  await exigirPlanoComAssistente(sessao.orgId)
 
   const poderes = cfg.poderes.filter(
     (p): p is ChavePoder => (PODERES as Record<string, Poder>)[p]?.disponivel === true,
@@ -336,6 +342,25 @@ async function executar(
       return undefined
     }
 
+    case 'agenda.marcar': {
+      // O MESMO serviço da tela: confere a permissão na loja, a profissional,
+      // e trava a agenda dela antes de olhar se o horário está livre. Quem
+      // confirma a proposta é quem decide — inclusive o horário fora do
+      // funcionamento, que a proposta já avisou.
+      const r = await marcarHorario(sessao, { ...(dados as unknown as DadosHorario), confirmar: true })
+      if (!r.ok) throw new Error(r.erro)
+      return undefined
+    }
+
+    case 'agenda.desmarcar': {
+      const r = await mudarSituacaoAgenda(sessao, String(dados.id ?? ''), {
+        para: 'CANCELADO',
+        motivo: String(dados.motivo ?? 'Desmarcado pelo assistente'),
+      })
+      if (!r.ok) throw new Error(r.erro)
+      return undefined
+    }
+
     default:
       throw new Error(`"${poder}" ainda não sabe executar.`)
   }
@@ -502,10 +527,16 @@ export async function apurarRecibos(orgId: string, agora: Date = new Date()): Pr
                    ${filtroLoja}) l
       `
       const filtroMov = unidades ? Prisma.sql`and m.unidade_id = any(${unidades})` : Prisma.empty
+      // A transferência entre lojas também grava ENTRADA no destino (ver
+      // `transferir` em estoque.ts), com o motivo "Transferência de …". Ela
+      // não é compra: a peça só mudou de prateleira. Contada como "entrou",
+      // inflava a reposição e o recibo cobrava margem de venda que o
+      // assistente não evitou.
       const [entrada] = await db.$queryRaw<{ entrou: string | null }[]>`
         select sum(m.quantidade) as entrou
           from movimentos_estoque m
          where m.variacao_id = ${variacaoId} and m.tipo = 'ENTRADA'
+           and coalesce(m.motivo, '') not like 'Transferência de %'
            and m.criado_em >= ${de} and m.criado_em < ${ate}
            ${filtroMov}
       `
@@ -715,3 +746,23 @@ export const paraConfig = (a: LinhaAgente): AgenteConfig => ({
   descontoMaxPct: Number(a.descontoMaxPct),
   valorMaxCent: a.valorMaxCent,
 })
+
+/**
+ * Levanta erro quando o plano da empresa não tem o assistente.
+ *
+ * Exportada para os outros caminhos que ligam o assistente ao mundo (conectar
+ * o WhatsApp por QR, a linha Z-API, o número oficial da Meta) usarem a mesma
+ * régua — ver `assistente/`.
+ */
+export async function exigirPlanoComAssistente(orgId: string): Promise<void> {
+  const org = await comoOrg(orgId, (db) => db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } }))
+  if (planoLibera(org.plano, 'agente')) return
+  const desde = Object.values(PLANOS)
+    .filter((p) => (p.modulos as readonly string[]).includes('agente'))
+    .sort((a, b) => a.degrau - b.degrau)[0]
+  throw new Error(
+    desde
+      ? `O assistente é do plano ${desde.titulo} para cima. Veja os planos em Assinatura.`
+      : 'O plano desta empresa não tem o assistente.',
+  )
+}

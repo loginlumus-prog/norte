@@ -17,18 +17,22 @@
 // o que é um defeito conhecido e pequeno. Quando houver fuso por empresa,
 // ele entra aqui, num lugar só.
 
-import { comoOrg } from './banco'
+import { comoOrg, type BancoDaOrg } from './banco'
 import type { Plano } from '@prisma/client'
 import { exigir, soAsQuePode, type Sessao } from './permissao'
 import { janela, type Janela } from './periodo'
-
-const DIA = 864e5
+import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
 
 export type PontoDoDia = { dia: string; total: number; vendas: number }
 
 export type Resumo = {
   plano: Plano
   /** O periodo escolhido. Tudo abaixo e dele, menos o que diz o contrario. */
+  /**
+   * `custo` é o custo da mercadoria que FICOU vendida: o das vendas menos o
+   * das peças que voltaram em devolução na janela. A margem bruta é
+   * (total − devoluções.valor − custo) sobre (total − devoluções.valor).
+   */
   atual: { vendas: number; total: number; ticket: number; custo: number }
   /** A janela do MESMO tamanho, imediatamente antes. */
   anterior: { vendas: number; total: number }
@@ -61,12 +65,19 @@ export type Resumo = {
 
 const n = (v: unknown) => Number(v ?? 0)
 
-/** Cada dia da janela, mesmo o que não vendeu nada: gráfico não pula dia. */
+/**
+ * Cada dia da janela, mesmo o que não vendeu nada: gráfico não pula dia.
+ *
+ * As chaves são o dia em SÃO PAULO, o mesmo que o SQL agrupa. Eram montadas
+ * com o relógio da máquina: num servidor em UTC, a janela que começa 00:00 de
+ * São Paulo (03:00 UTC) gerava as chaves certas por acaso — mas a do dia de
+ * hoje, depois das 21h, virava amanhã, e as vendas da noite sumiam do gráfico.
+ */
 export function densificar(de: Date, ate: Date, linhas: PontoDoDia[]): PontoDoDia[] {
   const por = new Map(linhas.map((l) => [l.dia, l]))
   const saida: PontoDoDia[] = []
-  for (let d = new Date(de.getFullYear(), de.getMonth(), de.getDate()); d < ate; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
-    const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const fim = diaEmSP(ate)
+  for (let chave = diaEmSP(de); chave < fim; chave = somarDias(chave, 1)) {
     saida.push(por.get(chave) ?? { dia: chave, total: 0, vendas: 0 })
   }
   return saida
@@ -83,9 +94,9 @@ export async function resumoDoPainel(
 
   // "Parado ha mais de 30 dias" NAO segue o filtro: e uma definicao do
   // negocio, nao um recorte de leitura. Olhando 7 dias, tudo pareceria parado.
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0)
-  const trintaDias = new Date(hoje.getTime() - 29 * DIA)
+  // Dia de São Paulo, não da máquina — ver `dia.ts`.
+  const hoje = diaEmSP()
+  const trintaDias = inicioDoDiaEmSP(somarDias(hoje, -29))
 
   return comoOrg(sessao.orgId, async (db) => {
     const uni = unidadeIds
@@ -185,7 +196,10 @@ export async function resumoDoPainel(
                                  where vo.variacao_id = va.id), '') as descricao,
              va.codigo,
              sum(e.quantidade) as saldo,
-             (select (current_date - max(v.criada_em::date))::int
+             -- current_date e criada_em::date eram o dia do BANCO (UTC), não o
+             -- da loja: a venda das 22h caía no dia seguinte, e os dias parados
+             -- erravam por um conforme a hora em que a tela abria.
+             (select (${hoje}::date - max((v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo')::date))::int
                 from venda_itens i join vendas v on v.id = i.venda_id
                where i.variacao_id = va.id and v.unidade_id = any(${uni})) as dias
         from variacoes va
@@ -259,6 +273,10 @@ export async function resumoDoPainel(
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
          and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
     `
+    // A peça que voltou não foi vendida: a receita já sai pela devolução, e o
+    // custo dela tem de sair junto. Sem isto, a loja que devolveu muito
+    // aparecia com margem PIOR do que a real — a receita caía e o custo não.
+    const custoDevolvido = await custoDasDevolucoes(db, uni, j.de, j.ate)
 
     const total = n(totaisAtual._sum.total)
 
@@ -274,7 +292,7 @@ export async function resumoDoPainel(
         vendas: totaisAtual._count,
         total,
         ticket: totaisAtual._count ? total / totaisAtual._count : 0,
-        custo: n(custoMes[0]?.custo),
+        custo: n(custoMes[0]?.custo) - custoDevolvido,
       },
       anterior: {
         vendas: totaisAnterior._count,
@@ -362,13 +380,13 @@ export async function resumoDeHoje(
 
   const j = janela('hoje', agora)
   const semana = janela('7d', agora)
-  // Dias de calendário, não 7 × 24h — mesma regra de `periodo.ts`.
-  const dePassada = new Date(j.de.getFullYear(), j.de.getMonth(), j.de.getDate() - 7)
-  const atePassada = new Date(j.de.getFullYear(), j.de.getMonth(), j.de.getDate() - 6)
-  const agoraPassada = new Date(
-    dePassada.getFullYear(), dePassada.getMonth(), dePassada.getDate(),
-    agora.getHours(), agora.getMinutes(), agora.getSeconds(),
-  )
+  // Dias de calendário de São Paulo, não o relógio da máquina — mesma regra
+  // de `periodo.ts`. E "até esta hora" é a mesma hora de São Paulo uma
+  // semana atrás: sem horário de verão desde 2019, são 7 × 24h exatas.
+  const hojeSP = diaEmSP(agora)
+  const dePassada = inicioDoDiaEmSP(somarDias(hojeSP, -7))
+  const atePassada = inicioDoDiaEmSP(somarDias(hojeSP, -6))
+  const agoraPassada = new Date(agora.getTime() - 7 * 864e5)
 
   const zerado = (): number[] => Array.from({ length: 24 }, () => 0)
   if (unidadeIds.length === 0) {
@@ -439,6 +457,31 @@ export async function resumoDeHoje(
       })),
     }
   })
+}
+
+/**
+ * O custo (na hora da venda) do que voltou em devolução no período.
+ *
+ * A devolução guarda a quantidade devolvida de cada item; o custo vem do
+ * `custo_unit` do item vendido — a mesma fotografia que o CMV usa. Filtrado
+ * pela DATA DA DEVOLUÇÃO, que é quando a receita sai também.
+ */
+export async function custoDasDevolucoes(
+  db: BancoDaOrg,
+  unidadeIds: string[],
+  de: Date,
+  /** Exclusivo, como toda janela de `periodo.ts`. */
+  ate: Date,
+): Promise<number> {
+  const linhas = await db.$queryRaw<{ custo: string }[]>`
+    select coalesce(sum(di.quantidade * coalesce(vi.custo_unit, 0)), 0) as custo
+      from devolucao_itens di
+      join devolucoes d on d.id = di.devolucao_id
+      join venda_itens vi on vi.id = di.venda_item_id
+     where d.unidade_id = any(${unidadeIds})
+       and d.criada_em >= ${de} and d.criada_em < ${ate}
+  `
+  return n(linhas[0]?.custo)
 }
 
 const vazio = (): Resumo => ({

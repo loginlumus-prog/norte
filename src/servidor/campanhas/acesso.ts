@@ -36,6 +36,30 @@ export async function lerOrgParaCampanha(orgId: string): Promise<OrgParaCampanha
   )
 }
 
+// ── o assistente ligado e o WhatsApp conectado ───────────────
+// A campanha sai pelo número do assistente — e as respostas (inclusive o
+// PARAR) voltam por ele. Assistente desligado ou WhatsApp desconectado é
+// porta de entrada fechada: se a campanha continuasse mandando, a pessoa
+// responderia "parar" para uma porta que ninguém abre. Então o relógio não
+// acorda ninguém, e o teste do dono não começa.
+
+export type AgenteParaCampanha = { ativo: boolean; canal: string } | null
+
+/** O assistente está ligado e com o WhatsApp conectado? PURO. */
+export const assistenteFala = (a: AgenteParaCampanha): boolean => !!a && a.ativo && a.canal !== 'NENHUM'
+
+/** Por que não fala — a frase da tela. Nulo = fala. */
+export function porQueCalado(a: AgenteParaCampanha): string | null {
+  if (!a) return 'Crie o assistente na tela Agente antes de testar.'
+  if (a.canal === 'NENHUM') return 'O WhatsApp da loja está desconectado. Conecte na tela Agente e teste de novo.'
+  if (!a.ativo) return 'O assistente está desligado. Ligue na tela Agente: sem ele, a resposta ao teste não chega à campanha.'
+  return null
+}
+
+export async function lerAgenteParaCampanha(orgId: string): Promise<AgenteParaCampanha> {
+  return comoOrg(orgId, (db) => db.agente.findUnique({ where: { orgId }, select: { ativo: true, canal: true } }))
+}
+
 /** Levanta com a frase certa quando a empresa não pode ter campanha agora. */
 export async function exigirCampanhasLiberadas(orgId: string) {
   const org = await lerOrgParaCampanha(orgId)

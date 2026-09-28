@@ -52,10 +52,20 @@ describe('o catálogo de poderes', () => {
     // O agente não pode ser um jeito de o balconista fazer o que ele não faz
     // pela tela. Toda ação de escrita precisa de uma capacidade que o papel
     // BALCAO não tem — senão confirmar a proposta vira a porta dos fundos.
+    //
+    // A exceção é a AGENDA, e ela não contradiz a regra: marcar e desmarcar
+    // horário é trabalho da recepção PELA TELA (ver permissao.ts). A proposta
+    // não dá ao balcão nada que ele já não faça — e quem executa é o mesmo
+    // serviço da tela (agenda.ts), que confere a loja da pessoa de novo.
+    const ESCRITA_QUE_O_BALCAO_JA_FAZ: string[] = ['agenda.marcar', 'agenda.desmarcar']
     const doBalcao = PODERES_HUMANOS.BALCAO
     for (const chave of TODOS_PODERES) {
       const p: Poder = PODERES[chave]
       if (!p.escreve) continue
+      if (ESCRITA_QUE_O_BALCAO_JA_FAZ.includes(chave)) {
+        expect(doBalcao, `${chave}: o balcão faz isso pela tela`).toContain(p.exige)
+        continue
+      }
       expect(doBalcao, `${chave} pode ser confirmado pelo balcão`).not.toContain(p.exige)
     }
   })

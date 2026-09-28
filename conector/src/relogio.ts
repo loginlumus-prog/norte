@@ -1,6 +1,7 @@
 // O relógio do Norte, morando no conector.
 //
-// As campanhas acordam por minuto (`/api/campanhas/tick`) e as rotinas do
+// As campanhas e os lembretes do horário marcado acordam por minuto
+// (`/api/campanhas/tick`) e as rotinas do
 // assistente por hora (`/api/rotinas`: relatório das 8h e 20h, "vai faltar",
 // cliente sumido). Alguém precisa bater nesses endereços. No Render isso é um
 // cron job, que é pago; o conector já fica ligado 24 horas num servidor nosso

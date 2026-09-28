@@ -33,6 +33,7 @@ import {
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useTransition, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, cx } from '@/ui/base'
+import { Confirmar } from '@/ui/Confirmar'
 import {
   ROTULO_NO,
   ROTULO_STATUS,
@@ -809,7 +810,6 @@ const quando = (iso: string) =>
 
 function Dentro({ slug, campanhaId, linhas }: { slug: string; campanhaId: string; linhas: DentroNaTela[] }) {
   const router = useRouter()
-  const [indo, comecar] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
   if (linhas.length === 0) return <p className="text-sm text-tinta-2">Ninguém dentro desta campanha agora.</p>
   return (
@@ -829,19 +829,19 @@ function Dentro({ slug, campanhaId, linhas }: { slug: string; campanhaId: string
               </p>
               <p className="text-[11px] text-tinta-3">entrou {quando(l.desde)}</p>
             </div>
-            <Botao
-              tom="discreto"
-              disabled={indo}
-              onClick={() =>
-                comecar(async () => {
-                  const r = await removerAcao(slug, campanhaId, l.id)
-                  setErro(r.erro ?? null)
-                  router.refresh()
-                })
-              }
+            {/* Tirar não tem volta: a pessoa sai do roteiro no meio, e só
+                entra de novo se a reentrada da campanha deixar. */}
+            <Confirmar
+              pergunta={`Tirar ${l.nome ?? 'este contato'} da campanha?`}
+              sim="Sim, tirar"
+              aoConfirmar={async () => {
+                const r = await removerAcao(slug, campanhaId, l.id)
+                setErro(r.erro ?? null)
+                router.refresh()
+              }}
             >
               Tirar
-            </Botao>
+            </Confirmar>
           </li>
         ))}
       </ul>

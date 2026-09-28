@@ -14,7 +14,7 @@ import { emailConvite } from '@/servidor/email-modelos'
 import { enderecoPublico } from '@/servidor/requisicao'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import { NOME_DO_PAPEL } from '@/servidor/guia'
-import { mudarAcesso, mudarSituacao, mudarTelefone } from '@/servidor/equipe'
+import { cortarAcessoDoSuporte, mudarAcesso, mudarSituacao, mudarTelefone } from '@/servidor/equipe'
 import { salvarMeta, mesValido } from '@/servidor/metas'
 import { SemPermissao, type Papel } from '@/servidor/permissao'
 
@@ -125,10 +125,12 @@ export async function trocarPapel(
   unidadeId: string | null,
 ): Promise<EstadoEquipe> {
   const sessao = await exigirSessao(slug)
-  if (!PAPEIS.includes(papel as Papel)) return { erro: 'Papel inválido.' }
+  if (!PAPEIS.includes(papel as Papel)) return { erro: 'Escolha um papel da lista.' }
 
   try {
-    const r = await mudarAcesso(sessao, usuarioId, { papel: papel as Papel, unidadeId })
+    // O dono vale para a empresa inteira, sempre (ver `DONO_SO_DA_EMPRESA`):
+    // promover a dono quem estava preso a uma loja solta a loja junto.
+    const r = await mudarAcesso(sessao, usuarioId, { papel: papel as Papel, unidadeId: papel === 'DONO' ? null : unidadeId })
     if (!r.ok) return { erro: r.motivo }
     revalidatePath(`/${slug}/equipe`)
     return { ok: 'Acesso alterado. A pessoa vai precisar entrar de novo.' }
@@ -191,5 +193,19 @@ export async function gerarLinkSenha(slug: string, usuarioId: string): Promise<E
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode gerar link de senha.' }
     return { erro: recadoDoErro(e, 'Não deu para gerar o link.') }
+  }
+}
+
+/** Cortar o acesso do NOSSO suporte antes do prazo — só a dona da empresa inteira. */
+export async function cortarSuporte(slug: string, usuarioId: string): Promise<EstadoEquipe> {
+  const sessao = await exigirSessao(slug)
+  try {
+    const r = await cortarAcessoDoSuporte(sessao, usuarioId)
+    if (!r.ok) return { erro: r.motivo }
+    revalidatePath(`/${slug}/equipe`)
+    return { ok: 'Acesso do suporte cortado. Ele sai do sistema na próxima tela.' }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode cortar o acesso do suporte.' }
+    return { erro: recadoDoErro(e, 'Não deu para cortar o acesso.') }
   }
 }

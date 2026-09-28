@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
-import { pode, podeVerPlanos } from '@/servidor/permissao'
+import { pode, podeNoAlcance, podeVerPlanos } from '@/servidor/permissao'
 import { planoDaEmpresa } from '@/servidor/relatorios'
 import { liberado } from '@/servidor/planos'
 import {
@@ -103,7 +103,12 @@ export default async function TelaTarefas({
 
   // Quem gere e tem o responsável aberto precisa da lista de gente para
   // atribuir. Fora disso, a lista nem é lida.
-  const pessoas = (completo && podeGerir && lib.responsavel ? await pessoasParaAtribuir(sessao, completo.unidadeId) : []).map(
+  // Gerir ESTE quadro: o da empresa inteira é só de quem gere a empresa
+  // inteira — a mesma régua do servidor (`quadroParaGerir`). Sem isto, o
+  // gerente da loja via os controles no quadro de todos e cada clique voltava
+  // com "sem permissão".
+  const podeGerirEste = completo ? podeNoAlcance(sessao, 'tarefa.gerir', completo.unidadeId) : podeGerir
+  const pessoas = (completo && podeGerirEste && lib.responsavel ? await pessoasParaAtribuir(sessao, completo.unidadeId) : []).map(
     (p) => ({ ...p, iniciais: iniciais(p.nome) }),
   )
 
@@ -240,7 +245,7 @@ export default async function TelaTarefas({
           {minhas && naTela.tarefas.length === 0 && (
             <Aviso nivel="neutro">Nenhuma tarefa sua neste quadro. Clique em “Minhas tarefas” de novo para ver todas.</Aviso>
           )}
-          <Quadro slug={slug} verPlanos={podeVerPlanos(sessao)} quadro={naTela} podeGerir={podeGerir} liberacoes={lib} pessoas={pessoas} situacoes={SITUACOES_NA_TELA} teto={cabeTarefa} />
+          <Quadro slug={slug} verPlanos={podeVerPlanos(sessao)} quadro={naTela} podeGerir={podeGerirEste} liberacoes={lib} pessoas={pessoas} situacoes={SITUACOES_NA_TELA} teto={cabeTarefa} />
         </>
       )}
 

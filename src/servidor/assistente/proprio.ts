@@ -20,8 +20,9 @@
 
 import { comoOrg } from '../banco'
 import { cifrar, decifrar, temCifra } from '../cifra'
-import { marcarHumano, processarMensagem, type Dependencias, type Desfecho } from './conversa'
+import { marcarHumano, processarMensagem, soPedidoDeLista, type Dependencias, type Desfecho } from './conversa'
 import { escolherCanal, SELECT_LINHA, type Canal } from './canal'
+import { ehPedidoDeVolta, lerParada } from '../campanhas/casar'
 
 // ─────────────────────────────────────────────────────────────
 // A EMPRESA DO ENDEREÇO
@@ -98,7 +99,17 @@ export async function receberDoConector(
   const { org, agente } = lido
 
   const r = lerDoConector(corpo)
-  if (r.tipo === 'ignorar' || agente.canal !== 'PROPRIO') return { status: 200 }
+  if (r.tipo === 'ignorar') return { status: 200 }
+  if (agente.canal !== 'PROPRIO') {
+    // Porta fechada (a loja desconectou o QR ou trocou de canal), mas o
+    // PARAR que chegou pelo número dela vale: gravado, sem confirmação.
+    if (r.tipo !== 'mensagem' || (!lerParada(r.texto) && !ehPedidoDeVolta(r.texto))) return { status: 200 }
+    return {
+      status: 200,
+      trabalho: () =>
+        soPedidoDeLista({ orgId: org.id, telefone: r.telefone, nome: r.nome, texto: r.texto, idExterno: r.idExterno }, null),
+    }
+  }
 
   return {
     status: 200,

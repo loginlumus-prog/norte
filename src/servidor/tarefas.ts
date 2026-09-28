@@ -26,7 +26,7 @@
 
 import type { Plano, SituacaoTarefa } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, pode, SemPermissao, unidadesQuePodem, PODERES, type Papel, type Sessao } from './permissao'
+import { exigir, exigirNoAlcance, pode, podeNoAlcance, SemPermissao, unidadesQuePodem, PODERES, type Papel, type Sessao } from './permissao'
 import { liberado, PLANOS, TAREFAS_ABERTAS_NO_GRATIS } from './planos'
 import { colunaDoDia, diaDaColuna, diaEmSP, inicioDoDiaEmSP, mostrarDiaDaColuna, primeiroDoMes } from './dia'
 
@@ -164,18 +164,23 @@ export function resumir(
 /**
  * Esta pessoa pode mudar a situação e o progresso DESTA tarefa?
  *
- * Quem gere pode sempre. Quem só vê pode na tarefa que é dela ou na que não
- * é de ninguém. `unidadeId` é a do QUADRO: nulo é quadro da empresa inteira,
- * e aí vale quem tem a capacidade em qualquer loja.
+ * Quem gere pode sempre — no quadro da loja, quem gere naquela loja; no
+ * quadro da empresa inteira (`unidadeId` nulo), só quem gere a empresa
+ * inteira (`podeNoAlcance`). Quem só vê pode na tarefa que é dela ou na que
+ * não é de ninguém; o quadro da empresa inteira, qualquer loja vê.
+ *
+ * O acesso de SUPORTE (nosso) não conta aqui: ele VÊ o quadro para ajudar,
+ * mas é só leitura. Antes, `tarefa.ver` bastava, e o suporte marcava como
+ * feita a tarefa sem responsável da loja.
  */
 export function podeMexerNaTarefa(
   sessao: Sessao,
   tarefa: { responsavelId: string | null },
   unidadeId: string | null,
 ): boolean {
-  const onde = unidadeId ?? undefined
-  if (pode(sessao, 'tarefa.gerir', onde)) return true
-  if (!pode(sessao, 'tarefa.ver', onde)) return false
+  const daLoja: Sessao = { ...sessao, acessos: sessao.acessos.filter((a) => a.papel !== 'SUPORTE') }
+  if (podeNoAlcance(daLoja, 'tarefa.gerir', unidadeId)) return true
+  if (!pode(daLoja, 'tarefa.ver', unidadeId ?? undefined)) return false
   return tarefa.responsavelId === null || tarefa.responsavelId === sessao.usuarioId
 }
 
@@ -495,7 +500,8 @@ export async function quadroCompleto(sessao: Sessao, quadroId: string): Promise<
 
 export type Pessoa = { id: string; nome: string }
 
-const PAPEIS_DO_QUADRO = (Object.keys(PODERES) as Papel[]).filter((p) => PODERES[p].includes('tarefa.ver'))
+// Sem o SUPORTE: é acesso nosso, só de leitura, e não recebe tarefa da loja.
+const PAPEIS_DO_QUADRO = (Object.keys(PODERES) as Papel[]).filter((p) => p !== 'SUPORTE' && PODERES[p].includes('tarefa.ver'))
 
 /**
  * Quem pode ser responsável por uma tarefa deste quadro: gente ativa, com um
@@ -663,7 +669,9 @@ async function quadroParaGerir(db: BancoDaOrg, sessao: Sessao, quadroId: string)
     select: { id: true, nome: true, unidadeId: true, grupos: true, descricao: true, cor: true },
   })
   if (!q) throw new Error('Este quadro não existe mais.')
-  exigir(sessao, 'tarefa.gerir', q.unidadeId ?? undefined)
+  // Quadro da empresa inteira (`null`) só para quem gere a empresa inteira:
+  // o gerente da loja 3 renomeava, mexia e arquivava o quadro de todos.
+  exigirNoAlcance(sessao, 'tarefa.gerir', q.unidadeId)
   return q
 }
 
@@ -721,7 +729,7 @@ export const GRUPOS_PADRAO = ['Esta semana', 'Este mês', 'Próximo mês']
 
 export async function criarQuadro(sessao: Sessao, dados: NovoQuadro): Promise<{ id: string }> {
   const unidadeId = dados.unidadeId || null
-  exigir(sessao, 'tarefa.gerir', unidadeId ?? undefined)
+  exigirNoAlcance(sessao, 'tarefa.gerir', unidadeId)
 
   const nome = limparTexto(dados.nome, NOME_MAX)
   if (!nome) throw new Error('Dê um nome ao quadro.')
@@ -792,7 +800,7 @@ export async function alterarQuadro(sessao: Sessao, quadroId: string, dados: Alt
     if (dados.grupos !== undefined) novo.grupos = limparGrupos(dados.grupos)
     if (dados.unidadeId !== undefined && dados.unidadeId !== q.unidadeId) {
       const alvo = dados.unidadeId || null
-      exigir(sessao, 'tarefa.gerir', alvo ?? undefined)
+      exigirNoAlcance(sessao, 'tarefa.gerir', alvo)
       if (alvo) {
         const plano = await planoDe(db, sessao.orgId)
         if (!liberado(plano, 'tarefas.varios')) throw new Error('Quadro por loja é do Balcão para cima.')
@@ -936,7 +944,7 @@ export async function alterarTarefa(sessao: Sessao, tarefaId: string, dados: Alt
   exigir(sessao, 'tarefa.gerir')
   await comoOrg(sessao.orgId, async (db) => {
     const t = await tarefaComQuadro(db, tarefaId)
-    exigir(sessao, 'tarefa.gerir', t.quadro.unidadeId ?? undefined)
+    exigirNoAlcance(sessao, 'tarefa.gerir', t.quadro.unidadeId)
     const plano = await planoDe(db, sessao.orgId)
 
     const novo: {
@@ -1063,7 +1071,7 @@ export async function apagarTarefa(sessao: Sessao, tarefaId: string): Promise<vo
   exigir(sessao, 'tarefa.gerir')
   await comoOrg(sessao.orgId, async (db) => {
     const t = await tarefaComQuadro(db, tarefaId)
-    exigir(sessao, 'tarefa.gerir', t.quadro.unidadeId ?? undefined)
+    exigirNoAlcance(sessao, 'tarefa.gerir', t.quadro.unidadeId)
     await db.tarefa.delete({ where: { id: t.id } })
     await auditar(db, sessao, {
       acao: 'tarefa.apagou', unidadeId: t.quadro.unidadeId, alvoTipo: 'tarefa', alvoId: t.id, alvoNome: t.titulo,
@@ -1080,7 +1088,7 @@ export async function apagarTarefa(sessao: Sessao, tarefaId: string): Promise<vo
  */
 export async function criarDeModelo(sessao: Sessao, chave: ChaveModelo, unidadeId: string | null): Promise<{ id: string }> {
   const onde = unidadeId || null
-  exigir(sessao, 'tarefa.gerir', onde ?? undefined)
+  exigirNoAlcance(sessao, 'tarefa.gerir', onde)
   if (!modeloValido(chave)) throw new Error('Esse modelo não existe.')
   const modelo: Modelo = MODELOS[chave]
 

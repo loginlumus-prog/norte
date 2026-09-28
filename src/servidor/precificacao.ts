@@ -115,8 +115,10 @@ export function analisarPreco({
  * padrão. Menos de 5 não é alvo, é liquidação; mais de 90 não existe fora de
  * software.
  */
-export function lerAlvo(v: string | undefined): number {
-  const texto = (v ?? '').trim()
+export function lerAlvo(v: unknown): number {
+  // `?alvo=1&alvo=2` chega como LISTA, e `.trim()` numa lista derrubava a
+  // tela. Endereço é do usuário: o que não é texto cai no padrão.
+  const texto = typeof v === 'string' ? v.trim() : ''
   if (!/^\d+([.,]\d+)?$/.test(texto)) return ALVO_PADRAO
   const n = Math.round(Number(texto.replace(',', '.')))
   if (!Number.isFinite(n)) return ALVO_PADRAO
@@ -221,9 +223,21 @@ export function ordenarPorUrgenciaDePreco<T extends { nome: string; analise: Ana
 export async function analisarCatalogo(sessao: Sessao, alvoPct: number): Promise<LinhaPreco[]> {
   exigir(sessao, 'produto.preco')
 
+  // Só o que passa pelo balcão de alguma loja da pessoa. O gerente da loja
+  // de roupa não lê custo e margem do picolé que só a sorveteria vende —
+  // `produto.preco` dele vale na loja dele. Vazio = vendido em todas, e aí
+  // passa pela dele também.
+  const alcance = unidadesQuePodem(sessao, 'produto.preco')
+  if (Array.isArray(alcance) && alcance.length === 0) return []
+
   return comoOrg(sessao.orgId, async (db) => {
     const produtos = await db.produto.findMany({
-      where: { ativo: true },
+      where: {
+        ativo: true,
+        ...(alcance === 'todas'
+          ? {}
+          : { OR: [{ vendidoEm: { isEmpty: true } }, { vendidoEm: { hasSome: alcance } }] }),
+      },
       orderBy: { nome: 'asc' },
       select: {
         id: true,

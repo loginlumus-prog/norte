@@ -19,7 +19,7 @@ import { comoOrg } from './banco'
 import { exigir, unidadesQuePodem, type Capacidade, type Sessao } from './permissao'
 import type { BancoDaOrg } from './banco'
 import { Prisma, type Medida } from '@prisma/client'
-import { alcancaOProduto } from './catalogo-loja'
+import { alcancaOProduto, alcanceComum, vendidoNaLoja } from './catalogo-loja'
 import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
 
 export type EixoEscolhido = {
@@ -46,6 +46,10 @@ export type DadosProduto = {
    * a ficha pode preencher.
    */
   prazoReposicaoDias?: number | null
+  /** É serviço: não tem estoque (ver `Produto.servico`). */
+  servico?: boolean
+  /** Minutos que o serviço ocupa na agenda. Nulo = não informado. */
+  duracaoMin?: number | null
 }
 
 export type ResultadoProduto =
@@ -177,6 +181,8 @@ export async function criarProduto(
         custo: dados.custo ?? null,
         vendidoEm: dados.vendidoEm ?? [],
         prazoReposicaoDias: dados.prazoReposicaoDias ?? null,
+        servico: dados.servico ?? false,
+        duracaoMin: dados.duracaoMin ?? null,
         eixos: {
           create: usados.map((e, i) => ({ orgId: sessao.orgId, eixoId: e.eixoId, ordem: i })),
         },
@@ -299,6 +305,8 @@ export async function editarProduto(
         ...(dados.custo !== undefined && { custo: dados.custo }),
         ...(dados.vendidoEm !== undefined && { vendidoEm: dados.vendidoEm }),
         ...(dados.prazoReposicaoDias !== undefined && { prazoReposicaoDias: dados.prazoReposicaoDias }),
+        ...(dados.servico !== undefined && { servico: dados.servico }),
+        ...(dados.duracaoMin !== undefined && { duracaoMin: dados.duracaoMin }),
         ...(dados.ativo !== undefined && { ativo: dados.ativo }),
       },
     })
@@ -323,6 +331,14 @@ export async function editarProduto(
 
     return { ok: true as const, produtoId, variacoes: 0 }
   })
+}
+
+/** A grade não pode mudar como pedido — a mensagem diz o que resolver antes. */
+export class GradeRecusada extends Error {
+  constructor(motivo: string) {
+    super(motivo)
+    this.name = 'GradeRecusada'
+  }
 }
 
 /** Frase única para o "não é seu para decidir": a tela e o teste usam a mesma. */
@@ -391,8 +407,11 @@ export async function ajustarGrade(
       select: {
         id: true,
         ativa: true,
-        opcoes: { select: { opcaoId: true } },
+        padrao: true,
+        opcoes: { select: { opcaoId: true, opcao: { select: { valor: true } } } },
         _count: { select: { vendaItens: true, movimentos: true } },
+        // Saldo em QUALQUER loja, aberta ou fechada: é mercadoria que existe.
+        estoques: { where: { quantidade: { not: 0 } }, select: { quantidade: true, unidade: { select: { nome: true } } } },
       },
     })
 
@@ -416,6 +435,26 @@ export async function ajustarGrade(
     if (novas.length === 0 && voltam.length === 0 && saem.length === 0 && eixosIguais) return r
     if (!alcancaOProduto(alcanceDe(sessao, 'produto.editar'), produto.vendidoEm)) {
       throw new Error(MOTIVO_FORA_DO_ALCANCE)
+    }
+
+    // ── o que sai não pode levar saldo junto ──
+    // Variação desativada some de toda tela de estoque (todas listam só as
+    // ativas) e continua vendável por quem bipar a etiqueta velha. O caso que
+    // achou isto: camiseta cadastrada sem grade, com 30 na prateleira; a dona
+    // marca as cores, o item "sem variação" sai — e as 30 somem da vista. Mover
+    // o saldo sozinho para uma das cores seria adivinhar qual cor é cada peça;
+    // recusar e dizer o caminho é o seguro.
+    const comSaldo = saem.filter(([, v]) => v.estoques.length > 0)
+    if (comSaldo.length > 0) {
+      const partes = comSaldo.map(([, v]) => {
+        const nome = v.padrao || v.opcoes.length === 0 ? 'o item sem variação' : v.opcoes.map((o) => o.opcao.valor).join(' · ')
+        const onde = v.estoques.map((e) => `${e.unidade.nome}: ${Number(e.quantidade).toLocaleString('pt-BR')}`).join(', ')
+        return `${nome} (${onde})`
+      })
+      throw new GradeRecusada(
+        `Ainda tem saldo em ${partes.join('; ')}. Zere antes na tela de Estoque — transfira, ` +
+          'registre a perda ou corrija pelo que foi contado — e depois tire da grade.',
+      )
     }
 
     // ── o que entra ──
@@ -486,9 +525,34 @@ export async function ajustarGrade(
 // LER
 // ─────────────────────────────────────────────────────────────
 
-/** O produto com a grade inteira, para a tela de editar. */
+/**
+ * As lojas ABERTAS que a pessoa alcança com estas capacidades, ou 'todas'.
+ *
+ * É o recorte de toda leitura por loja desta ficha: o gerente da loja
+ * Centro abre a camiseta que também sai no Shopping e lê o saldo, a venda e a
+ * margem do Centro — não os do Shopping, que não são dele.
+ */
+function lojasAlcancadas(sessao: Sessao, ...capacidades: Capacidade[]): 'todas' | string[] {
+  let alcance: 'todas' | readonly string[] = 'todas'
+  for (const c of capacidades) alcance = alcanceComum(alcance, unidadesQuePodem(sessao, c))
+  return alcance === 'todas' ? 'todas' : [...alcance]
+}
+
+/** O filtro de loja do Prisma para um alcance: aberta, e dentro dele. */
+const lojaNoAlcance = (alcance: 'todas' | string[]) =>
+  alcance === 'todas' ? { unidade: { ativa: true } } : { unidadeId: { in: alcance }, unidade: { ativa: true } }
+
+/**
+ * O produto com a grade inteira, para a tela de editar.
+ *
+ * O saldo de cada variação vem SÓ das lojas abertas que a pessoa alcança com
+ * `estoque.ver` — o mesmo recorte do Estoque e dos Produtos. Antes vinha de
+ * todas, e a ficha do gerente de uma loja somava o saldo da rede inteira:
+ * três telas, três números para a mesma peça.
+ */
 export async function acharProduto(sessao: Sessao, produtoId: string) {
   exigir(sessao, 'produto.ver')
+  const alcance = lojasAlcancadas(sessao, 'estoque.ver')
 
   return comoOrg(sessao.orgId, (db) =>
     db.produto.findUnique({
@@ -496,7 +560,7 @@ export async function acharProduto(sessao: Sessao, produtoId: string) {
       select: {
         id: true, nome: true, marca: true, descricao: true, categoriaId: true,
         medida: true, precoVista: true, precoCartao: true, precoCrediario: true,
-        custo: true, prazoReposicaoDias: true, vendidoEm: true, ativo: true,
+        custo: true, prazoReposicaoDias: true, vendidoEm: true, ativo: true, servico: true, duracaoMin: true,
         eixos: { orderBy: { ordem: 'asc' }, select: { eixoId: true, ordem: true } },
         variacoes: {
           orderBy: { codigo: 'asc' },
@@ -504,7 +568,9 @@ export async function acharProduto(sessao: Sessao, produtoId: string) {
             id: true, codigo: true, codigoBarras: true, ativa: true, padrao: true,
             ajustePreco: true,
             opcoes: { select: { opcaoId: true } },
-            estoques: { select: { quantidade: true } },
+            estoques: { where: lojaNoAlcance(alcance), select: { quantidade: true } },
+            // O "já tem venda ou movimento" da ficha: contado, não suposto.
+            _count: { select: { vendaItens: true, movimentos: true } },
           },
         },
       },
@@ -529,9 +595,19 @@ export type ComoVende = {
 /**
  * Os últimos 90 dias deste produto, dia a dia e somados. É o que responde
  * "vale repor?" e "por quanto está saindo?" — a ficha sem isto é cadastro.
+ *
+ * Só as lojas que a pessoa alcança com `produto.ver` E `venda.ver` entram —
+ * e, se quem chama pedir lojas, só as pedidas dentro desse alcance. O
+ * faturamento da loja vizinha não é do gerente desta.
  */
 export async function comoVende(sessao: Sessao, produtoId: string, unidadeIds?: string[]): Promise<ComoVende> {
   exigir(sessao, 'produto.ver')
+  const alcance = lojasAlcancadas(sessao, 'produto.ver', 'venda.ver')
+  const lojas =
+    alcance === 'todas' ? unidadeIds : (unidadeIds ?? alcance).filter((u) => alcance.includes(u))
+  if (lojas && lojas.length === 0) {
+    return { porDia: [], qtd30: 0, total30: 0, qtd90: 0, total90: 0, custo90: 0, ultimaVenda: null }
+  }
   // Os dias são os de São Paulo, como o `to_char` da consulta: com o relógio
   // da máquina, num servidor em UTC a venda das 22h caía no dia seguinte.
   const hoje = diaEmSP()
@@ -548,11 +624,14 @@ export async function comoVende(sessao: Sessao, produtoId: string, unidadeIds?: 
         join variacoes va on va.id = i.variacao_id
        where va.produto_id = ${produtoId} and v.situacao = 'CONCLUIDA'
          and v.criada_em >= ${de90}
-         ${unidadeIds ? Prisma.sql`and v.unidade_id = any(${unidadeIds})` : Prisma.empty}
+         ${lojas ? Prisma.sql`and v.unidade_id = any(${lojas})` : Prisma.empty}
        group by 1 order by 1
     `
     const ultima = await db.vendaItem.findFirst({
-      where: { variacao: { produtoId }, venda: { situacao: 'CONCLUIDA' } },
+      where: {
+        variacao: { produtoId },
+        venda: { situacao: 'CONCLUIDA', ...(lojas ? { unidadeId: { in: lojas } } : {}) },
+      },
       orderBy: { venda: { criadaEm: 'desc' } },
       select: { venda: { select: { criadaEm: true } } },
     })
@@ -571,12 +650,16 @@ export async function comoVende(sessao: Sessao, produtoId: string, unidadeIds?: 
   })
 }
 
-/** O saldo de cada item deste produto em cada loja — a grade vista pelo estoque. */
+/**
+ * O saldo de cada item deste produto em cada loja — a grade vista pelo
+ * estoque. Só as lojas abertas que a pessoa alcança com `estoque.ver`.
+ */
 export async function estoqueDoProduto(sessao: Sessao, produtoId: string) {
   exigir(sessao, 'estoque.ver')
+  const alcance = lojasAlcancadas(sessao, 'estoque.ver')
   return comoOrg(sessao.orgId, async (db) => {
     const linhas = await db.estoque.findMany({
-      where: { variacao: { produtoId }, unidade: { ativa: true } },
+      where: { variacao: { produtoId }, ...lojaNoAlcance(alcance) },
       select: {
         variacaoId: true, quantidade: true, minimo: true,
         unidade: { select: { id: true, nome: true } },
@@ -590,6 +673,70 @@ export async function estoqueDoProduto(sessao: Sessao, produtoId: string) {
       minimo: l.minimo === null ? null : Number(l.minimo),
     }))
   })
+}
+
+/**
+ * Quem pode ver o CUSTO (e a margem) deste produto?
+ *
+ * Quem tem `produto.preco` em alguma loja onde ele é vendido. O custo é um
+ * número só para a empresa; o que decide é se o produto passa pelo balcão de
+ * alguma loja da pessoa. O gerente da loja de roupa não lê o custo do picolé
+ * que só a sorveteria vende.
+ */
+export function podeVerCustoDe(sessao: Sessao, vendidoEm: readonly string[] | null | undefined): boolean {
+  const alcance = unidadesQuePodem(sessao, 'produto.preco')
+  if (alcance === 'todas') return true
+  if (alcance.length === 0) return false
+  if (!vendidoEm || vendidoEm.length === 0) return true
+  return vendidoEm.some((u) => alcance.includes(u))
+}
+
+// ─────────────────────────────────────────────────────────────
+// O SALDO NUMA VISTA (Produtos e Estoque contam do mesmo jeito)
+// ─────────────────────────────────────────────────────────────
+
+export type LinhaDeSaldo = { unidadeId: string; quantidade: number; minimo: number | null }
+export type LojaDaVista = { id: string; ehDeposito: boolean }
+
+export type SaldoNaVista = {
+  /** A variação entra na lista e na conta desta vista? */
+  aparece: boolean
+  saldo: number
+  /** O maior mínimo entre as lojas da vista; 0 = sem mínimo. */
+  minimo: number
+  nivel: 'critico' | 'atencao' | 'bom'
+}
+
+/**
+ * O saldo de uma variação nas lojas que a tela está olhando, e se ela conta.
+ *
+ * É UMA conta para as duas telas. Antes, Produtos pegava o mínimo da
+ * primeira loja e contava como "acabou" o item que a loja nem vende; o
+ * Estoque pegava o maior mínimo e pulava esse item — e o "12 acabaram" de
+ * uma não batia com o "9 acabaram" da outra, para a mesma pessoa.
+ *
+ * Aparece quando alguma loja da vista vende o produto (depósito não vende),
+ * ou quando há linha de saldo que conta como falta (a régua de
+ * `contaComoFalta`: saldo diferente de zero, ou linha de depósito). `todas` =
+ * a vista é a empresa inteira de quem responde por ela: aí tudo aparece,
+ * inclusive o produto de uma loja que fechou — senão ele sumiria de todo lugar.
+ */
+export function saldoNaVista(
+  vendidoEm: readonly string[] | null | undefined,
+  linhas: readonly LinhaDeSaldo[],
+  lojas: readonly LojaDaVista[],
+  todas = false,
+): SaldoNaVista {
+  const naVista = linhas.filter((l) => lojas.some((u) => u.id === l.unidadeId))
+  const saldo = naVista.reduce((t, l) => t + l.quantidade, 0)
+  const minimo = naVista.reduce((m, l) => Math.max(m, l.minimo ?? 0), 0)
+  const deposito = new Set(lojas.filter((u) => u.ehDeposito).map((u) => u.id))
+  const aparece =
+    todas ||
+    lojas.some((u) => !u.ehDeposito && vendidoNaLoja(vendidoEm, u.id)) ||
+    naVista.some((l) => l.quantidade !== 0 || deposito.has(l.unidadeId))
+  const nivel = saldo <= 0 ? 'critico' : minimo > 0 && saldo <= minimo ? 'atencao' : 'bom'
+  return { aparece, saldo, minimo, nivel }
 }
 
 /** Os eixos da empresa com as opções de cada um — o que a tela oferece. */

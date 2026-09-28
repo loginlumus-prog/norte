@@ -21,7 +21,7 @@ import {
 import { mostrar } from '@/servidor/dinheiro'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Situacao, Vazio, cx } from '@/ui/base'
+import { Situacao, Vazio } from '@/ui/base'
 import { Numero, Secao, Tira } from '@/ui/painel'
 import { Tabela, type Coluna } from '@/ui/Tabela'
 import { Cadeado, Trancado } from '@/ui/Cadeado'
@@ -61,10 +61,13 @@ const AMOSTRA: (Omit<LinhaPreco, 'analise'> & { saiu: number })[] = [
   { produtoId: 'amostra-5', nome: 'Jaqueta corta-vento', marca: 'Norte', categoria: 'Casacos', custoCent: 12000, precoCent: 21990, saiu: 4 },
 ]
 
+/** "59%", "12,5%" — porcentagem com vírgula, como o resto do sistema. */
+const porcento = (v: number, casas = 0) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: casas })}%`
+
 function Margem({ a }: { a: AnalisePreco }) {
   if (a.situacao === 'sem_custo') return <Situacao nivel="neutro">sem custo</Situacao>
   // Preço zero com custo: não há margem para calcular, mas há prejuízo.
-  const pct = a.margemPct === null ? 'sem preço' : `${a.margemPct.toFixed(0)}%`
+  const pct = a.margemPct === null ? 'sem preço' : porcento(a.margemPct)
   // Cor E palavra em cada uma: 39% amarelo e 41% verde só pela cor seria
   // pedir para quem não distingue as duas adivinhar.
   if (a.situacao === 'abaixo_do_custo') return <Situacao nivel="critico">{pct} · prejuízo</Situacao>
@@ -80,7 +83,7 @@ export default async function Precos({
   searchParams: Promise<{ alvo?: string }>
 }) {
   const { empresa: slug } = await params
-  const { alvo: alvoPedido } = await searchParams
+  const { alvo: alvoPedido } = (await searchParams) as { alvo?: unknown }
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'produto.preco' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -129,7 +132,7 @@ export default async function Precos({
       celula: (l) => (l.custoCent === null ? <span className="text-tinta-3">—</span> : mostrar(l.custoCent)),
     },
     { chave: 'preco', titulo: 'Preço', numero: true, largura: '7rem', celula: (l) => mostrar(l.precoCent) },
-    { chave: 'margem', titulo: 'Margem', numero: true, largura: '9rem', celula: (l) => <Margem a={l.analise} /> },
+    { chave: 'margem', titulo: 'Margem bruta', numero: true, largura: '9rem', celula: (l) => <Margem a={l.analise} /> },
     {
       chave: 'markup',
       titulo: 'Markup',
@@ -139,7 +142,7 @@ export default async function Precos({
         l.analise.markupPct === null ? (
           <span className="text-tinta-3">—</span>
         ) : (
-          <span className="text-tinta-2">{l.analise.markupPct.toFixed(0)}%</span>
+          <span className="text-tinta-2">{porcento(l.analise.markupPct)}</span>
         ),
     },
     {
@@ -154,7 +157,7 @@ export default async function Precos({
     },
     {
       chave: 'sugerido',
-      titulo: 'Sugerido',
+      titulo: 'Para bater o alvo',
       numero: true,
       largura: '10rem',
       celula: (l) => {
@@ -164,13 +167,16 @@ export default async function Precos({
         if (!temSugestao || l.analise.sugeridoCent === null || l.analise.diferencaCent === null) {
           return <span className="text-tinta-3">—</span>
         }
+        // Só sugere para o que está ABAIXO do alvo. Para o que já bate, o
+        // preço "do alvo" é MENOR que o de hoje, e a coluna mostrava
+        // "R$ 1,12 − R$ 0,88" num item de R$ 2,00 — lido como conselho de
+        // baixar o preço, quando a margem de hoje é melhor que a pedida.
+        if (l.analise.situacao === 'no_alvo') return <span className="text-xs text-tinta-3">já bate</span>
         const d = l.analise.diferencaCent
         return (
           <span className="flex flex-col items-end">
-            <span className="text-tinta">{mostrar(l.analise.sugeridoCent)}</span>
-            <span className={cx('text-xs', d > 0 ? 'text-atencao' : 'text-tinta-3')}>
-              {d > 0 ? `+ ${mostrar(d)}` : d < 0 ? `− ${mostrar(-d)}` : 'já é esse'}
-            </span>
+            <span className="text-tinta">subir para {mostrar(l.analise.sugeridoCent)}</span>
+            {d > 0 && <span className="text-xs text-atencao">+ {mostrar(d)} no preço</span>}
           </span>
         )
       },
@@ -212,12 +218,12 @@ export default async function Precos({
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <Numero
               principal
-              rotulo="Margem média"
-              valor={resumo.margemMedia === null ? '—' : `${resumo.margemMedia.toFixed(0)}%`}
+              rotulo="Margem bruta"
+              valor={resumo.margemMedia === null ? '—' : porcento(resumo.margemMedia, 1)}
               detalhe={
                 resumo.margemMedia === null
                   ? 'nenhum produto com custo preenchido'
-                  : `ponderada pelo preço · alvo ${alvo}%`
+                  : `média ponderada pelo preço da tabela · alvo ${alvo}%`
               }
             />
             <Numero
@@ -229,7 +235,7 @@ export default async function Precos({
             <Numero
               rotulo="Abaixo do custo"
               valor={String(resumo.abaixoDoCusto)}
-              detalhe="perdem dinheiro em cada venda"
+              detalhe={`${resumo.abaixoDoCusto === 1 ? 'perde' : 'perdem'} dinheiro em cada venda`}
               nivel={resumo.abaixoDoCusto > 0 ? 'critico' : undefined}
             />
             <Numero

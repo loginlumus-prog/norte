@@ -28,7 +28,11 @@ import {
   type Mudanca,
 } from './planos'
 import { mostrar } from './dinheiro'
+import { MODULOS } from './modulos'
 import { diaEmSP } from './dia'
+
+const mostrarDia = (d: Date) =>
+  new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(d)
 import { plural } from './texto'
 
 export type Uso = { unidades: number; usuarios: number }
@@ -125,11 +129,45 @@ export async function garantirCreditoDoMes(orgId: string, agora = new Date()): P
 export const assinaturaDe = (sessao: Sessao): Promise<Assinatura> => assinaturaDaEmpresa(sessao.orgId)
 
 /**
+ * O teste que venceu vira Grátis — na primeira vez que alguém olha.
+ *
+ * `situacao = TESTE` com `testeAte` no passado continuava com o plano pago e
+ * tudo liberado para sempre: nada no sistema olhava a data (o cadastro pelo
+ * site nem cria teste por isso — ver autocadastro.ts; quem cria é a equipe,
+ * em scripts/criar-empresa.ts). Sem agendador, a troca acontece aqui, e isto
+ * é chamado nos caminhos que TODA tela percorre (`resumoDaBarra`, na barra
+ * lateral) e nos que decidem plano (`assinaturaDaEmpresa`, `planoDaEmpresa`).
+ *
+ * É a mesma troca da tela (`aplicarTroca`): os módulos que o Grátis não tem
+ * saem, e fica no livro, assinada pelo sistema. Loja demais para o Grátis não
+ * impede — o teste acabou de qualquer jeito, e o aviso de "você usa 3 lojas
+ * e o plano atende 1" já existe. Os dados ficam todos; só o que o plano não
+ * cobre desliga. `testeAte` fica gravado: é por ele que a tela diz quando o
+ * teste acabou.
+ */
+export async function vencerTesteSeAcabou(orgId: string, agora = new Date()): Promise<boolean> {
+  const org = await comoOrg(orgId, (db) =>
+    db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true, situacao: true, testeAte: true } }),
+  )
+  if (org.situacao !== 'TESTE' || !org.testeAte || org.testeAte > agora) return false
+  // Primeiro o plano, depois a situação: se cair no meio, a próxima olhada
+  // termina o serviço (com o plano já no Grátis, só a situação muda).
+  if (org.plano !== 'GRATIS') {
+    await aplicarTroca(orgId, 'GRATIS', { usuarioId: null, quem: 'Norte', autor: 'SISTEMA' }, { forcar: true })
+  }
+  await comoOrg(orgId, (db) =>
+    db.org.updateMany({ where: { id: orgId, situacao: 'TESTE' }, data: { situacao: 'ATIVA' } }),
+  )
+  return true
+}
+
+/**
  * A assinatura de uma empresa pelo id — o mesmo quadro da tela, sem sessão.
  * Existe para a equipe do Norte (scripts/operacao.ts), que age SOBRE a
  * empresa e não DENTRO dela; quem vem da tela passa por `assinaturaDe`.
  */
 export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
+  await vencerTesteSeAcabou(orgId)
   await garantirCreditoDoMes(orgId)
   return comoOrg(orgId, async (db) => {
     const org = await db.org.findUniqueOrThrow({
@@ -194,6 +232,19 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
             }
           : { nivel: 'atencao', texto: `Teste até o fim: faltam ${diasDeTeste} dias.` },
       )
+    }
+    // O teste acabou há pouco: a loja precisa saber por que o menu encolheu.
+    if (
+      org.situacao !== 'TESTE' &&
+      org.plano === 'GRATIS' &&
+      testeAte !== null &&
+      testeAte.getTime() <= Date.now() &&
+      Date.now() - testeAte.getTime() < 30 * DIA
+    ) {
+      alertas.push({
+        nivel: 'atencao',
+        texto: `O teste acabou em ${mostrarDia(testeAte)} e a empresa voltou para o plano ${PLANOS.GRATIS.titulo}. Os dados continuam todos aqui; para religar o que desligou, escolha um plano abaixo.`,
+      })
     }
     if (org.situacao === 'INADIMPLENTE') {
       alertas.push({
@@ -362,12 +413,22 @@ type AutorDaTroca = {
  * desligados, a mesma linha no livro. Duas cópias disto divergiriam no dia
  * em que uma regra nova entrasse numa só.
  */
-async function aplicarTroca(orgId: string, para: Plano, por: AutorDaTroca): Promise<Mudanca> {
-  // O crédito incluso do mês cai ANTES, no plano de hoje — era o que a troca
-  // pela tela já fazia, e continua fazendo.
-  await garantirCreditoDoMes(orgId)
+async function aplicarTroca(
+  orgId: string,
+  para: Plano,
+  por: AutorDaTroca,
+  /** `forcar`: o teste que venceu desce mesmo com loja demais. Ver `vencerTesteSeAcabou`. */
+  opcoes: { forcar?: boolean } = {},
+): Promise<Mudanca> {
   const m = await previaDeTroca(orgId, para)
-  if (m.impedimentos.length > 0) throw new SemCota(m.impedimentos.join(' '), m.de)
+  if (m.impedimentos.length > 0 && !opcoes.forcar) throw new SemCota(m.impedimentos.join(' '), m.de)
+  // Subindo (ou de lado), o crédito incluso do mês cai ANTES, no plano de
+  // hoje — era o que a troca já fazia. DESCENDO, não: depositar o crédito do
+  // plano de cima no dia de sair dele dava R$ 100 de IA a quem acabou de
+  // deixar de pagar por ela (Rede → Grátis no dia 1º levava o mês inteiro).
+  // Se o mês ainda não recebeu nada, o plano novo deposita o dele na próxima
+  // vez que a assinatura for olhada.
+  if (m.sentido !== 'descer') await garantirCreditoDoMes(orgId)
 
   await comoOrg(orgId, async (db) => {
     const antes = await db.org.findUniqueOrThrow({
@@ -392,8 +453,8 @@ async function aplicarTroca(orgId: string, para: Plano, por: AutorDaTroca): Prom
         alvoTipo: 'empresa',
         alvoId: orgId,
         alvoNome: PLANOS[para].titulo,
-        motivo: `${PLANOS[m.de].titulo} → ${PLANOS[para].titulo}${
-          m.perde.length > 0 ? ` (perdeu: ${m.perde.join(', ')})` : ''
+        motivo: `${opcoes.forcar ? 'Teste acabou: ' : ''}${PLANOS[m.de].titulo} → ${PLANOS[para].titulo}${
+          m.perde.length > 0 ? ` (perdeu: ${m.perde.map((x) => MODULOS[x]?.titulo ?? x).join(', ')})` : ''
         }`,
         antes: { plano: m.de, modulos: antes.modulos },
         depois: { de: m.de, para, modulos, ...(por.pedidoId ? { pedidoId: por.pedidoId } : {}) },
@@ -548,15 +609,22 @@ export async function sugestaoDePlano(sessao: Sessao): Promise<Plano> {
 export async function resumoDaBarra(
   orgId: string,
 ): Promise<{ titulo: string; alerta: boolean }> {
-  const org = await comoOrg(orgId, (db) =>
-    db.org.findUniqueOrThrow({
-      where: { id: orgId },
-      select: {
-        plano: true, situacao: true, testeAte: true,
-        creditoIaCent: true, creditoAvisoCent: true,
-      },
-    }),
-  )
+  const ler = () =>
+    comoOrg(orgId, (db) =>
+      db.org.findUniqueOrThrow({
+        where: { id: orgId },
+        select: {
+          plano: true, situacao: true, testeAte: true,
+          creditoIaCent: true, creditoAvisoCent: true,
+        },
+      }),
+    )
+  let org = await ler()
+  // Toda tela passa por aqui: é o lugar que garante que o teste vencido não
+  // segue com o plano pago. Só relê quando de fato venceu — uma vez.
+  if (org.situacao === 'TESTE' && org.testeAte && org.testeAte <= new Date()) {
+    if (await vencerTesteSeAcabou(orgId)) org = await ler()
+  }
   const p = PLANOS[org.plano]
 
   const semCredito = p.creditoMensal !== 0 && org.creditoIaCent <= org.creditoAvisoCent

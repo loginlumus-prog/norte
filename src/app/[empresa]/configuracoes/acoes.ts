@@ -11,6 +11,7 @@ import { salvarConfigCrediario } from '@/servidor/crediario'
 import { salvarTaxas, FORMAS_COM_TAXA } from '@/servidor/taxas'
 import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 import { plural } from '@/ui/texto'
+import { HORAS_DE_LEMBRETE } from '@/servidor/lembretes'
 
 export type EstadoTaxas = { erro?: string; ok?: string }
 
@@ -130,4 +131,38 @@ export async function salvarPontos(
 
   revalidatePath(`/${slug}/configuracoes`)
   return { ok: ativo ? 'Programa de pontos salvo.' : 'Programa de pontos desligado.' }
+}
+
+export type EstadoLembrete = { erro?: string; ok?: string }
+
+/**
+ * O lembrete do horário (lembretes.ts): liga, desliga e escolhe a
+ * antecedência. Só com a Agenda ligada — sem ela não há horário a lembrar.
+ */
+export async function salvarLembreteAcao(_antes: EstadoLembrete, form: FormData): Promise<EstadoLembrete> {
+  const slug = String(form.get('empresa') ?? '')
+  const s = await exigirSessao(slug)
+  exigir(s, 'empresa.configurar')
+  const ativo = form.get('ativo') === 'on'
+  const horas = Number(form.get('horas'))
+  if (!(HORAS_DE_LEMBRETE as readonly number[]).includes(horas)) return { erro: 'Escolha quanto tempo antes.' }
+  const r = await comoOrg(s.orgId, async (db) => {
+    const org = await db.org.findUnique({ where: { id: s.orgId }, select: { modulos: true, lembreteAtivo: true, lembreteHoras: true } })
+    if (!org?.modulos.includes('agenda')) return false
+    await db.org.update({ where: { id: s.orgId }, data: { lembreteAtivo: ativo, lembreteHoras: horas } })
+    await db.auditoria.create({
+      data: {
+        orgId: s.orgId,
+        usuarioId: s.usuarioId,
+        quem: s.nome,
+        acao: 'empresa.lembrete',
+        antes: { ativo: org.lembreteAtivo, horas: org.lembreteHoras },
+        depois: { ativo, horas },
+      },
+    })
+    return true
+  })
+  if (!r) return { erro: 'Ligue a Agenda antes: o lembrete é dos horários marcados nela.' }
+  revalidatePath(`/${slug}/configuracoes`)
+  return { ok: ativo ? `Lembrete ligado: sai ${horas === 24 ? 'um dia' : horas === 48 ? 'dois dias' : `${horas} horas`} antes do horário.` : 'Lembrete desligado.' }
 }

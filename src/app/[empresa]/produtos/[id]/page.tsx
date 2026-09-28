@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
-import { acharProduto, eixosDaEmpresa, comoVende, estoqueDoProduto } from '@/servidor/produto'
+import { acharProduto, eixosDaEmpresa, comoVende, estoqueDoProduto, podeVerCustoDe } from '@/servidor/produto'
 import { listarMovimentos, ROTULO_MOVIMENTO } from '@/servidor/estoque'
 import { comoOrg } from '@/servidor/banco'
 import { RAMOS, type Ramo } from '@/servidor/modulos'
@@ -17,7 +17,8 @@ import { Linhas } from '@/ui/Graficos'
 import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ProdutoNaTela } from '../Editor'
-import { plural } from '@/ui/texto'
+import { palavra, plural, quantidade } from '@/ui/texto'
+import { diaEmSP, somarDias } from '@/servidor/dia'
 
 export const metadata: Metadata = { title: 'Produto' }
 
@@ -25,16 +26,19 @@ export const metadata: Metadata = { title: 'Produto' }
 const emReais = (v: unknown) => (v == null ? '' : Number(v).toFixed(2).replace('.', ','))
 
 const quando = (d: Date) =>
-  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d)
+  new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }).format(d)
 
-/** Os 90 dias, todos, para a linha não pular o dia que não vendeu. */
+/**
+ * Os 90 dias, todos, para a linha não pular o dia que não vendeu. Os dias
+ * são os de São Paulo, como os de `comoVende` — com o relógio da máquina, num
+ * servidor em UTC a última coluna era o dia seguinte, sempre vazia.
+ */
 function noventaDias(linhas: { dia: string; quantidade: number; total: number }[]) {
   const por = new Map(linhas.map((l) => [l.dia, l]))
-  const hoje = new Date()
+  const hoje = diaEmSP()
   const saida: { rotulo: string; quantidade: number; total: number }[] = []
   for (let i = 89; i >= 0; i--) {
-    const d = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - i)
-    const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const chave = somarDias(hoje, -i)
     const l = por.get(chave)
     saida.push({ rotulo: `${chave.slice(8, 10)}/${chave.slice(5, 7)}`, quantidade: l?.quantidade ?? 0, total: l?.total ?? 0 })
   }
@@ -73,7 +77,14 @@ export default async function FichaProduto({
 
   const dias = noventaDias(vende.porDia)
   const lojas = [...new Map(porLoja.map((l) => [l.unidadeId, l.unidade])).entries()]
+  // Custo e margem só para quem responde por alguma loja que vende este
+  // produto — ver `podeVerCustoDe`.
+  const verCusto = podeVerCustoDe(sessao, produto.vendidoEm)
   const margem90 = vende.total90 > 0 ? ((vende.total90 - vende.custo90) / vende.total90) * 100 : null
+  const pct = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
+  // O saldo da ficha é o mesmo do Estoque consolidado: as lojas abertas que a
+  // pessoa alcança (ver `acharProduto`), com a medida junto — "0,75 kg", não "0.75".
+  const saldoDe = (v: { estoques: { quantidade: unknown }[] }) => v.estoques.reduce((t, e) => t + Number(e.quantidade), 0)
   const diasSemVender = vende.ultimaVenda ? Math.floor((Date.now() - vende.ultimaVenda.getTime()) / 864e5) : null
 
   // Quais opções estão marcadas hoje: sai da grade que existe, não de uma
@@ -107,12 +118,17 @@ export default async function FichaProduto({
     precoVista: emReais(produto.precoVista),
     precoCartao: emReais(produto.precoCartao),
     precoCrediario: emReais(produto.precoCrediario),
-    custo: emReais(produto.custo),
+    custo: verCusto ? emReais(produto.custo) : '',
+    verCusto,
     prazoReposicaoDias: produto.prazoReposicaoDias == null ? '' : String(produto.prazoReposicaoDias),
+    servico: produto.servico,
+    duracaoMin: produto.duracaoMin == null ? '' : String(produto.duracaoMin),
     vendidoEm: produto.vendidoEm ?? [],
     ativo: produto.ativo,
     marcadas,
-    comHistorico: produto.variacoes.length,
+    // Só as combinações que já venderam ou mexeram no estoque. Contar todas
+    // fazia o aviso "já tem venda" aparecer no produto recém-cadastrado.
+    comHistorico: produto.variacoes.filter((v) => v._count.vendaItens > 0 || v._count.movimentos > 0).length,
     travado: !alcancaOProduto(alcance, produto.vendidoEm),
   }
 
@@ -164,13 +180,17 @@ export default async function FichaProduto({
             principal
             rotulo="Últimos 30 dias"
             valor={brl(vende.total30)}
-            detalhe={`${vende.qtd30.toLocaleString('pt-BR')} vendido${vende.qtd30 === 1 ? '' : 's'}`}
+            detalhe={`${quantidade(vende.qtd30, produto.medida)} ${palavra(vende.qtd30, 'vendido', 'vendidos')}`}
           />
-          <Numero rotulo="Últimos 90 dias" valor={brl(vende.total90)} detalhe={`${vende.qtd90.toLocaleString('pt-BR')} vendidos`} />
-          {pode(sessao, 'produto.preco') && (
+          <Numero
+            rotulo="Últimos 90 dias"
+            valor={brl(vende.total90)}
+            detalhe={`${quantidade(vende.qtd90, produto.medida)} ${palavra(vende.qtd90, 'vendido', 'vendidos')}`}
+          />
+          {verCusto && (
             <Numero
-              rotulo="Margem em 90 dias"
-              valor={margem90 === null ? '—' : `${margem90.toFixed(0)}%`}
+              rotulo="Margem bruta · 90 dias"
+              valor={margem90 === null ? '—' : pct(margem90)}
               detalhe={margem90 === null ? 'sem venda ou sem custo' : `${brl(vende.total90 - vende.custo90)} sobre o custo`}
               nivel={margem90 === null ? undefined : margem90 < 20 ? 'critico' : margem90 < 40 ? 'atencao' : 'bom'}
             />
@@ -219,7 +239,7 @@ export default async function FichaProduto({
                     const q = l?.quantidade ?? 0
                     return (
                       <span className={cx('numero', q <= 0 ? 'text-critico' : l?.minimo && q <= l.minimo ? 'text-atencao' : 'text-tinta')}>
-                        {q}
+                        {quantidade(q, produto.medida)}
                       </span>
                     )
                   },
@@ -280,10 +300,7 @@ export default async function FichaProduto({
                 titulo: 'Em estoque',
                 numero: true,
                 largura: '9rem',
-                celula: (v) => {
-                  const q = v.estoques.reduce((t, e) => t + Number(e.quantidade), 0)
-                  return <span className="numero text-sm">{q}</span>
-                },
+                celula: (v) => <span className="numero text-sm">{quantidade(saldoDe(v), produto.medida)}</span>,
               },
               {
                 chave: 'situacao',
@@ -325,8 +342,8 @@ export default async function FichaProduto({
                   </span>
                   <span className={cx('numero shrink-0 font-semibold', m.quantidade < 0 ? 'text-critico' : 'text-bom')}>
                     {m.quantidade > 0 ? '+' : ''}
-                    {m.quantidade}
-                    <span className="ml-2 text-xs font-normal text-tinta-3">ficou {m.saldoDepois}</span>
+                    {quantidade(m.quantidade, m.medida)}
+                    <span className="ml-2 text-xs font-normal text-tinta-3">ficou {quantidade(m.saldoDepois, m.medida)}</span>
                   </span>
                 </li>
               ))}

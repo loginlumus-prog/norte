@@ -22,7 +22,8 @@
 //
 // ── o que volta e o que não volta ────────────────────────────
 // O estoque volta (movimento DEVOLUCAO apontando para a venda). Os pontos
-// que a venda deu voltam na proporção do que foi devolvido. O que NÃO
+// que a venda deu saem, e os que o cliente gastou nela voltam, na proporção
+// do que foi devolvido. O que NÃO
 // acontece: a venda não muda de situação — ela continua CONCLUIDA, com a
 // devolução pendurada. Relatório que quer o líquido desconta as devoluções
 // do período; é assim que o mês de março não muda quando alguém devolve em
@@ -32,6 +33,7 @@ import { colunaDoDia, diaDaColuna, diaEmSP, somarDias } from './dia'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
+import { travarCaixaAberto } from './caixa'
 import { centavos, reais, multiplicar } from './dinheiro'
 import type { DestinoDevolucao } from '@prisma/client'
 
@@ -69,6 +71,21 @@ export function valorDevolvidoCent(
 ): number {
   const cheio = multiplicar(precoUnitCent, quantidade)
   return Math.max(0, Math.floor(cheio * fatorPago))
+}
+
+/**
+ * As medidas que se CONTAM: peça, par, caixa. Nelas "1,5" não existe — meia
+ * camiseta não sai da prateleira, e aceitar a fração deixava o estoque com
+ * 48,5 peças e a devolução pagando meia peça de volta. Quilo, grama, litro,
+ * mililitro e metro se PESAM ou MEDEM, e aí a fração é o normal.
+ *
+ * Mora aqui, e não em venda.ts, porque a venda já importa deste arquivo — e a
+ * regra é a mesma para vender e para devolver.
+ */
+const MEDIDAS_CONTADAS = new Set(['UN', 'PAR', 'CX'])
+
+export function pedeInteiro(medida: string | null | undefined): boolean {
+  return MEDIDAS_CONTADAS.has(medida ?? 'UN')
 }
 
 /**
@@ -132,13 +149,38 @@ export type ResultadoDevolucao =
       abatido: number
       vale: { codigo: string; validade: Date } | null
     }
-  | { ok: false; motivo: 'nao_achada' | 'cancelada' | 'sem_itens' | 'passa_do_vendido' | 'sem_motivo' | 'caixa_fechado' | 'sem_permissao' }
+  | {
+      ok: false
+      motivo:
+        | 'nao_achada'
+        | 'cancelada'
+        | 'sem_itens'
+        | 'passa_do_vendido'
+        | 'sem_motivo'
+        | 'caixa_fechado'
+        | 'sem_permissao'
+        | 'item_repetido'
+        | 'quantidade_fracionada'
+    }
 
 export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<ResultadoDevolucao> {
   const motivo = p.motivo.trim()
   if (motivo.length < 3) return { ok: false, motivo: 'sem_motivo' }
+  // Quantidade que não é número finito não é devolução — `NaN > resto` é
+  // falso e passava pela conferência.
+  if (p.itens.some((i) => !Number.isFinite(i.quantidade) || i.quantidade < 0)) {
+    return { ok: false, motivo: 'sem_itens' }
+  }
   const pedidos = p.itens.filter((i) => i.quantidade > 0)
   if (pedidos.length === 0) return { ok: false, motivo: 'sem_itens' }
+
+  // Um item, uma linha. A conferência de baixo compara CADA linha com o que
+  // resta do item: com o mesmo item repetido (dois campos `qtd-<id>` no
+  // formulário montado na mão), cada linha passava sozinha — a blusa vendida
+  // uma vez voltava três vezes, com três vales, três sangrias e +3 no estoque.
+  if (new Set(pedidos.map((i) => i.vendaItemId)).size !== pedidos.length) {
+    return { ok: false, motivo: 'item_repetido' }
+  }
 
   return comoOrg(sessao.orgId, async (db) => {
     await travarVenda(db, p.vendaId)
@@ -146,10 +188,10 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
       where: { id: p.vendaId },
       select: {
         id: true, numero: true, unidadeId: true, situacao: true, clienteId: true,
-        subtotal: true, total: true, pontosGanhos: true,
+        subtotal: true, total: true, pontosGanhos: true, pontosUsados: true,
         itens: {
           select: {
-            id: true, variacaoId: true, descricao: true, quantidade: true, precoUnit: true,
+            id: true, variacaoId: true, descricao: true, medida: true, quantidade: true, precoUnit: true,
             devolucoes: { select: { quantidade: true } },
           },
         },
@@ -168,6 +210,9 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
     for (const ped of pedidos) {
       const item = porId.get(ped.vendaItemId)
       if (!item) return { ok: false as const, motivo: 'nao_achada' as const }
+      if (pedeInteiro(item.medida) && !Number.isInteger(ped.quantidade)) {
+        return { ok: false as const, motivo: 'quantidade_fracionada' as const }
+      }
       const jaVoltou = item.devolucoes.reduce((s, d) => s + Number(d.quantidade), 0)
       if (ped.quantidade > restante(Number(item.quantidade), jaVoltou) + 1e-9) {
         return { ok: false as const, motivo: 'passa_do_vendido' as const }
@@ -188,6 +233,9 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
       }
     })
     const valorCent = linhas.reduce((s, l) => s + l.valorCent, 0)
+    // A parte da venda que voltou, pela etiqueta: é a régua dos pontos que o
+    // cliente GASTOU nela (ver "os pontos voltam", embaixo).
+    const cheioCent = linhas.reduce((s, l) => s + multiplicar(centavos(l.item.precoUnit), l.quantidade), 0)
 
     // ── o fiado desta venda vem primeiro ──
     // Venda no crediário com parcela em aberto: a peça devolvida ainda não foi
@@ -205,14 +253,11 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
     const paraClienteCent = valorCent - fiado.abatidoCent
 
     // ── dinheiro sai da gaveta: precisa de gaveta ──
+    // Preso até o fim: o turno não fecha no meio desta sangria.
     let caixaId: string | null = null
     if (p.destino === 'DINHEIRO' && paraClienteCent > 0) {
-      const caixa = await db.caixa.findFirst({
-        where: { unidadeId: v.unidadeId, aberto: true },
-        select: { id: true },
-      })
-      if (!caixa) return { ok: false as const, motivo: 'caixa_fechado' as const }
-      caixaId = caixa.id
+      caixaId = await travarCaixaAberto(db, v.unidadeId)
+      if (!caixaId) return { ok: false as const, motivo: 'caixa_fechado' as const }
     }
 
     // ── o vale ──
@@ -305,27 +350,44 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
     }
 
     // ── os pontos voltam na proporção ──
-    if (v.clienteId && v.pontosGanhos > 0 && totalCent > 0) {
-      const tirar = Math.floor((v.pontosGanhos * valorCent) / totalCent)
-      if (tirar > 0) {
-        const depois = await db.cliente.update({
-          where: { id: v.clienteId },
-          data: { pontos: { decrement: tirar } },
-          select: { pontos: true },
-        })
-        await db.movimentoPontos.create({
-          data: {
-            orgId: sessao.orgId,
-            clienteId: v.clienteId,
-            tipo: 'AJUSTE',
-            pontos: -tirar,
-            saldoDepois: depois.pontos,
-            vendaId: v.id,
-            motivo: `Devolução da venda ${v.numero}`,
-            quem: sessao.nome,
-          },
-        })
-      }
+    // Nos dois sentidos, como no cancelamento. O que a venda DEU sai na
+    // proporção do dinheiro que voltou. O que a venda GASTOU volta na
+    // proporção da peça: numa venda de R$ 100 paga com R$ 80 e 200 pontos, o
+    // dinheiro da devolução já sai com o desconto dos pontos embutido (o
+    // fator total ÷ subtotal) — sem devolver os pontos, o cliente perdia os
+    // 200 que usou numa peça que devolveu. Para baixo, sempre: a soma das
+    // devoluções nunca passa do que foi gasto.
+    const tirar =
+      v.clienteId && v.pontosGanhos > 0 && totalCent > 0 ? Math.floor((v.pontosGanhos * valorCent) / totalCent) : 0
+    const voltam =
+      v.clienteId && v.pontosUsados > 0 && subtotalCent > 0
+        ? Math.floor((v.pontosUsados * Math.min(cheioCent, subtotalCent)) / subtotalCent)
+        : 0
+    const deltaPontos = voltam - tirar
+    if (v.clienteId && deltaPontos !== 0) {
+      const depois = await db.cliente.update({
+        where: { id: v.clienteId },
+        data: { pontos: { increment: deltaPontos } },
+        select: { pontos: true },
+      })
+      await db.movimentoPontos.create({
+        data: {
+          orgId: sessao.orgId,
+          clienteId: v.clienteId,
+          tipo: 'AJUSTE',
+          pontos: deltaPontos,
+          saldoDepois: depois.pontos,
+          vendaId: v.id,
+          motivo: [
+            `Devolução da venda ${v.numero}`,
+            voltam > 0 ? `${voltam} usados voltaram` : null,
+            tirar > 0 ? `${tirar} ganhos saíram` : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          quem: sessao.nome,
+        },
+      })
     }
 
     await db.auditoria.create({

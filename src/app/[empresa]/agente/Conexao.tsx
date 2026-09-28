@@ -30,6 +30,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Situacao } from '@/ui/base'
+import { Confirmar } from '@/ui/Confirmar'
 import type { CredencialNaTela, EstadoConexao, QrNaTela } from '@/servidor/assistente/conexao'
 import type { EstadoMeta } from '@/servidor/assistente/meta-conexao'
 import { ConexaoMeta } from './ConexaoMeta'
@@ -97,6 +98,17 @@ export function Conexao({ slug, estado, meta }: { slug: string; estado: EstadoCo
   const [indo, comecar] = useTransition()
   const router = useRouter()
   const formLinha = useRef<HTMLFormElement>(null)
+
+  // Para o que passa pelo <Confirmar>: ele mesmo gira o "sim" enquanto a ação
+  // corre; a resposta aparece no mesmo aviso de cima.
+  const confirmado = async (acao: () => Promise<EstadoConexaoAcao>, depois?: (r: EstadoConexaoAcao) => void) => {
+    setResposta({})
+    setTrocando(false)
+    const r = await acao()
+    setResposta(r)
+    depois?.(r)
+    router.refresh()
+  }
 
   const rodar = (nome: string, acao: () => Promise<EstadoConexaoAcao>, depois?: (r: EstadoConexaoAcao) => void) => {
     setQual(nome)
@@ -272,14 +284,16 @@ export function Conexao({ slug, estado, meta }: { slug: string; estado: EstadoCo
                 Guardar a linha
               </Botao>
               {temLinha && (
-                <Botao
-                  type="button"
-                  tom="discreto"
-                  carregando={indo && qual === 'apagar'}
-                  onClick={() => rodar('apagar', () => apagarLinha(slug), (r) => r.ok && formLinha.current?.reset())}
+                // Apaga os tokens guardados: para voltar, é colar tudo de novo
+                // do painel do Z-API. E, se a conta fala por esta linha, ela
+                // para de falar na hora.
+                <Confirmar
+                  pergunta="Apagar os tokens guardados? Para voltar, cole de novo do painel do Z-API."
+                  sim="Sim, remover"
+                  aoConfirmar={() => confirmado(() => apagarLinha(slug), (r) => r.ok && formLinha.current?.reset())}
                 >
                   Remover a linha
-                </Botao>
+                </Confirmar>
               )}
             </div>
           </form>
@@ -330,13 +344,15 @@ export function Conexao({ slug, estado, meta }: { slug: string; estado: EstadoCo
             </Botao>
           )}
           {estado.canalLigado === 'ZAPI' && (
-            <Botao
-              tom="discreto"
-              carregando={indo && qual === 'desconectar'}
-              onClick={() => rodar('desconectar', () => desconectar(slug))}
+            // Como no QR Code e no oficial: um toque sem querer deixaria os
+            // clientes falando sozinhos (e as campanhas param junto).
+            <Confirmar
+              pergunta="O assistente e as campanhas param de falar por este número."
+              sim="Desconectar mesmo"
+              aoConfirmar={() => confirmado(() => desconectar(slug))}
             >
               Desconectar o Z-API
-            </Botao>
+            </Confirmar>
           )}
         </div>
         {(estado.canalLigado === 'PROPRIO' || estado.canalLigado === 'META') && (

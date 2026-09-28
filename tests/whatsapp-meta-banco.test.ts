@@ -239,7 +239,7 @@ describe('conectar pelo cadastro incorporado', () => {
     expect(caminhos).toContain(`POST /v25.0/${PNID_C}/register`)
     expect(pedidos.find((p) => p.url.endsWith('/register'))!.corpo).toEqual({ messaging_product: 'whatsapp', pin: '123456' })
     const criados = pedidos.filter((p) => p.metodo === 'POST' && p.url.endsWith('/message_templates')).map((p) => (p.corpo as { name: string }).name)
-    expect(criados).toEqual(['norte_relatorio_dia', 'norte_aviso'])
+    expect(criados).toEqual(['norte_relatorio_dia', 'norte_aviso', 'norte_lembrete_horario'])
     // depois da troca, o token vai no cabeçalho — nunca na URL
     expect(pedidos.slice(1).every((p) => p.auth === `Bearer ${TOKEN_NOVO}` && !p.url.includes(TOKEN_NOVO))).toBe(true)
 

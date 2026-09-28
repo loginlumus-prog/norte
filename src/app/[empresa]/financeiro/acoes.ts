@@ -10,7 +10,7 @@ import { lancar, marcarPago } from '@/servidor/financeiro'
 import { alternarRecorrente, criarRecorrente, editarRecorrente, garantirRecorrentes } from '@/servidor/recorrentes'
 import { SemPermissao } from '@/servidor/permissao'
 import { lerDinheiro } from '@/servidor/dinheiro'
-import { colunaDoDia, diaEmSP } from '@/servidor/dia'
+import { colunaDoDia, diaDaColuna, diaEmSP } from '@/servidor/dia'
 import type { TipoLancamento } from '@prisma/client'
 import { registrarErro } from '@/servidor/registro'
 
@@ -70,12 +70,42 @@ export async function novoLancamento(
   return { ok: 'Lançado.' }
 }
 
-export async function pagar(slug: string, id: string) {
+/**
+ * Dá baixa no dia escolhido — hoje, se nada veio.
+ *
+ * Coluna `date`: o DIA em São Paulo. `new Date()` depois das 21h já é amanhã
+ * em UTC — e a conta paga no dia 30 caía no mês seguinte.
+ */
+export async function pagar(slug: string, id: string, dia?: string): Promise<{ erro?: string }> {
   const s = await exigirSessao(slug)
-  // Coluna `date`: o DIA de hoje em São Paulo. `new Date()` depois das 21h já
-  // é amanhã em UTC — e a conta paga no dia 30 caía no mês seguinte.
-  await marcarPago(s, id, colunaDoDia(diaEmSP()))
+  if (typeof id !== 'string' || !/^[\w-]{1,64}$/.test(id)) return { erro: 'Conta inválida.' }
+  const escolhido = typeof dia === 'string' && dia !== '' ? dia : diaEmSP()
+  // "2026-02-31" vira 3 de março no `Date`: só vale o dia que existe.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(escolhido) || diaDaColuna(colunaDoDia(escolhido)) !== escolhido) {
+    return { erro: 'Essa data não existe.' }
+  }
+  try {
+    await marcarPago(s, id, colunaDoDia(escolhido))
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode dar baixa nesta conta.' }
+    return { erro: recadoDoErro(e, 'Não deu para dar baixa.') }
+  }
   revalidatePath(`/${slug}/financeiro`)
+  return {}
+}
+
+/** Desfaz a baixa: a conta volta para "em aberto", e o livro guarda quem desfez. */
+export async function desfazerPagamento(slug: string, id: string): Promise<{ erro?: string }> {
+  const s = await exigirSessao(slug)
+  if (typeof id !== 'string' || !/^[\w-]{1,64}$/.test(id)) return { erro: 'Conta inválida.' }
+  try {
+    await marcarPago(s, id, null)
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode mexer nesta conta.' }
+    return { erro: recadoDoErro(e, 'Não deu para desfazer.') }
+  }
+  revalidatePath(`/${slug}/financeiro`)
+  return {}
 }
 
 // ── contas recorrentes ─────────────────────────────────────────

@@ -6,7 +6,8 @@
 import { revalidatePath } from 'next/cache'
 import type { Plano } from '@prisma/client'
 import { exigirSessao } from '@/servidor/pagina'
-import { exigir } from '@/servidor/permissao'
+import { exigir, podeVerPlanos, SemPermissao } from '@/servidor/permissao'
+import { MODULOS, type Modulo } from '@/servidor/modulos'
 import {
   trocarPlano,
   recarregarCredito,
@@ -63,7 +64,9 @@ export async function trocar(
       ok:
         m.sentido === 'descer'
           ? `Plano alterado para ${PLANOS[alvo].titulo}.` +
-            (m.perde.length > 0 ? ` Módulos desligados: ${m.perde.join(', ')}.` : '')
+            (m.perde.length > 0
+              ? ` Módulos desligados: ${m.perde.map((x) => MODULOS[x as Modulo]?.titulo ?? x).join(', ')}.`
+              : '')
           : `Plano alterado para ${PLANOS[alvo].titulo}.`,
     }
   } catch (e) {
@@ -117,8 +120,15 @@ export async function recarregar(
   return { ok: `Crédito adicionado. Saldo agora: ${mostrar(saldo)}.` }
 }
 
-/** O que a tela precisa saber depois de uma ação, sem recarregar tudo. */
+/**
+ * O que a tela precisa saber depois de uma ação, sem recarregar tudo.
+ *
+ * É endereço público: sem a checagem, qualquer pessoa logada — a balconista
+ * — lia o plano, a mensalidade e o saldo de crédito chamando a ação direto.
+ * A mesma régua da tela de Assinatura.
+ */
 export async function situacao(slug: string) {
   const s = await exigirSessao(slug)
+  if (!podeVerPlanos(s)) throw new SemPermissao('empresa.configurar')
   return assinaturaDe(s)
 }

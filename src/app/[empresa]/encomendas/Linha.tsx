@@ -10,10 +10,11 @@
 //
 // ── entregar e o balcão ──────────────────────────────────────
 // O que falta pagar é recebido no Balcão, como venda. Esta tela NÃO registra
-// venda nenhuma: o botão "Receber no balcão" marca a entrega e só abre a tela
-// do Balcão. A pessoa lança lá o que falta — e a tela diz o valor, e diz que
-// é SÓ o que falta, porque o sinal já entrou no financeiro e lançar o valor
-// cheio contaria o sinal duas vezes.
+// venda nenhuma: "Receber no balcão" abre o Balcão DA LOJA da encomenda com a
+// encomenda no endereço, e a linha "Encomenda ENC-…" já entra no pedido pelo
+// valor que falta — só o que falta, porque o sinal já entrou no financeiro.
+// A entrega é marcada pela venda, quando ela fecha (ver servidor/venda.ts):
+// antes, a encomenda virava "entregue" aqui e o dinheiro podia nunca entrar.
 
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -50,6 +51,7 @@ function Janela({ titulo, aoFechar, children }: { titulo: string; aoFechar: () =
 export function AcoesEncomenda({
   slug,
   id,
+  unidadeId,
   resumo,
   situacao,
   falta,
@@ -62,6 +64,8 @@ export function AcoesEncomenda({
 }: {
   slug: string
   id: string
+  /** A loja da encomenda: o balcão abre nela. */
+  unidadeId: string
   /** "Marta — Bolo de chocolate 2 kg": para a janela dizer de qual se trata. */
   resumo: string
   situacao: Situacao
@@ -149,8 +153,8 @@ export function AcoesEncomenda({
                 )}
               </p>
               <p className="text-xs text-tinta-2">
-                O cliente vai pagar agora? “Receber no balcão” marca a entrega e abre o Balcão — a venda você lança
-                lá, de <b className="numero">{brl(falta)}</b>, só o que falta. Esta tela não registra venda.
+                O cliente vai pagar agora? “Receber no balcão” abre o Balcão com a encomenda já no pedido, por{' '}
+                <b className="numero">{brl(falta)}</b> — só o que falta. A entrega fica marcada quando a venda fechar.
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {podeVender && (
@@ -158,7 +162,11 @@ export function AcoesEncomenda({
                     tom="confirmar"
                     className={normal}
                     carregando={indo}
-                    onClick={() => mudar({ para: 'ENTREGUE' }, () => router.push(`/${slug}/balcao`))}
+                    onClick={() =>
+                      router.push(
+                        `/${slug}/balcao?unidade=${encodeURIComponent(unidadeId)}&encomenda=${encodeURIComponent(id)}`,
+                      )
+                    }
                   >
                     Receber no balcão
                   </Botao>

@@ -39,8 +39,8 @@
 
 import type { ConsentimentoOfertas } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
-import { chaveTelefone } from './assistente/telefone'
-import { normalizar } from './campanhas/casar'
+import { chaveTelefone, chavesParaBuscar } from './assistente/telefone'
+import { ehPedidoDeVolta as voltaNaRegua, lerParada } from './campanhas/casar'
 import { STATUS_VIVOS } from './campanhas/tipos'
 import { exigir, type Sessao } from './permissao'
 
@@ -96,8 +96,8 @@ export type OrigemSaida = keyof typeof ORIGENS_SAIDA
 export const SO_A_PESSOA_TIRA: readonly OrigemSaida[] = ['parar', 'anonimizado']
 
 /**
- * A chave mascarada: "(71) ····-1234". A chave não tem o nono dígito (ver
- * telefone.ts), então a máscara mostra só o DDD e os quatro últimos — o
+ * A chave mascarada: "(71) ····-1234". A chave nem sempre tem o nono dígito
+ * (ver telefone.ts), então a máscara mostra só o DDD e os quatro últimos — o
  * bastante para a loja reconhecer de quem se trata, pouco para virar agenda.
  */
 export function mascararChave(chave: string): string {
@@ -120,11 +120,15 @@ export const PELO_PROPRIO_CLIENTE = 'o próprio cliente, pelo WhatsApp'
  */
 export const PARADAS_INEQUIVOCAS = ['parar', 'pare', 'sair', 'stop', 'descadastrar'] as const
 
-export const ehParadaInequivoca = (texto: string): boolean =>
-  (PARADAS_INEQUIVOCAS as readonly string[]).includes(normalizar(texto))
+/**
+ * A régua é UMA só, em campanhas/casar.ts (`lerParada`): "quero parar",
+ * "Parar por favor", "sair da lista" valem aqui também — antes de 27/09 só a
+ * palavra sozinha valia, e "PARE DE MANDAR" passava batido.
+ */
+export const ehParadaInequivoca = (texto: string): boolean => lerParada(texto) === 'certa'
 
-/** "VOLTAR", sozinho numa mensagem. */
-export const ehPedidoDeVolta = (texto: string): boolean => normalizar(texto) === 'voltar'
+/** "VOLTAR" (ou "quero voltar a receber"). Mesma régua de casar.ts. */
+export const ehPedidoDeVolta = (texto: string): boolean => voltaNaRegua(texto)
 
 // ─────────────────────────────────────────────────────────────
 // A REGRA
@@ -167,17 +171,21 @@ export async function podeReceberOfertas(orgId: string, telefone: string): Promi
   const chave = chaveTelefone(telefone)
   if (!chave) return false
   return comoOrg(orgId, async (db) => {
-    const naLista = (await db.optOutWhatsapp.findUnique({ where: { orgId_telefone: { orgId, telefone: chave } }, select: { id: true } })) !== null
+    const naLista = (await db.optOutWhatsapp.findFirst({ where: { telefone: { in: chavesParaBuscar(chave) } }, select: { id: true } })) !== null
     if (naLista) return false
     const fichas = await fichasDoTelefone(db, chave)
     return podeReceberOfertasCom({ naLista, consentimentos: fichas.map((f) => f.ofertas) })
   })
 }
 
-/** Este telefone está na lista de quem não recebe? (a chave já calculada) */
+/**
+ * Este telefone está na lista de quem não recebe? (a chave já calculada)
+ * Procura também pela chave antiga do mesmo número (ver `chavesParaBuscar`):
+ * o PARAR gravado antes da troca da chave continua valendo.
+ */
 export async function estaNaLista(orgId: string, chave: string): Promise<boolean> {
   const r = await comoOrg(orgId, (db) =>
-    db.optOutWhatsapp.findUnique({ where: { orgId_telefone: { orgId, telefone: chave } }, select: { id: true } }),
+    db.optOutWhatsapp.findFirst({ where: { telefone: { in: chavesParaBuscar(chave) } }, select: { id: true } }),
   )
   return r !== null
 }
@@ -207,7 +215,7 @@ export async function gravarSaida(
   origem: OrigemSaida,
   agora: Date,
 ): Promise<{ novo: boolean; subiu: boolean }> {
-  const ja = await db.optOutWhatsapp.findUnique({ where: { orgId_telefone: { orgId, telefone: chave } }, select: { id: true, origem: true } })
+  const ja = await db.optOutWhatsapp.findFirst({ where: { telefone: { in: chavesParaBuscar(chave) } }, select: { id: true, origem: true } })
   let subiu = false
   if (!ja) {
     // createMany + skipDuplicates: duas mensagens "PARAR" no mesmo segundo
@@ -218,7 +226,7 @@ export async function gravarSaida(
     subiu = true
   }
   await db.campanhaExecucao.updateMany({
-    where: { telefone: chave, teste: false, status: { in: [...STATUS_VIVOS] } },
+    where: { telefone: { in: chavesParaBuscar(chave) }, teste: false, status: { in: [...STATUS_VIVOS] } },
     data: {
       status: 'cancelada',
       motivoFim: origem === 'parar' ? 'parou' : 'sem_ofertas',
@@ -233,12 +241,20 @@ export async function gravarSaida(
 
 const ehDaPessoa = (origem: string) => (SO_A_PESSOA_TIRA as readonly string[]).includes(origem)
 
-/** Tira o número da lista. Devolve a origem que ele tinha, ou nula. */
+/**
+ * Tira o número da lista. Devolve a origem que ele tinha, ou nula. Tira a
+ * linha da chave de hoje e a da chave antiga do mesmo número — senão o VOLTAR
+ * de quem saiu antes da troca da chave confirmaria a volta e deixaria a
+ * pessoa na lista.
+ */
 export async function tirarSaida(db: BancoDaOrg, orgId: string, chave: string): Promise<OrigemSaida | null> {
-  const ja = await db.optOutWhatsapp.findUnique({ where: { orgId_telefone: { orgId, telefone: chave } }, select: { id: true, origem: true } })
-  if (!ja) return null
-  await db.optOutWhatsapp.delete({ where: { id: ja.id } })
-  return ja.origem as OrigemSaida
+  const chaves = chavesParaBuscar(chave)
+  const linhas = await db.optOutWhatsapp.findMany({ where: { telefone: { in: chaves } }, select: { id: true, origem: true, telefone: true } })
+  if (linhas.length === 0) return null
+  await db.optOutWhatsapp.deleteMany({ where: { id: { in: linhas.map((l) => l.id) } } })
+  // A origem que conta é a da pessoa, se alguma das linhas for dela.
+  const daPessoa = linhas.find((l) => ehDaPessoa(l.origem))
+  return (daPessoa ?? linhas.find((l) => l.telefone === chave) ?? linhas[0]!).origem as OrigemSaida
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -353,8 +369,11 @@ export async function conferirAceite(
   mudanca: MudancaDeAceite,
 ): Promise<string | null> {
   if (mudanca.ofertas !== 'SIM' || !chave) return null
-  const ja = await db.optOutWhatsapp.findUnique({ where: { orgId_telefone: { orgId, telefone: chave } }, select: { origem: true } })
-  if (ja && (SO_A_PESSOA_TIRA as readonly string[]).includes(ja.origem)) {
+  const ja = await db.optOutWhatsapp.findFirst({
+    where: { telefone: { in: chavesParaBuscar(chave) }, origem: { in: [...SO_A_PESSOA_TIRA] } },
+    select: { origem: true },
+  })
+  if (ja) {
     return 'Este número pediu para não receber ofertas (mandou PARAR). Só volta se a própria pessoa mandar VOLTAR para o WhatsApp da loja.'
   }
   return null
@@ -437,7 +456,7 @@ export async function situacaoDoNumero(
   const chave = chaveTelefone(telefone)
   if (!chave) return { valido: false }
   const l = await comoOrg(sessao.orgId, (db) =>
-    db.optOutWhatsapp.findUnique({ where: { orgId_telefone: { orgId: sessao.orgId, telefone: chave } }, select: { origem: true, em: true } }),
+    db.optOutWhatsapp.findFirst({ where: { telefone: { in: chavesParaBuscar(chave) } }, select: { origem: true, em: true } }),
   )
   return l ? { valido: true, naLista: true, origem: l.origem as OrigemSaida, em: l.em } : { valido: true, naLista: false }
 }
