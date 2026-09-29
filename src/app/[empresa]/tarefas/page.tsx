@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
+import { comoOrg } from '@/servidor/banco'
 import { escolherUnidade } from '@/servidor/unidade'
 import { pode, podeNoAlcance, podeVerPlanos } from '@/servidor/permissao'
 import { planoDaEmpresa } from '@/servidor/relatorios'
@@ -10,6 +11,7 @@ import {
   CORES_DE_QUADRO,
   GRUPOS_PADRAO,
   MODELOS,
+  modeloPara,
   NIVEL_SITUACAO,
   ROTULO_SITUACAO,
   SITUACOES,
@@ -48,14 +50,20 @@ const SITUACOES_NA_TELA: SituacaoNaTela[] = SITUACOES.map((s) => ({
   nivel: NIVEL_SITUACAO[s],
 }))
 
-const MODELOS_NA_TELA: ModeloNaTela[] = (Object.keys(MODELOS) as ChaveModelo[]).map((chave) => ({
-  chave,
-  titulo: MODELOS[chave].titulo,
-  descricao: MODELOS[chave].descricao,
-  cor: MODELOS[chave].cor,
-  grupos: MODELOS[chave].grupos.length,
-  tarefas: MODELOS[chave].tarefas.map((t) => t.titulo),
-}))
+// O modelo mostrado é o que vai nascer: com as tarefas do ramo (a clínica
+// não abre repondo arara) — ver `modeloPara`.
+const modelosNaTela = (ramo: string | null): ModeloNaTela[] =>
+  (Object.keys(MODELOS) as ChaveModelo[]).map((chave) => {
+    const m = modeloPara(chave, ramo)
+    return {
+      chave,
+      titulo: m.titulo,
+      descricao: m.descricao,
+      cor: m.cor,
+      grupos: m.grupos.length,
+      tarefas: m.tarefas.map((t) => t.titulo),
+    }
+  })
 
 // O quadro da equipe.
 //
@@ -90,6 +98,12 @@ export default async function TelaTarefas({
   const plano = await planoDaEmpresa(sessao)
   const quadros = await listarQuadros(sessao, onde.ids)
   const pendencias = await minhasPendencias(sessao)
+  // O ramo da loja escolhida, senão o da empresa — o mesmo que `criarDeModelo` usa.
+  const ramo = await comoOrg(sessao.orgId, async (db) => {
+    const org = await db.org.findUnique({ where: { id: sessao.orgId }, select: { ramo: true } })
+    const loja = onde.unidadeId ? await db.unidade.findUnique({ where: { id: onde.unidadeId }, select: { ramo: true } }) : null
+    return loja?.ramo ?? org?.ramo ?? null
+  })
 
   const escolhido = quadros.find((q) => q.id === quadroPedido) ?? quadros[0] ?? null
   const completo = escolhido && novo !== '1' ? await quadroCompleto(sessao, escolhido.id) : null
@@ -228,7 +242,7 @@ export default async function TelaTarefas({
             primeiro={semQuadro}
             cores={CORES_DE_QUADRO}
             gruposPadrao={GRUPOS_PADRAO}
-            modelos={MODELOS_NA_TELA}
+            modelos={modelosNaTela(ramo)}
             verPlanos={podeVerPlanos(sessao)}
           />
         </Secao>

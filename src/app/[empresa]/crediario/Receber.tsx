@@ -11,6 +11,7 @@ import { useActionState, useState } from 'react'
 import { Botao, Aviso, cx } from '@/ui/base'
 import { receberAcao, type EstadoRecebimento } from './acoes'
 import { semApagar } from '@/ui/formulario'
+import { lerDinheiro } from '@/servidor/dinheiro'
 
 const FORMAS = [
   { chave: 'DINHEIRO', titulo: 'Dinheiro' },
@@ -28,12 +29,16 @@ export function Receber({
   resta,
   jurosHoje,
   diasAtraso,
+  diasJuros = diasAtraso,
 }: {
   slug: string
   parcelaId: string
   resta: number
+  /** Já descontados os dias que pagaram juro num recebimento anterior. */
   jurosHoje: number
   diasAtraso: number
+  /** Os dias que o juro de hoje cobre (ver `diasDeJuros` em crediario.ts). */
+  diasJuros?: number
 }) {
   const [aberto, setAberto] = useState(false)
   const [juros, setJuros] = useState(jurosHoje.toFixed(2))
@@ -50,7 +55,7 @@ export function Receber({
     )
   }
 
-  const j = Number(juros.replace(',', '.')) || 0
+  const j = lerDinheiro(juros) ?? 0
 
   return (
     <form action={agir} onSubmit={semApagar(agir)} className="flex min-w-[16rem] flex-col gap-2 rounded-norte border border-borda bg-superficie-2 p-2 text-xs">
@@ -67,7 +72,7 @@ export function Receber({
             value={juros}
             onChange={(e) => {
               setJuros(e.target.value)
-              const nj = Number(e.target.value.replace(',', '.')) || 0
+              const nj = lerDinheiro(e.target.value) ?? 0
               setValor((resta + nj).toFixed(2))
             }}
             inputMode="decimal"
@@ -75,6 +80,8 @@ export function Receber({
           />
           <span className={cx('text-[11px]', diasAtraso > 0 ? 'text-critico' : 'text-tinta-3')}>
             {diasAtraso > 0 ? `${diasAtraso} dia${diasAtraso === 1 ? '' : 's'} de atraso` : 'em dia'}
+            {diasAtraso > 0 && diasJuros < diasAtraso &&
+              ` · juro de ${diasJuros} dia${diasJuros === 1 ? '' : 's'} (o resto já foi pago)`}
           </span>
         </label>
         <label className="flex flex-col gap-1 text-tinta-2">

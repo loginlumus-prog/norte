@@ -335,14 +335,14 @@ function Formulario(p: {
                       }
                     />
                     {u.nome}
-                    {!u.temTelefone && <span className="text-xs">(sem telefone em Equipe)</span>}
+                    {!u.temTelefone && <span className="text-xs">(sem WhatsApp confirmado)</span>}
                   </label>
                 </li>
               ))}
             </ul>
           )}
           {d.para === 'donos' && !p.equipe.some((u) => u.dono && u.temTelefone) && (
-            <Aviso nivel="atencao">Nenhum dono tem telefone cadastrado em Equipe: ninguém seria avisado.</Aviso>
+            <Aviso nivel="atencao">Nenhum dono tem WhatsApp confirmado (em Minha conta): ninguém seria avisado.</Aviso>
           )}
           <Rotulo titulo="Mensagem para a pessoa (opcional)" dica="Ex.: “Já chamei alguém da loja, {primeiro_nome}. Um instante!”">
             <textarea rows={3} maxLength={1000} value={d.mensagemContato} onChange={(e) => p.aoMudar({ ...d, mensagemContato: e.target.value })} className={campo} />

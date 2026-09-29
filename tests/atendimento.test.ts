@@ -55,7 +55,7 @@ describe('os ramos de serviço', () => {
   it('cada ramo sugere os módulos certos — e só módulos que existem', () => {
     expect([...RAMOS.beleza.sugere].sort()).toEqual(['agenda', 'compras'])
     expect([...RAMOS.saude.sugere].sort()).toEqual(['agenda', 'compras', 'ponto'])
-    expect([...RAMOS.escola.sugere]).toEqual(['ponto'])
+    expect([...RAMOS.escola.sugere].sort()).toEqual(['escola', 'ponto'])
     for (const r of Object.values(RAMOS)) for (const m of r.sugere) expect(TODOS).toContain(m)
   })
 

@@ -54,6 +54,7 @@ import { plural } from '../texto'
 import { moduloLigado } from '../modulos'
 import { diaEmSP, inicioDoDiaEmSP, somarDias } from '../dia'
 import { horaEmSP, listarAgenda, ocupa } from '../agenda'
+import { mensalidadesDoDia } from '../mensalidades'
 
 export type Rotina = 'relatorio_manha' | 'ruptura' | 'cliente_sumido' | 'relatorio_noite'
 
@@ -126,6 +127,11 @@ export function textoDoRelatorio(p: {
    * começa o dia pela agenda, não pelo faturamento de ontem.
    */
   agenda?: { total: number; confirmados: number; primeiro: string | null }
+  /**
+   * As mensalidades (só de manhã, e só com a Escola): o que vence hoje e o que
+   * está em atraso. É a lista da secretaria antes de abrir o portão.
+   */
+  mensalidades?: { vencemHoje: { quantas: number; total: number }; atraso: { quantas: number; total: number; alunos: number } }
   /** Só convida a perguntar se ele tem a ferramenta para responder. */
   respondeResumo?: boolean
 }): string {
@@ -166,6 +172,15 @@ export function textoDoRelatorio(p: {
         : `Agenda de hoje: ${plural(p.agenda.total, 'horário', 'horários')} (${plural(p.agenda.confirmados, 'confirmado', 'confirmados')})` +
             `${p.agenda.primeiro ? `, o primeiro às ${p.agenda.primeiro}` : ''}.`,
     )
+  }
+  if (p.mensalidades && (p.mensalidades.vencemHoje.quantas > 0 || p.mensalidades.atraso.quantas > 0)) {
+    const m = p.mensalidades
+    const partes = []
+    if (m.vencemHoje.quantas > 0) partes.push(`${plural(m.vencemHoje.quantas, 'vence', 'vencem')} hoje (${brl(m.vencemHoje.total)})`)
+    if (m.atraso.quantas > 0) {
+      partes.push(`${plural(m.atraso.quantas, 'em atraso', 'em atraso')}, ${brl(m.atraso.total)} de ${plural(m.atraso.alunos, 'aluno', 'alunos')}`)
+    }
+    linhas.push(`Mensalidades: ${partes.join('; ')}.`)
   }
   if (p.vaiFaltar && p.vaiFaltar > 0) {
     linhas.push(`${plural(p.vaiFaltar, 'peça vai', 'peças vão')} faltar pelo ritmo de venda.`)
@@ -363,7 +378,11 @@ async function relatorio(
       primeiro: lista[0] ? horaEmSP(lista[0].inicio) : null,
     }
   }
-  return textoDoRelatorio({ nome: d.nome, quando, resumo, contas, vaiFaltar, agenda, respondeResumo })
+  let mensalidades: Parameters<typeof textoDoRelatorio>[0]['mensalidades']
+  if (quando === 'manha' && moduloLigado({ modulos }, 'escola') && pode(d.sessao, 'mensalidade.ver')) {
+    mensalidades = await mensalidadesDoDia(d.sessao, await unidadesVisiveis(d.sessao, 'mensalidade.ver'), agora)
+  }
+  return textoDoRelatorio({ nome: d.nome, quando, resumo, contas, vaiFaltar, agenda, mensalidades, respondeResumo })
 }
 
 // ── vai faltar, e a reposição ────────────────────────────────
@@ -397,7 +416,7 @@ async function ruptura(
   const peca = (l: LinhaRuptura) => [l.nome, l.opcoes].filter(Boolean).join(' — ')
   const linhasTexto = urgentes.slice(0, 8).map((l) =>
     l.previsao.situacao === 'ja_faltou'
-      ? `• ${peca(l)}: *acabou* (vendia ${l.vendidos30} por mês)`
+      ? `• ${peca(l)}: *acabou* (${l.usoInterno ? 'usava' : 'vendia'} ${l.vendidos30} por mês)`
       : `• ${peca(l)}: ${l.saldo} na prateleira, dura ~${plural(Math.floor(l.previsao.duraDias ?? 0), 'dia', 'dias')}, entrega leva ${plural(l.previsao.prazo, 'dia', 'dias')}`,
   )
 

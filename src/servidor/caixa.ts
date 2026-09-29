@@ -6,7 +6,8 @@
 // Com caixa, a diferença aparece no fechamento, com nome e horário.
 //
 // ── a conta do fechamento ────────────────────────────────────
-//   esperado = abertura + vendas em dinheiro + suprimentos − sangrias
+//   esperado = abertura + vendas em dinheiro + parcelas e mensalidades
+//              recebidas em dinheiro + suprimentos − sangrias
 //
 // Só DINHEIRO entra nessa conta. Cartão e Pix não passam pela gaveta, então
 // somá-los faria o caixa "faltar" todo dia o valor das maquininhas — e caixa
@@ -234,6 +235,10 @@ export type Conferencia = {
   dinheiroRecebido: number
   /** Crediário recebido em todas as formas — para a pessoa conferir. */
   recebidoCrediario: number
+  /** Mensalidade da escola recebida em dinheiro neste turno. Entra na gaveta. */
+  dinheiroMensalidades: number
+  /** Mensalidade recebida em todas as formas — para a pessoa conferir. */
+  recebidoMensalidades: number
   suprimentos: number
   sangrias: number
   esperado: number
@@ -277,6 +282,8 @@ async function conferirEm(db: BancoDaOrg, caixaId: string): Promise<Conferencia>
     const totalVendas = await db.venda.count({ where: { caixaId, situacao: 'CONCLUIDA' } })
     // A parcela recebida no balcão é dinheiro que entrou pela mesma gaveta.
     const recebidos = await db.recebimento.groupBy({ by: ['forma'], where: { caixaId }, _sum: { valor: true } })
+    // A mensalidade recebida na secretaria também: em dinheiro, é a mesma gaveta.
+    const mensalidades = await db.pagamentoMensalidade.groupBy({ by: ['forma'], where: { caixaId }, _sum: { valor: true } })
 
     const soma = (t: TipoCaixa) =>
       centavos(movs.find((m) => m.tipo === t)?._sum.valor ?? 0)
@@ -285,6 +292,8 @@ async function conferirEm(db: BancoDaOrg, caixaId: string): Promise<Conferencia>
     const dinheiroC = centavos(formas.find((f) => f.forma === 'DINHEIRO')?.total ?? 0)
     const recebidoDinheiroC = centavos(recebidos.find((r) => r.forma === 'DINHEIRO')?._sum.valor ?? 0)
     const recebidoC = recebidos.reduce((s, r) => s + centavos(r._sum.valor ?? 0), 0)
+    const mensDinheiroC = centavos(mensalidades.find((r) => r.forma === 'DINHEIRO')?._sum.valor ?? 0)
+    const mensC = mensalidades.reduce((s, r) => s + centavos(r._sum.valor ?? 0), 0)
     const supC = soma('SUPRIMENTO')
     const sanC = soma('SANGRIA')
 
@@ -293,9 +302,11 @@ async function conferirEm(db: BancoDaOrg, caixaId: string): Promise<Conferencia>
       dinheiroVendido: reais(dinheiroC),
       dinheiroRecebido: reais(recebidoDinheiroC),
       recebidoCrediario: reais(recebidoC),
+      dinheiroMensalidades: reais(mensDinheiroC),
+      recebidoMensalidades: reais(mensC),
       suprimentos: reais(supC),
       sangrias: reais(sanC),
-      esperado: reais(aberturaC + dinheiroC + recebidoDinheiroC + supC - sanC),
+      esperado: reais(aberturaC + dinheiroC + recebidoDinheiroC + mensDinheiroC + supC - sanC),
       vendidoTotal: reais(formas.reduce((s, f) => s + centavos(f.total), 0)),
       porForma: formas.map((f) => ({ forma: f.forma, total: reais(centavos(f.total)) })),
       vendas: totalVendas,
@@ -473,8 +484,17 @@ export async function listarCaixas(
       select c.id, u.nome as unidade, c.unidade_id, c.aberto, c.aberto_por, c.aberto_em,
              c.fechado_por, c.fechado_em, c.saldo_abertura, c.saldo_esperado, c.saldo_contado,
              c.observacoes,
-             (select count(*) from vendas v where v.caixa_id = c.id and v.situacao = 'CONCLUIDA')::int as vendas,
-             (select coalesce(sum(v.total), 0) from vendas v where v.caixa_id = c.id and v.situacao = 'CONCLUIDA') as vendido,
+             -- Turno FECHADO mostra o que ele tinha no fechamento: a venda
+             -- cancelada DEPOIS de fechar continua contando nele. Sem isto,
+             -- cancelar hoje uma venda de semana passada mudava o "vendido"
+             -- de um turno já conferido e assinado — o número da lista não
+             -- batia mais com o esperado gravado ao lado dele.
+             (select count(*) from vendas v where v.caixa_id = c.id
+                 and (v.situacao = 'CONCLUIDA'
+                      or (not c.aberto and v.situacao = 'CANCELADA' and v.cancelada_em > c.fechado_em)))::int as vendas,
+             (select coalesce(sum(v.total), 0) from vendas v where v.caixa_id = c.id
+                 and (v.situacao = 'CONCLUIDA'
+                      or (not c.aberto and v.situacao = 'CANCELADA' and v.cancelada_em > c.fechado_em))) as vendido,
              (select coalesce(sum(m.valor), 0) from caixa_movimentos m where m.caixa_id = c.id and m.tipo = 'SANGRIA') as sangrias,
              (select coalesce(sum(m.valor), 0) from caixa_movimentos m where m.caixa_id = c.id and m.tipo = 'SUPRIMENTO') as suprimentos
         from caixas c

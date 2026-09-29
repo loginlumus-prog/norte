@@ -47,6 +47,7 @@ export type ChavePendencia =
   | 'acabaram'
   | 'contasVencidas'
   | 'parcelasVencidas'
+  | 'mensalidadesAtrasadas'
   | 'contasHoje'
   | 'caixasEsquecidos'
   | 'propostas'
@@ -61,6 +62,8 @@ export type Contagens = {
   contasVencidas?: { quantas: number; valor: number }
   contasHoje?: { quantas: number; valor: number }
   parcelasVencidas?: { quantas: number; valor: number; clientes: number }
+  /** Mensalidade vencida e não paga, de qualquer mês (a escola). */
+  mensalidadesAtrasadas?: { quantas: number; valor: number; alunos: number }
   tarefasMinhas?: number
   /** As atrasadas dos quadros da loja que NÃO são desta pessoa. */
   tarefasEquipe?: number
@@ -96,6 +99,7 @@ const ORDEM: ChavePendencia[] = [
   'acabaram',
   'contasVencidas',
   'parcelasVencidas',
+  'mensalidadesAtrasadas',
   'contasHoje',
   'caixasEsquecidos',
   'propostas',
@@ -168,6 +172,16 @@ export function montarPendencias(c: Contagens, slug: string, unidadeId: string |
       frase: `${plural(p.quantas, 'parcela', 'parcelas')} de fiado ${p.quantas === 1 ? 'vencida' : 'vencidas'}`,
       detalhe: `${brl(p.valor)} de ${plural(p.clientes, 'cliente', 'clientes')}. Cobre enquanto é recente.`,
       href: link('crediario', { situacao: 'vencida' }),
+    })
+  }
+  if (c.mensalidadesAtrasadas?.quantas) {
+    const m = c.mensalidadesAtrasadas
+    por({
+      chave: 'mensalidadesAtrasadas',
+      nivel: 'critico',
+      frase: `${plural(m.quantas, 'mensalidade', 'mensalidades')} em atraso`,
+      detalhe: `${brl(m.valor)} de ${plural(m.alunos, 'aluno', 'alunos')}. Cobre o responsável enquanto é um mês só.`,
+      href: link('mensalidades', { situacao: 'atrasada' }),
     })
   }
   if (c.tarefasMinhas) {
@@ -296,11 +310,20 @@ export async function pendenciasDoDia(
 ): Promise<Contagens> {
   exigir(sessao, 'relatorio.ver')
 
-  const onde = (c: Capacidade) => unidadeIds.filter((u) => pode(sessao, c, u))
-  const doEstoque = onde('estoque.ver')
-  const doDinheiro = onde('financeiro.ver')
-  const doFiado = moduloLigado(empresa, 'crediario') ? onde('crediario.ver') : []
-  const doCaixa = onde('caixa.ver')
+  // "Precisa de você" é lista do que FAZER, então cada assunto só entra para
+  // quem pode agir nele — não para quem só pode ver. O contador (só leitura)
+  // abria o Painel e lia "3 contas vencidas — Ver", com a bolinha vermelha no
+  // menu, sem ter botão nenhum para pagar lá dentro. O número continua nas
+  // telas que ele lê (Financeiro); daqui sai o chamado.
+  const onde = (...cs: Capacidade[]) => unidadeIds.filter((u) => cs.some((c) => pode(sessao, c, u)))
+  const doEstoque = onde('estoque.ajustar', 'compra.gerir')
+  const doDinheiro = onde('financeiro.lancar')
+  const doFiado = moduloLigado(empresa, 'crediario') ? onde('crediario.cobrar', 'crediario.receber') : []
+  // A mensalidade atrasada é da escola o que o fiado vencido é da loja: só
+  // para quem pode RECEBER — quem só lê (o contador) vê o número na tela de
+  // Mensalidades, sem o chamado aqui.
+  const daEscola = moduloLigado(empresa, 'escola') ? onde('mensalidade.receber') : []
+  const doCaixa = onde('caixa.operar')
   const verTarefas = pode(sessao, 'tarefa.ver')
   const gerirTarefas = pode(sessao, 'tarefa.gerir')
   const verPropostas = moduloLigado(empresa, 'agente') && pode(sessao, 'agente.configurar')
@@ -328,12 +351,17 @@ export async function pendenciasDoDia(
       // acabaram" para sempre, avisando falta do que ela nem vende. A mesma
       // régua vale na tela de Estoque (`contaComoFalta`). Depósito conta
       // sempre: ele não vende, mas é de onde as lojas repõem.
+      //
+      // O que é FEITO NO DIA não entra no "acabou": o pão zera todo fim de
+      // tarde (a sobra sai como perda), e "11 produtos acabaram" às 20h era o
+      // dia normal da padaria gritando falta.
       const [e] = await db.$queryRaw<{ acabaram: number; minimo: number }[]>`
-        select count(*) filter (where s.saldo <= 0)::int as acabaram,
+        select count(*) filter (where s.saldo <= 0 and not s.do_dia)::int as acabaram,
                count(*) filter (where s.saldo > 0 and s.minimo > 0 and s.saldo <= s.minimo)::int as minimo
           from (select e.variacao_id,
                        sum(e.quantidade) as saldo,
-                       max(coalesce(e.minimo, 0)) as minimo
+                       max(coalesce(e.minimo, 0)) as minimo,
+                       bool_or(p.feito_no_dia) as do_dia
                   from estoque e
                   join variacoes va on va.id = e.variacao_id
                   join produtos p on p.id = va.produto_id
@@ -375,6 +403,20 @@ export async function pendenciasDoDia(
            and p.vencimento < ${hoje}::date and p.valor > p.pago
       `
       c.parcelasVencidas = { quantas: n(p?.quantas), valor: n(p?.valor), clientes: n(p?.clientes) }
+    }
+
+    if (daEscola.length > 0) {
+      // A mesma régua da tela de Mensalidades ("em atraso"): venceu antes de
+      // hoje, não foi quitada nem dispensada, e ainda resta alguma coisa.
+      const [m] = await db.$queryRaw<{ quantas: number; valor: string; alunos: number }[]>`
+        select count(*)::int as quantas,
+               coalesce(sum(greatest(m.valor - m.desconto - m.pago - m.abono, 0)), 0) as valor,
+               count(distinct m.aluno_id)::int as alunos
+          from mensalidades m
+         where m.unidade_id = any(${daEscola}) and m.quitada_em is null and m.cancelada_em is null
+           and m.vencimento < ${hoje}::date and m.valor - m.desconto - m.pago - m.abono > 0
+      `
+      c.mensalidadesAtrasadas = { quantas: n(m?.quantas), valor: n(m?.valor), alunos: n(m?.alunos) }
     }
 
     if (verTarefas) {

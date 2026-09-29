@@ -73,6 +73,23 @@ export function diasDeAtraso(vencimento: Date, agora: Date): number {
 }
 
 /**
+ * Dias de atraso que AINDA não pagaram juro: contados do vencimento ou do dia
+ * até onde o juro já foi cobrado (`jurosAte`), o que vier depois.
+ *
+ * O caso: parcela de R$ 100 com 30 dias de atraso, a 2% ao mês. A pessoa paga
+ * R$ 50 + R$ 2,00 de juro hoje. Uma semana depois, o juro sugerido é o de 7
+ * dias sobre os 50 que restam (R$ 0,23) — e não o de 37 dias (R$ 1,23), que
+ * cobraria de novo os 30 dias que ela já pagou.
+ */
+export function diasDeJuros(vencimento: Date, jurosAte: Date | null | undefined, agora: Date): number {
+  const venc = diaDaColuna(vencimento)
+  const ate = jurosAte ? diaDaColuna(jurosAte) : null
+  const desde = ate && ate > venc ? ate : venc
+  const dias = diasEntre(desde, diaEmSP(agora))
+  return dias > 0 ? dias : 0
+}
+
+/**
  * Juro de atraso, em centavos: pctMes ao mês, proporcional aos dias, sobre o
  * que resta. Para baixo — a sobra fica com o cliente, nunca cobrada a mais.
  */
@@ -105,6 +122,11 @@ export type ParcelaNaLista = {
   resta: number
   situacao: SituacaoParcela
   diasAtraso: number
+  /**
+   * Os dias que o juro de hoje cobre: os de atraso menos os que já pagaram
+   * juro num recebimento anterior (ver `diasDeJuros`).
+   */
+  diasJuros: number
   /** O juro sugerido para receber hoje, com a taxa da empresa. */
   jurosHoje: number
 }
@@ -117,14 +139,13 @@ export type FiltroParcelas = {
   clienteId?: string | null
 }
 
-export async function listarParcelas(sessao: Sessao, f: FiltroParcelas): Promise<ParcelaNaLista[]> {
+export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = new Date()): Promise<ParcelaNaLista[]> {
   exigir(sessao, 'crediario.ver')
   const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'crediario.ver', u))
   if (permitidas.length === 0) return []
 
   const q = textoDaBusca(f.q)
   const numero = numeroDaBusca(q)
-  const agora = new Date()
 
   return comoOrg(sessao.orgId, async (db) => {
     const org = await db.org.findUniqueOrThrow({
@@ -140,7 +161,7 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas): Promise
         ...(f.situacao === 'quitada'
           ? { quitadaEm: { not: null } }
           : f.situacao === 'vencida'
-            ? { quitadaEm: null, vencimento: { lt: colunaDoDia(diaEmSP()) } }
+            ? { quitadaEm: null, vencimento: { lt: colunaDoDia(diaEmSP(agora)) } }
             : f.situacao === 'aberta'
               ? { quitadaEm: null }
               : {}),
@@ -154,7 +175,7 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas): Promise
       take: 500,
       select: {
         id: true, vendaId: true, clienteId: true, unidadeId: true, numero: true, de: true,
-        vencimento: true, valor: true, pago: true, juros: true, quitadaEm: true,
+        vencimento: true, valor: true, pago: true, juros: true, jurosAte: true, quitadaEm: true,
         venda: { select: { numero: true } },
         cliente: { select: { nome: true, telefone: true } },
         unidade: { select: { nome: true } },
@@ -167,6 +188,7 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas): Promise
       const restaC = Math.max(valorC - pagoC, 0)
       const quitada = p.quitadaEm !== null
       const dias = quitada ? 0 : diasDeAtraso(p.vencimento, agora)
+      const diasJuros = quitada ? 0 : diasDeJuros(p.vencimento, p.jurosAte, agora)
       return {
         id: p.id,
         vendaId: p.vendaId,
@@ -185,7 +207,8 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas): Promise
         resta: reais(restaC),
         situacao: quitada ? 'quitada' : dias > 0 ? 'vencida' : 'aberta',
         diasAtraso: dias,
-        jurosHoje: reais(jurosDeAtraso(restaC, dias, pct)),
+        diasJuros,
+        jurosHoje: reais(jurosDeAtraso(restaC, diasJuros, pct)),
       }
     })
   })
@@ -288,6 +311,7 @@ export type Recebido =
 export async function receberParcela(
   sessao: Sessao,
   p: { parcelaId: string; valor: number; juros: number; forma: FormaPagamento },
+  agora = new Date(),
 ): Promise<Recebido> {
   // `centavos(NaN)` estoura com o erro cru do conversor; aqui é recusa.
   if (!Number.isFinite(p.valor) || !Number.isFinite(p.juros)) return { ok: false, motivo: 'valor_invalido' }
@@ -338,12 +362,15 @@ export async function receberParcela(
     // O `valor` entra na condição também: é ele que a devolução abaixa.
     const novoPagoC = centavos(parcela.pago) + principalC
     const quitada = novoPagoC >= centavos(parcela.valor)
+    // Juro cobrado hoje cobre o atraso ATÉ hoje: o próximo recebimento conta
+    // os dias a partir daqui (`diasDeJuros`), e não do vencimento de novo.
     const gravou = await db.parcela.updateMany({
       where: { id: parcela.id, pago: parcela.pago, valor: parcela.valor, quitadaEm: null },
       data: {
         pago: reais(novoPagoC),
         juros: { increment: reais(jurosC) },
-        quitadaEm: quitada ? new Date() : null,
+        ...(jurosC > 0 ? { jurosAte: colunaDoDia(diaEmSP(agora)) } : {}),
+        quitadaEm: quitada ? agora : null,
       },
     })
     if (gravou.count === 0) return { ok: false as const, motivo: 'mudou' as const }

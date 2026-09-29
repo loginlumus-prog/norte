@@ -86,8 +86,27 @@ export function mostrar(cent: number): string {
  * tirava todo ponto antes de olhar; aqui "49.90" é quarenta e nove e noventa.
  */
 export function lerDinheiro(bruto: string): number | null {
-  const t = String(bruto ?? '').trim().replace(/^R\$\s*/i, '')
+  return lerDecimal(String(bruto ?? '').trim().replace(/^R\$\s*/i, ''), 2)
+}
+
+/**
+ * Um número digitado que NÃO é dinheiro — porcentagem, juro ao mês,
+ * quantidade — com a mesma régua de `lerDinheiro`: vírgula decimal, ponto de
+ * milhar de três em três, e recusa em vez de adivinhar.
+ *
+ * `casas` é quantas casas depois da vírgula valem: 2 para porcentagem, 3
+ * para quilo e litro. "1.234" continua recusado mesmo com 3 casas: pode ser
+ * mil duzentos e trinta e quatro unidades ou um quilo e 234 gramas, e errar
+ * aqui é baixar mil vezes o estoque. O "%" no fim é aceito e ignorado.
+ */
+export function lerNumero(bruto: string, casas = 2): number | null {
+  return lerDecimal(String(bruto ?? '').trim().replace(/\s*%$/, ''), casas)
+}
+
+function lerDecimal(t: string, casas: number): number | null {
   if (!t) return null
+  // Um ponto e três algarismos, sem vírgula: milhar ou decimal? Não dá para saber.
+  if (/^\d{1,3}\.\d{3}$/.test(t)) return null
   let normal: string
   if (t.includes(',')) {
     const [inteiro = '', ...resto] = t.split(',')
@@ -99,9 +118,12 @@ export function lerDinheiro(bruto: string): number | null {
   } else {
     normal = t
   }
-  if (!/^\d+(\.\d{1,2})?$/.test(normal)) return null
+  if (!/^\d+(\.\d+)?$/.test(normal) || (normal.split('.')[1]?.length ?? 0) > casas) return null
   return Number(normal)
 }
 
 /** A frase que o campo de dinheiro mostra quando `lerDinheiro` recusa. */
 export const DINHEIRO_ILEGIVEL = 'Não deu para ler este valor. Escreva assim: 49,90 ou 1.234,56.'
+
+/** A frase do campo de número (porcentagem, juro, quantidade) que `lerNumero` recusa. */
+export const NUMERO_ILEGIVEL = 'Não deu para ler este número. Escreva assim: 2,5 ou 10.'

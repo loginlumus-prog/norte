@@ -13,23 +13,28 @@ import {
   buscarClientesParaEncomenda,
   criarEncomenda,
   editarEncomenda,
+  formaSinalValida,
   mudarSituacao,
   type DadosEncomenda,
   type Mudanca,
 } from '@/servidor/encomenda'
 import { registrarErro } from '@/servidor/registro'
+import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
 export type EstadoEncomenda = { erro?: string; ok?: string; pedeConfirmacao?: boolean; vez?: number }
 
 const texto = (v: unknown, max = 1000) => (typeof v === 'string' ? v.slice(0, max) : '')
 const idValido = (v: unknown): v is string => typeof v === 'string' && /^[\w-]{1,64}$/.test(v)
 
-/** "1.234,56", "1234.56", "" → número. Vazio é zero; lixo é NaN, e o servidor recusa. */
+/**
+ * "1.234,56", "1234.56", "" → número, pela régua de todo campo de dinheiro
+ * (`lerDinheiro`). Vazio é zero (o sinal é opcional); o que não dá para ler
+ * é NaN, e a ação devolve o erro no campo em vez de gravar zero.
+ */
 function dinheiro(v: unknown): number {
   const t = texto(v, 20).trim()
   if (!t) return 0
-  const normal = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t
-  return /^\d+(\.\d{0,2})?$/.test(normal) ? Number(normal) : Number.NaN
+  return lerDinheiro(t) ?? Number.NaN
 }
 
 export async function salvarEncomendaAcao(
@@ -53,6 +58,8 @@ export async function salvarEncomendaAcao(
     descricao: texto(form.get('descricao'), 600),
     valor: dinheiro(form.get('valor')),
     sinal: dinheiro(form.get('sinal')),
+    // Vazio = não disse. O servidor só exige quando há dinheiro se movendo.
+    sinalForma: formaSinalValida(form.get('sinalForma')) ? (form.get('sinalForma') as DadosEncomenda['sinalForma']) : null,
     dia: texto(form.get('dia'), 10),
     hora: texto(form.get('hora'), 5),
     entrega: form.get('entrega') === '1',
@@ -60,8 +67,8 @@ export async function salvarEncomendaAcao(
     observacao: texto(form.get('observacao'), 1200),
     confirmarPassado: form.get('confirmarPassado') === 'on',
   }
-  if (Number.isNaN(dados.valor)) return { erro: 'O valor não é um número. Use só dígitos e vírgula: 120,00.' }
-  if (Number.isNaN(dados.sinal)) return { erro: 'O sinal não é um número. Use só dígitos e vírgula: 50,00.' }
+  if (Number.isNaN(dados.valor)) return { erro: `O valor: ${DINHEIRO_ILEGIVEL}` }
+  if (Number.isNaN(dados.sinal)) return { erro: `O sinal: ${DINHEIRO_ILEGIVEL}` }
 
   const vez = (anterior.vez ?? 0) + 1
   try {
@@ -74,6 +81,8 @@ export async function salvarEncomendaAcao(
 
   revalidatePath(`/${slug}/encomendas`)
   revalidatePath(`/${slug}/financeiro`)
+  // O sinal em dinheiro passou pela gaveta: a conta do caixa mudou.
+  revalidatePath(`/${slug}/balcao`)
   // Editar sai da tela de edição; anotar fica na lista, com o recado.
   if (id) redirect(`/${slug}/encomendas`)
   return { ok: 'Encomenda anotada.', vez }
@@ -96,6 +105,9 @@ export async function mudarSituacaoAcao(
           para,
           motivo: texto((mudanca as { motivo?: unknown }).motivo, 400),
           devolveuSinal: (mudanca as { devolveuSinal?: unknown }).devolveuSinal === true,
+          formaDevolucao: formaSinalValida((mudanca as { formaDevolucao?: unknown }).formaDevolucao)
+            ? ((mudanca as { formaDevolucao: DadosEncomenda['sinalForma'] }).formaDevolucao)
+            : null,
         }
       : { para }
 
@@ -110,7 +122,10 @@ export async function mudarSituacaoAcao(
   }
 
   revalidatePath(`/${slug}/encomendas`)
-  if (para === 'CANCELADA') revalidatePath(`/${slug}/financeiro`)
+  if (para === 'CANCELADA') {
+    revalidatePath(`/${slug}/financeiro`)
+    revalidatePath(`/${slug}/balcao`)
+  }
   const recado: Record<typeof para, string> = {
     PRONTA: 'Marcada como pronta.',
     ABERTA: 'Voltou para a fazer.',

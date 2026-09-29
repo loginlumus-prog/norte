@@ -50,6 +50,10 @@ export type DadosProduto = {
   servico?: boolean
   /** Minutos que o serviço ocupa na agenda. Nulo = não informado. */
   duracaoMin?: number | null
+  /** Material de uso: tem estoque, não vende (ver `Produto.usoInterno`). */
+  usoInterno?: boolean
+  /** Feito no dia: zerado depois de fechar não é falta (ver `Produto.feitoNoDia`). */
+  feitoNoDia?: boolean
 }
 
 export type ResultadoProduto =
@@ -183,6 +187,8 @@ export async function criarProduto(
         prazoReposicaoDias: dados.prazoReposicaoDias ?? null,
         servico: dados.servico ?? false,
         duracaoMin: dados.duracaoMin ?? null,
+        usoInterno: dados.usoInterno ?? false,
+        feitoNoDia: dados.feitoNoDia ?? false,
         eixos: {
           create: usados.map((e, i) => ({ orgId: sessao.orgId, eixoId: e.eixoId, ordem: i })),
         },
@@ -250,7 +256,7 @@ export async function editarProduto(
       where: { id: produtoId },
       select: {
         nome: true, precoVista: true, precoCartao: true, precoCrediario: true, custo: true, ativo: true,
-        medida: true, vendidoEm: true,
+        medida: true, vendidoEm: true, usoInterno: true,
       },
     })
     if (!antes) return { ok: false as const, motivo: 'Produto não encontrado.' }
@@ -275,7 +281,10 @@ export async function editarProduto(
     const mexeuNoResto =
       mexeuNoVendidoEm ||
       (dados.ativo !== undefined && dados.ativo !== antes.ativo) ||
-      (dados.medida !== undefined && dados.medida !== antes.medida)
+      (dados.medida !== undefined && dados.medida !== antes.medida) ||
+      // Virar material de uso tira o produto do balcão de TODAS as lojas dele:
+      // é decisão do mesmo tamanho que tirar de venda.
+      (dados.usoInterno !== undefined && dados.usoInterno !== antes.usoInterno)
 
     if (mexeuNoPreco) exigir(sessao, 'produto.preco')
     // Preço, custo, lojas, medida e situação valem em TODA loja onde o
@@ -307,6 +316,8 @@ export async function editarProduto(
         ...(dados.prazoReposicaoDias !== undefined && { prazoReposicaoDias: dados.prazoReposicaoDias }),
         ...(dados.servico !== undefined && { servico: dados.servico }),
         ...(dados.duracaoMin !== undefined && { duracaoMin: dados.duracaoMin }),
+        ...(dados.usoInterno !== undefined && { usoInterno: dados.usoInterno }),
+        ...(dados.feitoNoDia !== undefined && { feitoNoDia: dados.feitoNoDia }),
         ...(dados.ativo !== undefined && { ativo: dados.ativo }),
       },
     })
@@ -561,6 +572,7 @@ export async function acharProduto(sessao: Sessao, produtoId: string) {
         id: true, nome: true, marca: true, descricao: true, categoriaId: true,
         medida: true, precoVista: true, precoCartao: true, precoCrediario: true,
         custo: true, prazoReposicaoDias: true, vendidoEm: true, ativo: true, servico: true, duracaoMin: true,
+        usoInterno: true, feitoNoDia: true,
         eixos: { orderBy: { ordem: 'asc' }, select: { eixoId: true, ordem: true } },
         variacoes: {
           orderBy: { codigo: 'asc' },
@@ -705,6 +717,12 @@ export type SaldoNaVista = {
   /** O maior mínimo entre as lojas da vista; 0 = sem mínimo. */
   minimo: number
   nivel: 'critico' | 'atencao' | 'bom'
+  /**
+   * Zerado, mas é feito no dia: a sobra saiu como perda ao fechar e amanhã
+   * cedo sai fornada nova. A tela escreve "feito no dia" em vez de "acabou",
+   * e o nível fica neutro — não entra no "acabaram".
+   */
+  doDia?: boolean
 }
 
 /**
@@ -726,6 +744,7 @@ export function saldoNaVista(
   linhas: readonly LinhaDeSaldo[],
   lojas: readonly LojaDaVista[],
   todas = false,
+  feitoNoDia = false,
 ): SaldoNaVista {
   const naVista = linhas.filter((l) => lojas.some((u) => u.id === l.unidadeId))
   const saldo = naVista.reduce((t, l) => t + l.quantidade, 0)
@@ -735,6 +754,10 @@ export function saldoNaVista(
     todas ||
     lojas.some((u) => !u.ehDeposito && vendidoNaLoja(vendidoEm, u.id)) ||
     naVista.some((l) => l.quantidade !== 0 || deposito.has(l.unidadeId))
+  // O que é feito no dia zera todo fim de tarde por desenho — "11 acabaram"
+  // na padaria às 20h é o dia que deu certo, não falta. A padaria continua
+  // vendo o saldo; só não recebe o alarme.
+  if (saldo <= 0 && feitoNoDia) return { aparece, saldo, minimo, nivel: 'bom', doDia: true }
   const nivel = saldo <= 0 ? 'critico' : minimo > 0 && saldo <= minimo ? 'atencao' : 'bom'
   return { aparece, saldo, minimo, nivel }
 }

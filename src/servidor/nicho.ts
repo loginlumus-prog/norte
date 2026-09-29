@@ -43,6 +43,8 @@ import { grupoDa, horaEmSP } from './encomenda'
 import { listarAgenda, profissionaisDaLoja, horarioDaLoja, resumirDia, ROTULO_AGENDA, type SituacaoAgendamento } from './agenda'
 import { trabalhandoAgora } from './ponto'
 import { vocabularioDoRamo } from './vocabulario'
+import { alunosAtivos, listarTurmas, quaseCheia } from './escola'
+import { resumoMensalidades } from './mensalidades'
 
 // ─────────────────────────────────────────────────────────────
 // A TABELA
@@ -92,9 +94,10 @@ export const NICHOS: Record<Ramo, Nicho> = {
   outro: { familia: 'reposicao', nome: 'loja', plural: 'lojas', artigo: 'a' },
   beleza: { familia: 'agenda', nome: 'salão', plural: 'salões', artigo: 'o' },
   saude: { familia: 'agenda', nome: 'clínica', plural: 'clínicas', artigo: 'a' },
-  // A escola nasce sem a Agenda ligada (o ramo sugere só o ponto): o bloco
-  // mostra o que tem — quem está trabalhando e o que entrou hoje — e a agenda
-  // aparece no dia em que ela ligar o módulo.
+  // A escola nasce sem a Agenda ligada (o ramo sugere a Escola e o ponto): o
+  // bloco mostra o que ela tem — os alunos, a mensalidade do mês e o atraso,
+  // as turmas quase cheias, quem está trabalhando e o que entrou hoje — e a
+  // agenda aparece no dia em que ela ligar o módulo.
   escola: { familia: 'agenda', nome: 'escola', plural: 'escolas', artigo: 'a' },
 }
 
@@ -655,6 +658,24 @@ export type DadosAgenda = {
   trabalhando: { nome: string; desde: string }[] | null
   /** "clientes", "pacientes", "alunos". */
   pessoas: string
+  /** Nulo quando a Escola está desligada ou a pessoa não vê as turmas. */
+  escola: DadosEscola | null
+}
+
+export type DadosEscola = {
+  alunosAtivos: number
+  /** Nulo quando a pessoa não vê as mensalidades (o balcão vê; o gerente, idem). */
+  mensalidades: {
+    mes: string
+    aReceberMes: number
+    abertasMes: number
+    atraso: { quantas: number; total: number; alunos: number }
+    vencemHoje: { quantas: number; total: number }
+    recebidoHoje: number
+    recebidoNoMes: number
+  } | null
+  /** As turmas com pouca vaga — onde a próxima matrícula pode não caber. */
+  quaseCheias: { id: string; nome: string; ocupadas: number; capacidade: number }[]
 }
 
 export type BlocoDoNicho = {
@@ -973,6 +994,12 @@ async function dadosProducao(
       where: { unidadeId: { in: uni }, situacao: 'CONCLUIDA' },
       _min: { criadaEm: true },
     })
+    // Quando a casa marcou o que é FEITO NO DIA, a produção é só isso: o
+    // presunto e o refrigerante saem do balcão da padaria, mas ninguém os põe
+    // no forno — "quanto preparar de refrigerante" é pergunta sem sentido.
+    // Sem nada marcado (a lanchonete que nunca abriu a ficha), vale o que
+    // vendeu, como sempre foi.
+    const soDoDia = (await db.produto.count({ where: { feitoNoDia: true, ativo: true } })) > 0
     // Por produto e não por variação: o forno faz "pão francês", não "pão
     // francês — unidade". Item avulso (sem variação) fica de fora — não é
     // produção, é o conserto que alguém digitou.
@@ -987,6 +1014,7 @@ async function dadosProducao(
         join variacoes vr on vr.id = i.variacao_id
         join produtos p on p.id = vr.produto_id
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA' and v.criada_em >= ${desde}
+         and (not ${soDoDia} or p.feito_no_dia)
          and to_char((v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD') = any(${todos})
        group by 1, 2, 3, 4
     `
@@ -1006,6 +1034,7 @@ async function dadosProducao(
         join variacoes vr on vr.id = i.variacao_id
         join produtos p on p.id = vr.produto_id
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA' and v.criada_em >= ${desde}
+         and (not ${soDoDia} or p.feito_no_dia)
          and to_char((v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD') = any(${dias})
        group by 1, 2
     `
@@ -1197,5 +1226,37 @@ async function dadosAgenda(
       ? (await trabalhandoAgora(sessao, ids, agora)).map((t) => ({ nome: t.nome, desde: horaEmSP(t.desde) }))
       : null
 
-  return { agenda, recebido, trabalhando, pessoas: vocabularioDoRamo(ramo).pessoas }
+  const escola = moduloLigado(empresa, 'escola') && pode(sessao, 'escola.ver') ? await dadosEscola(sessao, ids, agora) : null
+
+  return { agenda, recebido, trabalhando, pessoas: vocabularioDoRamo(ramo).pessoas, escola }
+}
+
+/**
+ * O pedaço da escola: quantos alunos estudam, o que falta receber no mês, quem
+ * está em atraso (quantos e quanto), o que entrou, e as turmas quase cheias.
+ * Cada consulta abre o seu comoOrg, uma depois da outra.
+ */
+async function dadosEscola(sessao: Sessao, ids: string[], agora: Date): Promise<DadosEscola> {
+  const ativos = await alunosAtivos(sessao, ids)
+  const turmas = await listarTurmas(sessao, { unidadeIds: ids })
+  const quaseCheias = turmas
+    .filter((t) => t.capacidade && quaseCheia(t.ocupadas, t.capacidade))
+    .sort((a, b) => (a.vagas ?? 0) - (b.vagas ?? 0) || a.nome.localeCompare(b.nome, 'pt-BR'))
+    .slice(0, 5)
+    .map((t) => ({ id: t.id, nome: t.nome, ocupadas: t.ocupadas, capacidade: t.capacidade! }))
+  let mensalidades: DadosEscola['mensalidades'] = null
+  const comMensalidade = soAsQuePode(sessao, 'mensalidade.ver', ids)
+  if (comMensalidade.length > 0) {
+    const r = await resumoMensalidades(sessao, comMensalidade, diaEmSP(agora).slice(0, 7), agora)
+    mensalidades = {
+      mes: r.mes,
+      aReceberMes: r.doMes.aReceber,
+      abertasMes: r.doMes.quantas - r.doMes.pagas,
+      atraso: r.atraso,
+      vencemHoje: r.vencemHoje,
+      recebidoHoje: r.recebidoHoje,
+      recebidoNoMes: r.recebidoNoMes,
+    }
+  }
+  return { alunosAtivos: ativos, mensalidades, quaseCheias }
 }

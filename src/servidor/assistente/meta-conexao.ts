@@ -29,6 +29,7 @@ import { comoOrg } from '../banco'
 import { exigir, type Sessao } from '../permissao'
 import { cifrar, temCifra, SemChaveDeCifra } from '../cifra'
 import { exigirCampanhasLiberadas } from '../campanhas/acesso'
+import { exigirPlanoComAssistente } from '../agente'
 import { contextoDoToken, linhaMeta, SELECT_LINHA } from './canal'
 import {
   FORMATO_ID_META,
@@ -124,6 +125,9 @@ const DESLIGADA = 'A conexão oficial ainda não está ligada neste servidor. Fa
 
 export async function conectarPelaMeta(sessao: Sessao, e: EntradaConexao, o: OpcoesGraph = {}): Promise<ResultadoConexao> {
   exigir(sessao, 'agente.configurar')
+  // O plano antes de gastar o código de 30 segundos da Meta: conectar o
+  // número oficial é ligar o assistente ao mundo, e isso é do plano.
+  await exigirPlanoComAssistente(sessao.orgId)
   const cfg = lerConfigMeta()
   if (!cfg) return { ok: false, erro: DESLIGADA }
   if (!temCifra()) return { ok: false, erro: new SemChaveDeCifra().message }

@@ -23,7 +23,7 @@
 import { comoOrg } from './banco'
 import { pode, type Capacidade, type Sessao } from './permissao'
 
-export type Planilha = 'clientes' | 'vendas' | 'produtos' | 'estoque' | 'financeiro'
+export type Planilha = 'clientes' | 'vendas' | 'produtos' | 'estoque' | 'financeiro' | 'mensalidades'
 
 /** O que cada planilha exige. Todas as capacidades da lista, não uma delas. */
 export const EXIGE: Record<Planilha, readonly Capacidade[]> = {
@@ -32,6 +32,11 @@ export const EXIGE: Record<Planilha, readonly Capacidade[]> = {
   produtos: ['produto.ver'],
   estoque: ['estoque.ver'],
   financeiro: ['financeiro.ver'],
+  // A lista de quem deve à escola, com o nome e o telefone do responsável: é
+  // a carteira da escola. Pede ver a mensalidade E ler relatório — a
+  // secretaria recebe na tela, um por vez; baixar tudo é de quem cuida do
+  // negócio (a mesma régua da lista de clientes).
+  mensalidades: ['mensalidade.ver', 'relatorio.ver'],
 }
 
 export function podeExportar(sessao: Sessao, planilha: Planilha): boolean {
@@ -44,6 +49,7 @@ export const ROTULO: Record<Planilha, string> = {
   produtos: 'produtos',
   estoque: 'estoque',
   financeiro: 'lançamentos do financeiro',
+  mensalidades: 'mensalidades',
 }
 
 /** Só os NOMES dos filtros preenchidos — nunca o que foi digitado neles. */

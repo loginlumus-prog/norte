@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
 import { lerModo } from '@/servidor/modo'
 import { comoOrg } from '@/servidor/banco'
+import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { pode, textoDaBusca, unidadesQuePodem } from '@/servidor/permissao'
 import { podeVerCustoDe, saldoNaVista } from '@/servidor/produto'
 import { palavra } from '@/ui/texto'
@@ -18,7 +19,10 @@ import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
 
-export const metadata: Metadata = { title: 'Produtos' }
+// "Serviços e materiais" na clínica (vocabulario.ts).
+export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
+  return { title: (await vocabularioDoEndereco((await params).empresa)).Produtos }
+}
 
 type SituacaoItem = 'acabaram' | 'minimo' | 'ok'
 type Ordem = 'nome' | 'vendidos' | 'estoque' | 'preco'
@@ -143,7 +147,8 @@ export default async function Produtos({
       },
       orderBy: { nome: 'asc' },
       select: {
-        id: true, nome: true, marca: true, medida: true, custo: true, vendidoEm: true,
+        id: true, nome: true, marca: true, medida: true, custo: true, vendidoEm: true, servico: true,
+        usoInterno: true, feitoNoDia: true,
         categoria: { select: { id: true, nome: true } },
         precoVista: true, precoCartao: true, precoCrediario: true,
         variacoes: {
@@ -177,15 +182,18 @@ export default async function Produtos({
     .map((p) => ({
       ...p,
       variacoes: p.variacoes
-        .map((v) => ({
-          ...v,
-          na: saldoNaVista(
+        .map((v) => {
+          const na = saldoNaVista(
             p.vendidoEm,
             v.estoques.map((e) => ({ unidadeId: e.unidadeId, quantidade: Number(e.quantidade), minimo: e.minimo === null ? null : Number(e.minimo) })),
             lojasDaVista,
             vistaInteira || fora,
-          ),
-        }))
+            p.feitoNoDia,
+          )
+          // Serviço não tem estoque: nunca "acabou" (a manicure não some da
+          // prateleira). Fica na lista, que é o catálogo, mas fora da conta.
+          return { ...v, na: p.servico ? { ...na, nivel: 'bom' as const } : na }
+        })
         .filter((v) => v.na.aparece),
     }))
     .filter((p) => fora || p.variacoes.length > 0)
@@ -200,7 +208,7 @@ export default async function Produtos({
   // Conta a situação de cada variação uma vez, para a tira de cima e para o
   // cabeçalho de cada produto falarem a mesma coisa.
   const situacaoDe = (v: { na: { nivel: 'critico' | 'atencao' | 'bom' } }) => v.na.nivel
-  const todas = comSaldo.flatMap((p) => p.variacoes)
+  const todas = comSaldo.filter((p) => !p.servico).flatMap((p) => p.variacoes)
   const conta = {
     bom: todas.filter((v) => situacaoDe(v) === 'bom').length,
     atencao: todas.filter((v) => situacaoDe(v) === 'atencao').length,
@@ -264,7 +272,7 @@ export default async function Produtos({
       itens={MENU(slug)}
       ativo={`/${slug}/produtos`}
       tema={tema}
-      titulo="Produtos"
+      titulo={(await vocabularioDaEmpresa(sessao.orgId)).Produtos}
       acao={
         <span className="flex flex-wrap items-center gap-2">
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
@@ -478,7 +486,8 @@ export default async function Produtos({
                 )}
                 {!simples && p.marca && <span>{p.marca}</span>}
                 {podeVerPreco && <span className="numero">{dinheiro(p.precoVista)} à vista</span>}
-                {!simples && podeVerCusto &&
+                {/* Material de uso não vende: margem dele é número sem uso. */}
+                {!simples && podeVerCusto && !p.usoInterno &&
                   (margem === null ? (
                     <Link href={`/${slug}/produtos/${p.id}`} className="text-atencao hover:underline" title="Sem custo cadastrado, não há margem">
                       sem custo
@@ -488,17 +497,24 @@ export default async function Produtos({
                       margem bruta {margem.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%
                     </span>
                   ))}
-                {!simples && (
+                {/* Material de uso não vende: "sem venda em 30 dias" seria verdade
+                    que parece problema. Diz o que ele é. */}
+                {!simples && p.usoInterno ? (
+                  <span title="Tem estoque e entra em compras e no material usado; não aparece no balcão">material de uso — não vende</span>
+                ) : !simples ? (
                   <span className="numero" title="Vendido nos últimos 30 dias, nesta loja">
                     {vendeu ? `${quantidade(vendeu, p.medida)} ${palavra(vendeu, 'vendido', 'vendidos')} em 30 dias` : 'sem venda em 30 dias'}
                   </span>
-                )}
+                ) : null}
+                {!simples && p.feitoNoDia && <span title="A sobra sai ao fechar; zerado não é falta">feito no dia</span>}
                 {acabaram > 0 && <Ponto nivel="critico" quantos={acabaram} titulo="acabaram" />}
                 {noMinimo > 0 && <Ponto nivel="atencao" quantos={noMinimo} titulo="no mínimo" />}
                 {fora ? (
                   <Situacao nivel="neutro">fora de venda</Situacao>
+                ) : p.servico ? (
+                  <Situacao nivel="neutro">serviço, sem estoque</Situacao>
                 ) : (
-                  <Situacao nivel={total > 0 ? 'bom' : 'critico'}>
+                  <Situacao nivel={total > 0 ? 'bom' : p.feitoNoDia ? 'neutro' : 'critico'}>
                     {quantidade(total, p.medida)} {onde.unidadeId ? 'aqui' : 'no total'}
                   </Situacao>
                 )}
@@ -545,9 +561,17 @@ export default async function Produtos({
                   titulo: 'Em estoque',
                   numero: true,
                   celula: (v) => (
-                    <Situacao nivel={situacaoDe(v)}>
-                      {v.na.saldo <= 0 ? 'acabou' : quantidade(v.na.saldo, p.medida)}
-                    </Situacao>
+                    p.servico ? (
+                      <span className="text-xs text-tinta-3">serviço</span>
+                    ) : (
+                      v.na.doDia ? (
+                        <Situacao nivel="neutro">feito no dia</Situacao>
+                      ) : (
+                        <Situacao nivel={situacaoDe(v)}>
+                          {v.na.saldo <= 0 ? 'acabou' : quantidade(v.na.saldo, p.medida)}
+                        </Situacao>
+                      )
+                    )
                   ),
                 },
               ]}

@@ -71,6 +71,22 @@ const D: Record<string, ReactNode> = {
       <path d="M8.3 17.3c.6-1.9 2-3 3.7-3s3.1 1.1 3.7 3" />
     </>
   ),
+  // Turmas: o quadro da sala de aula.
+  turmas: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="11" rx="1.5" />
+      <path d="M7.5 8.5h6M7.5 11.5h4" />
+      <path d="M9 15.5 7.5 20M15 15.5l1.5 4.5" />
+    </>
+  ),
+  // Mensalidades: o carnê, com o mês destacado.
+  mensalidades: (
+    <>
+      <rect x="4.5" y="3.5" width="15" height="17" rx="2" />
+      <path d="M4.5 8h15M8 12h3M8 15.5h3" />
+      <path d="M14 12.5l1.2 1.2 2.3-2.4" />
+    </>
+  ),
   // Compras: o carrinho do fornecedor.
   compras: (
     <>

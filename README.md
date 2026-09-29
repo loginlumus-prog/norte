@@ -43,6 +43,35 @@ entre desenvolvimento e produção**.
 
 Os dados ficam em `.banco/`. Apagar a pasta = banco novo.
 
+### As empresas de demonstração (uma por ramo)
+
+Para mostrar o Norte, ou comparar como menu, painel, balcão e palavras mudam
+com o ramo, há seis empresas com dois meses de movimento: `demo-roupa` (duas
+lojas, grade tamanho × cor, crediário, metas, com gerente), `demo-sorveteria`
+(quilo, sabores, balcão em grade), `demo-padaria` (produção do dia,
+encomenda de bolo), `demo-petshop` (porte, reposição), `demo-beleza` (agenda
+das profissionais, esmaltes por cor, material usado, compras) e `demo-saude`
+(pacientes, agenda, insumos, ponto da equipe). A escola entra quando o módulo
+dela existir (ver `escola()` no script).
+
+```bash
+npm run demonstracoes                 # cria as que faltam; as que existem ficam como estão
+npm run demonstracoes -- --recriar    # apaga e recria só as demo-*
+npm run demonstracoes -- --so beleza  # só uma
+```
+
+Cada uma leva segundos. Quem entra: `dono@demo-<ramo>.test` e
+`balcao@demo-<ramo>.test` (e `gerente@demo-roupa.test`). As senhas são
+sorteadas a cada criação e **não aparecem na tela**: ficam em
+`.video/demonstracoes-senhas.txt`, fora do git.
+
+"Hoje" é o dia em que o script rodou: para demonstrar amanhã de manhã, rode
+de novo com `--recriar` (o caixa do dia só fica aberto se a loja estiver
+aberta na hora em que o script roda).
+
+No banco hospedado: `npm run demonstracoes -- --producao` (pede para digitar
+`demo-` antes de mexer; as senhas vão para `.video/demonstracoes-senhas-producao.txt`).
+
 ## Subir para o ar
 
 O banco fica no Supabase e a aplicação na Vercel, **os dois em São Paulo**. A

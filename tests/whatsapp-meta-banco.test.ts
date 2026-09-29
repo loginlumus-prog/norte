@@ -75,9 +75,9 @@ beforeAll(async () => {
       ('org-c', 'Loja C', 'loja-c', 'BALCAO_AGENTE', 'ATIVA', '{agente}', 5000, now());
     insert into unidades (id, org_id, nome, atualizada_em) values
       ('uni-a1', 'org-a', 'Centro A', now()), ('uni-c1', 'org-c', 'Centro C', now());
-    insert into usuarios (id, org_id, nome, email, telefone, atualizado_em) values
-      ('usr-ana', 'org-a', 'Ana Dona', 'ana@a.com', '(71) 99999-0001', now()),
-      ('usr-cida', 'org-c', 'Cida Dona', 'cida@c.com', '(71) 97777-0003', now());
+    insert into usuarios (id, org_id, nome, email, telefone, telefone_confirmado, telefone_confirmado_em, atualizado_em) values
+      ('usr-ana', 'org-a', 'Ana Dona', 'ana@a.com', '(71) 99999-0001', '7199990001', now(), now()),
+      ('usr-cida', 'org-c', 'Cida Dona', 'cida@c.com', '(71) 97777-0003', '7177770003', now(), now());
     insert into acessos (id, org_id, usuario_id, unidade_id, papel) values
       ('ac-ana', 'org-a', 'usr-ana', null, 'DONO'),
       ('ac-cida', 'org-c', 'usr-cida', null, 'DONO');

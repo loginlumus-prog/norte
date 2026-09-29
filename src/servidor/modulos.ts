@@ -5,12 +5,12 @@
 // A chave para ligar depois mora em Configurações — some da vista de quem não
 // usa, continua existindo para quando o negócio mudar.
 //
-// ── por que só nove ──────────────────────────────────────────
+// ── por que só dez ───────────────────────────────────────────
 // Cada chave dobra as combinações possíveis do sistema. Com seis eram 64
-// configurações; com nove são 512, e isso já é o teto do que dá para
-// raciocinar. Com trinta seriam mais de um bilhão, e aí ninguém consegue
-// afirmar que o sistema funciona — porque ninguém testou a combinação do
-// cliente.
+// configurações; com nove, 512; com dez, 1.024 — e isso já passa do teto do
+// que dá para raciocinar. Com trinta seriam mais de um bilhão, e aí ninguém
+// consegue afirmar que o sistema funciona — porque ninguém testou a
+// combinação do cliente.
 //
 // Então módulo é GROSSO. Preferência miúda ("mostrar coluna de custo") é
 // configuração de tela, não módulo.
@@ -36,6 +36,17 @@
 // Nenhum deles muda regra de venda, de estoque ou de dinheiro: acrescenta uma
 // porta para a mesma regra. É isso que faz a chave desligada ser só menos
 // tela, e não outro sistema.
+//
+// ── e a décima, a Escola ─────────────────────────────────────
+// Turma, matrícula e mensalidade são tabelas próprias, e a mensalidade é um
+// jeito de o dinheiro entrar que não é a venda do balcão — por isso é chave, e
+// não detalhe da tela de alunos. A mão continua única onde importa: o aluno é
+// a ficha de cliente de sempre (com a palavra "aluno"); a mensalidade em
+// dinheiro entra pela MESMA gaveta do caixa aberto (como a parcela do
+// crediário); e ela aparece no DRE numa linha dela, somada pela MESMA conta
+// que faz o mês, o gráfico e o fechamento (financeiro.ts). Desligar a Escola
+// some com as turmas e as mensalidades da vista; o dinheiro que já entrou
+// continua no DRE, porque entrou.
 
 export const MODULOS = {
   crediario: {
@@ -56,7 +67,7 @@ export const MODULOS = {
     pergunta: 'Você tem mais de uma loja ou depósito?',
   },
   agente: {
-    titulo: 'Agente no WhatsApp',
+    titulo: 'Assistente no WhatsApp',
     resumo: 'Perguntar pelo WhatsApp, receber relatório sozinho e rodar campanhas para clientes.',
     pergunta: 'Quer um assistente no WhatsApp para você e a equipe?',
   },
@@ -84,6 +95,11 @@ export const MODULOS = {
     titulo: 'Compras e fornecedores',
     resumo: 'Pedido ao fornecedor, recebimento que dá entrada no estoque e o material usado no dia a dia.',
     pergunta: 'Você compra de fornecedor e usa material no atendimento?',
+  },
+  escola: {
+    titulo: 'Alunos e mensalidades',
+    resumo: 'Turmas, matrículas com o responsável, e a mensalidade de cada mês — gerada sozinha, com multa, juros e recibo.',
+    pergunta: 'Você tem alunos matriculados que pagam mensalidade?',
   },
 } as const
 
@@ -225,9 +241,11 @@ export const RAMOS = {
     titulo: 'Pet shop',
     eixos: [{ nome: 'Porte', ehCor: false, opcoes: ['Filhote', 'Pequeno', 'Médio', 'Grande'] }],
     medida: 'UN',
-    sugere: ['encomenda'],
+    // Banho e tosa é hora marcada (a Agenda) e gasta material que se compra
+    // de fornecedor (Compras): o pet shop que só revende desliga os dois.
+    sugere: ['encomenda', 'compras', 'agenda'],
     balcao: 'busca' as const,
-    categorias: ['Ração', 'Petiscos', 'Higiene', 'Brinquedos', 'Acessórios', 'Medicamentos'],
+    categorias: ['Ração', 'Petiscos', 'Higiene', 'Brinquedos', 'Acessórios', 'Medicamentos', 'Banho e tosa'],
     manual:
       'Ração é o carro-chefe, e o que muda tudo é o PORTE e a idade do animal — pergunte isso antes de indicar qualquer coisa. ' +
       'Cliente de pet shop volta em ciclo, quando o saco acaba. ' +
@@ -316,7 +334,10 @@ export const RAMOS = {
     medida: 'UN',
     sugere: ['agenda', 'compras'],
     balcao: 'grade' as const,
-    categorias: ['Serviços', 'Unhas', 'Cabelo', 'Estética', 'Produtos para revenda', 'Material de uso'],
+    // Sem uma gaveta "Serviços": o serviço do salão JÁ é Unhas, Cabelo ou
+    // Estética. Com ela, a manicure ia para Unhas e "Serviços" ficava vazia —
+    // uma aba a mais no balcão que não leva a nada.
+    categorias: ['Unhas', 'Cabelo', 'Estética', 'Produtos para revenda', 'Material de uso'],
     manual:
       'Aqui se vende serviço com HORÁRIO MARCADO e alguns produtos. Horário só existe depois de conferido na agenda: nunca diga que tem vaga sem olhar, e nunca prometa uma profissional sem confirmar. ' +
       'Esmalte, tinta e material de uso são estoque da casa — o que acabou aparece no estoque, não na conversa. ' +
@@ -338,7 +359,7 @@ export const RAMOS = {
     titulo: 'Escola e cursos',
     eixos: [{ nome: 'Tamanho', ehCor: false, opcoes: ['4', '6', '8', '10', '12', '14', 'P', 'M', 'G'] }],
     medida: 'UN',
-    sugere: ['ponto'],
+    sugere: ['escola', 'ponto'],
     balcao: 'grade' as const,
     categorias: ['Material', 'Uniforme', 'Cursos livres'],
     manual:
@@ -370,3 +391,41 @@ export const RAMOS = {
 } as const
 
 export type Ramo = keyof typeof RAMOS
+
+/**
+ * As gavetas que o ramo semeia e que têm um JEITO próprio de estoque.
+ *
+ * `usoInterno` — material de uso, que não se vende: a acetona do salão, a
+ * luva da clínica. `feitoNoDia` — o que se produz e se vende no mesmo dia (o
+ * pão, a coxinha): zerado depois de fechar é o normal, não falta.
+ *
+ * É só o PADRÃO da ficha de produto: cadastrar um produto numa destas
+ * gavetas já traz a caixa marcada, e a pessoa desmarca se quiser. A regra
+ * mora no produto (`Produto.usoInterno`, `Produto.feitoNoDia`), nunca no nome
+ * da gaveta — a gaveta renomeada não muda nada do que já foi cadastrado.
+ */
+export const GAVETAS_MARCADAS: Partial<Record<Ramo, { usoInterno?: readonly string[]; feitoNoDia?: readonly string[] }>> = {
+  beleza: { usoInterno: ['Material de uso'] },
+  saude: { usoInterno: ['Insumos'] },
+  padaria: { feitoNoDia: ['Pães', 'Bolos', 'Salgados'] },
+  lanchonete: { feitoNoDia: ['Lanches', 'Porções', 'Sobremesas'] },
+}
+
+const chaveDeGaveta = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+
+/**
+ * O padrão da ficha para uma gaveta, pelos ramos da empresa e das lojas dela.
+ * Comparado sem acento nem caixa — "Material de Uso" é a mesma gaveta.
+ */
+export function marcasDaGaveta(ramos: readonly (string | null | undefined)[], nome: string): { usoInterno: boolean; feitoNoDia: boolean } {
+  const k = chaveDeGaveta(nome)
+  let usoInterno = false
+  let feitoNoDia = false
+  for (const r of ramos) {
+    if (!r || !Object.hasOwn(GAVETAS_MARCADAS, r)) continue
+    const g = GAVETAS_MARCADAS[r as Ramo]!
+    if (g.usoInterno?.some((x) => chaveDeGaveta(x) === k)) usoInterno = true
+    if (g.feitoNoDia?.some((x) => chaveDeGaveta(x) === k)) feitoNoDia = true
+  }
+  return { usoInterno, feitoNoDia }
+}

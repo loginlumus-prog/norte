@@ -18,7 +18,7 @@ import {
 } from '@/servidor/assinatura'
 import { PLANOS, mudanca } from '@/servidor/planos'
 import { EMPRESA } from '@/servidor/legal'
-import { centavos, mostrar } from '@/servidor/dinheiro'
+import { centavos, mostrar, DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
 export type EstadoAssinatura = { erro?: string; ok?: string }
 
@@ -91,8 +91,12 @@ export async function recarregar(
   const s = await exigirSessao(slug)
   exigir(s, 'empresa.configurar')
 
-  const valor = String(form.get('valor') ?? '').replace(',', '.')
-  const cent = centavos(valor || 0)
+  // `lerDinheiro`: "1.000,00" é mil. O `centavos` direto quebrava nele (dois
+  // pontos depois de trocar a vírgula) e a tela dava "deu problema".
+  const bruto = String(form.get('valor') ?? '').trim()
+  const lido = bruto ? lerDinheiro(bruto) : 0
+  if (lido === null) return { erro: DINHEIRO_ILEGIVEL }
+  const cent = centavos(lido)
 
   if (cent <= 0) return { erro: 'Diga quanto quer colocar de crédito.' }
   // Teto de segurança: um zero a mais numa recarga manual é dinheiro que

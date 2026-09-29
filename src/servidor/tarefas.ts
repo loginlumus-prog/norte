@@ -25,6 +25,7 @@
 // modelos), banco embaixo. O puro é o que os testes exercitam à exaustão.
 
 import type { Plano, SituacaoTarefa } from '@prisma/client'
+import type { Ramo } from './modulos'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, exigirNoAlcance, pode, podeNoAlcance, SemPermissao, unidadesQuePodem, PODERES, type Papel, type Sessao } from './permissao'
 import { liberado, PLANOS, TAREFAS_ABERTAS_NO_GRATIS } from './planos'
@@ -358,6 +359,177 @@ export const MODELOS = {
 } as const satisfies Record<string, Modelo>
 
 export type ChaveModelo = keyof typeof MODELOS
+
+// ── o modelo com a cara do negócio ───────────────────────────
+// "Repor as araras e prateleiras do que saiu ontem" é a abertura da loja de
+// roupa. Na clínica não há arara; no salão, a bancada é que se arruma; na
+// padaria a primeira coisa é a vitrine da fornada. O modelo é o mesmo quadro
+// (abrir e fechar, receber o que chegou) com as tarefas do lugar — como no
+// RAMOS de modulos.ts, o ramo escolhe o que NASCE pronto, nunca o caminho do
+// código.
+//
+// Cinco jeitos bastam: o varejo (o padrão acima), a comida (sorvete, pão,
+// lanche), o salão, a clínica e a escola. Ramo sem jeito próprio usa o
+// varejo; modelo sem variante usa o de cima.
+
+export type JeitoDoNegocio = 'varejo' | 'comida' | 'salao' | 'clinica' | 'escola'
+
+const JEITO: Partial<Record<Ramo, JeitoDoNegocio>> = {
+  sorveteria: 'comida',
+  padaria: 'comida',
+  lanchonete: 'comida',
+  beleza: 'salao',
+  saude: 'clinica',
+  escola: 'escola',
+}
+
+/** O jeito do negócio pelo ramo. Ramo desconhecido ou vazio é varejo. */
+export function jeitoDoRamo(ramo: string | null | undefined): JeitoDoNegocio {
+  return ramo && Object.hasOwn(JEITO, ramo) ? JEITO[ramo as Ramo]! : 'varejo'
+}
+
+const FECHAR_CAIXA = [
+  { titulo: 'Fazer a sangria e guardar o dinheiro no cofre', grupo: 'Ao fechar', prioridade: 5 },
+  { titulo: 'Fechar o caixa e conferir a diferença', grupo: 'Ao fechar', prioridade: 4 },
+]
+
+const VARIANTES: Record<Exclude<JeitoDoNegocio, 'varejo'>, Partial<Record<ChaveModelo, Modelo>>> = {
+  comida: {
+    abertura: {
+      titulo: 'Abertura e fechamento da casa',
+      descricao: 'O que conferir antes de servir o primeiro cliente e o que deixar em ordem antes de trancar.',
+      cor: '#1f4fd8',
+      grupos: ['Ao abrir', 'Ao fechar'],
+      tarefas: [
+        { titulo: 'Conferir a temperatura das geladeiras e dos freezers', grupo: 'Ao abrir', prioridade: 5, descricao: 'Anotar a temperatura de cada um. Fora da faixa, avisar antes de servir.' },
+        { titulo: 'Conferir o troco do caixa', grupo: 'Ao abrir', prioridade: 4, descricao: 'Contar o fundo de troco e anotar se faltou moeda.' },
+        { titulo: 'Montar a vitrine com a produção do dia', grupo: 'Ao abrir', prioridade: 3 },
+        { titulo: 'Conferir a validade do que está exposto', grupo: 'Ao abrir', prioridade: 3 },
+        { titulo: 'Ligar a maquininha e testar uma passagem', grupo: 'Ao abrir', prioridade: 2 },
+        ...FECHAR_CAIXA,
+        { titulo: 'Lançar a sobra do dia (perda ou doação)', grupo: 'Ao fechar', prioridade: 3, descricao: 'O que foi feito hoje e não saiu: é o que acerta o estoque do dia.' },
+        { titulo: 'Limpar a vitrine, as bancadas e o chão', grupo: 'Ao fechar', prioridade: 3 },
+        { titulo: 'Conferir se freezers e geladeiras ficaram fechados e ligados', grupo: 'Ao fechar', prioridade: 4 },
+      ],
+    },
+    mercadoria: {
+      titulo: 'Chegada de insumos',
+      descricao: 'Da entrega do fornecedor até a câmara fria: conferir, guardar certo e dar entrada.',
+      cor: '#ef7208',
+      grupos: ['Ao receber', 'Guardar'],
+      tarefas: [
+        { titulo: 'Conferir a nota contra o pedido', grupo: 'Ao receber', prioridade: 5 },
+        { titulo: 'Conferir a temperatura dos refrigerados na chegada', grupo: 'Ao receber', prioridade: 4 },
+        { titulo: 'Conferir a validade e recusar o que vier vencendo', grupo: 'Ao receber', prioridade: 4 },
+        { titulo: 'Dar entrada no estoque', grupo: 'Ao receber', prioridade: 4 },
+        { titulo: 'Guardar na ordem: o que vence primeiro sai primeiro', grupo: 'Guardar', prioridade: 3 },
+      ],
+    },
+  },
+  salao: {
+    abertura: {
+      titulo: 'Abertura e fechamento do salão',
+      descricao: 'O que deixar pronto antes da primeira cliente e o que arrumar antes de trancar.',
+      cor: '#1f4fd8',
+      grupos: ['Ao abrir', 'Ao fechar'],
+      tarefas: [
+        { titulo: 'Conferir a agenda do dia e confirmar quem ainda não confirmou', grupo: 'Ao abrir', prioridade: 5 },
+        { titulo: 'Conferir o troco do caixa', grupo: 'Ao abrir', prioridade: 4, descricao: 'Contar o fundo de troco e anotar se faltou moeda.' },
+        { titulo: 'Arrumar as bancadas e separar o material esterilizado', grupo: 'Ao abrir', prioridade: 4 },
+        { titulo: 'Conferir toalhas limpas e o material de uso', grupo: 'Ao abrir', prioridade: 3 },
+        { titulo: 'Ligar a maquininha e testar uma passagem', grupo: 'Ao abrir', prioridade: 2 },
+        ...FECHAR_CAIXA,
+        { titulo: 'Anotar o material usado no dia', grupo: 'Ao fechar', prioridade: 3, descricao: 'Em Material usado: é o que mantém certo o estoque de esmalte e acetona.' },
+        { titulo: 'Lavar e pôr os alicates para esterilizar', grupo: 'Ao fechar', prioridade: 5 },
+        { titulo: 'Desligar secadores, estufa e luzes, trancar a porta', grupo: 'Ao fechar', prioridade: 3 },
+      ],
+    },
+    mercadoria: {
+      titulo: 'Chegada de material',
+      descricao: 'Da caixa do fornecedor até a prateleira do salão: conferir, dar entrada e separar a revenda.',
+      cor: '#ef7208',
+      grupos: ['Ao receber', 'Guardar'],
+      tarefas: [
+        { titulo: 'Conferir a nota contra o pedido', grupo: 'Ao receber', prioridade: 5 },
+        { titulo: 'Conferir cor e validade de esmaltes e tintas', grupo: 'Ao receber', prioridade: 4 },
+        { titulo: 'Dar entrada no estoque', grupo: 'Ao receber', prioridade: 4 },
+        { titulo: 'Separar o que é revenda do que é material de uso', grupo: 'Guardar', prioridade: 3 },
+        { titulo: 'Organizar a prateleira de esmaltes por cor', grupo: 'Guardar', prioridade: 2 },
+      ],
+    },
+  },
+  clinica: {
+    abertura: {
+      titulo: 'Abertura e fechamento da clínica',
+      descricao: 'O que conferir antes do primeiro paciente e o que deixar em ordem antes de fechar.',
+      cor: '#1f4fd8',
+      grupos: ['Ao abrir', 'Ao fechar'],
+      tarefas: [
+        { titulo: 'Conferir a agenda do dia e as confirmações', grupo: 'Ao abrir', prioridade: 5 },
+        { titulo: 'Conferir as salas: maca, papel lençol e material descartável', grupo: 'Ao abrir', prioridade: 4 },
+        { titulo: 'Conferir a temperatura da geladeira de vacinas e medicamentos', grupo: 'Ao abrir', prioridade: 4 },
+        { titulo: 'Conferir o troco do caixa da recepção', grupo: 'Ao abrir', prioridade: 3 },
+        { titulo: 'Ligar a maquininha e testar uma passagem', grupo: 'Ao abrir', prioridade: 2 },
+        ...FECHAR_CAIXA,
+        { titulo: 'Anotar o material usado no dia', grupo: 'Ao fechar', prioridade: 3, descricao: 'Em Material usado: luva, gaze, seringa. É o que avisa antes de faltar.' },
+        { titulo: 'Descartar o lixo infectante no recipiente certo', grupo: 'Ao fechar', prioridade: 5 },
+        { titulo: 'Desligar os aparelhos e o ar-condicionado das salas', grupo: 'Ao fechar', prioridade: 2 },
+      ],
+    },
+    mercadoria: {
+      titulo: 'Chegada de insumos',
+      descricao: 'Da entrega do fornecedor ao armário da sala: conferir, dar entrada e guardar pela validade.',
+      cor: '#ef7208',
+      grupos: ['Ao receber', 'Guardar'],
+      tarefas: [
+        { titulo: 'Conferir a nota contra o pedido', grupo: 'Ao receber', prioridade: 5 },
+        { titulo: 'Conferir validade e lacre de cada caixa', grupo: 'Ao receber', prioridade: 5 },
+        { titulo: 'Dar entrada no estoque', grupo: 'Ao receber', prioridade: 4 },
+        { titulo: 'Guardar pela validade: o que vence primeiro fica na frente', grupo: 'Guardar', prioridade: 3 },
+      ],
+    },
+  },
+  escola: {
+    abertura: {
+      titulo: 'Abertura e fechamento da escola',
+      descricao: 'O que a secretaria confere antes da primeira turma e o que fecha no fim do dia.',
+      cor: '#1f4fd8',
+      grupos: ['Ao abrir', 'Ao fechar'],
+      tarefas: [
+        { titulo: 'Conferir as turmas do dia e se algum professor faltou', grupo: 'Ao abrir', prioridade: 5 },
+        { titulo: 'Abrir e arejar as salas, conferir o material de aula', grupo: 'Ao abrir', prioridade: 3 },
+        { titulo: 'Conferir as mensalidades que vencem hoje', grupo: 'Ao abrir', prioridade: 4 },
+        { titulo: 'Conferir o troco do caixa da secretaria', grupo: 'Ao abrir', prioridade: 3 },
+        ...FECHAR_CAIXA,
+        { titulo: 'Conferir se todo aluno pequeno foi buscado', grupo: 'Ao fechar', prioridade: 5, descricao: 'Ninguém sai sem o responsável ou quem ele autorizou.' },
+        { titulo: 'Anotar os recados para os responsáveis de amanhã', grupo: 'Ao fechar', prioridade: 2 },
+        { titulo: 'Desligar luzes e ar-condicionado, trancar as salas', grupo: 'Ao fechar', prioridade: 3 },
+      ],
+    },
+    mercadoria: {
+      titulo: 'Chegada de material e uniforme',
+      descricao: 'Da caixa do fornecedor até o armário da secretaria: conferir os tamanhos e dar entrada.',
+      cor: '#ef7208',
+      grupos: ['Ao receber', 'Guardar'],
+      tarefas: [
+        { titulo: 'Conferir a nota contra o pedido', grupo: 'Ao receber', prioridade: 5 },
+        { titulo: 'Contar os uniformes por tamanho', grupo: 'Ao receber', prioridade: 4 },
+        { titulo: 'Dar entrada no estoque', grupo: 'Ao receber', prioridade: 4 },
+        { titulo: 'Separar o material já pedido pelas turmas', grupo: 'Guardar', prioridade: 3 },
+      ],
+    },
+  },
+}
+
+/**
+ * O modelo com as tarefas do negócio. O mesmo quadro para todo mundo; o que
+ * muda é o que vai escrito nele.
+ */
+export function modeloPara(chave: ChaveModelo, ramo: string | null | undefined): Modelo {
+  const jeito = jeitoDoRamo(ramo)
+  const variante = jeito === 'varejo' ? undefined : VARIANTES[jeito][chave]
+  return variante ?? MODELOS[chave]
+}
 
 // `hasOwn`, não `in`: "toString" está `in` qualquer objeto, e viria do navegador.
 export const modeloValido = (c: unknown): c is ChaveModelo => typeof c === 'string' && Object.hasOwn(MODELOS, c)
@@ -1090,15 +1262,20 @@ export async function criarDeModelo(sessao: Sessao, chave: ChaveModelo, unidadeI
   const onde = unidadeId || null
   exigirNoAlcance(sessao, 'tarefa.gerir', onde)
   if (!modeloValido(chave)) throw new Error('Esse modelo não existe.')
-  const modelo: Modelo = MODELOS[chave]
 
   return comoOrg(sessao.orgId, async (db) => {
     const plano = await planoDe(db, sessao.orgId)
     if (!liberado(plano, 'tarefas.modelos')) throw new Error('Modelos de quadro são do Assistente para cima.')
+    // O ramo da LOJA do quadro, senão o da empresa: a sorveteria da rede de
+    // roupa abre a casa conferindo o freezer, não a arara.
+    const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { ramo: true } })
+    let ramo = org.ramo
     if (onde) {
-      const u = await db.unidade.findFirst({ where: { id: onde, ativa: true }, select: { id: true } })
+      const u = await db.unidade.findFirst({ where: { id: onde, ativa: true }, select: { id: true, ramo: true } })
       if (!u) throw new Error('Essa loja não existe.')
+      ramo = u.ramo ?? org.ramo
     }
+    const modelo = modeloPara(chave, ramo)
     const ultimo = await db.quadro.aggregate({ _max: { ordem: true } })
     const q = await db.quadro.create({
       data: {

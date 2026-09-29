@@ -10,7 +10,9 @@ import { mostrarTelefone } from '@/servidor/cliente'
 import {
   NIVEL_ENCOMENDA,
   ROTULO_ENCOMENDA,
+  ROTULO_FORMA_SINAL,
   acharEncomenda,
+  formaSinalValida,
   agrupar,
   diaCurtoSP,
   diaEmSP,
@@ -138,6 +140,21 @@ export default async function Encomendas({
     )
   }
 
+  // A venda do balcão que recebeu o resto: um link de verdade (é a ligação
+  // `Venda.encomendaId`, não texto na observação).
+  const recebida = (e: EncomendaNaLista) =>
+    e.venda && (
+      <Link href={`/${slug}/vendas/${e.venda.id}`} className="text-xs font-medium text-marca hover:underline">
+        Recebida no balcão: venda {e.venda.numero}
+      </Link>
+    )
+
+  // "Pix", "Dinheiro": como o sinal foi pago. Some nas encomendas antigas.
+  const formaDoSinal = (e: EncomendaNaLista) =>
+    e.sinal > 0 && formaSinalValida(e.sinalForma) ? (
+      <span className="text-[11px] text-tinta-3">{ROTULO_FORMA_SINAL[e.sinalForma]}</span>
+    ) : null
+
   const comoSai = (e: EncomendaNaLista) =>
     e.entrega ? (
       <span className="text-xs text-tinta-2">
@@ -156,6 +173,7 @@ export default async function Encomendas({
       situacao={e.situacao}
       falta={e.falta}
       sinal={e.sinal}
+      sinalForma={formaSinalValida(e.sinalForma) ? e.sinalForma : null}
       podeMexer={pode(sessao, 'venda.criar', e.unidadeId)}
       podeCancelar={pode(sessao, 'venda.cancelar', e.unidadeId)}
       podeVender={pode(sessao, 'venda.criar', e.unidadeId)}
@@ -189,6 +207,7 @@ export default async function Encomendas({
           <p className="text-sm text-tinta">{e.descricao}</p>
           {comoSai(e)}
           {e.observacao && <p className="text-xs whitespace-pre-line text-tinta-3">{e.observacao}</p>}
+          {recebida(e)}
           <dl className="grid grid-cols-3 gap-2 border-t border-borda-suave pt-2 text-xs">
             <div className="flex flex-col">
               <dt className="text-tinta-3">Valor</dt>
@@ -196,7 +215,10 @@ export default async function Encomendas({
             </div>
             <div className="flex flex-col">
               <dt className="text-tinta-3">Sinal</dt>
-              <dd className="numero text-tinta-2">{brl(e.sinal)}</dd>
+              <dd className="numero flex flex-col text-tinta-2">
+                {brl(e.sinal)}
+                {formaDoSinal(e)}
+              </dd>
             </div>
             <div className="flex flex-col">
               <dt className="text-tinta-3">Falta pagar</dt>
@@ -235,6 +257,7 @@ export default async function Encomendas({
               <span className="text-tinta">{e.descricao}</span>
               {comoSai(e)}
               {e.observacao && <span className="text-xs whitespace-pre-line text-tinta-3">{e.observacao}</span>}
+              {recebida(e)}
               {variasLojas && <span className="text-xs text-tinta-3">{e.unidadeNome}</span>}
             </span>
           ),
@@ -245,7 +268,12 @@ export default async function Encomendas({
           titulo: 'Sinal',
           numero: true,
           largura: '5.5rem',
-          celula: (e: EncomendaNaLista) => <span className="text-tinta-2">{brl(e.sinal)}</span>,
+          celula: (e: EncomendaNaLista) => (
+            <span className="flex flex-col items-end text-tinta-2">
+              {brl(e.sinal)}
+              {formaDoSinal(e)}
+            </span>
+          ),
         },
         {
           chave: 'falta',
@@ -303,8 +331,9 @@ export default async function Encomendas({
           tela que piora sozinho com o tempo. */}
       {resumo.atrasadas > 0 && (
         <Aviso nivel="critico" pulsa>
-          {resumo.atrasadas} encomenda{resumo.atrasadas === 1 ? '' : 's'} passou da hora e não saiu. Ligue para o
-          cliente ou marque como entregue.
+          {resumo.atrasadas === 1
+            ? '1 encomenda passou da hora e não saiu. Ligue para o cliente ou marque como entregue.'
+            : `${resumo.atrasadas} encomendas passaram da hora e não saíram. Ligue para os clientes ou marque como entregues.`}
         </Aviso>
       )}
 
@@ -326,6 +355,7 @@ export default async function Encomendas({
             descricao: editando.descricao,
             valor: editando.valor,
             sinal: editando.sinal,
+            sinalForma: formaSinalValida(editando.sinalForma) ? editando.sinalForma : null,
             dia: diaEmSP(editando.para),
             hora: horaEmSP(editando.para),
             entrega: editando.entrega,

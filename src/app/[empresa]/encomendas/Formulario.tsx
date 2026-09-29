@@ -12,6 +12,12 @@
 // vai cadastrar a tia do bolo com o telefone tocando. Então dá para buscar no
 // cadastro (e o histórico fica ligado) ou só escrever o nome e o WhatsApp.
 //
+// ── como o sinal foi pago ────────────────────────────────────
+// Dinheiro entra na GAVETA (suprimento no caixa aberto da loja), Pix e cartão
+// não. Por isso a pergunta aparece sempre que há sinal entrando — ou, na
+// edição, sempre que ele muda: a diferença também entra (ou volta) de algum
+// jeito. Sem escolher, o servidor recusa; ninguém escolhe por ela.
+//
 // ── data E hora ──────────────────────────────────────────────
 // "Sábado" não basta: sábado às 9h e sábado às 17h são duas manhãs de trabalho
 // diferentes. A hora é a do relógio da loja; o servidor converte.
@@ -20,6 +26,7 @@ import { startTransition, useActionState, useEffect, useRef, useState } from 're
 import Link from 'next/link'
 import { Aviso, Botao, Campo, Cartao, Marcar, Selecao } from '@/ui/base'
 import { brl } from '@/ui/painel'
+import { lerDinheiro } from '@/servidor/dinheiro'
 import { buscarClientesAcao, salvarEncomendaAcao, type EstadoEncomenda } from './acoes'
 
 export type EncomendaInicial = {
@@ -30,6 +37,8 @@ export type EncomendaInicial = {
   descricao: string
   valor: number
   sinal: number
+  /** Como o sinal foi pago (nulo nas encomendas antigas). */
+  sinalForma: FormaSinal | null
   dia: string
   hora: string
   entrega: boolean
@@ -39,6 +48,16 @@ export type EncomendaInicial = {
 }
 
 type ClienteAchado = { id: string; nome: string; telefone: string | null }
+
+type FormaSinal = 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'TRANSFERENCIA'
+
+const FORMAS_SINAL: { valor: FormaSinal; titulo: string }[] = [
+  { valor: 'DINHEIRO', titulo: 'Dinheiro' },
+  { valor: 'PIX', titulo: 'Pix' },
+  { valor: 'DEBITO', titulo: 'Débito' },
+  { valor: 'CREDITO', titulo: 'Crédito' },
+  { valor: 'TRANSFERENCIA', titulo: 'Transferência' },
+]
 
 const telefoneBonito = (t: string | null) => {
   if (!t) return ''
@@ -50,13 +69,12 @@ const telefoneBonito = (t: string | null) => {
 
 const numeroParaCampo = (n: number) => (n ? n.toFixed(2).replace('.', ',') : '')
 
-/** "1.234,56" → 1234.56, só para a conta ao vivo da tela. O servidor refaz tudo. */
-const lerDinheiro = (t: string) => {
-  const s = t.trim()
-  if (!s) return 0
-  const n = Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s)
-  return Number.isFinite(n) ? n : 0
-}
+/**
+ * "1.234,56" → 1234.56, só para a conta ao vivo da tela — pela mesma régua
+ * do servidor (`lerDinheiro`), senão a conta da tela e o que grava divergem.
+ * O que não dá para ler conta zero AQUI; quem recusa com recado é a ação.
+ */
+const lerValor = (t: string) => lerDinheiro(t) ?? 0
 
 export function Formulario({
   slug,
@@ -95,6 +113,7 @@ export function Formulario({
   const [entrega, setEntrega] = useState(inicial?.entrega ?? false)
   const [valor, setValor] = useState(numeroParaCampo(inicial?.valor ?? 0))
   const [sinal, setSinal] = useState(numeroParaCampo(inicial?.sinal ?? 0))
+  const [forma, setForma] = useState<FormaSinal | ''>(inicial?.sinalForma ?? '')
   const formRef = useRef<HTMLFormElement>(null)
 
   // Deu certo ao anotar: limpa e fecha. O `vez` muda a cada envio, então o
@@ -107,6 +126,7 @@ export function Formulario({
       setEntrega(false)
       setValor('')
       setSinal('')
+      setForma('')
       setAberto(false)
     }
   }, [estado.vez, estado.ok, editando])
@@ -135,9 +155,20 @@ export function Formulario({
     )
   }
 
-  const valorN = lerDinheiro(valor)
-  const sinalN = lerDinheiro(sinal)
+  const valorN = lerValor(valor)
+  const sinalN = lerValor(sinal)
   const falta = Math.max(valorN - sinalN, 0)
+  // O dinheiro do sinal que se move AGORA: o sinal inteiro ao anotar, a
+  // diferença ao mudar. É dele que a pergunta "como pagou" trata.
+  const movendo = Math.round((sinalN - (inicial?.sinal ?? 0)) * 100) / 100
+  const perguntaForma =
+    movendo > 0
+      ? editando
+        ? `Como pagou os ${brl(movendo)} a mais de sinal`
+        : 'Como pagou o sinal'
+      : movendo < 0
+        ? `Como devolveu os ${brl(-movendo)} de sinal`
+        : null
 
   return (
     <Cartao
@@ -276,7 +307,7 @@ export function Formulario({
           placeholder="Bolo de chocolate 2 kg, escrito Parabéns Ana"
         />
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Campo
             rotulo="Valor"
             name="valor"
@@ -294,6 +325,26 @@ export function Formulario({
             placeholder="0,00"
             dica={editando ? 'Mudou? A diferença entra no financeiro hoje.' : 'Opcional. Entra no financeiro hoje, como receita.'}
           />
+          {perguntaForma ? (
+            <Selecao
+              rotulo={perguntaForma}
+              name="sinalForma"
+              value={forma}
+              onChange={(ev) => setForma(ev.currentTarget.value as FormaSinal | '')}
+              required
+              opcoes={[
+                { valor: '', titulo: 'Escolha…' },
+                ...(movendo < 0 ? FORMAS_SINAL.filter((f) => f.valor !== 'DEBITO' && f.valor !== 'CREDITO') : FORMAS_SINAL),
+              ]}
+              dica={
+                forma === 'DINHEIRO'
+                  ? movendo > 0
+                    ? 'Entra na gaveta: o caixa da loja precisa estar aberto.'
+                    : 'Sai da gaveta: o caixa da loja precisa estar aberto.'
+                  : undefined
+              }
+            />
+          ) : null}
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-tinta">Falta pagar</span>
             <span className="numero rounded-norte bg-superficie-2 px-3 py-2 text-sm font-semibold text-tinta">

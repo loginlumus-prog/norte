@@ -24,6 +24,7 @@ import {
   ROTINAS_NA_TELA,
 } from '@/servidor/assistente/conexao'
 import { estadoMeta } from '@/servidor/assistente/meta-conexao'
+import { equipeSemConfirmar } from '@/servidor/assistente/confirmacao'
 import { plural } from '@/ui/texto'
 import { moduloLigado } from '@/servidor/modulos'
 import { ORDEM, doPlano, planoLibera } from '@/servidor/planos'
@@ -97,7 +98,7 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
                 ) : (
                   <b className="text-tinta">Configurações › O que sua empresa usa</b>
                 )}
-                , marque &quot;Agente no WhatsApp&quot; e salve.
+                , marque &quot;Assistente no WhatsApp&quot; e salve.
               </p>
             ) : (
               <p>
@@ -183,6 +184,9 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
   const meta = await estadoMeta(sessao)
   const gatilhos = agente ? await gatilhosDaTela(sessao) : []
   const conversas = agente ? await conversasRecentes(sessao) : []
+  // Quem tem telefone e ainda não confirmou: para o assistente, é cliente —
+  // não conversa com ele e não manda relatório. A dona precisa ver quem.
+  const semConfirmar = await equipeSemConfirmar(sessao)
   const saldo = bal.trouxe - bal.custou
 
   return (
@@ -305,6 +309,23 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
       {/* A conexão vem antes do formulário: "ele está funcionando?" é a
           pergunta de quem abre a tela, e a resposta cabe numa frase. */}
       <Secao titulo="No WhatsApp">
+        {semConfirmar.length > 0 && (
+          <Aviso nivel="atencao">
+            {semConfirmar.length === 1
+              ? `O WhatsApp de ${semConfirmar[0]!.souEu ? 'você' : semConfirmar[0]!.nome} ainda não foi confirmado`
+              : `${semConfirmar.length} pessoas da equipe ainda não confirmaram o WhatsApp (${semConfirmar
+                  .map((p) => (p.souEu ? 'você' : p.nome))
+                  .join(', ')})`}
+            . Até confirmar, o assistente trata o número como de cliente: não responde por ali e não manda relatório
+            nem aviso. Cada pessoa confirma o próprio número em{' '}
+            <Link href={`/${slug}/conta`} className="font-semibold underline">
+              Minha conta
+            </Link>
+            {semConfirmar.some((p) => p.estado === 'vencido')
+              ? ' (número sem mensagem para a loja há mais de 180 dias também precisa confirmar de novo).'
+              : '.'}
+          </Aviso>
+        )}
         <Conexao slug={slug} estado={conexao} meta={meta} />
         {agente && <Rotinas slug={slug} rotinas={ROTINAS_NA_TELA} itens={gatilhos} />}
         {agente && <Conversas itens={conversas} nome={agente.nome} />}

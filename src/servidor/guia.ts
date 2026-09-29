@@ -80,6 +80,12 @@ export const NOME_DA_CAPACIDADE: Record<Capacidade, string> = {
   'ponto.proprio': 'bater o próprio ponto',
   'ponto.ver': 'ver as horas de todos',
   'ponto.gerir': 'bater, ajustar e anular o ponto dos outros',
+  'escola.ver': 'ver turmas e matrículas',
+  'escola.matricular': 'matricular alunos e anotar o responsável',
+  'escola.gerir': 'criar turmas, mudar o valor e dar bolsa',
+  'mensalidade.ver': 'ver as mensalidades',
+  'mensalidade.receber': 'receber mensalidade',
+  'mensalidade.ajustar': 'dispensar a mensalidade de um mês',
   'cliente.ver': 'ver clientes',
   'cliente.editar': 'cadastrar e editar clientes',
   'tarefa.ver': 'ver o quadro de tarefas',
@@ -707,6 +713,157 @@ export const GUIA: Entrada[] = [
     palavras: ['horario', 'marcar', 'agendamento', 'agendar', 'consulta', 'hora marcada', 'remarcar', 'desmarcar', 'falta', 'faltou', 'profissional', 'manicure', 'paciente', 'livre', 'vaga'],
   },
 
+  // ── Turmas (Escola) ──
+  {
+    chave: 'turmas',
+    titulo: 'Turmas',
+    caminho: '/turmas',
+    abre: ['escola.ver'],
+    modulo: 'escola',
+    oQueE:
+      'As turmas da escola ou do curso: o nome, o curso ou a série, o turno, os dias e o horário, quem dá aula (a ficha de Funcionários), quantos cabem e a mensalidade padrão. Cada turma mostra quantos alunos ocupam vaga (ativos e trancados) e quantas sobram — a que está quase cheia fica amarela, a cheia fica vermelha. Abrindo a turma: a lista dos alunos com o responsável, a situação da matrícula (ativa, trancada, cancelada, concluída), a bolsa, e matricular. O aluno é a ficha de Alunos de sempre. Só existe com o módulo “Alunos e mensalidades” ligado em Configurações (planos pagos).',
+    comoFazer: [
+      {
+        titulo: 'Criar uma turma',
+        passos: [
+          '“+ Nova turma”.',
+          'Nome, curso ou série, turno, os dias da semana e o horário da aula.',
+          'Quem dá aula: escolha da lista de Funcionários (a pessoa não precisa ter login).',
+          'Capacidade (quantos alunos cabem) e o período, se a turma tem começo e fim.',
+          'A mensalidade padrão e o dia de vencimento — é o que a matrícula nova recebe. “Salvar”.',
+        ],
+        capacidade: 'escola.gerir',
+        plano: 'BALCAO',
+      },
+      {
+        titulo: 'Matricular um aluno',
+        passos: [
+          'Abra a turma e toque em “Matricular”.',
+          'Procure o aluno pelo nome. Aluno novo: cadastre antes em Alunos (+ Novo aluno) — só o nome basta.',
+          'O início vem com hoje; a mensalidade e o vencimento vêm da turma.',
+          'Turma cheia: a tela avisa e pede “é isso mesmo”.',
+          '“Matricular”. A mensalidade deste mês e a do próximo já aparecem em Mensalidades.',
+        ],
+        capacidade: 'escola.matricular',
+      },
+      {
+        titulo: 'Dar bolsa ou mudar o valor de um aluno',
+        passos: [
+          'Na turma, no aluno, “Valor e bolsa”.',
+          'Bolsa em porcento e/ou um desconto fixo em reais, sempre com o motivo (“irmão”, “funcionário”).',
+          'As mensalidades dele que ainda não receberam nada, deste mês em diante, mudam junto. O que já foi pago fica como está.',
+          'A secretaria não dá bolsa nem muda valor: é de quem gere a escola.',
+        ],
+        capacidade: 'escola.gerir',
+      },
+      {
+        titulo: 'Trancar, cancelar ou concluir',
+        passos: [
+          'No aluno da turma: “Trancar”, “Cancelar” ou “Concluir” — todas pedem o motivo.',
+          'As mensalidades DEPOIS do mês da saída que não receberam nada são dispensadas sozinhas. A do mês fica: se é devida, a escola decide em Mensalidades.',
+          'O que já venceu e não foi pago continua devido — sair não apaga dívida.',
+          'Trancada volta a ativa com “Reativar”; cancelada e concluída não voltam (quem volta faz matrícula nova).',
+        ],
+        capacidade: 'escola.matricular',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'Mudei a mensalidade da turma. Muda para quem já está matriculado?',
+        r: 'Não. O valor da turma é o da matrícula NOVA; cada matrícula guarda o dela. Para mudar o de um aluno, “Valor e bolsa” na turma.',
+      },
+      {
+        p: 'Onde cadastro o aluno?',
+        r: 'Em Alunos, como qualquer ficha. O responsável (quem paga e quem a escola contata) se anota na ficha do aluno, na parte Escola.',
+      },
+      {
+        p: 'Tem lista de presença?',
+        r: 'Ainda não. A turma mostra quem está matriculado; a chamada fica no caderno do professor por enquanto.',
+      },
+    ],
+    palavras: ['turma', 'turmas', 'classe', 'sala', 'matricula', 'matricular', 'matrícula', 'aluno', 'alunos', 'bolsa', 'vaga', 'vagas', 'professor', 'curso', 'série', 'trancar', 'cancelar matrícula', 'escola'],
+  },
+
+  // ── Mensalidades (Escola) ──
+  {
+    chave: 'mensalidades',
+    titulo: 'Mensalidades',
+    caminho: '/mensalidades',
+    abre: ['mensalidade.ver'],
+    modulo: 'escola',
+    oQueE:
+      'A mensalidade de cada aluno, mês a mês. Ela nasce sozinha — a deste mês e a do próximo — para toda matrícula ativa, e não nasce duas vezes. No alto, o mês: quanto se deve, quanto entrou, quanto falta, o que está em atraso (de qualquer mês) e o que entrou hoje; e cada turma, com o que falta receber. “Receber” registra o pagamento: em dinheiro, entra na gaveta do caixa aberto (sem caixa aberto, é recusado); Pix, cartão e transferência ficam anotados, com a taxa do dia. A multa de atraso (uma vez só) e o juro por dia saem da regra da escola, em Configurações — dá para cobrar menos, nunca mais. Tudo entra no Financeiro, na linha “Mensalidades” do resultado. Cada mensalidade tem recibo para imprimir, e cada aluno tem o carnê do ano.',
+    comoFazer: [
+      {
+        titulo: 'Receber uma mensalidade',
+        passos: [
+          'Ache o aluno (busca por aluno ou responsável, ou o filtro da turma) e toque em “Receber”.',
+          'O valor já vem com o que falta mais a multa e o juro de hoje, se estiver atrasada. Pode diminuir o juro e a multa, não aumentar.',
+          'Pagou até o vencimento e a escola dá desconto de pontualidade? Marque “Desconto de pontualidade” — vale só para quem paga tudo de uma vez.',
+          'Escolha como pagou e “Confirmar”. Em dinheiro, o caixa da unidade precisa estar aberto.',
+          'Pagou só uma parte? Receba o que entrou: o resto continua em aberto, e o juro seguinte conta só dos dias novos.',
+        ],
+        capacidade: 'mensalidade.receber',
+      },
+      {
+        titulo: 'Ver quem está em atraso',
+        passos: [
+          'No alto, “Em atraso” diz quantas, quanto e quantos alunos.',
+          'O filtro “em atraso” lista todas as vencidas e não pagas, de qualquer mês, com os dias de atraso.',
+          'O nome do responsável e o telefone estão na linha — a cobrança é com ele, nunca com o aluno.',
+          'Com o assistente ligado, dá para perguntar pelo WhatsApp: “quem está atrasado na mensalidade?”.',
+        ],
+        capacidade: 'mensalidade.ver',
+      },
+      {
+        titulo: 'Imprimir o recibo e o carnê',
+        passos: [
+          '“Recibo” na linha da mensalidade abre o recibo para imprimir: aluno, responsável, mês, turma e cada pagamento.',
+          'O carnê do aluno (“Carnê”, na ficha dele) mostra as mensalidades dos próximos doze meses — as que já nasceram e a previsão das seguintes.',
+          'Toque em “Imprimir” (ou salve em PDF pelo navegador).',
+        ],
+        capacidade: 'mensalidade.ver',
+      },
+      {
+        titulo: 'Dispensar a mensalidade de um mês',
+        passos: [
+          'Na linha, “Dispensar”: o aluno entrou no fim do mês, a escola perdoou.',
+          'Escreva o motivo — ele fica no livro de auditoria.',
+          'Só dispensa a que não recebeu nada. Dinheiro que entrou não some com um clique.',
+        ],
+        capacidade: 'mensalidade.ajustar',
+      },
+      {
+        titulo: 'Baixar a planilha',
+        passos: [
+          '“Baixar planilha” leva as mensalidades do filtro da tela (mês, turma, situação).',
+          'Cada download fica no livro de auditoria, com quem baixou e quantas linhas.',
+          'Abre no Excel e no Google Planilhas.',
+        ],
+        capacidade: 'mensalidade.ver',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'Por que a multa não aparece no segundo pagamento atrasado?',
+        r: 'A multa é uma vez só por mensalidade: o primeiro recebimento atrasado resolve (cobrando ou dispensando). O juro continua, só dos dias que ainda não pagaram juro.',
+      },
+      {
+        p: 'A mensalidade entra no resultado do mês?',
+        r: 'Entra, no dia em que o dinheiro entrou: na linha “Mensalidades” do Financeiro; o juro e a multa em “Outras receitas”; a taxa do cartão e do Pix em “Financeiras”. O desconto de pontualidade não é dinheiro e não entra.',
+      },
+      {
+        p: 'A escola pode bloquear o aluno que está devendo?',
+        r: 'Não, e o sistema não faz isso: a lei (Lei 9.870/99, art. 6º) proíbe reter documento ou suspender prova por atraso. A dívida é cobrada do responsável, como dinheiro.',
+      },
+      {
+        p: 'O responsável recebe aviso no WhatsApp?',
+        r: 'Só se a escola ligar em Configurações (desligado por padrão) e o responsável tiver aceitado, anotado na ficha do aluno. Texto fixo, com o valor e o vencimento, dias antes e (se a escola quiser) depois do vencimento; responder PARAR tira o número. Nunca vai para o aluno.',
+      },
+    ],
+    palavras: ['mensalidade', 'mensalidades', 'mensal', 'boleto', 'carnê', 'carne', 'recibo', 'receber mensalidade', 'atraso', 'atrasado', 'inadimplente', 'devendo', 'multa', 'juros', 'pontualidade', 'desconto', 'bolsa', 'escola', 'curso', 'aluno'],
+  },
+
   // ── Funcionários e ponto ──
   {
     chave: 'funcionarios',
@@ -821,6 +978,17 @@ export const GUIA: Entrada[] = [
         capacidade: 'produto.editar',
       },
       {
+        titulo: 'Material de uso e o que é feito no dia',
+        passos: [
+          'Na ficha do produto, o bloco "Estoque" tem duas caixas.',
+          '"Material de uso — não vende": a luva, a gaze, a acetona, o algodão. Conta estoque, mínimo, compra e "Material usado", mas não aparece no balcão (nem na grade, nem na busca) e a venda recusa. Também não entra como "parado" nem em "sem venda em 30 dias": ele sai pelo consumo. Na previsão do que vai faltar, o ritmo dele é o consumo anotado.',
+          '"Feito no dia": o pão, a coxinha, o café. A sobra sai ao fechar, então zerado mostra "feito no dia", e não "acabou" — nem no Estoque, nem no "Precisa de você". Não entra na previsão de compra, e a "Produção do dia" do painel é feita só com eles.',
+          'No produto NOVO, a categoria traz o padrão do ramo: "Material de uso" no salão e "Insumos" na clínica já vêm com a primeira caixa marcada; "Pães", "Bolos" e "Salgados" na padaria, com a segunda. É sugestão — desmarque antes de salvar se não for o caso.',
+          'Virar material de uso tira o produto do balcão de todas as lojas dele: só muda quem cuida de todas elas, como o preço.',
+        ],
+        capacidade: 'produto.editar',
+      },
+      {
         titulo: 'Imprimir etiquetas',
         passos: [
           'Na lista, "etiquetas" no produto; ou "Etiquetas" no alto, com uma busca ou categoria aplicada (algum recorte é obrigatório).',
@@ -868,7 +1036,7 @@ export const GUIA: Entrada[] = [
         r: 'Quantos dias o fornecedor leva para repor. Sem informar, vale 7. A previsão "Vai faltar", em Estoque (plano Direção), usa esse prazo para dizer até quando pedir.',
       },
     ],
-    palavras: ['catálogo', 'cadastro de produto', 'cadastrar produto', 'mercadoria', 'peça', 'variação', 'grade', 'tamanho', 'cor', 'etiqueta', 'código de barras', 'ean', 'sku', 'preço', 'custo', 'categoria', 'marca', 'planilha', 'exportar'],
+    palavras: ['catálogo', 'cadastro de produto', 'cadastrar produto', 'mercadoria', 'peça', 'variação', 'grade', 'tamanho', 'cor', 'etiqueta', 'código de barras', 'ean', 'sku', 'preço', 'custo', 'categoria', 'marca', 'planilha', 'exportar', 'material de uso', 'insumo', 'não vende', 'feito no dia', 'produção'],
   },
 
   // ── Estoque ──
@@ -1714,7 +1882,7 @@ export const GUIA: Entrada[] = [
     abre: ['agente.configurar'],
     modulo: 'agente',
     oQueE:
-      'Roteiros de WhatsApp para clientes, com começo e fim. A pessoa entra numa campanha escrevendo uma frase ("quero o catálogo") em qualquer parte da mensagem, ou chegando pelo anúncio de clique para WhatsApp cujo id você cadastrou. Daí ela recebe o que você desenhou — mensagem, foto, vídeo ou áudio, espera, pergunta, desvio pela resposta — e no fim para: depois do fim nada mais é enviado. Não há inteligência artificial em nenhum passo; tudo o que sai foi escrito por você. Mensagem que não abre nem continua campanha fica para alguém da loja responder. Na lista, cada campanha mostra quantos entraram, quantos estão dentro agora, quantos passaram para uma pessoa e quantos concluíram (o seu teste não conta). Sai pelo mesmo número do assistente: plano Assistente para cima, com o módulo "Agente no WhatsApp" ligado.',
+      'Roteiros de WhatsApp para clientes, com começo e fim. A pessoa entra numa campanha escrevendo uma frase ("quero o catálogo") em qualquer parte da mensagem, ou chegando pelo anúncio de clique para WhatsApp cujo id você cadastrou. Daí ela recebe o que você desenhou — mensagem, foto, vídeo ou áudio, espera, pergunta, desvio pela resposta — e no fim para: depois do fim nada mais é enviado. Não há inteligência artificial em nenhum passo; tudo o que sai foi escrito por você. Mensagem que não abre nem continua campanha fica para alguém da loja responder. Na lista, cada campanha mostra quantos entraram, quantos estão dentro agora, quantos passaram para uma pessoa e quantos concluíram (o seu teste não conta). Sai pelo mesmo número do assistente: plano Assistente para cima, com o módulo "Assistente no WhatsApp" ligado.',
     comoFazer: [
       {
         titulo: 'Criar e desenhar uma campanha',
@@ -1735,14 +1903,14 @@ export const GUIA: Entrada[] = [
           'Foto, vídeo ou áudio: imagem até 5 MB, vídeo e áudio até 16 MB; o áudio pode ir como nota de voz.',
           'Esperar um tempo (minutos, horas, dias; opcional só com a loja aberta, pelo horário em Lojas) e Esperar resposta (com prazo; saídas "respondeu" e "não respondeu").',
           'Se a resposta tiver…: um caminho por grupo de palavras, e "qualquer outra coisa". Dividir (A/B): reparte pelos pesos, a mesma pessoa sempre no mesmo caminho.',
-          'Passar para uma pessoa: avisa os donos (ou quem você escolher, com telefone em Equipe) com o nome e o WhatsApp do contato, e encerra. Ir para outra campanha: termina esta e começa a outra. Fim: uma última mensagem, opcional.',
+          'Passar para uma pessoa: avisa os donos (ou quem você escolher, com WhatsApp confirmado em Minha conta) com o nome e o WhatsApp do contato, e encerra. Ir para outra campanha: termina esta e começa a outra. Fim: uma última mensagem, opcional.',
         ],
       },
       {
         titulo: 'Ativar, testar e pausar',
         passos: [
           '"Pendências" lista o que impede ativar: bloco solto, mensagem vazia, condição sem palavra, arquivo faltando, campanha que leva para si mesma, círculo sem espera.',
-          '"Testar com meu número" começa a campanha no telefone do seu cadastro em Equipe, mesmo pausada, e não conta nos números.',
+          '"Testar com meu número" começa a campanha no seu WhatsApp confirmado em Minha conta, mesmo pausada, e não conta nos números.',
           '"Ativar" confere tudo de novo, inclusive se outra campanha ativa já usa a mesma frase ou o mesmo anúncio — duas não podem.',
           '"Pausar": ninguém novo entra, e quem está dentro fica parado no bloco em que estava até você reativar.',
         ],
@@ -1803,7 +1971,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Achar quem fez algo',
         passos: [
           'Busque pelo nome de quem fez, pelo nome do alvo (produto, cliente) ou pelo motivo escrito.',
-          'Fichas por assunto: vendas, caixa, produtos e estoque, clientes (inclusive aceite de ofertas e anonimização), equipe e acessos, tarefas, empresa, suporte do Norte.',
+          'Fichas por assunto: vendas, caixa, produtos, estoque e compras, clientes (inclusive aceite de ofertas e anonimização), equipe e acessos, tarefas, empresa, suporte do Norte.',
           'Período e loja no alto.',
           'O alvo que tem tela vira link: venda, produto, cliente, caixa, equipe.',
         ],
@@ -1940,7 +2108,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Grátis (R$ 0): 1 loja, 1 pessoa dentro, 300 vendas por mês (a partir da 301ª o balcão recusa até o mês virar). Balcão e caixa, produto com grade, estoque, cliente, financeiro com DRE, contas a pagar e recorrentes, fechamento de mês, 1 quadro de tarefas, relatório simples, auditoria.',
           'Balcão (R$ 100/mês): até 3 lojas, 3 dentro. Tudo do Grátis mais encomenda, programa de pontos, preços (margem e markup), vários quadros com responsável, prazo e prioridade, estoque e caixa por loja.',
-          'Assistente (R$ 350/mês): até 5 lojas, 5 dentro. Tudo do Balcão mais o agente no WhatsApp com R$ 100 de crédito de IA, metas e comissão, desempenho básico, preço sugerido, linha do tempo e modelos de quadro.',
+          'Assistente (R$ 350/mês): até 5 lojas, 5 dentro. Tudo do Balcão mais o assistente no WhatsApp com R$ 100 de crédito de IA, metas e comissão, desempenho básico, preço sugerido, linha do tempo e modelos de quadro.',
           'Direção (R$ 1.500/mês): lojas e pessoas sem limite. Tudo do Assistente mais crediário, análise (lojas, ABC, dinheiro parado, escala), previsão de ruptura, desempenho completo, quadro da rede, R$ 300 de crédito.',
           'Corporativo: sob consulta — a operação inteira com a gente junto, crédito no contrato.',
         ],
@@ -1970,7 +2138,7 @@ export const GUIA: Entrada[] = [
     caminho: '/configuracoes',
     abre: ['empresa.configurar'],
     oQueE:
-      'O que a empresa usa: os módulos (crediário, nota fiscal, mais de uma unidade, agente no WhatsApp, metas e comissão, encomenda, agenda, funcionários e ponto, compras) e o jeito de vender no balcão (botões ou etiqueta); o lembrete do horário no WhatsApp (com a Agenda ligada: desligado por padrão, texto fixo, só para quem aceitou mensagens); o programa de pontos; as taxas de maquininha e Pix; as regras do crediário; e os dados da empresa. Só quem configura a empresa mexe.',
+      'O que a empresa usa: os módulos (crediário, nota fiscal, mais de uma unidade, assistente no WhatsApp, metas e comissão, encomenda, agenda, funcionários e ponto, compras, alunos e mensalidades) e o jeito de vender no balcão (botões ou etiqueta); o lembrete do horário no WhatsApp (com a Agenda ligada: desligado por padrão, texto fixo, só para quem aceitou mensagens); o programa de pontos; as taxas de maquininha e Pix; as regras do crediário e as das mensalidades (multa, juro, pontualidade e o aviso ao responsável); e os dados da empresa. Só quem configura a empresa mexe.',
     comoFazer: [
       {
         titulo: 'Ligar e desligar módulos',
@@ -2009,6 +2177,16 @@ export const GUIA: Entrada[] = [
           'Aparece com o módulo Crediário ligado.',
           'Juro de atraso ao mês (só sobre parcela vencida), em até quantas vezes, e dias entre as parcelas.',
           '"Salvar". Vale para as vendas daqui para frente.',
+        ],
+        capacidade: 'empresa.configurar',
+      },
+      {
+        titulo: 'Regras das mensalidades',
+        passos: [
+          'Aparece com o módulo “Alunos e mensalidades” ligado.',
+          'Multa de atraso (até 2%, uma vez só por mensalidade), juro ao mês (até 1%, por dia) e o desconto de pontualidade, se a escola der.',
+          'O aviso ao responsável no WhatsApp: desligado por padrão; quantos dias antes do vencimento e quantos dias depois (zero = sem aviso de atraso). Sai pelo WhatsApp do assistente, só para o responsável que aceitou.',
+          '“Salvar”. Vale para os próximos recebimentos.',
         ],
         capacidade: 'empresa.configurar',
       },
@@ -2253,6 +2431,8 @@ function casa(textoNormalizado: string, token: string): boolean {
 
 export type ResultadoBusca = {
   entrada: Entrada
+  /** O nome da tela NESTA empresa ("Recepção" na clínica) — ver `tituloDaTela`. */
+  titulo: string
   /** Os como-fazer que casaram com a pergunta, os do título primeiro. */
   passos: Passo[]
   pontos: number
@@ -2291,7 +2471,23 @@ function indexar(): Indexada[] {
  * módulos que a empresa ligou. Vem pronto do servidor — o Guia roda no
  * navegador e não tem a sessão.
  */
-export type QuemLe = { capacidades: readonly Capacidade[]; modulos: readonly string[] }
+export type QuemLe = {
+  capacidades: readonly Capacidade[]
+  modulos: readonly string[]
+  /**
+   * O nome que algumas telas têm nesta empresa, pela chave da entrada:
+   * { balcao: 'Recepção' } na clínica (ver `nomesNoGuia`, em vocabulario.ts).
+   * O menu diz "Recepção"; o Guia que dissesse "Balcão" mandaria a pessoa
+   * procurar um item que ela não vê.
+   */
+  nomes?: Readonly<Record<string, string>>
+}
+
+/** O nome da tela para quem lê: o da empresa, quando ela chama diferente. */
+export function tituloDaTela(e: Pick<Entrada, 'chave' | 'titulo'>, quem?: Pick<QuemLe, 'nomes'> | null): string {
+  const nome = quem?.nomes && Object.hasOwn(quem.nomes, e.chave) ? quem.nomes[e.chave] : undefined
+  return nome || e.titulo
+}
 
 /**
  * Esta pessoa abre esta tela? A régua é a da própria página. Pura.
@@ -2325,9 +2521,12 @@ export function buscarNoGuia(pergunta: string, telaAtual?: string, quem?: QuemLe
     let pontos = 0
     const casadosNoTitulo = new Set<number>()
     const casadosNoCorpo = new Set<number>()
+    // "recepção" acha o Balcão da clínica: o nome dela vale como título.
+    const titulo = tituloDaTela(i.entrada, quem)
+    const outroNome = titulo !== i.entrada.titulo ? normalizar(titulo) : null
 
     for (const t of tokens) {
-      if (casa(i.titulo, t)) pontos += 3
+      if (casa(i.titulo, t) || (outroNome !== null && casa(outroNome, t))) pontos += 3
       if (i.palavras.some((p) => casa(p, t))) pontos += 3
       let noTitulo = false
       i.titulosDosPassos.forEach((tit, n) => {
@@ -2352,7 +2551,7 @@ export function buscarNoGuia(pergunta: string, telaAtual?: string, quem?: QuemLe
     ]
     const passos = ordem.slice(0, 4).map((n) => i.entrada.comoFazer[n]!)
 
-    resultados.push({ entrada: i.entrada, passos, pontos })
+    resultados.push({ entrada: i.entrada, titulo, passos, pontos })
   }
 
   // Ordenação estável: empate fica na ordem do manual, que é a ordem do menu.
@@ -2371,10 +2570,20 @@ export function buscarNoGuia(pergunta: string, telaAtual?: string, quem?: QuemLe
  * a cada mensagem): ele usa a ferramenta `explicar.sistema`, que roda a
  * mesma `buscarNoGuia` filtrada pelo que a pessoa abre.
  */
-export function manualComoTexto(): string {
+export function manualComoTexto(nomes?: Readonly<Record<string, string>>): string {
   const partes: string[] = ['# Guia do Norte — o manual do sistema', '']
+  const quem = { nomes }
+  const trocados = GUIA.filter((e) => tituloDaTela(e, quem) !== e.titulo)
+  if (trocados.length > 0) {
+    // O manual é escrito com os nomes de sempre; o menu desta empresa não.
+    partes.push(
+      `Nesta empresa, algumas telas têm outro nome no menu: ${trocados.map((e) => `"${e.titulo}" aparece como "${tituloDaTela(e, quem)}"`).join('; ')}. Ao responder, use o nome do menu.`,
+      '',
+    )
+  }
   for (const e of GUIA) {
-    partes.push(`## ${e.titulo} (tela: ${e.caminho === '' ? 'início' : e.caminho})`)
+    const nome = tituloDaTela(e, quem)
+    partes.push(`## ${nome === e.titulo ? e.titulo : `${nome} (no manual, ${e.titulo})`} (tela: ${e.caminho === '' ? 'início' : e.caminho})`)
     partes.push(e.oQueE)
     partes.push('', 'Como fazer:')
     for (const c of e.comoFazer) {

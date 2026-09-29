@@ -168,7 +168,16 @@ export async function trocarTelefone(
     if (!r.ok) return { erro: r.motivo }
     revalidatePath(`/${slug}/equipe`)
     revalidatePath(`/${slug}/agente`)
-    return { ok: telefone.trim() ? 'Telefone salvo. O assistente já reconhece este número.' : 'Telefone apagado.' }
+    if (!telefone.trim()) return { ok: 'Telefone apagado.' }
+    if (!r.faltaConfirmar) return { ok: 'Telefone salvo.' }
+    // Número novo só vale depois de a própria pessoa confirmar — até lá o
+    // assistente trata como cliente (ver servidor/assistente/confirmacao.ts).
+    return {
+      ok:
+        usuarioId === sessao.usuarioId
+          ? 'Telefone salvo. Agora confirme em Minha conta: só depois disso o assistente reconhece você no WhatsApp.'
+          : 'Telefone salvo. Falta a pessoa confirmar, em Minha conta: até lá o assistente trata este número como de cliente.',
+    }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode mexer no telefone desta pessoa.' }
     return { erro: recadoDoErro(e, 'Não deu para salvar o telefone.') }

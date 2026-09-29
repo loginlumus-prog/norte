@@ -36,9 +36,18 @@ import { pode, type Sessao } from '../permissao'
 import type { ComModulos } from '../modulos'
 import { unidadesVisiveis } from './contexto'
 import { buscarNoGuia } from '../guia'
+import { nomesNoGuia, vocabularioDaEmpresa } from '../vocabulario'
 import { CAPACIDADES } from '../permissao'
 import type { Equipe } from './regras'
-import { consultarAgenda, consultarPagamentos, consultarPonto, proporDesmarcar, proporMarcar } from './ferramentas-atendimento'
+import {
+  consultarAgenda,
+  consultarAtrasadas,
+  consultarPagamentos,
+  consultarPonto,
+  consultarTurmas,
+  proporDesmarcar,
+  proporMarcar,
+} from './ferramentas-atendimento'
 
 export type ResultadoFerramenta = { texto: string; erro?: boolean; propostaId?: string }
 
@@ -81,7 +90,7 @@ export async function executarFerramenta(
       case 'consultar.produto':
         return await consultarProduto(orgId, str(entrada.busca, 60))
       case 'explicar.sistema':
-        return explicarSistema(empresa, quem.sessao, str(entrada.pergunta, 300))
+        return explicarSistema(empresa, quem.sessao, str(entrada.pergunta, 300), nomesNoGuia(await vocabularioDaEmpresa(orgId)))
       case 'lancar.despesa':
       case 'pedir.compra':
         return await proporLancamento(orgId, empresa, poder, entrada)
@@ -97,6 +106,10 @@ export async function executarFerramenta(
         return await consultarPagamentos(quem.sessao, empresa, entrada)
       case 'ponto.consultar':
         return await consultarPonto(quem.sessao, entrada)
+      case 'mensalidades.atrasadas':
+        return await consultarAtrasadas(quem.sessao, entrada)
+      case 'turmas.consultar':
+        return await consultarTurmas(quem.sessao, entrada)
       default:
         return falha('Ferramenta indisponível nesta conversa.')
     }
@@ -264,7 +277,9 @@ async function consultarProduto(orgId: string, busca: string): Promise<Resultado
                         where e.variacao_id = vr.id and u.ativa and not u.eh_deposito), false) as tem
         from variacoes vr
         join produtos p on p.id = vr.produto_id
-       where p.ativo and vr.ativa
+       -- Material de uso não tem preço de venda: a luva da clínica não se
+       -- oferece a ninguém, e o assistente não cita preço do que não vende.
+       where p.ativo and vr.ativa and not p.uso_interno
          and (p.nome ilike ${termo} or p.marca ilike ${termo} or vr.codigo ilike ${termo})
        order by p.nome, vr.codigo
        limit 20
@@ -413,9 +428,15 @@ async function proporAjuste(
  * respondem, com os passos — filtradas pelo que ESTA pessoa abre, igual à
  * busca do Guia na tela. Não lê dado da loja: é o manual.
  */
-export function explicarSistema(empresa: ComModulos, sessao: Sessao, pergunta: string): ResultadoFerramenta {
+export function explicarSistema(
+  empresa: ComModulos,
+  sessao: Sessao,
+  pergunta: string,
+  /** O nome das telas nesta empresa ("Recepção" na clínica) — ver `nomesNoGuia`. */
+  nomes?: Readonly<Record<string, string>>,
+): ResultadoFerramenta {
   if (!pergunta) return falha('Diga qual é a dúvida.')
-  const quem = { capacidades: CAPACIDADES.filter((c) => pode(sessao, c)), modulos: empresa.modulos }
+  const quem = { capacidades: CAPACIDADES.filter((c) => pode(sessao, c)), modulos: empresa.modulos, nomes }
   const achados = buscarNoGuia(pergunta, undefined, quem).slice(0, 3)
   if (achados.length === 0) {
     return json({ achou: false, recado: 'O Guia não tem isso. Diga que não sabe e sugira perguntar ao suporte do Norte.' })
@@ -426,7 +447,7 @@ export function explicarSistema(empresa: ComModulos, sessao: Sessao, pergunta: s
     const texto = JSON.stringify({
       achou: true,
       telas: achados.slice(0, telas).map((a) => ({
-        tela: a.entrada.titulo,
+        tela: a.titulo,
         oQueE: a.entrada.oQueE.slice(0, 300),
         comoFazer: a.passos.slice(0, comoFazer).map((c) => ({ titulo: c.titulo, passos: c.passos })),
       })),
@@ -434,5 +455,5 @@ export function explicarSistema(empresa: ComModulos, sessao: Sessao, pergunta: s
     if (texto.length <= MAXIMO_RESULTADO) return { texto }
   }
   const a = achados[0]!
-  return json({ achou: true, telas: [{ tela: a.entrada.titulo, oQueE: a.entrada.oQueE.slice(0, 300) }] })
+  return json({ achou: true, telas: [{ tela: a.titulo, oQueE: a.entrada.oQueE.slice(0, 300) }] })
 }

@@ -43,6 +43,10 @@ export type ProdutoNaTela = {
   servico?: boolean
   /** Minutos na agenda, como texto do campo. */
   duracaoMin?: string
+  /** Material de uso: tem estoque, não vende. */
+  usoInterno?: boolean
+  /** Feito no dia: zerado depois de fechar não é falta. */
+  feitoNoDia?: boolean
   /** Ids das lojas onde é vendido. Vazio = todas. */
   vendidoEm: string[]
   ativo: boolean
@@ -77,6 +81,7 @@ export function Editor({
   categorias,
   lojas = [],
   sugestao,
+  marcas,
   produto,
 }: {
   slug: string
@@ -90,6 +95,8 @@ export function Editor({
   lojas?: { id: string; nome: string; ramo: string | null; podeMarcar?: boolean }[]
   /** Produto novo: por categoria, as lojas do ramo dela. Vazio = todas. */
   sugestao?: Record<string, string[]>
+  /** Produto novo: por categoria, o padrão de "material de uso" e "feito no dia" do ramo. */
+  marcas?: Record<string, { usoInterno: boolean; feitoNoDia: boolean }>
   /** Ausente = cadastro novo. */
   produto?: ProdutoNaTela
 }) {
@@ -116,8 +123,18 @@ export function Editor({
     vendeEmTodas(produto?.vendidoEm ?? []),
   )
   const [sugerido, setSugerido] = useState(false)
+  // "Material de uso" e "feito no dia" controlados pelo mesmo motivo: no
+  // cadastro novo, a gaveta de material do ramo (a acetona no salão) já
+  // marca a caixa. Trocar de gaveta refaz o padrão; a pessoa manda no fim.
+  const [usoInterno, setUsoInterno] = useState(produto?.usoInterno ?? false)
+  const [feitoNoDia, setFeitoNoDia] = useState(produto?.feitoNoDia ?? false)
   const aoTrocarCategoria = (categoriaId: string) => {
-    if (produto || !sugestao) return
+    if (produto) return
+    if (marcas) {
+      setUsoInterno(marcas[categoriaId]?.usoInterno ?? false)
+      setFeitoNoDia(marcas[categoriaId]?.feitoNoDia ?? false)
+    }
+    if (!sugestao) return
     const ids = sugestao[categoriaId] ?? []
     setVendeEm(vendeEmTodas(ids))
     setSugerido(ids.length > 0)
@@ -249,6 +266,33 @@ export function Editor({
             inputMode="numeric"
             erro={estado.campos?.duracaoMin}
             dica="Só para serviço com horário marcado. É o tempo que a Agenda reserva."
+          />
+        </div>
+      </Cartao>
+
+      {/* COMO O ESTOQUE ANDA. Material de uso tem estoque e compra, mas não
+          vende: some do balcão, e a venda recusa. Feito no dia zera todo fim
+          de tarde: zerado não vira "acabou". */}
+      <Cartao titulo="Estoque">
+        <input type="hidden" name="marcasNaTela" value="1" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Marcar
+            name={travado ? undefined : 'usoInterno'}
+            id="produto-uso-interno"
+            checked={usoInterno}
+            disabled={travado}
+            onChange={(e) => setUsoInterno(e.target.checked)}
+            titulo="Material de uso — não vende"
+            resumo="A luva, a acetona, o algodão. Conta estoque, mínimo e compra; não aparece no balcão."
+          />
+          {travado && usoInterno && <input type="hidden" name="usoInterno" value="on" />}
+          <Marcar
+            name="feitoNoDia"
+            id="produto-feito-no-dia"
+            checked={feitoNoDia}
+            onChange={(e) => setFeitoNoDia(e.target.checked)}
+            titulo="Feito no dia"
+            resumo="O pão, a coxinha. A sobra sai ao fechar: zerado não conta como acabou."
           />
         </div>
       </Cartao>

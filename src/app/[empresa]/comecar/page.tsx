@@ -15,8 +15,15 @@ export default async function Comecar({ params }: { params: Promise<{ empresa: s
   // `false`: esta é a própria tela de cadastro, senão entraria em laço.
   const { empresa, sessao } = await exigirEntrada(slug, false)
 
-  // Já configurada: não deixa refazer o cadastro inicial por engano.
-  if (empresa.configuradaEm) redirect(`/${slug}/configuracoes`)
+  // Já configurada: não deixa refazer o cadastro inicial por engano. Quem
+  // configura vai para as Configurações; os outros, para onde o login os
+  // manda — Configurações é só de quem configura, e mandar o balconista para
+  // lá dava "página não encontrada".
+  if (empresa.configuradaEm) {
+    if (pode(sessao, 'empresa.configurar')) redirect(`/${slug}/configuracoes`)
+    const soVende = !pode(sessao, 'relatorio.ver') && pode(sessao, 'venda.criar')
+    redirect(soVende ? `/${slug}/balcao` : `/${slug}`)
+  }
 
   // Quem se cadastrou pelo site já disse o ramo lá; a tela começa com ele.
   const { ramo } = await comoOrg(sessao.orgId, (db) =>

@@ -216,6 +216,15 @@ end $$;
 -- comoOrg da empresa que está ASSINADA no endereço — a assinatura prova de
 -- quem é o pedido; o RLS garante que só aquela empresa é lida.
 
+-- ── a confirmação do telefone (confirmacoes_telefone) ────────
+-- Tem org_id e entra na varredura do começo: org_isolada, RLS ligado e
+-- forçado. A FK para usuarios tem org_id dos dois lados, e o gatilho
+-- zz_fk_mesma_empresa a descobre sozinho: um código não nasce apontando para
+-- a conta de outra empresa. O "CONFIRMAR 123456" que chega pelo WhatsApp é
+-- procurado DENTRO do comoOrg da empresa dona do número que recebeu — nunca
+-- entre empresas —, e a linha guarda só o resumo do código (HMAC com segredo
+-- do servidor), nunca o código.
+
 -- ── a tabela orgs se filtra pelo próprio id ──────────────────
 alter table public.orgs enable row level security;
 alter table public.orgs force row level security;
@@ -758,6 +767,43 @@ begin
   drop trigger if exists agenda_sem_choque on public.agendamentos;
   create trigger agenda_sem_choque before insert or update on public.agendamentos
     for each row execute function public.agenda_sem_choque();
+end $$;
+
+-- ── escola (responsaveis, turmas, matriculas, mensalidades,
+--    pagamentos_mensalidade) ─────────────────────────────────
+-- Todas têm org_id e entram na varredura do começo: org_isolada, RLS ligado
+-- e forçado — a lista de alunos, o telefone do responsável e quem está em
+-- atraso de uma escola não aparecem para outra. As FKs entre elas (matrícula →
+-- aluno, → turma; mensalidade → matrícula, → aluno; pagamento → mensalidade,
+-- → caixa; turma → professor) têm org_id dos dois lados, e o gatilho
+-- zz_fk_mesma_empresa as descobre sozinho: ninguém matricula o aluno da
+-- escola vizinha nem recebe a mensalidade dela no próprio caixa.
+--
+-- Uma regra a mais: O DINHEIRO QUE ENTROU NÃO SE APAGA NEM SE REESCREVE.
+-- O pagamento de mensalidade é o rastro do caixa e do DRE — o mesmo desenho
+-- do livro de auditoria: só lê e só grava. Recebeu errado? Isso se resolve
+-- com uma conversa e um lançamento, nunca sumindo com a linha do que entrou.
+drop policy if exists org_isolada on public.pagamentos_mensalidade;
+drop policy if exists pagamento_mensalidade_le on public.pagamentos_mensalidade;
+create policy pagamento_mensalidade_le on public.pagamentos_mensalidade
+  for select using (org_id = public.app_org_id());
+drop policy if exists pagamento_mensalidade_grava on public.pagamentos_mensalidade;
+create policy pagamento_mensalidade_grava on public.pagamentos_mensalidade
+  for insert with check (org_id = public.app_org_id());
+
+do $$
+declare r record;
+begin
+  for r in
+    select distinct grantee
+    from information_schema.role_table_grants
+    where table_schema = 'public'
+      and table_name = 'pagamentos_mensalidade'
+      and privilege_type in ('UPDATE', 'DELETE')
+      and grantee <> current_user
+  loop
+    execute format('revoke update, delete on public.pagamentos_mensalidade from %I', r.grantee);
+  end loop;
 end $$;
 
 -- ── conferência ──────────────────────────────────────────────

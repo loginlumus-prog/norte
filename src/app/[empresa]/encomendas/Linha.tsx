@@ -19,11 +19,21 @@
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Aviso, Botao, Campo, Marcar, cx } from '@/ui/base'
+import { Aviso, Botao, Campo, Marcar, Selecao, cx } from '@/ui/base'
 import { brl } from '@/ui/painel'
 import { mudarSituacaoAcao } from './acoes'
 
 type Situacao = 'ABERTA' | 'PRONTA' | 'ENTREGUE' | 'CANCELADA'
+type FormaSinal = 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'TRANSFERENCIA'
+
+/** Como o sinal volta ao cliente. Cartão se estorna na maquininha, por fora. */
+const FORMAS_DEVOLUCAO: { valor: FormaSinal; titulo: string }[] = [
+  { valor: 'DINHEIRO', titulo: 'Dinheiro (sai da gaveta)' },
+  { valor: 'PIX', titulo: 'Pix' },
+  { valor: 'TRANSFERENCIA', titulo: 'Transferência' },
+  { valor: 'DEBITO', titulo: 'Estorno no débito' },
+  { valor: 'CREDITO', titulo: 'Estorno no crédito' },
+]
 
 /** A janela por cima da tela. Esc ou clique fora fecha. */
 function Janela({ titulo, aoFechar, children }: { titulo: string; aoFechar: () => void; children: ReactNode }) {
@@ -56,6 +66,7 @@ export function AcoesEncomenda({
   situacao,
   falta,
   sinal,
+  sinalForma,
   podeMexer,
   podeCancelar,
   podeVender,
@@ -71,6 +82,8 @@ export function AcoesEncomenda({
   situacao: Situacao
   falta: number
   sinal: number
+  /** Como o sinal foi pago: a devolução sugere o mesmo caminho de volta. */
+  sinalForma: FormaSinal | null
   podeMexer: boolean
   podeCancelar: boolean
   /** Pode abrir o balcão (vender) nesta loja. */
@@ -82,6 +95,7 @@ export function AcoesEncomenda({
   const [erro, setErro] = useState<string | null>(null)
   const [motivo, setMotivo] = useState('')
   const [devolveu, setDevolveu] = useState(false)
+  const [formaDevolucao, setFormaDevolucao] = useState<FormaSinal | ''>(sinalForma ?? '')
   const [indo, comecar] = useTransition()
   const router = useRouter()
 
@@ -224,6 +238,20 @@ export function AcoesEncomenda({
                 titulo={`Devolvi o sinal de ${brl(sinal)}`}
                 resumo="A devolução sai no financeiro de hoje. Sem marcar, o sinal fica como receita da loja."
               />
+              {devolveu && (
+                <Selecao
+                  rotulo="Como devolveu"
+                  name={`forma-devolucao-${id}`}
+                  value={formaDevolucao}
+                  onChange={(ev) => setFormaDevolucao(ev.currentTarget.value as FormaSinal | '')}
+                  opcoes={[{ valor: '', titulo: 'Escolha…' }, ...FORMAS_DEVOLUCAO]}
+                  dica={
+                    formaDevolucao === 'DINHEIRO'
+                      ? 'Sai da gaveta como sangria: o caixa da loja precisa estar aberto.'
+                      : undefined
+                  }
+                />
+              )}
             </>
           )}
           <div className="flex flex-wrap gap-1.5">
@@ -231,8 +259,10 @@ export function AcoesEncomenda({
               tom="perigo"
               className={normal}
               carregando={indo}
-              disabled={motivo.trim().length < 3}
-              onClick={() => mudar({ para: 'CANCELADA', motivo, devolveuSinal: devolveu })}
+              disabled={motivo.trim().length < 3 || (devolveu && sinal > 0 && !formaDevolucao)}
+              onClick={() =>
+                mudar({ para: 'CANCELADA', motivo, devolveuSinal: devolveu, formaDevolucao: formaDevolucao || null })
+              }
             >
               Cancelar encomenda
             </Botao>

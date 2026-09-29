@@ -48,7 +48,8 @@ export type Resumo = {
   maisVendidos: { descricao: string; quantidade: number; total: number }[]
   parados: { descricao: string; codigo: string | null; saldo: number; desde: number | null }[]
   acabando: { descricao: string; codigo: string | null; saldo: number; minimo: number }[]
-  estoque: { itens: number; unidades: number; valorCusto: number }
+  /** `unidades` é só o que se conta (un, par, cx); peso e medida à parte. */
+  estoque: { itens: number; unidades: number; quilos: number; litros: number; metros: number; valorCusto: number }
   estoquePorCategoria: { nome: string; valor: number }[]
   clientes: {
     total: number
@@ -189,6 +190,9 @@ export async function resumoDoPainel(
        group by 1 order by 3 desc limit 8
     `
     // Parado: tem saldo e NÃO vendeu nos 30 dias. É dinheiro na arara.
+    // Material de uso fica de fora: ele não sai por venda, sai pelo consumo —
+    // a acetona do salão seria "parada" para sempre, e a lista de parados
+    // viraria a lista de material.
     const paradosBrutos = await db.$queryRaw<{ descricao: string; codigo: string | null; saldo: string; dias: number | null }[]>`
       select p.nome ||
              coalesce(' — ' || (select string_agg(o.valor, ' · ')
@@ -205,7 +209,7 @@ export async function resumoDoPainel(
         from variacoes va
         join produtos p on p.id = va.produto_id
         join estoque e on e.variacao_id = va.id and e.unidade_id = any(${uni})
-       where va.ativa and e.quantidade > 0
+       where va.ativa and e.quantidade > 0 and not p.uso_interno
        group by va.id, p.nome, va.codigo
       having not exists (
                select 1 from venda_itens i join vendas v on v.id = i.venda_id
@@ -227,14 +231,20 @@ export async function resumoDoPainel(
       having sum(e.quantidade) <= max(e.minimo)
        order by sum(e.quantidade) asc limit 8
     `
-    const estoque = await db.$queryRaw<{ itens: string; unidades: string; valor: string }[]>`
+    // Peça e quilo não se somam: 800 blusas mais 381 kg de sorvete davam
+    // "800,381 peças". O que se conta (un, par, caixa) fica num número; o que
+    // se pesa ou mede vai em quilos, litros e metros, cada um com a sua sigla.
+    const estoque = await db.$queryRaw<{ itens: string; unidades: string; quilos: string; litros: string; metros: string; valor: string }[]>`
       select count(distinct e.variacao_id)::int as itens,
-             coalesce(sum(e.quantidade), 0) as unidades,
+             coalesce(sum(e.quantidade) filter (where p.medida::text in ('UN', 'PAR', 'CX')), 0) as unidades,
+             coalesce(sum(case p.medida::text when 'KG' then e.quantidade when 'G' then e.quantidade / 1000 end), 0) as quilos,
+             coalesce(sum(case p.medida::text when 'L' then e.quantidade when 'ML' then e.quantidade / 1000 end), 0) as litros,
+             coalesce(sum(e.quantidade) filter (where p.medida::text = 'M'), 0) as metros,
              coalesce(sum(e.quantidade * coalesce(p.custo, 0)), 0) as valor
         from estoque e
         join variacoes va on va.id = e.variacao_id
         join produtos p on p.id = va.produto_id
-       where e.unidade_id = any(${uni}) and e.quantidade > 0
+       where e.unidade_id = any(${uni}) and e.quantidade > 0 and not p.servico
     `
     const estoquePorCategoria = await db.$queryRaw<{ nome: string; valor: string }[]>`
       select coalesce(c.nome, 'Sem categoria') as nome,
@@ -324,6 +334,9 @@ export async function resumoDoPainel(
       estoque: {
         itens: n(estoque[0]?.itens),
         unidades: n(estoque[0]?.unidades),
+        quilos: n(estoque[0]?.quilos),
+        litros: n(estoque[0]?.litros),
+        metros: n(estoque[0]?.metros),
         valorCusto: n(estoque[0]?.valor),
       },
       estoquePorCategoria: estoquePorCategoria.map((c) => ({ nome: c.nome, valor: n(c.valor) })),
@@ -492,7 +505,7 @@ const vazio = (): Resumo => ({
   porDia: [], porDiaAnterior: [], porHora: [],
   porForma: [], porCategoria: [], porUnidade: [], porVendedor: [],
   maisVendidos: [], parados: [], acabando: [],
-  estoque: { itens: 0, unidades: 0, valorCusto: 0 },
+  estoque: { itens: 0, unidades: 0, quilos: 0, litros: 0, metros: 0, valorCusto: 0 },
   estoquePorCategoria: [],
   clientes: { total: 0, novosNoPeriodo: 0, identificadas: 0, vendas: 0, pessoas: 0, recorrentes: 0 },
 })

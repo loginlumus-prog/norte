@@ -30,6 +30,7 @@ import {
   entradaDaTela,
   rotuloDoPlano,
   telaAbre,
+  tituloDaTela,
   NOME_DA_CAPACIDADE,
   type Passo,
   type QuemLe,
@@ -148,7 +149,7 @@ export function Guia({
                     Guia do Norte
                   </span>
                   <span className="truncate text-xs text-tinta-3">
-                    {tela ? `Você está em ${tela.titulo}` : empresa}
+                    {tela ? `Você está em ${tituloDaTela(tela, quem)}` : empresa}
                   </span>
                 </div>
               </div>
@@ -327,7 +328,7 @@ function Cartoes({ slug, itens }: { slug: string; itens: ResultadoBusca[] }) {
       {itens.map((r, n) => (
         <li key={r.entrada.chave} className={cx('flex flex-col gap-1.5 rounded-norte border border-borda p-3', n === 0 && 'bg-marca-suave/40')}>
           <Link href={`/${slug}${r.entrada.caminho}`} className="text-sm font-bold text-marca underline-offset-2 hover:underline">
-            {r.entrada.titulo} →
+            {r.titulo} →
           </Link>
           {r.passos.length === 0 ? (
             <p className="text-xs leading-relaxed text-tinta-2">{r.entrada.oQueE}</p>

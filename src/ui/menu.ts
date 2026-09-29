@@ -28,7 +28,8 @@ export const MENU = (slug: string): ItemMenu[] => [
   { href: `/${slug}`, titulo: 'Painel', exige: 'relatorio.ver' },
 
   // ── vender ──
-  { grupo: 'Vender', href: `/${slug}/balcao`, titulo: 'Balcão', exige: 'venda.criar' },
+  // "Recepção" no salão e na clínica, "Secretaria" na escola (vocabulario.ts).
+  { grupo: 'Vender', href: `/${slug}/balcao`, titulo: 'Balcão', exige: 'venda.criar', vocabulario: 'Balcao' },
   // Logo depois do balcão, porque é a segunda tela mais aberta de qualquer
   // loja: vender, e depois olhar o que vendeu.
   { grupo: 'Vender', href: `/${slug}/vendas`, titulo: 'Vendas', exige: 'venda.ver' },
@@ -40,6 +41,10 @@ export const MENU = (slug: string): ItemMenu[] => [
   // cliente paga metade hoje e busca na semana que vem. Só existe para quem
   // ligou o módulo — quem vende e entrega na hora nunca vê.
   { grupo: 'Vender', href: `/${slug}/encomendas`, titulo: 'Encomendas', exige: 'venda.ver', modulo: 'encomenda' },
+  // A mensalidade da escola: o mês, quem pagou, quem está em atraso, e
+  // receber. Ao lado do Crediário porque é a mesma conversa — dinheiro que
+  // entra com a pessoa na frente —, e a secretaria abre as duas.
+  { grupo: 'Vender', href: `/${slug}/mensalidades`, titulo: 'Mensalidades', exige: 'mensalidade.ver', modulo: 'escola' },
 
   // ── atendimento ──
   // Quem vende hora marcada (salão, clínica, escola) vive nesta tela: a
@@ -50,9 +55,13 @@ export const MENU = (slug: string): ItemMenu[] => [
   // quem bate o próprio ponto: cada um vê o seu, e só quem pode vê as horas
   // dos outros.
   { grupo: 'Atendimento', href: `/${slug}/funcionarios`, titulo: 'Funcionários', exige: 'ponto.proprio', ouExige: ['ponto.ver', 'equipe.ver'], modulos: ['ponto', 'agenda'] },
+  // As turmas da escola: quem estuda em cada uma, quantas vagas sobram, e
+  // matricular. Os alunos são a tela de Clientes, com a palavra "Alunos".
+  { grupo: 'Atendimento', href: `/${slug}/turmas`, titulo: 'Turmas', exige: 'escola.ver', modulo: 'escola' },
 
   // ── catálogo ──
-  { grupo: 'Catálogo', href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver' },
+  // "Serviços e materiais" na clínica (vocabulario.ts).
+  { grupo: 'Catálogo', href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver', vocabulario: 'Produtos' },
   { grupo: 'Catálogo', href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },
   // O pedido ao fornecedor, com o custo. Receber é dar entrada no estoque.
   { grupo: 'Catálogo', href: `/${slug}/compras`, titulo: 'Compras', exige: 'compra.ver', modulo: 'compras' },
@@ -66,7 +75,7 @@ export const MENU = (slug: string): ItemMenu[] => [
   // ── pessoas ──
   // O nome muda com o ramo: "Pacientes" na clínica, "Alunos" na escola (ver
   // servidor/vocabulario.ts). A tela é a mesma.
-  { grupo: 'Pessoas', href: `/${slug}/clientes`, titulo: 'Clientes', exige: 'cliente.ver', vocabulario: true },
+  { grupo: 'Pessoas', href: `/${slug}/clientes`, titulo: 'Clientes', exige: 'cliente.ver', vocabulario: 'Pessoas' },
   { grupo: 'Pessoas', href: `/${slug}/equipe`, titulo: 'Equipe', exige: 'equipe.ver' },
   // O quadro da equipe: o que abrir, conferir, montar e ligar. Aparece para
   // quem trabalha na loja, não só para quem manda — a balconista vê a lista

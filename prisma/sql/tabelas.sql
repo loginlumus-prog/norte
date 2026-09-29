@@ -94,6 +94,9 @@ CREATE TYPE "SituacaoAgendamento" AS ENUM ('MARCADO', 'CONFIRMADO', 'ATENDIDO', 
 -- CreateEnum
 CREATE TYPE "SituacaoCompra" AS ENUM ('RASCUNHO', 'ENVIADO', 'PARCIAL', 'RECEBIDO', 'CANCELADO');
 
+-- CreateEnum
+CREATE TYPE "SituacaoMatricula" AS ENUM ('ATIVA', 'TRANCADA', 'CANCELADA', 'CONCLUIDA');
+
 -- CreateTable
 CREATE TABLE "orgs" (
     "id" TEXT NOT NULL,
@@ -131,6 +134,12 @@ CREATE TABLE "orgs" (
     "crediario_juros_mes" DECIMAL(5,2) NOT NULL DEFAULT 3,
     "crediario_max_parcelas" INTEGER NOT NULL DEFAULT 6,
     "crediario_dias_entre" INTEGER NOT NULL DEFAULT 30,
+    "mensalidade_multa_pct" DECIMAL(5,2) NOT NULL DEFAULT 2,
+    "mensalidade_juros_mes" DECIMAL(5,2) NOT NULL DEFAULT 1,
+    "mensalidade_pontualidade_pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
+    "aviso_mensalidade_ativo" BOOLEAN NOT NULL DEFAULT false,
+    "aviso_mensalidade_dias" INTEGER NOT NULL DEFAULT 3,
+    "aviso_atraso_dias" INTEGER NOT NULL DEFAULT 5,
     "credito_ia_cent" INTEGER NOT NULL DEFAULT 0,
     "credito_aviso_cent" INTEGER NOT NULL DEFAULT 1000,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -178,10 +187,29 @@ CREATE TABLE "usuarios" (
     "ultimo_login" TIMESTAMP(3),
     "sessoes_desde" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "email_pendente" BOOLEAN NOT NULL DEFAULT false,
+    "telefone_confirmado" TEXT,
+    "telefone_confirmado_em" TIMESTAMP(3),
+    "telefone_visto_em" TIMESTAMP(3),
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizado_em" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "usuarios_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "confirmacoes_telefone" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "usuario_id" TEXT NOT NULL,
+    "chave" TEXT NOT NULL,
+    "codigo_hash" TEXT NOT NULL,
+    "enviado" BOOLEAN NOT NULL DEFAULT false,
+    "expira_em" TIMESTAMP(3) NOT NULL,
+    "tentativas" INTEGER NOT NULL DEFAULT 0,
+    "usado_em" TIMESTAMP(3),
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "confirmacoes_telefone_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -363,6 +391,8 @@ CREATE TABLE "produtos" (
     "prazo_reposicao_dias" INTEGER,
     "servico" BOOLEAN NOT NULL DEFAULT false,
     "duracao_min" INTEGER,
+    "uso_interno" BOOLEAN NOT NULL DEFAULT false,
+    "feito_no_dia" BOOLEAN NOT NULL DEFAULT false,
     "ativo" BOOLEAN NOT NULL DEFAULT true,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizado_em" TIMESTAMP(3) NOT NULL,
@@ -430,6 +460,7 @@ CREATE TABLE "movimentos_estoque" (
     "saldo_depois" DECIMAL(14,3) NOT NULL,
     "motivo" TEXT,
     "referencia" TEXT,
+    "transferencia_id" TEXT,
     "usuario_id" TEXT,
     "quem" TEXT NOT NULL,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -505,6 +536,7 @@ CREATE TABLE "caixa_movimentos" (
     "valor" DECIMAL(12,2) NOT NULL,
     "motivo" TEXT NOT NULL,
     "quem" TEXT NOT NULL,
+    "encomenda_id" TEXT,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "caixa_movimentos_pkey" PRIMARY KEY ("id")
@@ -528,6 +560,7 @@ CREATE TABLE "vendas" (
     "pontos_ganhos" INTEGER NOT NULL DEFAULT 0,
     "total" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "observacoes" TEXT,
+    "encomenda_id" TEXT,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "concluida_em" TIMESTAMP(3),
     "cancelada_em" TIMESTAMP(3),
@@ -564,6 +597,7 @@ CREATE TABLE "pagamentos" (
     "parcelas" INTEGER NOT NULL DEFAULT 1,
     "referencia" TEXT,
     "vale_id" TEXT,
+    "taxa_pct" DECIMAL(5,2),
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "pagamentos_pkey" PRIMARY KEY ("id")
@@ -627,6 +661,7 @@ CREATE TABLE "parcelas" (
     "valor" DECIMAL(12,2) NOT NULL,
     "pago" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "juros" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "juros_ate" DATE,
     "quitada_em" TIMESTAMP(3),
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -958,6 +993,7 @@ CREATE TABLE "encomendas" (
     "descricao" TEXT NOT NULL,
     "valor" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "sinal" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "sinal_forma" "FormaPagamento",
     "para" TIMESTAMP(3) NOT NULL,
     "entrega" BOOLEAN NOT NULL DEFAULT false,
     "endereco" TEXT,
@@ -1184,6 +1220,125 @@ CREATE TABLE "recebimentos_compra" (
     CONSTRAINT "recebimentos_compra_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "responsaveis" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "aluno_id" TEXT NOT NULL,
+    "nome" TEXT NOT NULL,
+    "parentesco" TEXT,
+    "telefone" TEXT,
+    "email" TEXT,
+    "documento" TEXT,
+    "avisos_whatsapp" "ConsentimentoOfertas" NOT NULL DEFAULT 'NAO_PERGUNTADO',
+    "avisos_em" TIMESTAMP(3),
+    "avisos_origem" TEXT,
+    "avisos_por" TEXT,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizado_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "responsaveis_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "turmas" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "unidade_id" TEXT NOT NULL,
+    "nome" TEXT NOT NULL,
+    "curso" TEXT,
+    "turno" TEXT,
+    "professor_id" TEXT,
+    "dias" INTEGER[] DEFAULT ARRAY[]::INTEGER[],
+    "hora_inicio" TEXT,
+    "hora_fim" TEXT,
+    "capacidade" INTEGER,
+    "inicio" DATE,
+    "fim" DATE,
+    "mensalidade" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "dia_vencimento" INTEGER NOT NULL DEFAULT 10,
+    "ativa" BOOLEAN NOT NULL DEFAULT true,
+    "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizada_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "turmas_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "matriculas" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "aluno_id" TEXT NOT NULL,
+    "turma_id" TEXT NOT NULL,
+    "unidade_id" TEXT NOT NULL,
+    "situacao" "SituacaoMatricula" NOT NULL DEFAULT 'ATIVA',
+    "inicio" DATE NOT NULL,
+    "fim" DATE,
+    "valor" DECIMAL(12,2) NOT NULL,
+    "dia_vencimento" INTEGER NOT NULL,
+    "desconto_pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
+    "desconto_valor" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "desconto_motivo" TEXT,
+    "motivo_saida" TEXT,
+    "saida_em" TIMESTAMP(3),
+    "quem_id" TEXT,
+    "quem" TEXT NOT NULL,
+    "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizada_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "matriculas_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "mensalidades" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "matricula_id" TEXT NOT NULL,
+    "aluno_id" TEXT NOT NULL,
+    "unidade_id" TEXT NOT NULL,
+    "mes" TEXT NOT NULL,
+    "vencimento" DATE NOT NULL,
+    "valor" DECIMAL(12,2) NOT NULL,
+    "desconto" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "pago" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "abono" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "juros" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "multa" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "multa_cobrada" BOOLEAN NOT NULL DEFAULT false,
+    "juros_ate" DATE,
+    "quitada_em" TIMESTAMP(3),
+    "cancelada_em" TIMESTAMP(3),
+    "motivo_cancelamento" TEXT,
+    "aviso_em" TIMESTAMP(3),
+    "aviso" TEXT,
+    "aviso_atraso_em" TIMESTAMP(3),
+    "aviso_atraso" TEXT,
+    "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizada_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "mensalidades_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "pagamentos_mensalidade" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "mensalidade_id" TEXT NOT NULL,
+    "unidade_id" TEXT NOT NULL,
+    "caixa_id" TEXT,
+    "forma" "FormaPagamento" NOT NULL,
+    "valor" DECIMAL(12,2) NOT NULL,
+    "juros" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "multa" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "abono" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "taxa_pct" DECIMAL(5,2),
+    "quem_id" TEXT,
+    "quem" TEXT NOT NULL,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "pagamentos_mensalidade_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "orgs_slug_key" ON "orgs"("slug");
 
@@ -1195,6 +1350,12 @@ CREATE INDEX "usuarios_org_id_idx" ON "usuarios"("org_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "usuarios_org_id_email_key" ON "usuarios"("org_id", "email");
+
+-- CreateIndex
+CREATE INDEX "confirmacoes_telefone_org_id_usuario_id_criado_em_idx" ON "confirmacoes_telefone"("org_id", "usuario_id", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "confirmacoes_telefone_org_id_chave_idx" ON "confirmacoes_telefone"("org_id", "chave");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "metas_org_id_usuario_id_mes_key" ON "metas"("org_id", "usuario_id", "mes");
@@ -1312,6 +1473,12 @@ CREATE UNIQUE INDEX "caixas_um_aberto_por_unidade" ON "caixas"("unidade_id") WHE
 
 -- CreateIndex
 CREATE INDEX "caixa_movimentos_org_id_caixa_id_idx" ON "caixa_movimentos"("org_id", "caixa_id");
+
+-- CreateIndex
+CREATE INDEX "caixa_movimentos_org_id_encomenda_id_idx" ON "caixa_movimentos"("org_id", "encomenda_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "vendas_encomenda_id_key" ON "vendas"("encomenda_id");
 
 -- CreateIndex
 CREATE INDEX "vendas_org_id_unidade_id_criada_em_idx" ON "vendas"("org_id", "unidade_id", "criada_em");
@@ -1538,11 +1705,59 @@ CREATE INDEX "recebimentos_compra_org_id_criado_em_idx" ON "recebimentos_compra"
 -- CreateIndex
 CREATE UNIQUE INDEX "recebimentos_compra_pedido_id_chave_key" ON "recebimentos_compra"("pedido_id", "chave");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "responsaveis_aluno_id_key" ON "responsaveis"("aluno_id");
+
+-- CreateIndex
+CREATE INDEX "responsaveis_org_id_documento_idx" ON "responsaveis"("org_id", "documento");
+
+-- CreateIndex
+CREATE INDEX "turmas_org_id_unidade_id_ativa_idx" ON "turmas"("org_id", "unidade_id", "ativa");
+
+-- CreateIndex
+CREATE INDEX "matriculas_org_id_turma_id_situacao_idx" ON "matriculas"("org_id", "turma_id", "situacao");
+
+-- CreateIndex
+CREATE INDEX "matriculas_org_id_aluno_id_idx" ON "matriculas"("org_id", "aluno_id");
+
+-- CreateIndex
+CREATE INDEX "matriculas_org_id_situacao_idx" ON "matriculas"("org_id", "situacao");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "matriculas_uma_viva" ON "matriculas"("turma_id", "aluno_id") WHERE (fim IS NULL);
+
+-- CreateIndex
+CREATE INDEX "mensalidades_org_id_unidade_id_vencimento_idx" ON "mensalidades"("org_id", "unidade_id", "vencimento");
+
+-- CreateIndex
+CREATE INDEX "mensalidades_org_id_aluno_id_idx" ON "mensalidades"("org_id", "aluno_id");
+
+-- CreateIndex
+CREATE INDEX "mensalidades_org_id_mes_idx" ON "mensalidades"("org_id", "mes");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "mensalidades_matricula_id_mes_key" ON "mensalidades"("matricula_id", "mes");
+
+-- CreateIndex
+CREATE INDEX "pagamentos_mensalidade_org_id_mensalidade_id_idx" ON "pagamentos_mensalidade"("org_id", "mensalidade_id");
+
+-- CreateIndex
+CREATE INDEX "pagamentos_mensalidade_org_id_unidade_id_criado_em_idx" ON "pagamentos_mensalidade"("org_id", "unidade_id", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "pagamentos_mensalidade_org_id_caixa_id_idx" ON "pagamentos_mensalidade"("org_id", "caixa_id");
+
 -- AddForeignKey
 ALTER TABLE "unidades" ADD CONSTRAINT "unidades_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "usuarios" ADD CONSTRAINT "usuarios_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "confirmacoes_telefone" ADD CONSTRAINT "confirmacoes_telefone_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "confirmacoes_telefone" ADD CONSTRAINT "confirmacoes_telefone_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "metas" ADD CONSTRAINT "metas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1671,6 +1886,9 @@ ALTER TABLE "caixa_movimentos" ADD CONSTRAINT "caixa_movimentos_org_id_fkey" FOR
 ALTER TABLE "caixa_movimentos" ADD CONSTRAINT "caixa_movimentos_caixa_id_fkey" FOREIGN KEY ("caixa_id") REFERENCES "caixas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "caixa_movimentos" ADD CONSTRAINT "caixa_movimentos_encomenda_id_fkey" FOREIGN KEY ("encomenda_id") REFERENCES "encomendas"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "vendas" ADD CONSTRAINT "vendas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -1681,6 +1899,9 @@ ALTER TABLE "vendas" ADD CONSTRAINT "vendas_caixa_id_fkey" FOREIGN KEY ("caixa_i
 
 -- AddForeignKey
 ALTER TABLE "vendas" ADD CONSTRAINT "vendas_cliente_id_fkey" FOREIGN KEY ("cliente_id") REFERENCES "clientes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vendas" ADD CONSTRAINT "vendas_encomenda_id_fkey" FOREIGN KEY ("encomenda_id") REFERENCES "encomendas"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "venda_itens" ADD CONSTRAINT "venda_itens_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1743,7 +1964,7 @@ ALTER TABLE "parcelas" ADD CONSTRAINT "parcelas_unidade_id_fkey" FOREIGN KEY ("u
 ALTER TABLE "recebimentos" ADD CONSTRAINT "recebimentos_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "recebimentos" ADD CONSTRAINT "recebimentos_parcela_id_fkey" FOREIGN KEY ("parcela_id") REFERENCES "parcelas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "recebimentos" ADD CONSTRAINT "recebimentos_parcela_id_fkey" FOREIGN KEY ("parcela_id") REFERENCES "parcelas"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "recebimentos" ADD CONSTRAINT "recebimentos_caixa_id_fkey" FOREIGN KEY ("caixa_id") REFERENCES "caixas"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1945,3 +2166,54 @@ ALTER TABLE "recebimentos_compra" ADD CONSTRAINT "recebimentos_compra_org_id_fke
 
 -- AddForeignKey
 ALTER TABLE "recebimentos_compra" ADD CONSTRAINT "recebimentos_compra_pedido_id_fkey" FOREIGN KEY ("pedido_id") REFERENCES "pedidos_compra"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "responsaveis" ADD CONSTRAINT "responsaveis_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "responsaveis" ADD CONSTRAINT "responsaveis_aluno_id_fkey" FOREIGN KEY ("aluno_id") REFERENCES "clientes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "turmas" ADD CONSTRAINT "turmas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "turmas" ADD CONSTRAINT "turmas_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "turmas" ADD CONSTRAINT "turmas_professor_id_fkey" FOREIGN KEY ("professor_id") REFERENCES "colaboradores"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "matriculas" ADD CONSTRAINT "matriculas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "matriculas" ADD CONSTRAINT "matriculas_aluno_id_fkey" FOREIGN KEY ("aluno_id") REFERENCES "clientes"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "matriculas" ADD CONSTRAINT "matriculas_turma_id_fkey" FOREIGN KEY ("turma_id") REFERENCES "turmas"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "matriculas" ADD CONSTRAINT "matriculas_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "mensalidades" ADD CONSTRAINT "mensalidades_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "mensalidades" ADD CONSTRAINT "mensalidades_matricula_id_fkey" FOREIGN KEY ("matricula_id") REFERENCES "matriculas"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "mensalidades" ADD CONSTRAINT "mensalidades_aluno_id_fkey" FOREIGN KEY ("aluno_id") REFERENCES "clientes"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "mensalidades" ADD CONSTRAINT "mensalidades_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pagamentos_mensalidade" ADD CONSTRAINT "pagamentos_mensalidade_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pagamentos_mensalidade" ADD CONSTRAINT "pagamentos_mensalidade_mensalidade_id_fkey" FOREIGN KEY ("mensalidade_id") REFERENCES "mensalidades"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pagamentos_mensalidade" ADD CONSTRAINT "pagamentos_mensalidade_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pagamentos_mensalidade" ADD CONSTRAINT "pagamentos_mensalidade_caixa_id_fkey" FOREIGN KEY ("caixa_id") REFERENCES "caixas"("id") ON DELETE SET NULL ON UPDATE CASCADE;

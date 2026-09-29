@@ -39,6 +39,11 @@ export type PessoaNaTela = {
   /** Celular com DDD: é por ele que o assistente reconhece a pessoa no WhatsApp. */
   telefone: string | null
   /**
+   * Só 'confirmado' vale para o assistente: número só digitado é tratado
+   * como de cliente. Quem confirma é a própria pessoa, em Minha conta.
+   */
+  telefoneEstado: 'sem_telefone' | 'falta_confirmar' | 'confirmado' | 'vencido'
+  /**
    * Quem está vendo pode mexer no acesso desta pessoa? Vem do servidor
    * (`podeMexerEm`): o gerente não mexe na linha da dona, e mostrar o botão
    * que o servidor recusa só ensina que o sistema "não funciona".
@@ -91,7 +96,24 @@ function Telefone({
     return (
       <span className="flex items-center gap-1.5 text-xs text-tinta-3">
         {pessoa.telefone ? (
-          <span className="numero text-tinta-2">{mostrarTelefone(pessoa.telefone)}</span>
+          <>
+            <span className="numero text-tinta-2">{mostrarTelefone(pessoa.telefone)}</span>
+            {pessoa.telefoneEstado === 'confirmado' ? (
+              <Situacao nivel="bom">confirmado</Situacao>
+            ) : (
+              <span
+                title={
+                  pessoa.souEu
+                    ? 'Confirme em Minha conta: até lá o assistente trata este número como de cliente.'
+                    : 'A pessoa confirma em Minha conta. Até lá o assistente trata este número como de cliente.'
+                }
+              >
+                <Situacao nivel="atencao">
+                  {pessoa.telefoneEstado === 'vencido' ? 'confirmar de novo' : 'falta confirmar'}
+                </Situacao>
+              </span>
+            )}
+          </>
         ) : (
           <span>sem telefone</span>
         )}

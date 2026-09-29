@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { eixosDaEmpresa } from '@/servidor/produto'
 import { comoOrg } from '@/servidor/banco'
-import { RAMOS, type Ramo } from '@/servidor/modulos'
+import { RAMOS, marcasDaGaveta, type Ramo } from '@/servidor/modulos'
 import { pode, unidadesQuePodem } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
@@ -62,6 +62,11 @@ export default async function NovoProduto({ params }: { params: Promise<{ empres
   const sugestao: Record<string, string[]> = Object.fromEntries(
     categorias.map((c) => [c.id, lojasSugeridas(c.nome, lojasCruas, org.ramo, catRamo)]),
   )
+  // A gaveta de material do ramo já traz "material de uso" marcado (a
+  // acetona no salão); a do pão, "feito no dia" (a padaria). É o padrão da
+  // ficha — a regra é o que for salvo no produto.
+  const ramos = [org.ramo, ...lojasCruas.map((u) => u.ramo)]
+  const marcas = Object.fromEntries(categorias.map((c) => [c.id, marcasDaGaveta(ramos, c.nome)]))
 
   return (
     <Estrutura
@@ -79,6 +84,7 @@ export default async function NovoProduto({ params }: { params: Promise<{ empres
           categorias={categorias}
           lojas={lojasQueVendem}
           sugestao={sugestao}
+          marcas={marcas}
         />
       </Secao>
     </Estrutura>

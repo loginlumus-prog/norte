@@ -59,9 +59,9 @@ const SEMENTE = `
     ('uni-a1', 'org-a', 'Centro A', 'Seg a sex 9h-18h', now()),
     ('uni-b1', 'org-b', 'Sul B', null, now());
 
-  insert into usuarios (id, org_id, nome, email, telefone, atualizado_em) values
-    ('usr-ana', 'org-a', 'Ana Dona', 'ana@a.com', '(71) 99999-0001', now()),
-    ('usr-bia', 'org-b', 'Bia Vizinha', 'bia@b.com', '(11) 97777-0003', now());
+  insert into usuarios (id, org_id, nome, email, telefone, telefone_confirmado, telefone_confirmado_em, atualizado_em) values
+    ('usr-ana', 'org-a', 'Ana Dona', 'ana@a.com', '(71) 99999-0001', '7199990001', now(), now()),
+    ('usr-bia', 'org-b', 'Bia Vizinha', 'bia@b.com', '(11) 97777-0003', '1177770003', now(), now());
 
   insert into acessos (id, org_id, usuario_id, unidade_id, papel) values
     ('ac-ana', 'org-a', 'usr-ana', null, 'DONO'),

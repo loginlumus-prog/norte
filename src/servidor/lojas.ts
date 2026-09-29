@@ -301,6 +301,24 @@ export async function pendenciasParaFechar(db: BancoDaOrg, unidadeId: string): P
       `${encomendas === 1 ? 'há 1 encomenda' : `há ${encomendas} encomendas`} por entregar — entregue ou cancele`,
     )
   }
+  // Horário marcado daqui para a frente: a cliente chegaria numa loja que o
+  // sistema não abre mais, e a agenda dela sumiria de toda tela.
+  const horarios = await db.agendamento.count({
+    where: { unidadeId, situacao: { in: ['MARCADO', 'CONFIRMADO'] }, inicio: { gte: new Date() } },
+  })
+  if (horarios > 0) {
+    faltam.push(
+      `${horarios === 1 ? 'há 1 horário marcado' : `há ${horarios} horários marcados`} na agenda — remarque em outra loja ou desmarque`,
+    )
+  }
+  // Pedido ao fornecedor ainda aberto: a mercadoria chegaria numa loja
+  // fechada, sem ninguém para dar entrada.
+  const pedidos = await db.pedidoCompra.count({ where: { unidadeId, situacao: { in: ['RASCUNHO', 'ENVIADO', 'PARCIAL'] } } })
+  if (pedidos > 0) {
+    faltam.push(
+      `${pedidos === 1 ? 'há 1 pedido de compra em aberto' : `há ${pedidos} pedidos de compra em aberto`} — receba, encerre ou cancele`,
+    )
+  }
   return faltam
 }
 

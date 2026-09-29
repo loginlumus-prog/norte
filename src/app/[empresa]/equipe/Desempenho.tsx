@@ -25,6 +25,7 @@ import {
   type PessoaComNota,
   type Tendencia,
 } from '@/servidor/desempenho'
+import { plural } from '@/ui/texto'
 
 const COR_TEXTO = { bom: 'text-bom', atencao: 'text-atencao', critico: 'text-critico' } as const
 const COR_BARRA = { bom: 'bg-bom-vivo', atencao: 'bg-atencao-vivo', critico: 'bg-critico-vivo' } as const
@@ -74,7 +75,7 @@ function MiniBarras({ meses, valores }: { meses: string[]; valores: (number | nu
 
 const textoMeta = (i: Insumos) => (i.meta === null ? 'sem meta' : `${Math.round(i.meta * 100)}%`)
 const textoTarefas = (i: Insumos) => (i.tarefas ? `${i.tarefas.noPrazo}/${i.tarefas.atribuidas} no prazo` : 'sem tarefa')
-const textoPresenca = (i: Insumos) => (i.presenca ? `em ${i.presenca.dias} de ${i.presenca.de} dias` : '—')
+const textoPresenca = (i: Insumos) => (i.presenca ? `em ${i.presenca.dias} de ${plural(i.presenca.de, 'dia', 'dias')}` : '—')
 
 /* ── o corpo: tira + tabela ───────────────────────────────── */
 

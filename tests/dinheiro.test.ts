@@ -157,3 +157,31 @@ describe('lerDinheiro', () => {
     expect(lerDinheiro('49,999')).toBeNull()
   })
 })
+
+// Porcentagem, juro e quantidade: a mesma régua, com as casas de cada um.
+// Antes cada tela fazia `Number(x.replace(',', '.'))`, que lia "1.234,56"
+// como NaN e "abc" virava 0 calado.
+import { lerNumero } from '../src/servidor/dinheiro'
+
+describe('lerNumero', () => {
+  it('porcentagem: vírgula, ponto e o "%" no fim', () => {
+    expect(lerNumero('2,5')).toBe(2.5)
+    expect(lerNumero('2.5')).toBe(2.5)
+    expect(lerNumero('10 %')).toBe(10)
+    expect(lerNumero('3,99%')).toBe(3.99)
+  })
+
+  it('quantidade com três casas', () => {
+    expect(lerNumero('0,350', 3)).toBe(0.35)
+    expect(lerNumero('12', 3)).toBe(12)
+    expect(lerNumero('0,3505', 3)).toBeNull()
+  })
+
+  it('recusa o ambíguo e o lixo, em vez de virar zero', () => {
+    expect(lerNumero('1.234', 3)).toBeNull()
+    expect(lerNumero('abc')).toBeNull()
+    expect(lerNumero('')).toBeNull()
+    expect(lerNumero('-1')).toBeNull()
+    expect(lerNumero('2,555')).toBeNull()
+  })
+})

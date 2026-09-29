@@ -29,7 +29,7 @@ import { consultarVale } from '@/servidor/devolucao'
 import { situacaoDosClientes } from '@/servidor/crediario'
 import type { FormaPagamento } from '@prisma/client'
 import type { ProdutoNaVitrine } from './vitrine'
-import { soDaLoja } from '@/servidor/catalogo-loja'
+import { aVendaNaLoja, soDaLoja } from '@/servidor/catalogo-loja'
 
 export type Achado = {
   id: string
@@ -147,7 +147,7 @@ export async function procurar(
     const vs = await db.variacao.findMany({
       where: {
         ativa: true,
-        produto: { ativo: true, ...soDaLoja(unidadeId) },
+        produto: { ativo: true, ...aVendaNaLoja(unidadeId) },
         OR: [
           { codigo: { equals: t, mode: 'insensitive' } },
           { codigoBarras: t },
@@ -179,7 +179,7 @@ export async function procurar(
     const deFora = await db.variacao.findFirst({
       where: {
         ativa: true,
-        produto: { ativo: true, NOT: soDaLoja(unidadeId) },
+        produto: { ativo: true, usoInterno: false, NOT: soDaLoja(unidadeId) },
         OR: [{ codigo: { equals: t, mode: 'insensitive' } }, { codigoBarras: t }],
       },
       select: {
@@ -234,7 +234,7 @@ export async function grade(
     const vs = await db.variacao.findMany({
       where: {
         ativa: true,
-        produto: { ativo: true, ...soDaLoja(unidadeId), ...(categoriaId ? { categoriaId } : {}) },
+        produto: { ativo: true, ...aVendaNaLoja(unidadeId), ...(categoriaId ? { categoriaId } : {}) },
       },
       orderBy: [{ produto: { nome: 'asc' } }, { codigo: 'asc' }],
       take: TETO + 1,
@@ -265,7 +265,7 @@ async function categoriasComProduto(db: Db, unidadeId: string) {
     select: {
       id: true,
       nome: true,
-      _count: { select: { produtos: { where: { ativo: true, ...soDaLoja(unidadeId) } } } },
+      _count: { select: { produtos: { where: { ativo: true, ...aVendaNaLoja(unidadeId) } } } },
     },
   })
   return cs
@@ -315,7 +315,7 @@ export async function vitrine(
     const ps = await db.produto.findMany({
       where: {
         ativo: true,
-        ...soDaLoja(unidadeId),
+        ...aVendaNaLoja(unidadeId),
         variacoes: { some: { ativa: true } },
         ...(categoriaId ? { categoriaId } : {}),
       },
@@ -499,7 +499,7 @@ export async function paraCobrarHorario(slug: string, agendamentoId: string, uni
   if (h.variacaoId && pode(s, 'produto.ver', unidadeId)) {
     const v = await comoOrg(s.orgId, (db) =>
       db.variacao.findFirst({
-        where: { id: h.variacaoId!, ativa: true, produto: { ativo: true, ...soDaLoja(unidadeId) } },
+        where: { id: h.variacaoId!, ativa: true, produto: { ativo: true, ...aVendaNaLoja(unidadeId) } },
         select: { ...SELECAO_DA_VARIACAO, estoques: { where: { unidadeId }, select: { quantidade: true } } },
       }),
     )

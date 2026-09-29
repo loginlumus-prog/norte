@@ -139,11 +139,14 @@ export default async function TelaEstoque({
     // o contava como "acabou". Agora as duas contam por `saldoNaVista`.
     comoOrg(sessao.orgId, (db) =>
       db.variacao.findMany({
-        where: { ativa: true, produto: { ativo: true } },
+        // Serviço não tem estoque (a manicure, a consulta): na lista ele
+        // aparecia com saldo zero, como "acabou", e o filtro de falta o
+        // contava — o mesmo corte que o "Precisa de você" já fazia.
+        where: { ativa: true, produto: { ativo: true, servico: false } },
         select: {
           id: true,
           codigo: true,
-          produto: { select: { nome: true, medida: true, custo: true, vendidoEm: true } },
+          produto: { select: { nome: true, medida: true, custo: true, vendidoEm: true, usoInterno: true, feitoNoDia: true } },
           opcoes: {
             select: {
               opcao: {
@@ -183,6 +186,7 @@ export default async function TelaEstoque({
         v.estoques.map((e) => ({ unidadeId: e.unidadeId, quantidade: Number(e.quantidade), minimo: e.minimo === null ? null : Number(e.minimo) })),
         lojasDaVista,
         vistaInteira,
+        v.produto.feitoNoDia,
       )
       return {
         id: v.id,
@@ -199,6 +203,8 @@ export default async function TelaEstoque({
         saldo: na.saldo,
         minimo: na.minimo,
         nivel: na.nivel,
+        doDia: na.doDia === true,
+        usoInterno: v.produto.usoInterno,
       }
     })
     .filter((i) => i.aparece)
@@ -363,6 +369,7 @@ export default async function TelaEstoque({
                   <span>{o.valor}</span>
                 </span>
               ))}
+            {i.usoInterno && <span className="text-tinta-3">· material de uso</span>}
           </span>
         </span>
       ),
@@ -388,9 +395,14 @@ export default async function TelaEstoque({
       numero: true,
       largura: '9rem',
       celula: (i: (typeof itens)[number]) => (
-        <Situacao nivel={nivelDe(i)}>
-          {i.saldo <= 0 ? 'acabou' : qtd(i.saldo, i.medida)}
-        </Situacao>
+        i.doDia ? (
+          // Feito no dia e zerado: a sobra saiu ao fechar. Não é falta.
+          <Situacao nivel="neutro">feito no dia</Situacao>
+        ) : (
+          <Situacao nivel={nivelDe(i)}>
+            {i.saldo <= 0 ? 'acabou' : qtd(i.saldo, i.medida)}
+          </Situacao>
+        )
       ),
     },
     // Corrigir só existe COM loja escolhida. No consolidado a coluna "Tem"

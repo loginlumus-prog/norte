@@ -43,6 +43,7 @@ import { Botao, Aviso, Situacao, cx } from '@/ui/base'
 import { grade, type Grade, type InicialDoBalcao } from './acoes'
 import { brl, precoDe, linhaCent } from './conta'
 import { useVenda, FORMAS, tituloDaForma, type EncomendaNoPedido, type Linha } from './useVenda'
+import { plural } from '@/ui/texto'
 
 const MEDIDA: Record<string, string> = {
   UN: 'un', KG: 'kg', G: 'g', L: 'l', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx',
@@ -610,7 +611,7 @@ export function Balcao({
                 className="flex items-center justify-between gap-2 rounded-norte border border-bom-vivo bg-bom-fundo px-2.5 py-2 text-left"
               >
                 <span className="flex flex-col">
-                  <span className="text-xs font-semibold text-tinta">Tem {oferta.saldo} pontos</span>
+                  <span className="text-xs font-semibold text-tinta">Tem {plural(oferta.saldo, 'ponto', 'pontos')}</span>
                   <span className="text-xs text-tinta-2">dá {brl(oferta.centavos / 100)} de desconto</span>
                 </span>
                 <span className="shrink-0 text-xs font-bold text-bom">usar</span>
@@ -619,7 +620,7 @@ export function Balcao({
 
             {pontosUsar > 0 && (
               <div className="flex items-baseline justify-between gap-2 text-sm">
-                <span className="text-tinta-2">{pontosUsar} pontos</span>
+                <span className="text-tinta-2">{plural(pontosUsar, 'ponto', 'pontos')}</span>
                 <span className="flex items-baseline gap-2">
                   <span className="numero text-bom">- {brl(pontosCent / 100)}</span>
                   <button type="button" onClick={() => setPontosUsar(0)} className="text-xs text-tinta-3 hover:text-tinta" aria-label="Não usar os pontos">

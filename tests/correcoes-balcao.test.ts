@@ -303,6 +303,7 @@ describe('encomenda', () => {
     descricao: 'Bolo de chocolate 2 kg',
     valor: 120,
     sinal: 50,
+    sinalForma: 'PIX' as const,
     dia: amanha(),
     hora: '15:00',
     entrega: false,

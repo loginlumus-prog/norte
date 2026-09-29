@@ -250,13 +250,13 @@ function PainelAvancado({ estado }: { estado: Estado }) {
           rotulo: `${x.hora}h`,
           valor: x.hora === HORA_AGORA && x.total !== null ? x.total + estado.extra.total : x.total,
           anterior: x.passada,
-          detalhe: x.vendas !== null ? `${x.vendas + (x.hora === HORA_AGORA ? estado.extra.vendas : 0)} vendas` : undefined,
+          detalhe: x.vendas !== null ? plural(x.vendas + (x.hora === HORA_AGORA ? estado.extra.vendas : 0), 'venda', 'vendas') : undefined,
         }))
       : DIAS.slice(-dias).map((d, i) => ({
           rotulo: dataComSemana(d.n),
           valor: d.n === 0 ? d.total + estado.extra.total : d.total,
           anterior: DIAS[DIAS.length - dias * 2 + i]!.total,
-          detalhe: `${d.n === 0 ? d.vendas + estado.extra.vendas : d.vendas} vendas`,
+          detalhe: plural(d.n === 0 ? d.vendas + estado.extra.vendas : d.vendas, 'venda', 'vendas'),
         }))
 
   return (

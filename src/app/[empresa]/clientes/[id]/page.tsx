@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { vocabularioDoEndereco } from '@/servidor/vocabulario'
+import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { mostrarDiaDaColuna } from '@/servidor/dia'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -20,9 +20,11 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ClienteNaTela } from '../Editor'
 import { ofertasNaTela } from '../ofertasNaTela'
 import { Anonimizar } from './Anonimizar'
+import { Escola } from './Escola'
 import { PALAVRA_CONFIRMA } from '@/servidor/anonimizar'
 import { colunaDoDia, diaEmSP } from '@/servidor/dia'
 import { plural, quantidade } from '@/ui/texto'
+import { listarAgenda, ROTULO_AGENDA, NIVEL_AGENDA, OCUPAM, diaCurtoSP, horaEmSP } from '@/servidor/agenda'
 
 export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
   return { title: (await vocabularioDoEndereco((await params).empresa)).Pessoa }
@@ -51,7 +53,15 @@ export default async function FichaCliente({
   if (!cliente) notFound()
 
   const temCrediario = moduloLigado(empresa, 'crediario') && pode(sessao, 'crediario.ver')
-  const [meses, favoritos, vales, parcelas] = await Promise.all([
+  // Com a Agenda ligada, a ficha mostra os horários da pessoa: o próximo e os
+  // de antes, com falta e desmarcado — "ela sempre falta às segundas" é o que
+  // a recepção precisa saber antes de marcar de novo.
+  const temAgenda = moduloLigado(empresa, 'agenda') && pode(sessao, 'agenda.ver')
+  // Com a Escola ligada, a ficha é também a do ALUNO: o responsável, as
+  // matrículas e as mensalidades (ver Escola.tsx).
+  const temEscola = moduloLigado(empresa, 'escola') && pode(sessao, 'escola.ver')
+  const vocab = await vocabularioDaEmpresa(sessao.orgId)
+  const [meses, favoritos, vales, parcelas, horarios] = await Promise.all([
     comprasPorMes(sessao, id, 12),
     favoritosDoCliente(sessao, id),
     valesDoCliente(sessao, id),
@@ -60,7 +70,21 @@ export default async function FichaCliente({
           listarParcelas(sessao, { unidadeIds: us.map((u) => u.id), situacao: 'aberta', clienteId: id }),
         )
       : Promise.resolve([]),
+    temAgenda
+      ? unidadesVisiveis(sessao, 'agenda.ver').then((us) =>
+          listarAgenda(sessao, {
+            unidadeIds: us.map((u) => u.id),
+            de: new Date(Date.now() - 365 * 864e5),
+            ate: new Date(Date.now() + 365 * 864e5),
+            clienteId: id,
+          }),
+        )
+      : Promise.resolve([]),
   ])
+  const agora = new Date()
+  const proximos = horarios.filter((h) => h.fim > agora && OCUPAM.includes(h.situacao) && h.situacao !== 'ATENDIDO')
+  const passados = horarios.filter((h) => !proximos.includes(h)).reverse().slice(0, 12)
+  const faltas = horarios.filter((h) => h.situacao === 'FALTOU').length
   const devendo = parcelas.reduce((s, p) => s + p.resta, 0)
   const vencidas = parcelas.filter((p) => p.situacao === 'vencida')
   const primeiroNome = cliente.nome.split(' ')[0]
@@ -323,6 +347,43 @@ export default async function FichaCliente({
           )}
         </Cartao>
 
+        {temAgenda && (
+          <Cartao
+            titulo="Agenda"
+            acao={
+              faltas > 0 ? (
+                <Situacao nivel="critico">{plural(faltas, 'falta', 'faltas')} no último ano</Situacao>
+              ) : undefined
+            }
+          >
+            {horarios.length === 0 ? (
+              <Vazio>Nenhum horário marcado no último ano.</Vazio>
+            ) : (
+              <ul className="flex flex-col">
+                {[...proximos, ...passados].map((h) => (
+                  <li
+                    key={h.id}
+                    className="flex flex-wrap items-center justify-between gap-3 border-b border-borda-suave py-2.5 last:border-0"
+                  >
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-sm text-tinta">
+                        {h.servico} · com {h.colaboradorNome}
+                      </span>
+                      <span className="text-xs text-tinta-3">
+                        {diaCurtoSP(h.inicio)} às {horaEmSP(h.inicio)} · {h.unidadeNome}
+                        {h.motivo ? ` · ${h.motivo}` : ''}
+                      </span>
+                    </span>
+                    <Situacao nivel={proximos.includes(h) ? 'atencao' : NIVEL_AGENDA[h.situacao]}>
+                      {proximos.includes(h) ? `próximo · ${ROTULO_AGENDA[h.situacao].toLowerCase()}` : ROTULO_AGENDA[h.situacao]}
+                    </Situacao>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Cartao>
+        )}
+
         {cliente.observacoes && (
           <Cartao titulo="O que a equipe precisa lembrar">
             <p className="text-sm leading-relaxed text-tinta-2">{cliente.observacoes}</p>
@@ -337,6 +398,12 @@ export default async function FichaCliente({
           </Cartao>
         )}
       </Secao>
+
+      {temEscola && !anonimizado && (
+        <Secao titulo="Escola">
+          <Escola slug={slug} sessao={sessao} alunoId={cliente.id} nomeAluno={cliente.nome} escola={empresa.nome} palavra={vocab.pessoa} />
+        </Secao>
+      )}
 
       {podeEditar && ofertas && (
         <Secao titulo="Cadastro">

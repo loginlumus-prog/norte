@@ -49,7 +49,10 @@ import {
   conectarCanal,
   desconectarCanal,
   mensagemDeTeste,
+  conectarPeloQr,
 } from '../src/servidor/assistente/conexao'
+import { empresasComAgente, fecharPortariaRotinas } from '../src/servidor/assistente/portaria'
+import { podeGastarHoje } from '../src/servidor/agente'
 import { CanalFalso } from '../src/servidor/assistente/canal'
 import { fechar } from '../src/servidor/banco'
 import type { Sessao } from '../src/servidor/permissao'
@@ -78,10 +81,10 @@ const SEMENTE = `
     ('uni-a1', 'org-a', 'Centro A', now()),
     ('uni-b1', 'org-b', 'Sul B', now());
 
-  insert into usuarios (id, org_id, nome, email, telefone, atualizado_em) values
-    ('usr-ana',  'org-a', 'Ana Dona',    'ana@a.com',  '(71) 99999-0001', now()),
-    ('usr-beto', 'org-a', 'Beto Balcão', 'beto@a.com', null, now()),
-    ('usr-bia',  'org-b', 'Bia Vizinha', 'bia@b.com',  '(11) 97777-0003', now());
+  insert into usuarios (id, org_id, nome, email, telefone, telefone_confirmado, telefone_confirmado_em, atualizado_em) values
+    ('usr-ana',  'org-a', 'Ana Dona',    'ana@a.com',  '(71) 99999-0001', '7199990001', now(), now()),
+    ('usr-beto', 'org-a', 'Beto Balcão', 'beto@a.com', null, null, null, now()),
+    ('usr-bia',  'org-b', 'Bia Vizinha', 'bia@b.com',  '(11) 97777-0003', '1177770003', now(), now());
 
   insert into acessos (id, org_id, usuario_id, unidade_id, papel) values
     ('ac-ana',  'org-a', 'usr-ana',  null,     'DONO'),
@@ -468,5 +471,73 @@ describe('o anúncio de onde a pessoa veio, pelo Z-API', () => {
     expect(lerZapi(zapi('AD-2'), null)).not.toHaveProperty('anuncioId')
     expect(lerZapi(doAnuncio({ sourceType: 'post', sourceId: '123' }), null)).not.toHaveProperty('anuncioId')
     expect(lerZapi(doAnuncio({ sourceType: 'ad', sourceId: 'com espaço' }), null)).not.toHaveProperty('anuncioId')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+// O PLANO DECIDE SE HÁ ASSISTENTE — E O TESTE VENCIDO NÃO É PLANO
+// ─────────────────────────────────────────────────────────────
+
+describe('o plano decide se o WhatsApp liga', () => {
+  const DONA_G = sessao('org-g', 'usr-gil', 'DONO')
+  const DONA_T = sessao('org-t', 'usr-tai', 'DONO')
+
+  beforeAll(async () => {
+    // G: Grátis com o módulo marcado (resto de uma troca antiga). T: teste do
+    // plano com assistente que acabou ontem — no banco, ainda "pago".
+    await db.exec(`
+      insert into orgs (id, nome, slug, plano, situacao, modulos, credito_ia_cent, teste_ate, atualizada_em) values
+        ('org-g', 'Gratis', 'gratis-g', 'GRATIS', 'ATIVA', '{agente}', 5000, null, now()),
+        ('org-t', 'Teste Vencido', 'teste-t', 'BALCAO_AGENTE', 'TESTE', '{agente}', 5000, now() - interval '1 day', now());
+      insert into agentes (id, org_id, nome, ativo, canal, atualizado_em) values
+        ('ag-g', 'org-g', 'Gi', true, 'NENHUM', now()),
+        ('ag-t', 'org-t', 'Ti', true, 'NENHUM', now());
+    `)
+  })
+  afterAll(async () => {
+    await fecharPortariaRotinas()
+  })
+
+  it('Grátis: QR, linha própria e reabrir a porta são recusados, e nada muda', async () => {
+    comChave()
+    comConector()
+    await expect(conectarPeloQr(DONA_G)).rejects.toThrow(/plano/)
+    await expect(salvarLinhaZapi(DONA_G, { instancia: INSTANCIA_B, token: TOKEN_B, clientToken: '' })).rejects.toThrow(/plano/)
+    await expect(conectarCanal(DONA_G)).rejects.toThrow(/plano/)
+    const { rows } = await db.query<{ canal: string; zapi_instancia: string | null }>(
+      `select canal, zapi_instancia from agentes where id = 'ag-g'`,
+    )
+    expect(rows[0]).toEqual({ canal: 'NENHUM', zapi_instancia: null })
+  })
+
+  it('teste vencido: sai da lista das rotinas, desce para o Grátis e não gasta IA', async () => {
+    const lista = await empresasComAgente()
+    expect(lista.map((e) => e.id)).not.toContain('org-t')
+    // as que estão em dia continuam na lista
+    expect(lista.map((e) => e.id)).toContain('org-a')
+
+    const { rows } = await db.query<{ plano: string; situacao: string; modulos: string[] }>(
+      `select plano, situacao, modulos from orgs where id = 'org-t'`,
+    )
+    expect(rows[0]).toMatchObject({ plano: 'GRATIS', situacao: 'ATIVA' })
+    expect(rows[0]!.modulos).not.toContain('agente')
+
+    const v = await podeGastarHoje('org-t')
+    expect(v).toMatchObject({ pode: false, motivo: 'sem_agente' })
+    await expect(conectarCanal(DONA_T)).rejects.toThrow(/plano/)
+  })
+
+  it('o teste vencido é visto também pelo gasto, sem passar pela lista', async () => {
+    await db.exec(`
+      insert into orgs (id, nome, slug, plano, situacao, modulos, credito_ia_cent, teste_ate, atualizada_em) values
+        ('org-u', 'Outro Teste', 'teste-u', 'BALCAO_AGENTE', 'TESTE', '{agente}', 0, now() - interval '1 hour', now());
+      insert into agentes (id, org_id, nome, ativo, canal, atualizado_em) values
+        ('ag-u', 'org-u', 'Uli', true, 'NENHUM', now());
+    `)
+    const v = await podeGastarHoje('org-u')
+    expect(v).toMatchObject({ pode: false, motivo: 'sem_agente' })
+    // e o crédito do plano pago NÃO caiu na carteira de quem já não o tem
+    const { rows } = await db.query<{ credito_ia_cent: number }>(`select credito_ia_cent from orgs where id = 'org-u'`)
+    expect(rows[0]!.credito_ia_cent).toBe(0)
   })
 })

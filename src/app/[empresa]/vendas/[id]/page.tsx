@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { acharVenda } from '@/servidor/venda'
+import { codigoEncomenda } from '@/servidor/encomenda'
 import { pode } from '@/servidor/permissao'
 import { mostrarTelefone } from '@/servidor/cliente'
 import { Estrutura } from '@/ui/Estrutura'
@@ -16,6 +17,7 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Cancelar } from './Cancelar'
 import { Devolver, type ItemDevolvivel } from './Devolver'
 import { pedeInteiro, restante } from '@/servidor/devolucao'
+import { plural } from '@/ui/texto'
 
 export const metadata: Metadata = { title: 'Venda' }
 
@@ -246,7 +248,7 @@ export default async function FichaVenda({
           {v.pontosGanhos > 0 && (
             <div className="flex justify-between text-xs text-bom">
               <dt>Ganhou</dt>
-              <dd className="numero">{v.pontosGanhos} pontos</dd>
+              <dd className="numero">{plural(v.pontosGanhos, 'ponto', 'pontos')}</dd>
             </div>
           )}
         </dl>
@@ -269,6 +271,18 @@ export default async function FichaVenda({
             </li>
           ))}
         </ul>
+        {v.encomenda && (
+          <p className="mt-3 border-t border-borda-suave pt-3 text-[13px] text-tinta-2">
+            Recebeu o que faltava da{' '}
+            <Link
+              href={`/${slug}/encomendas?situacao=entregue&q=${encodeURIComponent(v.encomenda.descricao.slice(0, 80))}`}
+              className="font-semibold text-marca hover:underline"
+            >
+              encomenda {codigoEncomenda(v.encomenda.id)}
+            </Link>
+            : {v.encomenda.descricao}
+          </p>
+        )}
         {v.observacoes && (
           <p className="mt-3 border-t border-borda-suave pt-3 text-[13px] text-tinta-2">{v.observacoes}</p>
         )}

@@ -96,10 +96,10 @@ const SEMENTE = `
     ('uni-a1', 'org-a', 'Loja Centro A', 'seg a sáb 9h-18h', now()),
     ('uni-b1', 'org-b', 'Loja Sul B', null, now());
 
-  insert into usuarios (id, org_id, nome, email, telefone, atualizado_em) values
-    ('usr-ana',  'org-a', 'Ana Dona',     'ana@a.com',  '(71) 99999-0001', now()),
-    ('usr-beto', 'org-a', 'Beto Balcão',  'beto@a.com', '71 9 8888 0002',  now()),
-    ('usr-bia',  'org-b', 'Bia Vizinha',  'bia@b.com',  '+55 11 97777-0003', now());
+  insert into usuarios (id, org_id, nome, email, telefone, telefone_confirmado, telefone_confirmado_em, atualizado_em) values
+    ('usr-ana',  'org-a', 'Ana Dona',     'ana@a.com',  '(71) 99999-0001', '7199990001', now(), now()),
+    ('usr-beto', 'org-a', 'Beto Balcão',  'beto@a.com', '71 9 8888 0002', '7188880002', now(), now()),
+    ('usr-bia',  'org-b', 'Bia Vizinha',  'bia@b.com',  '+55 11 97777-0003', '1177770003', now(), now());
 
   insert into acessos (id, org_id, usuario_id, unidade_id, papel) values
     ('ac-ana',  'org-a', 'usr-ana',  null,     'DONO'),
@@ -717,14 +717,14 @@ describe('limites e memória', () => {
 
 describe('quem é quem', () => {
   it('telefone repetido em dois usuários não vira equipe — na dúvida, cliente (e cliente não chega ao modelo)', async () => {
-    await db.exec(`update usuarios set telefone = '(71) 99999-0001' where id = 'usr-beto'`)
+    await db.exec(`update usuarios set telefone = '(71) 99999-0001', telefone_confirmado = '7199990001' where id = 'usr-beto'`)
     try {
       const api = apiFalsa(diz('oi'))
       const r = await processarMensagem(msg('org-a', ANA, 'como foi hoje?'), { canal: new CanalFalso(), buscar: api.buscar })
       expect(r).toEqual({ tipo: 'silencio', motivo: 'recado_desligado' })
       expect(api.corpos).toHaveLength(0)
     } finally {
-      await db.exec(`update usuarios set telefone = '71 9 8888 0002' where id = 'usr-beto'`)
+      await db.exec(`update usuarios set telefone = '71 9 8888 0002', telefone_confirmado = '7188880002' where id = 'usr-beto'`)
     }
   })
 

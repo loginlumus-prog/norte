@@ -303,8 +303,8 @@ describe('recibo de ruptura evitada: transferência não é compra', () => {
         ('prop-1', 'org-a', 'ag-a', 'pedir.compra', 'Reposição: Meia',
          '{"variacaoId":"var-rep","quantidade":10,"saldoNaProposta":0,"unidadeIds":["uni-a1"],"descricao":"Reposição: Meia"}',
          'CONFIRMADA', now(), now() - interval '31 days');
-      insert into movimentos_estoque (id, org_id, variacao_id, unidade_id, tipo, quantidade, saldo_depois, motivo, quem, criado_em) values
-        ('mv-t', 'org-a', 'var-rep', 'uni-a1', 'ENTRADA', 10, 10, 'Transferência de Loja Shopping', 'Dona', now() - interval '30 days');
+      insert into movimentos_estoque (id, org_id, variacao_id, unidade_id, tipo, quantidade, saldo_depois, motivo, transferencia_id, quem, criado_em) values
+        ('mv-t', 'org-a', 'var-rep', 'uni-a1', 'ENTRADA', 10, 10, 'Transferência de Loja Shopping', 'tr-1', 'Dona', now() - interval '30 days');
       insert into vendas (id, org_id, unidade_id, numero, situacao, total, criada_em) values
         ('v-rep', 'org-a', 'uni-a1', 3, 'CONCLUIDA', 100, now() - interval '20 days');
       insert into venda_itens (id, org_id, venda_id, variacao_id, descricao, quantidade, preco_unit, total, custo_unit) values
@@ -312,10 +312,12 @@ describe('recibo de ruptura evitada: transferência não é compra', () => {
     `)
     expect(await m.agente.apurarRecibos('org-a')).toBe(0)
 
-    // A compra de verdade entra — aí sim há o que medir.
+    // A compra de verdade entra — aí sim há o que medir. E o que marca a
+    // transferência é o transferencia_id, não o texto: uma entrada comum com
+    // o motivo "Transferência de …" digitado à mão é compra, e conta.
     await db.exec(`
       insert into movimentos_estoque (id, org_id, variacao_id, unidade_id, tipo, quantidade, saldo_depois, motivo, quem, criado_em) values
-        ('mv-c', 'org-a', 'var-rep', 'uni-a1', 'ENTRADA', 10, 20, 'Entrada — Fornecedor', 'Dona', now() - interval '29 days');
+        ('mv-c', 'org-a', 'var-rep', 'uni-a1', 'ENTRADA', 10, 20, 'Transferência de fornecedor novo', 'Dona', now() - interval '29 days');
     `)
     expect(await m.agente.apurarRecibos('org-a')).toBe(1)
     const [r] = await linha<{ valor: string }>(`select valor from recibos_agente where alvo_id = 'prop-1'`)

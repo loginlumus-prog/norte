@@ -455,6 +455,17 @@ export async function salvarItensDoPedido(sessao: Sessao, id: string, itens: Nov
     if ('erro' in c) return { ok: false as const, erro: c.erro! }
     await db.itemCompra.deleteMany({ where: { pedidoId: id } })
     await db.itemCompra.createMany({ data: c.linhas.map((l) => ({ orgId: sessao.orgId, pedidoId: id, ...l })) })
+    // No livro como o resto do pedido: o valor combinado mudou, e quem
+    // confere a conta do fornecedor depois precisa ver que mudou e quem mudou.
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId, unidadeId: p.unidadeId, usuarioId: sessao.usuarioId, quem: sessao.nome,
+        acao: 'compra.mudou_itens', alvoTipo: 'compra', alvoId: id, alvoNome: codigoCompra(id),
+        valor: reais(valorDoPedido(c.linhas)),
+        antes: { itens: p.itens.length, valor: reais(valorDoPedido(p.itens.map((i) => ({ quantidade: Number(i.quantidade), custoUnit: i.custoUnit == null ? null : Number(i.custoUnit) })))) },
+        depois: { itens: c.linhas.length },
+      },
+    })
     return { ok: true as const, id }
   })
 }

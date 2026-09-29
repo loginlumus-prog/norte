@@ -22,9 +22,9 @@ export async function generateMetadata({ params }: { params: Promise<{ empresa: 
   return { title: (await vocabularioDoEndereco((await params).empresa)).Pessoas }
 }
 
-type Quem = 'sumidos' | 'nunca' | 'ativos' | 'novos' | 'aniversario' | 'pontos' | 'devendo'
+type Quem = 'sumidos' | 'nunca' | 'ativos' | 'novos' | 'aniversario' | 'pontos' | 'devendo' | 'desativados'
 type Ordem = 'nome' | 'gastou' | 'recente'
-const QUEM: Quem[] = ['sumidos', 'nunca', 'ativos', 'novos', 'aniversario', 'pontos', 'devendo']
+const QUEM: Quem[] = ['sumidos', 'nunca', 'ativos', 'novos', 'aniversario', 'pontos', 'devendo', 'desativados']
 const MES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 
 // A lista de clientes.
@@ -58,7 +58,13 @@ export default async function Clientes({
   const simples = (await lerModo()) === 'simples'
 
   const vocab = await vocabularioDaEmpresa(sessao.orgId)
-  const clientes = await listarClientes(sessao, q)
+  // As fichas desativadas (e as anonimizadas) vêm junto, mas ficam fora de
+  // toda conta e de todo recorte: só aparecem no filtro "desativados". Antes
+  // entravam no "todos" e nos números — "cadastrados: 10" aqui, "9 ativos"
+  // no Painel, para a mesma loja.
+  const fichas = await listarClientes(sessao, q, 500, 'todos')
+  const clientes = fichas.filter((c) => c.ativo)
+  const desativados = fichas.filter((c) => !c.ativo)
   const podeEditar = pode(sessao, 'cliente.editar')
 
   const ehSumido = (c: (typeof clientes)[number]) => {
@@ -86,7 +92,7 @@ export default async function Clientes({
   //
   // Aniversariante do mes, quem tem ponto para gastar e quem deve sao os
   // tres motivos de mandar mensagem que a loja mais tem — e nenhum tinha filtro.
-  const listados = clientes
+  const listados = (quem === 'desativados' ? desativados : clientes)
     .filter((c) =>
       quem === 'sumidos' ? ehSumido(c)
       : quem === 'nunca' ? c.compras === 0
@@ -160,7 +166,7 @@ export default async function Clientes({
         <Busca
           valor={q}
           placeholder="Nome, telefone ou CPF"
-          rotulo="Buscar cliente"
+          rotulo={`Buscar ${vocab.pessoa}`}
           manter={{ quem, ordem: atuais.ordem }}
           limparEm={link({ q: null })}
         />
@@ -171,11 +177,14 @@ export default async function Clientes({
                 { valor: null, rotulo: 'todos', quantos: clientes.length },
                 { valor: 'ativos', rotulo: 'compram', quantos: clientes.length - semCompra.length - sumidos.length, avancado: true },
                 { valor: 'sumidos', rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length },
-                { valor: 'novos', rotulo: 'cadastrados há 30 dias', quantos: novos.length, avancado: true },
+                { valor: 'novos', rotulo: 'cadastrados nos últimos 30 dias', quantos: novos.length, avancado: true },
                 { valor: 'aniversario', rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length },
                 { valor: 'pontos', rotulo: 'com pontos', quantos: comPontos.length, avancado: true },
                 { valor: 'devendo', rotulo: 'devendo', quantos: devendo.length },
                 { valor: 'nunca', rotulo: 'nunca compraram', quantos: semCompra.length, avancado: true },
+                ...(desativados.length > 0 || quem === 'desativados'
+                  ? [{ valor: 'desativados' as const, rotulo: 'desativados', quantos: desativados.length, avancado: true }]
+                  : []),
               ] as { valor: Quem | null; rotulo: string; quantos: number; avancado?: boolean }[]
             ).filter((o) => !simples || !o.avancado || o.valor === quem)}
             atual={quem}
@@ -201,18 +210,20 @@ export default async function Clientes({
           q
             ? `Resultado de “${q}”`
             : quem
-              ? `${listados.length} de ${plural(clientes.length, vocab.pessoa, vocab.pessoas)}`
+              ? quem === 'desativados'
+                ? `${plural(desativados.length, `${vocab.pessoa} desativado`, `${vocab.pessoas} desativados`)}`
+                : `${listados.length} de ${plural(clientes.length, vocab.pessoa, vocab.pessoas)}`
               : plural(clientes.length, vocab.pessoa, vocab.pessoas)
         }
         acao={
-          clientes.length >= 200 ? (
+          fichas.length >= 500 ? (
             <span className="text-xs text-tinta-3">
-              mostrando os 200 primeiros — use a busca
+              mostrando os 500 primeiros — use a busca
             </span>
           ) : undefined
         }
       >
-        {clientes.length === 0 ? (
+        {clientes.length === 0 && quem !== 'desativados' ? (
           <Vazio
             acao={
               podeEditar && !q ? (
@@ -225,14 +236,14 @@ export default async function Clientes({
               ) : undefined
             }
           >
-            {q ? 'Ninguém com esse nome, telefone ou CPF.' : 'Nenhum cliente cadastrado ainda.'}
+            {q ? 'Ninguém com esse nome, telefone ou CPF.' : `Nenhum ${vocab.pessoa} cadastrado ainda.`}
           </Vazio>
         ) : (
           <Tabela
             colunas={[
               {
                 chave: 'nome',
-                titulo: 'Cliente',
+                titulo: vocab.Pessoa,
                 celula: (c) => (
                   <Link
                     href={`/${slug}/clientes/${c.id}`}
@@ -292,7 +303,7 @@ export default async function Clientes({
                               deve {brl(c.devendo)}
                             </Situacao>
                           )}
-                          {c.pontos > 0 && <span className="numero text-xs text-tinta-3">{c.pontos} pontos</span>}
+                          {c.pontos > 0 && <span className="numero text-xs text-tinta-3">{plural(c.pontos, 'ponto', 'pontos')}</span>}
                         </span>
                       ),
                     },
@@ -307,6 +318,7 @@ export default async function Clientes({
               : quem === 'devendo' ? 'Ninguém devendo.'
               : quem === 'aniversario' ? `Ninguém faz aniversário em ${MES_NOME[mesAtual]} — ou a data de nascimento não foi cadastrada.`
               : quem === 'pontos' ? 'Ninguém com pontos para usar.'
+              : quem === 'desativados' ? 'Nenhuma ficha desativada.'
               : 'Ninguém aqui.'
             }
           />

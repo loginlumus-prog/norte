@@ -10,6 +10,9 @@ import { Cartao } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { TrocarSenha } from './TrocarSenha'
 import { TrocarNome } from './TrocarNome'
+import { MeuWhatsApp } from './MeuWhatsApp'
+import { meuTelefone } from '@/servidor/assistente/confirmacao'
+import { soLeitura } from '@/servidor/equipe'
 
 // Minha conta: quem eu sou aqui, e trocar a minha senha.
 //
@@ -36,6 +39,7 @@ export default async function MinhaConta({ params }: { params: Promise<{ empresa
   )
   const papeis = [...new Set(sessao.acessos.map((a) => NOME_DO_PAPEL[a.papel]))].join(', ')
   const soSuporte = sessao.acessos.length > 0 && sessao.acessos.every((a) => a.papel === 'SUPORTE')
+  const whats = soSuporte ? null : await meuTelefone(sessao)
 
   return (
     <Estrutura
@@ -71,6 +75,24 @@ export default async function MinhaConta({ params }: { params: Promise<{ empresa
         <Secao titulo="Meu nome" resumo="É como você aparece nas vendas, nas tarefas e no livro de auditoria.">
           <Cartao caixa>
             <TrocarNome slug={slug} nome={eu?.nome ?? sessao.nome} />
+          </Cartao>
+        </Secao>
+      )}
+
+      {whats && (
+        <Secao
+          titulo="Meu WhatsApp"
+          resumo="É por ele que o assistente da loja reconhece você — depois que você confirmar que o número é seu."
+        >
+          <Cartao caixa>
+            <MeuWhatsApp
+              slug={slug}
+              telefone={whats.telefone}
+              estado={whats.estado}
+              confirmadoEm={whats.confirmadoEm ? dia(whats.confirmadoEm) : null}
+              esperandoCodigo={whats.esperandoCodigo}
+              podeMudar={!soLeitura(sessao)}
+            />
           </Cartao>
         </Secao>
       )}

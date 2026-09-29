@@ -12,6 +12,13 @@
 // "Pacientes" porque a empresa é uma clínica. Por isso o vocabulário mora
 // aqui, num lugar só, e as telas pedem a palavra em vez de perguntar o ramo.
 //
+// ── e as telas ───────────────────────────────────────────────
+// O mesmo vale para o nome de duas telas. Na clínica, quem cobra a consulta
+// fica na RECEPÇÃO, não no "balcão"; na escola, na SECRETARIA. E o catálogo
+// da clínica é de serviços e materiais, não de "produtos". A tela continua
+// uma só (o balcão de sempre, o cadastro de sempre); muda o que o menu, o
+// título e o guia escrevem.
+//
 // Puro em cima (as palavras); a leitura do ramo da empresa, embaixo.
 
 import { cache } from 'react'
@@ -42,6 +49,17 @@ export type Vocabulario = {
    */
   avisoObservacao: string | null
 }
+
+/** O nome das telas que mudam com o ramo — menu, título da tela e guia. */
+export type NomesDasTelas = {
+  /** "Balcão", "Recepção", "Secretaria". */
+  Balcao: string
+  /** "Produtos", "Serviços e materiais". */
+  Produtos: string
+}
+
+/** As palavras do ramo: quem é atendido e como as telas se chamam. */
+export type VocabularioDoRamo = Vocabulario & NomesDasTelas
 
 const VOCABULARIOS: Record<ChaveVocabulario, Vocabulario> = {
   clientes: {
@@ -77,16 +95,49 @@ const VOCABULARIOS: Record<ChaveVocabulario, Vocabulario> = {
   },
 }
 
+const TELAS_PADRAO: NomesDasTelas = { Balcao: 'Balcão', Produtos: 'Produtos' }
+
+/**
+ * Os ramos que chamam as telas de outro jeito. O resto usa o padrão.
+ *
+ * O salão e a clínica recebem na RECEPÇÃO; a escola, na SECRETARIA. O
+ * catálogo da clínica é quase todo serviço (consulta, sessão) mais o material
+ * de uso — "Produtos" ali soa a farmácia; o do salão é serviço e o produto de
+ * revenda. A escola vende material e uniforme: "Produtos" serve.
+ */
+const TELAS: Partial<Record<Ramo, Partial<NomesDasTelas>>> = {
+  beleza: { Balcao: 'Recepção', Produtos: 'Serviços e produtos' },
+  saude: { Balcao: 'Recepção', Produtos: 'Serviços e materiais' },
+  escola: { Balcao: 'Secretaria' },
+}
+
 /** Os ramos que não chamam de cliente. O resto (a maioria) chama. */
 const QUEM_ATENDE: Partial<Record<Ramo, ChaveVocabulario>> = {
   saude: 'pacientes',
   escola: 'alunos',
 }
 
-/** As palavras de um ramo. Ramo desconhecido ou vazio fala "cliente". */
-export function vocabularioDoRamo(ramo: string | null | undefined): Vocabulario {
+/** As palavras de um ramo. Ramo desconhecido ou vazio fala "cliente" e "Balcão". */
+export function vocabularioDoRamo(ramo: string | null | undefined): VocabularioDoRamo {
   const chave = ramo && Object.hasOwn(QUEM_ATENDE, ramo) ? QUEM_ATENDE[ramo as Ramo]! : 'clientes'
-  return VOCABULARIOS[chave]
+  const telas = ramo && Object.hasOwn(TELAS, ramo) ? TELAS[ramo as Ramo] : undefined
+  return { ...VOCABULARIOS[chave], ...TELAS_PADRAO, ...telas }
+}
+
+/** O que o menu troca pela palavra do ramo: a chave do vocabulário. */
+export type PalavraDoMenu = 'Pessoas' | 'Balcao' | 'Produtos'
+
+/**
+ * Os nomes das telas desta empresa que não são os do manual, pela chave da
+ * entrada do guia (`guia.ts`): { balcao: 'Recepção', clientes: 'Pacientes' }.
+ * Vazio para a loja de roupa — o guia fala como sempre falou.
+ */
+export function nomesNoGuia(v: VocabularioDoRamo): Record<string, string> {
+  const nomes: Record<string, string> = {}
+  if (v.Balcao !== TELAS_PADRAO.Balcao) nomes.balcao = v.Balcao
+  if (v.Produtos !== TELAS_PADRAO.Produtos) nomes.produtos = v.Produtos
+  if (v.Pessoas !== VOCABULARIOS.clientes.Pessoas) nomes.clientes = v.Pessoas
+  return nomes
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -101,13 +152,13 @@ export function vocabularioDoRamo(ramo: string | null | undefined): Vocabulario 
  * Guardado por requisição: o menu, o título e a tela perguntam, o banco
  * responde uma vez.
  */
-export const vocabularioDaEmpresa = cache(async (orgId: string): Promise<Vocabulario> => {
+export const vocabularioDaEmpresa = cache(async (orgId: string): Promise<VocabularioDoRamo> => {
   try {
     const org = await comoOrg(orgId, (db) => db.org.findUnique({ where: { id: orgId }, select: { ramo: true } }))
     return vocabularioDoRamo(org?.ramo)
   } catch {
     // Palavra é enfeite: banco fora não derruba a tela por causa dela.
-    return VOCABULARIOS.clientes
+    return vocabularioDoRamo(null)
   }
 })
 
@@ -115,11 +166,11 @@ export const vocabularioDaEmpresa = cache(async (orgId: string): Promise<Vocabul
  * O mesmo, a partir do endereço — para o título da aba, que é montado antes
  * de existir sessão. Lê só o ramo da empresa do endereço.
  */
-export const vocabularioDoEndereco = cache(async (slug: string): Promise<Vocabulario> => {
+export const vocabularioDoEndereco = cache(async (slug: string): Promise<VocabularioDoRamo> => {
   try {
     const org = await acharOrgPorSlug(slug)
-    return org ? await vocabularioDaEmpresa(org.id) : VOCABULARIOS.clientes
+    return org ? await vocabularioDaEmpresa(org.id) : vocabularioDoRamo(null)
   } catch {
-    return VOCABULARIOS.clientes
+    return vocabularioDoRamo(null)
   }
 })

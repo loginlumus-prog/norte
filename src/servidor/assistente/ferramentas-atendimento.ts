@@ -34,6 +34,8 @@ import {
 import { deSP } from '../encomenda'
 import { folhaDe, horas, listarColaboradores, meuColaborador, podeNoColaborador, trabalhandoAgora } from '../ponto'
 import { unidadesVisiveis } from './contexto'
+import { listarMensalidades, mesAnterior, mesPorExtenso, ROTULO_SITUACAO } from '../mensalidades'
+import { horarioDaTurma, listarTurmas, TURNOS } from '../escola'
 import type { ResultadoFerramenta } from './ferramentas'
 
 const MAXIMO_RESULTADO = 6000
@@ -205,8 +207,8 @@ export async function proporDesmarcar(orgId: string, empresa: ComModulos, sessao
 // ─────────────────────────────────────────────────────────────
 //
 // Cada FONTE diz de onde vem um pedaço da resposta, o que ela exige e o que
-// ela lê. Hoje são duas: as vendas e o crediário. A escola (a próxima fase)
-// acrescenta as mensalidades como mais uma fonte aqui — sem mexer nas outras.
+// ela lê. São três: as vendas, o crediário e, na escola, as mensalidades — a
+// terceira entrou sem mexer nas outras duas.
 
 type Fonte = {
   chave: string
@@ -262,13 +264,48 @@ export const FONTES_DE_PAGAMENTO: Fonte[] = [
       return { parcelasEmAberto: ps.length, vencido: brl(vencido), aVencer: brl(aVencer), proximoVencimento: ps[0] ? ps[0].vencimento.toISOString().slice(0, 10) : null }
     },
   },
+  {
+    // "O Pedro pagou a mensalidade de setembro?": os últimos seis meses do
+    // aluno, com o que pagou e quando. O nome procurado é o do ALUNO — a ficha
+    // de cliente com a palavra "aluno".
+    chave: 'mensalidades',
+    abre: (s, e) => moduloLigado(e, 'escola') && pode(s, 'mensalidade.ver'),
+    ler: async (s, clienteId, agora) => {
+      const lojas = await unidadesVisiveis(s, 'mensalidade.ver')
+      let desde = diaEmSP(agora).slice(0, 7)
+      for (let i = 0; i < 5; i++) desde = mesAnterior(desde)
+      const ms = (await listarMensalidades(s, { unidadeIds: lojas, alunoId: clienteId }, agora)).filter((m) => m.mes >= desde)
+      if (ms.length === 0) return undefined
+      const pagamentos = await comoOrg(s.orgId, (db) =>
+        db.pagamentoMensalidade.findMany({
+          where: { mensalidadeId: { in: ms.map((m) => m.id) } },
+          orderBy: { criadoEm: 'asc' },
+          select: { mensalidadeId: true, criadoEm: true, forma: true },
+        }),
+      )
+      return ms.map((m) => {
+        const pgs = pagamentos.filter((p) => p.mensalidadeId === m.id)
+        return {
+          mes: mesPorExtenso(m.mes),
+          turma: m.turma,
+          vence: m.vencimento.toISOString().slice(0, 10),
+          valor: brl(m.devido),
+          situacao: ROTULO_SITUACAO[m.situacao],
+          pago: m.pago > 0 ? brl(m.pago) : undefined,
+          resta: m.resta > 0 && m.situacao !== 'cancelada' ? brl(m.resta) : undefined,
+          diasDeAtraso: m.diasAtraso || undefined,
+          pagoEm: pgs.length ? pgs.map((p) => diaCurtoSP(p.criadoEm) + ' (' + p.forma.toLowerCase() + ')') : undefined,
+        }
+      })
+    },
+  },
 ]
 
 export async function consultarPagamentos(sessao: Sessao, empresa: ComModulos, e: Record<string, unknown>, agora = new Date()): Promise<ResultadoFerramenta> {
   const nome = str(e.cliente, 80)
   if (nome.length < 2) return falha('Diga o nome da pessoa.')
   const fontes = FONTES_DE_PAGAMENTO.filter((f) => f.abre(sessao, empresa))
-  if (fontes.length === 0) return falha('Esta pessoa não vê vendas nem crediário.')
+  if (fontes.length === 0) return falha('Esta pessoa não vê vendas, crediário nem mensalidades.')
   const achados = await comoOrg(sessao.orgId, (db) =>
     db.cliente.findMany({
       where: { ativo: true, anonimizadoEm: null, nome: { contains: nome, mode: 'insensitive' } },
@@ -281,7 +318,10 @@ export async function consultarPagamentos(sessao: Sessao, empresa: ComModulos, e
   const pessoas = []
   for (const c of achados.slice(0, 3)) {
     const r: Record<string, unknown> = { nome: c.nome }
-    for (const f of fontes) r[f.chave] = await f.ler(sessao, c.id, agora)
+    for (const f of fontes) {
+      const v = await f.ler(sessao, c.id, agora)
+      if (v !== undefined) r[f.chave] = v
+    }
     pessoas.push(r)
   }
   return json({ achados: achados.length, pessoas, maisDeTres: achados.length > 3 || undefined })
@@ -329,5 +369,63 @@ export async function consultarPonto(sessao: Sessao, e: Record<string, unknown>,
     batidasAAjustar: t.pendencias,
     trabalhandoDesde: f.folha.aberto?.entrada ? horaEmSP(f.folha.aberto.entrada) : null,
     aviso: 'Controle interno da empresa, não é ponto certificado.',
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
+// ESCOLA — "quem está atrasado?", "tem vaga?"
+// ─────────────────────────────────────────────────────────────
+//
+// Só leitura, e só para a equipe. O assistente não cobra ninguém e não fala
+// com responsável nem aluno: devolve a lista para a secretaria cobrar.
+
+export async function consultarAtrasadas(sessao: Sessao, e: Record<string, unknown>, agora = new Date()): Promise<ResultadoFerramenta> {
+  const lojas = await unidadesVisiveis(sessao, 'mensalidade.ver')
+  if (lojas.length === 0) return falha('Esta pessoa não vê as mensalidades.')
+  const turma = str(e.turma, 60)
+  const lista = (await listarMensalidades(sessao, { unidadeIds: lojas, situacao: 'atrasada' }, agora)).filter((m) => bate(m.turma, turma))
+  const porAluno = new Map<string, { aluno: string; responsavel: string | null; meses: string[]; total: number; dias: number }>()
+  for (const m of lista) {
+    const a = porAluno.get(m.alunoId) ?? { aluno: m.aluno, responsavel: m.responsavel, meses: [], total: 0, dias: 0 }
+    a.meses.push(mesPorExtenso(m.mes, true))
+    a.total = Math.round((a.total + m.resta) * 100) / 100
+    a.dias = Math.max(a.dias, m.diasAtraso)
+    porAluno.set(m.alunoId, a)
+  }
+  const alunos = [...porAluno.values()].sort((a, b) => b.total - a.total)
+  return json({
+    mensalidadesEmAtraso: lista.length,
+    total: brl(lista.reduce((s, m) => s + m.resta, 0)),
+    alunos: alunos.slice(0, 30).map((a) => ({
+      aluno: a.aluno,
+      responsavel: a.responsavel ?? '(sem responsável anotado)',
+      meses: a.meses,
+      deve: brl(a.total),
+      diasDeAtraso: a.dias,
+    })),
+    maisAlunos: alunos.length > 30 ? alunos.length - 30 : undefined,
+    lembrete: 'Sem juro e multa: eles são calculados na hora de receber.',
+  })
+}
+
+export async function consultarTurmas(sessao: Sessao, e: Record<string, unknown>): Promise<ResultadoFerramenta> {
+  const lojas = await unidadesVisiveis(sessao, 'escola.ver')
+  if (lojas.length === 0) return falha('Esta pessoa não vê as turmas.')
+  const pedido = str(e.turma, 60)
+  const turmas = (await listarTurmas(sessao, { unidadeIds: lojas })).filter((t) => bate(t.nome, pedido) || bate(t.curso ?? '', pedido))
+  if (turmas.length === 0) return json({ achadas: 0, recado: pedido ? 'Nenhuma turma com "' + pedido + '".' : 'Nenhuma turma cadastrada.' })
+  return json({
+    turmas: turmas.slice(0, 30).map((t) => ({
+      turma: t.nome,
+      curso: t.curso ?? undefined,
+      turno: t.turno ? (TURNOS[t.turno as keyof typeof TURNOS] ?? t.turno) : undefined,
+      horario: horarioDaTurma(t) || undefined,
+      professor: t.professor ?? undefined,
+      alunos: t.ocupadas,
+      capacidade: t.capacidade ?? 'sem limite',
+      vagas: t.vagas ?? 'sem limite',
+      loja: lojas.length > 1 ? t.unidade : undefined,
+    })),
+    total: turmas.length,
   })
 }

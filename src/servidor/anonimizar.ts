@@ -21,7 +21,13 @@
 //     no meio da descrição;
 //   • no livro de auditoria, o nome e os dados pessoais das linhas sobre ela
 //     (a função `anonimizar_auditoria` do rls.sql — o único jeito de tocar no
-//     livro, e só nisso).
+//     livro, e só nisso);
+//   • na escola (escola.ts): o RESPONSÁVEL inteiro (nome, parentesco,
+//     telefone, e-mail, CPF e o aceite do aviso), e os textos livres das
+//     matrículas e mensalidades — o motivo da bolsa, da saída, da dispensa —,
+//     que costumam carregar nome ("irmã da Maria", "mudou com o pai"). A
+//     matrícula e a mensalidade (turma, datas, valores, o que foi pago) ficam:
+//     são registro financeiro, como a venda.
 //
 // ── o que fica, e por quê ────────────────────────────────────
 //   • a CHAVE do telefone na lista de quem não recebe oferta (ver
@@ -33,10 +39,11 @@
 //     quem fez, quando e o que foi apagado, em números.
 //
 // ── quando NÃO dá ────────────────────────────────────────────
-// Com parcela do crediário em aberto, ou encomenda por entregar. Apagar o
-// contato de quem deve (ou de quem a loja deve uma entrega) não some com a
-// dívida — só com o jeito de resolvê-la; a lei deixa guardar para isso
-// (art. 16 e art. 7º, VI). Quita, entrega ou cancela, e aí anonimiza.
+// Com parcela do crediário em aberto, encomenda por entregar, matrícula viva
+// ou mensalidade em aberto. Apagar o contato de quem deve (ou de quem a loja
+// deve uma entrega, ou de quem ainda estuda ali) não some com a dívida — só
+// com o jeito de resolvê-la; a lei deixa guardar para isso (art. 16 e art. 7º,
+// VI). Quita, entrega, cancela a matrícula ou dispensa, e aí anonimiza.
 //
 // ── quem pode ────────────────────────────────────────────────
 // Na tela, quem configura a empresa (o dono): é irreversível e apaga
@@ -69,6 +76,9 @@ export type Apagado = {
   lancamentos: number
   linhasDoLivro: number
   foraDasOfertas: boolean
+  /** A escola: o responsável apagado, e as matrículas cujos textos saíram. */
+  responsavel: boolean
+  matriculas: number
 }
 
 export type ResultadoAnonimizacao = { ok: true; apagado: Apagado } | { ok: false; erro: string }
@@ -145,6 +155,22 @@ export async function fichasDoPedido(
       })
       for (const c of candidatos) if (chaveTelefone(c.telefone) === chave) achados.add(c.id)
     }
+    // O titular pode ser o RESPONSÁVEL de um aluno (a mãe que pede para a
+    // escola esquecer os dados dela e do filho — art. 14: é ela quem fala pela
+    // criança). A ficha que se anonimiza é a do aluno, e o responsável vai
+    // junto. Se o aluno ainda estuda ali, a anonimização recusa e diz por quê.
+    if (cpf.length === 11 || chave) {
+      const resps = await db.responsavel.findMany({
+        where: {
+          OR: [...(cpf.length === 11 ? [{ documento: cpf }] : []), ...(chave ? [{ telefone: { endsWith: chave.slice(-8) } }] : [])],
+          aluno: { anonimizadoEm: null },
+        },
+        select: { alunoId: true, telefone: true, documento: true },
+      })
+      for (const r of resps) {
+        if ((cpf.length === 11 && r.documento === cpf) || (!!chave && chaveTelefone(r.telefone) === chave)) achados.add(r.alunoId)
+      }
+    }
     return [...achados]
   })
 }
@@ -174,6 +200,17 @@ export async function anonimizarNaEmpresa(
     const porEntregar = await db.encomenda.count({ where: { clienteId, situacao: { in: ['ABERTA', 'PRONTA'] } } })
     if (porEntregar > 0) {
       return { ok: false as const, erro: 'Tem encomenda por entregar para esta pessoa. Entregue ou cancele antes de anonimizar.' }
+    }
+    const estuda = await db.matricula.count({ where: { alunoId: clienteId, situacao: { in: ['ATIVA', 'TRANCADA'] } } })
+    if (estuda > 0) {
+      return { ok: false as const, erro: 'Esta pessoa tem matrícula ativa ou trancada. Cancele ou conclua a matrícula antes de anonimizar.' }
+    }
+    const mensalidades = await db.mensalidade.count({ where: { alunoId: clienteId, quitadaEm: null, canceladaEm: null } })
+    if (mensalidades > 0) {
+      return {
+        ok: false as const,
+        erro: `Tem ${mensalidades === 1 ? 'uma mensalidade' : `${mensalidades} mensalidades`} em aberto. Receba ou dispense antes: sem o contato, a dívida continua e ninguém consegue resolver.`,
+      }
     }
 
     const chave = chaveTelefone(c.telefone)
@@ -284,10 +321,43 @@ async function apagarRastros(
     })
   }
 
+  // ── a escola: some o responsável e os textos livres ───────
+  // O responsável é dado pessoal de outra pessoa, que só está aqui por causa
+  // do aluno: sai inteiro. A chave do telefone dele vai para a lista de quem
+  // não recebe — MENOS se outro aluno (um irmão que continua estudando) tem
+  // responsável com o mesmo número: aí o aviso do irmão continua valendo.
+  const resp = await db.responsavel.findUnique({ where: { alunoId: c.id }, select: { id: true, nome: true, telefone: true } })
+  let chaveDoResponsavel: string | null = null
+  if (resp) {
+    const k = chaveTelefone(resp.telefone)
+    if (k) {
+      const outros = await db.responsavel.findMany({
+        where: { id: { not: resp.id }, telefone: { endsWith: k.slice(-8) } },
+        select: { telefone: true },
+      })
+      if (!outros.some((o) => chaveTelefone(o.telefone) === k)) chaveDoResponsavel = k
+    }
+    await db.responsavel.delete({ where: { id: resp.id } })
+  }
+  const matriculas = (
+    await db.matricula.updateMany({
+      where: { alunoId: c.id },
+      data: { descontoMotivo: null, motivoSaida: null },
+    })
+  ).count
+  await db.mensalidade.updateMany({
+    where: { alunoId: c.id, motivoCancelamento: { not: null } },
+    data: { motivoCancelamento: 'dispensada' },
+  })
+
   // ── o sinal da encomenda no financeiro ────────────────────
   // A descrição é "Sinal da encomenda — Maria: bolo...": o lançamento fica
   // (é dinheiro), o nome sai. Acha pelo código da encomenda no documento.
-  const nomes = [...new Set([c.nome, ...encomendas.map((e) => e.clienteNome), ...agendamentos.map((a) => a.clienteNome)].filter((n) => n && n.length >= 3))]
+  const nomes = [
+    ...new Set(
+      [c.nome, ...encomendas.map((e) => e.clienteNome), ...agendamentos.map((a) => a.clienteNome), resp?.nome ?? ''].filter((n) => n && n.length >= 3),
+    ),
+  ]
   const lancamentos = idsEncomenda.length
     ? await db.lancamento.findMany({
         where: { documento: { in: idsEncomenda.map(codigoEncomenda) } },
@@ -317,6 +387,7 @@ async function apagarRastros(
 
   // ── a lista de quem não recebe oferta ─────────────────────
   if (chave) await gravarSaida(db, orgId, chave, 'anonimizado', agora)
+  if (chaveDoResponsavel && chaveDoResponsavel !== chave) await gravarSaida(db, orgId, chaveDoResponsavel, 'anonimizado', agora)
 
   return {
     conversas: idsConversa.length,
@@ -325,6 +396,8 @@ async function apagarRastros(
     encomendas: idsEncomenda.length,
     lancamentos: idsLancamento.length,
     linhasDoLivro,
-    foraDasOfertas: !!chave,
+    foraDasOfertas: !!chave || !!chaveDoResponsavel,
+    responsavel: !!resp,
+    matriculas,
   }
 }

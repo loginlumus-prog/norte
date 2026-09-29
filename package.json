@@ -22,6 +22,7 @@
     "migrar": "tsx scripts/migrar.ts",
     "anonimizar": "tsx scripts/anonimizar-cliente.ts",
     "operacao": "tsx scripts/operacao.ts",
+    "demonstracoes": "tsx scripts/demonstracoes.ts",
     "video": "node scripts/recortar-video.mjs"
   },
   "dependencies": {

@@ -32,7 +32,9 @@ import { montarEnderecoDoWebhook, novoTokenDoWebhook, temSegredoWebhook } from '
 import { abrirConversa, enviarEGravar } from './contexto'
 import { modeloDeAviso } from './meta-regras'
 import { chaveTelefone, mascarar } from './telefone'
+import { SELECT_TELEFONE, estadoDoTelefone, type EstadoTelefone } from './confirmacao'
 import { DIAS_SUMIDO } from './rotinas'
+import { exigirPlanoComAssistente } from '../agente'
 
 // ─────────────────────────────────────────────────────────────
 // O ESTADO
@@ -62,8 +64,13 @@ export type EstadoConexao = {
   rotinasSegredo: boolean
   conectado: boolean
   ativo: boolean
-  /** O telefone de quem está vendo, mascarado; nulo se não cadastrou. */
+  /**
+   * O telefone de quem está vendo, mascarado — só quando CONFIRMADO (é o
+   * único para onde o teste e os relatórios saem); nulo nos outros casos.
+   */
   meuTelefone: string | null
+  /** Em que pé está o telefone de quem está vendo (ver confirmacao.ts). */
+  meuTelefoneEstado: EstadoTelefone
   /** O WhatsApp pelo QR Code: o servidor tem o conector? a empresa está nele? */
   qr: { disponivel: boolean; ligado: boolean }
   /** Por onde a porta de entrada está aberta hoje (o `canal` do Agente). */
@@ -84,7 +91,7 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
       where: { orgId: sessao.orgId },
       select: { canal: true, ativo: true, webhookTokenHash: true, ...SELECT_LINHA },
     })
-    const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { telefone: true } })
+    const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: SELECT_TELEFONE })
     const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { slug: true } })
     return { agente, eu, slug: org.slug }
   })
@@ -131,7 +138,8 @@ export async function estadoDaConexao(sessao: Sessao): Promise<EstadoConexao> {
     rotinasSegredo: (process.env.ROTINAS_SEGREDO ?? '').trim().length >= 32,
     conectado,
     ativo: agente?.ativo ?? false,
-    meuTelefone: eu?.telefone && chaveTelefone(eu.telefone) ? mascarar(eu.telefone) : null,
+    meuTelefone: eu?.telefone && estadoDoTelefone(eu) === 'confirmado' ? mascarar(eu.telefone) : null,
+    meuTelefoneEstado: eu ? estadoDoTelefone(eu) : 'sem_telefone',
     qr: { disponivel: temConector(), ligado: noQr },
     canalLigado: agente?.canal ?? null,
   }
@@ -183,6 +191,10 @@ async function agenteDoQr(orgId: string): Promise<AgenteDoQr | null> {
 /** "Conectar pelo QR Code": pede ao conector para ligar (ou retomar) e devolve o primeiro QR. */
 export async function conectarPeloQr(sessao: Sessao): Promise<QrNaTela> {
   exigir(sessao, 'agente.configurar')
+  // O plano diz SE a empresa tem assistente — a capacidade só diz quem mexe.
+  // Sem isto, a empresa do Grátis (ou o teste vencido) abria sessão de
+  // WhatsApp para um assistente que o plano dela não cobre.
+  await exigirPlanoComAssistente(sessao.orgId)
   const cfg = lerConfigConector()
   const agente = await agenteDoQr(sessao.orgId)
   if (!agente) return semRetrato('sem_agente', false)
@@ -307,6 +319,7 @@ export async function salvarLinhaZapi(
   entrada: EntradaLinha,
 ): Promise<{ ok: true } | { ok: false; erro: string }> {
   exigir(sessao, 'agente.configurar')
+  await exigirPlanoComAssistente(sessao.orgId)
   if (!temCifra()) return { ok: false, erro: new SemChaveDeCifra().message }
 
   const instancia = entrada.instancia.trim()
@@ -455,6 +468,7 @@ export async function gerarEnderecoDoWebhook(
  */
 export async function conectarCanal(sessao: Sessao): Promise<{ ok: true } | { ok: false; erro: string }> {
   exigir(sessao, 'agente.configurar')
+  await exigirPlanoComAssistente(sessao.orgId)
   return comoOrg(sessao.orgId, async (db) => {
     const agente = await db.agente.findUnique({
       where: { orgId: sessao.orgId },
@@ -520,13 +534,18 @@ export async function mensagemDeTeste(sessao: Sessao): Promise<{ ok: true; recad
   exigir(sessao, 'agente.configurar')
   const { agente, eu, slug, loja } = await comoOrg(sessao.orgId, async (db) => {
     const agente = await db.agente.findUnique({ where: { orgId: sessao.orgId } })
-    const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { telefone: true, nome: true } })
+    const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { nome: true, ...SELECT_TELEFONE } })
     const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { slug: true, nome: true } })
     return { agente, eu, slug: org.slug, loja: org.nome }
   })
   if (!agente) return { ok: false, erro: 'Crie o assistente antes de testar.' }
   if (!eu?.telefone || !chaveTelefone(eu.telefone)) {
-    return { ok: false, erro: 'Cadastre o seu telefone (com DDD) na tela Equipe para receber o teste.' }
+    return { ok: false, erro: 'Cadastre o seu telefone (com DDD) em Minha conta para receber o teste.' }
+  }
+  // O teste diz "sou o assistente da loja" a quem receber: só para número que
+  // a própria pessoa confirmou (ver confirmacao.ts).
+  if (estadoDoTelefone(eu) !== 'confirmado') {
+    return { ok: false, erro: 'Confirme o seu WhatsApp em Minha conta antes do teste: ele só sai para número confirmado.' }
   }
 
   // Pela linha DESTA empresa — a própria, se ela tem; é justamente o que o

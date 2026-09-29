@@ -16,6 +16,7 @@ import { exigir, type Sessao } from '../permissao'
 import { inicioDeHojeEmSP } from '../dia'
 import type { Canal } from '../assistente/canal'
 import { chaveTelefone, chavesParaBuscar, mascarar, paraEnvio, soDigitos } from '../assistente/telefone'
+import { SELECT_TELEFONE, telefoneValido } from '../assistente/confirmacao'
 import {
   AJUSTES_PADRAO,
   GATILHO_NOVO,
@@ -215,7 +216,7 @@ export async function lerParaEditor(sessao: Sessao, id: string): Promise<ParaEdi
     const usuarios = await db.usuario.findMany({
       where: { ativo: true },
       orderBy: { nome: 'asc' },
-      select: { id: true, nome: true, telefone: true, acessos: { select: { papel: true } } },
+      select: { id: true, nome: true, ...SELECT_TELEFONE, acessos: { select: { papel: true } } },
     })
     const midias = await db.midia.findMany({
       orderBy: { criadaEm: 'desc' },
@@ -228,10 +229,12 @@ export async function lerParaEditor(sessao: Sessao, id: string): Promise<ParaEdi
       outras,
       equipe: usuarios
         .filter((u) => !u.acessos.every((a) => a.papel === 'SUPORTE'))
-        .map((u) => ({ id: u.id, nome: u.nome, temTelefone: !!chaveTelefone(u.telefone), dono: u.acessos.some((a) => a.papel === 'DONO') })),
+        // "Tem telefone" = tem telefone CONFIRMADO: o aviso de contato só sai
+        // para esse (ver `passarParaPessoa`).
+        .map((u) => ({ id: u.id, nome: u.nome, temTelefone: telefoneValido(u), dono: u.acessos.some((a) => a.papel === 'DONO') })),
       midias: midias.map((m) => ({ ...m, previa: caminhoDaMidia(sessao.orgId, m.id) })),
       horario: { texto: horario.texto, entendido: horario.horario !== null },
-      meuTelefone: eu?.telefone && chaveTelefone(eu.telefone) ? mascarar(eu.telefone) : null,
+      meuTelefone: eu?.telefone && telefoneValido(eu) ? mascarar(eu.telefone) : null,
     }
   })
 }
@@ -407,14 +410,19 @@ export async function testarCampanha(sessao: Sessao, id: string, canal: Canal): 
   const { horario } = await horarioDaEmpresa(sessao.orgId)
   const dados = await comoOrg(sessao.orgId, async (db) => {
     const c = await db.campanha.findUnique({ where: { id }, select: { id: true, nome: true, gatilho: true, grafo: true } })
-    const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { telefone: true, nome: true } })
+    const eu = await db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { nome: true, ...SELECT_TELEFONE } })
     const ps = c ? await conferir(db, id, lerGatilho(c.gatilho), lerGrafo(c.grafo), horario !== null) : []
     return { c, eu, ps }
   })
   if (!dados.c) return { ok: false, erro: 'Essa campanha não existe mais.' }
   if (temErro(dados.ps)) return { ok: false, erro: 'Resolva as pendências antes de testar.' }
   const chave = chaveTelefone(dados.eu?.telefone)
-  if (!chave || !dados.eu?.telefone) return { ok: false, erro: 'Seu cadastro não tem telefone. Ponha o seu WhatsApp em Equipe e teste de novo.' }
+  if (!chave || !dados.eu?.telefone) return { ok: false, erro: 'Seu cadastro não tem telefone. Ponha o seu WhatsApp em Minha conta e teste de novo.' }
+  // O teste manda o roteiro inteiro para o número: só para número que a
+  // própria pessoa confirmou que é dela.
+  if (!telefoneValido(dados.eu)) {
+    return { ok: false, erro: 'Confirme o seu WhatsApp em Minha conta antes de testar: o teste só sai para número confirmado.' }
+  }
   // Assistente desligado ou WhatsApp desconectado: o teste mandaria a
   // primeira mensagem e a sua resposta não voltaria para a campanha — a
   // porta de entrada está fechada.

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { exigirSessao } from '@/servidor/pagina'
 import { receberParcela } from '@/servidor/crediario'
+import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 import type { FormaPagamento } from '@prisma/client'
 
 export type EstadoRecebimento = { erro?: string; ok?: string }
@@ -15,8 +16,14 @@ export async function receberAcao(
 ): Promise<EstadoRecebimento> {
   const slug = String(form.get('empresa') ?? '')
   const parcelaId = String(form.get('parcela') ?? '')
-  const valor = Number(String(form.get('valor') ?? '').replace(',', '.'))
-  const juros = Number(String(form.get('juros') ?? '0').replace(',', '.')) || 0
+  // A régua de todo campo de dinheiro (`lerDinheiro`). O `Number` de antes
+  // lia "1.234,56" como NaN, e o juro ilegível virava zero calado — a
+  // parcela quitava sem o juro que a pessoa digitou.
+  const valor = lerDinheiro(String(form.get('valor') ?? ''))
+  if (valor === null) return { erro: `Valor recebido: ${DINHEIRO_ILEGIVEL}` }
+  const jurosBruto = String(form.get('juros') ?? '').trim()
+  const juros = jurosBruto ? lerDinheiro(jurosBruto) : 0
+  if (juros === null) return { erro: `Juros: ${DINHEIRO_ILEGIVEL}` }
   const formaBruta = String(form.get('forma') ?? '')
   const forma = FORMAS.find((f) => f === formaBruta)
   if (!forma) return { erro: 'Escolha como recebeu.' }

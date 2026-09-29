@@ -6,6 +6,7 @@ import { cancelarVenda } from '@/servidor/venda'
 import { devolver } from '@/servidor/devolucao'
 import { mostrarDiaDaColuna } from '@/servidor/dia'
 import type { DestinoDevolucao } from '@prisma/client'
+import { lerNumero } from '@/servidor/dinheiro'
 
 export type EstadoDevolucao = {
   erro?: string
@@ -44,8 +45,10 @@ export async function devolverAcao(
     const id = chave.slice(4)
     if (vistos.has(id)) return { erro: 'O mesmo item veio duas vezes. Recarregue a tela e marque de novo.' }
     vistos.add(id)
-    const q = Number(String(valor).replace(',', '.'))
-    if (!Number.isFinite(q)) return { erro: 'Uma das quantidades não é um número.' }
+    // Quantidade, não dinheiro: até três casas (0,350 kg). Vazio é "não volta".
+    const t = String(valor).trim()
+    const q = t ? lerNumero(t, 3) : 0
+    if (q === null) return { erro: 'Uma das quantidades não deu para ler. Escreva assim: 2 ou 0,350.' }
     if (q > 0) itens.push({ vendaItemId: id, quantidade: q })
   }
 

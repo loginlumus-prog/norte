@@ -62,8 +62,8 @@ const SEMENTE = `
   insert into orgs (id, nome, slug, plano, situacao, modulos, atualizada_em) values
     ('org-a', 'Loja A', 'loja-a', 'BALCAO_AGENTE', 'ATIVA', '{agente}', now());
   insert into unidades (id, org_id, nome, atualizada_em) values ('uni-a1', 'org-a', 'Centro A', now());
-  insert into usuarios (id, org_id, nome, email, telefone, atualizado_em) values
-    ('usr-ana', 'org-a', 'Ana Dona', 'ana@a.com', '(71) 99999-0001', now());
+  insert into usuarios (id, org_id, nome, email, telefone, telefone_confirmado, telefone_confirmado_em, atualizado_em) values
+    ('usr-ana', 'org-a', 'Ana Dona', 'ana@a.com', '(71) 99999-0001', '7199990001', now(), now());
   insert into acessos (id, org_id, usuario_id, unidade_id, papel) values ('ac-ana', 'org-a', 'usr-ana', null, 'DONO');
   insert into agentes (id, org_id, nome, ativo, canal, poderes, saudacao, atualizado_em) values
     ('ag-a', 'org-a', 'Nina', true, 'ZAPI', '{recado.automatico}', 'Oi! Já vamos te atender.', now());

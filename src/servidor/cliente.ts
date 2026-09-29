@@ -205,6 +205,11 @@ export async function editarCliente(
 
     const m = mudancaDeAceite(antes.ofertasWhatsapp, aceite)
     if (!m.ok) return m
+    // Aluno com responsável (escola.ts): quem aceita mensagem é o responsável,
+    // na ficha dele. O "sim" da ficha da criança não se grava.
+    if (m.mudanca?.ofertas === 'SIM' && (await db.responsavel.count({ where: { alunoId: clienteId } })) > 0) {
+      return { ok: false as const, motivo: 'Este aluno tem responsável: mensagem da escola vai só para o responsável, com o aceite dele. Deixe esta ficha sem aceite.' }
+    }
     if (m.mudanca) {
       const recusa = await conferirAceite(db, sessao.orgId, chave, m.mudanca)
       if (recusa) return { ok: false as const, motivo: recusa }
@@ -289,6 +294,11 @@ export async function listarClientes(
   // mesmo teto, e a planilha de uma loja com 3.000 clientes saía com 500 —
   // sem aviso, justamente na cópia que a loja leva para guardar.
   limite = 500,
+  // Ficha desativada (e a anonimizada, que é desativada de vez) não é
+  // cliente da loja: a lista mostrava "Cliente anonimizado" entre os outros
+  // e contava ele nos números de cima, e o Painel, que só conta ativos,
+  // dizia outro total. Quem quer ver as desativadas pede.
+  situacao: 'ativos' | 'inativos' | 'todos' = 'ativos',
 ): Promise<ClienteNaLista[]> {
   exigir(sessao, 'cliente.ver')
 
@@ -298,16 +308,19 @@ export async function listarClientes(
 
   return comoOrg(sessao.orgId, async (db) => {
     const clientes = await db.cliente.findMany({
-      where: t
-        ? {
-            OR: [
-              { nome: { contains: t, mode: 'insensitive' } },
-              ...(digitos.length >= 3
-                ? [{ telefone: { contains: digitos } }, { documento: { contains: digitos } }]
-                : []),
-            ],
-          }
-        : {},
+      where: {
+        ...(situacao === 'todos' ? {} : { ativo: situacao === 'ativos' }),
+        ...(t
+          ? {
+              OR: [
+                { nome: { contains: t, mode: 'insensitive' as const } },
+                ...(digitos.length >= 3
+                  ? [{ telefone: { contains: digitos } }, { documento: { contains: digitos } }]
+                  : []),
+              ],
+            }
+          : {}),
+      },
       orderBy: { nome: 'asc' },
       // Quinhentos com os filtros da tela; a busca acha o resto. Acima disso
       // a pessoa quer a planilha, e ela existe (e pede o `limite` dela).

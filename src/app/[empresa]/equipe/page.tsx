@@ -135,6 +135,7 @@ export default async function TelaEquipe({
         unidadeNome: a?.unidadeNome ?? null,
         souEu,
         telefone: p.telefone ?? null,
+        telefoneEstado: p.telefoneEstado,
         podeMexer,
         podeTelefone: souEu ? !euSoLeio : podeMexer,
       }

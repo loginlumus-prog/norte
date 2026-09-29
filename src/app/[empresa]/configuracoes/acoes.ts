@@ -11,6 +11,7 @@ import { salvarConfigCrediario } from '@/servidor/crediario'
 import { salvarTaxas, FORMAS_COM_TAXA } from '@/servidor/taxas'
 import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 import { plural } from '@/ui/texto'
+import { lerNumero, NUMERO_ILEGIVEL } from '@/servidor/dinheiro'
 import { HORAS_DE_LEMBRETE } from '@/servidor/lembretes'
 
 export type EstadoTaxas = { erro?: string; ok?: string }
@@ -19,8 +20,9 @@ export async function salvarTaxasAcao(_antes: EstadoTaxas, form: FormData): Prom
   const slug = String(form.get('empresa') ?? '')
   const s = await exigirSessao(slug)
   const taxas = FORMAS_COM_TAXA.map((f) => {
-    const bruto = String(form.get(`taxa-${f.forma}-${f.parcelas}`) ?? '').trim().replace(',', '.')
-    const n = bruto === '' ? 0 : Number(bruto)
+    const bruto = String(form.get(`taxa-${f.forma}-${f.parcelas}`) ?? '').trim()
+    // Ilegível vira NaN e cai no recado abaixo — nunca zero calado.
+    const n = bruto === '' ? 0 : (lerNumero(bruto) ?? Number.NaN)
     return { forma: f.forma, parcelas: f.parcelas, percentual: n }
   })
   if (taxas.some((t) => !Number.isFinite(t.percentual) || t.percentual < 0)) {
@@ -43,7 +45,7 @@ export async function salvarCrediario(
 ): Promise<EstadoCrediario> {
   const slug = String(form.get('empresa') ?? '')
   const s = await exigirSessao(slug)
-  const jurosMes = Number(String(form.get('jurosMes') ?? '').replace(',', '.'))
+  const jurosMes = lerNumero(String(form.get('jurosMes') ?? '')) ?? Number.NaN
   const maxParcelas = Number(form.get('maxParcelas'))
   const diasEntre = Number(form.get('diasEntre'))
   if (!Number.isFinite(jurosMes) || jurosMes < 0) return { erro: 'O juro precisa ser um número, zero ou mais.' }
@@ -53,14 +55,20 @@ export async function salvarCrediario(
   const salvo = await salvarConfigCrediario(s, { jurosMes, maxParcelas, diasEntre })
   revalidatePath(`/${slug}/configuracoes`)
   revalidatePath(`/${slug}/balcao`)
-  return { ok: `Crediário: ${salvo.jurosMes}% ao mês de atraso, até ${salvo.maxParcelas}×, a cada ${salvo.diasEntre} dias.` }
+  return { ok: `Crediário: ${salvo.jurosMes}% ao mês de atraso, até ${salvo.maxParcelas}×, a cada ${plural(salvo.diasEntre, 'dia', 'dias')}.` }
 }
 
 export type EstadoPontos = { erro?: string; ok?: string }
 
-const numero = (v: FormDataEntryValue | null): number => {
-  const n = Number(String(v ?? '').replace(',', '.'))
-  return Number.isFinite(n) ? n : 0
+/**
+ * Vazio é zero (desligar com os campos em branco tem que funcionar); o que
+ * não dá para ler é `null`, e a ação diz qual campo. Antes o ilegível virava
+ * zero, e a pessoa lia "precisa ser maior que zero" sobre um número que ela
+ * tinha digitado.
+ */
+const numero = (v: FormDataEntryValue | null, casas: number): number | null => {
+  const t = String(v ?? '').trim()
+  return t ? lerNumero(t, casas) : 0
 }
 
 export async function salvarPontos(
@@ -87,9 +95,17 @@ export async function salvarPontos(
     }
   }
 
-  const porReal = numero(form.get('porReal'))
-  const pontoVale = numero(form.get('pontoVale'))
-  const minimo = Math.max(0, Math.floor(numero(form.get('minimo'))))
+  // As casas de cada coluna: pontos por real com 2, o valor do ponto com 4
+  // (R$ 0,0025 existe), o mínimo para trocar é inteiro.
+  const porRealLido = numero(form.get('porReal'), 2)
+  const pontoValeLido = numero(form.get('pontoVale'), 4)
+  const minimoLido = numero(form.get('minimo'), 0)
+  if (porRealLido === null) return { erro: `Pontos por real: ${NUMERO_ILEGIVEL}` }
+  if (pontoValeLido === null) return { erro: `Quanto vale um ponto: ${NUMERO_ILEGIVEL}` }
+  if (minimoLido === null) return { erro: 'Mínimo para trocar: um número inteiro de pontos, como 100.' }
+  const porReal = porRealLido
+  const pontoVale = pontoValeLido
+  const minimo = minimoLido
 
   // Só reclama quando o programa está ligado: desligar com os campos zerados
   // tem que funcionar, senão a pessoa fica presa dentro do que ligou.

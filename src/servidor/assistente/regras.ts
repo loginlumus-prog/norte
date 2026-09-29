@@ -169,11 +169,29 @@ const CONTRATOS: Partial<Record<ChavePoder, Omit<Ferramenta, 'name'>>> = {
   },
   'pagamentos.consultar': {
     description:
-      'Se alguém pagou: as compras recentes da pessoa (valor, dia, forma de pagamento) e o que ela deve no crediário (vencido e a vencer). Use para "a Joana pagou?", "o Pedro está devendo?". Só mostra o que a pessoa que pergunta pode ver.',
+      'Se alguém pagou: as compras recentes da pessoa (valor, dia, forma de pagamento), o que ela deve no crediário (vencido e a vencer) e, na escola, as mensalidades do aluno (mês, valor, pago, em atraso, quando pagou). Use para "a Joana pagou?", "o Pedro pagou a mensalidade de setembro?", "o Pedro está devendo?". Só mostra o que a pessoa que pergunta pode ver.',
     input_schema: {
       type: 'object',
       properties: { cliente: texto('Nome (ou parte do nome) da pessoa.') },
       required: ['cliente'],
+      additionalProperties: false,
+    },
+  },
+  'mensalidades.atrasadas': {
+    description:
+      'As mensalidades em atraso da escola: cada aluno com os meses que deve, o total dele, os dias de atraso e o nome do responsável; e o total geral. Use para "quem está atrasado na mensalidade?", "quanto temos em atraso?". Só lê: você NÃO cobra ninguém e não fala com responsável nem aluno — quem cobra é a secretaria.',
+    input_schema: {
+      type: 'object',
+      properties: { turma: texto('Nome da turma, se a pessoa perguntar por uma. Opcional.') },
+      additionalProperties: false,
+    },
+  },
+  'turmas.consultar': {
+    description:
+      'As turmas da escola: curso, turno, dias e horário, quem dá aula, quantos alunos ocupam vaga, a capacidade e quantas vagas sobram. Use para "tem vaga no inglês de terça?", "quantos alunos tem o 1º ano?".',
+    input_schema: {
+      type: 'object',
+      properties: { turma: texto('Nome (ou parte do nome) da turma ou do curso. Vazio = todas.') },
       additionalProperties: false,
     },
   },

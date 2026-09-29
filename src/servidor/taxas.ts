@@ -9,7 +9,9 @@
 //
 // Aqui a loja escreve a taxa uma vez e o DRE desconta sozinho, venda a
 // venda, na linha "Financeiras". Quem preferir lançar a taxa à mão (pelo
-// extrato da maquininha) zera os campos e continua como antes.
+// extrato da maquininha) zera os campos e continua como antes — das vendas
+// DALI em diante: cada pagamento guarda a taxa que valia no dia
+// (`Pagamento.taxaPct`), e mudar a taxa não reescreve mês que já passou.
 //
 // Quatro linhas bastam: Pix, débito, crédito à vista, crédito parcelado. É
 // onde a taxa muda de verdade; separar 2× de 12× seria precisão que a
@@ -98,8 +100,13 @@ export type TaxasDoPeriodo = {
  * Quanto a loja pagou de taxa no período, calculado venda a venda.
  *
  * Recebe o `db` de quem já está numa transação (o DRE chama de dentro da
- * dele). Soma os pagamentos das vendas CONCLUÍDAS por forma e parcelamento,
- * e aplica a taxa de cada combinação.
+ * dele). Soma os pagamentos das vendas CONCLUÍDAS por forma, parcelamento e
+ * TAXA GRAVADA NA VENDA (`Pagamento.taxaPct`), e aplica a taxa de cada grupo.
+ *
+ * A taxa é a do dia da venda: a maquininha que subiu de 3% para 4% em
+ * outubro não pode encarecer o setembro que já fechou. Pagamento de antes da
+ * coluna existir (taxa nula) usa a taxa de hoje — que é o que o DRE sempre
+ * fez com eles.
  */
 export async function taxasDoPeriodo(
   db: BancoDaOrg,
@@ -108,23 +115,45 @@ export async function taxasDoPeriodo(
   ate: Date,
 ): Promise<TaxasDoPeriodo> {
   const taxas = await lerTaxas(db)
-  if (taxas.every((t) => t.percentual <= 0)) return { totalCent: 0, porForma: [] }
 
-  const linhas = await db.$queryRaw<{ forma: FormaPagamento; parcelado: boolean; total: string }[]>`
-    select p.forma, (p.forma = 'CREDITO' and p.parcelas >= 2) as parcelado, sum(p.valor) as total
+  const linhas = await db.$queryRaw<{ forma: FormaPagamento; parcelado: boolean; taxa: string | null; total: string }[]>`
+    select p.forma, (p.forma = 'CREDITO' and p.parcelas >= 2) as parcelado, p.taxa_pct as taxa, sum(p.valor) as total
       from pagamentos p join vendas v on v.id = p.venda_id
      where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
        and v.criada_em >= ${de} and v.criada_em <= ${ate}
-     group by 1, 2
+     group by 1, 2, 3
   `
 
-  const porForma = linhas
-    .map((l) => {
-      const percentual = taxaDe(taxas, l.forma, l.parcelado ? 2 : 1)
-      const valorCent = centavos(l.total)
-      return { forma: l.forma, parcelado: l.parcelado, valorCent, taxaCent: taxaEmCentavos(valorCent, percentual), percentual }
-    })
-    .filter((l) => l.taxaCent > 0)
+  // A mensalidade da escola recebida no cartão ou no Pix paga a mesma taxa —
+  // com a do dia em que foi recebida (`pagamentos_mensalidade.taxa_pct`),
+  // sobre o total que passou na maquininha (juro e multa inclusos).
+  const mensalidades = await db.$queryRaw<{ forma: FormaPagamento; parcelado: boolean; taxa: string | null; total: string }[]>`
+    select p.forma, false as parcelado, p.taxa_pct as taxa, sum(p.valor) as total
+      from pagamentos_mensalidade p
+     where p.unidade_id = any(${unidadeIds}) and p.forma in ('PIX', 'DEBITO', 'CREDITO')
+       and p.criado_em >= ${de} and p.criado_em <= ${ate}
+     group by 1, 2, 3
+  `
+
+  // Um grupo por taxa; depois, uma linha por forma (a tela e o DRE mostram
+  // "Crédito à vista", não "Crédito à vista a 3,2% e a 3,5%").
+  const juntas = new Map<string, TaxasDoPeriodo['porForma'][number]>()
+  for (const l of [...linhas, ...mensalidades]) {
+    const percentual = l.taxa !== null ? Number(l.taxa) : taxaDe(taxas, l.forma, l.parcelado ? 2 : 1)
+    const valorCent = centavos(l.total)
+    const taxaCent = taxaEmCentavos(valorCent, percentual)
+    if (taxaCent <= 0) continue
+    const chave = `${l.forma}:${l.parcelado}`
+    const j = juntas.get(chave) ?? { forma: l.forma, parcelado: l.parcelado, valorCent: 0, taxaCent: 0, percentual: 0 }
+    j.valorCent += valorCent
+    j.taxaCent += taxaCent
+    juntas.set(chave, j)
+  }
+  // O percentual da linha é o efetivo (taxa ÷ valor): com uma taxa só, é ela.
+  const porForma = [...juntas.values()].map((j) => ({
+    ...j,
+    percentual: j.valorCent > 0 ? Math.round((j.taxaCent / j.valorCent) * 10000) / 100 : 0,
+  }))
 
   return { totalCent: porForma.reduce((s, l) => s + l.taxaCent, 0), porForma }
 }

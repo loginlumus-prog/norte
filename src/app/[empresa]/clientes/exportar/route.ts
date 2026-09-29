@@ -21,7 +21,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ empresa:
   const busca = new URL(req.url).searchParams
   const q = busca.get('q') ?? undefined
   try {
-    const clientes = await listarClientes(sessao, q, 50_000)
+    // A planilha é a cópia que a loja guarda: vai tudo, com a coluna "Ativo".
+    const clientes = await listarClientes(sessao, q, 50_000, 'todos')
     const corpo = csv(
       ['Nome', 'Telefone', 'Cidade', 'Nascimento', 'Cadastro', 'Ativo', 'Compras', 'Gastou', 'Última compra', 'Pontos', 'Deve no crediário', 'Vencido'],
       clientes.map((c) => [

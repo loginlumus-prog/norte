@@ -5,7 +5,8 @@ import { acharOrgPorSlug } from '@/servidor/banco'
 import { exigirSessao, recadoDoErro, SessaoExpirada } from '@/servidor/pagina'
 import { abrirSessao } from '@/servidor/sessao'
 import { avisarSenhaTrocada, trocarMinhaSenha } from '@/servidor/conta'
-import { mudarMeuNome } from '@/servidor/equipe'
+import { mudarMeuNome, mudarTelefone } from '@/servidor/equipe'
+import { confirmarNaTela, pedirCodigo } from '@/servidor/assistente/confirmacao'
 import { revalidatePath } from 'next/cache'
 import { deOndeVeio, enderecoPublico } from '@/servidor/requisicao'
 
@@ -72,5 +73,85 @@ export async function trocarNomeAcao(slug: string, _anterior: EstadoNome, form: 
     return { ok: 'Nome salvo.', nome: r.nome }
   } catch (e) {
     return { erro: recadoDoErro(e, 'Não deu para salvar o nome agora.'), nome: digitado }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MEU WHATSAPP
+// ─────────────────────────────────────────────────────────────
+//
+// O telefone é o que faz o assistente reconhecer a pessoa no WhatsApp — e só
+// depois de ELA confirmar que o número é dela (ver
+// servidor/assistente/confirmacao.ts). Aqui cada um cuida do próprio: salvar,
+// pedir o código, digitar o código.
+
+export type EstadoWhatsApp = {
+  erro?: string
+  ok?: string
+  /** O código foi mandado pelo WhatsApp: a tela abre o campo para digitar. */
+  esperando?: boolean
+  /** O código para a pessoa mandar do celular ("CONFIRMAR 123456"). */
+  mostrar?: { codigo: string; numeroDaLoja: string | null }
+  /** Não deu para mandar: a tela oferece o outro caminho. */
+  oferecerMostrar?: boolean
+  telefone?: string
+}
+
+export async function salvarMeuTelefoneAcao(slug: string, _anterior: EstadoWhatsApp, form: FormData): Promise<EstadoWhatsApp> {
+  const digitado = String(form.get('telefone') ?? '').slice(0, 30)
+  let sessao
+  try {
+    sessao = await exigirSessao(slug)
+  } catch (e) {
+    if (e instanceof SessaoExpirada) return { erro: e.message, telefone: digitado }
+    throw e
+  }
+  try {
+    const r = await mudarTelefone(sessao, sessao.usuarioId, digitado)
+    if (!r.ok) return { erro: r.motivo, telefone: digitado }
+    revalidatePath(`/${slug}/conta`)
+    revalidatePath(`/${slug}/equipe`)
+    if (!digitado.trim()) return { ok: 'Telefone apagado.' }
+    return { ok: r.faltaConfirmar ? 'Telefone salvo. Agora confirme, logo abaixo.' : 'Telefone salvo.' }
+  } catch (e) {
+    return { erro: recadoDoErro(e, 'Não deu para salvar o telefone agora.'), telefone: digitado }
+  }
+}
+
+export async function pedirCodigoAcao(slug: string, modo: 'enviar' | 'mostrar'): Promise<EstadoWhatsApp> {
+  let sessao
+  try {
+    sessao = await exigirSessao(slug)
+  } catch (e) {
+    if (e instanceof SessaoExpirada) return { erro: e.message }
+    throw e
+  }
+  try {
+    const r = await pedirCodigo(sessao, modo === 'mostrar' ? 'mostrar' : 'enviar')
+    if (!r.ok) return { erro: r.erro, oferecerMostrar: r.oferecerMostrar }
+    if (r.modo === 'mostrar') return { mostrar: { codigo: r.codigo, numeroDaLoja: r.numeroDaLoja } }
+    return { ok: `Código enviado para o WhatsApp ${r.para}. Ele vale por 10 minutos.`, esperando: true }
+  } catch (e) {
+    return { erro: recadoDoErro(e, 'Não deu para pedir o código agora.') }
+  }
+}
+
+export async function confirmarCodigoAcao(slug: string, _anterior: EstadoWhatsApp, form: FormData): Promise<EstadoWhatsApp> {
+  let sessao
+  try {
+    sessao = await exigirSessao(slug)
+  } catch (e) {
+    if (e instanceof SessaoExpirada) return { erro: e.message, esperando: true }
+    throw e
+  }
+  try {
+    const r = await confirmarNaTela(sessao, String(form.get('codigo') ?? '').slice(0, 20))
+    if (!r.ok) return { erro: r.erro, esperando: true }
+    revalidatePath(`/${slug}/conta`)
+    revalidatePath(`/${slug}/equipe`)
+    revalidatePath(`/${slug}/agente`)
+    return { ok: 'WhatsApp confirmado. O assistente já reconhece você por ele.' }
+  } catch (e) {
+    return { erro: recadoDoErro(e, 'Não deu para confirmar agora.'), esperando: true }
   }
 }

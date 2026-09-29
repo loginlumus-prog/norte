@@ -145,7 +145,16 @@ export function podeReceberOfertasCom(p: { naLista: boolean; consentimentos: Con
   return p.consentimentos.includes('SIM') && !p.consentimentos.includes('NAO')
 }
 
-/** As fichas com este telefone (pela chave), ativas ou não — mas não as anonimizadas. */
+/**
+ * As fichas com este telefone (pela chave), ativas ou não — mas não as
+ * anonimizadas, e não as de ALUNO COM RESPONSÁVEL.
+ *
+ * Aluno com responsável (escola.ts) é, quase sempre, criança: a escola fala
+ * com o responsável, nunca com ela. O "aceita" marcado na ficha dela não vale
+ * como aceite de ninguém — nem se o telefone da ficha for o da mãe (é o
+ * aceite DA MÃE que conta, na ficha dela). Fora da lista, a ficha não conta
+ * nem como sim nem como não.
+ */
 export async function fichasDoTelefone(
   db: BancoDaOrg,
   chave: string,
@@ -156,6 +165,7 @@ export async function fichasDoTelefone(
     select id, nome, telefone, ofertas_whatsapp::text as ofertas from clientes
      where telefone is not null and anonimizado_em is null
        and regexp_replace(telefone, '\\D', '', 'g') like ${'%' + chave.slice(-8)}
+       and not exists (select 1 from responsaveis r where r.aluno_id = clientes.id)
      limit 20
   `
   return linhas.filter((l) => chaveTelefone(l.telefone) === chave).map(({ id, nome, ofertas }) => ({ id, nome, ofertas }))

@@ -22,6 +22,7 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { opcoesDoPool } from '../banco'
+import { vencerTesteSeAcabou } from '../assinatura'
 
 const guardado = globalThis as unknown as { __portariaRotinas?: PrismaClient }
 
@@ -40,15 +41,48 @@ function portaria(): PrismaClient {
  * Empresas que LIGARAM o módulo do agente e não estão fora do ar.
  *
  * É um corte grosso, de propósito: plano, agente ligado e donos são
- * conferidos lá dentro, com o carimbo da empresa. A portaria não enxerga
+ * conferidos lá dentro, com o carimbo da empresa (o teste vencido também:
+ * ver abaixo). A portaria não enxerga
  * essas colunas — e é bom que não enxergue.
  */
 export async function empresasComAgente(): Promise<{ id: string; slug: string }[]> {
-  return portaria().org.findMany({
+  const orgs = await portaria().org.findMany({
     where: { modulos: { has: 'agente' }, situacao: { in: ['TESTE', 'ATIVA', 'INADIMPLENTE'] } },
-    select: { id: true, slug: true },
+    select: { id: true, slug: true, situacao: true },
     orderBy: { slug: 'asc' },
   })
+  // O teste que venceu não entra. A portaria não enxerga a data do teste (e
+  // não deve), então cada empresa em TESTE é conferida dentro dela: vencido,
+  // desce para o Grátis ali mesmo (`vencerTesteSeAcabou`, que tira o módulo)
+  // e sai da lista. Sem isto, a empresa cujo teste acabou num domingo seguia
+  // recebendo relatório, campanha e lembrete até alguém abrir uma tela.
+  const saida: { id: string; slug: string }[] = []
+  for (const o of orgs) {
+    if (o.situacao === 'TESTE' && (await vencerTesteSeAcabou(o.id))) continue
+    saida.push({ id: o.id, slug: o.slug })
+  }
+  return saida
+}
+
+/**
+ * Empresas que LIGARAM a Escola (turmas e mensalidades) e não estão fora do
+ * ar — para a rotina de hora em hora gerar a mensalidade do mês de quem
+ * ninguém abriu a tela no dia 1º. Mesmo corte grosso de `empresasComAgente`:
+ * o plano é conferido lá dentro, com o carimbo da empresa. Não depende do
+ * assistente: a mensalidade nasce com ou sem WhatsApp.
+ */
+export async function empresasComEscola(): Promise<{ id: string; slug: string }[]> {
+  const orgs = await portaria().org.findMany({
+    where: { modulos: { has: 'escola' }, situacao: { in: ['TESTE', 'ATIVA', 'INADIMPLENTE'] } },
+    select: { id: true, slug: true, situacao: true },
+    orderBy: { slug: 'asc' },
+  })
+  const saida: { id: string; slug: string }[] = []
+  for (const o of orgs) {
+    if (o.situacao === 'TESTE' && (await vencerTesteSeAcabou(o.id))) continue
+    saida.push({ id: o.id, slug: o.slug })
+  }
+  return saida
 }
 
 /**

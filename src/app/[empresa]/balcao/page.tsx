@@ -19,11 +19,15 @@ import { BalcaoSimples } from './BalcaoSimples'
 import { lerModo } from '@/servidor/modo'
 import { BarraCaixa } from './BarraCaixa'
 import { comoOrg } from '@/servidor/banco'
+import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { programaNoPlano, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
 import { paraCobrarHorario } from './acoes'
 
-export const metadata: Metadata = { title: 'Balcão' }
+// "Recepção" na clínica e no salão, "Secretaria" na escola (vocabulario.ts).
+export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
+  return { title: (await vocabularioDoEndereco((await params).empresa)).Balcao }
+}
 
 export default async function BalcaoPagina({
   params,
@@ -150,7 +154,7 @@ export default async function BalcaoPagina({
       itens={MENU(slug)}
       ativo={`/${slug}/balcao`}
       tema={tema}
-      titulo={aba === 'fechar' ? 'Fechar o caixa' : 'Balcão'}
+      titulo={aba === 'fechar' ? 'Fechar o caixa' : (await vocabularioDaEmpresa(sessao.orgId)).Balcao}
       recolhida={telaDeVenda}
       acao={
         onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={unidadeId} /> : undefined

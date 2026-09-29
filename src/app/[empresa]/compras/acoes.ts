@@ -21,6 +21,7 @@ import {
   receberPedido,
   registrarConsumo,
   salvarFornecedor,
+  salvarItensDoPedido,
   type ItemParaComprar,
 } from '@/servidor/compras'
 import { registrarErro } from '@/servidor/registro'
@@ -109,6 +110,38 @@ export async function criarPedidoAcao(
   } catch (e) {
     return { ok: false, erro: traduzir(e, 'compra.criar') }
   }
+}
+
+/**
+ * Troca os itens de um pedido que ainda é rascunho — o "esqueci a acetona"
+ * antes de mandar. A função do servidor existia; faltava a tela chegar nela.
+ */
+export async function salvarItensAcao(
+  slug: string,
+  id: string,
+  d: { itens: unknown },
+): Promise<{ ok?: string; erro?: string }> {
+  const sessao = await exigirSessao(slug)
+  if (!idValido(id)) return { erro: 'Pedido inválido.' }
+  if (!(await comprasLigadas(sessao.orgId))) return { erro: DESLIGADO }
+  if (!Array.isArray(d?.itens) || d.itens.length > 200) return { erro: 'Itens inválidos.' }
+  const itens = d.itens.map((i) => ({
+    variacaoId: texto((i as { variacaoId?: unknown }).variacaoId, 64),
+    quantidade: numero((i as { quantidade?: unknown }).quantidade),
+    custoUnit: (i as { custoUnit?: unknown }).custoUnit == null ? null : numero((i as { custoUnit?: unknown }).custoUnit),
+  }))
+  if (itens.some((i) => !idValido(i.variacaoId) || Number.isNaN(i.quantidade) || (i.custoUnit !== null && Number.isNaN(i.custoUnit)))) {
+    return { erro: 'Um dos itens não confere.' }
+  }
+  try {
+    const r = await salvarItensDoPedido(sessao, id, itens)
+    if (!r.ok) return { erro: r.erro }
+  } catch (e) {
+    return { erro: traduzir(e, 'compra.itens') }
+  }
+  revalidatePath(`/${slug}/compras`)
+  revalidatePath(`/${slug}/compras/${id}`)
+  return { ok: 'Itens do pedido salvos.' }
 }
 
 export async function mudarPedidoAcao(

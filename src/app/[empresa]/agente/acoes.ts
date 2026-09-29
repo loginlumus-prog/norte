@@ -11,7 +11,7 @@ import type { TipoGatilho } from '@prisma/client'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { salvarAgente, responderProposta } from '@/servidor/agente'
 import { TODOS_PODERES } from '@/servidor/poderes'
-import { centavos } from '@/servidor/dinheiro'
+import { centavos, DINHEIRO_ILEGIVEL, lerDinheiro, lerNumero, NUMERO_ILEGIVEL } from '@/servidor/dinheiro'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import {
   acompanharQr,
@@ -31,9 +31,15 @@ import { conectarPelaMeta, desconectarMeta, recriarModelos } from '@/servidor/as
 
 export type EstadoAgente = { erro?: string; ok?: string }
 
-const num = (f: FormData, k: string, padrao: number) => {
-  const v = Number(String(f.get(k) ?? '').replace(',', '.'))
-  return Number.isFinite(v) && v >= 0 ? v : padrao
+/**
+ * Um campo de número do formulário. Vazio fica o padrão; o que não dá para
+ * ler vira `null`, e a ação devolve o erro. Antes o ilegível também virava o
+ * padrão: "1.500,00" no teto por pedido (Number dava NaN) gravava R$ 500 sem
+ * aviso nenhum.
+ */
+const lido = (f: FormData, k: string, padrao: number, ler: (t: string) => number | null): number | null => {
+  const t = String(f.get(k) ?? '').trim()
+  return t ? ler(t) : padrao
 }
 
 export async function salvar(
@@ -47,6 +53,15 @@ export async function salvar(
   if (!nome) return { erro: 'O assistente precisa de um nome.' }
   if (nome.length > 40) return { erro: 'Um nome de até 40 letras.' }
 
+  const descontoMaxPct = lido(form, 'descontoMaxPct', 5, lerNumero)
+  const valorMax = lido(form, 'valorMax', 500, lerDinheiro)
+  const gastoDia = lido(form, 'gastoDia', 10, lerDinheiro)
+  const mensagensDia = lido(form, 'mensagensDia', 300, (t) => lerNumero(t, 0))
+  if (descontoMaxPct === null) return { erro: `Desconto máximo: ${NUMERO_ILEGIVEL}` }
+  if (valorMax === null) return { erro: `Valor máximo de uma proposta: ${DINHEIRO_ILEGIVEL}` }
+  if (gastoDia === null) return { erro: `Gasto de IA por dia: ${DINHEIRO_ILEGIVEL}` }
+  if (mensagensDia === null) return { erro: 'Mensagens por dia: um número inteiro, como 300.' }
+
   try {
     await salvarAgente(sessao, {
       nome,
@@ -54,10 +69,10 @@ export async function salvar(
       saudacao: String(form.get('saudacao') ?? ''),
       manual: String(form.get('manual') ?? ''),
       poderes: TODOS_PODERES.filter((p) => form.get(`poder_${p}`) === 'on'),
-      descontoMaxPct: num(form, 'descontoMaxPct', 5),
-      valorMaxCent: centavos(num(form, 'valorMax', 500)),
-      gastoDiaCent: centavos(num(form, 'gastoDia', 10)),
-      mensagensDia: Math.round(num(form, 'mensagensDia', 300)),
+      descontoMaxPct,
+      valorMaxCent: centavos(valorMax),
+      gastoDiaCent: centavos(gastoDia),
+      mensagensDia,
       ativo: form.get('ativo') === 'on',
     })
   } catch (e) {
@@ -275,6 +290,8 @@ export async function salvarRotinas(
   _anterior: EstadoAgente,
   form: FormData,
 ): Promise<EstadoAgente> {
+  const diasSumido = lido(form, 'dias_CLIENTE_SUMIDO', 45, (t) => lerNumero(t, 0))
+  if (diasSumido === null) return { erro: 'Dias sem comprar: um número inteiro de dias, como 45.' }
   try {
     const sessao = await exigirSessao(slug)
     await salvarGatilhos(
@@ -282,7 +299,7 @@ export async function salvarRotinas(
       ROTINAS_NA_TELA.map((r) => ({
         tipo: r.tipo as TipoGatilho,
         ativo: form.get(`rotina_${r.tipo}`) === 'on',
-        dias: r.tipo === 'CLIENTE_SUMIDO' ? num(form, 'dias_CLIENTE_SUMIDO', 45) : null,
+        dias: r.tipo === 'CLIENTE_SUMIDO' ? diasSumido : null,
       })),
     )
   } catch (e) {

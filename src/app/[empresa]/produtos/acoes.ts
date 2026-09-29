@@ -167,6 +167,13 @@ async function vendidoEmDo(
   return { valor }
 }
 
+/**
+ * Material de uso e feito no dia. Mesmo desenho do serviço: o marcador
+ * `marcasNaTela` diz que a tela mostrou as perguntas — sem ele, nada muda.
+ */
+const marcasDo = (f: FormData): { usoInterno?: boolean; feitoNoDia?: boolean } =>
+  f.has('marcasNaTela') ? { usoInterno: f.get('usoInterno') === 'on', feitoNoDia: f.get('feitoNoDia') === 'on' } : {}
+
 export async function criar(
   slug: string,
   eixosDaEmpresa: string[],
@@ -211,6 +218,7 @@ export async function criar(
         custo: p.custo ?? null,
         prazoReposicaoDias: reposicao.valor,
         ...comoServico,
+        ...marcasDo(form),
         vendidoEm: vendido.valor,
       },
       eixosDoFormulario(form, eixosDaEmpresa),
@@ -277,6 +285,7 @@ export async function editar(
       custo: p.custo,
       prazoReposicaoDias: reposicao.valor,
       ...comoServico,
+      ...marcasDo(form),
       vendidoEm: vendido.valor,
       ativo: form.get('ativo') === 'on',
     })

@@ -234,6 +234,9 @@ export async function analisarCatalogo(sessao: Sessao, alvoPct: number): Promise
     const produtos = await db.produto.findMany({
       where: {
         ativo: true,
+        // Material de uso não tem preço de venda para analisar: margem da
+        // acetona é número que ninguém vai usar.
+        usoInterno: false,
         ...(alcance === 'todas'
           ? {}
           : { OR: [{ vendidoEm: { isEmpty: true } }, { vendidoEm: { hasSome: alcance } }] }),

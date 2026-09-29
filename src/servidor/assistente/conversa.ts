@@ -30,6 +30,14 @@
 // poderia usar na tela. O que ele pedir fora disso volta como erro — e nada
 // é executado.
 //
+// ── antes de tudo: o CONFIRMAR do telefone da equipe ─────────
+// "CONFIRMAR 123456" vindo do número para o qual a tela Minha conta mostrou
+// esse código confirma o telefone da pessoa (ver confirmacao.ts). É tratado
+// antes de decidir equipe × cliente — até ali, o número é de "cliente" — e
+// antes de conferir se o assistente está ligado: a dona confirma o número
+// antes de ligar o assistente. Mensagem com essa forma que não bate com
+// código nenhum segue o caminho de sempre.
+//
 // ── erro nunca vaza ──────────────────────────────────────────
 // Falha da IA vira uma frase educada para quem mandou a mensagem. Nome de
 // modelo, status HTTP, corpo de erro, nome de ferramenta: nada disso chega ao
@@ -68,6 +76,13 @@ import { agoraEmSP, ferramentasParaModelo, montarSistema, poderDaFerramenta, pod
 import { executarFerramenta } from './ferramentas'
 import { decidirRecado, humanoAteDepoisDe, recadoDe, type DecisaoRecado } from './recado'
 import { chaveTelefone, mesmoTelefone } from './telefone'
+import {
+  anotarVisto,
+  confirmarPorMensagem,
+  lerPedidoDeConfirmacao,
+  respostaDaConfirmacao,
+  type ConfirmacaoPorMensagem,
+} from './confirmacao'
 
 /** Voltas de ferramenta por mensagem. Mais que isso é o modelo andando em círculo. */
 export const MAXIMO_VOLTAS = 5
@@ -111,6 +126,8 @@ export type MotivoSilencio = Extract<DecisaoRecado, { manda: false }>['motivo'] 
 export type Desfecho =
   | { tipo: 'ignorada'; motivo: 'empresa' | 'teto_conversa' }
   | { tipo: 'duplicada' }
+  // ── o CONFIRMAR do telefone da equipe ──
+  | { tipo: 'confirmacao'; confirmou: boolean }
   // ── cliente ──
   | { tipo: 'campanha' }
   | { tipo: 'recado'; enviada: boolean }
@@ -133,6 +150,11 @@ export const idDaMensagem = (orgId: string, idExterno: string) =>
 export async function processarMensagem(e: Entrada, deps: Dependencias): Promise<Desfecho> {
   const ctx = await carregarContexto(e.orgId)
   if (!ctx) return { tipo: 'ignorada', motivo: 'empresa' }
+  // Sem a forma "CONFIRMAR 123456", nem consulta: o caso comum custa zero.
+  if (lerPedidoDeConfirmacao(e.texto)) {
+    const c = await confirmarPorMensagem(e.orgId, e.telefone, e.texto)
+    if (c) return responderConfirmacao(ctx, e, c, deps.canal)
+  }
   if (!empresaApta(ctx)) {
     // Assistente desligado, plano sem ele, empresa suspensa: nada de
     // campanha, recado ou IA — MAS o PARAR (e o VOLTAR) valem. A pessoa que
@@ -168,6 +190,9 @@ export async function processarMensagem(e: Entrada, deps: Dependencias): Promise
     return atenderCliente(agente, conversa, { nome: quem.nome, texto, anuncioId: e.anuncioId ?? null }, deps.canal)
   }
 
+  // O número confirmado continua em uso: é o que empurra os 180 dias.
+  await anotarVisto(e.orgId, quem.sessao.usuarioId)
+
   // O dono testando a própria campanha ("Testar com meu número"): o número
   // dele é de equipe, mas enquanto houver uma execução de TESTE viva para ele,
   // a resposta é do roteiro. Sem isto o teste que espera "sim" parava para
@@ -185,6 +210,40 @@ export async function processarMensagem(e: Entrada, deps: Dependencias): Promise
     if (r.tratou) return { tipo: 'campanha' }
   }
   return conversarComEquipe(ctx, quem, conversa, texto, deps)
+}
+
+/**
+ * O CONFIRMAR tratou a mensagem: grava a entrada na conversa (no WhatsApp
+ * oficial é ela que abre a janela de 24 horas para a resposta poder sair) e
+ * responde quem mandou. Sem assistente criado não há conversa onde gravar nem
+ * por onde responder: a confirmação vale, calada.
+ */
+async function responderConfirmacao(
+  ctx: Contexto,
+  e: Entrada,
+  c: ConfirmacaoPorMensagem,
+  canal: Canal,
+): Promise<Desfecho> {
+  const confirmou = c.confirmou
+  const texto = respostaDaConfirmacao(c)
+  if (!ctx.agente || !texto) return { tipo: 'confirmacao', confirmou }
+  try {
+    const conversa = await abrirConversa(e.orgId, ctx.agente.id, e.telefone, {
+      nome: e.nome,
+      ...(confirmou ? { daEquipe: true } : {}),
+    })
+    const gravadas = await comoOrg(e.orgId, (db) =>
+      db.mensagemAgente.createMany({
+        data: [{ id: idDaMensagem(e.orgId, e.idExterno), orgId: e.orgId, conversaId: conversa.id, de: 'PESSOA', texto: e.texto.trim().slice(0, MAXIMO_ENTRADA) }],
+        skipDuplicates: true,
+      }),
+    )
+    if (gravadas.count > 0) await enviarEGravar(canal, ctx.agente, conversa, texto)
+  } catch (erro) {
+    // A confirmação já foi gravada; só a resposta não saiu.
+    console.error(`[assistente] ${e.orgId}: a resposta do CONFIRMAR falhou:`, erro instanceof Error ? erro.message : erro)
+  }
+  return { tipo: 'confirmacao', confirmou }
 }
 
 /**

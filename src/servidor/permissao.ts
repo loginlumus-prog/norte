@@ -37,6 +37,13 @@ export const CAPACIDADES = [
   'ponto.proprio', // bater o PRÓPRIO ponto e ver as próprias horas
   'ponto.ver', // ver as horas de todo mundo (é dado de folha de pagamento)
   'ponto.gerir', // bater por quem não tem login, ajustar e anular com motivo
+  // escola
+  'escola.ver', // ver turmas, matrículas e a ficha escolar do aluno (com o responsável)
+  'escola.matricular', // matricular, trancar, cancelar; anotar o responsável
+  'escola.gerir', // criar e editar turma (e o valor dela); dar bolsa
+  'mensalidade.ver', // ver as mensalidades: quem pagou, quem deve e quanto
+  'mensalidade.receber', // receber mensalidade — é dinheiro entrando, como a parcela
+  'mensalidade.ajustar', // cancelar (dispensar) a mensalidade de um mês, com motivo
   // pessoas
   'cliente.ver',
   'cliente.editar',
@@ -76,6 +83,8 @@ const SO_LEITURA: Capacidade[] = [
   'compra.ver',
   'agenda.ver',
   'ponto.ver',
+  'escola.ver',
+  'mensalidade.ver',
 ]
 
 export const PODERES: Record<Papel, readonly Capacidade[]> = {
@@ -92,6 +101,8 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
     'compra.ver', 'compra.gerir',
     'agenda.ver', 'agenda.marcar',
     'ponto.proprio', 'ponto.ver', 'ponto.gerir',
+    'escola.ver', 'escola.matricular', 'escola.gerir',
+    'mensalidade.ver', 'mensalidade.receber', 'mensalidade.ajustar',
     'cliente.ver', 'cliente.editar',
     'crediario.ver', 'crediario.cobrar', 'crediario.receber',
     'financeiro.ver', 'relatorio.ver',
@@ -109,12 +120,19 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
   // todos e marca. Bate o PRÓPRIO ponto e vê as próprias horas — as dos
   // colegas são dado de folha de pagamento, não dela. E anota o material que
   // usou; o que ele CUSTOU (o pedido ao fornecedor) fica fora da vista.
+  //
+  // Na escola, o balcão é a SECRETARIA: matricula, anota o responsável e
+  // recebe a mensalidade com o pai na frente. O que não faz é o que mexe no
+  // preço — criar turma, mudar o valor dela, dar bolsa — nem dispensar uma
+  // mensalidade: isso é desconto, e desconto tem dono.
   BALCAO: [
     'venda.ver', 'venda.criar',
     'caixa.ver', 'caixa.operar',
     'produto.ver', 'estoque.ver', 'estoque.consumir',
     'agenda.ver', 'agenda.marcar',
     'ponto.proprio',
+    'escola.ver', 'escola.matricular',
+    'mensalidade.ver', 'mensalidade.receber',
     'cliente.ver', 'cliente.editar',
     'crediario.ver', 'crediario.receber',
     'tarefa.ver',
@@ -122,11 +140,15 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
 
   // Financeiro: o dinheiro. Não mexe em produto nem vende.
   // Vê as compras (é conta a pagar que vem aí) e as horas de todos (é a
-  // folha), sem mexer em nenhuma das duas.
+  // folha), sem mexer em nenhuma das duas. Na escola, cuida da mensalidade:
+  // vê, recebe e dispensa a de um mês (com motivo) — sem matricular ninguém
+  // nem mexer no preço da turma.
   FINANCEIRO: [
     'venda.ver', 'caixa.ver',
     'cliente.ver',
     'crediario.ver', 'crediario.cobrar', 'crediario.receber',
+    'escola.ver',
+    'mensalidade.ver', 'mensalidade.receber', 'mensalidade.ajustar',
     'financeiro.ver', 'financeiro.lancar',
     'compra.ver',
     'ponto.proprio', 'ponto.ver',
@@ -136,8 +158,10 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
 
   // Contador: convidado. Só olha o dinheiro, não escreve nada em lugar nenhum.
   // As compras e as horas do mês entram porque são dinheiro também — a conta
-  // do fornecedor e a folha de pagamento, que costuma ser ele quem fecha.
-  CONTADOR: ['financeiro.ver', 'relatorio.ver', 'compra.ver', 'ponto.ver'],
+  // do fornecedor e a folha de pagamento, que costuma ser ele quem fecha. As
+  // mensalidades também: são a receita da escola. As turmas não — são
+  // pedagógicas, não contábeis.
+  CONTADOR: ['financeiro.ver', 'relatorio.ver', 'compra.ver', 'ponto.ver', 'mensalidade.ver'],
 
   // Suporte (nós): só leitura, com prazo e motivo obrigatórios, e tudo o que
   // fizer aparece no livro de auditoria do cliente, igual a qualquer pessoa.

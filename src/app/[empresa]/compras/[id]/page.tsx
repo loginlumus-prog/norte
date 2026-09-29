@@ -13,6 +13,7 @@ import { brl } from '@/ui/painel'
 import { Cartao, Situacao } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { AcoesDoPedido, Receber } from './Receber'
+import { EditarItens } from './EditarItens'
 
 export const metadata: Metadata = { title: 'Pedido de compra' }
 
@@ -57,6 +58,22 @@ export default async function PedidoDeCompra({ params }: { params: Promise<{ emp
       </div>
 
       {podeGerir && <AcoesDoPedido slug={slug} pedidoId={p.id} situacao={p.situacao} />}
+
+      {/* Rascunho ainda é do lojista: dá para mudar os itens antes de mandar. */}
+      {podeGerir && p.situacao === 'RASCUNHO' && (
+        <EditarItens
+          slug={slug}
+          pedidoId={p.id}
+          unidadeId={p.unidadeId}
+          itens={p.itensLista.map((i) => ({
+            variacaoId: i.variacaoId,
+            descricao: i.descricao,
+            medida: i.medida,
+            quantidade: i.quantidade,
+            custoUnit: i.custoUnit,
+          }))}
+        />
+      )}
 
       <Cartao titulo="Itens">
         <ul className="flex flex-col divide-y divide-borda-suave">

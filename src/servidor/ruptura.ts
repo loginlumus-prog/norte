@@ -137,9 +137,12 @@ export type LinhaRuptura = {
   /** "P · Azul". Vazio para item sem variação. */
   opcoes: string
   saldo: number
+  /** O que SAIU em 30 dias: vendido — ou, no material de uso, consumido. */
   vendidos30: number
   prazoDias: number | null
   previsao: Previsao
+  /** Material de uso: o ritmo é o consumo, não a venda. */
+  usoInterno?: boolean
 }
 
 /**
@@ -152,6 +155,13 @@ export type LinhaRuptura = {
  * Entra só o que tem saldo ou vendeu no mês: variação sem saldo e sem venda
  * é grade que nunca chegou à prateleira, e listar isso como "já faltou"
  * seria alarme falso em cima de alarme falso.
+ *
+ * Material de uso (a luva, a acetona) não vende: o ritmo dele é o CONSUMO —
+ * o "Material usado" da recepção. Sem isso ele era "sem giro" para sempre, e
+ * a clínica descobria que a luva acabou pela falta dela.
+ *
+ * O que é feito no dia (o pão) fica de fora: ele não se compra de
+ * fornecedor, e zerado depois de fechar não é "já faltou".
  */
 export async function previsaoDeRuptura(sessao: Sessao, unidadeIds: string[]): Promise<LinhaRuptura[]> {
   exigir(sessao, 'estoque.ver')
@@ -175,10 +185,12 @@ export async function previsaoDeRuptura(sessao: Sessao, unidadeIds: string[]): P
         saldo: string | null
         vendidos: string | null
         opcoes: string | null
+        uso_interno: boolean
       }[]
     >`
       select vr.id as variacao_id, p.nome, vr.codigo, p.prazo_reposicao_dias as prazo,
-             e.saldo, s.vendidos, o.opcoes
+             e.saldo, case when p.uso_interno then c.consumidos else s.vendidos end as vendidos, o.opcoes,
+             p.uso_interno
         from variacoes vr
         join produtos p on p.id = vr.produto_id
         left join lateral (
@@ -196,14 +208,22 @@ export async function previsaoDeRuptura(sessao: Sessao, unidadeIds: string[]): P
              and v.criada_em >= ${corte}
         ) s on true
         left join lateral (
+          select -sum(m.quantidade) as consumidos
+            from movimentos_estoque m
+           where m.variacao_id = vr.id
+             and m.unidade_id = any(${uni})
+             and m.tipo = 'CONSUMO'
+             and m.criado_em >= ${corte}
+        ) c on p.uso_interno
+        left join lateral (
           select string_agg(op.valor, ' · ' order by ex.ordem, op.ordem) as opcoes
             from variacao_opcoes vo
             join opcoes op on op.id = vo.opcao_id
             join eixos ex on ex.id = op.eixo_id
            where vo.variacao_id = vr.id
         ) o on true
-       where vr.ativa and p.ativo and not p.servico
-         and (coalesce(e.saldo, 0) > 0 or coalesce(s.vendidos, 0) > 0)
+       where vr.ativa and p.ativo and not p.servico and not p.feito_no_dia
+         and (coalesce(e.saldo, 0) > 0 or coalesce(s.vendidos, 0) > 0 or coalesce(c.consumidos, 0) > 0)
     `
   })
 
@@ -221,6 +241,7 @@ export async function previsaoDeRuptura(sessao: Sessao, unidadeIds: string[]): P
         vendidos30,
         prazoDias: l.prazo,
         previsao: preverRuptura({ saldo, vendidos30, prazoDias: l.prazo, hoje }),
+        ...(l.uso_interno ? { usoInterno: true } : {}),
       }
     }),
   ).slice(0, LIMITE_LINHAS)

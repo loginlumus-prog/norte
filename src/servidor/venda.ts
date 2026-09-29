@@ -48,6 +48,7 @@ import { normalizarCodigo, pedeInteiro, travarVenda, venceu } from './devolucao'
 import { montarParcelas } from './crediario'
 import { travarCaixaAberto } from './caixa'
 import { codigoEncomenda, entregarPelaVenda, travarParaVenda } from './encomenda'
+import { lerTaxas, taxaDe } from './taxas'
 import {
   programaNoPlano,
   conferirUso,
@@ -136,6 +137,8 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'crediario_recusado'; recado: string }
   /** Produto que não é vendido nesta loja — ver `catalogo-loja.ts`. */
   | { ok: false; motivo: 'fora_da_loja'; itens: string[] }
+  /** Material de uso (a luva, a acetona): tem estoque, não se vende. */
+  | { ok: false; motivo: 'uso_interno'; itens: string[] }
   /** O plano tem teto de vendas no mês (o Grátis) e ele foi alcançado. */
   | { ok: false; motivo: 'teto_do_plano'; recado: string }
   /** Depósito ou loja desativada: ali não se vende. */
@@ -281,7 +284,7 @@ export async function registrarVenda(
     // Sem `venda.desconto`: não é preço inventado por quem opera, é o saldo
     // de um pedido que a loja já anotou (o avulso pede o poder porque o preço
     // dele é digitado na hora; este não é).
-    let daEncomenda: { faltaC: number; linha: string; observacao: string | null } | null = null
+    let daEncomenda: { faltaC: number; linha: string } | null = null
     if (v.encomendaId) {
       const e = await travarParaVenda(db, empresa, v.encomendaId, v.unidadeId)
       if (!e.ok) return { ok: false as const, motivo: 'encomenda_recusada' as const, recado: e.recado }
@@ -351,7 +354,7 @@ export async function registrarVenda(
           select: {
             nome: true, medida: true, custo: true, ativo: true,
             precoVista: true, precoCartao: true, precoCrediario: true,
-            vendidoEm: true, servico: true,
+            vendidoEm: true, servico: true, usoInterno: true,
           },
         },
         opcoes: { select: { opcao: { select: { valor: true } } } },
@@ -403,6 +406,21 @@ export async function registrarVenda(
       ),
     ]
     if (foraDaLoja.length > 0) return { ok: false as const, motivo: 'fora_da_loja' as const, itens: foraDaLoja }
+
+    // ── 1c. material de uso não se vende ──
+    // A grade e a busca do balcão já não o mostram (`aVendaNaLoja`); esta é a
+    // trava que vale — o pedido guardado no navegador de antes de marcar o
+    // produto, ou o POST na mão, venderiam a luva da clínica e baixariam o
+    // estoque como venda, sumindo com ela do "Material usado".
+    const deUso = [
+      ...new Set(
+        doCatalogo
+          .map((i) => porId.get(i.variacaoId))
+          .filter((x): x is NonNullable<typeof x> => !!x && x.produto.usoInterno)
+          .map((x) => descrever(x)),
+      ),
+    ]
+    if (deUso.length > 0) return { ok: false as const, motivo: 'uso_interno' as const, itens: deUso }
 
     // ── 2. estoque: confere TUDO antes de escrever qualquer coisa ──
     // Serviço não tem estoque: a manicure não "acaba". Fica fora da
@@ -652,6 +670,11 @@ export async function registrarVenda(
       valeDoPagamento.set(c.indice, c.id)
     }
 
+    // ── 3.4 a taxa da maquininha de HOJE, gravada em cada pagamento ──
+    // O DRE desconta a taxa venda a venda; com ela gravada aqui, mudar a taxa
+    // em Configurações amanhã não reescreve o mês que já fechou.
+    const taxas = await lerTaxas(db)
+
     // ── 4. o número, sem corrida ──
     // O banco incrementa e devolve numa operação só.
     const linhas = await db.$queryRaw<{ numero: number }[]>`
@@ -682,12 +705,11 @@ export async function registrarVenda(
         pontosUsados,
         pontosGanhos: ganhos,
         total,
-        // A venda que recebeu uma encomenda diz qual, com o mesmo código que
-        // o financeiro usa no lançamento do sinal (ENC-…).
-        observacoes:
-          [v.encomendaId ? `Encomenda ${codigoEncomenda(v.encomendaId)}` : null, v.observacoes]
-            .filter(Boolean)
-            .join(' · ') || undefined,
+        // A venda que recebeu uma encomenda aponta para ela — um campo de
+        // verdade, e não o código escrito na observação (o `@unique` é a
+        // garantia de que a encomenda não se recebe em duas vendas).
+        encomendaId: v.encomendaId && daEncomenda ? v.encomendaId : null,
+        observacoes: v.observacoes || undefined,
         concluidaEm: new Date(),
         itens: {
           create: itens.map(({ _cent, _tabelaCent, ...i }) => ({ orgId: sessao.orgId, ...i })),
@@ -700,6 +722,7 @@ export async function registrarVenda(
             parcelas: p.parcelas ?? 1,
             referencia: p.forma === 'VALE' ? normalizarCodigo(p.referencia ?? '') : p.referencia,
             valeId: valeDoPagamento.get(i) ?? null,
+            taxaPct: taxaDe(taxas, p.forma, p.parcelas ?? 1),
           })),
         },
       },
@@ -765,7 +788,6 @@ export async function registrarVenda(
         numero,
         unidadeId: v.unidadeId,
         faltaC: daEncomenda.faltaC,
-        observacao: daEncomenda.observacao,
       })
     }
 
@@ -1177,6 +1199,7 @@ export async function acharVenda(sessao: Sessao, vendaId: string) {
         cliente: { select: { id: true, nome: true, telefone: true } },
         unidade: { select: { id: true, nome: true } },
         caixa: { select: { id: true, aberto: true } },
+        encomenda: { select: { id: true, descricao: true } },
       },
     }),
   )

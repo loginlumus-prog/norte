@@ -22,7 +22,7 @@ import {
   type ChavePoder,
   type Poder,
 } from './poderes'
-import { garantirCreditoDoMes } from './assinatura'
+import { garantirCreditoDoMes, vencerTesteSeAcabou } from './assinatura'
 import { PLANOS, planoLibera } from './planos'
 import { inicioDeHojeEmSP } from './dia'
 import { MAXIMO_RECADO } from './assistente/recado'
@@ -528,15 +528,16 @@ export async function apurarRecibos(orgId: string, agora: Date = new Date()): Pr
       `
       const filtroMov = unidades ? Prisma.sql`and m.unidade_id = any(${unidades})` : Prisma.empty
       // A transferência entre lojas também grava ENTRADA no destino (ver
-      // `transferir` em estoque.ts), com o motivo "Transferência de …". Ela
-      // não é compra: a peça só mudou de prateleira. Contada como "entrou",
-      // inflava a reposição e o recibo cobrava margem de venda que o
-      // assistente não evitou.
+      // `transferir` em estoque.ts). Ela não é compra: a peça só mudou de
+      // prateleira. Contada como "entrou", inflava a reposição e o recibo
+      // cobrava margem de venda que o assistente não evitou. Quem marca é o
+      // `transferencia_id` das duas pernas — não o texto do motivo, que uma
+      // entrada comum digitada "Transferência de fornecedor" imitaria.
       const [entrada] = await db.$queryRaw<{ entrou: string | null }[]>`
         select sum(m.quantidade) as entrou
           from movimentos_estoque m
          where m.variacao_id = ${variacaoId} and m.tipo = 'ENTRADA'
-           and coalesce(m.motivo, '') not like 'Transferência de %'
+           and m.transferencia_id is null
            and m.criado_em >= ${de} and m.criado_em < ${ate}
            ${filtroMov}
       `
@@ -679,6 +680,16 @@ export async function podeGastarHoje(orgId: string, agora: Date = new Date()): P
     }
   }
 
+  // O plano antes do crédito: o teste que venceu desce para o Grátis aqui
+  // (ver `planoTemAssistente`) — e antes de `garantirCreditoDoMes`, que
+  // senão depositaria o crédito do plano pago numa empresa que não o tem.
+  if (!(await planoTemAssistente(orgId))) {
+    return {
+      pode: false, motivo: 'sem_agente', gastoCent: 0, tetoCent: agente.gastoDiaCent, saldoCent: 0,
+      recado: 'O plano desta empresa não tem o assistente. Veja os planos em Assinatura.',
+    }
+  }
+
   // O crédito incluso do mês cai antes de conferir o saldo: no dia 1º, a
   // primeira mensagem do mês não pode ser recusada por falta de um crédito
   // que o plano já garante.
@@ -748,6 +759,20 @@ export const paraConfig = (a: LinhaAgente): AgenteConfig => ({
 })
 
 /**
+ * O plano da empresa tem o assistente AGORA?
+ *
+ * O teste vencido desce para o Grátis antes de o plano ser lido: a empresa
+ * de teste que acabou em 10/09 continuava com `plano = PRO` no banco até
+ * alguém abrir uma tela, e o assistente seguia respondendo — e gastando —
+ * por conta de um plano que ela não tem mais.
+ */
+export async function planoTemAssistente(orgId: string): Promise<boolean> {
+  await vencerTesteSeAcabou(orgId)
+  const org = await comoOrg(orgId, (db) => db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } }))
+  return planoLibera(org.plano, 'agente')
+}
+
+/**
  * Levanta erro quando o plano da empresa não tem o assistente.
  *
  * Exportada para os outros caminhos que ligam o assistente ao mundo (conectar
@@ -755,8 +780,7 @@ export const paraConfig = (a: LinhaAgente): AgenteConfig => ({
  * régua — ver `assistente/`.
  */
 export async function exigirPlanoComAssistente(orgId: string): Promise<void> {
-  const org = await comoOrg(orgId, (db) => db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } }))
-  if (planoLibera(org.plano, 'agente')) return
+  if (await planoTemAssistente(orgId)) return
   const desde = Object.values(PLANOS)
     .filter((p) => (p.modulos as readonly string[]).includes('agente'))
     .sort((a, b) => a.degrau - b.degrau)[0]

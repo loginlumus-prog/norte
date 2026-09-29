@@ -28,6 +28,7 @@ import { quantoCusta } from '@/servidor/pontos'
 import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 import { salvarPontos, type EstadoPontos } from './acoes'
 import { semApagar } from '@/ui/formulario'
+import { lerNumero } from '@/servidor/dinheiro'
 
 const brl = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -50,7 +51,8 @@ export function Pontos({
   // fala em "0,03". A ação já aceita os dois.
   const [porReal, setPorReal] = useState(String(inicial.porReal).replace('.', ','))
   const [vale, setVale] = useState(String(inicial.pontoVale).replace('.', ','))
-  const num = (v: string) => Number(v.replace(',', '.')) || 0
+  // Só para a conta ao vivo da tela; quem recusa o ilegível, com recado, é a ação.
+  const num = (v: string) => lerNumero(v, 4) ?? 0
   const aberto = liberado(plano, 'pontos.programa')
   const quemAbre = doPlano(planoQueAbre('pontos.programa').codigo)
 

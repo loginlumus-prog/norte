@@ -37,6 +37,17 @@
 // outubro. É assim que o extrato do banco conta, e é com ele que o DRE tem de
 // bater.
 //
+// ── e o sinal em DINHEIRO passa pela gaveta ──────────────────
+// O lançamento diz ao DRE que o dinheiro entrou; não diz ao CAIXA. Até 28/09
+// o sinal pago em espécie ia para a gaveta sem o turno saber, e o fechamento
+// "sobrava" R$ 50 que ninguém explicava (e a devolução em espécie "faltava").
+// Agora a encomenda pergunta como o sinal foi pago (`sinalForma`). Em
+// dinheiro, ele entra como SUPRIMENTO no caixa aberto da loja — sem caixa
+// aberto, é recusado, como a venda em dinheiro — e a devolução em dinheiro
+// sai como SANGRIA. Os dois ficam ligados à encomenda
+// (`CaixaMovimento.encomendaId`). Pix, cartão e transferência não passam pela
+// gaveta: só o lançamento.
+//
 // O lançamento é escrito aqui, na mesma transação da encomenda, e não por
 // `lancar()`: quem anota encomenda é o balcão, que não tem (nem deve ter)
 // `financeiro.lancar`. É o mesmo raciocínio de a venda gravar a própria
@@ -44,10 +55,11 @@
 //
 // Puro em cima (datas, grupos, validação, transições), banco embaixo.
 
-import type { Plano, SituacaoEncomenda, TipoLancamento } from '@prisma/client'
+import type { FormaPagamento, Plano, SituacaoEncomenda, TipoCaixa, TipoLancamento } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, SemPermissao, unidadesQuePodem, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
+import { travarCaixaAberto } from './caixa'
 import { CATEGORIAS_PADRAO } from './financeiro'
 import { soDigitos } from './cliente'
 import { moduloLigado } from './modulos'
@@ -117,6 +129,24 @@ export const situacaoEncomendaValida = (s: unknown): s is SituacaoEncomenda =>
 export function faltaPagar(valor: number | string | { toString(): string }, sinal: number | string | { toString(): string }): number {
   return reais(Math.max(centavos(valor) - centavos(sinal), 0))
 }
+
+/**
+ * Como o sinal pode ser pago (e devolvido). Crediário e vale ficam de fora:
+ * sinal fiado não é sinal, e vale de troca é crédito de venda.
+ */
+export const FORMAS_SINAL = ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'TRANSFERENCIA'] as const satisfies readonly FormaPagamento[]
+export type FormaSinal = (typeof FORMAS_SINAL)[number]
+
+export const ROTULO_FORMA_SINAL: Record<FormaSinal, string> = {
+  DINHEIRO: 'Dinheiro',
+  PIX: 'Pix',
+  DEBITO: 'Débito',
+  CREDITO: 'Crédito',
+  TRANSFERENCIA: 'Transferência',
+}
+
+export const formaSinalValida = (f: unknown): f is FormaSinal =>
+  typeof f === 'string' && (FORMAS_SINAL as readonly string[]).includes(f)
 
 // ─────────────────────────────────────────────────────────────
 // DATAS NO FUSO DA LOJA
@@ -293,6 +323,12 @@ export type DadosEncomenda = {
   descricao: string
   valor: number
   sinal?: number | null
+  /**
+   * Como o dinheiro do sinal se moveu AGORA: como foi pago (ao anotar, ou o
+   * complemento quando o sinal sobe) ou como foi devolvido (quando desce).
+   * Obrigatório quando há dinheiro se movendo; ignorado quando não há.
+   */
+  sinalForma?: FormaPagamento | null
   /** "2026-09-26", no relógio da loja. */
   dia: string
   /** "15:00", no relógio da loja. */
@@ -312,6 +348,7 @@ export type EncomendaLimpa = {
   descricao: string
   valorC: number
   sinalC: number
+  sinalForma: FormaSinal | null
   para: Date
   entrega: boolean
   endereco: string | null
@@ -359,6 +396,10 @@ export function validarEncomenda(
   const sinalC = centavos(sinalN)
   if (valorC > 99_999_999) return { ok: false, erro: 'Valor alto demais. Confira os zeros.' }
   if (sinalC > valorC) return { ok: false, erro: 'O sinal não pode ser maior que o valor da encomenda.' }
+  const sinalForma = d.sinalForma ?? null
+  if (sinalForma !== null && !formaSinalValida(sinalForma)) {
+    return { ok: false, erro: 'Essa forma de pagamento não serve para sinal.' }
+  }
 
   const para = deSP(d.dia, d.hora)
   if (!para) return { ok: false, erro: 'Escolha um dia e uma hora que existam.' }
@@ -385,6 +426,7 @@ export function validarEncomenda(
       descricao,
       valorC,
       sinalC,
+      sinalForma,
       para,
       entrega: !!d.entrega,
       endereco: d.entrega ? endereco : null,
@@ -417,6 +459,8 @@ export type EncomendaNaLista = {
   descricao: string
   valor: number
   sinal: number
+  /** Como o sinal foi pago. Nulo sem sinal, ou em encomenda de antes de 28/09. */
+  sinalForma: FormaPagamento | null
   falta: number
   para: Date
   entrega: boolean
@@ -425,6 +469,8 @@ export type EncomendaNaLista = {
   observacao: string | null
   concluidaEm: Date | null
   quem: string
+  /** A venda do balcão que recebeu o que faltava, quando foi por lá. */
+  venda: { id: string; numero: number } | null
 }
 
 export type FiltroEncomendas = {
@@ -442,16 +488,18 @@ function lojasPermitidas(sessao: Sessao, unidadeIds: string[], cap: 'venda.ver' 
 
 const SELECT = {
   id: true, unidadeId: true, clienteId: true, clienteNome: true, telefone: true, descricao: true,
-  valor: true, sinal: true, para: true, entrega: true, endereco: true, situacao: true,
+  valor: true, sinal: true, sinalForma: true, para: true, entrega: true, endereco: true, situacao: true,
   observacao: true, concluidaEm: true, quem: true,
   unidade: { select: { nome: true } },
+  venda: { select: { id: true, numero: true } },
 } as const
 
 type Linha = {
   id: string; unidadeId: string; clienteId: string | null; clienteNome: string; telefone: string | null
-  descricao: string; valor: { toString(): string }; sinal: { toString(): string }; para: Date; entrega: boolean
+  descricao: string; valor: { toString(): string }; sinal: { toString(): string }; sinalForma: FormaPagamento | null
+  para: Date; entrega: boolean
   endereco: string | null; situacao: SituacaoEncomenda; observacao: string | null; concluidaEm: Date | null
-  quem: string; unidade: { nome: string }
+  quem: string; unidade: { nome: string }; venda: { id: string; numero: number } | null
 }
 
 const naLista = (e: Linha): EncomendaNaLista => ({
@@ -464,6 +512,7 @@ const naLista = (e: Linha): EncomendaNaLista => ({
   descricao: e.descricao,
   valor: reais(centavos(e.valor)),
   sinal: reais(centavos(e.sinal)),
+  sinalForma: e.sinalForma,
   falta: faltaPagar(e.valor, e.sinal),
   para: e.para,
   entrega: e.entrega,
@@ -472,6 +521,7 @@ const naLista = (e: Linha): EncomendaNaLista => ({
   observacao: e.observacao,
   concluidaEm: e.concluidaEm,
   quem: e.quem,
+  venda: e.venda,
 })
 
 /**
@@ -676,6 +726,72 @@ async function registrarSinal(
   })
 }
 
+/* ── o sinal em dinheiro na gaveta ───────────────────────────── */
+
+/** Por que o dinheiro do sinal não pode passar pela gaveta agora. */
+const SEM_CAIXA_ENTRADA =
+  'Sinal em dinheiro entra na gaveta, e o caixa desta loja está fechado. Abra o caixa no Balcão — ou escolha como o cliente pagou (Pix, cartão, transferência).'
+const SEM_CAIXA_DEVOLUCAO =
+  'Devolver em dinheiro tira da gaveta, e o caixa desta loja está fechado. Abra o caixa no Balcão — ou escolha como o sinal foi devolvido (Pix, transferência).'
+
+/**
+ * O caixa aberto da loja, preso até o fim da transação (`travarCaixaAberto`),
+ * quando o sinal se move em DINHEIRO. Chamado ANTES de qualquer escrita: a
+ * recusa por caixa fechado tem de ser uma saída limpa, sem encomenda gravada
+ * pela metade. `caixaId` nulo quando a forma não é dinheiro (não passa pela
+ * gaveta).
+ */
+async function caixaDoSinal(
+  db: BancoDaOrg,
+  unidadeId: string,
+  forma: FormaPagamento | null,
+  valorC: number,
+): Promise<{ ok: true; caixaId: string | null } | { ok: false }> {
+  if (forma !== 'DINHEIRO' || valorC <= 0) return { ok: true, caixaId: null }
+  const caixaId = await travarCaixaAberto(db, unidadeId)
+  return caixaId ? { ok: true, caixaId } : { ok: false }
+}
+
+/**
+ * O sinal em dinheiro na gaveta: SUPRIMENTO quando entra, SANGRIA quando volta
+ * ao cliente. Ligado à encomenda, e no livro como a sangria feita à mão.
+ */
+async function moverGaveta(
+  db: BancoDaOrg,
+  sessao: Sessao,
+  caixaId: string,
+  e: { id: string; unidadeId: string; clienteNome: string },
+  tipo: TipoCaixa,
+  valorC: number,
+  motivo: string,
+) {
+  const texto = `${motivo} ${codigoEncomenda(e.id)} — ${e.clienteNome}`.slice(0, 200)
+  await db.caixaMovimento.create({
+    data: {
+      orgId: sessao.orgId,
+      caixaId,
+      tipo,
+      valor: reais(valorC),
+      motivo: texto,
+      quem: sessao.nome,
+      encomendaId: e.id,
+    },
+  })
+  await db.auditoria.create({
+    data: {
+      orgId: sessao.orgId,
+      unidadeId: e.unidadeId,
+      usuarioId: sessao.usuarioId,
+      quem: sessao.nome,
+      acao: tipo === 'SANGRIA' ? 'caixa.sangria' : 'caixa.suprimento',
+      alvoTipo: 'caixa',
+      alvoId: caixaId,
+      valor: reais(valorC),
+      motivo: texto,
+    },
+  })
+}
+
 /* ── o módulo, conferido no servidor ─────────────────────────── */
 
 /**
@@ -711,12 +827,17 @@ export async function criarEncomenda(sessao: Sessao, d: DadosEncomenda, agora = 
   const v = validarEncomenda(d, agora)
   if (!v.ok) return v
   const e = v.limpo
+  if (e.sinalC > 0 && !e.sinalForma) {
+    return { ok: false, erro: 'Como o cliente pagou o sinal? Escolha dinheiro, Pix, cartão ou transferência.' }
+  }
 
   return comoOrg(sessao.orgId, async (db) => {
     const recusa = await recusaDoModulo(db, sessao.orgId)
     if (recusa) return { ok: false as const, erro: recusa }
     const loja = await db.unidade.findFirst({ where: { id: e.unidadeId, ativa: true }, select: { id: true } })
     if (!loja) return { ok: false as const, erro: 'Essa loja não existe ou está desativada.' }
+    const gaveta = await caixaDoSinal(db, e.unidadeId, e.sinalForma, e.sinalC)
+    if (!gaveta.ok) return { ok: false as const, erro: SEM_CAIXA_ENTRADA }
 
     let nome = e.clienteNome
     let telefone = e.telefone
@@ -739,6 +860,7 @@ export async function criarEncomenda(sessao: Sessao, d: DadosEncomenda, agora = 
         descricao: e.descricao,
         valor: reais(e.valorC),
         sinal: reais(e.sinalC),
+        sinalForma: e.sinalC > 0 ? e.sinalForma : null,
         para: e.para,
         entrega: e.entrega,
         endereco: e.endereco,
@@ -753,6 +875,13 @@ export async function criarEncomenda(sessao: Sessao, d: DadosEncomenda, agora = 
       { id: criada.id, unidadeId: e.unidadeId, clienteNome: nome, descricao: e.descricao },
       'RECEITA', e.sinalC, 'Sinal de encomenda', agora,
     )
+    if (gaveta.caixaId) {
+      await moverGaveta(
+        db, sessao, gaveta.caixaId,
+        { id: criada.id, unidadeId: e.unidadeId, clienteNome: nome },
+        'SUPRIMENTO', e.sinalC, 'Sinal da encomenda',
+      )
+    }
 
     await db.auditoria.create({
       data: {
@@ -769,6 +898,7 @@ export async function criarEncomenda(sessao: Sessao, d: DadosEncomenda, agora = 
           para: e.para.toISOString(),
           valor: reais(e.valorC),
           sinal: reais(e.sinalC),
+          sinalForma: e.sinalC > 0 ? e.sinalForma : null,
           entrega: e.entrega,
         },
       },
@@ -800,7 +930,7 @@ export async function editarEncomenda(
       where: { id },
       select: {
         unidadeId: true, clienteId: true, clienteNome: true, telefone: true, descricao: true, valor: true,
-        sinal: true, para: true, entrega: true, endereco: true, observacao: true, situacao: true,
+        sinal: true, sinalForma: true, para: true, entrega: true, endereco: true, observacao: true, situacao: true,
       },
     })
     if (!antes) return { ok: false as const, erro: 'Essa encomenda não existe mais.' }
@@ -823,6 +953,21 @@ export async function editarEncomenda(
         erro: 'Diminuir o sinal é devolver dinheiro ao cliente, e isso é com quem pode cancelar venda. Chame a gerência.',
       }
     }
+
+    // A diferença do sinal é dinheiro que se move HOJE, e ele se move de um
+    // jeito: a tela pergunta qual. Em dinheiro, pela gaveta — conferida aqui,
+    // antes de gravar qualquer coisa.
+    const difC = e.sinalC - centavos(antes.sinal)
+    if (difC !== 0 && !e.sinalForma) {
+      return {
+        ok: false as const,
+        erro: difC > 0
+          ? 'Como o cliente pagou o complemento do sinal? Escolha dinheiro, Pix, cartão ou transferência.'
+          : 'Como o sinal foi devolvido ao cliente? Escolha dinheiro, Pix ou transferência.',
+      }
+    }
+    const gaveta = await caixaDoSinal(db, antes.unidadeId, difC !== 0 ? e.sinalForma : null, Math.abs(difC))
+    if (!gaveta.ok) return { ok: false as const, erro: difC > 0 ? SEM_CAIXA_ENTRADA : SEM_CAIXA_DEVOLUCAO }
 
     let nome = e.clienteNome
     let telefone = e.telefone
@@ -847,6 +992,8 @@ export async function editarEncomenda(
         descricao: e.descricao,
         valor: reais(e.valorC),
         sinal: reais(e.sinalC),
+        // A forma guardada é a do último dinheiro que ENTROU como sinal.
+        ...(difC > 0 ? { sinalForma: e.sinalForma } : {}),
         para: e.para,
         entrega: e.entrega,
         endereco: e.endereco,
@@ -855,12 +1002,19 @@ export async function editarEncomenda(
     })
     if (r.count === 0) return { ok: false as const, erro: 'Alguém mudou esta encomenda agora. Recarregue a tela.' }
 
-    // A diferença do sinal é dinheiro que se moveu HOJE: mais sinal entrou,
-    // ou parte dele voltou para o cliente. O lançamento antigo fica como está.
-    const difC = e.sinalC - centavos(antes.sinal)
+    // Mais sinal entrou, ou parte dele voltou para o cliente. O lançamento
+    // antigo fica como está; a diferença é de hoje.
     const alvo = { id, unidadeId: antes.unidadeId, clienteNome: nome, descricao: e.descricao }
     if (difC > 0) await registrarSinal(db, sessao, alvo, 'RECEITA', difC, 'Complemento de sinal', agora)
     if (difC < 0) await registrarSinal(db, sessao, alvo, 'DESPESA', -difC, 'Devolução de parte do sinal', agora)
+    if (gaveta.caixaId) {
+      await moverGaveta(
+        db, sessao, gaveta.caixaId, alvo,
+        difC > 0 ? 'SUPRIMENTO' : 'SANGRIA',
+        Math.abs(difC),
+        difC > 0 ? 'Complemento do sinal da encomenda' : 'Devolução de parte do sinal da encomenda',
+      )
+    }
 
     await db.auditoria.create({
       data: {
@@ -878,6 +1032,7 @@ export async function editarEncomenda(
           descricao: antes.descricao,
           valor: Number(antes.valor),
           sinal: Number(antes.sinal),
+          sinalForma: antes.sinalForma,
           para: antes.para.toISOString(),
           entrega: antes.entrega,
           endereco: antes.endereco,
@@ -887,6 +1042,7 @@ export async function editarEncomenda(
           descricao: e.descricao,
           valor: reais(e.valorC),
           sinal: reais(e.sinalC),
+          ...(difC > 0 ? { sinalForma: e.sinalForma } : difC < 0 ? { devolvidoEm: e.sinalForma } : {}),
           para: e.para.toISOString(),
           entrega: e.entrega,
           endereco: e.endereco,
@@ -903,7 +1059,13 @@ export type Mudanca =
   | { para: 'PRONTA' }
   | { para: 'ABERTA' }
   | { para: 'ENTREGUE' }
-  | { para: 'CANCELADA'; motivo: string; devolveuSinal: boolean }
+  | {
+      para: 'CANCELADA'
+      motivo: string
+      devolveuSinal: boolean
+      /** Como o sinal voltou ao cliente. Sem vir, vale a forma em que ele foi pago. */
+      formaDevolucao?: FormaPagamento | null
+    }
 
 const ACAO_DA_MUDANCA: Record<SituacaoEncomenda, string> = {
   ABERTA: 'encomenda.alterou',
@@ -918,8 +1080,9 @@ const ACAO_DA_MUDANCA: Record<SituacaoEncomenda, string> = {
  * Cancelar pede `venda.cancelar` — o mesmo poder de cancelar uma venda, porque
  * o efeito é parecido: o pedido some e, às vezes, dinheiro volta. Motivo é
  * obrigatório pelo mesmo motivo. Se a loja devolveu o sinal, a devolução
- * entra no financeiro como saída de hoje; se ficou com ele (o cliente
- * desistiu em cima da hora), o sinal continua sendo receita, que é o que é.
+ * entra no financeiro como saída de hoje — e, devolvida em dinheiro, sai da
+ * gaveta aberta como sangria; se ficou com ele (o cliente desistiu em cima da
+ * hora), o sinal continua sendo receita, que é o que é.
  */
 export async function mudarSituacao(
   sessao: Sessao,
@@ -940,7 +1103,8 @@ export async function mudarSituacao(
     const antes = await db.encomenda.findUnique({
       where: { id },
       select: {
-        unidadeId: true, situacao: true, clienteNome: true, descricao: true, valor: true, sinal: true, observacao: true,
+        unidadeId: true, situacao: true, clienteNome: true, descricao: true, valor: true, sinal: true, sinalForma: true,
+        observacao: true,
       },
     })
     if (!antes) return { ok: false as const, erro: 'Essa encomenda não existe mais.' }
@@ -954,6 +1118,17 @@ export async function mudarSituacao(
       }
     }
 
+    // A devolução do sinal: como ele voltou ao cliente. Em dinheiro, sai da
+    // gaveta — o caixa é conferido ANTES de gravar, e fechado é recusa limpa.
+    const sinalC = centavos(antes.sinal)
+    const devolve = m.para === 'CANCELADA' && m.devolveuSinal && sinalC > 0
+    const formaDevolucao = devolve && m.para === 'CANCELADA' ? (m.formaDevolucao ?? antes.sinalForma ?? null) : null
+    if (devolve && !formaSinalValida(formaDevolucao)) {
+      return { ok: false as const, erro: 'Como o sinal foi devolvido ao cliente? Escolha dinheiro, Pix ou transferência.' }
+    }
+    const gaveta = await caixaDoSinal(db, antes.unidadeId, formaDevolucao, sinalC)
+    if (!gaveta.ok) return { ok: false as const, erro: SEM_CAIXA_DEVOLUCAO }
+
     const r = await db.encomenda.updateMany({
       where: { id, situacao: antes.situacao },
       data: {
@@ -966,13 +1141,12 @@ export async function mudarSituacao(
     })
     if (r.count === 0) return { ok: false as const, erro: 'Alguém mudou esta encomenda agora. Recarregue a tela.' }
 
-    const sinalC = centavos(antes.sinal)
-    if (m.para === 'CANCELADA' && m.devolveuSinal && sinalC > 0) {
-      await registrarSinal(
-        db, sessao,
-        { id, unidadeId: antes.unidadeId, clienteNome: antes.clienteNome, descricao: antes.descricao },
-        'DESPESA', sinalC, 'Devolução do sinal', agora,
-      )
+    if (devolve) {
+      const alvo = { id, unidadeId: antes.unidadeId, clienteNome: antes.clienteNome, descricao: antes.descricao }
+      await registrarSinal(db, sessao, alvo, 'DESPESA', sinalC, 'Devolução do sinal', agora)
+      if (gaveta.caixaId) {
+        await moverGaveta(db, sessao, gaveta.caixaId, alvo, 'SANGRIA', sinalC, 'Devolução do sinal da encomenda')
+      }
     }
 
     await db.auditoria.create({
@@ -989,7 +1163,7 @@ export async function mudarSituacao(
         antes: { situacao: antes.situacao },
         depois: {
           situacao: m.para,
-          ...(m.para === 'CANCELADA' ? { devolveuSinal: m.devolveuSinal && sinalC > 0 } : {}),
+          ...(m.para === 'CANCELADA' ? { devolveuSinal: devolve, ...(devolve ? { formaDevolucao } : {}) } : {}),
         },
         motivo: motivo || null,
       },
@@ -1011,9 +1185,10 @@ export async function mudarSituacao(
 // — é quem lê esse valor, lança a linha e marca a encomenda entregue, tudo na
 // transação da venda. Venda que não fecha deixa a encomenda como estava.
 //
-// O vínculo fica escrito dos dois lados (código ENC-… na observação da venda,
-// número da venda na observação da encomenda) e no livro. Um campo de verdade
-// ligando as duas é migração — anotado para a próxima.
+// O vínculo é um campo de verdade: `Venda.encomendaId`, único (uma encomenda
+// se recebe numa venda só) e com chave estrangeira. Até 28/09 ele era o código
+// ENC-… escrito na observação da venda e o número da venda na da encomenda —
+// texto que qualquer um editava e que nenhuma consulta conseguia seguir.
 
 export type EncomendaNoBalcao = {
   id: string
@@ -1036,7 +1211,6 @@ type EncomendaTravada = {
   sinal: { toString(): string }
   descricao: string
   cliente_nome: string
-  observacao: string | null
 }
 
 /**
@@ -1069,7 +1243,7 @@ export async function encomendaParaReceber(
     const recusa = await recusaDoModulo(db, sessao.orgId)
     if (recusa) return { ok: false as const, erro: recusa }
     const [e] = await db.$queryRaw<EncomendaTravada[]>`
-      select id, unidade_id, situacao::text as situacao, valor, sinal, descricao, cliente_nome, observacao
+      select id, unidade_id, situacao::text as situacao, valor, sinal, descricao, cliente_nome
         from encomendas where id = ${id}
     `
     const nao = recusaDoRecebimento(e, unidadeId)
@@ -1098,11 +1272,11 @@ export async function travarParaVenda(
   empresa: { plano: Plano; modulos: string[] } | null,
   id: string,
   unidadeId: string,
-): Promise<{ ok: true; faltaC: number; linha: string; observacao: string | null } | { ok: false; recado: string }> {
+): Promise<{ ok: true; faltaC: number; linha: string } | { ok: false; recado: string }> {
   const recusa = recusaDoModuloEm(empresa)
   if (recusa) return { ok: false, recado: recusa }
   const [e] = await db.$queryRaw<EncomendaTravada[]>`
-    select id, unidade_id, situacao::text as situacao, valor, sinal, descricao, cliente_nome, observacao
+    select id, unidade_id, situacao::text as situacao, valor, sinal, descricao, cliente_nome
       from encomendas where id = ${id} for update
   `
   const nao = recusaDoRecebimento(e, unidadeId)
@@ -1111,29 +1285,24 @@ export async function travarParaVenda(
     ok: true,
     faltaC: centavos(e!.valor) - centavos(e!.sinal),
     linha: descricaoDaLinha(e!),
-    observacao: e!.observacao,
   }
 }
 
 /**
  * A venda gravou: a encomenda sai. Só se ainda estiver a fazer ou pronta —
  * se não, lança, e a venda inteira volta (é a segunda trava, depois do
- * `for update`).
+ * `for update`). A ligação com a venda é o `encomendaId` que a venda gravou.
  */
 export async function entregarPelaVenda(
   db: BancoDaOrg,
   sessao: Sessao,
   id: string,
-  venda: { id: string; numero: number; unidadeId: string; faltaC: number; observacao: string | null },
+  venda: { id: string; numero: number; unidadeId: string; faltaC: number },
   agora = new Date(),
 ) {
   const r = await db.encomenda.updateMany({
     where: { id, situacao: { in: ['ABERTA', 'PRONTA'] } },
-    data: {
-      situacao: 'ENTREGUE',
-      concluidaEm: agora,
-      observacao: [venda.observacao, `Recebida no balcão: venda ${venda.numero}.`].filter(Boolean).join('\n').slice(0, 1300),
-    },
+    data: { situacao: 'ENTREGUE', concluidaEm: agora },
   })
   if (r.count === 0) throw new Error('A encomenda mudou enquanto a venda era registrada. Nada foi gravado.')
   await db.auditoria.create({

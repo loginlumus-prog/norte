@@ -399,6 +399,18 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
        where p.unidade_id = any(${unidadeIds})
          and r.criado_em >= ${de} and r.criado_em <= ${ate}
     `
+    // A mensalidade da escola (mensalidades.ts) é receita que não é venda de
+    // balcão: o que ABATEU a mensalidade vai na linha "Mensalidades", e o juro
+    // e a multa de atraso vão em "Outras receitas", como o juro do crediário.
+    // Pela data em que o dinheiro entrou — regime de caixa, o mesmo do resto.
+    // O desconto de pontualidade (`abono`) não é dinheiro e não entra.
+    const mens = await db.$queryRaw<{ total: string; atraso: string }[]>`
+      select coalesce(sum(p.valor - p.juros - p.multa), 0) as total,
+             coalesce(sum(p.juros + p.multa), 0) as atraso
+        from pagamentos_mensalidade p
+       where p.unidade_id = any(${unidadeIds})
+         and p.criado_em >= ${de} and p.criado_em <= ${ate}
+    `
     const taxas = await taxasDoPeriodo(db, unidadeIds, de, ate)
 
     const porGrupo = (g: GrupoDRE) => {
@@ -411,13 +423,19 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
 
     const vendaBrutaC = centavos(venda._sum.total ?? 0)
     const devolC = centavos(devol._sum.valor ?? 0)
-    const receitaVendaC = vendaBrutaC - devolC
+    const mensalidadesC = centavos(mens[0]?.total ?? 0)
+    const receitaVendaC = vendaBrutaC - devolC + mensalidadesC
 
     const outrasReceitas = porGrupo('RECEITA_OUTRA')
     const jurosC = centavos(jurosCred[0]?.juros ?? 0)
     if (jurosC > 0) {
       outrasReceitas.valor += jurosC
       outrasReceitas.itens.push({ nome: 'Juros de crediário recebidos', valor: reais(jurosC) })
+    }
+    const atrasoMensC = centavos(mens[0]?.atraso ?? 0)
+    if (atrasoMensC > 0) {
+      outrasReceitas.valor += atrasoMensC
+      outrasReceitas.itens.push({ nome: 'Juros e multa de mensalidades', valor: reais(atrasoMensC) })
     }
 
     const imposto = porGrupo('IMPOSTO')
@@ -436,7 +454,8 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
     const financeira = porGrupo('FINANCEIRA')
     // A taxa da maquininha calculada venda a venda entra aqui, ao lado do que
     // a loja lançou à mão. Quem lança à mão zera a taxa em Configurações e
-    // esta linha some.
+    // esta linha some das vendas dali em diante (cada venda guarda a taxa do
+    // dia dela — ver `taxasDoPeriodo`).
     if (taxas.totalCent > 0) {
       financeira.valor += taxas.totalCent
       financeira.itens.push({ nome: 'Taxas de cartão e Pix (calculadas)', valor: reais(taxas.totalCent) })
@@ -453,6 +472,7 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
     const linhas: LinhaDRE[] = [
       { chave: 'venda', rotulo: 'Venda de mercadoria', valor: reais(vendaBrutaC) },
       ...(devolC > 0 ? [{ chave: 'devolucoes', rotulo: '(−) Devoluções', valor: -reais(devolC) }] : []),
+      ...(mensalidadesC > 0 ? [{ chave: 'mensalidades', rotulo: 'Mensalidades', valor: reais(mensalidadesC) }] : []),
       ...(outrasReceitas.valor > 0
         ? [{ chave: 'outras', rotulo: 'Outras receitas', valor: reais(outrasReceitas.valor), itens: outrasReceitas.itens }]
         : []),

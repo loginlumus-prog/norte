@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
-import { empresaDoEndereco, montarTitulo } from '@/servidor/titulo'
+import { notFound } from 'next/navigation'
+import { empresaDoEndereco, empresaExiste, montarTitulo } from '@/servidor/titulo'
 
 // A moldura de metadados de toda tela de uma empresa. Não desenha nada: cada
 // tela monta a própria Estrutura (menu, cabeçalho), porque o menu depende da
@@ -33,6 +34,20 @@ export const viewport: Viewport = {
   ],
 }
 
-export default function LayoutDaEmpresa({ children }: { children: React.ReactNode }) {
+// O endereço que não é de empresa nenhuma ("/naoexiste", um link com letra
+// trocada) morre AQUI, e não na tela. A tela roda dentro do `loading.tsx`:
+// quando ela chama `notFound()`, a resposta já saiu como 200 com o esqueleto
+// de carregamento, e o título ficava "Painel · Norte" — um 404 de mentira,
+// que o navegador guarda e o monitor de disponibilidade acha que está no ar.
+// O layout roda antes do esqueleto, então aqui o 404 sai com o status certo.
+export default async function LayoutDaEmpresa({
+  children,
+  params,
+}: {
+  children: React.ReactNode
+  params: Promise<{ empresa: string }>
+}) {
+  const { empresa: slug } = await params
+  if (!(await empresaExiste(slug))) notFound()
   return children
 }

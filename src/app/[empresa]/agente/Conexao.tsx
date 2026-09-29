@@ -204,8 +204,10 @@ export function Conexao({ slug, estado, meta }: { slug: string; estado: EstadoCo
           </div>
           <p className="text-xs text-tinta-3">
             {estado.meuTelefone
-              ? `O teste vai para o seu telefone cadastrado, ${estado.meuTelefone}.`
-              : 'Para receber o teste e os relatórios, cadastre o seu telefone com DDD na tela Equipe.'}
+              ? `O teste vai para o seu WhatsApp confirmado, ${estado.meuTelefone}.`
+              : estado.meuTelefoneEstado === 'sem_telefone'
+                ? 'Para receber o teste e os relatórios, cadastre o seu celular com DDD em Minha conta e confirme.'
+                : 'Para receber o teste e os relatórios, confirme o seu WhatsApp em Minha conta.'}
           </p>
         </div>
 

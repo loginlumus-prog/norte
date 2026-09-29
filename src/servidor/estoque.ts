@@ -18,6 +18,7 @@
 // decide o que fazer: o balcão avisa a vendedora, uma importação registra e
 // segue. Erro fica para o que é erro mesmo.
 
+import { randomUUID } from 'node:crypto'
 import { comoOrg } from './banco'
 import { exigir, pode, textoDaBusca, type Capacidade, type Sessao } from './permissao'
 import type { TipoMovimento } from '@prisma/client'
@@ -49,6 +50,8 @@ export type Movimento = {
   motivo?: string
   /** Id da venda, da entrada de mercadoria, do que originou. */
   referencia?: string
+  /** As duas pernas de uma transferência entre lojas levam o mesmo id. */
+  transferenciaId?: string
   /**
    * Deixa o saldo ficar negativo. Só para importação de sistema antigo, onde
    * a bagunça já existe e travar impediria a migração.
@@ -202,6 +205,7 @@ export async function mexerEstoqueEm(
         saldoDepois: saldo,
         motivo: m.motivo,
         referencia: m.referencia,
+        transferenciaId: m.transferenciaId,
         usuarioId: sessao.usuarioId,
         quem: sessao.nome,
       },
@@ -355,6 +359,11 @@ export type Transferencia =
  * Tira de uma loja e põe na outra, na mesma transação. Sai como
  * TRANSFERENCIA e entra como ENTRADA com o motivo apontando de onde veio —
  * assim o histórico das duas lojas conta a mesma história.
+ *
+ * As duas pernas levam o MESMO `transferenciaId`. É ele — e não o texto do
+ * motivo — que diz a quem soma "o que entrou" (o recibo de reposição do
+ * assistente, ver agente.ts) que aquela ENTRADA é peça mudando de prateleira,
+ * não mercadoria nova.
  */
 export async function transferir(
   sessao: Sessao,
@@ -365,6 +374,7 @@ export async function transferir(
   exigir(sessao, 'estoque.ajustar', t.deUnidadeId)
   exigir(sessao, 'estoque.ajustar', t.paraUnidadeId)
 
+  const transferenciaId = randomUUID()
   return comoOrg(sessao.orgId, async (db) => {
     const de = await db.unidade.findUnique({ where: { id: t.deUnidadeId }, select: { nome: true } })
     const para = await db.unidade.findUnique({
@@ -396,6 +406,7 @@ export async function transferir(
       tipo: 'TRANSFERENCIA',
       quantidade: t.quantidade,
       motivo: `Transferência para ${para.nome}${t.motivo ? ` — ${t.motivo}` : ''}`,
+      transferenciaId,
     })
     if (!saida.ok) return { ok: false as const, motivo: 'sem_saldo' as const, saldo: saida.saldo }
 
@@ -405,6 +416,7 @@ export async function transferir(
       tipo: 'ENTRADA',
       quantidade: t.quantidade,
       motivo: `Transferência de ${de.nome}${t.motivo ? ` — ${t.motivo}` : ''}`,
+      transferenciaId,
     })
     if (!entrada.ok) throw new Error('A entrada da transferência falhou; nada foi gravado.')
 

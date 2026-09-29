@@ -20,6 +20,7 @@ import type { Vendedor } from '@/servidor/equipe'
 import { EscolherCliente } from './Cliente'
 import { Folha } from './Folha'
 import type { Venda } from './useVenda'
+import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
 /** Quantas opções estão valendo nesta venda — o número do botão. */
 export function opcoesEmUso(v: Venda, usuarioId: string) {
@@ -58,9 +59,10 @@ export function MaisOpcoes({
   // Lançou o avulso, a folha fecha: o item aparece no pedido, que é onde a
   // pessoa vai conferir. Mesma validação do lançamento, para o Enter não
   // fechar a folha sem ter lançado nada.
+  const precoAvulso = lerDinheiro(v.avulso.preco)
+  const precoIlegivel = v.avulso.preco.trim() !== '' && precoAvulso === null
   function lancarAvulso() {
-    const preco = Number(v.avulso.preco.replace(',', '.'))
-    if (!v.avulso.nome.trim() || v.avulso.preco.trim() === '' || !(preco >= 0)) return
+    if (!v.avulso.nome.trim() || precoAvulso === null) return
     v.avulso.lancar()
     aoFechar()
   }
@@ -172,17 +174,19 @@ export function MaisOpcoes({
                     inputMode="decimal"
                     placeholder="Preço"
                     aria-label="Preço do item avulso"
-                    className={cx(campo, 'numero max-w-36')}
+                    aria-invalid={precoIlegivel || undefined}
+                    className={cx(campo, 'numero max-w-36', precoIlegivel && 'border-critico')}
                   />
                   <Botao
                     tom="secundario"
                     onClick={lancarAvulso}
-                    disabled={!v.avulso.nome.trim() || v.avulso.preco.trim() === ''}
+                    disabled={!v.avulso.nome.trim() || precoAvulso === null}
                     className="h-12 flex-1 rounded-xl"
                   >
                     Lançar no pedido
                   </Botao>
                 </div>
+                {precoIlegivel && <p className="text-xs font-medium text-critico">{DINHEIRO_ILEGIVEL}</p>}
                 <p className="text-xs text-tinta-3">
                   Não mexe em estoque e fica marcado no livro. Se a peça existe, cadastre.
                 </p>

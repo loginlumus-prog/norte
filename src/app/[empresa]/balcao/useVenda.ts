@@ -33,6 +33,8 @@ import { contar, faltaCom, pagamentosParaEnviar, precoDe, brl, cent } from './co
 import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
 import { vendidoNaLoja } from '@/servidor/catalogo-loja'
+import { plural } from '@/ui/texto'
+import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
 export type Pago = { forma: string; valor: number; referencia?: string; rotulo?: string; parcelas?: number }
 
@@ -387,8 +389,14 @@ export function useVenda({
 
   function lancarAvulso() {
     const nome = avulsoNome.trim()
-    const preco = Number(avulsoPreco.replace(',', '.'))
-    if (!nome || !(preco >= 0)) return
+    // A régua de todo campo de dinheiro: "1.234,56" é mil e tanto, e o que
+    // não dá para ler é avisado — `Number` dava NaN e o clique não fazia nada.
+    const preco = lerDinheiro(avulsoPreco)
+    if (!nome) return
+    if (preco === null) {
+      setAlerta(`Preço do item avulso: ${DINHEIRO_ILEGIVEL}`)
+      return
+    }
     setFechada(null)
     const id = `avulso-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     setCarrinho((c) => [
@@ -602,7 +610,7 @@ export function useVenda({
         // O ganho aparece no recado porque e a hora de falar: "voce ja tem
         // 1.240 pontos" dito no balcao e o que faz a pessoa voltar. Guardado
         // so no banco, o programa nao existe para quem compra.
-        const ganhou = r.pontosGanhos > 0 ? ` · ganhou ${r.pontosGanhos} pontos` : ''
+        const ganhou = r.pontosGanhos > 0 ? ` · ganhou ${plural(r.pontosGanhos, 'ponto', 'pontos')}` : ''
         const comprovante = `/${slug}/vendas/${r.vendaId}/comprovante?imprimir=1`
         setRecado({
           nivel: 'bom',
@@ -692,6 +700,11 @@ export function useVenda({
         const fora = new Set(r.itens)
         setCarrinho((c) => c.filter((l) => l.avulso || !fora.has(l.descricao)))
         setAviso(`Saiu do pedido: ${r.itens.join(', ')} — não é vendido na ${unidadeNome}. Confira o total e conclua de novo.`)
+      } else if (r.motivo === 'uso_interno') {
+        // Virou material de uso depois de entrar no pedido: sai, com aviso.
+        const deUso = new Set(r.itens)
+        setCarrinho((c) => c.filter((l) => l.avulso || !deUso.has(l.descricao)))
+        setAviso(`Saiu do pedido: ${r.itens.join(', ')} — é material de uso, não se vende. Confira o total e conclua de novo.`)
       } else {
         setRecado({ nivel: 'critico', texto: 'Não deu para fechar a venda.' })
       }

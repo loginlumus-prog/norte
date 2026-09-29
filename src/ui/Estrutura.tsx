@@ -27,7 +27,7 @@ import { resumoDaBarra } from '@/servidor/assinatura'
 import type { ReactNode } from 'react'
 import { CAPACIDADES, pode, type Capacidade, type Sessao } from '@/servidor/permissao'
 import { moduloLigado, type Modulo } from '@/servidor/modulos'
-import { vocabularioDaEmpresa } from '@/servidor/vocabulario'
+import { vocabularioDaEmpresa, nomesNoGuia, type PalavraDoMenu } from '@/servidor/vocabulario'
 import { sairAcao } from '@/app/[empresa]/acoes'
 import { TRANCA_MIN, AVISO_SEG } from '@/servidor/presenca'
 import { TrocaTema, type Tema } from './TrocaTema'
@@ -59,9 +59,10 @@ export type ItemMenu = {
   /// Aparece se a empresa usa QUALQUER um destes. É o caso de Funcionários:
   /// a lista de quem trabalha serve ao Ponto e à Agenda.
   modulos?: Modulo[]
-  /// O título é a palavra do ramo para quem a empresa atende ("Pacientes",
-  /// "Alunos") — ver servidor/vocabulario.ts.
-  vocabulario?: boolean
+  /// O título é a palavra do ramo: quem a empresa atende ("Pacientes",
+  /// "Alunos"), o balcão ("Recepção", "Secretaria") ou o catálogo ("Serviços
+  /// e materiais") — ver servidor/vocabulario.ts.
+  vocabulario?: PalavraDoMenu
   contagem?: number
   /** Bolinha de aviso: quantos precisam de olhada, e com que urgência. */
   aviso?: { quantos: number; nivel: 'critico' | 'atencao' | 'bom'; titulo: string }
@@ -115,12 +116,13 @@ export async function Estrutura({
   // Três perguntas: "esta pessoa pode?", "esta empresa usa?" e "este
   // aparelho está no modo que mostra isto?". A terceira nunca esconde a tela
   // aberta agora — ver `noModo`.
-  // O nome do cadastro de pessoas é a palavra do ramo ("Pacientes").
+  // O nome do cadastro de pessoas, do balcão e do catálogo é a palavra do
+  // ramo ("Pacientes", "Recepção", "Serviços e materiais").
   const vocab = await vocabularioDaEmpresa(sessao.orgId)
   const visiveis = noModo(
     itens
       .filter((i) => podeVerItem(sessao, i) && itemNaEmpresa(i, empresa))
-      .map((i) => (i.vocabulario ? { ...i, titulo: vocab.Pessoas } : i)),
+      .map((i) => (i.vocabulario ? { ...i, titulo: vocab[i.vocabulario] } : i)),
     modo,
     ativo,
   )
@@ -454,7 +456,7 @@ export async function Estrutura({
         slug={empresa.slug}
         empresa={empresa.nome}
         nome={sessao.nome}
-        quem={{ capacidades: CAPACIDADES.filter((c) => pode(sessao, c)), modulos: empresa.modulos }}
+        quem={{ capacidades: CAPACIDADES.filter((c) => pode(sessao, c)), modulos: empresa.modulos, nomes: nomesNoGuia(vocab) }}
       />
     </div>
   )

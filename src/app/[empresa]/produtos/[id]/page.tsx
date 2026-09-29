@@ -123,6 +123,8 @@ export default async function FichaProduto({
     prazoReposicaoDias: produto.prazoReposicaoDias == null ? '' : String(produto.prazoReposicaoDias),
     servico: produto.servico,
     duracaoMin: produto.duracaoMin == null ? '' : String(produto.duracaoMin),
+    usoInterno: produto.usoInterno,
+    feitoNoDia: produto.feitoNoDia,
     vendidoEm: produto.vendidoEm ?? [],
     ativo: produto.ativo,
     marcadas,

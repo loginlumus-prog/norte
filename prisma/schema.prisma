@@ -150,6 +150,23 @@ model Org {
   /// Dias entre uma parcela e a outra — e até a primeira.
   crediarioDiasEntre Int @default(30) @map("crediario_dias_entre")
 
+  // ── mensalidades (Escola) ────────────────────────────────
+  /// Multa de atraso, em porcento do que venceu, cobrada UMA vez por
+  /// mensalidade. O teto é 2%: é o que o Código de Defesa do Consumidor
+  /// (art. 52, § 1º) deixa cobrar, e é o que a Justiça aplica à escola.
+  mensalidadeMultaPct Decimal @default(2) @map("mensalidade_multa_pct") @db.Decimal(5, 2)
+  /// Juro de mora, em porcento ao mês, proporcional aos dias. Teto de 1%.
+  mensalidadeJurosMes Decimal @default(1) @map("mensalidade_juros_mes") @db.Decimal(5, 2)
+  /// Desconto para quem paga até o vencimento, em porcento. Zero = não dá.
+  mensalidadePontualidadePct Decimal @default(0) @map("mensalidade_pontualidade_pct") @db.Decimal(5, 2)
+  /// O aviso da mensalidade ao RESPONSÁVEL no WhatsApp. Desligado até a
+  /// escola decidir; texto fixo, só para quem aceitou.
+  avisoMensalidadeAtivo Boolean @default(false) @map("aviso_mensalidade_ativo")
+  /// Quantos dias ANTES do vencimento o aviso sai.
+  avisoMensalidadeDias  Int     @default(3) @map("aviso_mensalidade_dias")
+  /// Quantos dias DEPOIS do vencimento sai o aviso de atraso. Zero = não sai.
+  avisoAtrasoDias       Int     @default(5) @map("aviso_atraso_dias")
+
   // ── credito de IA ────────────────────────────────────────
   /// Saldo de credito de IA, em centavos.
   ///
@@ -229,6 +246,12 @@ model Org {
   pedidosCompra     PedidoCompra[]
   itensCompra       ItemCompra[]
   recebimentosCompra RecebimentoCompra[]
+  confirmacoesTelefone ConfirmacaoTelefone[]
+  responsaveis      Responsavel[]
+  turmas            Turma[]
+  matriculas        Matricula[]
+  mensalidades      Mensalidade[]
+  pagamentosMensalidade PagamentoMensalidade[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -289,6 +312,10 @@ model Unidade {
   registrosPonto RegistroPonto[]
   agendamentos   Agendamento[]
   pedidosCompra  PedidoCompra[]
+  turmas         Turma[]
+  matriculas     Matricula[]
+  mensalidades   Mensalidade[]
+  pagamentosMensalidade PagamentoMensalidade[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -333,6 +360,23 @@ model Usuario {
   /// confirmação que não tem como chegar. Ver src/servidor/conta.ts.
   emailPendente Boolean @default(false) @map("email_pendente")
 
+  // ── o telefone, confirmado ───────────────────────────────
+  // O telefone da pessoa é o que faz o assistente tratar a mensagem como de
+  // gente da EQUIPE (com as ferramentas do papel dela) e para onde vão o
+  // relatório do dia e os avisos. Até 28/09 bastava alguém digitar o número:
+  // um dígito errado mandava o faturamento da loja para um desconhecido, e
+  // quem gere a equipe podia pôr o PRÓPRIO celular na conta da dona e
+  // conversar com o assistente como dona. Agora o número só vale depois de a
+  // pessoa provar que o celular é dela (ver src/servidor/assistente/confirmacao.ts).
+  /// A chave do telefone (`chaveTelefone`) no momento da confirmação. Trocar
+  /// o telefone anula a confirmação sozinho: a chave deixa de bater.
+  telefoneConfirmado   String?   @map("telefone_confirmado")
+  telefoneConfirmadoEm DateTime? @map("telefone_confirmado_em")
+  /// A última mensagem que CHEGOU deste número já confirmado. Número parado
+  /// há 180 dias volta a pedir confirmação: a operadora recicla linha sem uso,
+  /// e o número da dona de ontem pode ser de outra pessoa amanhã.
+  telefoneVistoEm      DateTime? @map("telefone_visto_em")
+
   acessos   Acesso[]
   auditoria Auditoria[]
   presencas Presenca[]
@@ -340,6 +384,7 @@ model Usuario {
   tarefas   Tarefa[]
   tokens    TokenConta[]
   colaborador Colaborador?
+  confirmacoesTelefone ConfirmacaoTelefone[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -347,6 +392,43 @@ model Usuario {
   @@unique([orgId, email])
   @@index([orgId])
   @@map("usuarios")
+}
+
+/// Um código de seis números para provar que o celular é da pessoa.
+///
+/// Dois caminhos, e cada código vale para UM só (`enviado`):
+///   • enviado = true: o Norte mandou o código para o WhatsApp do número, e a
+///     pessoa DIGITA na tela Minha conta. Não vale mandar de volta pelo
+///     WhatsApp — quem pôs o próprio celular na conta de outra pessoa
+///     receberia o código e confirmaria sem nunca entrar na conta dela.
+///   • enviado = false: a tela MOSTRA o código, e a pessoa manda
+///     "CONFIRMAR 123456" do celular para o WhatsApp da loja. Não vale
+///     digitar na tela (ele já está nela).
+/// Nos dois, é preciso estar dentro da conta E ter o celular na mão.
+///
+/// Guarda só o resumo do código (HMAC com um segredo do servidor), nunca o
+/// código. Dez minutos de validade, cinco tentativas, três códigos por hora.
+model ConfirmacaoTelefone {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  usuarioId String  @map("usuario_id")
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  /// A chave do telefone para o qual o código foi pedido.
+  chave      String
+  codigoHash String    @map("codigo_hash")
+  enviado    Boolean   @default(false)
+  expiraEm   DateTime  @map("expira_em")
+  tentativas Int       @default(0)
+  usadoEm    DateTime? @map("usado_em")
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, usuarioId, criadoEm])
+  @@index([orgId, chave])
+  @@map("confirmacoes_telefone")
 }
 
 /// A meta de venda de uma pessoa num mês, e a comissão dela.
@@ -779,6 +861,20 @@ model Produto {
   /// horário marcado; quem marca pode mudar naquele horário.
   duracaoMin Int? @map("duracao_min")
 
+  /// MATERIAL DE USO — não vende. A luva e a gaze da clínica, a acetona e o
+  /// algodão do salão: têm estoque, mínimo, compra e "Material usado", mas
+  /// não aparecem no balcão (nem na grade, nem na busca) e a venda recusa no
+  /// servidor. Também nunca é "parado": material não sai por venda, sai pelo
+  /// consumo, e "sem venda há 30 dias" seria verdade inútil.
+  usoInterno Boolean @default(false) @map("uso_interno")
+
+  /// FEITO NO DIA — o pão francês, a coxinha, o café coado. Entra de manhã
+  /// como produção e a sobra sai à noite como perda: saldo zero depois de
+  /// fechar é o dia normal, não falta. Por isso zerado não conta como
+  /// "acabou", não entra na previsão de compra, e o painel da padaria usa
+  /// estes itens para dizer quanto preparar.
+  feitoNoDia Boolean @default(false) @map("feito_no_dia")
+
   ativo Boolean @default(true)
 
   eixos     ProdutoEixo[]
@@ -902,6 +998,11 @@ model MovimentoEstoque {
   motivo String?
   /// Id da venda, da entrada de mercadoria, do que originou.
   referencia String?
+  /// As duas pernas de uma transferência entre lojas (a saída TRANSFERENCIA
+  /// e a ENTRADA no destino) levam o MESMO id aqui. É o que separa "a peça só
+  /// mudou de prateleira" de "entrou mercadoria" sem ler o texto do motivo —
+  /// que é da pessoa, e pode dizer qualquer coisa.
+  transferenciaId String? @map("transferencia_id")
   usuarioId  String? @map("usuario_id")
   quem       String
 
@@ -997,6 +1098,10 @@ model Cliente {
   parcelas Parcela[]
   encomendas Encomenda[]
   agendamentos Agendamento[]
+  /// Na escola: quem responde pelo aluno (e paga). Ver `Responsavel`.
+  responsavel  Responsavel?
+  matriculas   Matricula[]
+  mensalidades Mensalidade[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   conversas ConversaAgente[]
@@ -1074,6 +1179,7 @@ model Caixa {
   vendas       Venda[]
   movimentos   CaixaMovimento[]
   recebimentos Recebimento[]
+  pagamentosMensalidade PagamentoMensalidade[]
 
   @@index([orgId, unidadeId, aberto])
   /// Uma loja, no máximo UM caixa aberto. A trava do `abrirCaixa` (advisory
@@ -1104,9 +1210,15 @@ model CaixaMovimento {
   motivo String
   quem   String
 
+  /// O sinal de encomenda pago (ou devolvido) em dinheiro: entrou ou saiu por
+  /// esta gaveta. Com a ligação, o movimento do fechamento tem de onde veio.
+  encomendaId String?    @map("encomenda_id")
+  encomenda   Encomenda? @relation(fields: [encomendaId], references: [id], onDelete: SetNull)
+
   criadoEm DateTime @default(now()) @map("criado_em")
 
   @@index([orgId, caixaId])
+  @@index([orgId, encomendaId])
   @@map("caixa_movimentos")
 }
 
@@ -1158,6 +1270,11 @@ model Venda {
   parcelas   Parcela[]
   /// O horário da agenda que esta venda cobrou ("Atender e cobrar").
   agendamento Agendamento?
+
+  /// A encomenda que esta venda recebeu ("Receber no balcão"). Única: uma
+  /// encomenda se recebe numa venda só.
+  encomendaId String?    @unique @map("encomenda_id")
+  encomenda   Encomenda? @relation(fields: [encomendaId], references: [id], onDelete: SetNull)
 
   criadaEm    DateTime  @default(now()) @map("criada_em")
   concluidaEm DateTime? @map("concluida_em")
@@ -1233,6 +1350,12 @@ model Pagamento {
   /// sabe onde foi gasto.
   valeId String? @map("vale_id")
   vale   Vale?   @relation(fields: [valeId], references: [id])
+
+  /// A taxa da maquininha (ou do Pix) que valia NA HORA da venda, em
+  /// porcento — ver taxas.ts. Mudar a taxa em Configurações não reescreve o
+  /// DRE dos meses que já passaram. Nulo = venda de antes desta coluna (o DRE
+  /// usa a taxa de hoje, como sempre usou).
+  taxaPct Decimal? @map("taxa_pct") @db.Decimal(5, 2)
 
   criadoEm DateTime @default(now()) @map("criado_em")
 
@@ -1383,6 +1506,10 @@ model Parcela {
   pago       Decimal  @default(0) @db.Decimal(12, 2)
   /// Juros de atraso já cobrados nesta parcela, somados.
   juros      Decimal  @default(0) @db.Decimal(12, 2)
+  /// Até que dia (de São Paulo) o juro de atraso já foi cobrado. O próximo
+  /// juro conta daqui, e não do vencimento: senão quem paga metade com juro
+  /// hoje paga de novo, na semana que vem, o juro dos mesmos dias.
+  jurosAte   DateTime? @map("juros_ate") @db.Date
   quitadaEm  DateTime? @map("quitada_em")
 
   recebimentos Recebimento[]
@@ -1400,8 +1527,12 @@ model Recebimento {
   orgId String @map("org_id")
   org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
+  /// NoAction, e não Cascade: apagar uma parcela NUNCA leva junto o
+  /// dinheiro que entrou por ela — o banco recusa. (NoAction, e não Restrict,
+  /// só para a exclusão de uma empresa inteira, que apaga as duas tabelas no
+  /// mesmo comando, continuar funcionando.)
   parcelaId String  @map("parcela_id")
-  parcela   Parcela @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+  parcela   Parcela @relation(fields: [parcelaId], references: [id], onDelete: NoAction)
 
   /// O caixa aberto na hora, quando foi em dinheiro — para o fechamento bater.
   caixaId String? @map("caixa_id")
@@ -2209,6 +2340,10 @@ model Encomenda {
   descricao String
   valor     Decimal @default(0) @db.Decimal(12, 2)
   sinal     Decimal @default(0) @db.Decimal(12, 2)
+  /// Como o sinal foi pago (o último pagamento dele, quando foi em partes).
+  /// Em DINHEIRO ele entra pela gaveta — suprimento no caixa aberto — e o
+  /// fechamento bate. Nulo nas encomendas de antes desta coluna.
+  sinalForma FormaPagamento? @map("sinal_forma")
 
   /// Quando o cliente busca ou quando a loja entrega.
   para    DateTime
@@ -2220,6 +2355,11 @@ model Encomenda {
 
   /// Carimbada quando vira ENTREGUE.
   concluidaEm DateTime? @map("concluida_em")
+
+  /// A venda do balcão que recebeu o que faltava.
+  venda           Venda?
+  /// O sinal em dinheiro que entrou (ou voltou) pela gaveta.
+  movimentosCaixa CaixaMovimento[]
 
   quem String
 
@@ -2470,6 +2610,8 @@ model Colaborador {
 
   agendamentos Agendamento[]
   registros    RegistroPonto[]
+  /// As turmas em que é o professor (Escola).
+  turmas       Turma[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -2722,4 +2864,289 @@ model RecebimentoCompra {
   @@unique([pedidoId, chave])
   @@index([orgId, criadoEm])
   @@map("recebimentos_compra")
+}
+
+// ═════════════════════════════════════════════════════════════
+// ESCOLA — alunos, turmas, matrículas e mensalidades
+// ═════════════════════════════════════════════════════════════
+//
+// O ALUNO é a ficha de sempre (`clientes`), com a palavra "aluno" na tela (ver
+// vocabulario.ts). Não é uma tabela nova de propósito: a ficha já tem o
+// histórico de compras (o uniforme, o material), a anonimização da LGPD, o
+// consentimento e o livro de auditoria — uma segunda ficha de pessoa seria um
+// segundo lugar para esquecer a LGPD.
+//
+// O que a escola acrescenta:
+//   • o RESPONSÁVEL — quem paga e quem a escola contata. Aluno quase sempre é
+//     menor de idade, e mensagem da escola vai para o responsável, nunca para
+//     a criança (ver ofertas.ts: o aceite da ficha de um aluno com
+//     responsável não vale para nada);
+//   • a TURMA, a MATRÍCULA (aluno ↔ turma, com o valor e a bolsa) e a
+//     MENSALIDADE, uma por matrícula por mês;
+//   • o PAGAMENTO da mensalidade, que é dinheiro entrando: em espécie, pela
+//     gaveta do caixa aberto (como a parcela do crediário); no DRE, na linha
+//     "Mensalidades" (ver financeiro.ts); no cartão, com a taxa do dia.
+
+/// Quem responde pelo aluno: quem paga, e quem a escola contata.
+///
+/// Um por aluno — o responsável FINANCEIRO. Irmãos têm cada um o seu registro
+/// (com o mesmo telefone): é o preço de a ficha de um não mudar a do outro, e
+/// o aviso de mensalidade confere o aceite de TODOS os registros do número.
+///
+/// Guarda o mínimo (LGPD, art. 6º, III): nome, parentesco e contato. O CPF é
+/// opcional — só a escola que dá recibo para o imposto de renda precisa dele.
+model Responsavel {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  alunoId String  @unique @map("aluno_id")
+  aluno   Cliente @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+
+  nome       String
+  /// "mãe", "pai", "avó", "o próprio aluno"…
+  parentesco String?
+  telefone   String?
+  email      String?
+  documento  String?
+
+  // ── o aviso da mensalidade no WhatsApp: o consentimento ──
+  // Os mesmos quatro campos da ficha do cliente (o que disse, quando, por
+  // qual caminho e quem anotou). NAO_PERGUNTADO não é aceite.
+  avisosWhatsapp ConsentimentoOfertas @default(NAO_PERGUNTADO) @map("avisos_whatsapp")
+  avisosEm       DateTime?            @map("avisos_em")
+  avisosOrigem   String?              @map("avisos_origem")
+  avisosPor      String?              @map("avisos_por")
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([orgId, documento])
+  @@map("responsaveis")
+}
+
+/// Uma turma: o curso, o horário, quem dá aula e quantos cabem.
+model Turma {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// A unidade (a sede, a filial) onde a turma tem aula.
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  nome  String
+  /// O curso ou a série: "1º ano", "Inglês — básico", "Ballet infantil".
+  curso String?
+  /// manha | tarde | noite | integral
+  turno String?
+
+  /// Quem dá aula: a ficha de Funcionários. Sem ficha, a turma existe igual.
+  professorId String?      @map("professor_id")
+  professor   Colaborador? @relation(fields: [professorId], references: [id], onDelete: SetNull)
+
+  /// Os dias da semana com aula, de domingo (0) a sábado (6).
+  dias       Int[]   @default([])
+  horaInicio String? @map("hora_inicio")
+  horaFim    String? @map("hora_fim")
+  /// Quantos alunos cabem. Nulo = sem limite.
+  capacidade Int?
+
+  /// O período letivo. Nulo = turma sem fim marcado (curso livre contínuo).
+  inicio DateTime? @db.Date
+  fim    DateTime? @db.Date
+
+  /// A mensalidade PADRÃO: é o valor que a matrícula nova recebe. Mudar aqui
+  /// não muda quem já está matriculado — o contrato de cada um é o dele.
+  mensalidade   Decimal @default(0) @db.Decimal(12, 2)
+  /// O dia de vencimento padrão da matrícula nova.
+  diaVencimento Int     @default(10) @map("dia_vencimento")
+
+  ativa Boolean @default(true)
+
+  matriculas Matricula[]
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@index([orgId, unidadeId, ativa])
+  @@map("turmas")
+}
+
+enum SituacaoMatricula {
+  ATIVA /// estudando: gera mensalidade todo mês
+  TRANCADA /// parou por um tempo: não gera mensalidade, e volta a ATIVA
+  CANCELADA /// saiu, com motivo
+  CONCLUIDA /// terminou o curso
+}
+
+/// O aluno numa turma: desde quando, por quanto, e a bolsa.
+///
+/// O valor e o desconto são DESTA matrícula: a turma que subiu de preço não
+/// muda o contrato de quem já estava. A mensalidade de cada mês guarda a
+/// fotografia do valor e do desconto do mês em que nasceu.
+model Matricula {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  alunoId String  @map("aluno_id")
+  aluno   Cliente @relation(fields: [alunoId], references: [id], onDelete: NoAction)
+
+  turmaId String @map("turma_id")
+  turma   Turma  @relation(fields: [turmaId], references: [id], onDelete: NoAction)
+
+  /// A unidade da turma, repetida aqui para a permissão por loja e as
+  /// consultas não precisarem passar pela turma.
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  situacao SituacaoMatricula @default(ATIVA)
+
+  inicio DateTime  @db.Date
+  /// O último dia: da saída (cancelamento, conclusão). Nulo enquanto estuda.
+  fim    DateTime? @db.Date
+
+  /// A mensalidade cheia desta matrícula.
+  valor         Decimal @db.Decimal(12, 2)
+  diaVencimento Int     @map("dia_vencimento")
+
+  /// A bolsa: porcento sobre o valor, e/ou um valor fixo. Motivo obrigatório
+  /// quando há desconto — bolsa sem motivo é desconto que ninguém explica.
+  descontoPct    Decimal @default(0) @map("desconto_pct") @db.Decimal(5, 2)
+  descontoValor  Decimal @default(0) @map("desconto_valor") @db.Decimal(12, 2)
+  descontoMotivo String? @map("desconto_motivo")
+
+  /// Por que trancou, cancelou ou concluiu.
+  motivoSaida String?   @map("motivo_saida")
+  saidaEm     DateTime? @map("saida_em")
+
+  quemId String? @map("quem_id")
+  quem   String
+
+  mensalidades Mensalidade[]
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@index([orgId, turmaId, situacao])
+  @@index([orgId, alunoId])
+  @@index([orgId, situacao])
+  /// O mesmo aluno não fica duas vezes na mesma turma (entre as vivas). Viva
+  /// é a que não tem `fim`: cancelar e concluir carimbam o fim; trancar não.
+  /// A condição é a forma que o Postgres devolve igual ao que se escreveu
+  /// (como o `aberto` dos caixas) — `situacao in (...)` ele reescreve como
+  /// `= ANY (ARRAY[...])`, e todo `migrar --nova` passaria a pedir o DROP dele
+  /// (o que já acontece com `campanha_execucoes_uma_viva`).
+  @@unique([turmaId, alunoId], map: "matriculas_uma_viva", where: raw("fim IS NULL"))
+  @@map("matriculas")
+}
+
+/// A mensalidade de UM mês de UMA matrícula.
+///
+/// Nasce sozinha (ver mensalidades.ts): a do mês corrente e a do próximo, ao
+/// abrir a tela e na rotina de hora em hora. O único (matrícula, mês) é o que
+/// garante que rodar duas vezes — ou em duas máquinas ao mesmo tempo — não
+/// cobra ninguém duas vezes.
+///
+/// A conta: `valor − desconto` é o que se deve; `pago + abono` é o que já
+/// abateu. Juro e multa de atraso ficam à parte (`juros`, `multa`), como no
+/// crediário: não são a mensalidade, são o atraso dela.
+model Mensalidade {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  matriculaId String    @map("matricula_id")
+  matricula   Matricula @relation(fields: [matriculaId], references: [id], onDelete: NoAction)
+
+  alunoId String  @map("aluno_id")
+  aluno   Cliente @relation(fields: [alunoId], references: [id], onDelete: NoAction)
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  /// "2026-09"
+  mes        String
+  vencimento DateTime @db.Date
+
+  /// Fotografia do mês: o valor cheio e a bolsa.
+  valor    Decimal @db.Decimal(12, 2)
+  desconto Decimal @default(0) @db.Decimal(12, 2)
+
+  /// O que entrou abatendo (sem juro nem multa).
+  pago  Decimal @default(0) @db.Decimal(12, 2)
+  /// O desconto de pontualidade concedido: abate, mas não é dinheiro.
+  abono Decimal @default(0) @db.Decimal(12, 2)
+  /// Juro e multa de atraso já cobrados, somados.
+  juros Decimal @default(0) @db.Decimal(12, 2)
+  multa Decimal @default(0) @db.Decimal(12, 2)
+  /// A multa já foi resolvida (cobrada, ou dispensada por quem recebeu). Ela é
+  /// uma vez só: o segundo recebimento atrasado não cobra multa de novo.
+  multaCobrada Boolean   @default(false) @map("multa_cobrada")
+  /// Até que dia o juro já foi cobrado — o próximo conta daqui (ver crediário).
+  jurosAte     DateTime? @map("juros_ate") @db.Date
+  quitadaEm    DateTime? @map("quitada_em")
+
+  /// Cancelada não se cobra: o aluno saiu antes do mês, a escola dispensou.
+  canceladaEm        DateTime? @map("cancelada_em")
+  motivoCancelamento String?   @map("motivo_cancelamento")
+
+  // ── o aviso ao responsável: carimbado ANTES de sair ──
+  // enviando | enviado | sem_aceite | sem_telefone | nao_saiu
+  avisoEm       DateTime? @map("aviso_em")
+  aviso         String?
+  avisoAtrasoEm DateTime? @map("aviso_atraso_em")
+  avisoAtraso   String?   @map("aviso_atraso")
+
+  pagamentos PagamentoMensalidade[]
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@unique([matriculaId, mes])
+  @@index([orgId, unidadeId, vencimento])
+  @@index([orgId, alunoId])
+  @@index([orgId, mes])
+  @@map("mensalidades")
+}
+
+/// Um recebimento de mensalidade (total ou parcial).
+///
+/// Como o recebimento do crediário: `valor` é o total que entrou; `juros` e
+/// `multa` são a parte dele que é atraso; o resto abate a mensalidade. Em
+/// dinheiro, `caixaId` é o turno aberto — é por ele que o fechamento conta.
+model PagamentoMensalidade {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// NoAction: apagar a mensalidade nunca leva junto o dinheiro que entrou.
+  mensalidadeId String      @map("mensalidade_id")
+  mensalidade   Mensalidade @relation(fields: [mensalidadeId], references: [id], onDelete: NoAction)
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  caixaId String? @map("caixa_id")
+  caixa   Caixa?  @relation(fields: [caixaId], references: [id])
+
+  forma FormaPagamento
+  valor Decimal @db.Decimal(12, 2)
+  juros Decimal @default(0) @db.Decimal(12, 2)
+  multa Decimal @default(0) @db.Decimal(12, 2)
+  /// O desconto de pontualidade dado NESTE recebimento.
+  abono Decimal @default(0) @db.Decimal(12, 2)
+  /// A taxa da maquininha (ou do Pix) que valia na hora — ver taxas.ts.
+  taxaPct Decimal? @map("taxa_pct") @db.Decimal(5, 2)
+
+  quemId String? @map("quem_id")
+  quem   String
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, mensalidadeId])
+  @@index([orgId, unidadeId, criadoEm])
+  @@index([orgId, caixaId])
+  @@map("pagamentos_mensalidade")
 }

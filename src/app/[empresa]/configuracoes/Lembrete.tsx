@@ -33,7 +33,7 @@ export function Lembrete({
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
       {!temAssistente && (
         <Aviso nivel="neutro">
-          O lembrete sai pelo WhatsApp do assistente. Enquanto o módulo “Agente no WhatsApp” não estiver ligado (planos com o
+          O lembrete sai pelo WhatsApp do assistente. Enquanto o módulo “Assistente no WhatsApp” não estiver ligado (planos com o
           assistente), ele não sai — a chave fica guardada.
         </Aviso>
       )}

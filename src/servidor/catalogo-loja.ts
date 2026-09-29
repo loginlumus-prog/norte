@@ -34,6 +34,20 @@ export function soDaLoja(unidadeId: string) {
 }
 
 /**
+ * O que o BALCÃO desta loja oferece: o que ela vende, menos o material de uso.
+ *
+ * A acetona do salão e a luva da clínica têm estoque e entram em compra, mas
+ * não se vendem — na grade ou na busca do balcão elas eram um botão a mais
+ * que, tocado sem querer, vendia o algodão da manicure. A venda recusa de
+ * todo jeito no servidor (`registrarVenda`); aqui é para nem aparecer.
+ *
+ *   db.variacao.findMany({ where: { produto: { ativo: true, ...aVendaNaLoja(unidadeId) } } })
+ */
+export function aVendaNaLoja(unidadeId: string) {
+  return { usoInterno: false, ...soDaLoja(unidadeId) }
+}
+
+/**
  * Esta linha de saldo entra na conta do que ACABOU e do que está no mínimo?
  *
  * Linha zerada de produto que a loja não vende, não: é a sobra de uma

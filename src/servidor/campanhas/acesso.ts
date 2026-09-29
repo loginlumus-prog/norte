@@ -23,7 +23,7 @@ export function porQueNao(org: OrgParaCampanha): string | null {
   if (!planoLibera(org.plano, 'agente') || !liberado(org.plano, 'campanhas')) {
     return `Campanhas são ${doPlano(planoQueAbre('campanhas').codigo)} para cima.`
   }
-  if (!moduloLigado(org, 'agente')) return 'Ligue o módulo "Agente no WhatsApp" em Configurações.'
+  if (!moduloLigado(org, 'agente')) return 'Ligue o módulo "Assistente no WhatsApp" em Configurações.'
   return null
 }
 

@@ -2,11 +2,11 @@
 // rodapé repete.
 //
 // ── os grupos são os do menu de verdade ──────────────────────
-// Vender, Catálogo, Pessoas e Dinheiro são os grupos de `ui/menu.ts`, na
-// ordem em que a pessoa vai encontrá-los quando entrar. O quinto é o
-// Assistente — lá dentro ele mora no grupo Empresa, mas aqui ele é o
-// diferencial e ganha coluna própria, junto com o livro de auditoria e a
-// ajuda, que são as peças que fazem dele algo confiável.
+// Vender, Catálogo, Pessoas, Dinheiro e Empresa são os grupos de
+// `ui/menu.ts`, na ordem em que a pessoa vai encontrá-los quando entrar. O
+// Assistente abre o grupo Empresa, como no menu, e a Auditoria fica junto
+// dele porque é lá que ela mora — a coluna se chamava "Assistente" e punha o
+// livro de auditoria dentro do assistente, onde ninguém ia achá-lo depois.
 //
 // Nome de tela que não existe no menu não entra: o painel é o mapa do que a
 // pessoa vai achar lá dentro. E cada linha diz o que a tela FAZ, não o nome
@@ -20,8 +20,8 @@
 
 import type { ComponentType } from 'react'
 import {
-  IconeAssistente,
   IconeCatalogo,
+  IconeConfiguracoes,
   IconeDinheiro,
   IconePessoas,
   IconeVender,
@@ -74,8 +74,8 @@ export const MAPA: GrupoMapa[] = [
     ],
   },
   {
-    nome: 'Assistente',
-    Icone: IconeAssistente,
+    nome: 'Empresa',
+    Icone: IconeConfiguracoes,
     itens: [
       { nome: 'Assistente', linha: 'Ele propõe, uma pessoa confirma', href: '#assistente' },
       { nome: 'Auditoria', linha: 'O livro de tudo que mexeu, que ninguém edita nem apaga', href: '#seguranca' },

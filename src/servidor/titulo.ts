@@ -30,3 +30,14 @@ export const empresaDoEndereco = cache(async (slug: string) => {
 export function montarTitulo(tela: string | null, empresa: string | null): string {
   return [tela, empresa, 'Norte'].filter(Boolean).join(' · ')
 }
+
+/**
+ * A empresa deste endereço existe? Para o layout decidir o 404 de verdade.
+ *
+ * Diferente de `empresaDoEndereco`, aqui o banco fora NÃO vira "não existe":
+ * o erro sobe e a pessoa vê "deu problema", que é a verdade — e não "este
+ * endereço não abre" para a loja inteira por causa de um tropeço do banco.
+ */
+export const empresaExiste = cache(async (slug: string): Promise<boolean> => {
+  return (await acharOrgPorSlug(slug)) !== null
+})

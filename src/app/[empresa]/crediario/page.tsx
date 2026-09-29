@@ -246,6 +246,7 @@ export default async function CrediarioPagina({
                           resta={p.resta}
                           jurosHoje={p.jurosHoje}
                           diasAtraso={p.diasAtraso}
+                          diasJuros={p.diasJuros}
                         />
                       ),
                   },

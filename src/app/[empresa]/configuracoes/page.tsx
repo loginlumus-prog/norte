@@ -11,6 +11,10 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Modulos } from './Modulos'
 import { Pontos } from './Pontos'
 import { Crediario } from './Crediario'
+import { Mensalidades } from './Mensalidades'
+import { configMensalidade } from '@/servidor/mensalidades'
+import { textoDoAviso } from '@/servidor/avisos-mensalidade'
+import { colunaDoDia, diaEmSP, somarDias } from '@/servidor/dia'
 import { Lembrete } from './Lembrete'
 import { planoLibera } from '@/servidor/planos'
 import { HORAS_DE_LEMBRETE, textoDoLembrete } from '@/servidor/lembretes'
@@ -158,6 +162,28 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
             temAssistente={moduloLigado(empresa, 'agente') && planoLibera(dados?.plano ?? 'GRATIS', 'agente')}
             exemplo={textoDoLembrete({ nome: 'Maria', loja: empresa.nome, inicio: new Date(Date.now() + 864e5) })}
           />
+        </Cartao>
+      )}
+
+      {moduloLigado(empresa, 'escola') && (
+        <Cartao titulo="Mensalidades">
+          {pode(sessao, 'empresa.configurar') ? (
+            <Mensalidades
+              empresa={slug}
+              inicial={await configMensalidade(sessao)}
+              temAssistente={moduloLigado(empresa, 'agente') && planoLibera(dados?.plano ?? 'GRATIS', 'agente')}
+              exemplo={textoDoAviso('antes', {
+                responsavel: 'Maria',
+                aluno: 'Pedro',
+                escola: empresa.nome,
+                mes: diaEmSP().slice(0, 7),
+                vencimento: colunaDoDia(somarDias(diaEmSP(), 3)),
+                valorCent: 45000,
+              })}
+            />
+          ) : (
+            <Aviso nivel="neutro">Só quem responde pela empresa muda isto.</Aviso>
+          )}
         </Cartao>
       )}
 

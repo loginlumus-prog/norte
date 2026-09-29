@@ -23,6 +23,11 @@ export type Janela = {
   chave: Periodo
   /** O título da seção. */
   rotulo: string
+  /**
+   * O período no meio de uma frase: "hoje", "nos últimos 7 dias", "neste
+   * mês". O rótulo em minúscula dava "Nenhuma venda últimos 7 dias".
+   */
+  naFrase: string
   /** O texto do botão. */
   curto: string
   /** Como chamar a comparação: "vs ontem", "vs 30 dias antes". */
@@ -74,11 +79,12 @@ export function janela(chave: Periodo, agora: Date = new Date()): Janela {
   const amanha = somarDias(hoje, 1)
   const inst = inicioDoDiaEmSP
 
-  const montar = (de: string, ate: string, rotulo: string, comparacao: string): Janela => {
+  const montar = (de: string, ate: string, rotulo: string, comparacao: string, naFrase: string): Janela => {
     const dias = diasEntre(de, ate)
     return {
       chave,
       rotulo,
+      naFrase,
       curto: PERIODOS.find((p) => p.chave === chave)!.curto,
       comparacao,
       de: inst(de),
@@ -94,22 +100,22 @@ export function janela(chave: Periodo, agora: Date = new Date()): Janela {
 
   switch (chave) {
     case 'hoje':
-      return montar(hoje, amanha, 'Hoje', 'vs ontem')
+      return montar(hoje, amanha, 'Hoje', 'vs ontem', 'hoje')
 
     case '7d':
-      return montar(somarDias(hoje, -6), amanha, 'Últimos 7 dias', 'vs 7 dias antes')
+      return montar(somarDias(hoje, -6), amanha, 'Últimos 7 dias', 'vs 7 dias antes', 'nos últimos 7 dias')
 
     case '30d':
-      return montar(somarDias(hoje, -29), amanha, 'Últimos 30 dias', 'vs 30 dias antes')
+      return montar(somarDias(hoje, -29), amanha, 'Últimos 30 dias', 'vs 30 dias antes', 'nos últimos 30 dias')
 
     case '90d':
-      return montar(somarDias(hoje, -89), amanha, 'Últimos 90 dias', 'vs 90 dias antes')
+      return montar(somarDias(hoje, -89), amanha, 'Últimos 90 dias', 'vs 90 dias antes', 'nos últimos 90 dias')
 
     case 'mes': {
       const inicio = primeiroDoMes(hoje)
       // O mês em curso termina HOJE, não no dia 31: comparar 7 dias corridos
       // com um mês inteiro faria o painel anunciar queda todo dia 2.
-      const j = montar(inicio, amanha, 'Este mês', 'vs mesmo tempo do mês passado')
+      const j = montar(inicio, amanha, 'Este mês', 'vs mesmo tempo do mês passado', 'neste mês')
       // E a comparação anda para o mês anterior, no mesmo dia — não 30 dias
       // para trás, que cairia no meio de outro mês. No dia 31 de março o
       // pedaço de fevereiro para no fim de fevereiro.
@@ -124,7 +130,7 @@ export function janela(chave: Periodo, agora: Date = new Date()): Janela {
 
     case 'mes-passado': {
       const inicio = inicioDoMesAnterior(hoje)
-      const j = montar(inicio, primeiroDoMes(hoje), 'Mês passado', 'vs o mês anterior')
+      const j = montar(inicio, primeiroDoMes(hoje), 'Mês passado', 'vs o mês anterior', 'no mês passado')
       return { ...j, deAnterior: inst(inicioDoMesAnterior(inicio)), ateAnterior: inst(inicio) }
     }
   }

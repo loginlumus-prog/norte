@@ -7,10 +7,12 @@ import { liberarVaga } from '@/servidor/presenca'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import { deOndeVeio } from '@/servidor/requisicao'
 import { pode, CAPACIDADES } from '@/servidor/permissao'
+import { nomesNoGuia, vocabularioDaEmpresa } from '@/servidor/vocabulario'
 import {
   buscarNoGuia,
   entradaDaTela,
   manualComoTexto,
+  tituloDaTela,
   NOME_DA_CAPACIDADE,
   NOME_DO_PAPEL,
   type ResultadoBusca,
@@ -108,9 +110,12 @@ export async function perguntarAoGuiaAcao(
   // Pelo manual, só as telas que esta pessoa abre — a mesma régua da busca
   // do navegador (ver `telaAbre`). A empresa vem da portaria: os módulos
   // ligados decidem se Crediário e Encomendas existem para ela.
+  // Os nomes das telas nesta empresa ("Recepção" na clínica): o Guia fala a
+  // palavra do menu que a pessoa está vendo.
+  const nomes = nomesNoGuia(await vocabularioDaEmpresa(sessao.orgId))
   if (!temChaveIA()) {
     const empresa = await acharOrgPorSlug(slug)
-    const quem = { capacidades: CAPACIDADES.filter((c) => pode(sessao, c)), modulos: empresa?.modulos ?? [] }
+    const quem = { capacidades: CAPACIDADES.filter((c) => pode(sessao, c)), modulos: empresa?.modulos ?? [], nomes }
     return { modo: 'manual', respostas: buscarNoGuia(p, tela, quem) }
   }
 
@@ -127,10 +132,10 @@ export async function perguntarAoGuiaAcao(
     'Responda em português do Brasil, curto e direto. Quando a pergunta for "como faço", responda em passos numerados, com o nome exato dos botões e telas.',
     'Use SOMENTE o manual abaixo. Se o manual não cobre a pergunta, diga que não sabe e indique a tela mais próxima. Nunca invente função, botão ou tela.',
     'Não peça nem cite dados da empresa: você não tem acesso a vendas, saldos ou nomes — só ao manual.',
-    `A pessoa está na tela "${entrada?.titulo ?? (tela || 'início')}" e tem o papel de ${papeis || 'sem papel'}.`,
+    `A pessoa está na tela "${entrada ? tituloDaTela(entrada, { nomes }) : tela || 'início'}" e tem o papel de ${papeis || 'sem papel'}.`,
     `O que ela pode fazer: ${capacidades.length ? capacidades.join('; ') : 'nada além de ver'}. Se ela pergunta por algo que o papel dela não permite, diga quem pode.`,
     '',
-    manualComoTexto(),
+    manualComoTexto(nomes),
   ].join('\n')
 
   try {

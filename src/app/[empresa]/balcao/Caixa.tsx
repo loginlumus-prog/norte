@@ -171,6 +171,7 @@ export function FecharCaixa({
             {linha('Abertura', conferencia.abertura)}
             {linha('Vendas em dinheiro', conferencia.dinheiroVendido)}
             {conferencia.dinheiroRecebido > 0 && linha('Crediário recebido em dinheiro', conferencia.dinheiroRecebido)}
+            {conferencia.dinheiroMensalidades > 0 && linha('Mensalidades recebidas em dinheiro', conferencia.dinheiroMensalidades)}
             {linha('Suprimentos', conferencia.suprimentos)}
             {linha('Sangrias', -conferencia.sangrias)}
             {linha('Deveria ter', feito.esperado, true)}
@@ -187,6 +188,7 @@ export function FecharCaixa({
             {conferencia.porForma.map((f) => linha(FORMA[f.forma] ?? f.forma, f.total))}
             {linha('Total vendido', conferencia.vendidoTotal, true)}
             {conferencia.recebidoCrediario > 0 && linha('Crediário recebido (todas as formas)', conferencia.recebidoCrediario)}
+            {conferencia.recebidoMensalidades > 0 && linha('Mensalidades recebidas (todas as formas)', conferencia.recebidoMensalidades)}
           </div>
         </div>
       </div>

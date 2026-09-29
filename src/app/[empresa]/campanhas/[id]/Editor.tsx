@@ -513,7 +513,7 @@ function EditorPorDentro({ slug, inicial, dentro }: { slug: string; inicial: Par
             <Botao
               tom="secundario"
               disabled={indo || bloqueada || !inicial.meuTelefone}
-              title={!inicial.meuTelefone ? 'Ponha o seu telefone em Equipe para testar' : bloqueada ? 'Resolva as pendências antes de testar' : undefined}
+              title={!inicial.meuTelefone ? 'Confirme o seu WhatsApp em Minha conta para testar' : bloqueada ? 'Resolva as pendências antes de testar' : undefined}
               onClick={testar}
             >
               Testar com meu número

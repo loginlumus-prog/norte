@@ -125,7 +125,8 @@ export async function compararLojas(
     const estoques = await db.$queryRaw<{ unidade_id: string; estoque: string; parado: string }[]>`
       select e.unidade_id,
              sum(e.quantidade * coalesce(p.custo, 0)) as estoque,
-             sum(case when x.vendeu is null then e.quantidade * coalesce(p.custo, 0) else 0 end) as parado
+             -- Material de uso não vende: não é "parado", é estoque de consumo.
+             sum(case when x.vendeu is null and not p.uso_interno then e.quantidade * coalesce(p.custo, 0) else 0 end) as parado
         from estoque e
         join variacoes vr on vr.id = e.variacao_id
         join produtos p on p.id = vr.produto_id
@@ -391,6 +392,9 @@ export async function dinheiroParado(
              and v.situacao = 'CONCLUIDA'
         ) x on true
        where e.unidade_id = any(${uni}) and e.quantidade > 0
+         -- Material de uso sai pelo consumo, nunca pela venda: "parado há 90
+         -- dias" seria verdade inútil sobre a luva da clínica.
+         and not p.uso_interno
        group by 1, 2, 3, 4
       having max(x.ultima) is null or max(x.ultima) < ${corte}
        order by valor desc

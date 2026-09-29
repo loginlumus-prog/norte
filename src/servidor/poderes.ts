@@ -131,7 +131,7 @@ export const PODERES = {
   },
   'pagamentos.consultar': {
     titulo: 'Consultar se alguém pagou',
-    resumo: '"A Joana pagou?": as compras e como pagou, e o que deve no crediário — só o que a pessoa que pergunta pode ver.',
+    resumo: '"A Joana pagou?": as compras e como pagou, o que deve no crediário e, na escola, as mensalidades — só o que a pessoa que pergunta pode ver.',
     exige: 'cliente.ver',
     escreve: false,
     disponivel: true,
@@ -142,6 +142,23 @@ export const PODERES = {
     exige: 'ponto.proprio',
     escreve: false,
     modulo: 'ponto',
+    disponivel: true,
+  },
+  // ── escola: mensalidades e turmas ───────────────────────────
+  'mensalidades.atrasadas': {
+    titulo: 'Consultar as mensalidades em atraso',
+    resumo: 'Quem está atrasado, de quais meses, quanto — e o total. Só lê: cobrar é com a secretaria, e com o responsável.',
+    exige: 'mensalidade.ver',
+    escreve: false,
+    modulo: 'escola',
+    disponivel: true,
+  },
+  'turmas.consultar': {
+    titulo: 'Consultar as turmas',
+    resumo: 'As turmas, o horário, quem dá aula, quantos alunos e quantas vagas sobram.',
+    exige: 'escola.ver',
+    escreve: false,
+    modulo: 'escola',
     disponivel: true,
   },
   'ver.cliente': {

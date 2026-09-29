@@ -21,8 +21,8 @@ const visiveis = (papel: Papel, modulos: string[] = TODOS) =>
 describe('o que cada perfil vê no menu', () => {
   it('o dono vê tudo', () => {
     expect(visiveis('DONO')).toEqual([
-      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Agenda', 'Funcionários', 'Produtos', 'Estoque',
-      'Compras', 'Material usado', 'Preços', 'Clientes', 'Equipe', 'Tarefas', 'Financeiro', 'Análise', 'Assistente',
+      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
+      'Produtos', 'Estoque', 'Compras', 'Material usado', 'Preços', 'Clientes', 'Equipe', 'Tarefas', 'Financeiro', 'Análise', 'Assistente',
       'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
     ])
   })
@@ -35,9 +35,11 @@ describe('o que cada perfil vê no menu', () => {
     // Agenda, Funcionários (o próprio ponto) e Material usado entram: na
     // recepção do salão é ela quem marca, bate o ponto e anota o esmalte.
     // Compras não: é onde mora o CUSTO do que se compra.
+    // Mensalidades e Turmas entram: na escola o balcão é a secretaria, que
+    // matricula e recebe a mensalidade com o pai na frente.
     expect(v).toEqual([
-      'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Agenda', 'Funcionários', 'Produtos', 'Estoque',
-      'Material usado', 'Clientes', 'Tarefas',
+      'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
+      'Produtos', 'Estoque', 'Material usado', 'Clientes', 'Tarefas',
     ])
     expect(v).not.toContain('Compras')
     expect(v).not.toContain('Preços')
@@ -67,7 +69,8 @@ describe('o que cada perfil vê no menu', () => {
     // Funcionários e Compras também são dinheiro: as horas do mês são a folha
     // de pagamento (que costuma ser ele quem fecha) e a compra é conta a
     // pagar. Ele LÊ as duas — não bate ponto de ninguém, não pede nada.
-    expect(visiveis('CONTADOR')).toEqual(['Painel', 'Funcionários', 'Compras', 'Financeiro', 'Análise'])
+    // As mensalidades também: são a receita da escola. As turmas não.
+    expect(visiveis('CONTADOR')).toEqual(['Painel', 'Mensalidades', 'Funcionários', 'Compras', 'Financeiro', 'Análise'])
   })
 
   it('o financeiro vê vendas e caixa, e não vende', () => {
@@ -96,10 +99,12 @@ describe('o atendimento no menu', () => {
     expect(visiveis('DONO', ['ponto'])).not.toContain('Agenda')
   })
 
-  it('o item de clientes leva a marca de vocabulário (vira "Pacientes" na clínica)', () => {
-    const c = MENU('x').find((i) => i.href === '/x/clientes')!
-    expect(c.vocabulario).toBe(true)
-    expect(MENU('x').filter((i) => i.vocabulario)).toHaveLength(1)
+  it('clientes, balcão e produtos levam a palavra do ramo ("Pacientes", "Recepção", "Serviços e materiais")', () => {
+    const por = (href: string) => MENU('x').find((i) => i.href === href)!
+    expect(por('/x/clientes').vocabulario).toBe('Pessoas')
+    expect(por('/x/balcao').vocabulario).toBe('Balcao')
+    expect(por('/x/produtos').vocabulario).toBe('Produtos')
+    expect(MENU('x').filter((i) => i.vocabulario)).toHaveLength(3)
   })
 
   it('sem o módulo, nada do atendimento aparece', () => {

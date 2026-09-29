@@ -19,6 +19,7 @@
 
 import { comoOrg } from './banco'
 import { chaveTelefone, soDigitos } from './assistente/telefone'
+import { SELECT_TELEFONE, estadoDoTelefone, type EstadoTelefone } from './assistente/confirmacao'
 import { cortarSessoes } from './pagina'
 import { exigir, podeConcederAcesso, PODERES, type Papel, type Sessao } from './permissao'
 import { NOME_DO_PAPEL } from './guia'
@@ -30,6 +31,8 @@ export type PessoaDaEquipe = {
   ativo: boolean
   ultimoLogin: Date | null
   telefone: string | null
+  /** Só 'confirmado' faz o assistente reconhecer a pessoa (ver assistente/confirmacao.ts). */
+  telefoneEstado: EstadoTelefone
   acessos: {
     id: string
     papel: Papel
@@ -48,15 +51,17 @@ export async function listarEquipe(sessao: Sessao): Promise<PessoaDaEquipe[]> {
     const pessoas = await db.usuario.findMany({
       orderBy: [{ ativo: 'desc' }, { nome: 'asc' }],
       select: {
-        id: true, nome: true, email: true, ativo: true, ultimoLogin: true, telefone: true,
+        id: true, nome: true, email: true, ativo: true, ultimoLogin: true, ...SELECT_TELEFONE,
         acessos: { select: { id: true, papel: true, unidadeId: true, expiraEm: true, motivo: true } },
       },
     })
     const unidades = await db.unidade.findMany({ select: { id: true, nome: true } })
 
     const nomeDa = new Map(unidades.map((u) => [u.id, u.nome]))
-    return pessoas.map((p) => ({
+    const agora = new Date()
+    return pessoas.map(({ telefoneConfirmado: _c, telefoneConfirmadoEm: _e, telefoneVistoEm: _v, ...p }) => ({
       ...p,
+      telefoneEstado: estadoDoTelefone({ telefone: p.telefone, telefoneConfirmado: _c, telefoneConfirmadoEm: _e, telefoneVistoEm: _v }, agora),
       acessos: p.acessos.map((a) => ({
         ...a,
         papel: a.papel as Papel,
@@ -280,12 +285,16 @@ export async function mudarSituacao(
  *  - Telefone que está no cadastro de um CLIENTE é recusado: a mensagem desse
  *    número passaria a falar com os poderes de quem é da equipe.
  *  - Só celular brasileiro com DDD vira chave (`chaveTelefone`). Vazio apaga.
+ *  - Número NOVO nasce sem confirmação: o assistente só reconhece a pessoa
+ *    depois que ela mesma confirma, em Minha conta (ver
+ *    assistente/confirmacao.ts). Salvar o MESMO número de outro jeito
+ *    ("(71) 9…" → "719…") não desfaz a confirmação.
  */
 export async function mudarTelefone(
   sessao: Sessao,
   usuarioId: string,
   bruto: string,
-): Promise<ResultadoEquipe> {
+): Promise<ResultadoEquipe & { faltaConfirmar?: boolean }> {
   const eu = usuarioId === sessao.usuarioId
   if (!eu) exigir(sessao, 'equipe.gerir')
   // O PRÓPRIO telefone também é escrita — e não uma qualquer: é ele que faz o
@@ -302,10 +311,13 @@ export async function mudarTelefone(
   }
   const guardar = texto ? soDigitos(texto).replace(/^55(?=\d{10,11}$)/, '') : null
 
-  return comoOrg(sessao.orgId, async (db): Promise<ResultadoEquipe> => {
+  return comoOrg(sessao.orgId, async (db): Promise<ResultadoEquipe & { faltaConfirmar?: boolean }> => {
     const pessoa = await db.usuario.findUnique({
       where: { id: usuarioId },
-      select: { nome: true, telefone: true, acessos: { select: { papel: true, unidadeId: true, expiraEm: true } } },
+      select: {
+        nome: true, telefone: true, telefoneConfirmado: true,
+        acessos: { select: { papel: true, unidadeId: true, expiraEm: true } },
+      },
     })
     if (!pessoa) return { ok: false, motivo: 'Pessoa não encontrada nesta empresa.' }
     if (!eu && !podeMexerEm(sessao, pessoa.acessos.map((a) => ({ ...a, papel: a.papel as Papel })))) {
@@ -336,7 +348,22 @@ export async function mudarTelefone(
       }
     }
 
-    await db.usuario.update({ where: { id: usuarioId }, data: { telefone: guardar } })
+    // A confirmação é do NÚMERO: outro número, outra confirmação — e os
+    // códigos pedidos para o número velho deixam de valer.
+    const outroNumero = chave !== pessoa.telefoneConfirmado
+    await db.usuario.update({
+      where: { id: usuarioId },
+      data: {
+        telefone: guardar,
+        ...(outroNumero ? { telefoneConfirmado: null, telefoneConfirmadoEm: null, telefoneVistoEm: null } : {}),
+      },
+    })
+    if (outroNumero) {
+      await db.confirmacaoTelefone.updateMany({
+        where: { usuarioId, usadoEm: null, expiraEm: { gt: new Date() } },
+        data: { expiraEm: new Date() },
+      })
+    }
     await db.auditoria.create({
       data: {
         orgId: sessao.orgId,
@@ -351,7 +378,8 @@ export async function mudarTelefone(
         depois: { telefone: guardar ? `…${guardar.slice(-4)}` : null },
       },
     })
-    return { ok: true }
+    // Número salvo que ainda não vale para o assistente: a tela avisa.
+    return { ok: true, faltaConfirmar: !!chave && outroNumero }
   })
 }
 

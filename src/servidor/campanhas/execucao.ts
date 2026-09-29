@@ -27,6 +27,7 @@ import { inicioDeHojeEmSP } from '../dia'
 import { enviarOuModelo, type Canal, type Envio as EnvioDoCanal } from '../assistente/canal'
 import { modeloDeAviso } from '../assistente/meta-regras'
 import { paraEnvio, soDigitos } from '../assistente/telefone'
+import { SELECT_TELEFONE, telefoneValido } from '../assistente/confirmacao'
 import {
   AJUSTES_PADRAO,
   STATUS_VIVOS,
@@ -348,18 +349,24 @@ async function rodarTravada(
       return depois(r)
     },
     async passarParaPessoa(d: DadosPassar, vars: Vars) {
-      const pessoas = await comoOrg(orgId, (db) =>
-        db.usuario.findMany({
-          where: {
-            ativo: true,
-            telefone: { not: null },
-            ...(d.para === 'donos' ? { acessos: { some: { papel: 'DONO' } } } : { id: { in: d.usuarioIds } }),
-          },
-          select: { telefone: true },
-          take: 10,
-        }),
-      )
-      if (pessoas.length === 0) console.warn(`[campanhas] ${orgId}: ninguém com telefone para receber o contato`)
+      // Só telefone CONFIRMADO pela própria pessoa (ver assistente/confirmacao.ts):
+      // o aviso leva nome, número e a última mensagem do cliente — dado dele
+      // que não pode cair num celular digitado errado.
+      const pessoas = (
+        await comoOrg(orgId, (db) =>
+          db.usuario.findMany({
+            where: {
+              ativo: true,
+              telefone: { not: null },
+              telefoneConfirmadoEm: { not: null },
+              ...(d.para === 'donos' ? { acessos: { some: { papel: 'DONO' } } } : { id: { in: d.usuarioIds } }),
+            },
+            select: SELECT_TELEFONE,
+            take: 10,
+          }),
+        )
+      ).filter((p) => telefoneValido(p, agora()))
+      if (pessoas.length === 0) console.warn(`[campanhas] ${orgId}: ninguém com telefone confirmado para receber o contato`)
       const loja = await comoOrg(orgId, (db) => db.org.findUnique({ where: { id: orgId }, select: { nome: true } }))
       const texto = textoParaEquipe({
         campanha: c.campanha.nome,

@@ -172,6 +172,9 @@ function menuComAvisos(slug: string, c: Contagens, parados = 0): ItemMenu[] {
     if (href === `/${slug}/crediario` && c.parcelasVencidas?.quantas) {
       return { quantos: c.parcelasVencidas.quantas, nivel: 'critico', titulo: palavra(c.parcelasVencidas.quantas, 'parcela vencida', 'parcelas vencidas') }
     }
+    if (href === `/${slug}/mensalidades` && c.mensalidadesAtrasadas?.quantas) {
+      return { quantos: c.mensalidadesAtrasadas.quantas, nivel: 'critico', titulo: palavra(c.mensalidadesAtrasadas.quantas, 'mensalidade em atraso', 'mensalidades em atraso') }
+    }
     if (href === `/${slug}/financeiro` && c.contasVencidas?.quantas) {
       return { quantos: c.contasVencidas.quantas, nivel: 'critico', titulo: palavra(c.contasVencidas.quantas, 'conta vencida', 'contas vencidas') }
     }
@@ -560,7 +563,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
                 itens={r.porUnidade.map((u) => ({
                   rotulo: u.nome,
                   valor: u.total,
-                  detalhe: `${u.vendas} vendas`,
+                  detalhe: plural(u.vendas, 'venda', 'vendas'),
                 }))}
               />
             </Bloco>
@@ -649,7 +652,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
           <Secao titulo="Estoque">
             <Faixa colunas={verDinheiro ? 3 : 2}>
               <Numero celula rotulo="Itens diferentes" valor={r.estoque.itens.toLocaleString('pt-BR')} detalhe="com saldo" />
-              <Numero celula rotulo="Peças em estoque" valor={r.estoque.unidades.toLocaleString('pt-BR')} detalhe="somando tudo" />
+              <EstoqueContado estoque={r.estoque} />
               {verDinheiro && (
                 <Numero
                   celula
@@ -736,7 +739,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
                   itens={r.porVendedor.map((v) => ({
                     rotulo: v.nome,
                     valor: v.total,
-                    detalhe: `${v.vendas} vendas`,
+                    detalhe: plural(v.vendas, 'venda', 'vendas'),
                   }))}
                 />
               </Bloco>
@@ -1000,6 +1003,12 @@ function BlocoDoRamo({
             ? `/${slug}/agenda${bloco.unidadeId ? `?unidade=${bloco.unidadeId}` : ''}`
             : null
         }
+        mensalidades={
+          pode(sessao, 'mensalidade.ver', bloco.unidadeId ?? undefined)
+            ? `/${slug}/mensalidades${bloco.unidadeId ? `?unidade=${bloco.unidadeId}` : ''}`
+            : null
+        }
+        turmas={pode(sessao, 'escola.ver', bloco.unidadeId ?? undefined) ? `/${slug}/turmas` : null}
         varias={variasNoBloco}
       />
     ) : (
@@ -1028,10 +1037,103 @@ function BlocoDoRamo({
  * Agenda ligada (a escola, no começo), fica o que existe: quem está
  * trabalhando e o que entrou hoje.
  */
-function AgendaDoRamo({ dados, agenda, varias }: { dados: DadosAgenda; agenda: string | null; varias: boolean }) {
+function AgendaDoRamo({
+  dados,
+  agenda,
+  mensalidades,
+  turmas,
+  varias,
+}: {
+  dados: DadosAgenda
+  agenda: string | null
+  mensalidades?: string | null
+  turmas?: string | null
+  varias: boolean
+}) {
   const a = dados.agenda
+  const e = dados.escola
   return (
-    <div className={cx('grid gap-6', a ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2')}>
+    <div className={cx('grid gap-6', a || e ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2')}>
+      {e && (
+        <Peca
+          titulo="Mensalidades"
+          detalhe={`${e.alunosAtivos} ${e.alunosAtivos === 1 ? 'aluno ativo' : 'alunos ativos'}`}
+          acao={
+            mensalidades ? (
+              <Link href={mensalidades} className={linkMiudo}>
+                Abrir as mensalidades →
+              </Link>
+            ) : undefined
+          }
+        >
+          {e.mensalidades === null ? (
+            <SemDado>As mensalidades ficam com quem cuida delas.</SemDado>
+          ) : (
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div className="flex flex-col">
+                <dt className="text-xs text-tinta-3">A receber no mês</dt>
+                <dd className="numero text-lg font-bold text-tinta">{brl(e.mensalidades.aReceberMes)}</dd>
+                <dd className="text-xs text-tinta-3">
+                  {e.mensalidades.abertasMes === 0
+                    ? 'todas pagas'
+                    : `${e.mensalidades.abertasMes} ${e.mensalidades.abertasMes === 1 ? 'mensalidade em aberto' : 'mensalidades em aberto'}`}
+                </dd>
+              </div>
+              <div className="flex flex-col">
+                <dt className="text-xs text-tinta-3">Em atraso</dt>
+                <dd className={cx('numero text-lg font-bold', e.mensalidades.atraso.quantas > 0 ? 'text-critico' : 'text-tinta')}>
+                  {brl(e.mensalidades.atraso.total)}
+                </dd>
+                <dd className="text-xs text-tinta-3">
+                  {e.mensalidades.atraso.quantas === 0
+                    ? 'ninguém atrasado'
+                    : `${e.mensalidades.atraso.quantas} ${e.mensalidades.atraso.quantas === 1 ? 'mensalidade' : 'mensalidades'} · ${e.mensalidades.atraso.alunos} ${e.mensalidades.atraso.alunos === 1 ? 'aluno' : 'alunos'}`}
+                </dd>
+              </div>
+              <div className="flex flex-col">
+                <dt className="text-xs text-tinta-3">Recebido hoje</dt>
+                <dd className="numero text-lg font-bold text-tinta">{brl(e.mensalidades.recebidoHoje)}</dd>
+              </div>
+              <div className="flex flex-col">
+                <dt className="text-xs text-tinta-3">Recebido no mês</dt>
+                <dd className="numero text-lg font-bold text-tinta">{brl(e.mensalidades.recebidoNoMes)}</dd>
+              </div>
+              {e.mensalidades.vencemHoje.quantas > 0 && (
+                <div className="col-span-2 text-xs text-atencao">
+                  Vencem hoje: {e.mensalidades.vencemHoje.quantas}{' '}
+                  {e.mensalidades.vencemHoje.quantas === 1 ? 'mensalidade' : 'mensalidades'}, {brl(e.mensalidades.vencemHoje.total)}.
+                </div>
+              )}
+            </dl>
+          )}
+        </Peca>
+      )}
+
+      {e && e.quaseCheias.length > 0 && (
+        <Peca
+          titulo="Turmas quase cheias"
+          detalhe="Onde a próxima matrícula pode não caber"
+          acao={
+            turmas ? (
+              <Link href={turmas} className={linkMiudo}>
+                Ver as turmas →
+              </Link>
+            ) : undefined
+          }
+        >
+          <ul className="flex flex-col divide-y divide-borda-suave">
+            {e.quaseCheias.map((t) => (
+              <li key={t.id} className="flex items-center justify-between gap-2 py-2 text-sm first:pt-0 last:pb-0">
+                <span className="truncate font-semibold text-tinta">{t.nome}</span>
+                <span className={cx('numero text-xs', t.ocupadas >= t.capacidade ? 'font-bold text-critico' : 'text-atencao')}>
+                  {t.ocupadas} de {t.capacidade}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Peca>
+      )}
+
       {a && (
         <Peca
           titulo="Próximos horários"
@@ -1133,7 +1235,7 @@ function AgendaDoRamo({ dados, agenda, varias }: { dados: DadosAgenda; agenda: s
             )}
           </div>
         )}
-        {!a && (
+        {!a && !e && (
           <p className="text-xs text-tinta-3">
             Para ver quem vem hoje e os horários livres, ligue a Agenda em Configurações — os {dados.pessoas} com hora marcada aparecem aqui.
           </p>
@@ -1532,5 +1634,32 @@ function ReposicaoDoRamo({ dados, noEstoque, slug }: { dados: DadosReposicao; no
         )}
       </Peca>
     </div>
+  )
+}
+
+/**
+ * O saldo da empresa, sem somar peça com quilo.
+ *
+ * "Peças em estoque: 800,381" era 800 blusas mais 381 gramas... ou quilos? —
+ * não dava para saber. O que se conta vai no número; o que se pesa ou mede
+ * vai ao lado, com a sigla. Loja que só vende no peso (a sorveteria) mostra
+ * o peso no lugar do número de peças, que para ela seria zero.
+ */
+function EstoqueContado({ estoque: e }: { estoque: { unidades: number; quilos: number; litros: number; metros: number } }) {
+  const medidos = [
+    e.quilos > 0 ? quantidadeFalada(e.quilos, 'KG') : null,
+    e.litros > 0 ? quantidadeFalada(e.litros, 'L') : null,
+    e.metros > 0 ? quantidadeFalada(e.metros, 'M') : null,
+  ].filter((x): x is string => x !== null)
+  if (e.unidades === 0 && medidos.length > 0) {
+    return <Numero celula rotulo="Em estoque" valor={medidos.join(' · ')} detalhe="no peso e na medida" />
+  }
+  return (
+    <Numero
+      celula
+      rotulo="Peças em estoque"
+      valor={e.unidades.toLocaleString('pt-BR')}
+      detalhe={medidos.length > 0 ? `e mais ${listaFalada(medidos)} no peso e na medida` : 'contadas uma a uma'}
+    />
   )
 }

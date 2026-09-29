@@ -26,6 +26,7 @@ import { ROTULO_TABELA } from '@/servidor/preco'
 import { brl, cent, linhaCent, notasSugeridas, passoAtual, precoDe } from './conta'
 import { FORMAS, tituloDaForma, type Linha, type Venda } from './useVenda'
 import { fracionado, partesDaDescricao, UNIDADE } from './vitrine'
+import { plural } from '@/ui/texto'
 
 /* ── os itens ─────────────────────────────────────────────── */
 
@@ -178,7 +179,7 @@ export function Total({ v }: { v: Venda }) {
           {v.pontosUsar > 0 && (
             <span className="flex items-center justify-between gap-2">
               <span>
-                {v.pontosUsar} pontos{' '}
+                {plural(v.pontosUsar, 'ponto', 'pontos')}{' '}
                 <button type="button" onClick={() => v.setPontosUsar(0)} className="text-xs font-semibold text-tinta-3 underline-offset-2 hover:text-tinta hover:underline">
                   não usar
                 </button>
@@ -222,7 +223,7 @@ export function Total({ v }: { v: Venda }) {
           className="flex min-h-12 items-center justify-between gap-2 rounded-xl border border-bom-borda bg-bom-fundo px-3 py-2 text-left"
         >
           <span className="flex flex-col">
-            <span className="text-sm font-semibold text-tinta">Tem {v.oferta.saldo} pontos</span>
+            <span className="text-sm font-semibold text-tinta">Tem {plural(v.oferta.saldo, 'ponto', 'pontos')}</span>
             <span className="text-xs text-tinta-2">dá {brl(v.oferta.centavos / 100)} de desconto</span>
           </span>
           <span className="shrink-0 text-sm font-bold text-bom">Usar</span>
@@ -742,7 +743,7 @@ export function Sucesso({ v, aoNova }: { v: Venda; aoNova: () => void }) {
         </div>
       )}
 
-      {f.pontosGanhos > 0 && <Situacao nivel="bom">ganhou {f.pontosGanhos} pontos</Situacao>}
+      {f.pontosGanhos > 0 && <Situacao nivel="bom">ganhou {plural(f.pontosGanhos, 'ponto', 'pontos')}</Situacao>}
 
       <div className="grid w-full gap-2">
         <Botao botaoRef={nova} largo onClick={aoNova} className="min-h-14 rounded-xl text-base">

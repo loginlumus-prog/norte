@@ -382,8 +382,8 @@ export default async function Vendas({
             {q
               ? 'Nenhuma venda com isso.'
               : temFiltro
-                ? `Nenhuma venda com esses filtros ${j.rotulo.toLowerCase()}.`
-                : `Nenhuma venda ${j.rotulo.toLowerCase()}.`}
+                ? `Nenhuma venda com esses filtros ${j.naFrase}.`
+                : `Nenhuma venda ${j.naFrase}.`}
           </Vazio>
         ) : (
           <Tabela colunas={colunas} linhas={vendas} chave={(v) => v.id} />

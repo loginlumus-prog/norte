@@ -8,6 +8,7 @@
 import type { Agente, Plano, Situacao } from '@prisma/client'
 import { comoOrg } from '../banco'
 import { planoLibera } from '../planos'
+import { vencerTesteSeAcabou } from '../assinatura'
 import { moduloLigado } from '../modulos'
 import { unidadesQuePodem, type Acesso, type Capacidade, type Papel, type Sessao } from '../permissao'
 import { custoEmCentavos, cobrancaEmCentavos, type Tokens } from '../custo-ia'
@@ -15,6 +16,7 @@ import { inicioDeHojeEmSP } from '../dia'
 import { chaveTelefone, paraEnvio, soDigitos } from './telefone'
 import type { Interlocutor, Loja } from './regras'
 import { enviarOuModelo, type Canal, type ModeloParaEnvio } from './canal'
+import { SELECT_TELEFONE, telefoneValido } from './confirmacao'
 
 // ─────────────────────────────────────────────────────────────
 // A EMPRESA
@@ -34,7 +36,7 @@ export type Contexto = {
 }
 
 export async function carregarContexto(orgId: string): Promise<Contexto | null> {
-  return comoOrg(orgId, async (db) => {
+  const ctx = await comoOrg(orgId, async (db) => {
     const org = await db.org.findUnique({
       where: { id: orgId },
       select: { id: true, nome: true, slug: true, plano: true, situacao: true, modulos: true, ramo: true },
@@ -49,6 +51,11 @@ export async function carregarContexto(orgId: string): Promise<Contexto | null> 
     const { ramo, ...resto } = org
     return { org: resto, agente, loja: { empresa: org.nome, ramo, unidades } }
   })
+  // O teste que venceu desce para o Grátis antes de `empresaApta` olhar o
+  // plano: sem isto, a empresa de teste vencido seguia com o plano pago no
+  // banco (e o assistente respondendo) até alguém abrir uma tela.
+  if (ctx?.org.situacao === 'TESTE' && (await vencerTesteSeAcabou(orgId))) return carregarContexto(orgId)
+  return ctx
 }
 
 /**
@@ -99,7 +106,9 @@ export async function sessaoDoUsuario(orgId: string, usuarioId: string): Promise
 /**
  * Dono × cliente, pelo telefone.
  *
- * Equipe é USUÁRIO ATIVO com o telefone cadastrado batendo. O acesso de
+ * Equipe é USUÁRIO ATIVO com o telefone cadastrado batendo E CONFIRMADO pela
+ * própria pessoa (ver confirmacao.ts): número só digitado, de confirmação
+ * vencida ou trocado depois de confirmar é, aqui, número de cliente. O acesso de
  * SUPORTE (nosso) não conta como equipe da loja — ele não conversa com o
  * assistente pelo WhatsApp de ninguém. E não existe o caminho "a pessoa diz
  * que é o dono": o que ela escreve não entra nesta decisão.
@@ -113,10 +122,11 @@ export async function acharInterlocutor(
   if (!chave) return { quem: { tipo: 'cliente', nome: nomeNoWhats }, clienteId: null }
   const final = chave.slice(-8)
 
+  const agora = new Date()
   const achados = await comoOrg(orgId, async (db) => {
     const usuarios = await db.usuario.findMany({
-      where: { ativo: true, telefone: { not: null } },
-      select: { id: true, telefone: true },
+      where: { ativo: true, telefone: { not: null }, telefoneConfirmadoEm: { not: null } },
+      select: { id: true, ...SELECT_TELEFONE },
     })
     // O filtro grosso no banco (termina com os 8 dígitos), o fino aqui.
     const clientes = await db.$queryRaw<{ id: string; nome: string; telefone: string }[]>`
@@ -132,7 +142,7 @@ export async function acharInterlocutor(
   // seria escolher QUAIS poderes a mensagem ganha. Na dúvida, é cliente: o
   // erro que resulta é "o assistente não me respondeu", que aparece na hora e
   // se conserta na tela Equipe — o contrário não aparece nunca.
-  const usuarios = achados.usuarios.filter((u) => chaveTelefone(u.telefone) === chave)
+  const usuarios = achados.usuarios.filter((u) => chaveTelefone(u.telefone) === chave && telefoneValido(u, agora))
   if (usuarios.length > 1) console.warn(`[assistente] ${orgId}: telefone repetido em ${usuarios.length} usuários`)
   const usuario = usuarios.length === 1 ? usuarios[0] : undefined
   if (usuario) {
@@ -153,7 +163,9 @@ export async function acharInterlocutor(
 export type Destinatario = { usuarioId: string; nome: string; telefone: string; sessao: Sessao }
 
 /**
- * Quem recebe relatório e aviso: os DONOS ativos com telefone.
+ * Quem recebe relatório e aviso: os DONOS ativos com telefone CONFIRMADO.
+ * Número só digitado não recebe faturamento: um dígito errado mandaria o
+ * resumo do dia, todo dia, para um desconhecido (ver confirmacao.ts).
  *
  * Só o dono, e não o gerente, nesta etapa: relatório leva faturamento da
  * empresa inteira, e o gerente da loja 3 não vê a loja 5 (ver permissao.ts).
@@ -165,19 +177,21 @@ export async function donosComTelefone(orgId: string): Promise<Destinatario[]> {
       where: {
         ativo: true,
         telefone: { not: null },
+        telefoneConfirmadoEm: { not: null },
         acessos: { some: { papel: 'DONO' as Papel } },
       },
       orderBy: { criadoEm: 'asc' },
       select: { id: true },
     }),
   )
+  const agora = new Date()
   const saida: Destinatario[] = []
   for (const d of donos) {
     const sessao = await sessaoDoUsuario(orgId, d.id)
     const u = await comoOrg(orgId, (db) =>
-      db.usuario.findUnique({ where: { id: d.id }, select: { telefone: true } }),
+      db.usuario.findUnique({ where: { id: d.id }, select: SELECT_TELEFONE }),
     )
-    if (sessao && u?.telefone && chaveTelefone(u.telefone)) {
+    if (sessao && u?.telefone && telefoneValido(u, agora)) {
       saida.push({ usuarioId: d.id, nome: sessao.nome, telefone: paraEnvio(u.telefone) ?? soDigitos(u.telefone), sessao })
     }
   }
