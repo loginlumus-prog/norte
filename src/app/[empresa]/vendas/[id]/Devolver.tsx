@@ -34,6 +34,7 @@ export function Devolver({
   numero,
   itens,
   podeDinheiro,
+  palavras,
 }: {
   slug: string
   vendaId: string
@@ -41,6 +42,8 @@ export function Devolver({
   itens: ItemDevolvivel[]
   /** Dinheiro e estorno são para quem pode cancelar venda. */
   podeDinheiro: boolean
+  /** "deste atendimento", "do atendimento" na clínica (servidor/vocabulario.ts). */
+  palavras: { destaVenda: string; daVenda: string }
 }) {
   const [aberto, setAberto] = useState(false)
   const [qtds, setQtds] = useState<Record<string, number>>({})
@@ -91,7 +94,7 @@ export function Devolver({
         onClick={() => setAberto(true)}
         className="text-sm font-medium text-marca underline-offset-2 hover:underline"
       >
-        Devolver ou trocar itens desta venda
+        Devolver ou trocar itens {palavras.destaVenda}
       </button>
     )
   }
@@ -102,7 +105,9 @@ export function Devolver({
       <input type="hidden" name="venda" value={vendaId} />
 
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-bold text-tinta">O que está voltando da venda {numero}?</p>
+        <p className="text-sm font-bold text-tinta">
+          O que está voltando {palavras.daVenda} {numero}?
+        </p>
         <p className="text-[13px] text-tinta-2">
           O valor devolvido é o que a pessoa pagou pela peça — com o desconto da venda, se houve.
         </p>

@@ -318,6 +318,9 @@ export default async function Mensalidades({
           ]}
           linhas={lista}
           chave={(m) => m.id}
+          // O "Receber" é a última coluna: com o menu aberto, a tabela não
+          // cabia e ele sumia atrás da rolagem. Estreita, cada linha vira cartão.
+          empilhar
           vazio={
             q || turmaId
               ? 'Nada com esse filtro.'
@@ -325,7 +328,16 @@ export default async function Mensalidades({
                 ? 'Ninguém em atraso. Bom sinal.'
                 : situacao === 'paga'
                   ? 'Nenhuma mensalidade paga neste mês ainda.'
-                  : pode(sessao, 'escola.ver')
+                  : // O filtro "a receber" vazio com mensalidade em aberto no
+                    // alto da tela: não é que não haja matrícula — o que falta
+                    // já venceu, e mora em "em atraso".
+                    situacao === 'a_receber'
+                    ? resumo.atraso.quantas > 0
+                      ? 'Nada a vencer neste mês: o que falta receber já está em atraso.'
+                      : 'Nada a receber neste mês.'
+                    : situacao === 'cancelada'
+                      ? 'Nenhuma mensalidade dispensada neste mês.'
+                      : pode(sessao, 'escola.ver')
                     ? 'Nenhuma mensalidade neste mês. Elas nascem das matrículas ativas — matricule em Turmas.'
                     : 'Nenhuma mensalidade neste mês.'
           }

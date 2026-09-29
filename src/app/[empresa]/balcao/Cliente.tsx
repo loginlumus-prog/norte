@@ -22,7 +22,9 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Botao, Situacao } from '@/ui/base'
 import { brl } from '@/ui/painel'
+import { plural } from '@/ui/texto'
 import { procurarClientes, cadastrarNoBalcao, type ClienteNoBalcao } from './acoes'
+import { usePalavras } from './palavras'
 
 const telefoneBonito = (t: string | null) => {
   if (!t) return ''
@@ -48,6 +50,8 @@ export function EscolherCliente({
    */
   pedido?: number
 }) {
+  // "primeiro atendimento aqui", "Quem está sendo atendido?" (palavras.tsx).
+  const p = usePalavras()
   const [aberto, setAberto] = useState(false)
   const [termo, setTermo] = useState('')
   const [achados, setAchados] = useState<ClienteNoBalcao[]>([])
@@ -112,8 +116,8 @@ export function EscolherCliente({
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-tinta-3">
           <span>
             {escolhido.compras === 0
-              ? 'primeira compra aqui'
-              : `${escolhido.compras} compra(s) · ${brl(escolhido.gastou)}`}
+              ? `${p.vendaFeminina ? 'primeira' : 'primeiro'} ${p.compra} aqui`
+              : `${plural(escolhido.compras, p.compra, p.compras)} · ${brl(escolhido.gastou)}`}
             {escolhido.diasSemVir !== null && escolhido.diasSemVir >= 60 && (
               <span className="text-atencao"> · sumiu há {escolhido.diasSemVir} dias</span>
             )}
@@ -138,7 +142,7 @@ export function EscolherCliente({
         onClick={() => setAberto(true)}
         className="text-left text-sm text-tinta-3 underline-offset-2 hover:text-tinta hover:underline"
       >
-        + Quem está comprando?
+        + {p.quemCompra}
       </button>
     )
   }
@@ -153,7 +157,7 @@ export function EscolherCliente({
           setErro(null)
         }}
         placeholder="Nome, telefone ou CPF"
-        aria-label="Procurar cliente"
+        aria-label={`Procurar ${p.pessoa}`}
         className="rounded border border-borda bg-superficie px-2 py-1.5 text-sm text-tinta placeholder:text-tinta-3"
       />
 
@@ -172,7 +176,7 @@ export function EscolherCliente({
                 <span className="text-sm text-tinta">{c.nome}</span>
                 <span className="text-xs text-tinta-3">
                   {telefoneBonito(c.telefone) || 'sem telefone'}
-                  {c.compras > 0 && ` · ${c.compras} compra(s) · ${brl(c.gastou)}`}
+                  {c.compras > 0 && ` · ${plural(c.compras, p.compra, p.compras)} · ${brl(c.gastou)}`}
                   {c.devendo > 0 && (
                     <span className={c.vencido > 0 ? 'font-semibold text-critico' : 'text-atencao'}>
                       {' '}· deve {brl(c.devendo)}{c.vencido > 0 ? ' (atrasado)' : ''}
@@ -198,7 +202,7 @@ export function EscolherCliente({
             onChange={(e) => setNovoTel(e.target.value)}
             inputMode="tel"
             placeholder="WhatsApp (opcional)"
-            aria-label="WhatsApp do novo cliente"
+            aria-label={`WhatsApp do ${p.novo.toLowerCase()}`}
             className="rounded border border-borda bg-superficie px-2 py-1.5 text-sm text-tinta placeholder:text-tinta-3"
           />
           {erro && <span className="text-xs text-critico">{erro}</span>}
@@ -213,7 +217,7 @@ export function EscolherCliente({
         onClick={fechar}
         className="self-start text-xs text-tinta-3 underline-offset-2 hover:text-tinta hover:underline"
       >
-        vender sem cliente
+        {p.vender} sem {p.pessoa}
       </button>
     </div>
   )

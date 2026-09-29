@@ -15,7 +15,8 @@ import { SeletorPeriodo } from '@/ui/Periodo'
 import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import { Aviso, Cartao, Situacao, cx } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
-import { duracao } from '@/ui/texto'
+import { duracao, plural } from '@/ui/texto'
+import { vocabularioDaEmpresa } from '@/servidor/vocabulario'
 
 export const metadata: Metadata = { title: 'Caixa' }
 
@@ -51,6 +52,8 @@ export default async function CaixaPagina({
   if (!pode(sessao, 'caixa.ver')) notFound()
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'caixa.ver')
+  // "Recebido nos turnos · 15 atendimentos" na recepção (vocabulario.ts).
+  const palavras = await vocabularioDaEmpresa(sessao.orgId)
   const j = janela(lerPeriodo(pedido))
   const turnos = await listarCaixas(sessao, { unidadeIds: onde.ids, de: j.de, ate: j.ate })
 
@@ -113,10 +116,10 @@ export default async function CaixaPagina({
             nivel={Math.abs(somaDif) < 0.005 ? 'bom' : somaDif < 0 ? 'critico' : 'atencao'}
           />
           {veReceita ? (
-            <Numero rotulo="Vendido nos turnos" valor={brl(vendido)} detalhe="todas as formas" />
+            <Numero rotulo={`${palavras.Vendido} nos turnos`} valor={brl(vendido)} detalhe="todas as formas" />
           ) : (
             <Numero
-              rotulo="Vendas nos turnos"
+              rotulo={`${palavras.Contagem} nos turnos`}
               valor={String(fechados.reduce((s, t) => s + t.vendas, 0))}
               detalhe="nos turnos fechados"
             />
@@ -183,14 +186,14 @@ export default async function CaixaPagina({
               : []),
             {
               chave: 'vendas',
-              titulo: 'Vendas',
+              titulo: palavras.Contagem,
               numero: true,
               largura: '8rem',
               celula: (t: TurnoDeCaixa) => (
                 <span className="flex flex-col items-end">
                   {veReceita && <span className="numero font-semibold text-tinta">{brl(t.vendido)}</span>}
                   <span className={veReceita ? 'text-xs text-tinta-3' : 'numero text-tinta'}>
-                    {t.vendas} venda{t.vendas === 1 ? '' : 's'}
+                    {plural(t.vendas, palavras.venda, palavras.vendas)}
                   </span>
                 </span>
               ),
@@ -320,9 +323,9 @@ export default async function CaixaPagina({
             </Cartao>
           </div>
           <p className="text-xs text-tinta-3">
-            As vendas deste turno estão em{' '}
+            {palavras.vendaFeminina ? 'As' : 'Os'} {palavras.vendas} deste turno estão em{' '}
             <Link href={`/${slug}/vendas?unidade=${aberto.unidadeId}`} className="font-medium text-marca underline-offset-2 hover:underline">
-              Vendas
+              {palavras.Vendas}
             </Link>
             .
           </p>

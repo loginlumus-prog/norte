@@ -44,6 +44,7 @@ import { grade, type Grade, type InicialDoBalcao } from './acoes'
 import { brl, precoDe, linhaCent } from './conta'
 import { useVenda, FORMAS, tituloDaForma, type EncomendaNoPedido, type Linha } from './useVenda'
 import { plural } from '@/ui/texto'
+import { usePalavras } from './palavras'
 
 const MEDIDA: Record<string, string> = {
   UN: 'un', KG: 'kg', G: 'g', L: 'l', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx',
@@ -99,6 +100,8 @@ export function Balcao({
   veAssinatura?: boolean
 }) {
   const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario, inicial, encomenda, veAssinatura })
+  // "Concluir atendimento", "Toque num serviço" — a palavra do ramo (palavras.tsx).
+  const p = usePalavras()
   const {
     termo, setTermo, achados, setAchados,
     carrinho, lancar, mudarQtd, tirar, limpar, itensNaVenda, qtd, setQtd,
@@ -145,7 +148,9 @@ export function Balcao({
       {voltou !== null && carrinho.length > 0 && !v.incerta && (
         <Aviso nivel="atencao">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>Recuperamos a venda que estava sendo montada {faz(voltou)}.</span>
+            <span>
+              Recuperamos {p.aVenda} que estava sendo {p.vendaFeminina ? 'montada' : 'montado'} {faz(voltou)}.
+            </span>
             <button type="button" onClick={limpar} className="font-semibold underline underline-offset-2">
               Não é essa — começar do zero
             </button>
@@ -179,7 +184,7 @@ export function Balcao({
               Cobrando o horário de <b className="font-semibold">{v.cobrando}</b>. Ao concluir, ele fica como atendido na Agenda.
             </span>
             <button type="button" onClick={v.tirarHorario} className="font-semibold underline underline-offset-2">
-              Tirar o horário desta venda
+              Tirar o horário {p.destaVenda}
             </button>
           </span>
         </Aviso>
@@ -189,14 +194,14 @@ export function Balcao({
       <div className={cx('grid gap-2', vendedores ? 'sm:grid-cols-[1fr_16rem]' : '')}>
         <div className="flex flex-col gap-1 rounded-norte border border-borda bg-superficie px-3 py-2">
           <span className="flex items-center gap-2 text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">
-            Cliente <Tecla>Alt N</Tecla>
+            {p.Pessoa} <Tecla>Alt N</Tecla>
           </span>
           <EscolherCliente slug={slug} escolhido={cliente} aoEscolher={setCliente} pedido={pedidoCliente} />
         </div>
         {vendedores && (
           <label className="flex flex-col gap-1 rounded-norte border border-borda bg-superficie px-3 py-2">
             <span className="flex items-center gap-2 text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">
-              Vendedor <Tecla>Alt F</Tecla>
+              {p.Vendedor} <Tecla>Alt F</Tecla>
             </span>
             <select
               ref={vendedorRef}
@@ -261,7 +266,7 @@ export function Balcao({
                   }
                 }}
                 placeholder="Bipe a etiqueta ou digite o nome..."
-                aria-label="Procurar produto (Ctrl+P)"
+                aria-label={`Procurar ${p.produto} (Ctrl+P)`}
                 className={cx(
                   'w-full rounded-norte border-2 border-borda bg-superficie py-3 pr-16 pl-4',
                   'text-base text-tinta placeholder:text-tinta-3',
@@ -314,7 +319,7 @@ export function Balcao({
                 emVenda ? 'text-marca' : 'text-tinta-3/60',
               )}
             >
-              {emVenda ? 'Em venda…' : 'Caixa livre'}
+              {emVenda ? `Em ${p.venda}…` : 'Caixa livre'}
             </span>
           </div>
 
@@ -388,10 +393,10 @@ export function Balcao({
               // O vazio diz o que fazer, não só que está vazio — e com a
               // tecla, para quem ainda não sabe que ela existe.
               <div className="flex flex-col items-center gap-1.5 px-4 py-12 text-center">
-                <p className="text-sm font-semibold text-tinta">Nenhum item nesta venda</p>
+                <p className="text-sm font-semibold text-tinta">Nenhum item {p.nestaVenda}</p>
                 <p className="text-sm text-tinta-2">
                   {usaGrade && botoes && botoes.itens.length > 0 ? (
-                    'Toque num produto acima, ou bipe a etiqueta.'
+                    `Toque num ${p.produto} acima, ou bipe a etiqueta.`
                   ) : (
                     <>
                       Bipe a etiqueta, ou aperte <Tecla>Ctrl P</Tecla> e digite o nome.
@@ -514,7 +519,7 @@ export function Balcao({
                 )}
               </span>
               {carrinho.length > 0 && (
-                <LimparVenda aoLimpar={limpar} />
+                <LimparVenda aoLimpar={limpar} venda={p.venda} />
               )}
             </div>
 
@@ -766,7 +771,7 @@ export function Balcao({
 
           {sobrouSemDinheiro && (
             <Aviso nivel="critico">
-              O valor passou do total, e não há dinheiro na venda para dar troco. Ajuste o valor
+              O valor passou do total, e não há dinheiro {p.naVenda} para dar troco. Ajuste o valor
               recebido.
             </Aviso>
           )}
@@ -786,7 +791,7 @@ export function Balcao({
             disabled={!podeConcluir}
             className="py-3 text-base"
           >
-            {indo ? 'Fechando...' : 'Fechar venda'}
+            {indo ? 'Fechando...' : `Fechar ${p.venda}`}
             {!indo && (
               <kbd className="rounded bg-white/20 px-1.5 py-px font-mono text-[10px] font-semibold">F10</kbd>
             )}
@@ -802,7 +807,7 @@ export function Balcao({
  * BalcaoSimples.tsx). No avançado era um clique: apagava um carrinho de oito
  * itens com o cliente no balcão, sem volta.
  */
-function LimparVenda({ aoLimpar }: { aoLimpar: () => void }) {
+function LimparVenda({ aoLimpar, venda }: { aoLimpar: () => void; venda: string }) {
   const [certeza, setCerteza] = useState(false)
   useEffect(() => {
     if (!certeza) return
@@ -822,7 +827,7 @@ function LimparVenda({ aoLimpar }: { aoLimpar: () => void }) {
         certeza ? 'font-semibold text-critico' : 'text-tinta-3 hover:text-critico',
       )}
     >
-      {certeza ? 'clique de novo para limpar' : 'limpar venda'}
+      {certeza ? 'clique de novo para limpar' : `limpar ${venda}`}
     </button>
   )
 }

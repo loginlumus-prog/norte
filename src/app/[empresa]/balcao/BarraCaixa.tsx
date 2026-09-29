@@ -19,6 +19,8 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { Situacao, cx } from '@/ui/base'
 import { Movimento } from './Caixa'
+import { usePalavras } from './palavras'
+import { plural } from '@/ui/texto'
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const hora = (d: Date) =>
@@ -50,6 +52,7 @@ export function BarraCaixa({
    */
   compacta?: boolean
 }) {
+  const palavras = usePalavras()
   const [painel, setPainel] = useState<'SANGRIA' | 'SUPRIMENTO' | null>(null)
   const [feito, setFeito] = useState<string | null>(null)
   const [gestos, setGestos] = useState(!compacta)
@@ -73,7 +76,7 @@ export function BarraCaixa({
             caixa desde {hora(new Date(caixa.abertoEm))}
           </span>
           <span className="numero text-sm font-semibold text-tinta">
-            {conferencia.vendas} venda{conferencia.vendas === 1 ? '' : 's'}
+            {plural(conferencia.vendas, palavras.venda, palavras.vendas)}
             {veReceita && <> · {brl(conferencia.vendidoTotal)}</>}
           </span>
         </div>

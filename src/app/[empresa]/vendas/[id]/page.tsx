@@ -17,9 +17,13 @@ import type { Tema } from '@/ui/TrocaTema'
 import { Cancelar } from './Cancelar'
 import { Devolver, type ItemDevolvivel } from './Devolver'
 import { pedeInteiro, restante } from '@/servidor/devolucao'
-import { plural } from '@/ui/texto'
+import { concorda, plural } from '@/ui/texto'
+import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 
-export const metadata: Metadata = { title: 'Venda' }
+// "Atendimento" na clínica, "Recebimento" na escola (vocabulario.ts).
+export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
+  return { title: (await vocabularioDoEndereco((await params).empresa)).Venda }
+}
 
 // A ficha de uma venda.
 //
@@ -62,6 +66,8 @@ export default async function FichaVenda({
 
   const v = await acharVenda(sessao, id)
   if (!v) notFound()
+  const palavras = await vocabularioDaEmpresa(sessao.orgId)
+  const g = (feminina: string, masculina: string) => concorda(palavras, feminina, masculina)
 
   const cancelada = v.situacao === 'CANCELADA'
   const podeCancelar = !cancelada && pode(sessao, 'venda.cancelar', v.unidadeId)
@@ -114,7 +120,11 @@ export default async function FichaVenda({
       titulo: 'Qtd',
       numero: true,
       largura: '6rem',
-      celula: (i: Item) => <span className="numero">{qtd(i.quantidade, i.medida)}</span>,
+      celula: (i: Item) => (
+        <span className="numero">
+          {i.variacao?.produto.servico ? `${Number(i.quantidade).toLocaleString('pt-BR')}×` : qtd(i.quantidade, i.medida)}
+        </span>
+      ),
     },
     ...(temDevolucao
       ? [
@@ -153,11 +163,11 @@ export default async function FichaVenda({
       itens={MENU(slug)}
       ativo={`/${slug}/vendas`}
       tema={tema}
-      titulo={`Venda ${v.numero}`}
+      titulo={`${palavras.Venda} ${v.numero}`}
       acao={
         <span className="flex flex-wrap items-center gap-3">
           <Link href={`/${slug}/vendas`} className="text-sm font-medium text-tinta-2 hover:text-tinta">
-            ← todas as vendas
+            ← {g('todas as', 'todos os')} {palavras.vendas}
           </Link>
           {/* <a>: página de impressão abre inteira — ver comprovante/page.tsx. */}
           <a
@@ -169,7 +179,7 @@ export default async function FichaVenda({
           {v.cliente?.telefone && (
             <a
               href={`https://wa.me/55${v.cliente.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                `Olá, ${v.cliente.nome.split(' ')[0]}! Aqui é da ${empresa.nome}. Segue o resumo da sua compra nº ${v.numero}: ${v.itens
+                `Olá, ${v.cliente.nome.split(' ')[0]}! Aqui é da ${empresa.nome}. Segue o resumo ${g('da sua', 'do seu')} ${palavras.compra} nº ${v.numero}: ${v.itens
                   .map((i) => `${qtd(i.quantidade, i.medida)} ${i.descricao}`)
                   .join(', ')}. Total ${brl(total)}. Obrigado pela preferência!`,
               )}`}
@@ -186,7 +196,7 @@ export default async function FichaVenda({
       {cancelada && (
         <div className="flex flex-col gap-1 rounded-norte border border-critico-borda bg-critico-fundo px-4 py-3">
           <p className="flex items-center gap-2 text-sm font-bold text-critico">
-            <Situacao nivel="critico">cancelada</Situacao>
+            <Situacao nivel="critico">{g('cancelada', 'cancelado')}</Situacao>
             {v.canceladaEm && <span className="font-normal text-tinta-2">em {quando(v.canceladaEm)}</span>}
           </p>
           {v.motivoCancelamento && (
@@ -198,11 +208,11 @@ export default async function FichaVenda({
       <div className="grid gap-3 sm:grid-cols-3">
         <Numero rotulo="Total" valor={brl(total)} detalhe={quando(v.criadaEm)} principal={!cancelada} />
         <Numero
-          rotulo="Cliente"
+          rotulo={palavras.Pessoa}
           valor={v.cliente?.nome ?? 'Sem cadastro'}
-          detalhe={v.cliente?.telefone ? mostrarTelefone(v.cliente.telefone) : 'venda avulsa'}
+          detalhe={v.cliente?.telefone ? mostrarTelefone(v.cliente.telefone) : `${palavras.venda} ${g('avulsa', 'avulso')}`}
         />
-        <Numero rotulo="Vendeu" valor={v.vendedorNome ?? '—'} detalhe={v.unidade.nome} />
+        <Numero rotulo={palavras.vendeu} valor={v.vendedorNome ?? '—'} detalhe={v.unidade.nome} />
       </div>
 
       <Cartao titulo={`${v.itens.length} ${v.itens.length === 1 ? 'item' : 'itens'}`}>
@@ -373,9 +383,18 @@ export default async function FichaVenda({
               numero={v.numero}
               itens={devolviveis}
               podeDinheiro={pode(sessao, 'venda.cancelar', v.unidadeId)}
+              palavras={{ destaVenda: palavras.destaVenda, daVenda: palavras.daVenda }}
             />
           )}
-          {podeCancelar && <Cancelar slug={slug} vendaId={v.id} numero={v.numero} />}
+          {podeCancelar && (
+            <Cancelar
+              slug={slug}
+              vendaId={v.id}
+              numero={v.numero}
+              // "Cancelar este atendimento" na clínica.
+              palavras={{ estaVenda: palavras.estaVenda, aVenda: palavras.aVenda, pessoa: palavras.pessoa }}
+            />
+          )}
         </div>
       ) : null}
     </Estrutura>

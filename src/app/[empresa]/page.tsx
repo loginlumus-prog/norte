@@ -63,6 +63,7 @@ import { palavra, plural } from '@/ui/texto'
 import { IconeDoItem } from '@/ui/IconesMenu'
 import { registrarErro } from '@/servidor/registro'
 import { empresaDoEndereco, montarTitulo } from '@/servidor/titulo'
+import { vocabularioDaEmpresa, vocabularioDoRamo, type VocabularioDoRamo } from '@/servidor/vocabulario'
 import type { Metadata } from 'next'
 
 // O painel mora no MESMO segmento do layout da empresa, e o modelo de título
@@ -104,6 +105,13 @@ const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+/**
+ * Quanto saiu, no "Mais vendidos". Serviço é VEZES: a consulta foi feita 24
+ * vezes — "24 un" de consulta é a clínica lida como estoque.
+ */
+const quantasVezes = (q: number, servico: boolean) =>
+  servico ? `${q.toLocaleString('pt-BR')}×` : `${q.toLocaleString('pt-BR')} un`
 
 /**
  * As horas em que a loja vive: da primeira à última com venda, nunca menos
@@ -210,7 +218,10 @@ async function Simples({ slug, empresa, sessao, tema, onde }: Base) {
     pendenciasDoDia(sessao, empresa, onde.ids, agora),
     nichoSemDerrubar(sessao, empresa, onde.ids, agora),
   ])
-  const pendencias = montarPendencias(contagens, slug, onde.unidadeId)
+  // A clínica diz "Recebido hoje · 15 atendimentos"; a loja, "Vendido hoje ·
+  // 15 vendas". Mesmos números (ver vocabulario.ts).
+  const v = await vocabularioDaEmpresa(sessao.orgId)
+  const pendencias = montarPendencias(contagens, slug, onde.unidadeId, v)
   const passada = mesmoDiaPassado(agora)
 
   // Até a MESMA hora da semana passada (ver `resumoDeHoje`). Sem venda
@@ -229,9 +240,17 @@ async function Simples({ slug, empresa, sessao, tema, onde }: Base) {
   const comLoja = (href: string) => (onde.unidadeId ? `${href}?unidade=${onde.unidadeId}` : href)
   const atalhos: Atalho[] = (
     [
-      ['venda.criar', { chave: 'vender', href: comLoja(`/${slug}/balcao`), titulo: 'Vender', resumo: 'Abrir o balcão e registrar uma venda.' }],
-      ['estoque.ajustar', { chave: 'entrada', href: comLoja(`/${slug}/estoque`), titulo: 'Dar entrada', resumo: 'A mercadoria que chegou.' }],
-      ['produto.editar', { chave: 'produto', href: `/${slug}/produtos/novo`, titulo: 'Cadastrar produto', resumo: 'Nome, preço e código.' }],
+      ['venda.criar', { chave: 'vender', href: comLoja(`/${slug}/balcao`), titulo: v.Vender, resumo: `Abrir ${v.oBalcao} e registrar ${v.umaVenda}.` }],
+      ['estoque.ajustar', { chave: 'entrada', href: comLoja(`/${slug}/estoque`), titulo: 'Dar entrada', resumo: `${v.aMercadoria} que chegou.` }],
+      [
+        'produto.editar',
+        {
+          chave: 'produto',
+          href: `/${slug}/produtos/novo${v.produtoEhServico ? '?servico=1' : ''}`,
+          titulo: `Cadastrar ${v.produto}`,
+          resumo: v.resumoCadastro,
+        },
+      ],
       ['financeiro.lancar', { chave: 'conta', href: comLoja(`/${slug}/financeiro`), titulo: 'Lançar conta', resumo: 'Boleto, aluguel, fornecedor.' }],
       ['tarefa.gerir', { chave: 'tarefa', href: comLoja(`/${slug}/tarefas`), titulo: 'Nova tarefa', resumo: 'Para alguém da equipe.' }],
     ] satisfies [Capacidade, Atalho][]
@@ -280,9 +299,9 @@ async function Simples({ slug, empresa, sessao, tema, onde }: Base) {
               principal={
                 <Numero
                   principal
-                  rotulo="Vendido hoje"
+                  rotulo={`${v.Vendido} hoje`}
                   valor={brl(d.hoje.total)}
-                  detalhe={`${d.hoje.vendas} venda${d.hoje.vendas === 1 ? '' : 's'}`}
+                  detalhe={`${plural(d.hoje.vendas, v.venda, v.vendas)}${v.foraDoTotal ? ` · ${v.foraDoTotal}` : ''}`}
                   // "até esta hora" fica na ficha do lado, que mostra o
                   // número contra o qual a seta foi calculada.
                   comparacao={{ pct, contra: `vs ${passada}` }}
@@ -291,11 +310,15 @@ async function Simples({ slug, empresa, sessao, tema, onde }: Base) {
             >
               <Numero
                 celula
-                rotulo="Vendas"
+                rotulo={v.Contagem}
                 valor={d.hoje.vendas.toLocaleString('pt-BR')}
-                detalhe={d.hoje.ultima ? `a última às ${horaMinuto(d.hoje.ultima)}` : 'nenhuma ainda'}
+                detalhe={
+                  d.hoje.ultima
+                    ? `${v.vendaFeminina ? 'a última' : 'o último'} às ${horaMinuto(d.hoje.ultima)}`
+                    : `${v.vendaFeminina ? 'nenhuma' : 'nenhum'} ainda`
+                }
               />
-              <Numero celula rotulo="Ticket médio" valor={brl(d.hoje.ticket)} detalhe="por venda" />
+              <Numero celula rotulo={v.ticketMedio} valor={brl(d.hoje.ticket)} detalhe={`por ${v.venda}`} />
               <Numero
                 celula
                 rotulo={maiuscula(passada)}
@@ -317,7 +340,8 @@ async function Simples({ slug, empresa, sessao, tema, onde }: Base) {
           <Bloco className="order-4 lg:order-none" titulo="Hora a hora" detalhe={`Hoje contra ${passada}`}>
             {semMovimento ? (
               <p className="py-8 text-center text-sm text-tinta-3">
-                Nenhuma venda hoje, nem {passada.endsWith('o') ? 'no' : 'na'} {passada}. O gráfico aparece com a primeira.
+                {v.nenhumaVenda} hoje, nem {passada.endsWith('o') ? 'no' : 'na'} {passada}. O gráfico aparece com{' '}
+                {v.vendaFeminina ? 'a primeira' : 'o primeiro'}.
               </p>
             ) : (
               <BarrasMeses
@@ -353,13 +377,13 @@ async function Simples({ slug, empresa, sessao, tema, onde }: Base) {
             <Pendencias itens={pendencias} />
           </Bloco>
 
-          <Bloco className="order-5 lg:order-none" titulo="Mais vendidos" detalhe="Últimos 7 dias">
+          <Bloco className="order-5 lg:order-none" titulo={v.maisVendidos} detalhe="Últimos 7 dias">
             <Ranque
-              vazio="Nenhuma venda nos últimos 7 dias."
+              vazio={`${v.nenhumaVenda} nos últimos 7 dias.`}
               itens={d.maisVendidos.map((i) => ({
                 rotulo: i.descricao,
                 valor: i.total,
-                detalhe: `${i.quantidade.toLocaleString('pt-BR')} un`,
+                detalhe: quantasVezes(i.quantidade, i.servico),
               }))}
             />
           </Bloco>
@@ -394,7 +418,8 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
     pendenciasDoDia(sessao, empresa, onde.ids),
     nichoSemDerrubar(sessao, empresa, onde.ids, new Date()),
   ])
-  const pendencias = montarPendencias(contagens, slug, onde.unidadeId)
+  const v = await vocabularioDaEmpresa(sessao.orgId)
+  const pendencias = montarPendencias(contagens, slug, onde.unidadeId, v)
 
   const completo = r.plano !== 'GRATIS'
 
@@ -485,9 +510,9 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
                 principal
                 rotulo={j.rotulo}
                 valor={brl(r.atual.total)}
-                detalhe={`${r.atual.vendas} venda${r.atual.vendas === 1 ? '' : 's'}${
+                detalhe={`${plural(r.atual.vendas, v.venda, v.vendas)}${
                   r.devolucoes.valor > 0 ? ` · ${brl(r.devolucoes.valor)} devolvidos` : ''
-                }`}
+                }${v.foraDoTotal ? ` · ${v.foraDoTotal}` : ''}`}
                 comparacao={{ pct, contra: j.comparacao }}
               />
             }
@@ -499,7 +524,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
               detalhe={`em ${j.dias} dia${j.dias === 1 ? '' : 's'}`}
               nivel="bom"
             />
-            <Numero celula rotulo="Ticket médio" valor={brl(r.atual.ticket)} detalhe="por venda" />
+            <Numero celula rotulo={v.ticketMedio} valor={brl(r.atual.ticket)} detalhe={`por ${v.venda}`} />
             {verDinheiro && (
               <Numero
                 celula
@@ -526,7 +551,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
               </Bloco>
             ) : (
               <Bloco titulo="Movimento" detalhe={j.rotulo}>
-                <Barras dados={r.porDia} titulo="Vendas por dia" />
+                <Barras dados={r.porDia} titulo={`${v.Vendas} por dia`} />
               </Bloco>
             ))}
 
@@ -548,7 +573,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
               <Bloco titulo="Por hora do dia" detalhe={`Somando os dias · ${recorte}`}>
                 <BarrasMeses
                   rotulos={horas.map((h) => `${h}h`)}
-                  series={[{ nome: 'Vendido', cor: 'var(--marca)', valores: horas.map((h) => porHoraDia[h] ?? 0) }]}
+                  series={[{ nome: v.Vendido, cor: 'var(--marca)', valores: horas.map((h) => porHoraDia[h] ?? 0) }]}
                   altura={130}
                 />
               </Bloco>
@@ -563,7 +588,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
                 itens={r.porUnidade.map((u) => ({
                   rotulo: u.nome,
                   valor: u.total,
-                  detalhe: plural(u.vendas, 'venda', 'vendas'),
+                  detalhe: plural(u.vendas, v.venda, v.vendas),
                 }))}
               />
             </Bloco>
@@ -581,7 +606,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
         {/* ── QUANDO ── */}
         {completo && j.dias >= 7 && r.atual.vendas > 0 && (
           <Secao
-            titulo="Quando a loja vende"
+            titulo={v.quandoVende}
             resumo="Dia da semana contra hora do dia. É o que decide a escala da equipe e o horário de abrir."
           >
             <Bloco>
@@ -594,15 +619,15 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
           </Secao>
         )}
 
-        {/* ── PRODUTOS ── */}
-        <Secao titulo="Produtos">
+        {/* ── PRODUTOS ── ("Serviços e materiais" na clínica) */}
+        <Secao titulo={v.Produtos}>
           <div className="grid gap-4 lg:grid-cols-2">
-            <Bloco titulo="Mais vendidos" detalhe={j.rotulo}>
+            <Bloco titulo={v.maisVendidos} detalhe={j.rotulo}>
               <Ranque
                 itens={r.maisVendidos.map((i) => ({
                   rotulo: i.descricao,
                   valor: i.total,
-                  detalhe: `${i.quantidade.toLocaleString('pt-BR')} un`,
+                  detalhe: quantasVezes(i.quantidade, i.servico),
                 }))}
               />
             </Bloco>
@@ -613,7 +638,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
                   itens={r.porCategoria.map((c) => ({
                     rotulo: c.nome,
                     valor: c.total,
-                    detalhe: `${c.quantidade.toLocaleString('pt-BR')} un`,
+                    detalhe: quantasVezes(c.quantidade, c.servico),
                   }))}
                 />
               </Bloco>
@@ -717,12 +742,12 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
             }
           >
             <Faixa colunas={3}>
-              <Numero celula rotulo="Em aberto" valor={brl(fiado.emAberto)} detalhe={plural(fiado.clientesDevendo, 'cliente', 'clientes')} />
+              <Numero celula rotulo="Em aberto" valor={brl(fiado.emAberto)} detalhe={plural(fiado.clientesDevendo, v.pessoa, v.pessoas)} />
               <Numero
                 celula
                 rotulo="Vencido"
                 valor={brl(fiado.vencido)}
-                detalhe={fiado.parcelasVencidas ? `${plural(fiado.parcelasVencidas, 'parcela', 'parcelas')} · ${plural(fiado.clientesAtrasados, 'cliente', 'clientes')}` : 'ninguém atrasado'}
+                detalhe={fiado.parcelasVencidas ? `${plural(fiado.parcelasVencidas, 'parcela', 'parcelas')} · ${plural(fiado.clientesAtrasados, v.pessoa, v.pessoas)}` : 'ninguém atrasado'}
                 nivel={fiado.vencido > 0 ? 'critico' : 'bom'}
               />
               <Numero celula rotulo="Vence em 7 dias" valor={brl(fiado.aVencer7)} detalhe="para lembrar antes" />
@@ -734,12 +759,12 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
         {verEquipe && (
           <Secao titulo="Equipe">
             <div className={cx('grid gap-4 lg:grid-cols-2', temCartaoMeta && 'xl:grid-cols-3')}>
-              <Bloco titulo="Quem mais vendeu" detalhe={j.rotulo}>
+              <Bloco titulo={`Quem mais ${v.vendeu.toLowerCase()}`} detalhe={j.rotulo}>
                 <Ranque
-                  itens={r.porVendedor.map((v) => ({
-                    rotulo: v.nome,
-                    valor: v.total,
-                    detalhe: plural(v.vendas, 'venda', 'vendas'),
+                  itens={r.porVendedor.map((p) => ({
+                    rotulo: p.nome,
+                    valor: p.total,
+                    detalhe: plural(p.vendas, v.venda, v.vendas),
                   }))}
                 />
               </Bloco>
@@ -838,7 +863,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
 
         {/* ── CLIENTES ── */}
         {pode(sessao, 'cliente.ver') && (
-          <Secao titulo="Clientes">
+          <Secao titulo={v.Pessoas}>
             <Faixa colunas={completo ? 4 : 2}>
               <Numero celula rotulo="Cadastrados" valor={r.clientes.total.toLocaleString('pt-BR')} detalhe="ativos" />
               <Numero
@@ -852,7 +877,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
                 <>
                   <Numero
                     celula
-                    rotulo="Vendas com cliente"
+                    rotulo={`${v.Contagem} com ${v.pessoa}`}
                     valor={`${identificadasPct.toFixed(0)}%`}
                     detalhe={`${r.clientes.identificadas} de ${r.clientes.vendas}`}
                     nivel={identificadasPct >= 50 ? 'bom' : identificadasPct >= 20 ? 'atencao' : 'critico'}
@@ -861,14 +886,14 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
                     celula
                     rotulo="Voltaram no período"
                     valor={r.clientes.recorrentes.toLocaleString('pt-BR')}
-                    detalhe={`de ${r.clientes.pessoas} pessoa${r.clientes.pessoas === 1 ? '' : 's'} que compraram`}
+                    detalhe={`de ${plural(r.clientes.pessoas, 'pessoa', 'pessoas')} que ${v.compraram}`}
                   />
                 </>
               )}
             </Faixa>
             {completo && identificadasPct < 50 && r.clientes.vendas > 5 && (
               <p className="text-xs text-tinta-3">
-                Venda sem cliente escolhido é histórico que não existe. Quanto mais vendas com nome, mais o
+                {v.Venda} sem {v.pessoa} escolhido é histórico que não existe. Quanto mais {v.vendas} com nome, mais o
                 sistema consegue dizer quem sumiu e quem voltou.
               </p>
             )}
@@ -998,6 +1023,7 @@ function BlocoDoRamo({
     ) : bloco.familia === 'agenda' ? (
       <AgendaDoRamo
         dados={bloco.dados}
+        v={vocabularioDoRamo(bloco.ramo)}
         agenda={
           pode(sessao, 'agenda.ver', bloco.unidadeId ?? undefined)
             ? `/${slug}/agenda${bloco.unidadeId ? `?unidade=${bloco.unidadeId}` : ''}`
@@ -1039,12 +1065,15 @@ function BlocoDoRamo({
  */
 function AgendaDoRamo({
   dados,
+  v,
   agenda,
   mensalidades,
   turmas,
   varias,
 }: {
   dados: DadosAgenda
+  /** As palavras do ramo do bloco: "Recebido na recepção", "15 atendimentos". */
+  v: VocabularioDoRamo
   agenda: string | null
   mensalidades?: string | null
   turmas?: string | null
@@ -1198,7 +1227,7 @@ function AgendaDoRamo({
         </Peca>
       )}
 
-      <Peca titulo="Hoje até agora" detalhe="O que foi atendido e o que entrou pelo balcão">
+      <Peca titulo="Hoje até agora" detalhe={`O que foi atendido e o que entrou ${v.peloBalcao}`}>
         <dl className="grid grid-cols-2 gap-3 text-sm">
           {a && (
             <>
@@ -1214,13 +1243,14 @@ function AgendaDoRamo({
               </div>
             </>
           )}
+          {/* O número de cobranças vai embaixo do valor, e não numa ficha
+              própria: ao lado de "Atendidos" (os horários da agenda), uma
+              ficha "Atendimentos" (as cobranças) seriam dois números com o
+              mesmo nome. */}
           <div className="flex flex-col">
-            <dt className="text-xs text-tinta-3">Recebido no balcão</dt>
+            <dt className="text-xs text-tinta-3">Recebido {v.noBalcao}</dt>
             <dd className="numero text-lg font-bold text-tinta">{brl(dados.recebido.total)}</dd>
-          </div>
-          <div className="flex flex-col">
-            <dt className="text-xs text-tinta-3">Vendas</dt>
-            <dd className="numero text-lg font-bold text-tinta">{dados.recebido.vendas}</dd>
+            <dd className="text-xs text-tinta-3">{plural(dados.recebido.vendas, v.venda, v.vendas)}</dd>
           </div>
         </dl>
         {dados.trabalhando && (

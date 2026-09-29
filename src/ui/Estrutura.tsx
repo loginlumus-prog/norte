@@ -27,7 +27,7 @@ import { resumoDaBarra } from '@/servidor/assinatura'
 import type { ReactNode } from 'react'
 import { CAPACIDADES, pode, type Capacidade, type Sessao } from '@/servidor/permissao'
 import { moduloLigado, type Modulo } from '@/servidor/modulos'
-import { vocabularioDaEmpresa, nomesNoGuia, type PalavraDoMenu } from '@/servidor/vocabulario'
+import { vocabularioDaEmpresa, nomesNoGuia, nomeDoGrupo, type PalavraDoMenu } from '@/servidor/vocabulario'
 import { sairAcao } from '@/app/[empresa]/acoes'
 import { TRANCA_MIN, AVISO_SEG } from '@/servidor/presenca'
 import { TrocaTema, type Tema } from './TrocaTema'
@@ -116,13 +116,18 @@ export async function Estrutura({
   // Três perguntas: "esta pessoa pode?", "esta empresa usa?" e "este
   // aparelho está no modo que mostra isto?". A terceira nunca esconde a tela
   // aberta agora — ver `noModo`.
-  // O nome do cadastro de pessoas, do balcão e do catálogo é a palavra do
-  // ramo ("Pacientes", "Recepção", "Serviços e materiais").
+  // O nome do cadastro de pessoas, do balcão, da lista de vendas e do
+  // catálogo é a palavra do ramo ("Pacientes", "Recepção", "Recebimentos",
+  // "Serviços e materiais") — e o do grupo "Vender" também.
   const vocab = await vocabularioDaEmpresa(sessao.orgId)
   const visiveis = noModo(
     itens
       .filter((i) => podeVerItem(sessao, i) && itemNaEmpresa(i, empresa))
-      .map((i) => (i.vocabulario ? { ...i, titulo: vocab[i.vocabulario] } : i)),
+      .map((i) => ({
+        ...i,
+        titulo: i.vocabulario ? vocab[i.vocabulario] : i.titulo,
+        grupo: i.grupo && nomeDoGrupo(i.grupo, vocab),
+      })),
     modo,
     ativo,
   )

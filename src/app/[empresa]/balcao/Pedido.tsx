@@ -27,10 +27,12 @@ import { brl, cent, linhaCent, notasSugeridas, passoAtual, precoDe } from './con
 import { FORMAS, tituloDaForma, type Linha, type Venda } from './useVenda'
 import { fracionado, partesDaDescricao, UNIDADE } from './vitrine'
 import { plural } from '@/ui/texto'
+import { usePalavras } from './palavras'
 
 /* ── os itens ─────────────────────────────────────────────── */
 
 export function Itens({ v }: { v: Venda }) {
+  const p = usePalavras()
   if (v.carrinho.length === 0) {
     return (
       // Deitado, e não em pé: o vazio é o estado mais comum do balcão (toda
@@ -44,8 +46,8 @@ export function Itens({ v }: { v: Venda }) {
           </svg>
         </span>
         <span className="flex flex-col">
-          <span className="text-base font-semibold text-tinta">Pedido vazio</span>
-          <span className="text-sm text-tinta-2">Toque num produto ou bipe a etiqueta.</span>
+          <span className="text-base font-semibold text-tinta">{p.Pedido} vazio</span>
+          <span className="text-sm text-tinta-2">Toque num {p.produto} ou bipe a etiqueta.</span>
         </span>
       </div>
     )
@@ -298,6 +300,7 @@ export function Pagamento({
   /** Crediário sem cliente: em vez de recusar, abre a escolha de cliente. */
   aoPedirCliente: () => void
 }) {
+  const palavras = usePalavras()
   const c = v.conta
   const semItens = v.carrinho.length === 0
   const formas = v.pagos.filter((p) => p.forma !== 'VALE')
@@ -638,7 +641,7 @@ export function Pagamento({
 
           {c.sobrouSemDinheiro && (
             <Aviso nivel="critico">
-              O valor passou do total, e não há dinheiro na venda para dar troco. Ajuste o valor.
+              O valor passou do total, e não há dinheiro {palavras.naVenda} para dar troco. Ajuste o valor.
             </Aviso>
           )}
 
@@ -651,11 +654,12 @@ export function Pagamento({
 /* ── concluir ─────────────────────────────────────────────── */
 
 export function Concluir({ v, caixaId }: { v: Venda; caixaId: string | null }) {
+  const p = usePalavras()
   const c = v.conta
   const motivo = !caixaId
     ? 'O caixa está fechado.'
     : v.carrinho.length === 0
-      ? 'Toque num produto para começar.'
+      ? `Toque num ${p.produto} para começar.`
       : v.pagos.length === 0
         ? 'Escolha como o cliente vai pagar.'
         : c.sobrouSemDinheiro
@@ -688,7 +692,7 @@ export function Concluir({ v, caixaId }: { v: Venda; caixaId: string | null }) {
         aria-describedby={motivo ? 'motivo-concluir' : undefined}
         className="min-h-16 rounded-xl text-lg shadow-norte"
       >
-        {v.indo ? 'Concluindo…' : 'Concluir venda'}
+        {v.indo ? 'Concluindo…' : `Concluir ${p.venda}`}
         {!v.indo && (
           <kbd className="hidden rounded bg-white/20 px-1.5 py-px font-mono text-[11px] font-semibold sm:inline">F10</kbd>
         )}
@@ -706,6 +710,7 @@ export function Concluir({ v, caixaId }: { v: Venda; caixaId: string | null }) {
 
 export function Sucesso({ v, aoNova }: { v: Venda; aoNova: () => void }) {
   const f = v.fechada
+  const p = usePalavras()
   const nova = useRef<HTMLButtonElement>(null)
   // O foco vai para "Nova venda": Enter começa a próxima, e o leitor de
   // código de barras, se bipar direto, cai na busca pela regra 10.
@@ -728,7 +733,7 @@ export function Sucesso({ v, aoNova }: { v: Venda; aoNova: () => void }) {
       </span>
 
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-extrabold">Venda concluída</h2>
+        <h2 className="text-2xl font-extrabold">{p.vendaConcluida}</h2>
         <p className="text-sm text-tinta-2">
           Nº <span className="numero">{f.numero}</span> · {formas}
         </p>
@@ -747,7 +752,7 @@ export function Sucesso({ v, aoNova }: { v: Venda; aoNova: () => void }) {
 
       <div className="grid w-full gap-2">
         <Botao botaoRef={nova} largo onClick={aoNova} className="min-h-14 rounded-xl text-base">
-          Nova venda
+          {p.novaVenda}
         </Botao>
         <a
           href={f.comprovante}

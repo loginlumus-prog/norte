@@ -34,6 +34,7 @@ import { Produtos } from './Produtos'
 import { Itens, Total, Pagamento, Concluir, Sucesso } from './Pedido'
 import { MaisOpcoes, opcoesEmUso } from './MaisOpcoes'
 import { Folha } from './Folha'
+import { usePalavras } from './palavras'
 
 const CHAVE_TELA_CHEIA = 'norte:balcao:tela-cheia'
 
@@ -175,6 +176,8 @@ export function BalcaoSimples({
   const abrirOpcoes = () => setOpcoes({ aberta: true, cliente: 0, vendedor: false })
   const pedirCliente = () => setOpcoes((o) => ({ aberta: true, cliente: o.cliente + 1, vendedor: false }))
 
+  const p = usePalavras()
+
   function novaVenda() {
     v.setFechada(null)
     v.setRecado(null)
@@ -185,7 +188,7 @@ export function BalcaoSimples({
   // O anúncio para quem usa leitor de tela. Fica montado sempre — região viva
   // que nasce junto com o texto não é lida por todos os leitores.
   const anuncio = v.fechada
-    ? `Venda ${v.fechada.numero} concluída, ${brl(v.fechada.total)}.${v.fechada.trocoCent > 0 ? ` Troco: ${brl(v.fechada.trocoCent / 100)}.` : ''}`
+    ? `${p.Venda} ${v.fechada.numero} ${p.vendaFeminina ? 'concluída' : 'concluído'}, ${brl(v.fechada.total)}.${v.fechada.trocoCent > 0 ? ` Troco: ${brl(v.fechada.trocoCent / 100)}.` : ''}`
     : ''
 
   const pedido = (
@@ -228,7 +231,9 @@ export function BalcaoSimples({
       {v.voltou !== null && v.carrinho.length > 0 && !v.incerta && (
         <Aviso nivel="atencao">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>Recuperamos a venda que estava sendo montada {faz(v.voltou)}.</span>
+            <span>
+              Recuperamos {p.aVenda} que estava sendo {p.vendaFeminina ? 'montada' : 'montado'} {faz(v.voltou)}.
+            </span>
             <button type="button" onClick={v.limpar} className="font-semibold underline underline-offset-2">
               Não é essa — começar do zero
             </button>
@@ -244,7 +249,7 @@ export function BalcaoSimples({
               Cobrando o horário de <b className="font-semibold">{v.cobrando}</b>. Ao concluir, ele fica como atendido na Agenda.
             </span>
             <button type="button" onClick={v.tirarHorario} className="font-semibold underline underline-offset-2">
-              Tirar o horário desta venda
+              Tirar o horário {p.destaVenda}
             </button>
           </span>
         </Aviso>
@@ -286,9 +291,9 @@ export function BalcaoSimples({
         >
           <span className="flex flex-col items-start leading-tight">
             <span className="text-xs font-semibold opacity-80">
-              {v.fechada ? 'Venda concluída' : v.carrinho.length === 0 ? 'Pedido vazio' : `${v.itensNaVenda} ${v.itensNaVenda === 1 ? 'item' : 'itens'}`}
+              {v.fechada ? p.vendaConcluida : v.carrinho.length === 0 ? `${p.Pedido} vazio` : `${v.itensNaVenda} ${v.itensNaVenda === 1 ? 'item' : 'itens'}`}
             </span>
-            <span className="text-base font-bold">{v.fechada ? 'Ver o troco' : 'Ver pedido e pagar'}</span>
+            <span className="text-base font-bold">{v.fechada ? 'Ver o troco' : `Ver ${p.Pedido.toLowerCase()} e pagar`}</span>
           </span>
           <span className="numero text-2xl font-extrabold">{brl(v.conta.aPagarCent / 100)}</span>
         </button>
@@ -298,7 +303,7 @@ export function BalcaoSimples({
         <Folha
           aberta={pedidoAberto}
           aoFechar={() => setPedidoAberto(false)}
-          titulo={v.fechada ? 'Venda concluída' : 'Pedido'}
+          titulo={v.fechada ? p.vendaConcluida : p.Pedido}
           inteira
           rodape={v.fechada ? undefined : <Concluir v={v} caixaId={caixaId} />}
         >
@@ -349,6 +354,7 @@ function CabecaDoPedido({
     'inline-flex min-h-8 items-center gap-1.5 rounded-full bg-superficie-2 pr-1 pl-3 text-xs font-semibold text-tinta-2'
   const tirar = 'flex size-6 items-center justify-center rounded-full text-tinta-3 hover:bg-superficie-3 hover:text-tinta'
   const temEtiqueta = !!v.cliente || v.desconto > 0 || v.observacoes.trim() !== ''
+  const p = usePalavras()
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
@@ -379,8 +385,8 @@ function CabecaDoPedido({
         <div className="flex flex-wrap gap-1.5">
           {v.cliente && (
             <span className={etiqueta}>
-              Cliente: <span className="text-tinta">{v.cliente.nome}</span>
-              <button type="button" onClick={() => v.setCliente(null)} aria-label="Tirar o cliente" className={tirar}>
+              {p.Pessoa}: <span className="text-tinta">{v.cliente.nome}</span>
+              <button type="button" onClick={() => v.setCliente(null)} aria-label={`Tirar o ${p.pessoa}`} className={tirar}>
                 ✕
               </button>
             </span>
@@ -458,6 +464,7 @@ function PainelDoPedido({
   aoPedirCliente: () => void
   aoNova: () => void
 }) {
+  const p = usePalavras()
   return (
     // A coluna inteira rola, com o cabeçalho preso em cima e o pagamento preso
     // embaixo. Os itens ficam no meio e encolhem primeiro; se nem o pagamento
@@ -478,7 +485,7 @@ function PainelDoPedido({
               aoOpcoes={aoOpcoes}
               titulo={
                 <h2 className="flex min-w-0 items-baseline gap-2 text-lg font-bold">
-                  Pedido
+                  {p.Pedido}
                   {v.itensNaVenda > 0 && (
                     <span className="numero text-sm font-semibold text-tinta-3">
                       {v.itensNaVenda} {v.itensNaVenda === 1 ? 'item' : 'itens'}

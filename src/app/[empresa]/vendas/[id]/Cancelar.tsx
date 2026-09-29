@@ -10,7 +10,18 @@ import { semApagar } from '@/ui/formulario'
 // Um botão vermelho solto ao lado de "imprimir" é como se cancela venda sem
 // querer — e venda cancelada sem querer é estoque errado e cliente confuso.
 
-export function Cancelar({ slug, vendaId, numero }: { slug: string; vendaId: string; numero: number }) {
+export function Cancelar({
+  slug,
+  vendaId,
+  numero,
+  palavras,
+}: {
+  slug: string
+  vendaId: string
+  numero: number
+  /** As palavras do ramo — "este atendimento", "o paciente" (servidor/vocabulario.ts). */
+  palavras: { estaVenda: string; aVenda: string; pessoa: string }
+}) {
   const [aberto, setAberto] = useState(false)
   const [estado, agir, pendente] = useActionState<EstadoCancelamento, FormData>(cancelarAcao, {})
 
@@ -23,7 +34,7 @@ export function Cancelar({ slug, vendaId, numero }: { slug: string; vendaId: str
         onClick={() => setAberto(true)}
         className="text-sm font-medium text-critico underline-offset-2 hover:underline"
       >
-        Cancelar esta venda
+        Cancelar {palavras.estaVenda}
       </button>
     )
   }
@@ -34,9 +45,11 @@ export function Cancelar({ slug, vendaId, numero }: { slug: string; vendaId: str
       <input type="hidden" name="venda" value={vendaId} />
 
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-bold text-tinta">Cancelar a venda {numero}?</p>
+        <p className="text-sm font-bold text-tinta">
+          Cancelar {palavras.aVenda} {numero}?
+        </p>
         <p className="text-[13px] leading-relaxed text-tinta-2">
-          O estoque volta e os pontos do cliente voltam. <b>O dinheiro não volta sozinho</b> — se foi
+          O estoque volta e os pontos do {palavras.pessoa} voltam. <b>O dinheiro não volta sozinho</b> — se foi
           Pix ou cartão, devolver é com você, e o motivo aqui é o que vai explicar isso no livro.
         </p>
       </div>

@@ -18,6 +18,14 @@ export function plural(n: number, um: string, varios: string): string {
 }
 
 /**
+ * A palavra que concorda com a venda do ramo: "concluída" na loja, "concluído"
+ * na clínica, que registra ATENDIMENTO (ver servidor/vocabulario.ts).
+ */
+export function concorda(v: { vendaFeminina: boolean }, feminina: string, masculina: string): string {
+  return v.vendaFeminina ? feminina : masculina
+}
+
+/**
  * Quanto tempo, do jeito que se fala: "40 min", "14 horas", "11 dias".
  *
  * O painel dizia "Caixa aberto há 286 horas" enquanto a tela do caixa dizia

@@ -34,6 +34,7 @@ import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
 import { vendidoNaLoja } from '@/servidor/catalogo-loja'
 import { plural } from '@/ui/texto'
+import { usePalavras } from './palavras'
 import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
 export type Pago = { forma: string; valor: number; referencia?: string; rotulo?: string; parcelas?: number }
@@ -125,6 +126,8 @@ export function useVenda({
   vendedores: Vendedor[] | null
   crediario: { maxParcelas: number } | null
 }) {
+  // Os recados falam a palavra do ramo: "Atendimento 12 fechado" na recepção.
+  const palavras = usePalavras()
   const [termo, setTermo] = useState('')
   // Os resultados guardam o termo que os trouxe: é o que deixa o Enter saber
   // se a lista na tela é deste código ou do anterior.
@@ -348,7 +351,7 @@ export function useVenda({
     if (novaQtd > a.saldo) {
       setAlerta(
         a.saldo <= 0
-          ? `${a.descricao} está sem estoque nesta loja. A venda não vai fechar assim.`
+          ? `${a.descricao} está sem estoque nesta loja. ${palavras.aVenda.replace(/^./, (x) => x.toUpperCase())} não vai fechar assim.`
           : `Estoque de ${a.descricao}: ${a.saldo}. Você lançou ${novaQtd}. Confira a peça.`,
       )
     }
@@ -597,8 +600,8 @@ export function useVenda({
         setIncerta(true)
         setRecado({
           nivel: 'critico',
-          texto: 'A conexão caiu enquanto a venda era concluída. Confira em Vendas se ela entrou antes de concluir de novo.',
-          link: { href: `/${slug}/vendas`, rotulo: 'abrir Vendas' },
+          texto: `A conexão caiu enquanto ${palavras.aVenda} era ${palavras.vendaFeminina ? 'concluída' : 'concluído'}. Confira em ${palavras.Vendas} se ${palavras.vendaFeminina ? 'ela' : 'ele'} entrou antes de concluir de novo.`,
+          link: { href: `/${slug}/vendas`, rotulo: `abrir ${palavras.Vendas}` },
         })
         return
       }
@@ -614,7 +617,7 @@ export function useVenda({
         const comprovante = `/${slug}/vendas/${r.vendaId}/comprovante?imprimir=1`
         setRecado({
           nivel: 'bom',
-          texto: `Venda ${r.numero} fechada — ${brl(r.total)}${ganhou}`,
+          texto: `${palavras.Venda} ${r.numero} ${palavras.vendaFeminina ? 'fechada' : 'fechado'} — ${brl(r.total)}${ganhou}`,
           link: { href: comprovante, rotulo: 'imprimir comprovante' },
         })
         setFechada({
@@ -706,7 +709,7 @@ export function useVenda({
         setCarrinho((c) => c.filter((l) => l.avulso || !deUso.has(l.descricao)))
         setAviso(`Saiu do pedido: ${r.itens.join(', ')} — é material de uso, não se vende. Confira o total e conclua de novo.`)
       } else {
-        setRecado({ nivel: 'critico', texto: 'Não deu para fechar a venda.' })
+        setRecado({ nivel: 'critico', texto: `Não deu para fechar ${palavras.aVenda}.` })
       }
     })
   }

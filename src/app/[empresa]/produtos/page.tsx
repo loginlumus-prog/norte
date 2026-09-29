@@ -7,7 +7,7 @@ import { comoOrg } from '@/servidor/banco'
 import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { pode, textoDaBusca, unidadesQuePodem } from '@/servidor/permissao'
 import { podeVerCustoDe, saldoNaVista } from '@/servidor/produto'
-import { palavra } from '@/ui/texto'
+import { palavra, plural } from '@/ui/texto'
 import { VoltarAVenda } from './VoltarAVenda'
 import { Estrutura } from '@/ui/Estrutura'
 import { Cartao, Situacao, Vazio, Ponto, cx } from '@/ui/base'
@@ -83,6 +83,8 @@ export default async function Produtos({
   // ordenação, planilha. Filtro já escolhido continua à vista, senão a
   // pessoa que veio por um link não saberia por que a lista está curta.
   const simples = (await lerModo()) === 'simples'
+  // "Serviços e materiais", "+ Novo serviço ou material" na clínica (vocabulario.ts).
+  const vocab = await vocabularioDaEmpresa(sessao.orgId)
 
   // O estoque é por loja. Sem este filtro, a tela somaria o saldo das duas e
   // o balconista da Loja Centro veria peça que está no Shopping.
@@ -272,7 +274,7 @@ export default async function Produtos({
       itens={MENU(slug)}
       ativo={`/${slug}/produtos`}
       tema={tema}
-      titulo={(await vocabularioDaEmpresa(sessao.orgId)).Produtos}
+      titulo={vocab.Produtos}
       acao={
         <span className="flex flex-wrap items-center gap-2">
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
@@ -299,7 +301,7 @@ export default async function Produtos({
               href={`/${slug}/produtos/novo`}
               className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"
             >
-              + Novo produto
+              + {vocab.novoProduto}
             </Link>
           )}
         </span>
@@ -382,7 +384,7 @@ export default async function Produtos({
             rotulo="Ordenar por"
             opcoes={[
               { valor: null, rotulo: 'nome' },
-              { valor: 'vendidos', rotulo: 'mais vendidos (30 dias)' },
+              { valor: 'vendidos', rotulo: `${vocab.maisVendidos.toLowerCase()} (30 dias)` },
               { valor: 'estoque', rotulo: 'mais estoque' },
               { valor: 'preco', rotulo: 'maior preço' },
             ]}
@@ -421,7 +423,7 @@ export default async function Produtos({
               ) : undefined
             }
           >
-            Nenhum produto cadastrado ainda.
+            Nenhum {vocab.produto} cadastrado ainda.
           </Vazio>
         </Cartao>
       )}
@@ -503,7 +505,15 @@ export default async function Produtos({
                   <span title="Tem estoque e entra em compras e no material usado; não aparece no balcão">material de uso — não vende</span>
                 ) : !simples ? (
                   <span className="numero" title="Vendido nos últimos 30 dias, nesta loja">
-                    {vendeu ? `${quantidade(vendeu, p.medida)} ${palavra(vendeu, 'vendido', 'vendidos')} em 30 dias` : 'sem venda em 30 dias'}
+                    {/* Serviço conta VEZES: a consulta foi feita 35 vezes, não
+                        saíram "35 un" dela. */}
+                    {p.servico
+                      ? vendeu
+                        ? `${plural(vendeu, 'vez', 'vezes')} em 30 dias`
+                        : 'nenhuma vez em 30 dias'
+                      : vendeu
+                        ? `${quantidade(vendeu, p.medida)} ${palavra(vendeu, 'vendido', 'vendidos')} em 30 dias`
+                        : 'sem venda em 30 dias'}
                   </span>
                 ) : null}
                 {!simples && p.feitoNoDia && <span title="A sobra sai ao fechar; zerado não é falta">feito no dia</span>}

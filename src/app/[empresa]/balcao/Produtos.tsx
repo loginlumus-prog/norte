@@ -46,6 +46,7 @@ import {
   type VariacaoNaVitrine,
 } from './vitrine'
 import { Folha } from './Folha'
+import { usePalavras } from './palavras'
 import { LerBalanca } from './Balanca'
 import {
   digitarNoPeso,
@@ -98,6 +99,8 @@ export function Produtos({
   telaCheia: boolean
   aoTelaCheia: () => void
 }) {
+  // "Toque num serviço", "Cadastrar serviços" — a palavra do ramo (palavras.tsx).
+  const palavras = usePalavras()
   const [categoriaId, setCategoriaId] = useState<string | null>(null)
   const [categorias, setCategorias] = useState<Categoria[] | null>(null)
   // A página é guardada com a chave de quem a pediu. "Carregando" é a chave
@@ -249,7 +252,7 @@ export function Produtos({
   const deFora = v.achados.find((a) => a.foraDaLoja)
 
   return (
-    <section aria-label="Produtos" className="flex min-h-0 min-w-0 flex-col gap-3">
+    <section aria-label={palavras.Produtos} className="flex min-h-0 min-w-0 flex-col gap-3">
       {barra}
       {/* ── a busca ── */}
       <div className="flex items-stretch gap-2">
@@ -281,7 +284,7 @@ export function Produtos({
             enterKeyHint="search"
             autoComplete="off"
             placeholder="Buscar ou bipar o código"
-            aria-label="Buscar produto ou bipar o código (Ctrl+P)"
+            aria-label={`Buscar ${palavras.produto} ou bipar o código (Ctrl+P)`}
             className={cx(
               'h-14 w-full rounded-2xl border border-borda bg-superficie pr-4 pl-12 text-lg text-tinta shadow-norte',
               'placeholder:text-tinta-3 focus:border-marca focus:outline-none sm:pr-20',
@@ -316,7 +319,7 @@ export function Produtos({
           type="button"
           onClick={aoTelaCheia}
           aria-pressed={telaCheia}
-          title={telaCheia ? 'Sair da tela cheia' : 'Tela cheia: só a venda na tela'}
+          title={telaCheia ? 'Sair da tela cheia' : `Tela cheia: só ${palavras.aVenda} na tela`}
           className="flex h-14 shrink-0 items-center gap-2 rounded-2xl border border-borda bg-superficie px-4 text-sm font-semibold text-tinta-2 shadow-norte hover:bg-superficie-2 hover:text-tinta"
         >
           <svg aria-hidden viewBox="0 0 20 20" className="size-5" fill="none">
@@ -482,7 +485,7 @@ export function Produtos({
           </Grade>
         ) : falhou === chave ? (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-borda px-6 py-12 text-center">
-            <p className="text-base font-semibold text-tinta">Não deu para trazer os produtos agora.</p>
+            <p className="text-base font-semibold text-tinta">Não deu para trazer os {palavras.produtos} agora.</p>
             <p className="text-sm text-tinta-2">A busca continua funcionando. Tente de novo em instantes.</p>
             <Botao
               tom="secundario"
@@ -497,10 +500,12 @@ export function Produtos({
         ) : pagina && pagina.produtos.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-borda px-6 py-12 text-center">
             <p className="text-base font-semibold text-tinta">
-              {categoriaId ? 'Nenhum produto ativo nesta categoria.' : 'Ainda não há produto ativo para vender.'}
+              {categoriaId
+                ? `Nenhum ${palavras.produto} ativo nesta categoria.`
+                : `Ainda não há ${palavras.produto} ativo para ${palavras.vender}.`}
             </p>
             <a href={`/${slug}/produtos`} className="text-sm font-semibold text-marca underline-offset-2 hover:underline">
-              Cadastrar produtos
+              Cadastrar {palavras.produtos}
             </a>
           </div>
         ) : (
@@ -538,7 +543,7 @@ export function Produtos({
             {pagina?.mais && (
               <div className="flex justify-center pt-4">
                 <Botao tom="secundario" onClick={mostrarMais} carregando={maisIndo} className="min-h-12 px-6 text-base">
-                  Mostrar mais produtos
+                  Mostrar mais {palavras.produtos}
                 </Botao>
               </div>
             )}

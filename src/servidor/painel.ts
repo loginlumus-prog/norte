@@ -25,6 +25,13 @@ import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
 
 export type PontoDoDia = { dia: string; total: number; vendas: number }
 
+/**
+ * Um item do "Mais vendidos". `servico` diz se é serviço do catálogo: a
+ * consulta foi feita 24 vezes, não são "24 un" de consulta. Item avulso
+ * (fora do catálogo) conta como mercadoria, que é como sempre apareceu.
+ */
+export type MaisVendido = { descricao: string; quantidade: number; total: number; servico: boolean }
+
 export type Resumo = {
   plano: Plano
   /** O periodo escolhido. Tudo abaixo e dele, menos o que diz o contrario. */
@@ -42,10 +49,11 @@ export type Resumo = {
   /** dia da semana (0 = domingo) × hora (0-23), em reais. */
   porHora: number[][]
   porForma: { forma: string; total: number; vendas: number }[]
-  porCategoria: { nome: string; total: number; quantidade: number }[]
+  /** `servico`: só serviço na categoria — a quantidade vira "24×", não "24 un". */
+  porCategoria: { nome: string; total: number; quantidade: number; servico: boolean }[]
   porUnidade: { unidadeId: string; nome: string; total: number; vendas: number }[]
   porVendedor: { nome: string; total: number; vendas: number }[]
-  maisVendidos: { descricao: string; quantidade: number; total: number }[]
+  maisVendidos: MaisVendido[]
   parados: { descricao: string; codigo: string | null; saldo: number; desde: number | null }[]
   acabando: { descricao: string; codigo: string | null; saldo: number; minimo: number }[]
   /** `unidades` é só o que se conta (un, par, cx); peso e medida à parte. */
@@ -152,8 +160,9 @@ export async function resumoDoPainel(
          and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
        group by 1 order by 2 desc
     `
-    const porCategoria = await db.$queryRaw<{ nome: string; total: string; quantidade: string }[]>`
-      select coalesce(c.nome, 'Sem categoria') as nome, sum(i.total) as total, sum(i.quantidade) as quantidade
+    const porCategoria = await db.$queryRaw<{ nome: string; total: string; quantidade: string; servico: boolean }[]>`
+      select coalesce(c.nome, 'Sem categoria') as nome, sum(i.total) as total, sum(i.quantidade) as quantidade,
+             bool_and(coalesce(p.servico, false)) as servico
         from venda_itens i
         join vendas v on v.id = i.venda_id
         left join variacoes va on va.id = i.variacao_id
@@ -181,10 +190,13 @@ export async function resumoDoPainel(
          and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
        group by 1 order by 2 desc limit 8
     `
-    const maisVendidos = await db.$queryRaw<{ descricao: string; quantidade: string; total: string }[]>`
-      select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total
+    const maisVendidos = await db.$queryRaw<{ descricao: string; quantidade: string; total: string; servico: boolean }[]>`
+      select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total,
+             bool_and(coalesce(p.servico, false)) as servico
         from venda_itens i
         join vendas v on v.id = i.venda_id
+        left join variacoes va on va.id = i.variacao_id
+        left join produtos p on p.id = va.produto_id
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
          and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
        group by 1 order by 3 desc limit 8
@@ -317,13 +329,13 @@ export async function resumoDoPainel(
       ),
       porHora: calor,
       porForma: porForma.map((f) => ({ forma: f.forma, total: n(f.total), vendas: n(f.vendas) })),
-      porCategoria: porCategoria.map((c) => ({ nome: c.nome, total: n(c.total), quantidade: n(c.quantidade) })),
+      porCategoria: porCategoria.map((c) => ({ nome: c.nome, total: n(c.total), quantidade: n(c.quantidade), servico: !!c.servico })),
       porUnidade: porUnidade.map((u) => ({
         unidadeId: u.unidadeId, nome: u.nome, total: n(u.total), vendas: n(u.vendas),
       })),
       porVendedor: porVendedor.map((v) => ({ nome: v.nome, total: n(v.total), vendas: n(v.vendas) })),
       maisVendidos: maisVendidos.map((i) => ({
-        descricao: i.descricao, quantidade: n(i.quantidade), total: n(i.total),
+        descricao: i.descricao, quantidade: n(i.quantidade), total: n(i.total), servico: !!i.servico,
       })),
       parados: paradosBrutos.map((p) => ({
         descricao: p.descricao, codigo: p.codigo, saldo: n(p.saldo), desde: p.dias,
@@ -380,7 +392,7 @@ export type ResumoDeHoje = {
   porHora: number[]
   porHoraSemanaPassada: number[]
   /** Os cinco que mais venderam nos últimos 7 dias, em reais. */
-  maisVendidos: { descricao: string; quantidade: number; total: number }[]
+  maisVendidos: MaisVendido[]
 }
 
 export async function resumoDeHoje(
@@ -440,10 +452,13 @@ export async function resumoDeHoje(
     const porHoraPassada = await horaSql(dePassada, atePassada)
     // Sete dias e não hoje: às 10h a lista de hoje tem dois itens e muda a
     // cada venda. A da semana é a que diz o que repor e o que pôr na vitrine.
-    const maisVendidos = await db.$queryRaw<{ descricao: string; quantidade: string; total: string }[]>`
-      select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total
+    const maisVendidos = await db.$queryRaw<{ descricao: string; quantidade: string; total: string; servico: boolean }[]>`
+      select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total,
+             bool_and(coalesce(p.servico, false)) as servico
         from venda_itens i
         join vendas v on v.id = i.venda_id
+        left join variacoes va on va.id = i.variacao_id
+        left join produtos p on p.id = va.produto_id
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
          and v.criada_em >= ${semana.de} and v.criada_em < ${semana.ate}
        group by 1 order by 3 desc limit 5
@@ -466,7 +481,7 @@ export async function resumoDeHoje(
       porHora: porHoras(porHora),
       porHoraSemanaPassada: porHoras(porHoraPassada),
       maisVendidos: maisVendidos.map((i) => ({
-        descricao: i.descricao, quantidade: n(i.quantidade), total: n(i.total),
+        descricao: i.descricao, quantidade: n(i.quantidade), total: n(i.total), servico: !!i.servico,
       })),
     }
   })

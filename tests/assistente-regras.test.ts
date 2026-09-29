@@ -281,7 +281,7 @@ describe('o texto das rotinas', () => {
       resumo: {
         atual: { vendas: 3, total: 300, ticket: 100, custo: 0 },
         anterior: { vendas: 2, total: 200 },
-        maisVendidos: [{ descricao: 'Blusa', quantidade: 5, total: 300 }],
+        maisVendidos: [{ descricao: 'Blusa', quantidade: 5, total: 300, servico: false }],
         porUnidade: [],
       },
       contas: { vencidas: 1, totalVencido: 50, hoje: 0 },

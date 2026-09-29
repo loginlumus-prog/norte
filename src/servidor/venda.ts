@@ -1179,7 +1179,11 @@ export async function acharVenda(sessao: Sessao, vendaId: string) {
       include: {
         itens: {
           orderBy: { id: 'asc' },
-          include: { devolucoes: { select: { quantidade: true } } },
+          // `servico`: a ficha mostra "1×" para a consulta, e não "1 un".
+          include: {
+            devolucoes: { select: { quantidade: true } },
+            variacao: { select: { produto: { select: { servico: true } } } },
+          },
         },
         pagamentos: {
           orderBy: { criadoEm: 'asc' },

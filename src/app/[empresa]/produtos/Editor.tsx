@@ -83,6 +83,7 @@ export function Editor({
   sugestao,
   marcas,
   produto,
+  servicoPadrao = false,
 }: {
   slug: string
   eixos: EixoNaTela[]
@@ -99,6 +100,8 @@ export function Editor({
   marcas?: Record<string, { usoInterno: boolean; feitoNoDia: boolean }>
   /** Ausente = cadastro novo. */
   produto?: ProdutoNaTela
+  /** Cadastro novo aberto por "Cadastrar serviço": a ficha já vem marcada como serviço. */
+  servicoPadrao?: boolean
 }) {
   const idsDosEixos = useMemo(() => eixos.map((e) => e.id), [eixos])
   const travado = produto?.travado === true
@@ -250,7 +253,7 @@ export function Editor({
         <div className="grid gap-4 sm:grid-cols-2">
           <Marcar
             name="servico"
-            defaultChecked={produto?.servico ?? false}
+            defaultChecked={produto?.servico ?? servicoPadrao}
             titulo="É serviço (não tem estoque)"
             resumo="Manicure, consulta, aula avulsa. Vende no balcão sem mexer em saldo."
           />

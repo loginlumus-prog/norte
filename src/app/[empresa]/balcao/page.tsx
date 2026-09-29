@@ -19,10 +19,11 @@ import { BalcaoSimples } from './BalcaoSimples'
 import { lerModo } from '@/servidor/modo'
 import { BarraCaixa } from './BarraCaixa'
 import { comoOrg } from '@/servidor/banco'
-import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
+import { vocabularioDaEmpresa, vocabularioDoEndereco, vocabularioDoRamo } from '@/servidor/vocabulario'
 import { programaNoPlano, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
 import { paraCobrarHorario } from './acoes'
+import { ComPalavras } from './palavras'
 
 // "Recepção" na clínica e no salão, "Secretaria" na escola (vocabulario.ts).
 export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
@@ -96,6 +97,9 @@ export default async function BalcaoPagina({
   // complementos): o da loja, senão o da empresa. Não muda regra de venda —
   // ver ramo.ts.
   const ramo = loja?.ramo && loja.ramo in RAMOS ? loja.ramo : conf?.ramo && conf.ramo in RAMOS ? conf.ramo : null
+  // E as PALAVRAS da tela: na recepção da clínica o botão diz "Concluir
+  // atendimento", e o catálogo, "serviço". Pelo mesmo ramo — o da loja.
+  const palavras = vocabularioDoRamo(ramo)
 
   const caixa = unidadeId ? await caixaAberto(sessao, unidadeId) : null
 
@@ -160,53 +164,67 @@ export default async function BalcaoPagina({
         onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={unidadeId} /> : undefined
       }
     >
-      {recebendo && !recebendo.ok && aba !== 'fechar' && <Aviso nivel="atencao">{recebendo.erro}</Aviso>}
-      {!unidadeId ? (
-        <Aviso nivel="atencao">
-          {escolha.opcoes.length > 0
-            ? 'Aqui só há depósito, e depósito não vende. Para vender, a empresa precisa de uma loja.'
-            : 'Você não tem acesso de venda em nenhuma unidade. Peça para quem responde pela empresa liberar.'}
-        </Aviso>
-      ) : !caixa ? (
-        podeOperarCaixa ? (
-          <AbrirCaixa slug={slug} unidadeId={unidadeId} unidadeNome={unidadeNome} />
-        ) : (
+      <ComPalavras palavras={palavras}>
+        {recebendo && !recebendo.ok && aba !== 'fechar' && <Aviso nivel="atencao">{recebendo.erro}</Aviso>}
+        {!unidadeId ? (
           <Aviso nivel="atencao">
-            O caixa desta loja está fechado, e só quem opera o caixa pode abrir. Chame o
-            gerente.
+            {escolha.opcoes.length > 0
+              ? 'Aqui só há depósito, e depósito não vende. Para vender, a empresa precisa de uma loja.'
+              : 'Você não tem acesso de venda em nenhuma unidade. Peça para quem responde pela empresa liberar.'}
           </Aviso>
-        )
-      ) : aba === 'fechar' ? (
-        <div className="flex flex-col gap-4">
-          <FecharCaixa
+        ) : !caixa ? (
+          podeOperarCaixa ? (
+            <AbrirCaixa slug={slug} unidadeId={unidadeId} unidadeNome={unidadeNome} />
+          ) : (
+            <Aviso nivel="atencao">
+              O caixa desta loja está fechado, e só quem opera o caixa pode abrir. Chame o
+              gerente.
+            </Aviso>
+          )
+        ) : aba === 'fechar' ? (
+          <div className="flex flex-col gap-4">
+            <FecharCaixa
+              slug={slug}
+              caixaId={caixa.id}
+              turno={{
+                vendas: conferencia!.vendas,
+                foraDaGaveta: conferencia!.porForma.filter((f) => f.forma !== 'DINHEIRO'),
+              }}
+            />
+            <Movimento slug={slug} caixaId={caixa.id} />
+          </div>
+        ) : simples ? (
+          <BalcaoSimples
             slug={slug}
+            unidadeId={unidadeId}
+            usuarioId={sessao.usuarioId}
             caixaId={caixa.id}
-            turno={{
-              vendas: conferencia!.vendas,
-              foraDaGaveta: conferencia!.porForma.filter((f) => f.forma !== 'DINHEIRO'),
-            }}
+            unidadeNome={unidadeNome}
+            ramo={ramo}
+            programa={programa}
+            vendedores={vendedores}
+            podeAvulso={podeAvulso}
+            crediario={crediario}
+            inicial={inicial}
+            encomenda={encomenda}
+            veAssinatura={veAssinatura}
+            colada
+            barra={
+              <BarraCaixa
+                compacta
+                slug={slug}
+                unidadeId={unidadeId}
+                caixa={caixa}
+                conferencia={naBarra!}
+                podeOperar={podeOperarCaixa}
+                veReceita={veReceita}
+                meta={meta && meta.valor > 0 ? { valor: meta.valor, vendido: meta.vendido } : null}
+              />
+            }
           />
-          <Movimento slug={slug} caixaId={caixa.id} />
-        </div>
-      ) : simples ? (
-        <BalcaoSimples
-          slug={slug}
-          unidadeId={unidadeId}
-          usuarioId={sessao.usuarioId}
-          caixaId={caixa.id}
-          unidadeNome={unidadeNome}
-          ramo={ramo}
-          programa={programa}
-          vendedores={vendedores}
-          podeAvulso={podeAvulso}
-          crediario={crediario}
-          inicial={inicial}
-          encomenda={encomenda}
-          veAssinatura={veAssinatura}
-          colada
-          barra={
+        ) : (
+          <>
             <BarraCaixa
-              compacta
               slug={slug}
               unidadeId={unidadeId}
               caixa={caixa}
@@ -215,36 +233,24 @@ export default async function BalcaoPagina({
               veReceita={veReceita}
               meta={meta && meta.valor > 0 ? { valor: meta.valor, vendido: meta.vendido } : null}
             />
-          }
-        />
-      ) : (
-        <>
-          <BarraCaixa
-            slug={slug}
-            unidadeId={unidadeId}
-            caixa={caixa}
-            conferencia={naBarra!}
-            podeOperar={podeOperarCaixa}
-            veReceita={veReceita}
-            meta={meta && meta.valor > 0 ? { valor: meta.valor, vendido: meta.vendido } : null}
-          />
-          <Balcao
-            slug={slug}
-            unidadeId={unidadeId}
-            usuarioId={sessao.usuarioId}
-            grade={usaGrade}
-            caixaId={caixa.id}
-            unidadeNome={unidadeNome}
-            programa={programa}
-            vendedores={vendedores}
-            podeAvulso={podeAvulso}
-            crediario={crediario}
-            inicial={inicial}
-            encomenda={encomenda}
-            veAssinatura={veAssinatura}
-          />
-        </>
-      )}
+            <Balcao
+              slug={slug}
+              unidadeId={unidadeId}
+              usuarioId={sessao.usuarioId}
+              grade={usaGrade}
+              caixaId={caixa.id}
+              unidadeNome={unidadeNome}
+              programa={programa}
+              vendedores={vendedores}
+              podeAvulso={podeAvulso}
+              crediario={crediario}
+              inicial={inicial}
+              encomenda={encomenda}
+              veAssinatura={veAssinatura}
+            />
+          </>
+        )}
+      </ComPalavras>
     </Estrutura>
   )
 }

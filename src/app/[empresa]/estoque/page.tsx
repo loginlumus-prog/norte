@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
+import { vocabularioDaEmpresa } from '@/servidor/vocabulario'
 import { comoOrg } from '@/servidor/banco'
 import { pode, podeVerPlanos, textoDaBusca, unidadesQuePodem } from '@/servidor/permissao'
 import { saldoNaVista } from '@/servidor/produto'
@@ -113,6 +114,8 @@ export default async function TelaEstoque({
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'estoque.ver')
+  // O que chega do fornecedor: "mercadoria" na loja, "material" na clínica.
+  const vocab = await vocabularioDaEmpresa(sessao.orgId)
   const movimentos = await listarMovimentos(sessao, {
     unidadeIds: onde.ids,
     de: j.de,
@@ -477,6 +480,8 @@ export default async function TelaEstoque({
           ambiguo={onde.unidadeId === null && onde.opcoes.length > 1}
           categorias={categorias}
           podeLancarConta={podeLancarConta}
+          mercadoria={vocab.mercadoria}
+          aMercadoria={vocab.aMercadoria}
         />
       )}
 
@@ -573,12 +578,12 @@ export default async function TelaEstoque({
               acao={
                 pode(sessao, 'produto.editar') && (
                   <Link href={`/${slug}/produtos/novo`} className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta">
-                    Cadastrar um produto
+                    Cadastrar {vocab.umItemDeEstoque}
                   </Link>
                 )
               }
             >
-              Nenhum item com estoque nesta loja. Cadastre um produto e dê entrada nele.
+              Nenhum item com estoque nesta loja. Cadastre {vocab.umItemDeEstoque} e dê entrada nele.
             </Vazio>
           ) : listados.length === 0 ? (
             <Vazio

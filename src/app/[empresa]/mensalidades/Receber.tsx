@@ -81,7 +81,7 @@ export function Receber({
   }
 
   return (
-    <form action={agir} onSubmit={semApagar(agir)} className="flex min-w-[17rem] flex-col gap-2 rounded-norte border border-borda bg-superficie-2 p-2 text-xs">
+    <form action={agir} onSubmit={semApagar(agir)} className="flex min-w-[17rem] flex-col gap-2 rounded-norte border border-borda bg-superficie-2 p-2 text-left text-xs">
       <input type="hidden" name="empresa" value={slug} />
       <input type="hidden" name="mensalidade" value={mensalidadeId} />
 

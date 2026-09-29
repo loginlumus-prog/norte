@@ -28,6 +28,7 @@
 
 import { comoOrg } from './banco'
 import { exigir, pode, type Capacidade, type Sessao } from './permissao'
+import { vocabularioDoRamo, type PalavrasDaVenda } from './vocabulario'
 import { moduloLigado, type ComModulos } from './modulos'
 import { diaEmSP } from './dia'
 import { duracao } from './texto'
@@ -115,7 +116,14 @@ const ORDEM: ChavePendencia[] = [
  * é ruído, e ruído ensina a ignorar a cor. Lista vazia é o "tudo em dia", e
  * quem desenha isso é a tela.
  */
-export function montarPendencias(c: Contagens, slug: string, unidadeId: string | null = null): Pendencia[] {
+export function montarPendencias(
+  c: Contagens,
+  slug: string,
+  unidadeId: string | null = null,
+  // "2 materiais no mínimo" na clínica: o que ela tem em estoque é material,
+  // não produto (ver vocabulario.ts). Sem isto, fala como a loja.
+  v: Pick<PalavrasDaVenda, 'itemDeEstoque' | 'itensDeEstoque' | 'acabouNoEstoque'> = vocabularioDoRamo(null),
+): Pendencia[] {
   // A loja escolhida vai junto no link: quem olhava a loja do shopping e
   // clicou em "Ver" quer a lista da loja do shopping, não a da rede.
   const link = (tela: string, busca: Record<string, string> = {}) => {
@@ -132,8 +140,8 @@ export function montarPendencias(c: Contagens, slug: string, unidadeId: string |
     por({
       chave: 'acabaram',
       nivel: 'critico',
-      frase: `${plural(c.acabaram, 'produto', 'produtos')} ${c.acabaram === 1 ? 'acabou' : 'acabaram'}`,
-      detalhe: 'Sem saldo para vender — é venda indo para o vizinho.',
+      frase: `${plural(c.acabaram, v.itemDeEstoque, v.itensDeEstoque)} ${c.acabaram === 1 ? 'acabou' : 'acabaram'}`,
+      detalhe: v.acabouNoEstoque,
       href: link('estoque', { situacao: 'acabaram' }),
     })
   }
@@ -141,7 +149,7 @@ export function montarPendencias(c: Contagens, slug: string, unidadeId: string |
     por({
       chave: 'noMinimo',
       nivel: 'atencao',
-      frase: `${plural(c.noMinimo, 'produto', 'produtos')} no mínimo`,
+      frase: `${plural(c.noMinimo, v.itemDeEstoque, v.itensDeEstoque)} no mínimo`,
       detalhe: 'Ainda tem, mas já é hora de pedir.',
       href: link('estoque', { situacao: 'minimo' }),
     })

@@ -29,6 +29,8 @@ export function Entrada({
   ambiguo,
   categorias,
   podeLancarConta,
+  mercadoria,
+  aMercadoria,
 }: {
   slug: string
   unidadeId: string
@@ -37,6 +39,10 @@ export function Entrada({
   ambiguo: boolean
   categorias: { id: string; nome: string }[]
   podeLancarConta: boolean
+  /** "mercadoria" na loja, "material" na clínica (servidor/vocabulario.ts). */
+  mercadoria: string
+  /** "A mercadoria", "O material" — começo de frase. */
+  aMercadoria: string
 }) {
   const [aberto, setAberto] = useState(false)
   const [termo, setTermo] = useState('')
@@ -135,7 +141,7 @@ export function Entrada({
 
   return (
     <Cartao
-      titulo="Entrada de mercadoria"
+      titulo={`Entrada de ${mercadoria}`}
       acao={
         <button
           type="button"
@@ -158,7 +164,7 @@ export function Entrada({
       {ambiguo && (
         <div className="mb-3">
           <Aviso nivel="atencao">
-            A mercadoria vai entrar em <b>{unidadeNome}</b>. A lista abaixo está somando
+            {aMercadoria} vai entrar em <b>{unidadeNome}</b>. A lista abaixo está somando
             todas as lojas — troque a loja no alto da tela se for outra.
           </Aviso>
         </div>

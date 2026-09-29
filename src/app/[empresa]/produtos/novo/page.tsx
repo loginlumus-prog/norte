@@ -12,11 +12,31 @@ import { Secao } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor } from '../Editor'
 import { alcanceComum, alcancaLoja, lojasSugeridas } from '@/servidor/catalogo-loja'
+import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 
-export const metadata: Metadata = { title: 'Novo produto' }
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ empresa: string }>
+  searchParams: Promise<{ servico?: string }>
+}): Promise<Metadata> {
+  if ((await searchParams).servico === '1') return { title: 'Novo serviço' }
+  return { title: (await vocabularioDoEndereco((await params).empresa)).novoProduto }
+}
 
-export default async function NovoProduto({ params }: { params: Promise<{ empresa: string }> }) {
+export default async function NovoProduto({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ empresa: string }>
+  searchParams: Promise<{ servico?: string }>
+}) {
   const { empresa: slug } = await params
+  // "Cadastrar serviço", no painel da clínica, chega aqui com ?servico=1: a
+  // ficha já abre marcada como serviço. É só o padrão do campo — quem
+  // desmarca cadastra material, como sempre.
+  const servico = (await searchParams).servico === '1'
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'produto.editar' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -75,7 +95,7 @@ export default async function NovoProduto({ params }: { params: Promise<{ empres
       itens={MENU(slug)}
       ativo={`/${slug}/produtos`}
       tema={tema}
-      titulo="Novo produto"
+      titulo={servico ? 'Novo serviço' : (await vocabularioDaEmpresa(sessao.orgId)).novoProduto}
     >
       <Secao titulo="Cadastro">
         <Editor
@@ -85,6 +105,7 @@ export default async function NovoProduto({ params }: { params: Promise<{ empres
           lojas={lojasQueVendem}
           sugestao={sugestao}
           marcas={marcas}
+          servicoPadrao={servico}
         />
       </Secao>
     </Estrutura>

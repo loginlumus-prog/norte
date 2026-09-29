@@ -28,11 +28,13 @@ export const MENU = (slug: string): ItemMenu[] => [
   { href: `/${slug}`, titulo: 'Painel', exige: 'relatorio.ver' },
 
   // ── vender ──
-  // "Recepção" no salão e na clínica, "Secretaria" na escola (vocabulario.ts).
+  // "Recepção" no salão e na clínica, "Secretaria" na escola — o item e o
+  // título do grupo (vocabulario.ts, `nomeDoGrupo`).
   { grupo: 'Vender', href: `/${slug}/balcao`, titulo: 'Balcão', exige: 'venda.criar', vocabulario: 'Balcao' },
   // Logo depois do balcão, porque é a segunda tela mais aberta de qualquer
-  // loja: vender, e depois olhar o que vendeu.
-  { grupo: 'Vender', href: `/${slug}/vendas`, titulo: 'Vendas', exige: 'venda.ver' },
+  // loja: vender, e depois olhar o que vendeu. "Recebimentos" na clínica, no
+  // salão e na escola; o endereço é o mesmo.
+  { grupo: 'Vender', href: `/${slug}/vendas`, titulo: 'Vendas', exige: 'venda.ver', vocabulario: 'Vendas' },
   // O histórico dos turnos: quem abriu, quem fechou, e quanto faltou ou
   // sobrou. Sem esta tela a diferença do caixa ia para o livro e ninguém lia.
   { grupo: 'Vender', href: `/${slug}/caixa`, titulo: 'Caixa', exige: 'caixa.ver', avancado: true },

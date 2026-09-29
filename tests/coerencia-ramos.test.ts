@@ -108,7 +108,10 @@ const SEMENTE = `
     ('es-refri', 'org-p', 'v-refri', 'p-1', 0, now());
   -- Venderam os dois na mesma quarta (ou o dia que for) da semana passada.
   insert into vendas (id, org_id, unidade_id, numero, situacao, total, criada_em) values
-    ('vd-p', 'org-p', 'p-1', 1, 'CONCLUIDA', 22.40, now() - interval '7 days');
+    -- Em UTC, como o sistema grava: com now() puro a coluna ficava no fuso da
+    -- sessão, e entre 0h e 3h de São Paulo a venda caía na véspera — o teste
+    -- falhava só de madrugada.
+    ('vd-p', 'org-p', 'p-1', 1, 'CONCLUIDA', 22.40, (now() at time zone 'UTC') - interval '7 days');
   insert into venda_itens (id, org_id, venda_id, variacao_id, descricao, medida, quantidade, preco_unit, total) values
     ('vi-pao', 'org-p', 'vd-p', 'v-pao', 'Pão francês', 'KG', 1, 16.90, 16.90),
     ('vi-refri', 'org-p', 'vd-p', 'v-refri', 'Refrigerante lata', 'UN', 1, 5.50, 5.50);
@@ -326,7 +329,7 @@ describe('Recepção, Secretaria e "Serviços e materiais"', () => {
 
   it('o guia usa o nome do menu: título, busca e manual', () => {
     const nomes = nomesNoGuia(vocabularioDoRamo('saude'))
-    expect(nomes).toEqual({ balcao: 'Recepção', produtos: 'Serviços e materiais', clientes: 'Pacientes' })
+    expect(nomes).toEqual({ balcao: 'Recepção', vendas: 'Recebimentos', produtos: 'Serviços e materiais', clientes: 'Pacientes' })
     expect(nomesNoGuia(vocabularioDoRamo('roupa'))).toEqual({})
 
     const balcao = GUIA.find((e) => e.chave === 'balcao')!

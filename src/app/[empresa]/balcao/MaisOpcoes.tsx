@@ -19,6 +19,7 @@ import { Botao, cx } from '@/ui/base'
 import type { Vendedor } from '@/servidor/equipe'
 import { EscolherCliente } from './Cliente'
 import { Folha } from './Folha'
+import { usePalavras } from './palavras'
 import type { Venda } from './useVenda'
 import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
@@ -50,6 +51,7 @@ export function MaisOpcoes({
   /** Alt+F: o foco vai direto no vendedor. */
   focarVendedor: boolean
 }) {
+  const p = usePalavras()
   // O item avulso abre fechado, toda vez: é exceção, não campo.
   const fecharAvulso = v.avulso.setAberto
   useEffect(() => {
@@ -77,7 +79,7 @@ export function MaisOpcoes({
       aberta={aberta}
       aoFechar={aoFechar}
       titulo="Mais opções"
-      subtitulo="Cliente, vendedor, desconto, item avulso e observação."
+      subtitulo={`${p.Pessoa}, ${p.Vendedor.toLowerCase()}, desconto, item avulso e observação.`}
       rodape={
         <Botao largo onClick={aoFechar} className="min-h-12 rounded-xl text-base">
           Pronto
@@ -87,7 +89,7 @@ export function MaisOpcoes({
       <div className="flex flex-col gap-5">
         <section className={secao}>
           <h3 className={titulo}>
-            Cliente <kbd className="ml-1 rounded border border-borda bg-superficie-2 px-1 font-mono text-[10px] text-tinta-3 normal-case">Alt N</kbd>
+            {p.Pessoa} <kbd className="ml-1 rounded border border-borda bg-superficie-2 px-1 font-mono text-[10px] text-tinta-3 normal-case">Alt N</kbd>
           </h3>
           <div className="rounded-xl border border-borda bg-superficie px-3 py-2.5 [&_button]:min-h-9 [&_input]:h-11 [&_input]:text-base">
             <EscolherCliente slug={slug} escolhido={v.cliente} aoEscolher={v.setCliente} pedido={pedidoCliente} />
@@ -97,7 +99,7 @@ export function MaisOpcoes({
         {vendedores && (
           <section className={secao}>
             <label htmlFor="vendedor-simples" className={titulo}>
-              Quem vendeu <kbd className="ml-1 rounded border border-borda bg-superficie-2 px-1 font-mono text-[10px] text-tinta-3 normal-case">Alt F</kbd>
+              Quem {p.vendeu.toLowerCase()} <kbd className="ml-1 rounded border border-borda bg-superficie-2 px-1 font-mono text-[10px] text-tinta-3 normal-case">Alt F</kbd>
             </label>
             <select
               id="vendedor-simples"
@@ -120,7 +122,7 @@ export function MaisOpcoes({
 
         <section className={secao}>
           <label htmlFor="desconto-simples" className={titulo}>
-            Desconto na venda
+            Desconto {p.naVenda}
           </label>
           <div className="flex items-center gap-2">
             <span className="text-lg font-semibold text-tinta-3">R$</span>
@@ -141,7 +143,7 @@ export function MaisOpcoes({
               </button>
             )}
           </div>
-          <p className="text-xs text-tinta-3">Acima do teto da loja, a venda não fecha: chame quem pode autorizar.</p>
+          <p className="text-xs text-tinta-3">Acima do teto da loja, {p.aVenda} não fecha: chame quem pode autorizar.</p>
         </section>
 
         {podeAvulso && (

@@ -14,6 +14,8 @@ import { useState, useTransition } from 'react'
 import { Botao, Campo, Aviso, cx } from '@/ui/base'
 import { abrir, fechar, movimentar } from './acoes'
 import type { Fechamento } from '@/servidor/caixa'
+import { plural } from '@/ui/texto'
+import { usePalavras } from './palavras'
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -32,6 +34,7 @@ export function AbrirCaixa({
   unidadeId: string
   unidadeNome: string
 }) {
+  const p = usePalavras()
   const [saldo, setSaldo] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [indo, comecar] = useTransition()
@@ -60,7 +63,7 @@ export function AbrirCaixa({
           </span>
           <h2 className="text-2xl font-extrabold">Abrir o caixa</h2>
           <p className="text-sm text-tinta-2">
-            {unidadeNome} — sem caixa aberto não dá para vender. É assim que o dinheiro do dia
+            {unidadeNome} — sem caixa aberto não dá para {p.vender}. É assim que o dinheiro do dia
             tem dono e hora.
           </p>
         </div>
@@ -109,7 +112,7 @@ export function AbrirCaixa({
           </div>
 
           <Botao type="submit" tom="confirmar" largo carregando={indo} className="min-h-14 rounded-xl text-base">
-            {indo ? 'Abrindo...' : 'Abrir caixa e começar a vender'}
+            {indo ? 'Abrindo...' : `Abrir caixa e começar a ${p.vender}`}
           </Botao>
         </form>
       </div>
@@ -131,6 +134,7 @@ export function FecharCaixa({
    */
   turno: { vendas: number; foraDaGaveta: { forma: string; total: number }[] }
 }) {
+  const p = usePalavras()
   const [contado, setContado] = useState('')
   const [obs, setObs] = useState('')
   const [feito, setFeito] = useState<Fechamento | null>(null)
@@ -169,7 +173,7 @@ export function FecharCaixa({
           <div className="rounded-norte border border-borda bg-superficie p-4">
             <h3 className="mb-2 text-sm font-bold">O que passou pela gaveta</h3>
             {linha('Abertura', conferencia.abertura)}
-            {linha('Vendas em dinheiro', conferencia.dinheiroVendido)}
+            {linha(`${p.Vendas} em dinheiro`, conferencia.dinheiroVendido)}
             {conferencia.dinheiroRecebido > 0 && linha('Crediário recebido em dinheiro', conferencia.dinheiroRecebido)}
             {conferencia.dinheiroMensalidades > 0 && linha('Mensalidades recebidas em dinheiro', conferencia.dinheiroMensalidades)}
             {linha('Suprimentos', conferencia.suprimentos)}
@@ -183,10 +187,10 @@ export function FecharCaixa({
           </div>
           <div className="rounded-norte border border-borda bg-superficie p-4">
             <h3 className="mb-2 text-sm font-bold">
-              {conferencia.vendas} venda{conferencia.vendas === 1 ? '' : 's'} no turno
+              {plural(conferencia.vendas, p.venda, p.vendas)} no turno
             </h3>
             {conferencia.porForma.map((f) => linha(FORMA[f.forma] ?? f.forma, f.total))}
-            {linha('Total vendido', conferencia.vendidoTotal, true)}
+            {linha(`Total ${p.Vendido.toLowerCase()}`, conferencia.vendidoTotal, true)}
             {conferencia.recebidoCrediario > 0 && linha('Crediário recebido (todas as formas)', conferencia.recebidoCrediario)}
             {conferencia.recebidoMensalidades > 0 && linha('Mensalidades recebidas (todas as formas)', conferencia.recebidoMensalidades)}
           </div>
@@ -217,7 +221,7 @@ export function FecharCaixa({
 
         <div className="rounded-norte border border-borda bg-superficie p-4">
           <h3 className="mb-2 text-sm font-bold">
-            {turno.vendas} venda{turno.vendas === 1 ? '' : 's'} no turno
+            {plural(turno.vendas, p.venda, p.vendas)} no turno
           </h3>
           {foraDaGaveta.length > 0 ? (
             <>
@@ -225,7 +229,7 @@ export function FecharCaixa({
               {foraDaGaveta.map((f) => linha(FORMA[f.forma] ?? f.forma, f.total))}
             </>
           ) : (
-            <p className="text-sm text-tinta-3">Nenhuma venda em cartão, Pix ou outra forma fora da gaveta.</p>
+            <p className="text-sm text-tinta-3">{p.nenhumaVenda} em cartão, Pix ou outra forma fora da gaveta.</p>
           )}
         </div>
       </div>

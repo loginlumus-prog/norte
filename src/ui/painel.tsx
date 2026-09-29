@@ -89,10 +89,14 @@ export function Numero({
     // conta vale no escuro, onde o tingido vira um azul fundo e o número, o
     // azul-claro do título.
     return (
-      <div className="realce relative flex min-w-0 flex-col justify-center gap-1 overflow-hidden rounded-norte border border-marca/30 bg-superficie bg-linear-to-b from-marca/8 to-transparent px-4 pt-4 pb-3.5">
+      // O número encolhe com a FICHA, não com a janela: "R$ 2.190,00" não
+      // quebra linha, e na ficha estreita (as mensalidades com o menu aberto)
+      // os 32px passavam da borda e o ",00" sumia. Até 32px; menos, só quando
+      // não cabe.
+      <div className="realce @container relative flex min-w-0 flex-col justify-center gap-1 overflow-hidden rounded-norte border border-marca/30 bg-superficie bg-linear-to-b from-marca/8 to-transparent px-4 pt-4 pb-3.5">
         <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-marca" />
         <span className="text-xs font-semibold text-marca">{rotulo}</span>
-        <span className="numero text-[32px] leading-none font-bold tracking-[-0.03em] text-titulo">
+        <span className="numero text-[min(32px,19cqi)] leading-none font-bold tracking-[-0.03em] text-titulo">
           {valor}
         </span>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">

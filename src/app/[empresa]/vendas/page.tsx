@@ -17,8 +17,14 @@ import type { Tema } from '@/ui/TrocaTema'
 import type { FormaPagamento, SituacaoVenda } from '@prisma/client'
 import { Fichas } from '@/ui/Busca'
 import { pode } from '@/servidor/permissao'
+import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
+import { concorda, plural } from '@/ui/texto'
 
-export const metadata: Metadata = { title: 'Vendas' }
+// "Recebimentos" na clínica, no salão e na escola — a mesma lista, no mesmo
+// endereço (vocabulario.ts).
+export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
+  return { title: (await vocabularioDoEndereco((await params).empresa)).Vendas }
+}
 
 const FORMAS_FILTRO: FormaPagamento[] = ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'CREDIARIO', 'VALE']
 
@@ -60,6 +66,8 @@ export default async function Vendas({
   // pessoa e a planilha são do avançado — e sem elas a tabela cabe inteira
   // num telefone, sem rolar de lado.
   const simples = (await lerModo()) === 'simples'
+  const palavras = await vocabularioDaEmpresa(sessao.orgId)
+  const g = (feminina: string, masculina: string) => concorda(palavras, feminina, masculina)
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'venda.ver')
   const j = janela(lerPeriodo(pedido))
@@ -128,7 +136,7 @@ export default async function Vendas({
         <Link
           href={`/${slug}/vendas/${v.id}`}
           className="numero font-semibold text-marca underline-offset-2 hover:underline"
-          aria-label={`Abrir a venda ${v.numero}`}
+          aria-label={`Abrir ${palavras.aVenda} ${v.numero}`}
         >
           {v.numero}
         </Link>
@@ -154,7 +162,7 @@ export default async function Vendas({
     },
     {
       chave: 'cliente',
-      titulo: 'Cliente',
+      titulo: palavras.Pessoa,
       celula: (v: (typeof vendas)[number]) => (
         <span className={v.cliente ? 'text-tinta' : 'whitespace-nowrap text-tinta-3'}>{v.cliente ?? 'sem cadastro'}</span>
       ),
@@ -175,7 +183,7 @@ export default async function Vendas({
     },
     {
       chave: 'quem',
-      titulo: 'Vendeu',
+      titulo: palavras.vendeu,
       celula: (v: (typeof vendas)[number]) => <span className="text-tinta-2">{v.vendedor ?? '—'}</span>,
     },
     {
@@ -186,7 +194,7 @@ export default async function Vendas({
       celula: (v: (typeof vendas)[number]) =>
         v.situacao === 'CANCELADA' ? (
           <span className="flex items-center justify-end gap-2">
-            <Situacao nivel="critico">cancelada</Situacao>
+            <Situacao nivel="critico">{g('cancelada', 'cancelado')}</Situacao>
             <span className="numero text-tinta-3 line-through">{brl(v.total)}</span>
           </span>
         ) : v.devolvido > 0 ? (
@@ -222,7 +230,7 @@ export default async function Vendas({
       itens={MENU(slug)}
       ativo={`/${slug}/vendas`}
       tema={tema}
-      titulo="Vendas"
+      titulo={palavras.Vendas}
       acao={
         // Período antes da loja, como no Painel, no Caixa e na Auditoria: a
         // mesma chave no mesmo lugar em toda tela, senão a mão erra o clique.
@@ -246,25 +254,25 @@ export default async function Vendas({
         {veReceita ? (
           <>
             <Numero
-              rotulo={`Vendido · ${j.rotulo.toLowerCase()}`}
+              rotulo={`${palavras.Vendido} · ${j.rotulo.toLowerCase()}`}
               valor={brl(total)}
-              detalhe={`${resumo.concluidas} venda${resumo.concluidas === 1 ? '' : 's'}`}
+              detalhe={`${plural(resumo.concluidas, palavras.venda, palavras.vendas)}${palavras.foraDoTotal ? ` · ${palavras.foraDoTotal}` : ''}`}
               principal
             />
-            <Numero rotulo="Ticket médio" valor={brl(ticket)} detalhe="por venda" />
+            <Numero rotulo={palavras.ticketMedio} valor={brl(ticket)} detalhe={`por ${palavras.venda}`} />
           </>
         ) : (
           <Numero
-            rotulo={`Vendas · ${j.rotulo.toLowerCase()}`}
+            rotulo={`${palavras.Contagem} · ${j.rotulo.toLowerCase()}`}
             valor={String(resumo.concluidas)}
-            detalhe={resumo.concluidas === 1 ? 'concluída' : 'concluídas'}
+            detalhe={resumo.concluidas === 1 ? g('concluída', 'concluído') : g('concluídas', 'concluídos')}
             principal
           />
         )}
         <Numero
-          rotulo="Canceladas"
+          rotulo={g('Canceladas', 'Cancelados')}
           valor={String(resumo.canceladas)}
-          detalhe={resumo.canceladas ? (veReceita ? brl(resumo.totalCanceladas) : 'no período') : 'nenhuma'}
+          detalhe={resumo.canceladas ? (veReceita ? brl(resumo.totalCanceladas) : 'no período') : g('nenhuma', 'nenhum')}
           nivel={resumo.canceladas > 0 ? 'atencao' : undefined}
         />
       </div>
@@ -282,8 +290,8 @@ export default async function Vendas({
         <input
           name="q"
           defaultValue={q ?? ''}
-          placeholder="Número da venda ou nome do cliente"
-          aria-label="Buscar venda"
+          placeholder={`Número ${palavras.daVenda} ou nome ${palavras.daPessoa}`}
+          aria-label={`Buscar ${palavras.venda}`}
           className="min-w-[14rem] flex-1 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
         />
         <button
@@ -301,8 +309,13 @@ export default async function Vendas({
 
       <Tira
         itens={[
-          { rotulo: 'concluídas', um: 'concluída', quantos: resumo.concluidas, nivel: 'bom' },
-          { rotulo: 'canceladas', um: 'cancelada', quantos: resumo.canceladas, nivel: resumo.canceladas ? 'critico' : 'neutro' },
+          { rotulo: g('concluídas', 'concluídos'), um: g('concluída', 'concluído'), quantos: resumo.concluidas, nivel: 'bom' },
+          {
+            rotulo: g('canceladas', 'cancelados'),
+            um: g('cancelada', 'cancelado'),
+            quantos: resumo.canceladas,
+            nivel: resumo.canceladas ? 'critico' : 'neutro',
+          },
         ]}
       />
 
@@ -312,7 +325,7 @@ export default async function Vendas({
         <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
           {((!simples && vendedores.length > 1) || vendedorId) && (
             <Fichas
-              rotulo="Quem vendeu"
+              rotulo={`Quem ${palavras.vendeu.toLowerCase()}`}
               opcoes={[{ valor: null, rotulo: 'qualquer pessoa' }, ...vendedores.map(([id, nome]) => ({ valor: id, rotulo: nome }))]}
               atual={vendedorId}
               linkDe={(v) => link({ vendedor: v })}
@@ -330,14 +343,14 @@ export default async function Vendas({
       )}
 
       <Cartao
-        titulo={q ? `Resultado de “${q}”` : `${vendas.length} venda${vendas.length === 1 ? '' : 's'}`}
+        titulo={q ? `Resultado de “${q}”` : plural(vendas.length, palavras.venda, palavras.vendas)}
         acao={
           <span className="flex gap-1 text-xs">
             {(
               [
-                [null, 'todas'],
-                ['CONCLUIDA', 'concluídas'],
-                ['CANCELADA', 'canceladas'],
+                [null, g('todas', 'todos')],
+                ['CONCLUIDA', g('concluídas', 'concluídos')],
+                ['CANCELADA', g('canceladas', 'cancelados')],
               ] as [SituacaoVenda | null, string][]
             ).map(([valor, rotulo]) => (
               <Link
@@ -373,24 +386,24 @@ export default async function Vendas({
               ) : (
                 pode(sessao, 'venda.criar') && (
                   <Link href={`/${slug}/balcao`} className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta">
-                    Abrir o balcão
+                    Abrir {palavras.oBalcao}
                   </Link>
                 )
               )
             }
           >
             {q
-              ? 'Nenhuma venda com isso.'
+              ? `${palavras.nenhumaVenda} com isso.`
               : temFiltro
-                ? `Nenhuma venda com esses filtros ${j.naFrase}.`
-                : `Nenhuma venda ${j.naFrase}.`}
+                ? `${palavras.nenhumaVenda} com esses filtros ${j.naFrase}.`
+                : `${palavras.nenhumaVenda} ${j.naFrase}.`}
           </Vazio>
         ) : (
           <Tabela colunas={colunas} linhas={vendas} chave={(v) => v.id} />
         )}
         {vendas.length >= 500 && (
           <p className="pt-3 text-xs text-tinta-3">
-            Mostrando as 500 mais recentes. Aperte o período ou use a busca.
+            Mostrando {g('as', 'os')} 500 mais recentes. Aperte o período ou use a busca.
           </p>
         )}
       </Cartao>

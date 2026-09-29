@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { MENU, itemNaEmpresa, noModo, podeVerItem } from '../src/ui/menu'
 import { type Sessao, type Papel } from '../src/servidor/permissao'
 import { TODOS } from '../src/servidor/modulos'
+import { nomeDoGrupo, vocabularioDoRamo } from '../src/servidor/vocabulario'
 
 // O menu é a primeira coisa que cada perfil vê. Este teste é a lista do que
 // cada um DEVE ver — e, mais importante, do que NÃO deve. O balconista que
@@ -99,12 +100,29 @@ describe('o atendimento no menu', () => {
     expect(visiveis('DONO', ['ponto'])).not.toContain('Agenda')
   })
 
-  it('clientes, balcão e produtos levam a palavra do ramo ("Pacientes", "Recepção", "Serviços e materiais")', () => {
+  it('clientes, balcão, vendas e produtos levam a palavra do ramo ("Pacientes", "Recepção", "Recebimentos", "Serviços e materiais")', () => {
     const por = (href: string) => MENU('x').find((i) => i.href === href)!
     expect(por('/x/clientes').vocabulario).toBe('Pessoas')
     expect(por('/x/balcao').vocabulario).toBe('Balcao')
+    expect(por('/x/vendas').vocabulario).toBe('Vendas')
     expect(por('/x/produtos').vocabulario).toBe('Produtos')
-    expect(MENU('x').filter((i) => i.vocabulario)).toHaveLength(3)
+    expect(MENU('x').filter((i) => i.vocabulario)).toHaveLength(4)
+  })
+
+  it('o título de cada item com vocabulário é a palavra da LOJA — a do ramo entra na Estrutura', () => {
+    // O menu cru é o da loja: quem lê MENU() sem empresa (testes, guia) vê
+    // "Balcão" e "Vendas", e a troca acontece num lugar só.
+    const loja = vocabularioDoRamo('roupa')
+    for (const i of MENU('x').filter((x) => x.vocabulario)) expect(i.titulo).toBe(loja[i.vocabulario!])
+  })
+
+  it('o grupo "Vender" vira "Recepção" na clínica e "Secretaria" na escola; os outros grupos não mudam', () => {
+    const grupos = (ramo: string) => [...new Set(MENU('x').map((i) => i.grupo && nomeDoGrupo(i.grupo, vocabularioDoRamo(ramo))).filter(Boolean))]
+    expect(grupos('roupa')).toEqual(['Vender', 'Atendimento', 'Catálogo', 'Pessoas', 'Dinheiro', 'Empresa'])
+    expect(grupos('saude')).toEqual(['Recepção', 'Atendimento', 'Catálogo', 'Pessoas', 'Dinheiro', 'Empresa'])
+    expect(grupos('beleza')[0]).toBe('Recepção')
+    expect(grupos('escola')[0]).toBe('Secretaria')
+    expect(grupos('petshop')[0]).toBe('Vender')
   })
 
   it('sem o módulo, nada do atendimento aparece', () => {
