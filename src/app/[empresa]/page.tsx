@@ -62,14 +62,21 @@ import type { Tema } from '@/ui/TrocaTema'
 import { palavra, plural } from '@/ui/texto'
 import { IconeDoItem } from '@/ui/IconesMenu'
 import { registrarErro } from '@/servidor/registro'
-import { empresaDoEndereco, montarTitulo } from '@/servidor/titulo'
+import { empresaDoEndereco, empresaExiste, montarTitulo } from '@/servidor/titulo'
 import { vocabularioDaEmpresa, vocabularioDoRamo, type VocabularioDoRamo } from '@/servidor/vocabulario'
 import type { Metadata } from 'next'
 
 // O painel mora no MESMO segmento do layout da empresa, e o modelo de título
 // do layout só vale para os de baixo — então aqui ele se escreve inteiro.
 export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
-  const empresa = await empresaDoEndereco((await params).empresa)
+  const slug = (await params).empresa
+  const empresa = await empresaDoEndereco(slug)
+  // Sem empresa, o layout já mostra "Este endereço não abre" — e a aba não
+  // pode dizer "Painel" em cima disso. Só quando o banco CONFIRMA que o
+  // endereço não existe: com o banco fora, fica o título de sempre.
+  if (!empresa && !(await empresaExiste(slug).catch(() => true))) {
+    return { title: { absolute: montarTitulo('Endereço não encontrado', null) } }
+  }
   return { title: { absolute: montarTitulo('Painel', empresa?.nome ?? null) } }
 }
 
