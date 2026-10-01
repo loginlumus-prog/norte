@@ -20,6 +20,8 @@ export type LojaNaTela = {
   nome: string
   apelido: string | null
   documento: string | null
+  razaoSocial: string | null
+  inscricaoEstadual: string | null
   ramo: string | null
   ramoTitulo: string | null
   ehDeposito: boolean
@@ -90,13 +92,26 @@ function Formulario({
 
       <details className="group rounded-norte border border-borda-suave px-3 py-2" open={!!d}>
         <summary className="cursor-pointer text-sm font-semibold text-tinta">
-          Endereço, contato e horário
+          Endereço, CNPJ, contato e horário
         </summary>
         <div className="mt-3 flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <Campo rotulo="Nome no comprovante" name="apelido" id={`ap-${d?.id ?? 'nova'}`} defaultValue={d?.apelido ?? ''} />
             <Campo rotulo="CNPJ desta loja" name="documento" id={`doc-${d?.id ?? 'nova'}`} inputMode="numeric" defaultValue={d?.documento ?? ''} />
             <Campo rotulo="Telefone" name="telefone" id={`tel-${d?.id ?? 'nova'}`} type="tel" defaultValue={d?.telefone ?? ''} />
+          </div>
+          {/* O credor do carnê: o crediário é confissão de dívida, e o papel
+              que a cliente assina precisa dizer a quem ela deve. Loja com
+              CNPJ próprio preenche aqui; vazio, o papel usa o da empresa. */}
+          <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+            <Campo
+              rotulo="Razão social desta loja"
+              name="razaoSocial"
+              id={`rs-${d?.id ?? 'nova'}`}
+              defaultValue={d?.razaoSocial ?? ''}
+              dica="Sai no carnê e no recibo do crediário."
+            />
+            <Campo rotulo="Inscrição estadual" name="inscricaoEstadual" id={`ie-${d?.id ?? 'nova'}`} defaultValue={d?.inscricaoEstadual ?? ''} />
           </div>
           <div className="grid gap-4 sm:grid-cols-[1fr_6rem_1fr]">
             <Campo rotulo="Endereço" name="endereco" id={`end-${d?.id ?? 'nova'}`} defaultValue={d?.endereco ?? ''} />

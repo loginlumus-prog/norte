@@ -13,6 +13,8 @@ import { TrocarNome } from './TrocarNome'
 import { MeuWhatsApp } from './MeuWhatsApp'
 import { meuTelefone } from '@/servidor/assistente/confirmacao'
 import { soLeitura } from '@/servidor/equipe'
+import { meuPin } from '@/servidor/autorizacao'
+import { MeuPin } from './MeuPin'
 
 // Minha conta: quem eu sou aqui, e trocar a minha senha.
 //
@@ -40,6 +42,7 @@ export default async function MinhaConta({ params }: { params: Promise<{ empresa
   const papeis = [...new Set(sessao.acessos.map((a) => NOME_DO_PAPEL[a.papel]))].join(', ')
   const soSuporte = sessao.acessos.length > 0 && sessao.acessos.every((a) => a.papel === 'SUPORTE')
   const whats = soSuporte ? null : await meuTelefone(sessao)
+  const pin = soSuporte ? null : await meuPin(sessao)
 
   return (
     <Estrutura
@@ -93,6 +96,17 @@ export default async function MinhaConta({ params }: { params: Promise<{ empresa
               esperandoCodigo={whats.esperandoCodigo}
               podeMudar={!soLeitura(sessao)}
             />
+          </Cartao>
+        </Secao>
+      )}
+
+      {pin && (
+        <Secao
+          titulo="Meu PIN para autorizar"
+          resumo="Quando o balcão pede autorização (desconto acima do teto, item fora do cadastro), quem pode autorizar digita o PIN no aparelho de quem está vendendo — sem sair da conta dela. Só vale para o que o seu papel permite."
+        >
+          <Cartao caixa>
+            <MeuPin slug={slug} tem={pin.tem} desde={pin.desde ? dia(pin.desde) : null} />
           </Cartao>
         </Secao>
       )}

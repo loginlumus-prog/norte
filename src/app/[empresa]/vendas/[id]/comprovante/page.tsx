@@ -88,6 +88,14 @@ export default async function Comprovante({
   const documento = cnpj(unidade?.documento ?? org.documento)
   const telefone = unidade?.telefone ?? org.whatsapp ?? org.telefone
   const devolvido = v.devolucoes.reduce((s, d) => s + Number(d.valor), 0)
+  const acrescimo = Number(v.acrescimo)
+  // O juro do crédito parcelado está DENTRO do total e do pagamento: a linha
+  // dele explica por que o total passou da soma das peças.
+  const juros = v.pagamentos.reduce((s, p) => s + Number(p.juros), 0)
+  const temAjuste = Number(v.desconto) > 0 || Number(v.descontoPontos) > 0 || acrescimo > 0 || juros > 0
+  // O dinheiro gravado é o que FICOU na gaveta; o que a pessoa entregou é ele
+  // mais o troco (ver `NovaVenda.troco`).
+  const dinheiro = v.pagamentos.filter((p) => p.forma === 'DINHEIRO').reduce((s, p) => s + Number(p.valor), 0)
 
   return (
     <div className="mx-auto max-w-[80mm] p-3 print:p-0">
@@ -110,7 +118,15 @@ export default async function Comprovante({
         <Link href={`/${slug}/vendas/${v.id}`} className="text-sm text-tinta-2 hover:text-tinta">
           ← ficha da venda
         </Link>
-        <Imprimir automatico={imprimir === '1'} rotulo="Imprimir" />
+        <span className="flex items-center gap-2">
+          {/* Venda no crediário: o carnê é o outro papel, o que ela assina. */}
+          {v.parcelas && v.parcelas.length > 0 && (
+            <a href={`/${slug}/vendas/${v.id}/carne?imprimir=1`} className="text-sm font-semibold text-marca underline-offset-2 hover:underline">
+              Imprimir o carnê
+            </a>
+          )}
+          <Imprimir automatico={imprimir === '1'} rotulo="Imprimir" />
+        </span>
       </div>
 
       <div className="cupom rounded-norte border border-borda p-3 print:rounded-none print:border-0 print:p-0">
@@ -147,6 +163,12 @@ export default async function Comprovante({
                 <td className="num">{v.cliente.nome}</td>
               </tr>
             )}
+            {v.autorizadoPor && (
+              <tr>
+                <td>Autorizado por</td>
+                <td className="num">{v.autorizadoPor}</td>
+              </tr>
+            )}
           </tbody>
         </table>
 
@@ -172,7 +194,7 @@ export default async function Comprovante({
         <div className="linha" />
         <table>
           <tbody>
-            {(Number(v.desconto) > 0 || Number(v.descontoPontos) > 0) && (
+            {temAjuste && (
               <tr>
                 <td>Subtotal</td>
                 <td className="num">{brl(v.subtotal)}</td>
@@ -184,10 +206,22 @@ export default async function Comprovante({
                 <td className="num">- {brl(v.desconto)}</td>
               </tr>
             )}
+            {acrescimo > 0 && (
+              <tr>
+                <td>Acréscimo</td>
+                <td className="num">+ {brl(acrescimo)}</td>
+              </tr>
+            )}
             {Number(v.descontoPontos) > 0 && (
               <tr>
                 <td>Pontos ({v.pontosUsados})</td>
                 <td className="num">- {brl(v.descontoPontos)}</td>
+              </tr>
+            )}
+            {juros > 0 && (
+              <tr>
+                <td>Juro do parcelamento</td>
+                <td className="num">+ {brl(juros)}</td>
               </tr>
             )}
             <tr>
@@ -204,10 +238,38 @@ export default async function Comprovante({
                   {FORMA[p.forma] ?? p.forma}
                   {p.parcelas > 1 ? ` ${p.parcelas}×` : ''}
                   {p.vale ? ` ${p.vale.codigo}` : ''}
+                  {/* Em qual máquina passou, e quanto dá cada vez: é o que a
+                      cliente confere na fatura do cartão. */}
+                  {p.maquininha && <span style={{ color: '#333' }}> · {p.maquininha}</span>}
+                  {p.forma === 'CREDITO' && p.parcelas > 1 && (
+                    <>
+                      <br />
+                      <span style={{ color: '#333' }}>
+                        {p.parcelas}× de {brl(Math.ceil((Number(p.valor) * 100) / p.parcelas) / 100)}
+                        {Number(p.juros) > 0 ? ` (juro ${brl(p.juros)})` : ' sem juro'}
+                      </span>
+                    </>
+                  )}
                 </td>
                 <td className="num">{brl(p.valor)}</td>
               </tr>
             ))}
+            {v.troco > 0 && (
+              <>
+                <tr>
+                  <td>Recebido em dinheiro</td>
+                  <td className="num">{brl(dinheiro + v.troco)}</td>
+                </tr>
+                <tr>
+                  <td>
+                    <b>Troco</b>
+                  </td>
+                  <td className="num">
+                    <b>{brl(v.troco)}</b>
+                  </td>
+                </tr>
+              </>
+            )}
             {devolvido > 0 && (
               <tr>
                 <td>Devolvido depois</td>

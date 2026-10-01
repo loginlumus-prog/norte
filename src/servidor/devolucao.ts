@@ -190,6 +190,7 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
       select: {
         id: true, numero: true, unidadeId: true, situacao: true, clienteId: true,
         subtotal: true, total: true, pontosGanhos: true, pontosUsados: true,
+        pagamentos: { select: { juros: true } },
         itens: {
           select: {
             id: true, variacaoId: true, descricao: true, medida: true, quantidade: true, precoUnit: true,
@@ -225,8 +226,12 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
     }
 
     // ── quanto volta ──
+    // O juro do crédito parcelado (quando a loja cobra) está dentro do total,
+    // mas não é preço de peça: devolver a blusa não devolve juro de
+    // maquininha — quem estorna o parcelamento é a operadora.
     const subtotalCent = centavos(v.subtotal)
-    const totalCent = centavos(v.total)
+    const jurosCent = v.pagamentos.reduce((s, x) => s + centavos(x.juros), 0)
+    const totalCent = centavos(v.total) - jurosCent
     const fator = subtotalCent > 0 ? totalCent / subtotalCent : 1
 
     const linhas = pedidos.map((ped) => {
@@ -282,6 +287,8 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
             orgId: sessao.orgId,
             codigo,
             clienteId: v.clienteId,
+            // A loja que emitiu: com "vale por loja" ligado, só se gasta nela.
+            unidadeId: v.unidadeId,
             valor: reais(paraClienteCent),
             saldo: reais(paraClienteCent),
             validade,
@@ -435,10 +442,15 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
 export type ValeConsultado =
   | { ok: true; id: string; codigo: string; saldo: number; cliente: string | null; validade: Date | null }
   | { ok: false; motivo: 'nao_achado' | 'zerado' | 'vencido' }
+  | { ok: false; motivo: 'outra_loja'; loja: string }
 
-/** Lê um vale pelo código, como o balcão faz antes de aceitar. */
-export async function consultarVale(sessao: Sessao, codigo: string): Promise<ValeConsultado> {
-  exigir(sessao, 'venda.criar')
+/**
+ * Lê um vale pelo código, como o balcão faz antes de aceitar. Com a loja da
+ * venda, já diz se o vale é de outra loja (regra "vale por loja") — a venda
+ * confere de novo ao fechar.
+ */
+export async function consultarVale(sessao: Sessao, codigo: string, unidadeId?: string): Promise<ValeConsultado> {
+  exigir(sessao, 'venda.criar', unidadeId)
   const c = normalizarCodigo(codigo)
   if (!c) return { ok: false, motivo: 'nao_achado' }
 
@@ -446,13 +458,18 @@ export async function consultarVale(sessao: Sessao, codigo: string): Promise<Val
     const v = await db.vale.findFirst({
       where: { codigo: c },
       select: {
-        id: true, codigo: true, saldo: true, validade: true,
+        id: true, codigo: true, saldo: true, validade: true, unidadeId: true,
         cliente: { select: { nome: true } },
+        unidade: { select: { nome: true } },
       },
     })
     if (!v) return { ok: false as const, motivo: 'nao_achado' as const }
     if (centavos(v.saldo) <= 0) return { ok: false as const, motivo: 'zerado' as const }
     if (v.validade && venceu(v.validade)) return { ok: false as const, motivo: 'vencido' as const }
+    if (unidadeId && v.unidadeId && v.unidadeId !== unidadeId) {
+      const org = await db.org.findUnique({ where: { id: sessao.orgId }, select: { valePorLoja: true } })
+      if (org?.valePorLoja) return { ok: false as const, motivo: 'outra_loja' as const, loja: v.unidade?.nome ?? 'outra loja' }
+    }
     return {
       ok: true as const,
       id: v.id,
@@ -490,13 +507,47 @@ export async function valesDoCliente(sessao: Sessao, clienteId: string) {
     const vales = await db.vale.findMany({
       where: { clienteId, saldo: { gt: 0 } },
       orderBy: { criadoEm: 'desc' },
-      select: { id: true, codigo: true, saldo: true, valor: true, validade: true, criadoEm: true },
+      select: {
+        id: true, codigo: true, saldo: true, valor: true, validade: true, criadoEm: true,
+        unidadeId: true, unidade: { select: { nome: true } },
+      },
     })
-    return vales.map((v) => ({
+    return vales.map(({ unidade, ...v }) => ({
       ...v,
+      loja: unidade?.nome ?? null,
       saldo: Number(v.saldo),
       valor: Number(v.valor),
       vencido: v.validade ? venceu(v.validade) : false,
     }))
   })
+}
+
+export type ValeNoBalcao = { codigo: string; saldo: number; validade: Date | null }
+
+/**
+ * Os vales que a cliente pode gastar AGORA, nesta loja: com saldo, dentro
+ * da validade e (com "vale por loja") desta loja ou sem loja. É o que o
+ * balcão oferece sozinho quando a cliente é escolhida — na loja ninguém
+ * guarda o papel do vale, e o código amassado não pode ser o que separa a
+ * cliente do crédito dela. Dentro de uma transação já aberta.
+ */
+export async function valesParaUsarEm(
+  db: BancoDaOrg,
+  clienteId: string,
+  unidadeId: string,
+  valePorLoja: boolean,
+): Promise<ValeNoBalcao[]> {
+  const vales = await db.vale.findMany({
+    where: {
+      clienteId,
+      saldo: { gt: 0 },
+      ...(valePorLoja ? { OR: [{ unidadeId }, { unidadeId: null }] } : {}),
+    },
+    orderBy: [{ validade: 'asc' }, { criadoEm: 'asc' }],
+    select: { codigo: true, saldo: true, validade: true },
+  })
+  // O que vence primeiro, primeiro: é o crédito que a cliente perde antes.
+  return vales
+    .filter((v) => !v.validade || !venceu(v.validade))
+    .map((v) => ({ codigo: v.codigo, saldo: reais(centavos(v.saldo)), validade: v.validade }))
 }

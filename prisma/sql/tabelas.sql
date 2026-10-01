@@ -125,6 +125,10 @@ CREATE TABLE "orgs" (
     "logo_url" TEXT,
     "cor_marca" TEXT,
     "desconto_maximo" DECIMAL(5,2) NOT NULL DEFAULT 10,
+    "vende_sem_estoque" BOOLEAN NOT NULL DEFAULT false,
+    "vale_por_loja" BOOLEAN NOT NULL DEFAULT false,
+    "credito_max_parcelas" INTEGER NOT NULL DEFAULT 6,
+    "credito_juros_pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
     "lembrete_ativo" BOOLEAN NOT NULL DEFAULT false,
     "lembrete_horas" INTEGER NOT NULL DEFAULT 24,
     "pontos_ativo" BOOLEAN NOT NULL DEFAULT false,
@@ -134,6 +138,9 @@ CREATE TABLE "orgs" (
     "crediario_juros_mes" DECIMAL(5,2) NOT NULL DEFAULT 3,
     "crediario_max_parcelas" INTEGER NOT NULL DEFAULT 6,
     "crediario_dias_entre" INTEGER NOT NULL DEFAULT 30,
+    "crediario_multa_pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
+    "crediario_carencia_dias" INTEGER NOT NULL DEFAULT 0,
+    "crediario_arredondar" BOOLEAN NOT NULL DEFAULT false,
     "mensalidade_multa_pct" DECIMAL(5,2) NOT NULL DEFAULT 2,
     "mensalidade_juros_mes" DECIMAL(5,2) NOT NULL DEFAULT 1,
     "mensalidade_pontualidade_pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
@@ -155,6 +162,8 @@ CREATE TABLE "unidades" (
     "nome" TEXT NOT NULL,
     "documento" TEXT,
     "apelido" TEXT,
+    "razao_social" TEXT,
+    "inscricao_estadual" TEXT,
     "endereco" TEXT,
     "numero" TEXT,
     "complemento" TEXT,
@@ -168,6 +177,7 @@ CREATE TABLE "unidades" (
     "eh_deposito" BOOLEAN NOT NULL DEFAULT false,
     "ativa" BOOLEAN NOT NULL DEFAULT true,
     "proxima_venda" INTEGER NOT NULL DEFAULT 1,
+    "maquininhas" JSONB,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizada_em" TIMESTAMP(3) NOT NULL,
 
@@ -181,6 +191,8 @@ CREATE TABLE "usuarios" (
     "nome" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "senha_hash" TEXT,
+    "pin_hash" TEXT,
+    "pin_definido_em" TIMESTAMP(3),
     "telefone" TEXT,
     "foto_url" TEXT,
     "ativo" BOOLEAN NOT NULL DEFAULT true,
@@ -560,6 +572,9 @@ CREATE TABLE "vendas" (
     "pontos_usados" INTEGER NOT NULL DEFAULT 0,
     "pontos_ganhos" INTEGER NOT NULL DEFAULT 0,
     "total" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "acrescimo" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "autorizado_por_id" TEXT,
+    "autorizado_por" TEXT,
     "observacoes" TEXT,
     "encomenda_id" TEXT,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -584,6 +599,9 @@ CREATE TABLE "venda_itens" (
     "desconto" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "total" DECIMAL(12,2) NOT NULL,
     "custo_unit" DECIMAL(12,2),
+    "saldo_na_venda" DECIMAL(14,3),
+    "conferido_em" TIMESTAMP(3),
+    "conferido_por" TEXT,
 
     CONSTRAINT "venda_itens_pkey" PRIMARY KEY ("id")
 );
@@ -599,6 +617,8 @@ CREATE TABLE "pagamentos" (
     "referencia" TEXT,
     "vale_id" TEXT,
     "taxa_pct" DECIMAL(5,2),
+    "maquininha" TEXT,
+    "juros" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "pagamentos_pkey" PRIMARY KEY ("id")
@@ -639,6 +659,7 @@ CREATE TABLE "vales" (
     "org_id" TEXT NOT NULL,
     "codigo" TEXT NOT NULL,
     "cliente_id" TEXT,
+    "unidade_id" TEXT,
     "valor" DECIMAL(12,2) NOT NULL,
     "saldo" DECIMAL(12,2) NOT NULL,
     "validade" DATE,
@@ -662,6 +683,9 @@ CREATE TABLE "parcelas" (
     "valor" DECIMAL(12,2) NOT NULL,
     "pago" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "juros" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "multa" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "desconto" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "multa_cobrada" BOOLEAN NOT NULL DEFAULT false,
     "juros_ate" DATE,
     "quitada_em" TIMESTAMP(3),
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -675,13 +699,47 @@ CREATE TABLE "recebimentos" (
     "org_id" TEXT NOT NULL,
     "parcela_id" TEXT NOT NULL,
     "caixa_id" TEXT,
+    "recibo_id" TEXT,
     "forma" "FormaPagamento" NOT NULL,
     "valor" DECIMAL(12,2) NOT NULL,
     "juros" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "multa" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "desconto" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "externo" BOOLEAN NOT NULL DEFAULT false,
+    "maquininha" TEXT,
+    "taxa_pct" DECIMAL(5,2),
     "quem" TEXT NOT NULL,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "recebimentos_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "recibos_crediario" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "unidade_id" TEXT NOT NULL,
+    "cliente_id" TEXT NOT NULL,
+    "caixa_id" TEXT,
+    "valor" DECIMAL(12,2) NOT NULL,
+    "juros" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "multa" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "desconto" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "perdoado" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "troco" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "saldo_antes" DECIMAL(12,2) NOT NULL,
+    "saldo_depois" DECIMAL(12,2) NOT NULL,
+    "externo" BOOLEAN NOT NULL DEFAULT false,
+    "referencia" TEXT,
+    "pago_em" DATE,
+    "quem_id" TEXT,
+    "quem" TEXT NOT NULL,
+    "autorizado_por_id" TEXT,
+    "autorizado_por" TEXT,
+    "motivo" TEXT,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "recibos_crediario_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1542,6 +1600,18 @@ CREATE INDEX "recebimentos_org_id_parcela_id_idx" ON "recebimentos"("org_id", "p
 CREATE INDEX "recebimentos_org_id_criado_em_idx" ON "recebimentos"("org_id", "criado_em");
 
 -- CreateIndex
+CREATE INDEX "recebimentos_org_id_recibo_id_idx" ON "recebimentos"("org_id", "recibo_id");
+
+-- CreateIndex
+CREATE INDEX "recibos_crediario_org_id_cliente_id_criado_em_idx" ON "recibos_crediario"("org_id", "cliente_id", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "recibos_crediario_org_id_caixa_id_idx" ON "recibos_crediario"("org_id", "caixa_id");
+
+-- CreateIndex
+CREATE INDEX "recibos_crediario_org_id_unidade_id_criado_em_idx" ON "recibos_crediario"("org_id", "unidade_id", "criado_em");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "taxas_pagamento_org_id_forma_parcelas_key" ON "taxas_pagamento"("org_id", "forma", "parcelas");
 
 -- CreateIndex
@@ -1950,6 +2020,9 @@ ALTER TABLE "vales" ADD CONSTRAINT "vales_org_id_fkey" FOREIGN KEY ("org_id") RE
 ALTER TABLE "vales" ADD CONSTRAINT "vales_cliente_id_fkey" FOREIGN KEY ("cliente_id") REFERENCES "clientes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "vales" ADD CONSTRAINT "vales_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "parcelas" ADD CONSTRAINT "parcelas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -1969,6 +2042,21 @@ ALTER TABLE "recebimentos" ADD CONSTRAINT "recebimentos_parcela_id_fkey" FOREIGN
 
 -- AddForeignKey
 ALTER TABLE "recebimentos" ADD CONSTRAINT "recebimentos_caixa_id_fkey" FOREIGN KEY ("caixa_id") REFERENCES "caixas"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recebimentos" ADD CONSTRAINT "recebimentos_recibo_id_fkey" FOREIGN KEY ("recibo_id") REFERENCES "recibos_crediario"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recibos_crediario" ADD CONSTRAINT "recibos_crediario_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recibos_crediario" ADD CONSTRAINT "recibos_crediario_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recibos_crediario" ADD CONSTRAINT "recibos_crediario_cliente_id_fkey" FOREIGN KEY ("cliente_id") REFERENCES "clientes"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "recibos_crediario" ADD CONSTRAINT "recibos_crediario_caixa_id_fkey" FOREIGN KEY ("caixa_id") REFERENCES "caixas"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "taxas_pagamento" ADD CONSTRAINT "taxas_pagamento_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -20,35 +20,48 @@
 // passo 2 ocupa o lugar dela. É isso que faz o pedido caber de pé num tablet
 // deitado sem esconder o botão de concluir.
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { Aviso, Botao, Situacao, cx } from '@/ui/base'
 import { ROTULO_TABELA } from '@/servidor/preco'
-import { brl, cent, linhaCent, notasSugeridas, passoAtual, precoDe } from './conta'
-import { FORMAS, tituloDaForma, type Linha, type Venda } from './useVenda'
+import { mostrarDiaDaColuna, diaEmSP, somarDias } from '@/servidor/dia'
+import { agendaDoCrediario, primeiroVencimentoMaximo } from '@/servidor/crediario-agenda'
+import { brl, cent, jurosDoCredito, linhaCent, notasSugeridas, passoAtual, precoDe } from './conta'
+import { FORMAS, TECLA_DA_FORMA, tituloDaForma, type Linha, type Pago, type Venda } from './useVenda'
+import { PerguntaSemEstoque } from './Autorizar'
 import { fracionado, partesDaDescricao, UNIDADE } from './vitrine'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
 
 /* ── os itens ─────────────────────────────────────────────── */
 
-export function Itens({ v }: { v: Venda }) {
+export function Itens({
+  v,
+  vazio,
+}: {
+  v: Venda
+  /** O que mais cabe no pedido vazio — o "veio só pagar o crediário". */
+  vazio?: ReactNode
+}) {
   const p = usePalavras()
   if (v.carrinho.length === 0) {
     return (
       // Deitado, e não em pé: o vazio é o estado mais comum do balcão (toda
       // venda começa nele), e a altura que ele ocupar é tirada do pagamento.
-      <div className="flex h-full items-center justify-center gap-3 px-2 py-5">
-        <span aria-hidden className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-superficie-2 text-tinta-3">
-          <svg viewBox="0 0 24 24" className="size-6" fill="none">
-            <path d="M4 5h2l2.2 10.2a1 1 0 001 .8h8.6a1 1 0 001-.76L20.5 9H7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="10" cy="19.5" r="1.3" fill="currentColor" />
-            <circle cx="17" cy="19.5" r="1.3" fill="currentColor" />
-          </svg>
-        </span>
-        <span className="flex flex-col">
-          <span className="text-base font-semibold text-tinta">{p.Pedido} vazio</span>
-          <span className="text-sm text-tinta-2">Toque num {p.produto} ou bipe a etiqueta.</span>
-        </span>
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-2 py-5">
+        <div className="flex items-center justify-center gap-3">
+          <span aria-hidden className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-superficie-2 text-tinta-3">
+            <svg viewBox="0 0 24 24" className="size-6" fill="none">
+              <path d="M4 5h2l2.2 10.2a1 1 0 001 .8h8.6a1 1 0 001-.76L20.5 9H7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="10" cy="19.5" r="1.3" fill="currentColor" />
+              <circle cx="17" cy="19.5" r="1.3" fill="currentColor" />
+            </svg>
+          </span>
+          <span className="flex flex-col">
+            <span className="text-base font-semibold text-tinta">{p.Pedido} vazio</span>
+            <span className="text-sm text-tinta-2">Toque num {p.produto} ou bipe a etiqueta.</span>
+          </span>
+        </div>
+        {vazio}
       </div>
     )
   }
@@ -151,7 +164,9 @@ function ItemDoPedido({ l, v }: { l: Linha; v: Venda }) {
         )}
         {passou && (
           <span className="ml-auto text-right text-xs font-semibold text-atencao">
-            {l.saldo <= 0 ? 'sem estoque' : `só tem ${l.saldo}`}
+            {v.vendeSemEstoque
+              ? `sistema diz ${l.saldo <= 0 ? 'que acabou' : `só ${l.saldo}`} · vai para conferir`
+              : l.saldo <= 0 ? 'sem estoque' : `só tem ${l.saldo}`}
           </span>
         )}
       </div>
@@ -163,7 +178,7 @@ function ItemDoPedido({ l, v }: { l: Linha; v: Venda }) {
 
 export function Total({ v }: { v: Venda }) {
   const c = v.conta
-  const temAjuste = v.desconto > 0 || v.pontosUsar > 0
+  const temAjuste = c.descontoCent > 0 || c.acrescimoCent > 0 || v.pontosUsar > 0
   return (
     <div className="flex flex-col gap-1.5">
       {temAjuste && (
@@ -172,10 +187,16 @@ export function Total({ v }: { v: Venda }) {
             <span>Subtotal</span>
             <span className="numero">{brl(c.totalCent / 100)}</span>
           </span>
-          {v.desconto > 0 && (
+          {c.descontoCent > 0 && (
             <span className="flex justify-between">
-              <span>Desconto</span>
-              <span className="numero">− {brl(cent(v.desconto) / 100)}</span>
+              <span>Desconto{v.descontoEmPct && <span className="numero"> ({String(v.desconto).replace('.', ',')}%)</span>}</span>
+              <span className="numero">− {brl(c.descontoCent / 100)}</span>
+            </span>
+          )}
+          {c.acrescimoCent > 0 && (
+            <span className="flex justify-between">
+              <span>Acréscimo</span>
+              <span className="numero">+ {brl(c.acrescimoCent / 100)}</span>
             </span>
           )}
           {v.pontosUsar > 0 && (
@@ -204,6 +225,14 @@ export function Total({ v }: { v: Venda }) {
           {brl(c.aPagarCent / 100)}
         </span>
       </div>
+
+      {/* Antes de escolher a forma, o preço cheio — e quanto se economiza à
+          vista. É o número que a vendedora fala: "no Pix sai R$ 20 a menos". */}
+      {c.economiaCent > 0 && v.carrinho.length > 0 && (
+        <p className="rounded-lg bg-bom-fundo px-2.5 py-1.5 text-right text-sm font-semibold text-bom">
+          Economize <span className="numero">{brl(c.economiaCent / 100)}</span> pagando no Pix ou dinheiro
+        </p>
+      )}
 
       {/* A escada: "à vista sai por tanto", sem fazer conta. */}
       {c.temEscada && v.carrinho.length > 0 && (
@@ -296,7 +325,7 @@ export function Pagamento({
   aoPedirCliente,
 }: {
   v: Venda
-  crediario: { maxParcelas: number } | null
+  crediario: { maxParcelas: number; diasEntre?: number } | null
   /** Crediário sem cliente: em vez de recusar, abre a escolha de cliente. */
   aoPedirCliente: () => void
 }) {
@@ -314,7 +343,9 @@ export function Pagamento({
   // O passo 1 aparece enquanto não há forma, ou enquanto falta receber algo
   // (o resto de um pagamento dividido, ou o que o vale não cobriu).
   const mostrarFormas = formas.length === 0 || c.faltaCent > 0
-  const [dividindo, setDividindo] = useState(false)
+  // O "dividir" mora no useVenda: o F8 liga e desliga dali.
+  const dividindo = v.dividindo
+  const setDividindo = v.setDividindo
 
   function escolherForma(forma: string) {
     const ja = formas.some((p) => p.forma === forma)
@@ -370,21 +401,35 @@ export function Pagamento({
                   type="button"
                   onClick={crediarioToque}
                   disabled={semItens}
-                  title={v.cliente ? 'Vender no crediário' : 'Crediário precisa de cliente: toque para escolher'}
+                  title={v.cliente ? 'Vender no crediário (F6)' : 'Crediário precisa de cliente: toque para escolher'}
                   className="min-h-10 rounded-lg border border-borda bg-superficie px-2.5 text-xs font-semibold text-tinta hover:bg-superficie-2 disabled:opacity-45"
                 >
-                  Crediário
+                  Crediário <Tecla>F6</Tecla>
                 </button>
               )}
-              {!v.vale.aberto && (
+              {/* O vale da cliente aparece sozinho, com o saldo: ninguém
+                  digita o código do papel que ela não trouxe. */}
+              {v.vale.daCliente ? (
                 <button
                   type="button"
-                  onClick={() => v.vale.setAberto(true)}
-                  disabled={semItens}
-                  className="min-h-10 rounded-lg border border-borda bg-superficie px-2.5 text-xs font-semibold text-tinta hover:bg-superficie-2 disabled:opacity-45"
+                  onClick={() => void v.vale.usarDaCliente()}
+                  disabled={semItens || v.vale.indo}
+                  title="Usar o vale da cliente (F7)"
+                  className="min-h-10 rounded-lg border border-bom-borda bg-bom-fundo px-2.5 text-xs font-semibold text-bom hover:opacity-90 disabled:opacity-45"
                 >
-                  Vale-troca
+                  Vale <span className="numero">{brl(v.vale.daCliente.saldo)}</span> <Tecla>F7</Tecla>
                 </button>
+              ) : (
+                !v.vale.aberto && (
+                  <button
+                    type="button"
+                    onClick={() => v.vale.setAberto(true)}
+                    disabled={semItens}
+                    className="min-h-10 rounded-lg border border-borda bg-superficie px-2.5 text-xs font-semibold text-tinta hover:bg-superficie-2 disabled:opacity-45"
+                  >
+                    Vale-troca <Tecla>F7</Tecla>
+                  </button>
+                )
               )}
             </span>
           </Passo>
@@ -412,6 +457,7 @@ export function Pagamento({
                 >
                   <span className={cx(ativa ? 'text-marca' : 'text-tinta-2')}>{ICONE[f.chave]}</span>
                   {f.titulo}
+                  <Tecla canto>{TECLA_DA_FORMA[f.chave]!}</Tecla>
                 </button>
               )
             })}
@@ -569,6 +615,7 @@ export function Pagamento({
                   <Passo n={2} atual={passo} titulo="Em quantas vezes?">
                     <span className="numero text-sm font-semibold text-tinta-2">{brl(p.valor)}</span>
                   </Passo>
+                  <DadosDoCrediario v={v} p={p} diasEntre={crediario.diasEntre ?? 30} />
                   <div role="group" aria-label="Parcelas" className="grid grid-cols-[repeat(auto-fill,minmax(3.5rem,1fr))] gap-1.5">
                     {Array.from({ length: crediario.maxParcelas }, (_, k) => k + 1).map((n) => (
                       <button
@@ -595,7 +642,8 @@ export function Pagamento({
             // é convite para digitar errado.
             const editavel = dividindo || varios || p.forma === 'VALE'
             return (
-              <div key={i} className="flex items-center justify-between gap-3 rounded-xl bg-superficie-2 px-3 py-2">
+              <div key={i} className="flex flex-col gap-2 rounded-xl bg-superficie-2 px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-sm font-semibold text-tinta">{tituloDaForma(p)}</span>
                   {!editavel && (
@@ -604,7 +652,7 @@ export function Pagamento({
                       onClick={() => setDividindo(true)}
                       className="self-start text-xs font-semibold text-marca underline-offset-2 hover:underline"
                     >
-                      Dividir em duas formas
+                      Dividir em duas formas <Tecla>F8</Tecla>
                     </button>
                   )}
                 </span>
@@ -636,6 +684,8 @@ export function Pagamento({
                   )}
                 </span>
               </div>
+              <DadosDoCartao v={v} p={p} i={i} />
+              </div>
             )
           })}
 
@@ -666,7 +716,9 @@ export function Concluir({ v, caixaId }: { v: Venda; caixaId: string | null }) {
           ? 'O valor passou do total. Ajuste antes de concluir.'
           : c.faltaCent > 0
             ? `Falta receber ${brl(c.faltaCent / 100)}.`
-            : null
+            : v.cpfRuim && v.pagos.some((x) => x.forma === 'CREDIARIO')
+              ? 'O CPF digitado não confere. Corrija ou apague para seguir sem CPF.'
+              : null
 
   return (
     <div className="flex flex-col gap-2">
@@ -683,10 +735,11 @@ export function Concluir({ v, caixaId }: { v: Venda; caixaId: string | null }) {
           )}
         </Aviso>
       )}
+      <PerguntaSemEstoque v={v} />
       <Botao
         tom="confirmar"
         largo
-        onClick={v.concluir}
+        onClick={() => v.concluir()}
         carregando={v.indo}
         disabled={!v.podeConcluir}
         aria-describedby={motivo ? 'motivo-concluir' : undefined}
@@ -719,7 +772,13 @@ export function Sucesso({ v, aoNova }: { v: Venda; aoNova: () => void }) {
   }, [f?.vendaId])
   if (!f) return null
 
-  const formas = [...new Set(f.formas.map((x) => tituloDaForma({ forma: x })))].join(' + ')
+  const papel =
+    'flex min-h-12 items-center justify-center gap-2 rounded-xl border border-borda bg-superficie px-3 text-sm font-semibold text-tinta hover:bg-superficie-2'
+  const impressora = (
+    <svg aria-hidden viewBox="0 0 20 20" className="size-5" fill="none">
+      <path d="M6 7V3h8v4M6 14H4.5A1.5 1.5 0 013 12.5v-4A1.5 1.5 0 014.5 7h11A1.5 1.5 0 0117 8.5v4a1.5 1.5 0 01-1.5 1.5H14M6 11h8v6H6v-6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  )
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5 px-5 py-8 text-center">
@@ -735,7 +794,8 @@ export function Sucesso({ v, aoNova }: { v: Venda; aoNova: () => void }) {
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-extrabold">{p.vendaConcluida}</h2>
         <p className="text-sm text-tinta-2">
-          Nº <span className="numero">{f.numero}</span> · {formas}
+          Nº <span className="numero">{f.numero}</span>
+          {f.pagamento && <> · {f.pagamento}</>}
         </p>
       </div>
 
@@ -754,18 +814,143 @@ export function Sucesso({ v, aoNova }: { v: Venda; aoNova: () => void }) {
         <Botao botaoRef={nova} largo onClick={aoNova} className="min-h-14 rounded-xl text-base">
           {p.novaVenda}
         </Botao>
-        <a
-          href={f.comprovante}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-borda bg-superficie px-3 text-sm font-semibold text-tinta hover:bg-superficie-2"
-        >
-          <svg aria-hidden viewBox="0 0 20 20" className="size-5" fill="none">
-            <path d="M6 7V3h8v4M6 14H4.5A1.5 1.5 0 013 12.5v-4A1.5 1.5 0 014.5 7h11A1.5 1.5 0 0117 8.5v4a1.5 1.5 0 01-1.5 1.5H14M6 11h8v6H6v-6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-          </svg>
-          Imprimir comprovante
-        </a>
+        {/* No crediário, dois papéis: o comprovante e o carnê que ela assina. */}
+        <div className="grid gap-2">
+          <a href={f.comprovante} target="_blank" rel="noopener noreferrer" className={papel}>
+            {impressora}
+            Imprimir comprovante
+          </a>
+          {f.carne && (
+            <a href={f.carne} target="_blank" rel="noopener noreferrer" className={papel}>
+              {impressora}
+              Imprimir carnê
+            </a>
+          )}
+        </div>
       </div>
+    </div>
+  )
+}
+
+/* ── pedaços do pagamento ─────────────────────────────────── */
+
+/** A tecla da forma, para quem usa teclado. Some no toque (tablet, celular). */
+function Tecla({ children, canto = false }: { children: string; canto?: boolean }) {
+  return (
+    <kbd
+      className={cx(
+        'hidden rounded border border-borda bg-superficie-2 px-1 font-mono text-[10px] font-semibold text-tinta-3 [@media(pointer:fine)]:inline',
+        canto && 'absolute top-1 right-1.5',
+      )}
+    >
+      {children}
+    </kbd>
+  )
+}
+
+/**
+ * Pix, débito e crédito: em qual maquininha, e (no crédito) em quantas vezes.
+ * A maquininha vem marcada com a última usada neste aparelho; com uma só, é
+ * só o nome. O juro do parcelamento, quando a loja cobra, aparece somado:
+ * é o que a cliente vai ver na maquininha.
+ */
+export function DadosDoCartao({ v, p, i, compacto = false }: { v: Venda; p: Pago; i: number; compacto?: boolean }) {
+  const lista = v.maquininhas.filter((m) => (m.formas as string[]).includes(p.forma))
+  const credito = p.forma === 'CREDITO' && v.credito.maxParcelas > 1
+  if (lista.length === 0 && !credito) return null
+  const n = p.parcelas ?? 1
+  const jurosC = p.forma === 'CREDITO' ? jurosDoCredito(cent(p.valor), n, v.credito.jurosPct) : 0
+  const campo = cx(
+    'rounded-lg border border-borda bg-superficie px-2 font-semibold text-tinta',
+    compacto ? 'h-8 text-xs' : 'h-10 text-sm',
+  )
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-tinta-2">
+      {lista.length > 1 && (
+        <label className="flex items-center gap-1.5">
+          Maquininha
+          <select value={p.maquininha ?? ''} onChange={(e) => v.mudarMaquininha(i, e.target.value)} className={campo}>
+            {lista.map((m) => (
+              <option key={m.nome} value={m.nome}>
+                {m.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {lista.length === 1 && <span>na {lista[0]!.nome}</span>}
+      {credito && (
+        <label className="flex items-center gap-1.5">
+          Em
+          <select value={n} onChange={(e) => v.mudarParcelasCredito(i, Number(e.target.value))} className={campo} aria-label="Em quantas vezes no crédito">
+            {Array.from({ length: v.credito.maxParcelas }, (_, k) => k + 1).map((k) => (
+              <option key={k} value={k}>
+                {k === 1 ? 'à vista' : `${k}×`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {credito && n > 1 && (
+        <span className="numero">
+          {n}× de {brl(Math.ceil((cent(p.valor) + jurosC) / n) / 100)}
+          {jurosC > 0 && <> · juro {brl(jurosC / 100)} (total {brl((cent(p.valor) + jurosC) / 100)})</>}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * O crediário: o 1º vencimento (pronto em hoje + 30, até 60 dias) e a
+ * agenda que sai dele, e o CPF quando a ficha não tem — perguntado, nunca
+ * exigido: o carnê é confissão de dívida e leva o CPF, mas a venda não para.
+ */
+export function DadosDoCrediario({ v, p, diasEntre, compacto = false }: { v: Venda; p: Pago; diasEntre: number; compacto?: boolean }) {
+  const hoje = diaEmSP()
+  const primeiro = p.primeiroVencimento ?? somarDias(hoje, diasEntre)
+  const agenda = agendaDoCrediario({ totalCent: cent(p.valor), parcelas: p.parcelas ?? 1, primeiroVencimento: primeiro, diasEntre })
+  const n = agenda.length
+  const campo = cx(
+    'rounded-lg border border-borda bg-superficie px-2 font-semibold text-tinta',
+    compacto ? 'h-8 text-xs' : 'h-10 text-sm',
+  )
+  return (
+    <div className="flex flex-col gap-2 text-xs text-tinta-2">
+      <label className="flex flex-wrap items-center gap-2">
+        1º vencimento
+        <input
+          type="date"
+          value={primeiro}
+          min={somarDias(hoje, 1)}
+          max={primeiroVencimentoMaximo(hoje, diasEntre)}
+          onChange={(e) => e.target.value && v.mudarPrimeiroVencimento(e.target.value)}
+          className={cx(campo, 'numero')}
+        />
+      </label>
+      {n > 0 && (
+        <span className="numero">
+          {n}× de {brl(agenda[0]!.valorCent / 100)} — 1ª vence {mostrarDiaDaColuna(agenda[0]!.vencimento)}
+          {n > 1 && <>, depois todo dia {Number(primeiro.slice(8))}{diasEntre !== 30 ? ` (a cada ${diasEntre} dias)` : ''}</>}
+        </span>
+      )}
+      {v.ficha && !v.ficha.temCpf && (
+        <label className="flex flex-col gap-1">
+          <span>
+            CPF da cliente <span className="text-tinta-3">— vai para o carnê e para a ficha; pode seguir sem</span>
+          </span>
+          <input
+            value={v.cpf}
+            onChange={(e) => v.setCpf(e.target.value)}
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="000.000.000-00"
+            aria-invalid={v.cpfRuim || undefined}
+            className={cx(campo, 'numero font-normal', v.cpfRuim && 'border-critico')}
+          />
+          {v.cpfRuim && <span className="font-medium text-critico">Esse CPF não confere. Confira os números, ou apague para seguir sem.</span>}
+        </label>
+      )}
     </div>
   )
 }

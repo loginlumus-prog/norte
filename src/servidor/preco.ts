@@ -6,9 +6,12 @@
 // dia, sem saber — é a diferença entre os três que paga a taxa.
 //
 // ── a regra ──────────────────────────────────────────────────
-// A FORMA DE PAGAMENTO escolhe a tabela. Dinheiro, Pix, débito, transferência
-// e vale são "à vista": o dinheiro entra inteiro e na hora. Crédito é
-// "cartão": entra menos e depois. Crediário é "crediário": entra em parcelas
+// A FORMA DE PAGAMENTO escolhe a tabela. Dinheiro, Pix, transferência e vale
+// são "à vista": o dinheiro entra inteiro e na hora. Débito e crédito são
+// "cartão": a maquininha morde a taxa nos dois — o débito entrava como à
+// vista, e a loja que cobra "à vista é no dinheiro e no Pix" dava o desconto
+// do Pix a quem passava o cartão (era assim no balcão de onde a loja veio, e
+// lá foi corrigido como defeito). Crediário é "crediário": entra em parcelas
 // e com risco. Venda paga em duas formas usa a tabela MAIS CARA presente — se
 // metade foi no crédito, a loja já pagou a taxa daquela metade, e cobrar à
 // vista tudo seria dar o desconto de quem pagou à vista para quem não pagou.
@@ -23,9 +26,9 @@ export type Tabela = 'vista' | 'cartao' | 'crediario'
 export const TABELA_DA_FORMA: Record<FormaPagamento, Tabela> = {
   DINHEIRO: 'vista',
   PIX: 'vista',
-  DEBITO: 'vista',
   TRANSFERENCIA: 'vista',
   VALE: 'vista',
+  DEBITO: 'cartao',
   CREDITO: 'cartao',
   CREDIARIO: 'crediario',
 }

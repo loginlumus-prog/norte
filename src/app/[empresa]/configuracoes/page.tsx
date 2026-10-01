@@ -19,6 +19,7 @@ import { Lembrete } from './Lembrete'
 import { planoLibera } from '@/servidor/planos'
 import { HORAS_DE_LEMBRETE, textoDoLembrete } from '@/servidor/lembretes'
 import { Taxas } from './Taxas'
+import { CartoesDoBalcao } from './CartoesDoBalcao'
 import { configCrediario } from '@/servidor/crediario'
 import { moduloLigado } from '@/servidor/modulos'
 import { taxasDaEmpresa, FORMAS_COM_TAXA } from '@/servidor/taxas'
@@ -151,6 +152,8 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
           <Aviso nivel="neutro">Só quem responde pela empresa muda isto.</Aviso>
         )}
       </Cartao>
+
+      {pode(sessao, 'empresa.configurar') && <CartoesDoBalcao slug={slug} sessao={sessao} />}
 
       {moduloLigado(empresa, 'agenda') && (
         <Cartao titulo="Lembrete do horário no WhatsApp">

@@ -18,14 +18,19 @@
 //    toque lança. E a quantidade se escolhe ANTES de tocar ("×20, picolé"),
 //    que é uma ação a menos do que lançar e corrigir depois.
 // 6. AS TECLAS SÃO AS DE TODO PDV. F10 fecha, Ctrl+P vai para o produto,
-//    Alt+N para o cliente, Alt+F para o vendedor. Quem já operou um caixa na
-//    vida chega sabendo — e quem não, aprende olhando a etiqueta do botão.
-// 7. A FORMA DE PAGAMENTO ESCOLHE O PREÇO. Crédito cobra o preço "no cartão";
-//    o resto, "à vista". A escada dos três totais fica à vista para a pessoa
-//    dizer "à vista sai por tanto" sem fazer conta.
+//    Alt+N para o cliente, Alt+F para o vendedor, F2–F8 as formas (F2
+//    dinheiro, F3 débito, F4 crédito, F5 Pix, F6 crediário, F7 vale, F8
+//    dividir) e Esc fecha o que abriu. Quem já operou um caixa na vida chega
+//    sabendo — e quem não, aprende olhando a etiqueta do botão.
+// 7. A FORMA DE PAGAMENTO ESCOLHE O PREÇO. Débito e crédito cobram o preço
+//    "no cartão"; dinheiro, Pix e vale, "à vista". Antes de escolher, a tela
+//    mostra o preço mais caro e quanto se economiza à vista. A escada dos três
+//    totais fica à vista para a pessoa dizer "à vista sai por tanto" sem
+//    fazer conta.
 // 8. ESTOQUE CURTO AVISA NA HORA, NÃO NO FIM. Lançou mais do que tem, a tela
 //    diz. O servidor recusa de novo ao fechar — o aviso é conforto, a trava
-//    é lá.
+//    é lá. Na loja que vende o que o sistema diz que acabou, o aviso pergunta
+//    "vende assim mesmo?" e a peça vai para a conferência do estoque.
 
 // O estado e as ações moram em useVenda.ts, e a conta em conta.ts: o balcão
 // simples (BalcaoSimples.tsx) usa os mesmos, e é assim que as duas caras dão
@@ -34,6 +39,8 @@
 
 import { useEffect, useState } from 'react'
 import { EscolherCliente } from './Cliente'
+import { AlertaDeDivida } from '../crediario/AlertaDeDivida'
+import { BotaoReceber } from '../crediario/BotaoReceber'
 import { faz } from './guardar'
 import { VendaIncerta, AvisoFixo } from './VendaIncerta'
 import { ROTULO_TABELA, type Tabela } from '@/servidor/preco'
@@ -42,7 +49,9 @@ import type { Vendedor } from '@/servidor/equipe'
 import { Botao, Aviso, Situacao, cx } from '@/ui/base'
 import { grade, type Grade, type InicialDoBalcao } from './acoes'
 import { brl, precoDe, linhaCent } from './conta'
-import { useVenda, FORMAS, tituloDaForma, type EncomendaNoPedido, type Linha } from './useVenda'
+import { useVenda, FORMAS, TECLA_DA_FORMA, tituloDaForma, type ConfigDoBalcao, type EncomendaNoPedido, type Linha } from './useVenda'
+import { PedirPin, PerguntaSemEstoque } from './Autorizar'
+import { DadosDoCartao, DadosDoCrediario } from './Pedido'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
 import { escolhaDoEnter } from '@/servidor/etiqueta'
@@ -73,7 +82,13 @@ export function Balcao({
   inicial,
   encomenda = null,
   veAssinatura = false,
+  config,
+  precisaPin = false,
 }: {
+  /** As regras desta loja que a tela precisa saber (ver useVenda). */
+  config?: ConfigDoBalcao
+  /** Quem opera não passa do teto sozinha: desconto e avulso pedem o PIN de quem pode. */
+  precisaPin?: boolean
   slug: string
   unidadeId: string
   /** Quem está operando. Entra na chave do que fica guardado — ver guardar.ts. */
@@ -89,10 +104,13 @@ export function Balcao({
   programa: Programa
   /** Quem pode vender aqui. Nulo = módulo de metas desligado: quem vende é quem opera. */
   vendedores: Vendedor[] | null
-  /** Pode lançar item fora do catálogo. É a mesma trava do desconto acima do teto. */
+  /** Pode lançar item fora do catálogo (quem não tem o poder lança com o PIN de quem tem). */
   podeAvulso: boolean
-  /** O crediário da loja. Nulo = módulo desligado: a forma nem aparece. */
-  crediario: { maxParcelas: number } | null
+  /**
+   * O crediário da loja. Nulo = módulo desligado: a forma nem aparece.
+   * `receber`: quem opera recebe parcela (sem ele, o aviso aparece sem o botão).
+   */
+  crediario: { maxParcelas: number; diasEntre?: number; receber?: boolean } | null
   /** Aberto pela Agenda: o horário a cobrar, com o serviço e o cliente. */
   inicial?: InicialDoBalcao | null
   /** Aberto por "Receber no balcão", em Encomendas. Ver useVenda. */
@@ -100,7 +118,7 @@ export function Balcao({
   /** Pode abrir Assinatura: decide o link do recado de teto do plano. */
   veAssinatura?: boolean
 }) {
-  const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario, inicial, encomenda, veAssinatura })
+  const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario, inicial, encomenda, veAssinatura, ...config })
   // "Concluir atendimento", "Toque num serviço" — a palavra do ramo (palavras.tsx).
   const p = usePalavras()
   const {
@@ -145,6 +163,7 @@ export function Balcao({
 
   return (
     <div ref={raiz} className="flex flex-col gap-3">
+      <PedirPin v={v} />
       {/* Recuperar em silêncio seria pior que perder: a pessoa veria itens
           que ela não lançou agora e não saberia de onde vieram. Diz o que
           aconteceu, de quando é, e deixa jogar fora num clique. */}
@@ -176,6 +195,17 @@ export function Balcao({
                 {recado.link.rotulo}
               </a>
             )}
+            {/* Venda no crediário: o carnê, ao lado do comprovante. */}
+            {recado.outro && (
+              <a
+                href={recado.outro.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold underline underline-offset-2"
+              >
+                {recado.outro.rotulo}
+              </a>
+            )}
           </span>
         </Aviso>
       )}
@@ -201,6 +231,16 @@ export function Balcao({
             {p.Pessoa} <Tecla>Alt N</Tecla>
           </span>
           <EscolherCliente slug={slug} escolhido={cliente} aoEscolher={setCliente} pedido={pedidoCliente} />
+          {/* Crediário: "ela já deve" ao escolher a cliente, e o "veio só
+              pagar" sem cliente escolhida (crediario/AlertaDeDivida.tsx). */}
+          {crediario && cliente && (
+            <AlertaDeDivida slug={slug} unidadeId={unidadeId} clienteId={cliente.id} podeReceber={crediario.receber !== false} />
+          )}
+          {crediario && !cliente && crediario.receber !== false && (
+            <BotaoReceber slug={slug} unidadeId={unidadeId} tom="discreto" className="self-start px-0 py-0.5 text-xs">
+              Receber parcela do crediário
+            </BotaoReceber>
+          )}
         </div>
         {vendedores && (
           <label className="flex flex-col gap-1 rounded-norte border border-borda bg-superficie px-3 py-2">
@@ -444,7 +484,9 @@ export function Balcao({
                             </span>
                             {passou && (
                               <span className="block text-xs font-medium text-atencao">
-                                só tem {l.saldo} em estoque
+                                {v.vendeSemEstoque
+                                  ? `o sistema diz ${l.saldo <= 0 ? 'que acabou' : `que só tem ${l.saldo}`} — vai para conferir`
+                                  : `só tem ${l.saldo} em estoque`}
                               </span>
                             )}
                           </td>
@@ -563,7 +605,7 @@ export function Balcao({
                 </button>
                 <p className="w-full text-[11px] text-tinta-3">
                   Item avulso não mexe em estoque e fica marcado no livro. Se a peça existe, cadastre — o
-                  relatório agradece.
+                  relatório agradece.{precisaPin && ' Ao fechar, pede o PIN de quem pode autorizar.'}
                 </p>
               </div>
             )}
@@ -600,14 +642,54 @@ export function Balcao({
               </div>
             )}
 
-            <label className="flex items-center justify-between gap-2 text-sm text-tinta-2">
-              Desconto
+            {/* Antes de escolher a forma, o preço é o mais caro: a economia à
+                vista é o que se fala para a cliente. */}
+            {conta.economiaCent > 0 && carrinho.length > 0 && (
+              <span className="rounded bg-bom-fundo px-2 py-1 text-xs font-semibold text-bom">
+                Economize <span className="numero">{brl(conta.economiaCent / 100)}</span> pagando no Pix ou dinheiro
+              </span>
+            )}
+
+            <div className="flex items-center justify-between gap-2 text-sm text-tinta-2">
+              <span>Desconto</span>
+              <span className="flex items-center gap-1">
+                <span role="group" aria-label="Desconto em reais ou em porcento" className="flex overflow-hidden rounded border border-borda text-xs font-bold">
+                  {([false, true] as const).map((pct) => (
+                    <button
+                      key={String(pct)}
+                      type="button"
+                      aria-pressed={v.descontoEmPct === pct}
+                      onClick={() => v.setDescontoEmPct(pct)}
+                      className={cx('px-1.5 py-1', v.descontoEmPct === pct ? 'bg-marca text-marca-tinta' : 'bg-superficie text-tinta-3')}
+                    >
+                      {pct ? '%' : 'R$'}
+                    </button>
+                  ))}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  max={v.descontoEmPct ? 100 : undefined}
+                  step={v.descontoEmPct ? 0.5 : 0.01}
+                  value={desconto || ''}
+                  onChange={(e) => setDesconto(Number(e.target.value) || 0)}
+                  placeholder={v.descontoEmPct ? '0' : '0,00'}
+                  aria-label={v.descontoEmPct ? 'Desconto em porcento' : 'Desconto em reais'}
+                  className="numero w-20 rounded border border-borda bg-superficie px-2 py-1 text-sm"
+                />
+              </span>
+            </div>
+            {v.descontoEmPct && conta.descontoCent > 0 && (
+              <span className="numero self-end text-xs text-tinta-3">− {brl(conta.descontoCent / 100)}</span>
+            )}
+            <label className="flex items-center justify-between gap-2 text-sm text-tinta-2" title="A etiqueta ficou com o preço velho: some a diferença.">
+              Acréscimo
               <input
                 type="number"
                 min={0}
                 step={0.01}
-                value={desconto || ''}
-                onChange={(e) => setDesconto(Number(e.target.value) || 0)}
+                value={v.acrescimo || ''}
+                onChange={(e) => v.setAcrescimo(Number(e.target.value) || 0)}
                 placeholder="0,00"
                 className="numero w-24 rounded border border-borda bg-superficie px-2 py-1 text-sm"
               />
@@ -664,6 +746,7 @@ export function Balcao({
                 className="py-2 text-xs"
               >
                 {f.titulo}
+                <Tecla>{TECLA_DA_FORMA[f.chave]!}</Tecla>
               </Botao>
             ))}
           </div>
@@ -693,6 +776,7 @@ export function Balcao({
                 className="flex-1 py-2 text-xs"
               >
                 Crediário{cliente ? '' : ' (precisa de cliente)'}
+                <Tecla>F6</Tecla>
               </Botao>
             </div>
           )}
@@ -700,6 +784,18 @@ export function Balcao({
           {/* O vale de troca: um botão só, que abre o campo do código. Fora da
               grade das quatro formas porque não é forma que se escolhe — é
               papel que a pessoa trouxe. */}
+          {v.vale.daCliente && (
+            <Botao
+              tom="secundario"
+              onClick={() => void v.vale.usarDaCliente()}
+              disabled={carrinho.length === 0 || faltaCent <= 0}
+              carregando={valeIndo}
+              className="py-2 text-xs"
+            >
+              Usar o vale da cliente · <span className="numero">{brl(v.vale.daCliente.saldo)}</span>
+              <Tecla>F7</Tecla>
+            </Botao>
+          )}
           {!valeAberto ? (
             <button
               type="button"
@@ -707,7 +803,7 @@ export function Balcao({
               disabled={carrinho.length === 0 || faltaCent <= 0}
               className="self-start text-xs font-medium text-marca underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
             >
-              + vale de troca
+              + vale de troca{v.vale.daCliente ? ' (outro código)' : ''} <Tecla>F7</Tecla>
             </button>
           ) : (
             <div className="flex flex-col gap-1.5 rounded-norte border border-borda-suave p-2">
@@ -742,7 +838,8 @@ export function Balcao({
           {pagos.length > 0 && (
             <ul className="flex flex-col gap-1">
               {pagos.map((p, i) => (
-                <li key={i} className="flex items-center justify-between gap-2 text-sm">
+                <li key={i} className="flex flex-col gap-1 text-sm">
+                <span className="flex items-center justify-between gap-2">
                   <span className="truncate text-tinta-2">
                     {tituloDaForma(p)}
                   </span>
@@ -765,6 +862,12 @@ export function Balcao({
                       ✕
                     </button>
                   </span>
+                </span>
+                {p.forma === 'CREDIARIO' && crediario ? (
+                  <DadosDoCrediario v={v} p={p} diasEntre={crediario.diasEntre ?? 30} compacto />
+                ) : (
+                  <DadosDoCartao v={v} p={p} i={i} compacto />
+                )}
                 </li>
               ))}
             </ul>
@@ -791,10 +894,14 @@ export function Balcao({
             </div>
           )}
 
+          <PerguntaSemEstoque v={v} />
+          {v.cpfRuim && pagos.some((x) => x.forma === 'CREDIARIO') && (
+            <span className="text-xs font-medium text-critico">O CPF digitado não confere. Corrija ou apague para seguir sem CPF.</span>
+          )}
           <Botao
             tom="confirmar"
             largo
-            onClick={concluir}
+            onClick={() => concluir()}
             carregando={indo}
             disabled={!podeConcluir}
             className="py-3 text-base"

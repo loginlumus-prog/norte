@@ -20,7 +20,10 @@ import { plural } from '@/ui/texto'
 import { lerPagina, paginar } from '@/ui/paginacao'
 import { Situacao, cx } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
-import { Receber } from './Receber'
+import { recibosDoCliente, type ReciboNaLista } from '@/servidor/recibos'
+import { BotaoReceber } from './BotaoReceber'
+import { RegraDoAtraso } from './RegraDoAtraso'
+import { ListaDeRecibos } from './Recibos'
 
 export const metadata: Metadata = { title: 'Crediário' }
 
@@ -69,14 +72,20 @@ export default async function CrediarioPagina({
   // de 500 cortava a lista sem avisar. Ver ui/paginacao.ts.
   const total = await contarParcelas(sessao, filtro)
   const pag = paginar(total, lerPagina(paginaPedida), POR_PAGINA)
-  const [parcelas, resumo, config, maiores] = await Promise.all([
+  const [parcelas, resumo, config, maiores, recibos] = await Promise.all([
     listarParcelas(sessao, { ...filtro, pagina: pag.pagina, porPagina: POR_PAGINA }),
     resumoCrediario(sessao, onde.ids),
     configCrediario(sessao),
     maioresDevedores(sessao, onde.ids, 6),
+    clienteId ? recibosDoCliente(sessao, clienteId, 20) : Promise.resolve([] as ReciboNaLista[]),
   ])
 
-  const podeReceber = pode(sessao, 'crediario.receber')
+  // Receber é por LOJA (cada loja é um credor, com o caixa dela): o botão de
+  // cada linha abre na loja da parcela.
+  const podeReceberEm = (u: string) => pode(sessao, 'crediario.receber', u)
+  const podeReceber = onde.ids.some(podeReceberEm)
+  const podeConfigurar = pode(sessao, 'empresa.configurar')
+  const nomeDoCliente = clienteId ? parcelas.find((p) => p.clienteId === clienteId)?.cliente ?? null : null
   const atuais = { unidade: onde.unidadeId, q, situacao: sitPedida ?? null, cliente: clienteId ?? null }
   const link = (m: Record<string, string | null>) => enderecoCom(`/${slug}/crediario`, atuais, m)
 
@@ -92,7 +101,18 @@ export default async function CrediarioPagina({
       ativo={`/${slug}/crediario`}
       tema={tema}
       titulo="Crediário"
-      acao={onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} /> : undefined}
+      acao={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* "Veio só pagar": procura a cliente e recebe. Precisa da loja
+              escolhida — o dinheiro entra no caixa dela. */}
+          {onde.unidadeId && podeReceberEm(onde.unidadeId) && (
+            <BotaoReceber slug={slug} unidadeId={onde.unidadeId} clienteId={clienteId ?? null} tom="confirmar">
+              Receber parcela
+            </BotaoReceber>
+          )}
+          {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+        </div>
+      }
     >
       <Secao titulo={`Fiado · ${onde.titulo}`}>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -114,9 +134,9 @@ export default async function CrediarioPagina({
           />
           <Numero rotulo="Vence em 7 dias" valor={brl(resumo.aVencer7)} detalhe="para lembrar antes" nivel={resumo.aVencer7 > 0 ? 'atencao' : undefined} />
           <Numero
-            rotulo="Regra da loja"
-            valor={`${config.jurosMes.toLocaleString('pt-BR')}% ao mês`}
-            detalhe={`de atraso · até ${config.maxParcelas}× · a cada ${config.diasEntre} dias`}
+            rotulo="Regra do atraso"
+            valor={`${config.multaPct.toLocaleString('pt-BR')}% + ${config.jurosMes.toLocaleString('pt-BR')}% ao mês`}
+            detalhe={`multa uma vez + juro por dia${config.carenciaDias ? ` · ${plural(config.carenciaDias, 'dia', 'dias')} de carência` : ''} · até ${config.maxParcelas}×`}
           />
         </div>
 
@@ -220,7 +240,8 @@ export default async function CrediarioPagina({
                 <span className="flex flex-col items-end">
                   <span className="numero text-tinta">{brl(p.valor)}</span>
                   {p.pago > 0 && <span className="text-xs text-tinta-3">pago {brl(p.pago)}</span>}
-                  {p.juros > 0 && <span className="text-xs text-tinta-3">juros {brl(p.juros)}</span>}
+                  {p.desconto > 0 && <span className="text-xs text-tinta-3">desconto {brl(p.desconto)}</span>}
+                  {p.juros + p.multa > 0 && <span className="text-xs text-tinta-3">atraso pago {brl(p.juros + p.multa)}</span>}
                 </span>
               ),
             },
@@ -233,8 +254,13 @@ export default async function CrediarioPagina({
                 p.situacao === 'quitada' ? (
                   <span className="numero text-tinta-3">—</span>
                 ) : (
-                  <span className={cx('numero font-bold', p.situacao === 'vencida' ? 'text-critico' : 'text-tinta')}>
-                    {brl(p.resta)}
+                  <span className="flex flex-col items-end">
+                    <span className={cx('numero font-bold', p.situacao === 'vencida' ? 'text-critico' : 'text-tinta')}>
+                      {brl(p.resta)}
+                    </span>
+                    {p.multaHoje + p.jurosHoje > 0 && (
+                      <span className="numero text-xs text-critico">+ {brl(p.multaHoje + p.jurosHoje)} atraso</span>
+                    )}
                   </span>
                 ),
             },
@@ -246,14 +272,11 @@ export default async function CrediarioPagina({
                     largura: '8rem',
                     celula: (p: ParcelaNaLista) =>
                       p.situacao === 'quitada' ? null : (
-                        <Receber
-                          slug={slug}
-                          parcelaId={p.id}
-                          resta={p.resta}
-                          jurosHoje={p.jurosHoje}
-                          diasAtraso={p.diasAtraso}
-                          diasJuros={p.diasJuros}
-                        />
+                        podeReceberEm(p.unidadeId) ? (
+                          <BotaoReceber slug={slug} unidadeId={p.unidadeId} clienteId={p.clienteId} marcar={[p.id]} className="py-1 text-xs">
+                            Receber
+                          </BotaoReceber>
+                        ) : null
                       ),
                   },
                 ]
@@ -274,6 +297,19 @@ export default async function CrediarioPagina({
 
         <Paginas p={pag} linkDe={(n) => link({ pagina: String(n) })} rotulo={pag.total === 1 ? 'parcela' : 'parcelas'} />
       </Secao>
+
+      {clienteId && recibos.length > 0 && (
+        <Secao titulo={`Recibos${nomeDoCliente ? ` · ${nomeDoCliente}` : ''}`} resumo="O que foi pago junto, em cada vez. Reimprima o recibo quando ela pedir.">
+          <ListaDeRecibos slug={slug} recibos={recibos} />
+        </Secao>
+      )}
+
+      {podeConfigurar && (
+        <Secao titulo="Regra do atraso" resumo="Vale para toda a empresa, a partir do próximo recebimento.">
+          <RegraDoAtraso slug={slug} inicial={config} />
+        </Secao>
+      )}
     </Estrutura>
   )
 }
+

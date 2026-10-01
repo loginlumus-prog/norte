@@ -102,6 +102,8 @@ export type TaxasDoPeriodo = {
  * Recebe o `db` de quem já está numa transação (o DRE chama de dentro da
  * dele). Soma os pagamentos das vendas CONCLUÍDAS por forma, parcelamento e
  * TAXA GRAVADA NA VENDA (`Pagamento.taxaPct`), e aplica a taxa de cada grupo.
+ * O mesmo para o que passou na maquininha fora da venda: a mensalidade e a
+ * parcela do crediário recebidas no cartão ou no Pix.
  *
  * A taxa é a do dia da venda: a maquininha que subiu de 3% para 4% em
  * outubro não pode encarecer o setembro que já fechou. Pagamento de antes da
@@ -135,10 +137,25 @@ export async function taxasDoPeriodo(
      group by 1, 2, 3
   `
 
+  // A parcela do crediário recebida no cartão ou no Pix também passou pela
+  // maquininha — e paga a taxa dela, com a do dia do recebimento
+  // (`recebimentos.taxa_pct`; nula no recebimento de antes da coluna, que
+  // usa a de hoje, como os pagamentos). Sobre o total que passou na máquina
+  // (juro e multa inclusos), pela loja da parcela e pela data em que o
+  // dinheiro entrou. A baixa externa não: o dinheiro não passou por aqui.
+  const recebimentos = await db.$queryRaw<{ forma: FormaPagamento; parcelado: boolean; taxa: string | null; total: string }[]>`
+    select r.forma, false as parcelado, r.taxa_pct as taxa, sum(r.valor) as total
+      from recebimentos r join parcelas pa on pa.id = r.parcela_id
+     where pa.unidade_id = any(${unidadeIds}) and not r.externo
+       and r.forma in ('PIX', 'DEBITO', 'CREDITO')
+       and r.criado_em >= ${de} and r.criado_em <= ${ate}
+     group by 1, 2, 3
+  `
+
   // Um grupo por taxa; depois, uma linha por forma (a tela e o DRE mostram
   // "Crédito à vista", não "Crédito à vista a 3,2% e a 3,5%").
   const juntas = new Map<string, TaxasDoPeriodo['porForma'][number]>()
-  for (const l of [...linhas, ...mensalidades]) {
+  for (const l of [...linhas, ...mensalidades, ...recebimentos]) {
     const percentual = l.taxa !== null ? Number(l.taxa) : taxaDe(taxas, l.forma, l.parcelado ? 2 : 1)
     const valorCent = centavos(l.total)
     const taxaCent = taxaEmCentavos(valorCent, percentual)

@@ -7,7 +7,7 @@
 // hora em que isso é possível é AGORA, com ela na frente. Se para cadastrar for
 // preciso sair da tela, com fila esperando, ninguém cadastra: fecha a venda
 // anônima e segue. Por isso a busca e o cadastro moram aqui dentro, e o
-// cadastro pede só nome e telefone.
+// cadastro pede só nome, telefone e o CPF — perguntado, nunca exigido.
 //
 // ── por que mostra o histórico junto ─────────────────────────
 // "Marta, 18 compras, R$ 1.580" muda a conversa no balcão de um jeito que
@@ -22,8 +22,8 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Botao, Situacao } from '@/ui/base'
 import { brl } from '@/ui/painel'
-import { plural } from '@/ui/texto'
 import { procurarClientes, cadastrarNoBalcao, type ClienteNoBalcao } from './acoes'
+import { historicoDoCliente } from './conta'
 import { usePalavras } from './palavras'
 
 const telefoneBonito = (t: string | null) => {
@@ -56,7 +56,10 @@ export function EscolherCliente({
   const [termo, setTermo] = useState('')
   const [achados, setAchados] = useState<ClienteNoBalcao[]>([])
   const [novoTel, setNovoTel] = useState('')
+  const [novoCpf, setNovoCpf] = useState('')
   const [erro, setErro] = useState<string | null>(null)
+  /** O telefone ou o CPF já é de alguém: a tela oferece usar a ficha que existe. */
+  const [jaExiste, setJaExiste] = useState<ClienteNoBalcao | null>(null)
   const [indo, comecar] = useTransition()
   const campo = useRef<HTMLInputElement>(null)
 
@@ -83,19 +86,22 @@ export function EscolherCliente({
     setTermo('')
     setAchados([])
     setNovoTel('')
+    setNovoCpf('')
     setErro(null)
+    setJaExiste(null)
   }
 
   function cadastrar() {
     const nome = termo.trim()
     if (!nome) return
     comecar(async () => {
-      const r = await cadastrarNoBalcao(slug, nome, novoTel)
+      const r = await cadastrarNoBalcao(slug, nome, novoTel, novoCpf)
       if (r.ok) {
         aoEscolher(r.cliente)
         fechar()
       } else {
         setErro(r.erro)
+        setJaExiste(r.jaExiste ?? null)
       }
     })
   }
@@ -115,9 +121,7 @@ export function EscolherCliente({
         </div>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-tinta-3">
           <span>
-            {escolhido.compras === 0
-              ? `${p.vendaFeminina ? 'primeira' : 'primeiro'} ${p.compra} aqui`
-              : `${plural(escolhido.compras, p.compra, p.compras)} · ${brl(escolhido.gastou)}`}
+            {historicoDoCliente(escolhido, p)}
             {escolhido.diasSemVir !== null && escolhido.diasSemVir >= 60 && (
               <span className="text-atencao"> · sumiu há {escolhido.diasSemVir} dias</span>
             )}
@@ -176,7 +180,7 @@ export function EscolherCliente({
                 <span className="text-sm text-tinta">{c.nome}</span>
                 <span className="text-xs text-tinta-3">
                   {telefoneBonito(c.telefone) || 'sem telefone'}
-                  {c.compras > 0 && ` · ${plural(c.compras, p.compra, p.compras)} · ${brl(c.gastou)}`}
+                  {(c.compras > 0 || (c.anteriores ?? 0) > 0) && ` · ${historicoDoCliente(c, p)}`}
                   {c.devendo > 0 && (
                     <span className={c.vencido > 0 ? 'font-semibold text-critico' : 'text-atencao'}>
                       {' '}· deve {brl(c.devendo)}{c.vencido > 0 ? ' (atrasado)' : ''}
@@ -205,7 +209,30 @@ export function EscolherCliente({
             aria-label={`WhatsApp do ${p.novo.toLowerCase()}`}
             className="rounded border border-borda bg-superficie px-2 py-1.5 text-sm text-tinta placeholder:text-tinta-3"
           />
+          {/* O CPF é perguntado (o crediário e a nota pedem), nunca exigido:
+              campo obrigatório aqui vira CPF inventado. */}
+          <input
+            value={novoCpf}
+            onChange={(e) => setNovoCpf(e.target.value)}
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="CPF (opcional)"
+            aria-label={`CPF do ${p.novo.toLowerCase()}`}
+            className="rounded border border-borda bg-superficie px-2 py-1.5 text-sm text-tinta placeholder:text-tinta-3"
+          />
           {erro && <span className="text-xs text-critico">{erro}</span>}
+          {jaExiste && (
+            <button
+              type="button"
+              onClick={() => {
+                aoEscolher(jaExiste)
+                fechar()
+              }}
+              className="self-start text-xs font-semibold text-marca underline underline-offset-2"
+            >
+              Usar a ficha de {jaExiste.nome}
+            </button>
+          )}
           <Botao tom="confirmar" largo onClick={cadastrar} carregando={indo} className="py-1.5 text-xs">
             Cadastrar e usar
           </Botao>

@@ -84,7 +84,10 @@ export default async function Clientes({
     return c.compras > 0 && d !== null && d >= DIAS_SUMIDO
   }
   const sumidos = clientes.filter(ehSumido)
-  const semCompra = clientes.filter((c) => c.compras === 0)
+  // Quem só tem compra trazida do sistema anterior (o carnê importado) não é
+  // "nunca comprou": compra na loja há anos, só que não por aqui.
+  const nuncaComprou = (c: (typeof clientes)[number]) => c.compras === 0 && c.anteriores === 0
+  const semCompra = clientes.filter(nuncaComprou)
   // O mês de São Paulo, e o mês da coluna `date` lido em UTC: com getMonth()
   // local, quem nasceu no dia 1º aparecia no mês anterior (a meia-noite UTC
   // do dia 1º é 21h do último dia do mês em São Paulo).
@@ -107,7 +110,7 @@ export default async function Clientes({
   const listados = (quem === 'desativados' ? desativados : clientes)
     .filter((c) =>
       quem === 'sumidos' ? ehSumido(c)
-      : quem === 'nunca' ? c.compras === 0
+      : quem === 'nunca' ? nuncaComprou(c)
       : quem === 'ativos' ? c.compras > 0 && !ehSumido(c)
       : quem === 'novos' ? c.criadoEm.getTime() >= trintaDias
       : quem === 'aniversario' ? !!c.nascimento && c.nascimento.getUTCMonth() === mesAtual
@@ -299,7 +302,7 @@ export default async function Clientes({
                 largura: '10rem',
                 celula: (c) => {
                   const d = diasDesde(c.ultimaCompra)
-                  if (d === null) return <Situacao nivel="neutro">nunca comprou</Situacao>
+                  if (d === null) return <Situacao nivel="neutro">{c.anteriores > 0 ? 'no sistema anterior' : 'nunca comprou'}</Situacao>
                   if (d >= DIAS_SUMIDO) return <Situacao nivel="atencao">há {d} dias</Situacao>
                   return <Situacao nivel="bom">{d === 0 ? 'hoje' : `há ${plural(d, 'dia', 'dias')}`}</Situacao>
                 },

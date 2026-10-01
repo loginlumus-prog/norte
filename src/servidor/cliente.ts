@@ -264,6 +264,16 @@ export type ClienteNaLista = {
   /** Crediário em aberto e, disso, o vencido. Zero quando não deve. */
   devendo: number
   vencido: number
+  /**
+   * As compras trazidas do sistema anterior (o carnê importado, venda
+   * SALDO_IMPORTADO). Ficam FORA de `compras` e `gastou` — não são venda deste
+   * sistema, e "quem mais gasta" não pode mudar com a importação —, mas a
+   * cliente não é nova: o balcão dizia "primeira compra aqui" para quem
+   * compra na loja há anos.
+   */
+  anteriores: number
+  /** A compra mais antiga que se conhece, contando as trazidas. Nula = nunca comprou. */
+  primeiraCompra: Date | null
 }
 
 /**
@@ -329,32 +339,40 @@ export async function listarClientes(
         id: true, nome: true, telefone: true, ativo: true, pontos: true,
         nascimento: true, criadoEm: true, cidade: true,
         vendas: {
-          where: { situacao: 'CONCLUIDA', ...(lojas ? { unidadeId: { in: lojas } } : {}) },
-          select: { total: true, criadaEm: true },
+          where: { situacao: { in: ['CONCLUIDA', 'SALDO_IMPORTADO'] }, ...(lojas ? { unidadeId: { in: lojas } } : {}) },
+          select: { total: true, criadaEm: true, situacao: true },
         },
       },
     })
 
     const fiado = await situacaoDosClientes(db, clientes.map((c) => c.id))
 
-    return clientes.map((c) => ({
-      id: c.id,
-      nome: c.nome,
-      telefone: c.telefone,
-      ativo: c.ativo,
-      pontos: c.pontos,
-      nascimento: c.nascimento,
-      criadoEm: c.criadoEm,
-      cidade: c.cidade,
-      compras: c.vendas.length,
-      gastou: c.vendas.reduce((s, v) => s + Number(v.total), 0),
-      ultimaCompra: c.vendas.reduce<Date | null>(
-        (maior, v) => (!maior || v.criadaEm > maior ? v.criadaEm : maior),
-        null,
-      ),
-      devendo: fiado.get(c.id)?.devendo ?? 0,
-      vencido: fiado.get(c.id)?.vencido ?? 0,
-    }))
+    return clientes.map((c) => {
+      const daqui = c.vendas.filter((v) => v.situacao === 'CONCLUIDA')
+      return {
+        id: c.id,
+        nome: c.nome,
+        telefone: c.telefone,
+        ativo: c.ativo,
+        pontos: c.pontos,
+        nascimento: c.nascimento,
+        criadoEm: c.criadoEm,
+        cidade: c.cidade,
+        compras: daqui.length,
+        gastou: daqui.reduce((s, v) => s + Number(v.total), 0),
+        ultimaCompra: daqui.reduce<Date | null>(
+          (maior, v) => (!maior || v.criadaEm > maior ? v.criadaEm : maior),
+          null,
+        ),
+        devendo: fiado.get(c.id)?.devendo ?? 0,
+        vencido: fiado.get(c.id)?.vencido ?? 0,
+        anteriores: c.vendas.length - daqui.length,
+        primeiraCompra: c.vendas.reduce<Date | null>(
+          (menor, v) => (!menor || v.criadaEm < menor ? v.criadaEm : menor),
+          null,
+        ),
+      }
+    })
   })
 }
 

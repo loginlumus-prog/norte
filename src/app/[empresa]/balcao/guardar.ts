@@ -41,6 +41,9 @@ export type Guardado = {
   carrinho: unknown[]
   pagos: { forma: string; valor: number }[]
   desconto: number
+  /** O desconto digitado era em %. Guardado de antes desta marca: em reais. */
+  descontoEmPct?: boolean
+  acrescimo?: number
   cliente: ClienteNoBalcao | null
   pontosUsar: number
   /** O horário da agenda que esta venda cobra, quando veio de "Atender e cobrar". */
@@ -107,4 +110,22 @@ export function faz(em: number): string {
   if (min < 60) return `há ${min} minutos`
   const h = Math.floor(min / 60)
   return h === 1 ? 'há 1 hora' : `há ${h} horas`
+}
+
+// ── o que o aparelho lembra entre uma venda e outra ──────────
+// A vendedora do turno e a maquininha de cada forma (ver useVenda.ts). Não é
+// a venda: é preferência do aparelho, e some sem problema nenhum.
+
+export function lembrar(chave: string, valor: string) {
+  try {
+    localStorage.setItem(chave, valor)
+  } catch {}
+}
+
+export function lembrado(chave: string): string | null {
+  try {
+    return localStorage.getItem(chave)
+  } catch {
+    return null
+  }
 }

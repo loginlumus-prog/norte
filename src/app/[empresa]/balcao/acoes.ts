@@ -23,10 +23,11 @@ import {
   type ResultadoVenda,
 } from '@/servidor/venda'
 import { abrirCaixa, fecharCaixa, movimentarCaixa } from '@/servidor/caixa'
-import { listarClientes, criarCliente } from '@/servidor/cliente'
+import { listarClientes, criarCliente, cpfValido } from '@/servidor/cliente'
 import { escada, type Tabela } from '@/servidor/preco'
-import { consultarVale } from '@/servidor/devolucao'
+import { consultarVale, valesParaUsarEm, type ValeNoBalcao } from '@/servidor/devolucao'
 import { situacaoDosClientes } from '@/servidor/crediario'
+import { diaEmSP } from '@/servidor/dia'
 import type { FormaPagamento } from '@prisma/client'
 import type { OpcaoDaVariacao, ProdutoNaVitrine } from './vitrine'
 import { aVendaNaLoja, soDaLoja } from '@/servidor/catalogo-loja'
@@ -459,8 +460,24 @@ export async function fecharVenda(
     unidadeId: string
     caixaId: string | null
     itens: ItemEnviado[]
-    pagamentos: { forma: string; valor: number; referencia?: string; parcelas?: number }[]
+    pagamentos: {
+      forma: string
+      valor: number
+      referencia?: string
+      parcelas?: number
+      maquininha?: string | null
+      primeiroVencimento?: string | null
+    }[]
     desconto: number
+    /** A etiqueta velha da peça que saiu da promoção. Ver venda.ts. */
+    acrescimo?: number
+    /**
+     * O PIN de quem autoriza (desconto acima do teto, avulso). Só vem depois
+     * de o servidor pedir, e não fica guardado em lugar nenhum da tela.
+     */
+    pin?: string | null
+    /** O CPF que a cliente ditou no crediário, para a ficha sem CPF. */
+    clienteCpf?: string | null
     clienteId?: string | null
     vendedorId?: string | null
     pontosUsar?: number
@@ -470,6 +487,8 @@ export async function fecharVenda(
     agendamentoId?: string | null
     /** A encomenda que esta venda recebe. O valor dela o servidor lê sozinho. */
     encomendaId?: string | null
+    /** O troco devolvido em dinheiro. Não é pagamento — vai para o papel. */
+    troco?: number
   },
 ): Promise<ResultadoVenda | { ok: false; motivo: 'recusa'; recado: string; soltar?: 'vale' | 'pontos' }> {
   const s = await exigirSessao(slug)
@@ -520,16 +539,23 @@ async function registrarVendaDoBalcao(
         : { variacaoId: null, quantidade: i.quantidade, avulso: i.avulso },
     ),
     desconto: dados.desconto,
+    acrescimo: Number(dados.acrescimo) || 0,
+    autorizacao: typeof dados.pin === 'string' && dados.pin.trim() ? { pin: dados.pin.trim().slice(0, 12) } : null,
+    clienteCpf: typeof dados.clienteCpf === 'string' && dados.clienteCpf.trim() ? dados.clienteCpf.trim().slice(0, 20) : null,
     clienteId: dados.clienteId ?? null,
     vendedorId: dados.vendedorId ?? null,
     pontosUsar: dados.pontosUsar ?? 0,
     observacoes: obs || undefined,
+    troco: Number(dados.troco) || 0,
     agendamentoId: typeof dados.agendamentoId === 'string' && /^[\w-]{1,64}$/.test(dados.agendamentoId) ? dados.agendamentoId : null,
     pagamentos: dados.pagamentos.map((p) => ({
       forma: p.forma as FormaPagamento,
       valor: p.valor,
       referencia: p.referencia,
       parcelas: p.parcelas,
+      maquininha: typeof p.maquininha === 'string' ? p.maquininha.slice(0, 60) : null,
+      primeiroVencimento:
+        typeof p.primeiroVencimento === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.primeiroVencimento) ? p.primeiroVencimento : null,
     })) as PagamentoDaVenda[],
   })
 
@@ -587,9 +613,16 @@ export async function paraCobrarHorario(slug: string, agendamentoId: string, uni
         _count: { _all: true },
         _sum: { total: true },
         _max: { criadaEm: true },
+        _min: { criadaEm: true },
+      })
+      // As trazidas do sistema anterior: ela não é cliente nova (ver ClienteNoBalcao).
+      const trazidas = await db.venda.aggregate({
+        where: { clienteId: ficha.id, situacao: 'SALDO_IMPORTADO' },
+        _count: { _all: true },
+        _min: { criadaEm: true },
       })
       const sit = await situacaoDosClientes(db, [ficha.id])
-      return { ficha, compras, sit: sit.get(ficha.id) }
+      return { ficha, compras, trazidas, sit: sit.get(ficha.id) }
     })
     if (c) {
       cliente = {
@@ -602,6 +635,8 @@ export async function paraCobrarHorario(slug: string, agendamentoId: string, uni
         diasSemVir: c.compras._max.criadaEm ? Math.floor((Date.now() - c.compras._max.criadaEm.getTime()) / 864e5) : null,
         devendo: c.sit?.devendo ?? 0,
         vencido: c.sit?.vencido ?? 0,
+        anteriores: c.trazidas._count._all,
+        desde: maisAntiga(c.compras._min.criadaEm, c.trazidas._min.criadaEm),
       }
     }
   }
@@ -661,9 +696,34 @@ export async function movimentar(
 // tela mostra o saldo e de quem é, e só então o vale entra como pagamento.
 // Ao fechar, o servidor confere de novo e desconta — o que a tela viu é só
 // para a conversa não travar.
-export async function consultarValeAcao(slug: string, codigo: string) {
+export async function consultarValeAcao(slug: string, codigo: string, unidadeId?: string) {
   const s = await exigirSessao(slug)
-  return consultarVale(s, codigo)
+  return consultarVale(s, codigo, unidadeId)
+}
+
+/**
+ * O que o balcão precisa saber da cliente escolhida e a busca não traz: se a
+ * ficha tem CPF (o crediário pergunta quando falta) e os vales que ela pode
+ * gastar AQUI — que aparecem sozinhos no pagamento, sem ninguém digitar o
+ * código do papel.
+ */
+export async function fichaNoBalcao(
+  slug: string,
+  clienteId: string,
+  unidadeId: string,
+): Promise<{ temCpf: boolean; vales: ValeNoBalcao[] }> {
+  const s = await exigirSessao(slug)
+  exigir(s, 'venda.criar', unidadeId)
+  if (!/^[\w-]{1,64}$/.test(clienteId)) return { temCpf: false, vales: [] }
+  return comoOrg(s.orgId, async (db) => {
+    const c = await db.cliente.findUnique({ where: { id: clienteId }, select: { documento: true } })
+    if (!c) return { temCpf: false, vales: [] }
+    const org = await db.org.findUnique({ where: { id: s.orgId }, select: { valePorLoja: true } })
+    return {
+      temCpf: !!c.documento,
+      vales: await valesParaUsarEm(db, clienteId, unidadeId, !!org?.valePorLoja),
+    }
+  })
 }
 
 // ── o cliente da venda ───────────────────────────────────────
@@ -683,6 +743,21 @@ export type ClienteNoBalcao = {
   /** Quanto deve no crediário, e quanto disso está vencido. Zero quando nada. */
   devendo: number
   vencido: number
+  /**
+   * As compras trazidas do sistema anterior (o carnê importado). Não somam
+   * em `compras` nem em `gastou`, mas dizem que ela não é cliente nova.
+   * Opcional: a venda guardada no aparelho antes disto não tem o campo.
+   */
+  anteriores?: number
+  /** O mês da compra mais antiga que se conhece ('AAAA-MM'), contando as trazidas. */
+  desde?: string | null
+}
+
+/** O mês ('AAAA-MM', em São Paulo) da data mais antiga das que vierem. */
+function maisAntiga(...datas: (Date | null | undefined)[]): string | null {
+  const ok = datas.filter((d): d is Date => !!d)
+  if (ok.length === 0) return null
+  return diaEmSP(new Date(Math.min(...ok.map((d) => d.getTime())))).slice(0, 7)
 }
 
 export async function procurarClientes(
@@ -711,6 +786,8 @@ export async function procurarClientes(
       : null,
     devendo: situacao.get(c.id)?.devendo ?? 0,
     vencido: situacao.get(c.id)?.vencido ?? 0,
+    anteriores: c.anteriores,
+    desde: c.primeiraCompra ? diaEmSP(c.primeiraCompra).slice(0, 7) : null,
   }))
 }
 
@@ -719,25 +796,44 @@ export async function procurarClientes(
  *
  * Mandar a vendedora abrir outra tela para cadastrar, com a fila esperando, é
  * o mesmo que não ter cadastro: ela fecha a venda anônima e segue. Por isso
- * aqui só cabe nome e telefone — o resto se completa depois, na ficha.
+ * aqui só cabe nome, telefone e o CPF (perguntado, nunca exigido) — o resto
+ * se completa depois, na ficha.
+ *
+ * CPF que já está numa ficha não cria outra: a resposta aponta a ficha que
+ * existe, e a tela oferece usar ela. Duas fichas da mesma pessoa são duas
+ * dívidas que ninguém soma.
  */
 export async function cadastrarNoBalcao(
   slug: string,
   nome: string,
   telefone: string,
-): Promise<{ ok: true; cliente: ClienteNoBalcao } | { ok: false; erro: string; jaExisteId?: string }> {
+  cpf = '',
+): Promise<{ ok: true; cliente: ClienteNoBalcao } | { ok: false; erro: string; jaExiste?: ClienteNoBalcao }> {
   const s = await exigirSessao(slug)
+  const documento = cpf.replace(/\D/g, '')
+  if (documento && !cpfValido(documento)) return { ok: false, erro: 'Esse CPF não confere. Confira os números, ou cadastre sem CPF.' }
 
-  const r = await criarCliente(s, { nome, telefone })
+  if (documento) {
+    const dono = await comoOrg(s.orgId, (db) =>
+      db.cliente.findFirst({ where: { documento, ativo: true }, select: { id: true, nome: true, telefone: true, pontos: true } }),
+    )
+    if (dono) {
+      return {
+        ok: false,
+        erro: `Esse CPF já é de ${dono.nome}.`,
+        jaExiste: { id: dono.id, nome: dono.nome, telefone: dono.telefone, compras: 0, gastou: 0, diasSemVir: null, pontos: dono.pontos, devendo: 0, vencido: 0 },
+      }
+    }
+  }
+
+  const r = await criarCliente(s, { nome, telefone, documento: documento || null })
   if (!r.ok) {
     return {
       ok: false,
-      erro: r.jaExiste
-        ? `${r.jaExiste.nome} já usa esse telefone.`
-        : r.motivo === 'documento_invalido'
-          ? 'Esse CPF não confere.'
-          : 'Falta o nome.',
-      jaExisteId: r.jaExiste?.id,
+      erro: r.jaExiste ? `${r.jaExiste.nome} já usa esse telefone.` : r.motivo,
+      jaExiste: r.jaExiste
+        ? { id: r.jaExiste.id, nome: r.jaExiste.nome, telefone: telefone.trim() || null, compras: 0, gastou: 0, diasSemVir: null, pontos: 0, devendo: 0, vencido: 0 }
+        : undefined,
     }
   }
 

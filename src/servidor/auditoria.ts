@@ -143,6 +143,13 @@ export const ACOES: Record<string, string> = {
   'campanha.pausou': 'pausou uma campanha de WhatsApp',
   'campanha.apagou': 'apagou uma campanha de WhatsApp',
   'campanha.testou': 'testou uma campanha no próprio número',
+  // O PIN pessoal (autorizacao.ts): quem AUTORIZOU fica como autor da linha.
+  'autorizacao.pin': 'autorizou com o PIN',
+  'conta.pin.criou': 'criou o próprio PIN de autorizar',
+  'conta.pin.trocou': 'trocou o próprio PIN de autorizar',
+  'conta.pin.tirou': 'apagou o próprio PIN de autorizar',
+  'estoque.conferiu': 'conferiu uma peça vendida sem estoque',
+  'empresa.maquininhas': 'mexeu nas maquininhas da loja',
 }
 
 /**
@@ -151,12 +158,12 @@ export const ACOES: Record<string, string> = {
  * quem procura "gente" quer convite e sessão junto com equipe.
  */
 export const ASSUNTOS: { chave: string; rotulo: string; prefixos: string[] }[] = [
-  { chave: 'venda', rotulo: 'vendas e encomendas', prefixos: ['venda.', 'encomenda.'] },
+  { chave: 'venda', rotulo: 'vendas e encomendas', prefixos: ['venda.', 'encomenda.', 'autorizacao.'] },
   { chave: 'caixa', rotulo: 'caixa', prefixos: ['caixa.'] },
   { chave: 'produto', rotulo: 'produtos, estoque e compras', prefixos: ['produto.', 'estoque.', 'compra.'] },
   { chave: 'cliente', rotulo: 'clientes', prefixos: ['cliente.', 'crediario.', 'pontos.', 'ofertas.'] },
   { chave: 'escola', rotulo: 'escola e mensalidades', prefixos: ['turma.', 'matricula.', 'responsavel.', 'mensalidade.'] },
-  { chave: 'equipe', rotulo: 'equipe e acessos', prefixos: ['equipe.', 'convite.', 'sessao.', 'vaga.'] },
+  { chave: 'equipe', rotulo: 'equipe e acessos', prefixos: ['equipe.', 'convite.', 'sessao.', 'vaga.', 'conta.'] },
   { chave: 'tarefa', rotulo: 'tarefas', prefixos: ['tarefa.', 'quadro.'] },
   { chave: 'empresa', rotulo: 'empresa e lojas', prefixos: ['empresa.', 'unidade.', 'plano.', 'credito.', 'pedido.', 'agente.', 'campanha.', 'financeiro.'] },
   { chave: 'suporte', rotulo: 'suporte do Norte', prefixos: ['suporte.'] },

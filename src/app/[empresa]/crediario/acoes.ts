@@ -1,54 +1,119 @@
 'use server'
 
+// Server Action é endereço público: tudo que chega aqui é conferido de novo
+// no servidor (recibos.ts e crediario.ts exigem a capacidade NA LOJA, e a
+// conta do recibo é refeita com o banco travado).
+
 import { revalidatePath } from 'next/cache'
 import { exigirSessao } from '@/servidor/pagina'
-import { receberParcela } from '@/servidor/crediario'
-import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
-import type { FormaPagamento } from '@prisma/client'
+import { SemPermissao } from '@/servidor/permissao'
+import { situacaoDeCredito, salvarConfigCrediario, configCrediario, type SituacaoDeCredito } from '@/servidor/crediario'
+import {
+  baixaExterna,
+  fichaParaReceber,
+  procurarDevedores,
+  receberVarias,
+  type FichaParaReceber,
+  type PedidoDeBaixaExterna,
+  type PedidoDeRecibo,
+  type ResultadoDoRecibo,
+} from '@/servidor/recibos'
+import { lerNumero } from '@/servidor/dinheiro'
 
-export type EstadoRecebimento = { erro?: string; ok?: string }
+const SEM_PERMISSAO = 'Você não tem permissão para isso nesta loja.'
 
-const FORMAS: FormaPagamento[] = ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'TRANSFERENCIA']
-
-export async function receberAcao(
-  _anterior: EstadoRecebimento,
-  form: FormData,
-): Promise<EstadoRecebimento> {
-  const slug = String(form.get('empresa') ?? '')
-  const parcelaId = String(form.get('parcela') ?? '')
-  // A régua de todo campo de dinheiro (`lerDinheiro`). O `Number` de antes
-  // lia "1.234,56" como NaN, e o juro ilegível virava zero calado — a
-  // parcela quitava sem o juro que a pessoa digitou.
-  const valor = lerDinheiro(String(form.get('valor') ?? ''))
-  if (valor === null) return { erro: `Valor recebido: ${DINHEIRO_ILEGIVEL}` }
-  const jurosBruto = String(form.get('juros') ?? '').trim()
-  const juros = jurosBruto ? lerDinheiro(jurosBruto) : 0
-  if (juros === null) return { erro: `Juros: ${DINHEIRO_ILEGIVEL}` }
-  const formaBruta = String(form.get('forma') ?? '')
-  const forma = FORMAS.find((f) => f === formaBruta)
-  if (!forma) return { erro: 'Escolha como recebeu.' }
-
-  const sessao = await exigirSessao(slug)
-  const r = await receberParcela(sessao, { parcelaId, valor, juros, forma })
-
-  if (!r.ok) {
-    return {
-      erro: {
-        nao_achada: 'Parcela não encontrada.',
-        ja_quitada: 'Esta parcela já estava quitada.',
-        valor_invalido: 'O valor precisa ser maior que os juros.',
-        passa_do_resto: 'Está recebendo mais do que a parcela deve.',
-        caixa_fechado: 'Para receber em dinheiro o caixa desta loja precisa estar aberto.',
-        mudou: 'Esta parcela mudou agora (outro recebimento ou uma devolução). Nada foi recebido: confira o valor e receba de novo.',
-      }[r.motivo],
-    }
-  }
-
+function revalidar(slug: string, clienteId: string) {
   revalidatePath(`/${slug}/crediario`)
+  revalidatePath(`/${slug}/clientes/${clienteId}`)
   revalidatePath(`/${slug}/balcao`)
-  return {
-    ok: r.quitada
-      ? `Parcela quitada${r.juros > 0 ? `, com ${r.juros.toFixed(2).replace('.', ',')} de juros` : ''}.`
-      : `Recebido. Ainda restam R$ ${r.restante.toFixed(2).replace('.', ',')} desta parcela.`,
+  revalidatePath(`/${slug}/caixa`)
+}
+
+export async function fichaParaReceberAcao(
+  slug: string,
+  clienteId: string,
+  unidadeId: string,
+): Promise<{ ficha: FichaParaReceber } | { erro: string }> {
+  try {
+    const sessao = await exigirSessao(slug)
+    const ficha = await fichaParaReceber(sessao, clienteId, unidadeId)
+    return ficha ? { ficha } : { erro: 'Cliente não encontrado.' }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: SEM_PERMISSAO }
+    throw e
   }
 }
+
+export async function procurarDevedoresAcao(slug: string, termo: string, unidadeId: string) {
+  try {
+    const sessao = await exigirSessao(slug)
+    return await procurarDevedores(sessao, termo, unidadeId)
+  } catch (e) {
+    if (e instanceof SemPermissao) return []
+    throw e
+  }
+}
+
+export async function situacaoDeCreditoAcao(slug: string, clienteId: string, unidadeId: string): Promise<SituacaoDeCredito | null> {
+  try {
+    const sessao = await exigirSessao(slug)
+    return await situacaoDeCredito(sessao, clienteId, unidadeId)
+  } catch (e) {
+    // Quem não vê o crediário não recebe o aviso — e o balcão segue.
+    if (e instanceof SemPermissao) return null
+    throw e
+  }
+}
+
+export async function receberVariasAcao(slug: string, pedido: PedidoDeRecibo): Promise<ResultadoDoRecibo> {
+  try {
+    const sessao = await exigirSessao(slug)
+    const r = await receberVarias(sessao, pedido)
+    if (r.ok) revalidar(slug, pedido.clienteId)
+    return r
+  } catch (e) {
+    if (e instanceof SemPermissao) return { ok: false, erro: SEM_PERMISSAO }
+    throw e
+  }
+}
+
+export async function baixaExternaAcao(slug: string, pedido: PedidoDeBaixaExterna): Promise<ResultadoDoRecibo> {
+  try {
+    const sessao = await exigirSessao(slug)
+    const r = await baixaExterna(sessao, pedido)
+    if (r.ok) revalidar(slug, pedido.clienteId)
+    return r
+  } catch (e) {
+    if (e instanceof SemPermissao) return { ok: false, erro: 'Baixa de pagamento feito fora é de quem negocia o crediário (gerente ou dona).' }
+    throw e
+  }
+}
+
+export type EstadoRegra = { erro?: string; ok?: string }
+
+/** A regra do atraso (multa, juro, carência, arredondar), da tela do Crediário. */
+export async function salvarRegraAcao(slug: string, _anterior: EstadoRegra, form: FormData): Promise<EstadoRegra> {
+  const multa = lerNumero(String(form.get('multaPct') ?? '0'))
+  const juros = lerNumero(String(form.get('jurosMes') ?? '0'))
+  const carencia = lerNumero(String(form.get('carenciaDias') ?? '0'), 0)
+  if (multa === null || juros === null || carencia === null) return { erro: 'Não deu para ler um dos números. Escreva assim: 2 ou 2,5.' }
+  if (multa > 2) return { erro: 'A multa passa do teto de 2% (Código de Defesa do Consumidor).' }
+  try {
+    const sessao = await exigirSessao(slug)
+    const atual = await configCrediario(sessao)
+    await salvarConfigCrediario(sessao, {
+      jurosMes: juros,
+      maxParcelas: atual.maxParcelas,
+      diasEntre: atual.diasEntre,
+      multaPct: multa,
+      carenciaDias: carencia,
+      arredondar: form.get('arredondar') === 'on',
+    })
+    revalidatePath(`/${slug}/crediario`)
+    return { ok: 'Regra do atraso salva. Vale a partir do próximo recebimento.' }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Só quem configura a empresa muda a regra do atraso.' }
+    throw e
+  }
+}
+

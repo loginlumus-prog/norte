@@ -13,7 +13,7 @@
 import { useState, useTransition } from 'react'
 import { Botao, Campo, Aviso, cx } from '@/ui/base'
 import { abrir, fechar, movimentar } from './acoes'
-import type { Fechamento } from '@/servidor/caixa'
+import type { Fechamento, NaMaquininha } from '@/servidor/caixa'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
 
@@ -129,10 +129,15 @@ export function FecharCaixa({
   caixaId: string
   /**
    * O que dá para mostrar ANTES de contar: quantas vendas e o que entrou fora
-   * da gaveta (cartão, Pix). O esperado e o dinheiro vendido nem chegam ao
-   * navegador — vêm na resposta do fechamento.
+   * da gaveta — cada maquininha (vendas e crediário juntos) e o que não passa
+   * por máquina nenhuma (fiado, vale). O esperado e o dinheiro vendido nem
+   * chegam ao navegador — vêm na resposta do fechamento.
    */
-  turno: { vendas: number; foraDaGaveta: { forma: string; total: number }[] }
+  turno: {
+    vendas: number
+    maquininhas: NaMaquininha[]
+    semMaquininha: { forma: string; total: number }[]
+  }
 }) {
   const p = usePalavras()
   const [contado, setContado] = useState('')
@@ -167,7 +172,11 @@ export function FecharCaixa({
         <Aviso nivel={zerou ? 'bom' : 'critico'}>
           {zerou
             ? `Caixa fechado certinho, ${brl(feito.esperado)}.`
-            : `Caixa fechado com ${feito.diferenca > 0 ? 'sobra' : 'falta'} de ${brl(Math.abs(feito.diferenca))}.`}
+            : `Caixa fechado com ${feito.diferenca > 0 ? 'sobra' : 'falta'} de ${brl(Math.abs(feito.diferenca))}.`}{' '}
+          {/* O papel que vai no envelope com o dinheiro (caixa/[id]/fechamento). */}
+          <a href={`/${slug}/caixa/${caixaId}/fechamento?imprimir=1`} target="_blank" rel="noopener" className="font-semibold underline underline-offset-2">
+            Imprimir o fechamento
+          </a>
         </Aviso>
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="rounded-norte border border-borda bg-superficie p-4">
@@ -189,19 +198,45 @@ export function FecharCaixa({
             <h3 className="mb-2 text-sm font-bold">
               {plural(conferencia.vendas, p.venda, p.vendas)} no turno
             </h3>
-            {conferencia.porForma.map((f) => linha(FORMA[f.forma] ?? f.forma, f.total))}
+            {/* Por forma E maquininha: "Crédito · Stone" e "Crédito · Cielo"
+                são dois extratos diferentes para conferir. */}
+            {conferencia.porMaquininha.map((f) =>
+              linha(`${FORMA[f.forma] ?? f.forma}${f.maquininha ? ` · ${f.maquininha}` : ''}`, f.total),
+            )}
             {linha(`Total ${p.Vendido.toLowerCase()}`, conferencia.vendidoTotal, true)}
-            {conferencia.recebidoCrediario > 0 && linha('Crediário recebido (todas as formas)', conferencia.recebidoCrediario)}
+            {conferencia.recebidoCrediario > 0 && (
+              <>
+                {linha('Crediário recebido (todas as formas)', conferencia.recebidoCrediario)}
+                {conferencia.recebidoPorForma.map((f) => (
+                  <div key={`cred-${f.forma}-${f.maquininha ?? ''}`} className="flex justify-between gap-4 py-0.5 pl-3 text-xs text-tinta-3">
+                    <span>
+                      {FORMA[f.forma] ?? f.forma}
+                      {f.maquininha ? ` · ${f.maquininha}` : ''}
+                    </span>
+                    <span className="numero">{brl(f.total)}</span>
+                  </div>
+                ))}
+              </>
+            )}
             {conferencia.recebidoMensalidades > 0 && linha('Mensalidades recebidas (todas as formas)', conferencia.recebidoMensalidades)}
           </div>
         </div>
+        {conferencia.maquininhas.length > 0 && (
+          <div className="rounded-norte border border-borda bg-superficie p-4">
+            <h3 className="mb-1 text-sm font-bold">Confira cada maquininha</h3>
+            <p className="mb-2 text-xs text-tinta-3">
+              {p.Vendas} e crediário juntos: é o total que aparece no extrato de cada máquina.
+            </p>
+            <PorMaquininha grupos={conferencia.maquininhas} />
+          </div>
+        )}
       </div>
     )
   }
 
   // Antes de fechar: só o que NÃO passa pela gaveta — é o que a pessoa confere
-  // com a maquininha e o extrato do Pix. O dinheiro, ela conta.
-  const foraDaGaveta = turno.foraDaGaveta
+  // com cada maquininha e o extrato do Pix. O dinheiro, ela conta.
+  const foraDaGaveta = turno.maquininhas.length > 0 || turno.semMaquininha.length > 0
 
   return (
     <div className="flex flex-col gap-4">
@@ -223,10 +258,15 @@ export function FecharCaixa({
           <h3 className="mb-2 text-sm font-bold">
             {plural(turno.vendas, p.venda, p.vendas)} no turno
           </h3>
-          {foraDaGaveta.length > 0 ? (
+          {foraDaGaveta ? (
             <>
-              <p className="mb-1 text-xs text-tinta-3">Para conferir com a maquininha e o extrato:</p>
-              {foraDaGaveta.map((f) => linha(FORMA[f.forma] ?? f.forma, f.total))}
+              {turno.maquininhas.length > 0 && (
+                <>
+                  <p className="mb-1 text-xs text-tinta-3">Para conferir com cada maquininha e o extrato ({p.vendas} e crediário juntos):</p>
+                  <PorMaquininha grupos={turno.maquininhas} />
+                </>
+              )}
+              {turno.semMaquininha.map((f) => linha(FORMA[f.forma] ?? f.forma, f.total))}
             </>
           ) : (
             <p className="text-sm text-tinta-3">{p.nenhumaVenda} em cartão, Pix ou outra forma fora da gaveta.</p>
@@ -271,6 +311,49 @@ export function FecharCaixa({
           {indo ? 'Fechando...' : 'Fechar o caixa'}
         </Botao>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Cada maquininha com o total dela em cima e as formas embaixo. Quando a
+ * forma teve crediário junto, a linha diz de onde veio cada parte — é o que
+ * explica o extrato ter mais que as vendas do turno.
+ */
+function PorMaquininha({ grupos }: { grupos: NaMaquininha[] }) {
+  // Loja sem maquininha cadastrada: um grupo só, sem nome — não há o que
+  // separar, e "sem maquininha marcada" em cima de tudo só confundiria.
+  const soSemNome = grupos.length === 1 && grupos[0]!.maquininha === null
+  const p = usePalavras()
+  return (
+    <div className="flex flex-col divide-y divide-borda-suave">
+      {grupos.map((g) => (
+        <div key={g.maquininha ?? '-'} className="flex flex-col py-1.5">
+          {!soSemNome && (
+            <div className="flex justify-between gap-4 text-sm font-semibold text-tinta">
+              <span>{g.maquininha ?? 'Sem maquininha marcada'}</span>
+              <span className="numero">{brl(g.total)}</span>
+            </div>
+          )}
+          {g.formas.map((f) => (
+            <div
+              key={f.forma}
+              className={cx('flex justify-between gap-4', soSemNome ? 'py-1 text-sm text-tinta-2' : 'pl-3 text-xs text-tinta-2')}
+            >
+              <span>
+                {FORMA[f.forma] ?? f.forma}
+                {f.crediario > 0 && (
+                  <span className="text-tinta-3">
+                    {' '}
+                    ({f.vendas > 0 ? `${p.vendas} ${brl(f.vendas)} + ` : ''}crediário {brl(f.crediario)})
+                  </span>
+                )}
+              </span>
+              <span className="numero">{brl(f.total)}</span>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }

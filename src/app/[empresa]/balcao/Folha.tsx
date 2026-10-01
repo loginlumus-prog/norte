@@ -24,6 +24,7 @@ export function Folha({
   icone,
   larga = false,
   inteira = false,
+  pagamento = false,
   children,
   rodape,
 }: {
@@ -36,6 +37,12 @@ export function Folha({
   larga?: boolean
   /** Ocupa a tela toda no celular e no tablet em pé: é o pedido. */
   inteira?: boolean
+  /**
+   * É a folha do pedido (o pagamento no tablet e no celular). As teclas do
+   * caixa — F2–F8, F10, Esc — continuam valendo dentro dela; nas outras
+   * janelas (tamanho, PIN, opções) a tecla é da janela.
+   */
+  pagamento?: boolean
   children: ReactNode
   rodape?: ReactNode
 }) {
@@ -54,6 +61,15 @@ export function Folha({
     const el = painel.current
     const antes = document.activeElement as HTMLElement | null
     const tecla = (e: KeyboardEvent) => {
+      // Outra janela aberta POR CIMA desta (o "Receber crediário" aberto de
+      // "Mais opções", o PIN): a tecla é dela. Sem isto o Esc que fechava o
+      // receber fechava junto a folha de baixo, e o Tab puxava o foco para
+      // trás da janela da frente. A de cima é a última na página — as folhas
+      // têm a mesma camada, e a que vem depois é a que aparece.
+      // (O menu do celular fica sempre na página, escondido com aria-hidden:
+      // esse não conta.)
+      const janelas = document.querySelectorAll('[aria-modal="true"]:not([aria-hidden="true"])')
+      if (el && janelas.length > 0 && janelas[janelas.length - 1] !== el) return
       if (e.key === 'Escape') {
         e.preventDefault()
         fechar.current()
@@ -110,6 +126,7 @@ export function Folha({
       <div
         ref={painel}
         role="dialog"
+        data-pagamento={pagamento || undefined}
         aria-modal="true"
         aria-labelledby={idTitulo}
         tabIndex={-1}

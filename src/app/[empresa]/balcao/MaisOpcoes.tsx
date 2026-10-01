@@ -18,6 +18,8 @@ import { useEffect } from 'react'
 import { Botao, cx } from '@/ui/base'
 import type { Vendedor } from '@/servidor/equipe'
 import { EscolherCliente } from './Cliente'
+import { AlertaDeDivida } from '../crediario/AlertaDeDivida'
+import { BotaoReceber } from '../crediario/BotaoReceber'
 import { Folha } from './Folha'
 import { usePalavras } from './palavras'
 import type { Venda } from './useVenda'
@@ -25,7 +27,7 @@ import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
 /** Quantas opções estão valendo nesta venda — o número do botão. */
 export function opcoesEmUso(v: Venda, usuarioId: string) {
-  return [!!v.cliente, v.desconto > 0, v.vendedorId !== usuarioId, v.observacoes.trim() !== ''].filter(Boolean).length
+  return [!!v.cliente, v.desconto > 0, v.acrescimo > 0, v.vendedorId !== usuarioId, v.observacoes.trim() !== ''].filter(Boolean).length
 }
 
 export function MaisOpcoes({
@@ -38,11 +40,23 @@ export function MaisOpcoes({
   podeAvulso,
   pedidoCliente,
   focarVendedor,
+  precisaPin = false,
+  unidadeId,
+  crediario = null,
 }: {
+  /** Quem opera não passa do teto sozinha: desconto e avulso pedem o PIN de quem pode. */
+  precisaPin?: boolean
   v: Venda
   aberta: boolean
   aoFechar: () => void
   slug: string
+  unidadeId: string
+  /**
+   * O crediário da loja (nulo = módulo desligado) e se quem opera recebe
+   * parcela. Com ele, escolher a cliente que deve mostra o "ela já deve" ali
+   * mesmo, e sem cliente fica o atalho de quem veio só pagar.
+   */
+  crediario?: { receber?: boolean } | null
   usuarioId: string
   vendedores: Vendedor[] | null
   podeAvulso: boolean
@@ -79,7 +93,7 @@ export function MaisOpcoes({
       aberta={aberta}
       aoFechar={aoFechar}
       titulo="Mais opções"
-      subtitulo={`${p.Pessoa}, ${p.Vendedor.toLowerCase()}, desconto, item avulso e observação.`}
+      subtitulo={`${p.Pessoa}, ${p.Vendedor.toLowerCase()}, desconto, acréscimo, item avulso e observação.`}
       rodape={
         <Botao largo onClick={aoFechar} className="min-h-12 rounded-xl text-base">
           Pronto
@@ -94,6 +108,17 @@ export function MaisOpcoes({
           <div className="rounded-xl border border-borda bg-superficie px-3 py-2.5 [&_button]:min-h-9 [&_input]:h-11 [&_input]:text-base">
             <EscolherCliente slug={slug} escolhido={v.cliente} aoEscolher={v.setCliente} pedido={pedidoCliente} />
           </div>
+          {/* Crediário: "ela já deve R$ X — vai pagar agora?" assim que a
+              cliente é escolhida, e o "veio só pagar" sem cliente — o mesmo
+              do balcão avançado (crediario/AlertaDeDivida.tsx). */}
+          {crediario && v.cliente && (
+            <AlertaDeDivida slug={slug} unidadeId={unidadeId} clienteId={v.cliente.id} podeReceber={crediario.receber !== false} />
+          )}
+          {crediario && !v.cliente && crediario.receber !== false && (
+            <BotaoReceber slug={slug} unidadeId={unidadeId} tom="secundario" className="min-h-11 self-start rounded-xl text-sm">
+              Receber parcela do crediário
+            </BotaoReceber>
+          )}
         </section>
 
         {vendedores && (
@@ -124,17 +149,34 @@ export function MaisOpcoes({
           <label htmlFor="desconto-simples" className={titulo}>
             Desconto {p.naVenda}
           </label>
+          {/* Um campo só, com R$ ou %: dois campos davam desconto dobrado. */}
           <div className="flex items-center gap-2">
-            <span className="text-lg font-semibold text-tinta-3">R$</span>
+            <div role="group" aria-label="Desconto em reais ou em porcento" className="flex shrink-0 overflow-hidden rounded-xl border border-borda">
+              {([false, true] as const).map((pct) => (
+                <button
+                  key={String(pct)}
+                  type="button"
+                  aria-pressed={v.descontoEmPct === pct}
+                  onClick={() => v.setDescontoEmPct(pct)}
+                  className={cx(
+                    'h-12 w-12 text-base font-bold',
+                    v.descontoEmPct === pct ? 'bg-marca text-marca-tinta' : 'bg-superficie text-tinta-2 hover:bg-superficie-2',
+                  )}
+                >
+                  {pct ? '%' : 'R$'}
+                </button>
+              ))}
+            </div>
             <input
               id="desconto-simples"
               type="number"
               min={0}
-              step={0.01}
+              max={v.descontoEmPct ? 100 : undefined}
+              step={v.descontoEmPct ? 0.5 : 0.01}
               inputMode="decimal"
               value={v.desconto || ''}
               onChange={(e) => v.setDesconto(Number(e.target.value) || 0)}
-              placeholder="0,00"
+              placeholder={v.descontoEmPct ? '0' : '0,00'}
               className={cx(campo, 'numero max-w-40 text-lg font-bold')}
             />
             {v.desconto > 0 && (
@@ -143,7 +185,40 @@ export function MaisOpcoes({
               </button>
             )}
           </div>
-          <p className="text-xs text-tinta-3">Acima do teto da loja, {p.aVenda} não fecha: chame quem pode autorizar.</p>
+          {v.descontoEmPct && v.conta.descontoCent > 0 && (
+            <p className="numero text-sm text-tinta-2">− {(v.conta.descontoCent / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+          )}
+          <p className="text-xs text-tinta-3">
+            {precisaPin
+              ? `Acima do teto da loja, ${p.aVenda} pede o PIN de quem pode autorizar.`
+              : 'Acima do teto da loja fica registrado no seu nome.'}
+          </p>
+        </section>
+
+        <section className={secao}>
+          <label htmlFor="acrescimo-simples" className={titulo}>
+            Acréscimo
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-semibold text-tinta-3">R$</span>
+            <input
+              id="acrescimo-simples"
+              type="number"
+              min={0}
+              step={0.01}
+              inputMode="decimal"
+              value={v.acrescimo || ''}
+              onChange={(e) => v.setAcrescimo(Number(e.target.value) || 0)}
+              placeholder="0,00"
+              className={cx(campo, 'numero max-w-40 text-lg font-bold')}
+            />
+            {v.acrescimo > 0 && (
+              <button type="button" onClick={() => v.setAcrescimo(0)} className="px-2 text-sm font-semibold text-tinta-3 hover:text-critico">
+                tirar
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-tinta-3">A peça saiu da promoção e a etiqueta ficou com o preço velho: some a diferença aqui.</p>
         </section>
 
         {podeAvulso && (
@@ -191,6 +266,7 @@ export function MaisOpcoes({
                 {precoIlegivel && <p className="text-xs font-medium text-critico">{DINHEIRO_ILEGIVEL}</p>}
                 <p className="text-xs text-tinta-3">
                   Não mexe em estoque e fica marcado no livro. Se a peça existe, cadastre.
+                  {precisaPin && ' Ao concluir, pede o PIN de quem pode autorizar.'}
                 </p>
               </div>
             )}

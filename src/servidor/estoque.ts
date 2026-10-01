@@ -472,3 +472,118 @@ export async function conferirSaldos(sessao: Sessao, unidadeId?: string) {
     `,
   )
 }
+
+// ─────────────────────────────────────────────────────────────
+// VENDIDO SEM ESTOQUE — CONFERIR
+// ─────────────────────────────────────────────────────────────
+//
+// Com "vender o que o sistema diz que acabou" ligado (`Org.vendeSemEstoque`),
+// a venda passa e o item guarda o saldo que o sistema tinha (`saldoNaVenda`).
+// Cada um é uma pergunta para a gerente: a peça estava mesmo na loja e o
+// estoque é que estava errado (conta a prateleira e corrige), ou saiu uma
+// peça que não era a do código? A lista some item a item com "já conferi".
+
+export type ParaConferir = {
+  vendaItemId: string
+  vendaId: string
+  vendaNumero: number
+  vendidaEm: Date
+  unidadeId: string
+  unidade: string
+  variacaoId: string | null
+  descricao: string
+  codigo: string | null
+  vendido: number
+  /** O que o sistema dizia ter na hora da venda (0, ou menos que o vendido). */
+  tinha: number
+  /** O saldo de agora — negativo enquanto ninguém contou a prateleira. */
+  saldoAgora: number
+  vendedor: string | null
+}
+
+/** Os itens vendidos sem estoque que ninguém conferiu ainda, das lojas pedidas que a pessoa vê. */
+export async function listarParaConferir(sessao: Sessao, unidadeIds: string[], limite = 200): Promise<ParaConferir[]> {
+  const lojas = unidadeIds.filter((u) => pode(sessao, 'estoque.ver', u))
+  if (lojas.length === 0) return []
+  return comoOrg(sessao.orgId, async (db) => {
+    const itens = await db.vendaItem.findMany({
+      where: {
+        saldoNaVenda: { not: null },
+        conferidoEm: null,
+        venda: { unidadeId: { in: lojas }, situacao: 'CONCLUIDA' },
+      },
+      orderBy: { venda: { criadaEm: 'desc' } },
+      take: limite,
+      select: {
+        id: true, variacaoId: true, descricao: true, codigo: true, quantidade: true, saldoNaVenda: true,
+        venda: {
+          select: { id: true, numero: true, criadaEm: true, unidadeId: true, vendedorNome: true, unidade: { select: { nome: true } } },
+        },
+      },
+    })
+    // O saldo de agora, numa consulta só (e não uma por linha).
+    const saldos = await db.estoque.findMany({
+      where: {
+        unidadeId: { in: lojas },
+        variacaoId: { in: [...new Set(itens.map((i) => i.variacaoId).filter((x): x is string => !!x))] },
+      },
+      select: { variacaoId: true, unidadeId: true, quantidade: true },
+    })
+    const agora = new Map(saldos.map((e) => [`${e.variacaoId}:${e.unidadeId}`, Number(e.quantidade)]))
+    return itens.map((i) => ({
+      vendaItemId: i.id,
+      vendaId: i.venda.id,
+      vendaNumero: i.venda.numero,
+      vendidaEm: i.venda.criadaEm,
+      unidadeId: i.venda.unidadeId,
+      unidade: i.venda.unidade.nome,
+      variacaoId: i.variacaoId,
+      descricao: i.descricao,
+      codigo: i.codigo,
+      vendido: Number(i.quantidade),
+      tinha: Number(i.saldoNaVenda),
+      saldoAgora: agora.get(`${i.variacaoId}:${i.venda.unidadeId}`) ?? 0,
+      vendedor: i.venda.vendedorNome,
+    }))
+  })
+}
+
+/**
+ * "Já conferi": o item sai da lista, com quem e quando. Quem corrige estoque
+ * (`estoque.ajustar`) na loja da venda — conferir é contar a prateleira e,
+ * se preciso, corrigir o saldo, que é o mesmo poder.
+ */
+export async function marcarConferido(sessao: Sessao, vendaItemId: string): Promise<{ ok: true } | { ok: false; erro: string }> {
+  return comoOrg(sessao.orgId, async (db) => {
+    const item = await db.vendaItem.findUnique({
+      where: { id: vendaItemId },
+      select: {
+        id: true, descricao: true, quantidade: true, saldoNaVenda: true, conferidoEm: true,
+        venda: { select: { id: true, numero: true, unidadeId: true } },
+      },
+    })
+    if (!item || item.saldoNaVenda === null) return { ok: false as const, erro: 'Item não encontrado na lista.' }
+    exigir(sessao, 'estoque.ajustar', item.venda.unidadeId)
+    // A condição no update é a trava do clique duplo: o segundo não acha mais
+    // o item em aberto e não escreve outra linha no livro.
+    const r = await db.vendaItem.updateMany({
+      where: { id: item.id, conferidoEm: null },
+      data: { conferidoEm: new Date(), conferidoPor: sessao.nome },
+    })
+    if (r.count === 0) return { ok: true as const }
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: item.venda.unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'estoque.conferiu',
+        alvoTipo: 'venda',
+        alvoId: item.venda.id,
+        alvoNome: `Venda ${item.venda.numero}`,
+        motivo: `${item.descricao}: vendeu ${Number(item.quantidade)}, o sistema tinha ${Number(item.saldoNaVenda)}`,
+      },
+    })
+    return { ok: true as const }
+  })
+}

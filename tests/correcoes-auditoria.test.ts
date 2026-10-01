@@ -284,10 +284,15 @@ describe('3 e 4. crediário: recebimento preso à parcela, e o juro sem cobrar d
     expect(semana.jurosHoje).toBe(0.23)
   })
 
-  it('pagar sem juro (a loja perdoou) não mexe no "juros até"', async () => {
-    await m.crediario.receberParcela(DONA, { parcelaId: 'par-1', valor: 10, juros: 0, forma: 'PIX' }, new Date(AGORA.getTime() + 864e5))
+  // Mudou com o recibo (recibos.ts): perdoar o atraso agora é decisão de quem
+  // negocia o crediário, registrada — e os dias perdoados ficam resolvidos.
+  // Antes o "juros até" ficava parado, e o recebimento seguinte cobrava de
+  // novo o juro dos dias que a loja tinha perdoado.
+  it('pagar sem juro (a loja perdoou) resolve o juro até hoje: os dias perdoados não voltam', async () => {
+    const r = await m.crediario.receberParcela(DONA, { parcelaId: 'par-1', valor: 10, juros: 0, forma: 'PIX' }, new Date(AGORA.getTime() + 864e5))
+    expect(r).toMatchObject({ ok: true, juros: 0 })
     const { ate } = await um<{ ate: string }>(`select to_char(juros_ate, 'YYYY-MM-DD') ate from parcelas where id = 'par-1'`)
-    expect(ate).toBe('2026-10-10')
+    expect(ate).toBe('2026-10-11')
   })
 
   it('apagar parcela que recebeu dinheiro é recusado pelo banco — o recebimento não some junto', async () => {

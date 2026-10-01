@@ -255,9 +255,18 @@ export default async function CaixaPagina({
               : `Aberto por ${aberto.abertoPor}, fechado por ${aberto.fechadoPor ?? '—'}${aberto.fechadoEm ? ` às ${hora(aberto.fechadoEm)}` : ''}.`
           }
           acao={
-            <Link href={`/${slug}/caixa?${onde.unidadeId ? `unidade=${onde.unidadeId}&` : ''}periodo=${j.chave}`} className="text-xs text-tinta-3 hover:text-tinta">
-              fechar detalhes
-            </Link>
+            <span className="flex items-center gap-3">
+              {/* O papel do fechamento: só de turno fechado (o esperado do
+                  aberto é o que a contagem às cegas esconde). */}
+              {!aberto.aberto && (
+                <a href={`/${slug}/caixa/${aberto.id}/fechamento`} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
+                  imprimir fechamento
+                </a>
+              )}
+              <Link href={`/${slug}/caixa?${onde.unidadeId ? `unidade=${onde.unidadeId}&` : ''}periodo=${j.chave}`} className="text-xs text-tinta-3 hover:text-tinta">
+                fechar detalhes
+              </Link>
+            </span>
           }
         >
           <div className="grid gap-3 lg:grid-cols-2">

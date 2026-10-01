@@ -79,7 +79,12 @@ export default async function FichaVenda({
   const subtotal = Number(v.subtotal)
   const desconto = Number(v.desconto)
   const pontosCent = Number(v.descontoPontos)
+  const acrescimo = Number(v.acrescimo)
+  // O juro do crédito parcelado já está dentro do total e do pagamento.
+  const juros = v.pagamentos.reduce((s, p) => s + Number(p.juros), 0)
   const total = Number(v.total)
+  // O dinheiro gravado é o que ficou na gaveta; o entregue é ele mais o troco.
+  const dinheiro = v.pagamentos.filter((p) => p.forma === 'DINHEIRO').reduce((s, p) => s + Number(p.valor), 0)
   const devolvido = v.devolucoes.reduce((s, d) => s + Number(d.valor), 0)
 
   // Quanto de cada item já voltou, e quanto ainda pode voltar.
@@ -179,6 +184,15 @@ export default async function FichaVenda({
           >
             Comprovante
           </a>
+          {/* No crediário, o carnê: o papel que a cliente assina (vendas/[id]/carne). */}
+          {v.parcelas.length > 0 && (
+            <a
+              href={`/${slug}/vendas/${v.id}/carne`}
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            >
+              Carnê
+            </a>
+          )}
           {v.cliente?.telefone && (
             <a
               href={`https://wa.me/55${v.cliente.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(
@@ -236,7 +250,7 @@ export default async function FichaVenda({
         {/* A conta de baixo para cima, como no comprovante. Cada linha só
             aparece se mexeu no total — subtotal igual ao total é ruído. */}
         <dl className="ml-auto mt-3 flex w-full max-w-xs flex-col gap-1 text-sm">
-          {(desconto > 0 || pontosCent > 0) && (
+          {(desconto > 0 || pontosCent > 0 || acrescimo > 0 || juros > 0) && (
             <div className="flex justify-between text-tinta-2">
               <dt>Subtotal</dt>
               <dd className="numero">{brl(subtotal)}</dd>
@@ -248,10 +262,22 @@ export default async function FichaVenda({
               <dd className="numero">− {brl(desconto)}</dd>
             </div>
           )}
+          {acrescimo > 0 && (
+            <div className="flex justify-between text-tinta-2">
+              <dt>Acréscimo</dt>
+              <dd className="numero">+ {brl(acrescimo)}</dd>
+            </div>
+          )}
           {pontosCent > 0 && (
             <div className="flex justify-between text-tinta-2">
               <dt>Pontos ({v.pontosUsados})</dt>
               <dd className="numero">− {brl(pontosCent)}</dd>
+            </div>
+          )}
+          {juros > 0 && (
+            <div className="flex justify-between text-tinta-2">
+              <dt>Juro do parcelamento</dt>
+              <dd className="numero">+ {brl(juros)}</dd>
             </div>
           )}
           <div className="flex justify-between border-t border-borda pt-1.5 font-bold text-tinta">
@@ -283,19 +309,42 @@ export default async function FichaVenda({
         <ul className="flex flex-col gap-1.5 text-sm">
           {v.pagamentos.map((p) => (
             <li key={p.id} className="flex items-baseline justify-between gap-3">
-              <span className="text-tinta">
-                {FORMA[p.forma] ?? p.forma}
-                {p.parcelas > 1 && <span className="text-tinta-3"> · {p.parcelas}×</span>}
-                {p.vale ? (
-                  <span className="font-mono text-tinta-3"> · {p.vale.codigo}</span>
-                ) : (
-                  p.referencia && <span className="text-tinta-3"> · {p.referencia}</span>
+              <span className="flex flex-col">
+                <span className="text-tinta">
+                  {FORMA[p.forma] ?? p.forma}
+                  {p.parcelas > 1 && <span className="text-tinta-3"> · {p.parcelas}×</span>}
+                  {p.maquininha && <span className="text-tinta-3"> · {p.maquininha}</span>}
+                  {p.vale ? (
+                    <span className="font-mono text-tinta-3"> · {p.vale.codigo}</span>
+                  ) : (
+                    p.referencia && <span className="text-tinta-3"> · {p.referencia}</span>
+                  )}
+                </span>
+                {p.forma === 'CREDITO' && p.parcelas > 1 && (
+                  <span className="numero text-xs text-tinta-3">
+                    {p.parcelas}× de {brl(Math.ceil((Number(p.valor) * 100) / p.parcelas) / 100)}
+                    {Number(p.juros) > 0 ? ` · juro ${brl(Number(p.juros))}` : ' · sem juro'}
+                  </span>
                 )}
               </span>
               <span className="numero font-semibold text-tinta">{brl(Number(p.valor))}</span>
             </li>
           ))}
+          {/* O troco que o balcão deu (guardado no livro da venda). */}
+          {v.troco > 0 && (
+            <li className="flex items-baseline justify-between gap-3 border-t border-borda-suave pt-1.5 text-tinta-2">
+              <span>
+                Recebeu <span className="numero">{brl(dinheiro + v.troco)}</span> em dinheiro · troco
+              </span>
+              <span className="numero font-semibold text-tinta">{brl(v.troco)}</span>
+            </li>
+          )}
         </ul>
+        {v.autorizadoPor && (
+          <p className="mt-3 border-t border-borda-suave pt-3 text-[13px] text-tinta-2">
+            Autorizado com o PIN de <b className="font-semibold text-tinta">{v.autorizadoPor}</b> (desconto acima do teto ou item fora do cadastro).
+          </p>
+        )}
         {v.encomenda && (
           <p className="mt-3 border-t border-borda-suave pt-3 text-[13px] text-tinta-2">
             Recebeu o que faltava da{' '}
@@ -317,7 +366,8 @@ export default async function FichaVenda({
         <Cartao titulo={`Crediário · ${v.parcelas.length} parcela${v.parcelas.length === 1 ? '' : 's'}`}>
           <ul className="flex flex-col divide-y divide-borda-suave text-sm">
             {v.parcelas.map((p) => {
-              const resta = Number(p.valor) - Number(p.pago)
+              // O desconto autorizado abate sem dinheiro: resta = valor − pago − desconto.
+              const resta = Number(p.valor) - Number(p.pago) - Number(p.desconto)
               return (
                 <li key={p.id} className="flex items-center justify-between gap-3 py-2">
                   <span className="text-tinta">
@@ -338,12 +388,18 @@ export default async function FichaVenda({
               )
             })}
           </ul>
-          <p className="mt-3 text-xs text-tinta-3">
-            Receber é em{' '}
-            <Link href={`/${slug}/crediario?q=${v.numero}`} className="font-medium text-marca underline-offset-2 hover:underline">
-              Crediário
-            </Link>
-            .
+          <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-tinta-3">
+            {/* O carnê: o papel que a cliente assina e leva (vendas/[id]/carne). */}
+            <a href={`/${slug}/vendas/${v.id}/carne`} className="font-semibold text-marca underline-offset-2 hover:underline">
+              Imprimir o carnê
+            </a>
+            <span>
+              Receber é em{' '}
+              <Link href={`/${slug}/crediario?q=${v.numero}`} className="font-medium text-marca underline-offset-2 hover:underline">
+                Crediário
+              </Link>
+              .
+            </span>
           </p>
         </Cartao>
       )}

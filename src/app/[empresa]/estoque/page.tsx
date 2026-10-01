@@ -34,6 +34,7 @@ import { Entrada } from './Entrada'
 import { Corrigir } from './Corrigir'
 import { Minimo } from './Minimo'
 import { Transferir } from './Transferir'
+import { VendidoSemEstoque } from './VendidoSemEstoque'
 
 export const metadata: Metadata = { title: 'Estoque' }
 
@@ -505,6 +506,10 @@ export default async function TelaEstoque({
           aMercadoria={vocab.aMercadoria}
         />
       )}
+
+      {/* O que o balcão vendeu sem o sistema ter: pendência da gerente,
+          antes da lista de compras (o saldo errado engana as duas). */}
+      <VendidoSemEstoque slug={slug} sessao={sessao} unidadeIds={onde.ids} />
 
       {acabaram.length + noMinimo.length > 0 && (
         <Secao titulo="Precisa comprar">

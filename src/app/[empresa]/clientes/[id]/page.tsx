@@ -8,6 +8,9 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { acharCliente, mostrarTelefone, comprasPorMes, favoritosDoCliente } from '@/servidor/cliente'
 import { valesDoCliente } from '@/servidor/devolucao'
 import { listarParcelas } from '@/servidor/crediario'
+import { recibosDoCliente, type ReciboNaLista } from '@/servidor/recibos'
+import { BotaoReceber } from '../../crediario/BotaoReceber'
+import { ListaDeRecibos } from '../../crediario/Recibos'
 import { moduloLigado } from '@/servidor/modulos'
 import { unidadesVisiveis } from '@/servidor/unidade'
 import { pode } from '@/servidor/permissao'
@@ -61,7 +64,7 @@ export default async function FichaCliente({
   // matrículas e as mensalidades (ver Escola.tsx).
   const temEscola = moduloLigado(empresa, 'escola') && pode(sessao, 'escola.ver')
   const vocab = await vocabularioDaEmpresa(sessao.orgId)
-  const [meses, favoritos, vales, parcelas, horarios] = await Promise.all([
+  const [meses, favoritos, vales, parcelas, horarios, recibos] = await Promise.all([
     comprasPorMes(sessao, id, 12),
     favoritosDoCliente(sessao, id),
     valesDoCliente(sessao, id),
@@ -80,6 +83,7 @@ export default async function FichaCliente({
           }),
         )
       : Promise.resolve([]),
+    temCrediario ? recibosDoCliente(sessao, id, 10) : Promise.resolve([] as ReciboNaLista[]),
   ])
   const agora = new Date()
   const proximos = horarios.filter((h) => h.fim > agora && OCUPAM.includes(h.situacao) && h.situacao !== 'ATENDIDO')
@@ -257,21 +261,38 @@ export default async function FichaCliente({
                         ) : (
                           <Situacao nivel="neutro">em dia</Situacao>
                         )}
-                        <span className={cx('numero font-semibold', p.situacao === 'vencida' ? 'text-critico' : 'text-tinta')}>{brl(p.resta)}</span>
+                        <span className="flex flex-col items-end">
+                          <span className={cx('numero font-semibold', p.situacao === 'vencida' ? 'text-critico' : 'text-tinta')}>{brl(p.resta)}</span>
+                          {p.multaHoje + p.jurosHoje > 0 && (
+                            <span className="numero text-[11px] text-critico">+ {brl(p.multaHoje + p.jurosHoje)} atraso</span>
+                          )}
+                        </span>
                       </span>
                     </li>
                   ))}
                 </ul>
-                <p className="pt-2 text-xs text-tinta-3">
-                  Receber é em{' '}
-                  <Link href={`/${slug}/crediario?cliente=${cliente.id}`} className="font-medium text-marca underline-offset-2 hover:underline">
-                    Crediário
+                {/* Receber por loja: cada loja é um credor, com o caixa dela. */}
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  {[...new Map(parcelas.map((p) => [p.unidadeId, p.unidade])).entries()]
+                    .filter(([u]) => pode(sessao, 'crediario.receber', u))
+                    .map(([u, nome], _i, todas) => (
+                      <BotaoReceber key={u} slug={slug} unidadeId={u} clienteId={cliente.id} className="py-1 text-xs">
+                        {todas.length > 1 ? `Receber em ${nome}` : 'Receber parcelas'}
+                      </BotaoReceber>
+                    ))}
+                  <Link href={`/${slug}/crediario?cliente=${cliente.id}&situacao=todas`} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
+                    todas as parcelas, pagas também
                   </Link>
-                  .
-                </p>
+                </div>
               </Cartao>
             )}
           </div>
+        )}
+
+        {recibos.length > 0 && (
+          <Cartao titulo="Recibos do crediário">
+            <ListaDeRecibos slug={slug} recibos={recibos} />
+          </Cartao>
         )}
 
         {cliente.pontos > 0 || cliente.movimentosPontos.length > 0 ? (

@@ -9,6 +9,7 @@ import { mudarMeuNome, mudarTelefone } from '@/servidor/equipe'
 import { confirmarNaTela, pedirCodigo } from '@/servidor/assistente/confirmacao'
 import { revalidatePath } from 'next/cache'
 import { deOndeVeio, enderecoPublico } from '@/servidor/requisicao'
+import { definirMeuPin, tirarMeuPin } from '@/servidor/autorizacao'
 
 export type EstadoTroca = { erro?: string; ok?: string }
 
@@ -153,5 +154,41 @@ export async function confirmarCodigoAcao(slug: string, _anterior: EstadoWhatsAp
     return { ok: 'WhatsApp confirmado. O assistente já reconhece você por ele.' }
   } catch (e) {
     return { erro: recadoDoErro(e, 'Não deu para confirmar agora.'), esperando: true }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MEU PIN (autorizar no balcão — ver servidor/autorizacao.ts)
+// ─────────────────────────────────────────────────────────────
+
+export type EstadoPin = { erro?: string; ok?: string }
+
+export async function definirPinAcao(slug: string, _anterior: EstadoPin, form: FormData): Promise<EstadoPin> {
+  let sessao
+  try {
+    sessao = await exigirSessao(slug)
+  } catch (e) {
+    if (e instanceof SessaoExpirada) return { erro: e.message }
+    throw e
+  }
+  if (form.get('tirar') != null) {
+    try {
+      await tirarMeuPin(sessao)
+      revalidatePath(`/${slug}/conta`)
+      return { ok: 'PIN apagado. Ninguém autoriza nada com ele daqui em diante.' }
+    } catch (e) {
+      return { erro: recadoDoErro(e, 'Não deu para apagar o PIN agora.') }
+    }
+  }
+  const pin = String(form.get('pin') ?? '').trim()
+  const repetido = String(form.get('repetido') ?? '').trim()
+  if (pin !== repetido) return { erro: 'Os dois PINs não são iguais.' }
+  try {
+    const r = await definirMeuPin(sessao, String(form.get('senha') ?? ''), pin)
+    if (!r.ok) return { erro: r.erro }
+    revalidatePath(`/${slug}/conta`)
+    return { ok: 'PIN salvo. Use no balcão quando pedirem a sua autorização.' }
+  } catch (e) {
+    return { erro: recadoDoErro(e, 'Não deu para salvar o PIN agora.') }
   }
 }

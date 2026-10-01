@@ -24,6 +24,8 @@ import { programaNoPlano, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
 import { paraCobrarHorario } from './acoes'
 import { ComPalavras } from './palavras'
+import { lerMaquininhas } from '@/servidor/maquininhas'
+import type { ConfigDoBalcao } from './useVenda'
 
 // "Recepção" na clínica e no salão, "Secretaria" na escola (vocabulario.ts).
 export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
@@ -75,7 +77,10 @@ export default async function BalcaoPagina({
   const conf = await comoOrg(sessao.orgId, (db) =>
     db.org.findUnique({
       where: { id: sessao.orgId },
-      select: { pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true, balcaoGrade: true, plano: true, ramo: true },
+      select: {
+        pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true, balcaoGrade: true, plano: true, ramo: true,
+        vendeSemEstoque: true, creditoMaxParcelas: true, creditoJurosPct: true,
+      },
     }),
   )
   // O programa que o PLANO libera: sem isso a tela prometeria "ganha X pontos"
@@ -88,7 +93,7 @@ export default async function BalcaoPagina({
   // Configurações. Uma consulta depois da outra — ver acoes.ts, `grade`.
   const loja = unidadeId
     ? await comoOrg(sessao.orgId, (db) =>
-        db.unidade.findUnique({ where: { id: unidadeId }, select: { ramo: true } }),
+        db.unidade.findUnique({ where: { id: unidadeId }, select: { ramo: true, maquininhas: true } }),
       )
     : null
   const ramoDaLoja = loja?.ramo && loja.ramo in RAMOS ? RAMOS[loja.ramo as keyof typeof RAMOS] : null
@@ -131,12 +136,32 @@ export default async function BalcaoPagina({
   const vendedores =
     unidadeId && moduloLigado(empresa, 'metas') ? await listarVendedores(sessao, unidadeId) : null
 
-  const podeAvulso = unidadeId ? pode(sessao, 'venda.desconto', unidadeId) : false
+  // O avulso é de todo mundo que vende: quem não pode passar do teto lança
+  // e, ao concluir, a venda pede o PIN de quem pode (ver autorizacao.ts).
+  const precisaPin = unidadeId ? !pode(sessao, 'venda.desconto', unidadeId) : true
+  const podeAvulso = true
 
   // Crediário só existe com o módulo: sem ele, a forma nem aparece.
+  // `receber`: quem opera aqui recebe parcela (o aviso "ela já deve" aparece
+  // para todos; o botão de receber, só para quem pode).
   const crediario = moduloLigado(empresa, 'crediario')
-    ? { maxParcelas: (await configCrediario(sessao)).maxParcelas }
+    ? await configCrediario(sessao).then((c) => ({
+        maxParcelas: c.maxParcelas,
+        diasEntre: c.diasEntre,
+        receber: unidadeId ? pode(sessao, 'crediario.receber', unidadeId) : false,
+      }))
     : null
+
+  // As regras desta loja que a tela precisa saber para perguntar a coisa
+  // certa. O servidor confere tudo de novo ao fechar.
+  const config: ConfigDoBalcao = {
+    // Antes de escolher a forma, o preço mais caro que a loja cobra — e,
+    // embaixo, quanto se economiza à vista (ver conta.ts).
+    semForma: crediario ? 'crediario' : 'cartao',
+    vendeSemEstoque: !!conf?.vendeSemEstoque,
+    maquininhas: lerMaquininhas(loja?.maquininhas),
+    credito: { maxParcelas: conf?.creditoMaxParcelas ?? 1, jurosPct: Number(conf?.creditoJurosPct ?? 0) },
+  }
 
   // A meta de quem está no caixa, na barra: "faltam R$ 800" é o que faz a
   // meta existir durante o dia, e não só no dia 30.
@@ -188,7 +213,10 @@ export default async function BalcaoPagina({
               caixaId={caixa.id}
               turno={{
                 vendas: conferencia!.vendas,
-                foraDaGaveta: conferencia!.porForma.filter((f) => f.forma !== 'DINHEIRO'),
+                // Cartão e Pix por maquininha (vendas e crediário juntos);
+                // fiado e vale à parte — não passam por máquina nenhuma.
+                maquininhas: conferencia!.maquininhas,
+                semMaquininha: conferencia!.porForma.filter((f) => f.forma === 'CREDIARIO' || f.forma === 'VALE'),
               }}
             />
             <Movimento slug={slug} caixaId={caixa.id} />
@@ -208,6 +236,8 @@ export default async function BalcaoPagina({
             inicial={inicial}
             encomenda={encomenda}
             veAssinatura={veAssinatura}
+            config={config}
+            precisaPin={precisaPin}
             colada
             barra={
               <BarraCaixa
@@ -247,6 +277,8 @@ export default async function BalcaoPagina({
               inicial={inicial}
               encomenda={encomenda}
               veAssinatura={veAssinatura}
+              config={config}
+              precisaPin={precisaPin}
             />
           </>
         )}

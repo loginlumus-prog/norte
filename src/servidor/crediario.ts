@@ -6,11 +6,12 @@
 // abateu. Não é cartão de crédito parcelado (isso é CREDITO, e a maquininha
 // é quem parcela). É a loja emprestando, e por isso exige cliente com nome.
 //
-// ── juros ────────────────────────────────────────────────────
+// ── atraso ───────────────────────────────────────────────────
 // Parcelar não custa nada ao cliente aqui: o preço "no crediário" do produto
-// já embute o risco. O que existe é juro de ATRASO — X% ao mês sobre o que
-// ficou vencido, proporcional aos dias — e quem recebe pode mudar o valor
-// com a pessoa na frente, porque cobrança é conversa, não fórmula.
+// já embute o risco. O que existe é o ATRASO — multa uma vez e juro ao mês,
+// proporcional aos dias (ver recibos-conta.ts). Cobrança é conversa: quem
+// negocia o crediário pode perdoar o atraso ou dar desconto, e quem só
+// recebe pede a autorização dela na hora (recibos.ts).
 //
 // ── recebimento parcial ──────────────────────────────────────
 // "Só tenho cinquenta hoje" é frase de todo dia. A parcela aceita pagamento
@@ -18,11 +19,11 @@
 // quando o abatido alcança o valor.
 
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, numeroDaBusca, pode, textoDaBusca, type Sessao } from './permissao'
+import { exigir, numeroDaBusca, pode, textoDaBusca, unidadesQuePodem, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
-import { colunaDoDia, diaDaColuna, diaEmSP, diasEntre, somarDias } from './dia'
-import { travarVenda } from './devolucao'
-import { travarCaixaAberto } from './caixa'
+import { colunaDoDia, diaDaColuna, diaEmSP, somarDias } from './dia'
+import { encargosDeHoje, MULTA_MAXIMA_CREDIARIO } from './recibos-conta'
+import { regraDoAtraso, receberVarias } from './recibos'
 import type { FormaPagamento, Prisma } from '@prisma/client'
 
 // ─────────────────────────────────────────────────────────────
@@ -60,43 +61,10 @@ export function montarParcelas(
   }))
 }
 
-/**
- * Dias de calendário vencidos. O dia do vencimento ainda não é atraso.
- *
- * `vencimento` é o valor da coluna `date` como o banco devolve (meia-noite
- * UTC do dia); `agora` é um instante, lido no calendário de São Paulo. Ver
- * `dia.ts` — antes disto a conta dava um dia a mais e o juro saía maior.
- */
-export function diasDeAtraso(vencimento: Date, agora: Date): number {
-  const dias = diasEntre(diaDaColuna(vencimento), diaEmSP(agora))
-  return dias > 0 ? dias : 0
-}
+// Os dias e o juro moram em recibos-conta.ts (puro, para a tela do balcão
+// fazer a mesma conta); daqui saem com o nome de sempre.
+export { diasDeAtraso, diasDeJuros, jurosDeAtraso, encargosDeHoje } from './recibos-conta'
 
-/**
- * Dias de atraso que AINDA não pagaram juro: contados do vencimento ou do dia
- * até onde o juro já foi cobrado (`jurosAte`), o que vier depois.
- *
- * O caso: parcela de R$ 100 com 30 dias de atraso, a 2% ao mês. A pessoa paga
- * R$ 50 + R$ 2,00 de juro hoje. Uma semana depois, o juro sugerido é o de 7
- * dias sobre os 50 que restam (R$ 0,23) — e não o de 37 dias (R$ 1,23), que
- * cobraria de novo os 30 dias que ela já pagou.
- */
-export function diasDeJuros(vencimento: Date, jurosAte: Date | null | undefined, agora: Date): number {
-  const venc = diaDaColuna(vencimento)
-  const ate = jurosAte ? diaDaColuna(jurosAte) : null
-  const desde = ate && ate > venc ? ate : venc
-  const dias = diasEntre(desde, diaEmSP(agora))
-  return dias > 0 ? dias : 0
-}
-
-/**
- * Juro de atraso, em centavos: pctMes ao mês, proporcional aos dias, sobre o
- * que resta. Para baixo — a sobra fica com o cliente, nunca cobrada a mais.
- */
-export function jurosDeAtraso(restanteCent: number, dias: number, pctMes: number): number {
-  if (restanteCent <= 0 || dias <= 0 || pctMes <= 0) return 0
-  return Math.floor((restanteCent * pctMes * dias) / (100 * 30))
-}
 
 // ─────────────────────────────────────────────────────────────
 // LER
@@ -118,17 +86,23 @@ export type ParcelaNaLista = {
   vencimento: Date
   valor: number
   pago: number
+  /** Abatido sem dinheiro (desconto autorizado). */
+  desconto: number
   juros: number
+  multa: number
   resta: number
   situacao: SituacaoParcela
   diasAtraso: number
   /**
    * Os dias que o juro de hoje cobre: os de atraso menos os que já pagaram
-   * juro num recebimento anterior (ver `diasDeJuros`).
+   * juro num recebimento anterior (ver `diasDeJuros`) e menos a carência.
    */
   diasJuros: number
-  /** O juro sugerido para receber hoje, com a taxa da empresa. */
+  /** O juro sugerido para receber hoje, com a regra da empresa. */
   jurosHoje: number
+  /** A multa de hoje (zero se já foi resolvida num recebimento anterior). */
+  multaHoje: number
+  quitadaEm: Date | null
 }
 
 export type FiltroParcelas = {
@@ -187,11 +161,7 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = 
   const pagina = Math.max(1, Math.floor(f.pagina ?? 1) || 1)
 
   return comoOrg(sessao.orgId, async (db) => {
-    const org = await db.org.findUniqueOrThrow({
-      where: { id: sessao.orgId },
-      select: { crediarioJurosMes: true },
-    })
-    const pct = Number(org.crediarioJurosMes)
+    const regra = await regraDoAtraso(db, sessao.orgId)
 
     const parcelas = await db.parcela.findMany({
       where: ondeDasParcelas(f, permitidas, agora),
@@ -202,7 +172,8 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = 
       take: porPagina ?? 500,
       select: {
         id: true, vendaId: true, clienteId: true, unidadeId: true, numero: true, de: true,
-        vencimento: true, valor: true, pago: true, juros: true, jurosAte: true, quitadaEm: true,
+        vencimento: true, valor: true, pago: true, desconto: true, juros: true, multa: true,
+        jurosAte: true, multaCobrada: true, quitadaEm: true,
         venda: { select: { numero: true } },
         cliente: { select: { nome: true, telefone: true } },
         unidade: { select: { nome: true } },
@@ -212,10 +183,12 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = 
     return parcelas.map((p) => {
       const valorC = centavos(p.valor)
       const pagoC = centavos(p.pago)
-      const restaC = Math.max(valorC - pagoC, 0)
+      const descontoC = centavos(p.desconto)
+      const restaC = Math.max(valorC - pagoC - descontoC, 0)
       const quitada = p.quitadaEm !== null
-      const dias = quitada ? 0 : diasDeAtraso(p.vencimento, agora)
-      const diasJuros = quitada ? 0 : diasDeJuros(p.vencimento, p.jurosAte, agora)
+      const e = quitada
+        ? { dias: 0, diasJuros: 0, multaC: 0, jurosC: 0 }
+        : encargosDeHoje({ restaC, vencimento: p.vencimento, jurosAte: p.jurosAte, multaCobrada: p.multaCobrada }, regra, agora)
       return {
         id: p.id,
         vendaId: p.vendaId,
@@ -230,12 +203,16 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = 
         vencimento: p.vencimento,
         valor: reais(valorC),
         pago: reais(pagoC),
+        desconto: reais(descontoC),
         juros: reais(centavos(p.juros)),
+        multa: reais(centavos(p.multa)),
         resta: reais(restaC),
-        situacao: quitada ? 'quitada' : dias > 0 ? 'vencida' : 'aberta',
-        diasAtraso: dias,
-        diasJuros,
-        jurosHoje: reais(jurosDeAtraso(restaC, diasJuros, pct)),
+        situacao: quitada ? 'quitada' : e.dias > 0 ? 'vencida' : 'aberta',
+        diasAtraso: e.dias,
+        diasJuros: e.diasJuros,
+        jurosHoje: reais(e.jurosC),
+        multaHoje: reais(e.multaC),
+        quitadaEm: p.quitadaEm,
       }
     })
   })
@@ -259,12 +236,12 @@ export async function maioresDevedores(sessao: Sessao, unidadeIds: string[], lim
   const linhas = await comoOrg(sessao.orgId, (db) =>
     db.$queryRaw<{ id: string; nome: string; resta: string; vencido: string }[]>`
       select c.id, c.nome,
-             sum(p.valor - p.pago) as resta,
-             coalesce(sum(p.valor - p.pago) filter (where p.vencimento < ${hoje}), 0) as vencido
+             sum(p.valor - p.pago - p.desconto) as resta,
+             coalesce(sum(p.valor - p.pago - p.desconto) filter (where p.vencimento < ${hoje}), 0) as vencido
         from parcelas p join clientes c on c.id = p.cliente_id
        where p.unidade_id = any(${permitidas}) and p.quitada_em is null
        group by c.id, c.nome
-      having sum(p.valor - p.pago) > 0
+      having sum(p.valor - p.pago - p.desconto) > 0
        order by 4 desc, 3 desc, c.nome
        limit ${Math.max(1, Math.floor(limite))}
     `,
@@ -281,6 +258,10 @@ export type ResumoCrediario = {
   parcelasVencidas: number
 }
 
+/** O que resta de uma parcela: o valor menos o pago e o desconto. */
+const restaDe = (p: { valor: unknown; pago: unknown; desconto: unknown }) =>
+  centavos(p.valor as number) - centavos(p.pago as number) - centavos(p.desconto as number)
+
 /** Os números de cima da tela. */
 export async function resumoCrediario(sessao: Sessao, unidadeIds: string[]): Promise<ResumoCrediario> {
   exigir(sessao, 'crediario.ver')
@@ -294,13 +275,13 @@ export async function resumoCrediario(sessao: Sessao, unidadeIds: string[]): Pro
   return comoOrg(sessao.orgId, async (db) => {
     const abertas = await db.parcela.findMany({
       where: { unidadeId: { in: permitidas }, quitadaEm: null },
-      select: { clienteId: true, vencimento: true, valor: true, pago: true },
+      select: { clienteId: true, vencimento: true, valor: true, pago: true, desconto: true },
     })
     const r = { ...vazio }
     const devendo = new Set<string>()
     const atrasados = new Set<string>()
     for (const p of abertas) {
-      const resta = centavos(p.valor) - centavos(p.pago)
+      const resta = restaDe(p)
       if (resta <= 0) continue
       r.emAberto += resta
       devendo.add(p.clienteId)
@@ -337,10 +318,10 @@ export async function situacaoDosClientes(
   const hoje = diaEmSP()
   const abertas = await db.parcela.findMany({
     where: { clienteId: { in: clienteIds }, quitadaEm: null },
-    select: { clienteId: true, vencimento: true, valor: true, pago: true },
+    select: { clienteId: true, vencimento: true, valor: true, pago: true, desconto: true },
   })
   for (const p of abertas) {
-    const resta = centavos(p.valor) - centavos(p.pago)
+    const resta = restaDe(p)
     if (resta <= 0) continue
     const atual = mapa.get(p.clienteId) ?? { devendo: 0, vencido: 0 }
     atual.devendo += resta
@@ -351,24 +332,102 @@ export async function situacaoDosClientes(
   return mapa
 }
 
+export type SituacaoDeCredito = {
+  clienteId: string
+  nome: string
+  /** O que ela deve NESTA loja: tudo, e o que já venceu. */
+  devendo: number
+  vencido: number
+  parcelasVencidas: number
+  /** Multa + juro de hoje sobre as vencidas (a conta da regra da empresa). */
+  atrasoHoje: number
+  /** Dias da parcela mais atrasada. */
+  diasMaisAntiga: number
+  /** O que ela deve nas outras lojas que a pessoa enxerga. */
+  outrasLojas: { unidadeId: string; nome: string; devendo: number; vencido: number }[]
+}
+
+/**
+ * "Ela já deve": o aviso do balcão quando a cliente escolhida tem crediário
+ * em aberto. Quanto deve nesta loja, quanto disso venceu, o atraso de hoje —
+ * e o que deve nas outras lojas, só para saber (cada loja recebe o dela).
+ * Nulo quando ela não deve nada em lugar nenhum que a pessoa enxergue.
+ */
+export async function situacaoDeCredito(
+  sessao: Sessao,
+  clienteId: string,
+  unidadeId: string,
+  agora = new Date(),
+): Promise<SituacaoDeCredito | null> {
+  exigir(sessao, 'crediario.ver')
+  const visiveis = unidadesQuePodem(sessao, 'crediario.ver')
+  if (visiveis.length === 0) return null
+  return comoOrg(sessao.orgId, async (db) => {
+    const regra = await regraDoAtraso(db, sessao.orgId)
+    const abertas = await db.parcela.findMany({
+      where: { clienteId, quitadaEm: null, ...(visiveis === 'todas' ? {} : { unidadeId: { in: visiveis } }) },
+      select: {
+        unidadeId: true, vencimento: true, valor: true, pago: true, desconto: true, jurosAte: true, multaCobrada: true,
+        cliente: { select: { nome: true } },
+        unidade: { select: { nome: true } },
+      },
+    })
+    if (abertas.length === 0) return null
+    const aqui = { devendo: 0, vencido: 0, vencidas: 0, atraso: 0, dias: 0 }
+    const outras = new Map<string, { unidadeId: string; nome: string; devendo: number; vencido: number }>()
+    for (const p of abertas) {
+      const restaC = restaDe(p)
+      if (restaC <= 0) continue
+      const e = encargosDeHoje({ restaC, vencimento: p.vencimento, jurosAte: p.jurosAte, multaCobrada: p.multaCobrada }, regra, agora)
+      if (p.unidadeId === unidadeId) {
+        aqui.devendo += restaC
+        if (e.dias > 0) {
+          aqui.vencido += restaC
+          aqui.vencidas++
+          aqui.atraso += e.multaC + e.jurosC
+          aqui.dias = Math.max(aqui.dias, e.dias)
+        }
+      } else {
+        const o = outras.get(p.unidadeId) ?? { unidadeId: p.unidadeId, nome: p.unidade.nome, devendo: 0, vencido: 0 }
+        o.devendo += restaC
+        if (e.dias > 0) o.vencido += restaC
+        outras.set(p.unidadeId, o)
+      }
+    }
+    if (aqui.devendo === 0 && outras.size === 0) return null
+    return {
+      clienteId,
+      nome: abertas[0]!.cliente.nome,
+      devendo: reais(aqui.devendo),
+      vencido: reais(aqui.vencido),
+      parcelasVencidas: aqui.vencidas,
+      atrasoHoje: reais(aqui.atraso),
+      diasMaisAntiga: aqui.dias,
+      outrasLojas: [...outras.values()].map((o) => ({ ...o, devendo: reais(o.devendo), vencido: reais(o.vencido) })),
+    }
+  })
+}
+
 // ─────────────────────────────────────────────────────────────
-// RECEBER
+// RECEBER UMA PARCELA (o caminho antigo, por cima do recibo)
 // ─────────────────────────────────────────────────────────────
 
 export type Recebido =
-  | { ok: true; restante: number; quitada: boolean; juros: number }
-  | { ok: false; motivo: 'nao_achada' | 'ja_quitada' | 'valor_invalido' | 'passa_do_resto' | 'caixa_fechado' | 'mudou' }
+  | { ok: true; restante: number; quitada: boolean; juros: number; reciboId: string }
+  | { ok: false; motivo: 'nao_achada' | 'ja_quitada' | 'valor_invalido' | 'passa_do_resto' | 'juros_acima' | 'recusado'; erro?: string }
 
 /**
- * Recebe (parte de) uma parcela.
+ * Recebe (parte de) UMA parcela — o jeito de antes, para quem chama com uma
+ * parcela só. Por baixo é o recibo (recibos.ts): mesma trava, mesmo turno,
+ * mesma regra de autorização.
  *
- * `valor` é o que entrou no total; `juros` é a parte dele que é juro de
- * atraso. O que sobra abate a parcela. Em dinheiro, precisa de caixa aberto
- * na unidade — o dinheiro entra na gaveta e o fechamento tem que saber.
+ * `valor` é o que entrou no total; `juros` é a parte dele que é atraso (multa
+ * + juro). Cobrar MENOS atraso do que a regra pede é perdão: precisa de quem
+ * negocia o crediário. Mais do que a regra, nunca.
  */
 export async function receberParcela(
   sessao: Sessao,
-  p: { parcelaId: string; valor: number; juros: number; forma: FormaPagamento },
+  p: { parcelaId: string; valor: number; juros: number; forma: FormaPagamento; motivo?: string },
   agora = new Date(),
 ): Promise<Recebido> {
   // `centavos(NaN)` estoura com o erro cru do conversor; aqui é recusa.
@@ -378,121 +437,96 @@ export async function receberParcela(
   const principalC = valorC - jurosC
   if (!(valorC > 0) || principalC <= 0) return { ok: false, motivo: 'valor_invalido' }
 
-  return comoOrg(sessao.orgId, async (db) => {
-    // A venda da parcela fica presa até o fim — a mesma trava de cancelar e
-    // devolver. Sem ela, receber corria junto com a devolução (que abaixa o
-    // `valor` da parcela) ou com o cancelamento (que apaga as parcelas sem
-    // recebimento): o dinheiro entrava na gaveta e a parcela que ele pagava
-    // sumia, ou quitava uma dívida que a devolução já tinha abatido.
-    const dona = await db.parcela.findUnique({ where: { id: p.parcelaId }, select: { vendaId: true } })
-    if (!dona) return { ok: false as const, motivo: 'nao_achada' as const }
-    await travarVenda(db, dona.vendaId)
-
-    const parcela = await db.parcela.findUnique({
+  const parcela = await comoOrg(sessao.orgId, async (db) => {
+    const x = await db.parcela.findUnique({
       where: { id: p.parcelaId },
-      select: {
-        id: true, unidadeId: true, numero: true, de: true, valor: true, pago: true, quitadaEm: true,
-        venda: { select: { numero: true } },
-        cliente: { select: { id: true, nome: true } },
-      },
+      select: { id: true, clienteId: true, unidadeId: true, vencimento: true, valor: true, pago: true, desconto: true, jurosAte: true, multaCobrada: true, quitadaEm: true },
     })
-    if (!parcela) return { ok: false as const, motivo: 'nao_achada' as const }
-    exigir(sessao, 'crediario.receber', parcela.unidadeId)
-    if (parcela.quitadaEm) return { ok: false as const, motivo: 'ja_quitada' as const }
-
-    const restaC = centavos(parcela.valor) - centavos(parcela.pago)
-    if (principalC > restaC) return { ok: false as const, motivo: 'passa_do_resto' as const }
-
-    // O turno fica preso até o fim (`travarCaixaAberto`): o dinheiro não cai
-    // num caixa que outro tablet está fechando neste segundo.
-    let caixaId: string | null = null
-    if (p.forma === 'DINHEIRO') {
-      caixaId = await travarCaixaAberto(db, parcela.unidadeId)
-      if (!caixaId) return { ok: false as const, motivo: 'caixa_fechado' as const }
-    }
-
-    // A parcela é gravada ANTES do recebimento, e só se o `pago` ainda for o
-    // que foi lido. Dois recebimentos da mesma parcela ao mesmo tempo (o
-    // clique duplo no "Receber", ou duas pessoas no balcão) liam o mesmo
-    // `pago` e gravavam o mesmo total: nasciam dois recebimentos — o caixa
-    // contava o dinheiro duas vezes — e a parcela abatia uma só. Com a
-    // condição, o segundo não acha mais a linha como ela estava, e desiste.
-    // O `valor` entra na condição também: é ele que a devolução abaixa.
-    const novoPagoC = centavos(parcela.pago) + principalC
-    const quitada = novoPagoC >= centavos(parcela.valor)
-    // Juro cobrado hoje cobre o atraso ATÉ hoje: o próximo recebimento conta
-    // os dias a partir daqui (`diasDeJuros`), e não do vencimento de novo.
-    const gravou = await db.parcela.updateMany({
-      where: { id: parcela.id, pago: parcela.pago, valor: parcela.valor, quitadaEm: null },
-      data: {
-        pago: reais(novoPagoC),
-        juros: { increment: reais(jurosC) },
-        ...(jurosC > 0 ? { jurosAte: colunaDoDia(diaEmSP(agora)) } : {}),
-        quitadaEm: quitada ? agora : null,
-      },
-    })
-    if (gravou.count === 0) return { ok: false as const, motivo: 'mudou' as const }
-
-    await db.recebimento.create({
-      data: {
-        orgId: sessao.orgId,
-        parcelaId: parcela.id,
-        caixaId,
-        forma: p.forma,
-        valor: reais(valorC),
-        juros: reais(jurosC),
-        quem: sessao.nome,
-      },
-    })
-
-    await db.auditoria.create({
-      data: {
-        orgId: sessao.orgId,
-        unidadeId: parcela.unidadeId,
-        usuarioId: sessao.usuarioId,
-        quem: sessao.nome,
-        acao: 'crediario.recebeu',
-        alvoTipo: 'cliente',
-        alvoId: parcela.cliente.id,
-        alvoNome: parcela.cliente.nome,
-        valor: reais(valorC),
-        motivo: `parcela ${parcela.numero}/${parcela.de} da venda ${parcela.venda.numero}${
-          jurosC > 0 ? ` · juros ${reais(jurosC).toFixed(2)}` : ''
-        }${quitada ? ' · quitada' : ' · parcial'}`,
-      },
-    })
-
-    return { ok: true as const, restante: reais(restaC - principalC), quitada, juros: reais(jurosC) }
+    if (!x) return null
+    return { ...x, regra: await regraDoAtraso(db, sessao.orgId) }
   })
+  if (!parcela) return { ok: false, motivo: 'nao_achada' }
+  exigir(sessao, 'crediario.receber', parcela.unidadeId)
+  if (parcela.quitadaEm) return { ok: false, motivo: 'ja_quitada' }
+  const restaC = restaDe(parcela)
+  if (principalC > restaC) return { ok: false, motivo: 'passa_do_resto' }
+  const e = encargosDeHoje({ restaC, vencimento: parcela.vencimento, jurosAte: parcela.jurosAte, multaCobrada: parcela.multaCobrada }, parcela.regra, agora)
+  const sugeridoC = e.multaC + e.jurosC
+  if (jurosC > sugeridoC) return { ok: false, motivo: 'juros_acima' }
+
+  const r = await receberVarias(
+    sessao,
+    {
+      clienteId: parcela.clienteId,
+      unidadeId: parcela.unidadeId,
+      parcelaIds: [parcela.id],
+      formas: [{ forma: p.forma, valor: reais(valorC) }],
+      descontoAtraso: reais(sugeridoC - jurosC),
+      motivo: p.motivo ?? (jurosC < sugeridoC ? 'atraso combinado no recebimento' : null),
+    },
+    agora,
+  )
+  if (!r.ok) return { ok: false, motivo: 'recusado', erro: r.erro }
+  return { ok: true, restante: reais(restaC - principalC), quitada: principalC >= restaC, juros: reais(jurosC), reciboId: r.reciboId }
+}
+
+// ─────────────────────────────────────────────────────────────
+// A REGRA DA EMPRESA
+// ─────────────────────────────────────────────────────────────
+
+export type ConfigCrediario = {
+  jurosMes: number
+  maxParcelas: number
+  diasEntre: number
+  multaPct: number
+  carenciaDias: number
+  arredondar: boolean
 }
 
 /** A configuração do crediário da empresa, para a tela e para o balcão. */
-export async function configCrediario(sessao: Sessao) {
+export async function configCrediario(sessao: Sessao): Promise<ConfigCrediario> {
   const org = await comoOrg(sessao.orgId, (db) =>
     db.org.findUniqueOrThrow({
       where: { id: sessao.orgId },
-      select: { crediarioJurosMes: true, crediarioMaxParcelas: true, crediarioDiasEntre: true },
+      select: {
+        crediarioJurosMes: true, crediarioMaxParcelas: true, crediarioDiasEntre: true,
+        crediarioMultaPct: true, crediarioCarenciaDias: true, crediarioArredondar: true,
+      },
     }),
   )
   return {
     jurosMes: Number(org.crediarioJurosMes),
     maxParcelas: org.crediarioMaxParcelas,
     diasEntre: org.crediarioDiasEntre,
+    multaPct: Number(org.crediarioMultaPct),
+    carenciaDias: org.crediarioCarenciaDias,
+    arredondar: org.crediarioArredondar,
   }
 }
 
+/**
+ * Grava a regra. Os campos do atraso (multa, carência, arredondar) são
+ * opcionais: quem não os manda (a tela antiga de Configurações) não os apaga.
+ */
 export async function salvarConfigCrediario(
   sessao: Sessao,
-  c: { jurosMes: number; maxParcelas: number; diasEntre: number },
+  c: { jurosMes: number; maxParcelas: number; diasEntre: number; multaPct?: number; carenciaDias?: number; arredondar?: boolean },
 ) {
   exigir(sessao, 'empresa.configurar')
   const jurosMes = Math.min(Math.max(Number(c.jurosMes) || 0, 0), 20)
   const maxParcelas = Math.min(Math.max(Math.round(Number(c.maxParcelas) || 1), 1), 24)
   const diasEntre = Math.min(Math.max(Math.round(Number(c.diasEntre) || 30), 7), 90)
+  const atraso = {
+    ...(c.multaPct !== undefined
+      ? { crediarioMultaPct: Math.round(Math.min(Math.max(Number(c.multaPct) || 0, 0), MULTA_MAXIMA_CREDIARIO) * 100) / 100 }
+      : {}),
+    ...(c.carenciaDias !== undefined ? { crediarioCarenciaDias: Math.min(Math.max(Math.round(Number(c.carenciaDias) || 0), 0), 30) } : {}),
+    ...(c.arredondar !== undefined ? { crediarioArredondar: !!c.arredondar } : {}),
+  }
   await comoOrg(sessao.orgId, async (db) => {
     await db.org.update({
       where: { id: sessao.orgId },
-      data: { crediarioJurosMes: jurosMes, crediarioMaxParcelas: maxParcelas, crediarioDiasEntre: diasEntre },
+      data: { crediarioJurosMes: jurosMes, crediarioMaxParcelas: maxParcelas, crediarioDiasEntre: diasEntre, ...atraso },
     })
     await db.auditoria.create({
       data: {
@@ -503,7 +537,7 @@ export async function salvarConfigCrediario(
         alvoTipo: 'empresa',
         alvoId: sessao.orgId,
         alvoNome: 'crediário',
-        depois: { jurosMes, maxParcelas, diasEntre },
+        depois: { jurosMes, maxParcelas, diasEntre, ...atraso },
       },
     })
   })

@@ -12,6 +12,11 @@
 // Só DINHEIRO entra nessa conta. Cartão e Pix não passam pela gaveta, então
 // somá-los faria o caixa "faltar" todo dia o valor das maquininhas — e caixa
 // que falta todo dia é caixa que ninguém confere mais.
+//
+// Mas TUDO que entrou no turno fica ligado a ele, em qualquer forma: a parcela
+// recebida no Pix aparece no fechamento, na linha da maquininha dela, para a
+// pessoa conferir com o extrato. Só a baixa externa ("já pagou fora") fica
+// sem turno — o dinheiro não passou por aqui.
 
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, type Sessao } from './permissao'
@@ -235,6 +240,12 @@ export type Conferencia = {
   dinheiroRecebido: number
   /** Crediário recebido em todas as formas — para a pessoa conferir. */
   recebidoCrediario: number
+  /** O crediário recebido, por forma e maquininha (o fechamento impresso). */
+  recebidoPorForma: { forma: string; maquininha: string | null; total: number }[]
+  /** A parte do crediário recebido que é multa e juro de atraso. */
+  atrasoRecebido: number
+  /** Quantos recibos de crediário o turno emitiu. */
+  recibos: number
   /** Mensalidade da escola recebida em dinheiro neste turno. Entra na gaveta. */
   dinheiroMensalidades: number
   /** Mensalidade recebida em todas as formas — para a pessoa conferir. */
@@ -245,7 +256,66 @@ export type Conferencia = {
   /** Total de todas as formas — para a pessoa conferir a maquininha depois. */
   vendidoTotal: number
   porForma: { forma: string; total: number }[]
+  /** As vendas por forma e maquininha (as sem maquininha numa linha própria). */
+  porMaquininha: { forma: string; maquininha: string | null; total: number }[]
+  /**
+   * O que passou em CADA maquininha (e conta do Pix) no turno, vendas e
+   * crediário juntos — é o número que se bate com o extrato da máquina.
+   * Ver `naMaquininha`.
+   */
+  maquininhas: NaMaquininha[]
   vendas: number
+}
+
+/** Uma maquininha no fechamento: o total dela e, dentro, cada forma. */
+export type NaMaquininha = {
+  /** O nome, como no cadastro da loja. Nulo = pagamento sem maquininha marcada. */
+  maquininha: string | null
+  total: number
+  formas: { forma: string; vendas: number; crediario: number; total: number }[]
+}
+
+/** As formas que passam por maquininha ou conta — fora da gaveta, com extrato. */
+const FORMAS_DE_MAQUININHA = ['PIX', 'DEBITO', 'CREDITO', 'TRANSFERENCIA']
+
+/**
+ * Junta as vendas e o crediário recebido por maquininha.
+ *
+ * A operadora não separa "venda" de "parcela do carnê": o extrato da Stone
+ * traz um débito de R$ 80 e pronto. Com as duas listas separadas, quem fecha
+ * o caixa somava de cabeça para conferir cada máquina — e a soma de cabeça
+ * no fim do turno é onde a conferência morre. As com nome vêm primeiro, em
+ * ordem; as sem maquininha marcada (venda de antes do cadastro, loja sem
+ * maquininha), por último.
+ */
+export function naMaquininha(
+  vendas: { forma: string; maquininha: string | null; total: number }[],
+  crediario: { forma: string; maquininha: string | null; total: number }[],
+): NaMaquininha[] {
+  const grupos = new Map<string, { maquininha: string | null; formas: Map<string, { vendasC: number; crediarioC: number }> }>()
+  const somar = (l: { forma: string; maquininha: string | null; total: number }, de: 'vendasC' | 'crediarioC') => {
+    if (!FORMAS_DE_MAQUININHA.includes(l.forma)) return
+    const nome = l.maquininha?.trim() || null
+    const chave = nome ?? '\u0000'
+    const g = grupos.get(chave) ?? grupos.set(chave, { maquininha: nome, formas: new Map() }).get(chave)!
+    const f = g.formas.get(l.forma) ?? g.formas.set(l.forma, { vendasC: 0, crediarioC: 0 }).get(l.forma)!
+    f[de] += centavos(l.total)
+  }
+  for (const l of vendas) somar(l, 'vendasC')
+  for (const l of crediario) somar(l, 'crediarioC')
+
+  return [...grupos.values()]
+    .map((g) => {
+      const formas = FORMAS_DE_MAQUININHA.filter((f) => g.formas.has(f)).map((forma) => {
+        const x = g.formas.get(forma)!
+        return { forma, vendas: reais(x.vendasC), crediario: reais(x.crediarioC), total: reais(x.vendasC + x.crediarioC) }
+      })
+      return { maquininha: g.maquininha, formas, total: reais(formas.reduce((s, f) => s + centavos(f.total), 0)) }
+    })
+    .filter((g) => g.total > 0)
+    .sort((a, b) =>
+      a.maquininha === null ? 1 : b.maquininha === null ? -1 : a.maquininha.localeCompare(b.maquininha, 'pt-BR'),
+    )
 }
 
 /**
@@ -280,8 +350,22 @@ async function conferirEm(db: BancoDaOrg, caixaId: string): Promise<Conferencia>
        group by 1 order by 2 desc
     `
     const totalVendas = await db.venda.count({ where: { caixaId, situacao: 'CONCLUIDA' } })
-    // A parcela recebida no balcão é dinheiro que entrou pela mesma gaveta.
+    const maquininhas = await db.$queryRaw<{ forma: string; maquininha: string | null; total: string }[]>`
+      select p.forma::text as forma, p.maquininha, sum(p.valor) as total
+        from pagamentos p join vendas v on v.id = p.venda_id
+       where v.caixa_id = ${caixaId} and v.situacao = 'CONCLUIDA'
+       group by 1, 2 order by 1, 2 nulls last
+    `
+    // A parcela recebida no balcão é dinheiro que entrou pela mesma gaveta (e
+    // o Pix e o cartão dela, pela maquininha do turno).
     const recebidos = await db.recebimento.groupBy({ by: ['forma'], where: { caixaId }, _sum: { valor: true } })
+    const recebidosMaq = await db.recebimento.groupBy({
+      by: ['forma', 'maquininha'],
+      where: { caixaId },
+      _sum: { valor: true, juros: true, multa: true },
+      orderBy: [{ forma: 'asc' }, { maquininha: 'asc' }],
+    })
+    const recibos = await db.reciboCrediario.count({ where: { caixaId } })
     // A mensalidade recebida na secretaria também: em dinheiro, é a mesma gaveta.
     const mensalidades = await db.pagamentoMensalidade.groupBy({ by: ['forma'], where: { caixaId }, _sum: { valor: true } })
 
@@ -297,11 +381,19 @@ async function conferirEm(db: BancoDaOrg, caixaId: string): Promise<Conferencia>
     const supC = soma('SUPRIMENTO')
     const sanC = soma('SANGRIA')
 
+    const vendasPorMaquininha = maquininhas.map((f) => ({ forma: f.forma, maquininha: f.maquininha, total: reais(centavos(f.total)) }))
+    const crediarioPorMaquininha = recebidosMaq
+      .map((r) => ({ forma: r.forma as string, maquininha: r.maquininha, total: reais(centavos(r._sum.valor ?? 0)) }))
+      .filter((r) => r.total > 0)
+
     return {
       abertura: reais(aberturaC),
       dinheiroVendido: reais(dinheiroC),
       dinheiroRecebido: reais(recebidoDinheiroC),
       recebidoCrediario: reais(recebidoC),
+      recebidoPorForma: crediarioPorMaquininha,
+      atrasoRecebido: reais(recebidosMaq.reduce((s, r) => s + centavos(r._sum.juros ?? 0) + centavos(r._sum.multa ?? 0), 0)),
+      recibos,
       dinheiroMensalidades: reais(mensDinheiroC),
       recebidoMensalidades: reais(mensC),
       suprimentos: reais(supC),
@@ -309,6 +401,8 @@ async function conferirEm(db: BancoDaOrg, caixaId: string): Promise<Conferencia>
       esperado: reais(aberturaC + dinheiroC + recebidoDinheiroC + mensDinheiroC + supC - sanC),
       vendidoTotal: reais(formas.reduce((s, f) => s + centavos(f.total), 0)),
       porForma: formas.map((f) => ({ forma: f.forma, total: reais(centavos(f.total)) })),
+      porMaquininha: vendasPorMaquininha,
+      maquininhas: naMaquininha(vendasPorMaquininha, crediarioPorMaquininha),
       vendas: totalVendas,
     }
   }
@@ -546,5 +640,64 @@ export async function movimentosDoCaixa(sessao: Sessao, caixaId: string) {
       select: { id: true, tipo: true, valor: true, motivo: true, quem: true, criadoEm: true },
     })
     return movs.map((m) => ({ ...m, valor: Number(m.valor) }))
+  })
+}
+
+export type TurnoNoPapel = {
+  id: string
+  unidadeId: string
+  unidade: string
+  abertoPor: string
+  abertoEm: Date
+  fechadoPor: string | null
+  fechadoEm: Date | null
+  saldoEsperado: number
+  saldoContado: number
+  diferenca: number
+  observacoes: string | null
+  conferencia: Conferencia
+  movimentos: { tipo: TipoCaixa; valor: number; motivo: string; quem: string; criadoEm: Date }[]
+}
+
+/**
+ * O fechamento para imprimir. Só de turno FECHADO: o papel mostra o
+ * esperado, e o esperado do turno aberto é justamente o que a contagem às
+ * cegas esconde de quem vai contar a gaveta.
+ */
+export async function turnoParaImprimir(sessao: Sessao, caixaId: string): Promise<TurnoNoPapel | null> {
+  exigir(sessao, 'caixa.ver')
+  return comoOrg(sessao.orgId, async (db) => {
+    const c = await db.caixa.findUnique({
+      where: { id: caixaId },
+      select: {
+        id: true, unidadeId: true, aberto: true, abertoPor: true, abertoEm: true, fechadoPor: true, fechadoEm: true,
+        saldoEsperado: true, saldoContado: true, observacoes: true,
+        unidade: { select: { nome: true, apelido: true } },
+      },
+    })
+    if (!c || c.aberto || !pode(sessao, 'caixa.ver', c.unidadeId)) return null
+    const conferencia = await conferirEm(db, caixaId)
+    const movs = await db.caixaMovimento.findMany({
+      where: { caixaId },
+      orderBy: { criadoEm: 'asc' },
+      select: { tipo: true, valor: true, motivo: true, quem: true, criadoEm: true },
+    })
+    const esperadoC = centavos(c.saldoEsperado ?? 0)
+    const contadoC = centavos(c.saldoContado ?? 0)
+    return {
+      id: c.id,
+      unidadeId: c.unidadeId,
+      unidade: c.unidade.apelido || c.unidade.nome,
+      abertoPor: c.abertoPor,
+      abertoEm: c.abertoEm,
+      fechadoPor: c.fechadoPor,
+      fechadoEm: c.fechadoEm,
+      saldoEsperado: reais(esperadoC),
+      saldoContado: reais(contadoC),
+      diferenca: reais(contadoC - esperadoC),
+      observacoes: c.observacoes,
+      conferencia,
+      movimentos: movs.map((m) => ({ ...m, valor: Number(m.valor) })),
+    }
   })
 }

@@ -35,7 +35,9 @@
 //
 //    A diferença entre a tabela e o cobrado é DESCONTO, e desconto tem teto:
 //    o da empresa (`descontoMaximo`) para quem opera, e `venda.desconto` para
-//    quem passa dele.
+//    quem passa dele — ou o PIN de quem tem `venda.desconto`, digitado na hora
+//    no balcão de quem vende (ver autorizacao.ts). A venda guarda quem
+//    autorizou.
 
 import { vendidoNaLoja } from './catalogo-loja'
 import { comoOrg } from './banco'
@@ -45,10 +47,13 @@ import { mexerEstoqueEm } from './estoque'
 import { centavos, reais, multiplicar, mostrar } from './dinheiro'
 import { tabelaDe, precoNaTabela, ROTULO_TABELA, type Tabela } from './preco'
 import { normalizarCodigo, pedeInteiro, travarVenda, venceu } from './devolucao'
-import { montarParcelas } from './crediario'
+import { agendaDoCrediario, primeiroVencimentoPadrao, problemaDoPrimeiroVencimento } from './crediario-agenda'
+import { autorizarComPin } from './autorizacao'
+import { maquininhaDoPagamento, maquininhasNoBanco } from './maquininhas'
+import { cpfValido } from './cliente'
 import { travarCaixaAberto } from './caixa'
 import { codigoEncomenda, entregarPelaVenda, travarParaVenda } from './encomenda'
-import { lerTaxas, taxaDe } from './taxas'
+import { lerTaxas, taxaDe, ROTULO_FORMA } from './taxas'
 import {
   programaNoPlano,
   conferirUso,
@@ -70,18 +75,27 @@ export type ItemDaVenda = {
   desconto?: number
   /**
    * Item que não existe no cadastro: um conserto, uma peça que ninguém
-   * cadastrou, um serviço. Não mexe em estoque. Só quem pode passar do teto
-   * de desconto lança — preço digitado na hora é o mesmo buraco que desconto
-   * sem teto, e leva a mesma trava.
+   * cadastrou, um serviço. Não mexe em estoque. Preço digitado na hora é o
+   * mesmo buraco que desconto sem teto, e leva a mesma trava: quem pode
+   * passar do teto lança; quem não pode, lança com o PIN de quem pode.
    */
   avulso?: { descricao: string; precoUnit: number }
 }
 
 export type PagamentoDaVenda = {
   forma: FormaPagamento
+  /**
+   * O que este pagamento cobre da venda. No crédito parcelado com juro, o
+   * juro é somado AQUI no servidor (ver `creditoJurosPct`) — a tela manda o
+   * valor sem ele.
+   */
   valor: number
   parcelas?: number
   referencia?: string
+  /** Em qual maquininha caiu (Pix, débito, crédito). Ver maquininhas.ts. */
+  maquininha?: string | null
+  /** Crediário: o dia do 1º vencimento ('AAAA-MM-DD'). Sem vir, hoje + o intervalo da loja. */
+  primeiroVencimento?: string | null
 }
 
 export type NovaVenda = {
@@ -101,6 +115,21 @@ export type NovaVenda = {
   pagamentos: PagamentoDaVenda[]
   /** Desconto sobre o total da venda, além dos descontos por item. */
   desconto?: number
+  /**
+   * Acréscimo sobre o total: a peça saiu da promoção e a etiqueta ficou com
+   * o preço velho. Entra no total, nos pontos e no livro.
+   */
+  acrescimo?: number
+  /**
+   * O PIN de quem autoriza o que passa da regra (desconto acima do teto,
+   * item avulso), digitado no balcão. Conferido aqui, nunca guardado.
+   */
+  autorizacao?: { pin: string } | null
+  /**
+   * O CPF que a cliente ditou no crediário, quando a ficha não tem. Vai para
+   * a ficha na mesma transação da venda (só se a ficha estiver sem CPF).
+   */
+  clienteCpf?: string | null
   observacoes?: string
   /**
    * O horário da agenda que esta venda cobra ("Atender e cobrar"). A venda
@@ -114,6 +143,14 @@ export type NovaVenda = {
    * navegador — e marca a encomenda entregue na mesma transação.
    */
   encomendaId?: string | null
+  /**
+   * O troco que a gaveta devolveu (o entregue menos o que ficou). Não é
+   * pagamento — o DINHEIRO que chega aqui já é o que ficou —, mas o
+   * comprovante e a ficha mostram "recebeu R$ 100, troco R$ 17". Sem coluna
+   * própria na venda, vai no livro da venda (`venda.registrou`, em `depois`),
+   * e `acharVenda` lê de lá. Só vale com dinheiro na venda.
+   */
+  troco?: number
 }
 
 export type ResultadoVenda =
@@ -124,12 +161,20 @@ export type ResultadoVenda =
       total: number
       pontosUsados: number
       pontosGanhos: number
+      /** O que saiu sem o sistema ter estoque: vai para "Vendido sem estoque — conferir". */
+      semEstoque: string[]
+      /** Quem autorizou com o PIN, quando foi preciso. */
+      autorizadoPor: string | null
     }
   | { ok: false; motivo: 'sem_itens' }
   | { ok: false; motivo: 'sem_estoque'; faltando: { descricao: string; pedido: number; tem: number }[] }
   | { ok: false; motivo: 'pagamento_nao_fecha'; total: number; pago: number }
   | { ok: false; motivo: 'caixa_fechado' }
   | { ok: false; motivo: 'desconto_acima_do_teto'; percentual: number; teto: number }
+  /** O PIN digitado não autorizou (errado, de quem não pode, ou freio). Nada foi gravado. */
+  | { ok: false; motivo: 'autorizacao_recusada'; recado: string }
+  /** Parcelas do crédito, maquininha ou acréscimo fora do que a loja aceita. */
+  | { ok: false; motivo: 'pagamento_recusado'; recado: string }
   | { ok: false; motivo: 'pontos_recusados'; recado: string }
   | { ok: false; motivo: 'avulso_negado' }
   | { ok: false; motivo: 'vendedor_invalido' }
@@ -151,6 +196,9 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'encomenda_recusada'; recado: string }
   /** O horário da agenda já foi cobrado (outra aba, outro caixa) ou não está mais de pé. */
   | { ok: false; motivo: 'agendamento_recusado'; recado: string }
+
+/** Troco acima disto é dedo errado (R$ 5.000 de troco não sai de gaveta de loja). */
+const TETO_DO_TROCO_CENT = 500_000
 
 /** Os papéis que podem vender. Derivado da tabela de poderes, não escrito à mão. */
 const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) =>
@@ -181,6 +229,7 @@ export async function registrarVenda(
   const v: NovaVenda = {
     ...pedido,
     desconto: Math.max(0, pedido.desconto ?? 0),
+    acrescimo: Number.isFinite(pedido.acrescimo) ? Math.max(0, pedido.acrescimo ?? 0) : 0,
     itens: pedido.itens.map((i) => (i.desconto !== undefined ? { ...i, desconto: Math.max(0, i.desconto) } : i)),
     pagamentos: pedido.pagamentos.filter((p) => centavos(p.valor) > 0),
   }
@@ -189,10 +238,10 @@ export async function registrarVenda(
 
   // ── 0. item avulso é privilégio, não é atalho ──
   // Quem lança "Conserto — R$ 30" está inventando um preço. É exatamente o
-  // que o teto de desconto existe para impedir, então a trava é a mesma.
+  // que o teto de desconto existe para impedir, então a trava é a mesma —
+  // `venda.desconto`, ou o PIN de quem o tem (lá embaixo, "a autorização").
   const avulsos = v.itens.filter((i) => !i.variacaoId)
   if (avulsos.length > 0) {
-    if (!pode(sessao, 'venda.desconto', v.unidadeId)) return { ok: false, motivo: 'avulso_negado' }
     for (const a of avulsos) {
       if (!a.avulso || !a.avulso.descricao.trim() || !(a.avulso.precoUnit >= 0) || !(a.quantidade > 0)) {
         return { ok: false, motivo: 'avulso_negado' }
@@ -210,6 +259,35 @@ export async function registrarVenda(
   // e usado em todo item — ver preco.ts.
   const tabela: Tabela = tabelaDe(v.pagamentos.map((p) => p.forma))
 
+  // ── 0.0 a autorização, quando veio um PIN ──
+  // ANTES da transação da venda: a conferência abre as próprias (o freio e o
+  // livro), e transação não aninha. A tela só manda o PIN depois de o
+  // servidor dizer que precisa (desconto acima do teto, avulso) — então o
+  // livro de "autorizou" fala de um pedido de verdade. Quem já tem o poder
+  // não precisa de PIN, e o PIN que veio à toa é ignorado.
+  let autorizador: { usuarioId: string; nome: string } | null = null
+  const temPoder = pode(sessao, 'venda.desconto', v.unidadeId)
+  if (!temPoder && v.autorizacao?.pin) {
+    const pedidoDe = [
+      avulsos.length > 0 ? plural(avulsos.length, 'item avulso', 'itens avulsos') : null,
+      (v.desconto ?? 0) > 0 || v.itens.some((i) => (i.desconto ?? 0) > 0 || i.precoUnit != null)
+        ? `desconto${(v.desconto ?? 0) > 0 ? ` de ${mostrar(centavos(v.desconto ?? 0))}` : ''} acima do teto`
+        : null,
+    ].filter(Boolean)
+    const r = await autorizarComPin({
+      orgId: sessao.orgId,
+      unidadeId: v.unidadeId,
+      pin: v.autorizacao.pin,
+      capacidade: 'venda.desconto',
+      motivo: `Venda no balcão: ${pedidoDe.join(' e ') || 'acima da regra'}`,
+      quemPediu: { usuarioId: sessao.usuarioId, nome: sessao.nome },
+    })
+    if (!r.ok) return { ok: false, motivo: 'autorizacao_recusada', recado: r.erro }
+    autorizador = r.autorizador
+  }
+  const podeDesconto = temPoder || !!autorizador
+  if (avulsos.length > 0 && !podeDesconto) return { ok: false, motivo: 'avulso_negado' }
+
   return comoOrg(sessao.orgId, async (db) => {
     const empresa = await db.org.findUnique({
       where: { id: sessao.orgId },
@@ -218,6 +296,7 @@ export async function registrarVenda(
         descontoMaximo: true, modulos: true,
         pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true,
         crediarioMaxParcelas: true, crediarioDiasEntre: true,
+        vendeSemEstoque: true, valePorLoja: true, creditoMaxParcelas: true, creditoJurosPct: true,
       },
     })
     // ── 0.01 onde se vende ──
@@ -296,6 +375,7 @@ export async function registrarVenda(
     // para quem cobrar uma parcela sem nome — e cabe no máximo de vezes que
     // a loja decidiu.
     const fiado = v.pagamentos.filter((p) => p.forma === 'CREDIARIO')
+    let primeiroVencimento: string | null = null
     if (fiado.length > 0) {
       // Módulo ligado E plano que abre: o módulo pode ter ficado ligado de
       // um plano anterior, e a lista de módulos já foi gravada sem conferir
@@ -317,6 +397,43 @@ export async function registrarVenda(
           recado: `A loja parcela em até ${empresa.crediarioMaxParcelas}×.`,
         }
       }
+      // O 1º vencimento vem da tela (a cliente que recebe dia 10 começa dia
+      // 10); sem vir, hoje + o intervalo da loja. Conferido no calendário de
+      // São Paulo — ver crediario-agenda.ts.
+      const hoje = diaEmSP()
+      const primeiro = fiado[0]!.primeiroVencimento || primeiroVencimentoPadrao(hoje, empresa.crediarioDiasEntre)
+      const problema = problemaDoPrimeiroVencimento(primeiro, hoje, empresa.crediarioDiasEntre)
+      if (problema) return { ok: false as const, motivo: 'crediario_recusado' as const, recado: problema }
+      primeiroVencimento = primeiro
+      if (v.clienteCpf && !cpfValido(v.clienteCpf)) {
+        return { ok: false as const, motivo: 'crediario_recusado' as const, recado: 'Esse CPF não confere. Confira os números ou siga sem CPF.' }
+      }
+    }
+
+    // ── 0.3 as formas, as vezes e a maquininha ──
+    // Tudo vem do navegador. Parcela só existe no crédito (até o máximo da
+    // loja) e no crediário (conferido acima); no resto, é 1. A maquininha
+    // precisa ser uma DESTA loja que aceita a forma — senão o fechamento
+    // ganharia uma maquininha que extrato nenhum confere.
+    const maquininhas = await maquininhasNoBanco(db, v.unidadeId)
+    const maquininhaDe: (string | null)[] = []
+    for (const p of v.pagamentos) {
+      if (p.forma === 'CREDITO') {
+        const n = p.parcelas ?? 1
+        const max = empresa?.creditoMaxParcelas ?? 1
+        if (!Number.isInteger(n) || n < 1 || n > max) {
+          return { ok: false as const, motivo: 'pagamento_recusado' as const, recado: `O crédito vai em até ${max}×.` }
+        }
+      }
+      const m = maquininhaDoPagamento(maquininhas, p.forma, p.maquininha)
+      if (!m.ok) {
+        return {
+          ok: false as const,
+          motivo: 'pagamento_recusado' as const,
+          recado: `A maquininha “${String(p.maquininha ?? '').slice(0, 40)}” não é desta loja para ${ROTULO_FORMA[p.forma] ?? p.forma}. Escolha de novo.`,
+        }
+      }
+      maquininhaDe.push(m.nome)
     }
 
     // ── 0.1 quem vendeu ──
@@ -435,11 +552,25 @@ export async function registrarVenda(
     const faltando = deEstoque
       .filter((i) => (saldoDe.get(i.variacaoId) ?? 0) < i.quantidade)
       .map((i) => ({
+        variacaoId: i.variacaoId,
         descricao: descrever(porId.get(i.variacaoId)),
         pedido: i.quantidade,
         tem: saldoDe.get(i.variacaoId) ?? 0,
       }))
-    if (faltando.length > 0) return { ok: false as const, motivo: 'sem_estoque' as const, faltando }
+    // A loja que liga "vender o que o sistema diz que acabou" (estoque
+    // importado sem balanço, a peça achada no provador) não trava: a peça
+    // está na mão da cliente, e o sistema é que está errado. A venda passa,
+    // o saldo fica negativo, e o item leva o saldo que o sistema tinha — é a
+    // pendência "vendeu 2, havia 1" que a gerente confere na prateleira.
+    const vendeSemEstoque = !!empresa?.vendeSemEstoque
+    if (faltando.length > 0 && !vendeSemEstoque) {
+      return {
+        ok: false as const,
+        motivo: 'sem_estoque' as const,
+        faltando: faltando.map(({ descricao, pedido, tem }) => ({ descricao, pedido, tem })),
+      }
+    }
+    const saldoQueFaltou = new Map(faltando.map((f) => [f.variacaoId, f.tem]))
 
     // ── 3. as contas, em centavos inteiros ──
     // O preço vem do banco como decimal exato; ler o TEXTO dele (e não o
@@ -460,6 +591,7 @@ export async function registrarVenda(
           desconto: 0,
           total: reais(totalCent),
           custoUnit: null,
+          saldoNaVenda: null as number | null,
           _cent: totalCent,
           _tabelaCent: totalCent,
         }
@@ -494,6 +626,7 @@ export async function registrarVenda(
         desconto: reais(descontoCent),
         total: reais(totalCent),
         custoUnit: va?.produto.custo != null ? reais(centavos(va.produto.custo)) : null,
+        saldoNaVenda: saldoQueFaltou.has(i.variacaoId) ? saldoQueFaltou.get(i.variacaoId)! : null,
         _cent: totalCent,
         _tabelaCent: multiplicar(tabelaCent, i.quantidade),
       }
@@ -512,6 +645,7 @@ export async function registrarVenda(
         desconto: 0,
         total: reais(daEncomenda.faltaC),
         custoUnit: null,
+        saldoNaVenda: null,
         _cent: daEncomenda.faltaC,
         _tabelaCent: daEncomenda.faltaC,
       })
@@ -519,20 +653,37 @@ export async function registrarVenda(
 
     const subtotalCent = itens.reduce((s, i) => s + i._cent, 0)
     const descontoCent = centavos(v.desconto ?? 0)
-    const totalCent = subtotalCent - descontoCent
+    const liquidoCent = subtotalCent - descontoCent
     const pagoCent = v.pagamentos.reduce((s, p) => s + centavos(p.valor), 0)
+
+    // ── 3.0 o acréscimo ──
+    // Cobrar a mais é o lado seguro, e por isso não pede poder. O teto é só
+    // contra o dedo errado — um zero a mais vira R$ 1.500 numa peça de R$ 150.
+    const acrescimoCent = centavos(v.acrescimo ?? 0)
+    const tetoAcrescimo = Math.max(100_000, subtotalCent * 10)
+    if (acrescimoCent > tetoAcrescimo) {
+      return {
+        ok: false as const,
+        motivo: 'pagamento_recusado' as const,
+        recado: `Acréscimo de ${mostrar(acrescimoCent)} parece dedo errado. Confira o valor.`,
+      }
+    }
+    const totalCent = liquidoCent + acrescimoCent
 
     // ── 3.1 o desconto, medido contra a TABELA ──
     // Não contra o subtotal: o subtotal já embute o desconto dado no item, e
-    // medir contra ele daria sempre zero — que é exatamente o buraco.
+    // medir contra ele daria sempre zero — que é exatamente o buraco. E sem o
+    // acréscimo: cobrar a etiqueta velha de uma peça não abre espaço para dar
+    // 30% na outra.
     const tabelaCent = itens.reduce((s, i) => s + i._tabelaCent, 0)
-    const abatidoCent = tabelaCent - totalCent
+    const abatidoCent = tabelaCent - liquidoCent
     const percentual = tabelaCent > 0 ? (abatidoCent / tabelaCent) * 100 : 0
 
-    if (totalCent < 0) {
+    if (liquidoCent < 0) {
       return { ok: false as const, motivo: 'desconto_acima_do_teto' as const, percentual, teto }
     }
-    if (percentual > teto + 0.001 && !pode(sessao, 'venda.desconto', v.unidadeId)) {
+    const passouDoTeto = percentual > teto + 0.001
+    if (passouDoTeto && !podeDesconto) {
       return {
         ok: false as const,
         motivo: 'desconto_acima_do_teto' as const,
@@ -540,6 +691,9 @@ export async function registrarVenda(
         teto,
       }
     }
+    // A autorização entra na venda só quando foi ELA que deixou passar: quem
+    // já tem o poder, ou o PIN que chegou sem precisar, não vira "autorizou".
+    const autorizou = !temPoder && autorizador && (passouDoTeto || avulsos.length > 0) ? autorizador : null
 
     // ── 3.2 os pontos que o cliente resolveu gastar ──
     // Entram AQUI, depois da trava de desconto, e isso é a decisão que
@@ -584,13 +738,30 @@ export async function registrarVenda(
 
     const aPagarCent = totalCent - pontosCent
 
+    // ── 3.25 o juro do crédito parcelado ──
+    // Só quando a loja cobra (`creditoJurosPct`, zero no padrão) e só em 2× ou
+    // mais. A tela manda o valor SEM juro e o servidor soma: o juro é regra da
+    // loja, não número digitado. Entra no pagamento e no total — é o que a
+    // cliente paga na maquininha —, e fica à parte (`juros`) para a devolução
+    // não devolver juro de parcelamento como se fosse peça.
+    const jurosPct = Number(empresa?.creditoJurosPct ?? 0)
+    const jurosDe = v.pagamentos.map((p) =>
+      p.forma === 'CREDITO' && (p.parcelas ?? 1) > 1 && jurosPct > 0
+        ? Math.round((centavos(p.valor) * jurosPct) / 100)
+        : 0,
+    )
+    const jurosCent = jurosDe.reduce((s, j) => s + j, 0)
+
     const subtotal = reais(subtotalCent)
     const desconto = reais(descontoCent)
-    const total = reais(aPagarCent)
+    const total = reais(aPagarCent + jurosCent)
 
     // O que a venda gera de pontos sai do que foi REALMENTE pago. Pontuar em
     // cima do preço cheio faria a loja pagar duas vezes pelo mesmo desconto.
-    const ganhos = v.clienteId ? calcularGanho(aPagarCent, programa) : 0
+    // E a parte no crediário fica de fora: ela ainda não foi paga — pontuar
+    // a promessa daria ponto a quem não pagou a parcela.
+    const fiadoCent = fiado.reduce((s, p) => s + centavos(p.valor), 0)
+    const ganhos = v.clienteId ? calcularGanho(Math.max(0, aPagarCent - fiadoCent), programa) : 0
 
     // Comparação entre inteiros: ou bate, ou não bate. Sem "quase".
     // E um centavo de diferença trava a venda de propósito — caixa que fecha
@@ -599,7 +770,7 @@ export async function registrarVenda(
       return {
         ok: false as const,
         motivo: 'pagamento_nao_fecha' as const,
-        total,
+        total: reais(aPagarCent),
         pago: reais(pagoCent),
       }
     }
@@ -640,10 +811,21 @@ export async function registrarVenda(
       const codigo = normalizarCodigo(p.referencia ?? '')
       const valorCent = centavos(p.valor)
       const vale = codigo
-        ? await db.vale.findFirst({ where: { codigo }, select: { id: true, saldo: true, validade: true } })
+        ? await db.vale.findFirst({
+            where: { codigo },
+            select: { id: true, saldo: true, validade: true, unidadeId: true, unidade: { select: { nome: true } } },
+          })
         : null
       if (!vale) {
         return { ok: false as const, motivo: 'vale_recusado' as const, recado: 'Vale não encontrado. Confira o código.' }
+      }
+      // Loja com CNPJ próprio: o vale de uma não paga a venda da outra.
+      if (!valeServeNaLoja(!!empresa?.valePorLoja, vale.unidadeId, v.unidadeId)) {
+        return {
+          ok: false as const,
+          motivo: 'vale_recusado' as const,
+          recado: `Este vale é da ${vale.unidade?.nome ?? 'outra loja'} e só vale lá.`,
+        }
       }
       if (vale.validade && venceu(vale.validade)) {
         return { ok: false as const, motivo: 'vale_recusado' as const, recado: 'Este vale já venceu.' }
@@ -701,10 +883,13 @@ export async function registrarVenda(
         situacao: 'CONCLUIDA',
         subtotal,
         desconto,
+        acrescimo: reais(acrescimoCent),
         descontoPontos: reais(pontosCent),
         pontosUsados,
         pontosGanhos: ganhos,
         total,
+        autorizadoPorId: autorizou?.usuarioId ?? null,
+        autorizadoPor: autorizou?.nome ?? null,
         // A venda que recebeu uma encomenda aponta para ela — um campo de
         // verdade, e não o código escrito na observação (o `@unique` é a
         // garantia de que a encomenda não se recebe em duas vendas).
@@ -715,15 +900,21 @@ export async function registrarVenda(
           create: itens.map(({ _cent, _tabelaCent, ...i }) => ({ orgId: sessao.orgId, ...i })),
         },
         pagamentos: {
-          create: v.pagamentos.map((p, i) => ({
-            orgId: sessao.orgId,
-            forma: p.forma,
-            valor: reais(centavos(p.valor)),
-            parcelas: p.parcelas ?? 1,
-            referencia: p.forma === 'VALE' ? normalizarCodigo(p.referencia ?? '') : p.referencia,
-            valeId: valeDoPagamento.get(i) ?? null,
-            taxaPct: taxaDe(taxas, p.forma, p.parcelas ?? 1),
-          })),
+          create: v.pagamentos.map((p, i) => {
+            // Parcela só no crédito e no crediário; no resto é sempre 1.
+            const parcelas = p.forma === 'CREDITO' || p.forma === 'CREDIARIO' ? (p.parcelas ?? 1) : 1
+            return {
+              orgId: sessao.orgId,
+              forma: p.forma,
+              valor: reais(centavos(p.valor) + jurosDe[i]!),
+              juros: reais(jurosDe[i]!),
+              parcelas,
+              referencia: p.forma === 'VALE' ? normalizarCodigo(p.referencia ?? '') : p.referencia,
+              valeId: valeDoPagamento.get(i) ?? null,
+              maquininha: maquininhaDe[i] ?? null,
+              taxaPct: taxaDe(taxas, p.forma, parcelas),
+            }
+          }),
         },
       },
       select: { id: true, numero: true },
@@ -734,12 +925,14 @@ export async function registrarVenda(
     // escrita é o caderno que some.
     if (fiado.length > 0 && v.clienteId) {
       const p = fiado[0]!
-      const parcelas = montarParcelas(
-        centavos(p.valor),
-        p.parcelas ?? 1,
-        new Date(),
-        empresa?.crediarioDiasEntre ?? 30,
-      )
+      // O 1º vencimento escolhido e as seguintes no mesmo dia de cada mês —
+      // ver crediario-agenda.ts.
+      const parcelas = agendaDoCrediario({
+        totalCent: centavos(p.valor),
+        parcelas: p.parcelas ?? 1,
+        primeiroVencimento: primeiroVencimento!,
+        diasEntre: empresa?.crediarioDiasEntre ?? 30,
+      })
       await db.parcela.createMany({
         data: parcelas.map((x) => ({
           orgId: sessao.orgId,
@@ -752,6 +945,31 @@ export async function registrarVenda(
           valor: reais(x.valorCent),
         })),
       })
+
+      // O CPF que a cliente ditou vai para a ficha — só se ela estiver sem.
+      // O carnê é confissão de dívida e precisa do CPF; a próxima venda já
+      // não pergunta.
+      if (v.clienteCpf && pode(sessao, 'cliente.editar')) {
+        const cpf = v.clienteCpf.replace(/\D/g, '')
+        const anotou = await db.cliente.updateMany({
+          where: { id: v.clienteId, OR: [{ documento: null }, { documento: '' }] },
+          data: { documento: cpf },
+        })
+        if (anotou.count > 0) {
+          await db.auditoria.create({
+            data: {
+              orgId: sessao.orgId,
+              unidadeId: v.unidadeId,
+              usuarioId: sessao.usuarioId,
+              quem: sessao.nome,
+              acao: 'cliente.alterou',
+              alvoTipo: 'cliente',
+              alvoId: v.clienteId,
+              motivo: `CPF anotado no crediário da venda ${numero}`,
+            },
+          })
+        }
+      }
     }
 
     // ── 5.2 o horário da agenda que esta venda cobrou ──
@@ -793,6 +1011,7 @@ export async function registrarVenda(
 
     // ── 6. baixa o estoque, na MESMA transação ──
     // Só o que é do catálogo: item avulso não tem de onde sair.
+    const semEstoque = new Set(faltando.map((f) => f.descricao))
     for (const i of doCatalogo) {
       const r = await mexerEstoqueEm(db, sessao, {
         variacaoId: i.variacaoId,
@@ -801,10 +1020,22 @@ export async function registrarVenda(
         quantidade: i.quantidade,
         referencia: venda.id,
         motivo: `Venda ${numero}`,
+        permitirNegativo: vendeSemEstoque,
       })
       // Só chega aqui se alguém levou o estoque entre a conferência e agora.
       // Lançar desfaz a venda inteira — é rollback limpo, não erro de banco.
       if (!r.ok) throw new EstoqueSumiu(i.variacaoId)
+      // Vendendo sem estoque, o mesmo caminho não trava: o saldo ficou
+      // negativo (outro caixa levou a última, ou a peça veio em duas linhas).
+      // Vira pendência como a outra — a peça saiu, o sistema não a tinha.
+      if (vendeSemEstoque && r.saldo < 0 && !saldoQueFaltou.has(i.variacaoId)) {
+        await db.vendaItem.updateMany({
+          where: { vendaId: venda.id, variacaoId: i.variacaoId, saldoNaVenda: null },
+          data: { saldoNaVenda: r.saldo + i.quantidade },
+        })
+        saldoQueFaltou.set(i.variacaoId, r.saldo + i.quantidade)
+        semEstoque.add(descrever(porId.get(i.variacaoId)))
+      }
     }
 
     // ── 6.1 os pontos ──
@@ -854,6 +1085,12 @@ export async function registrarVenda(
       })
     }
 
+    // O troco, para o papel (ver `NovaVenda.troco`). Só com dinheiro na venda,
+    // e com teto: número de dedo errado não vai para o comprovante.
+    const trocoCent =
+      v.pagamentos.some((p) => p.forma === 'DINHEIRO') && Number.isFinite(v.troco) && (v.troco ?? 0) > 0
+        ? centavos(v.troco ?? 0)
+        : 0
     await db.auditoria.create({
       data: {
         orgId: sessao.orgId,
@@ -865,13 +1102,18 @@ export async function registrarVenda(
         alvoId: venda.id,
         alvoNome: `Venda ${numero}`,
         valor: total,
+        ...(trocoCent > 0 && trocoCent <= TETO_DO_TROCO_CENT ? { depois: { troco: reais(trocoCent) } } : {}),
         // Desconto entra no livro com o número. É o que permite ao dono
         // perguntar depois "quem andou dando 40%?" e ter resposta. E quando
         // quem vendeu não é quem registrou, os dois nomes ficam.
         motivo:
           [
             abatidoCent > 0 ? `desconto ${(Math.round(percentual * 10) / 10).toFixed(1)}%` : null,
+            acrescimoCent > 0 ? `acréscimo ${mostrar(acrescimoCent)}` : null,
             avulsos.length > 0 ? plural(avulsos.length, 'item avulso', 'itens avulsos') : null,
+            autorizou ? `autorizado por ${autorizou.nome}` : null,
+            semEstoque.size > 0 ? `${plural(semEstoque.size, 'item', 'itens')} sem estoque no sistema` : null,
+            jurosCent > 0 ? `juro do crédito ${mostrar(jurosCent)}` : null,
             vendedor.id !== sessao.usuarioId ? `vendedor: ${vendedor.nome}` : null,
             tabela !== 'vista' ? `preço ${ROTULO_TABELA[tabela]}` : null,
             fiado.length > 0 ? `crediário em ${fiado[0]!.parcelas ?? 1}×` : null,
@@ -889,8 +1131,20 @@ export async function registrarVenda(
       total,
       pontosUsados,
       pontosGanhos: ganhos,
+      semEstoque: [...semEstoque],
+      autorizadoPor: autorizou?.nome ?? null,
     }
   })
+}
+
+/**
+ * O vale serve nesta loja? Com a regra "vale por loja" ligada, só na loja
+ * que o emitiu. Vale sem loja (de antes da regra, ou trazido do sistema
+ * anterior sem loja) serve em qualquer uma — prender ele numa loja seria
+ * tirar da cliente um crédito que ela tem.
+ */
+export function valeServeNaLoja(valePorLoja: boolean, valeUnidadeId: string | null, unidadeId: string): boolean {
+  return !valePorLoja || !valeUnidadeId || valeUnidadeId === unidadeId
 }
 
 /** Dois caixas gastaram o mesmo vale no mesmo instante. Raro, e a venda não pode ficar. */
@@ -1201,7 +1455,7 @@ export async function acharVenda(sessao: Sessao, vendaId: string) {
         },
         parcelas: {
           orderBy: { numero: 'asc' },
-          select: { id: true, numero: true, de: true, vencimento: true, valor: true, pago: true, quitadaEm: true },
+          select: { id: true, numero: true, de: true, vencimento: true, valor: true, pago: true, desconto: true, quitadaEm: true },
         },
         cliente: { select: { id: true, nome: true, telefone: true } },
         unidade: { select: { id: true, nome: true } },
@@ -1213,7 +1467,23 @@ export async function acharVenda(sessao: Sessao, vendaId: string) {
   // Achar por id passa pelo RLS (só vem venda desta empresa), mas a unidade
   // ainda precisa ser conferida: gerente de uma loja não abre venda da outra.
   if (!v || !pode(sessao, 'venda.ver', v.unidadeId)) return null
-  return v
+  // O troco mora no livro da venda (ver `NovaVenda.troco`). Só se procura
+  // quando houve dinheiro: as outras formas não dão troco.
+  const troco = v.pagamentos.some((p) => p.forma === 'DINHEIRO') ? await trocoDaVenda(sessao, v.id) : 0
+  return { ...v, troco }
+}
+
+/** O troco que o balcão deu nesta venda, lido do livro. Zero quando não houve. */
+async function trocoDaVenda(sessao: Sessao, vendaId: string): Promise<number> {
+  const registro = await comoOrg(sessao.orgId, (db) =>
+    db.auditoria.findFirst({
+      where: { alvoTipo: 'venda', alvoId: vendaId, acao: 'venda.registrou' },
+      select: { depois: true },
+    }),
+  )
+  const depois = registro?.depois
+  const t = depois && typeof depois === 'object' && !Array.isArray(depois) ? Number((depois as Record<string, unknown>).troco) : 0
+  return Number.isFinite(t) && t > 0 ? reais(centavos(t)) : 0
 }
 
 export type Cancelamento =
@@ -1235,6 +1505,22 @@ class ParcelaRecebidaNoCaminho extends Error {
     super('Uma parcela desta venda acabou de ser recebida. Nada foi cancelado.')
     this.name = 'ParcelaRecebidaNoCaminho'
   }
+}
+
+/**
+ * A parcela já tem rastro de dinheiro ou de acerto: pago, juro, multa,
+ * desconto, ou qualquer recebimento (a baixa externa e o desconto que quitou
+ * sem dinheiro também deixam um). Parcela assim não se apaga.
+ */
+export function parcelaMexida(p: {
+  pago: unknown
+  juros: unknown
+  multa: unknown
+  desconto: unknown
+  _count?: { recebimentos: number }
+}): boolean {
+  const algum = (x: unknown) => centavos(Number(x ?? 0) || 0) > 0
+  return algum(p.pago) || algum(p.juros) || algum(p.multa) || algum(p.desconto) || (p._count?.recebimentos ?? 0) > 0
 }
 
 /**
@@ -1291,7 +1577,9 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
         itens: { select: { variacaoId: true, quantidade: true } },
         devolucoes: { select: { id: true } },
         pagamentos: { select: { forma: true, valor: true, valeId: true } },
-        parcelas: { select: { id: true, pago: true, juros: true } },
+        parcelas: {
+          select: { id: true, pago: true, juros: true, multa: true, desconto: true, _count: { select: { recebimentos: true } } },
+        },
       },
     })
     if (!v) return { ok: false as const, motivo: 'nao_achada' as const }
@@ -1311,10 +1599,15 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
     // caminho é devolver o que resta.
     if (v.devolucoes.length > 0) return { ok: false as const, motivo: 'ja_devolvida' as const }
 
-    // Fiado que já recebeu parcela: o dinheiro entrou (às vezes na gaveta), e
-    // cancelar não tem como devolvê-lo. Devolver os itens abate a dívida e
-    // mostra o que sobra para acertar com o cliente.
-    if (v.parcelas.some((p) => centavos(p.pago) > 0 || centavos(p.juros) > 0)) {
+    // Fiado que já mexeu: o dinheiro entrou (às vezes na gaveta), e cancelar
+    // não tem como devolvê-lo. Devolver os itens abate a dívida e mostra o que
+    // sobra para acertar com o cliente.
+    //
+    // "Mexeu" é qualquer rastro na parcela, não só o pago: a parcela quitada
+    // por DESCONTO (pago zero), a multa cobrada, a baixa externa — todas têm
+    // um recebimento pendurado nela, e apagar a parcela por baixo dele dava o
+    // erro cru do banco na cara de quem cancelava.
+    if (v.parcelas.some(parcelaMexida)) {
       return { ok: false as const, motivo: 'crediario_recebido' as const }
     }
 
@@ -1398,12 +1691,15 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
     // apagar é seguro: não leva dinheiro de ninguém junto.
     //
     // E o apagar CONFERE de novo, na própria condição: só sai parcela sem
-    // pago e sem juros. Se alguma recebeu no caminho (o recebimento também
-    // trava a venda, mas esta é a garantia), a contagem não bate e o
-    // cancelamento inteiro volta — apagar parcela recebida apagaria junto o
-    // recebimento, e o dinheiro que entrou na gaveta ficaria sem dono.
+    // rastro nenhum (a mesma régua de `parcelaMexida`). Se alguma recebeu no
+    // caminho (o recebimento também trava a venda, mas esta é a garantia), a
+    // contagem não bate e o cancelamento inteiro volta — apagar parcela
+    // recebida apagaria junto o recebimento, e o dinheiro que entrou na gaveta
+    // ficaria sem dono.
     if (v.parcelas.length > 0) {
-      const apagou = await db.parcela.deleteMany({ where: { vendaId: v.id, pago: 0, juros: 0 } })
+      const apagou = await db.parcela.deleteMany({
+        where: { vendaId: v.id, pago: 0, juros: 0, multa: 0, desconto: 0, recebimentos: { none: {} } },
+      })
       if (apagou.count !== v.parcelas.length) throw new ParcelaRecebidaNoCaminho()
       notas.push(`${plural(v.parcelas.length, 'parcela do crediário cancelada', 'parcelas do crediário canceladas')}`)
     }
@@ -1446,4 +1742,62 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
 
     return { ok: true as const, numero: v.numero, sangria: caixaDaSangria ? reais(dinheiroC) : 0 }
   })
+}
+
+// ─────────────────────────────────────────────────────────────
+// AS REGRAS DO BALCÃO (Configurações)
+// ─────────────────────────────────────────────────────────────
+
+export type ConfigDoBalcaoNaEmpresa = {
+  vendeSemEstoque: boolean
+  valePorLoja: boolean
+  creditoMaxParcelas: number
+  creditoJurosPct: number
+}
+
+export async function configDoBalcao(sessao: Sessao): Promise<ConfigDoBalcaoNaEmpresa> {
+  const o = await comoOrg(sessao.orgId, (db) =>
+    db.org.findUniqueOrThrow({
+      where: { id: sessao.orgId },
+      select: { vendeSemEstoque: true, valePorLoja: true, creditoMaxParcelas: true, creditoJurosPct: true },
+    }),
+  )
+  return { ...o, creditoJurosPct: Number(o.creditoJurosPct) }
+}
+
+/**
+ * Grava as regras do balcão. É regra de dinheiro e de estoque da empresa
+ * inteira — quem configura a empresa, e com linha no livro mostrando o antes
+ * e o depois ("quem ligou a venda sem estoque?" tem resposta).
+ */
+export async function salvarConfigDoBalcao(sessao: Sessao, c: ConfigDoBalcaoNaEmpresa): Promise<ConfigDoBalcaoNaEmpresa> {
+  exigir(sessao, 'empresa.configurar')
+  const novo: ConfigDoBalcaoNaEmpresa = {
+    vendeSemEstoque: !!c.vendeSemEstoque,
+    valePorLoja: !!c.valePorLoja,
+    creditoMaxParcelas: Math.min(Math.max(Math.round(Number(c.creditoMaxParcelas) || 1), 1), 24),
+    // Juro de parcelamento acima de 20% é dedo errado, não política.
+    creditoJurosPct: Math.min(Math.max(Math.round((Number(c.creditoJurosPct) || 0) * 100) / 100, 0), 20),
+  }
+  await comoOrg(sessao.orgId, async (db) => {
+    const antes = await db.org.findUniqueOrThrow({
+      where: { id: sessao.orgId },
+      select: { vendeSemEstoque: true, valePorLoja: true, creditoMaxParcelas: true, creditoJurosPct: true },
+    })
+    await db.org.update({ where: { id: sessao.orgId }, data: novo })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'empresa.configurou',
+        alvoTipo: 'empresa',
+        alvoId: sessao.orgId,
+        alvoNome: 'balcão',
+        antes: { ...antes, creditoJurosPct: Number(antes.creditoJurosPct) },
+        depois: novo,
+      },
+    })
+  })
+  return novo
 }

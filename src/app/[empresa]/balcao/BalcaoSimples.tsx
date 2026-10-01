@@ -29,10 +29,13 @@ import type { Vendedor } from '@/servidor/equipe'
 import { faz } from './guardar'
 import { VendaIncerta, AvisoFixo } from './VendaIncerta'
 import { brl } from './conta'
-import { useVenda, type EncomendaNoPedido, type Venda } from './useVenda'
+import { useVenda, type ConfigDoBalcao, type EncomendaNoPedido, type Venda } from './useVenda'
+import { PedirPin } from './Autorizar'
 import { Produtos } from './Produtos'
 import { Itens, Total, Pagamento, Concluir, Sucesso } from './Pedido'
 import { MaisOpcoes, opcoesEmUso } from './MaisOpcoes'
+import { AlertaDeDivida } from '../crediario/AlertaDeDivida'
+import { BotaoReceber } from '../crediario/BotaoReceber'
 import { Folha } from './Folha'
 import { usePalavras } from './palavras'
 
@@ -54,7 +57,13 @@ export function BalcaoSimples({
   veAssinatura = false,
   barra,
   colada = false,
+  config,
+  precisaPin = false,
 }: {
+  /** As regras desta loja que a tela precisa saber (ver useVenda). */
+  config?: ConfigDoBalcao
+  /** Quem opera não dá desconto acima do teto sozinha: o avulso avisa que pede PIN. */
+  precisaPin?: boolean
   slug: string
   unidadeId: string
   usuarioId: string
@@ -65,7 +74,8 @@ export function BalcaoSimples({
   programa: Programa
   vendedores: Vendedor[] | null
   podeAvulso: boolean
-  crediario: { maxParcelas: number } | null
+  /** O crediário da loja (nulo = módulo desligado); `receber`: quem opera recebe parcela. */
+  crediario: { maxParcelas: number; diasEntre?: number; receber?: boolean } | null
   /** Aberto pela Agenda: o horário a cobrar, com o serviço e o cliente. */
   inicial?: InicialDoBalcao | null
   /** Aberto por "Receber no balcão", em Encomendas. Ver useVenda. */
@@ -80,7 +90,7 @@ export function BalcaoSimples({
    */
   colada?: boolean
 }) {
-  const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario, inicial, encomenda, veAssinatura })
+  const v = useVenda({ slug, unidadeId, unidadeNome, usuarioId, caixaId, programa, vendedores, crediario, inicial, encomenda, veAssinatura, ...config })
 
   const [telaCheia, setTelaCheia] = useState(false)
   const [pedidoAberto, setPedidoAberto] = useState(false)
@@ -173,6 +183,11 @@ export function BalcaoSimples({
   })
 
   const emUso = opcoesEmUso(v, usuarioId)
+  // O crediário no pedido: o "ela já deve" da cliente escolhida e o "veio só
+  // pagar". Enquanto "Mais opções" está aberta, o aviso mora lá (onde a
+  // cliente acabou de ser escolhida) — dois avisos iguais, um atrás do outro,
+  // fariam a moça responder duas vezes.
+  const fiado: Fiado | null = crediario ? { slug, unidadeId, receber: crediario.receber !== false, aviso: !opcoes.aberta } : null
   const abrirOpcoes = () => setOpcoes({ aberta: true, cliente: 0, vendedor: false })
   const pedirCliente = () => setOpcoes((o) => ({ aberta: true, cliente: o.cliente + 1, vendedor: false }))
 
@@ -201,6 +216,7 @@ export function BalcaoSimples({
       aoOpcoes={abrirOpcoes}
       aoPedirCliente={pedirCliente}
       aoNova={novaVenda}
+      fiado={fiado}
     />
   )
 
@@ -305,14 +321,15 @@ export function BalcaoSimples({
           aoFechar={() => setPedidoAberto(false)}
           titulo={v.fechada ? p.vendaConcluida : p.Pedido}
           inteira
+          pagamento
           rodape={v.fechada ? undefined : <Concluir v={v} caixaId={caixaId} />}
         >
           {v.fechada ? (
             <Sucesso v={v} aoNova={novaVenda} />
           ) : (
             <div className="flex flex-col gap-4">
-              <CabecaDoPedido v={v} emUso={emUso} aoOpcoes={abrirOpcoes} />
-              <Itens v={v} />
+              <CabecaDoPedido v={v} emUso={emUso} aoOpcoes={abrirOpcoes} fiado={fiado} />
+              <Itens v={v} vazio={fiado && !v.cliente && <ReceberNoVazio fiado={fiado} />} />
               <div className="flex flex-col gap-4 border-t border-borda pt-4">
                 <Total v={v} />
                 <Pagamento v={v} crediario={crediario} aoPedirCliente={pedirCliente} />
@@ -322,8 +339,12 @@ export function BalcaoSimples({
         </Folha>
       </div>
 
+      <PedirPin v={v} />
       <MaisOpcoes
         v={v}
+        unidadeId={unidadeId}
+        crediario={crediario}
+        precisaPin={precisaPin}
         aberta={opcoes.aberta}
         aoFechar={() => setOpcoes({ aberta: false, cliente: 0, vendedor: false })}
         slug={slug}
@@ -337,23 +358,43 @@ export function BalcaoSimples({
   )
 }
 
+/** O crediário no pedido do simples. Ver `fiado`, no BalcaoSimples. */
+type Fiado = { slug: string; unidadeId: string; receber: boolean; aviso: boolean }
+
+/**
+ * Quem veio só pagar o crediário: no pedido vazio, que é como o balcão está
+ * quando ela chega. Sem isto o simples não tinha por onde receber parcela —
+ * só o avançado. Com a cliente já escolhida, quem fala é o aviso dela
+ * (AlertaDeDivida, no cabeçalho do pedido), e este sai.
+ */
+function ReceberNoVazio({ fiado }: { fiado: Fiado }) {
+  if (!fiado.receber) return null
+  return (
+    <BotaoReceber slug={fiado.slug} unidadeId={fiado.unidadeId} tom="secundario" className="min-h-11 rounded-xl text-sm">
+      Veio pagar o crediário? Receber parcela
+    </BotaoReceber>
+  )
+}
+
 /** "Mais opções" e as etiquetas do que está valendo. */
 function CabecaDoPedido({
   v,
   emUso,
   aoOpcoes,
   titulo,
+  fiado = null,
 }: {
   v: Venda
   emUso: number
   aoOpcoes: () => void
   /** Na coluna, o título divide a linha com os botões — a altura é dos itens. */
   titulo?: ReactNode
+  fiado?: Fiado | null
 }) {
   const etiqueta =
     'inline-flex min-h-8 items-center gap-1.5 rounded-full bg-superficie-2 pr-1 pl-3 text-xs font-semibold text-tinta-2'
   const tirar = 'flex size-6 items-center justify-center rounded-full text-tinta-3 hover:bg-superficie-3 hover:text-tinta'
-  const temEtiqueta = !!v.cliente || v.desconto > 0 || v.observacoes.trim() !== ''
+  const temEtiqueta = !!v.cliente || v.desconto > 0 || v.acrescimo > 0 || v.observacoes.trim() !== ''
   const p = usePalavras()
   return (
     <div className="flex flex-col gap-2">
@@ -393,8 +434,19 @@ function CabecaDoPedido({
           )}
           {v.desconto > 0 && (
             <span className={etiqueta}>
-              Desconto <span className="numero text-tinta">{brl(v.desconto)}</span>
+              Desconto{' '}
+              <span className="numero text-tinta">
+                {v.descontoEmPct ? `${String(v.desconto).replace('.', ',')}%` : brl(v.desconto)}
+              </span>
               <button type="button" onClick={() => v.setDesconto(0)} aria-label="Tirar o desconto" className={tirar}>
+                ✕
+              </button>
+            </span>
+          )}
+          {v.acrescimo > 0 && (
+            <span className={etiqueta}>
+              Acréscimo <span className="numero text-tinta">{brl(v.acrescimo)}</span>
+              <button type="button" onClick={() => v.setAcrescimo(0)} aria-label="Tirar o acréscimo" className={tirar}>
                 ✕
               </button>
             </span>
@@ -408,6 +460,12 @@ function CabecaDoPedido({
             </span>
           )}
         </div>
+      )}
+
+      {/* A cliente escolhida deve no crediário: o mesmo cartão do avançado,
+          com o "receber agora?" (crediario/AlertaDeDivida.tsx). */}
+      {fiado?.aviso && v.cliente && (
+        <AlertaDeDivida slug={fiado.slug} unidadeId={fiado.unidadeId} clienteId={v.cliente.id} podeReceber={fiado.receber} />
       )}
     </div>
   )
@@ -454,10 +512,12 @@ function PainelDoPedido({
   aoOpcoes,
   aoPedirCliente,
   aoNova,
+  fiado,
 }: {
   v: Venda
   caixaId: string | null
-  crediario: { maxParcelas: number } | null
+  crediario: { maxParcelas: number; diasEntre?: number } | null
+  fiado: Fiado | null
   unidadeNome: string
   emUso: number
   aoOpcoes: () => void
@@ -483,6 +543,7 @@ function PainelDoPedido({
               v={v}
               emUso={emUso}
               aoOpcoes={aoOpcoes}
+              fiado={fiado}
               titulo={
                 <h2 className="flex min-w-0 items-baseline gap-2 text-lg font-bold">
                   {p.Pedido}
@@ -498,7 +559,7 @@ function PainelDoPedido({
           </header>
 
           <div className="flex-1 px-4">
-            <Itens v={v} />
+            <Itens v={v} vazio={fiado && !v.cliente && <ReceberNoVazio fiado={fiado} />} />
           </div>
 
           <footer className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-4 border-t border-borda bg-superficie px-4 pt-3 pb-4">
@@ -508,7 +569,7 @@ function PainelDoPedido({
             {/* As teclas, para quem usa teclado — e o espaço que deixa o botão
                 redondo do Guia, no canto, sem cobrir o "Concluir". */}
             <p className="hidden truncate pr-14 text-xs text-tinta-3 [@media(pointer:fine)]:block">
-              <kbd className="font-mono">F10</kbd> conclui · <kbd className="font-mono">Ctrl P</kbd> busca
+              <kbd className="font-mono">F10</kbd> conclui · <kbd className="font-mono">F2</kbd>–<kbd className="font-mono">F8</kbd> formas · <kbd className="font-mono">Esc</kbd> volta · <kbd className="font-mono">Ctrl P</kbd> busca
             </p>
             <span aria-hidden className="block h-5 [@media(pointer:fine)]:hidden" />
           </footer>

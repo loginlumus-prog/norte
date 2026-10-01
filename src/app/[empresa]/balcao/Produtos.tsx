@@ -415,7 +415,7 @@ export function Produtos({
                 <button
                   key={p.id}
                   type="button"
-                  disabled={saldo <= 0}
+                  disabled={saldo <= 0 && !v.vendeSemEstoque}
                   onClick={() => tocarProduto(p)}
                   className={cx(
                     'flex min-h-11 shrink-0 touch-manipulation items-center gap-2 rounded-full border bg-superficie px-4 text-sm font-semibold whitespace-nowrap text-tinta transition',
@@ -469,6 +469,7 @@ export function Produtos({
                   const a = b.achado
                   return (
                     <Cartao
+                    semEstoqueOk={v.vendeSemEstoque}
                       key={a.id}
                       nome={a.descricao}
                       preco={precoDe({ ...a, quantidade: 1 }, v.conta.tabela)}
@@ -491,6 +492,7 @@ export function Produtos({
                 const saldo = saldoTotal(p.variacoes)
                 return (
                   <Cartao
+                    semEstoqueOk={v.vendeSemEstoque}
                     key={p.id}
                     nome={p.nome}
                     preco={faixa.de}
@@ -550,6 +552,7 @@ export function Produtos({
                 const unica = p.variacoes.length === 1 ? p.variacoes[0] : undefined
                 return (
                   <Cartao
+                    semEstoqueOk={v.vendeSemEstoque}
                     key={p.id}
                     nome={p.nome}
                     preco={unica ? precoDe({ ...unica, quantidade: 1 }, v.conta.tabela) : faixa.de}
@@ -585,6 +588,7 @@ export function Produtos({
 
       {escolha && (
         <EscolhaFolha
+          semEstoqueOk={v.vendeSemEstoque}
           key={`${escolha.titulo}-${escolha.peca?.id ?? ''}`}
           escolha={escolha}
           ramo={ramo}
@@ -623,7 +627,10 @@ function Cartao({
   noPedido,
   piscou,
   aoTocar,
+  semEstoqueOk = false,
 }: {
+  /** A loja vende o que o sistema diz que acabou: o cartão avisa, mas não trava. */
+  semEstoqueOk?: boolean
   nome: string
   preco: number
   aPartirDe?: boolean
@@ -656,7 +663,7 @@ function Cartao({
     <button
       type="button"
       onClick={aoTocar}
-      disabled={acabou}
+      disabled={acabou && !semEstoqueOk}
       aria-label={falado}
       className={cx(
         'group relative flex min-h-[10rem] flex-col overflow-hidden rounded-2xl border bg-superficie text-left transition',
@@ -721,7 +728,10 @@ function EscolhaFolha({
   tabela,
   aoFechar,
   aoLancar,
+  semEstoqueOk = false,
 }: {
+  /** A loja vende o que o sistema diz que acabou: o tamanho mostra "acabou" e continua tocável. */
+  semEstoqueOk?: boolean
   escolha: Escolha
   ramo: string | null
   tabela: Venda['conta']['tabela']
@@ -769,7 +779,8 @@ function EscolhaFolha({
     if (!achada) return
     // Um eixo só e vendido por unidade: o toque já é a decisão.
     if (eixos.length === 1 && !pedeQuanto) {
-      if (achada.saldo > 0) aoLancar(achada, 1)
+      // Acabou no sistema e a loja vende assim mesmo: lança, e o pedido avisa.
+      if (achada.saldo > 0 || semEstoqueOk) aoLancar(achada, 1)
       return
     }
     if (pedeQuanto) setPeca(achada)
@@ -782,7 +793,7 @@ function EscolhaFolha({
   // lista simples pelo nome, para ainda dar para vender.
   const semEixo = variacoes.length > 0 && eixos.length === 0
 
-  const podeAdicionar = !!achada && achada.saldo > 0 && (!pedeQuanto || quantoOk)
+  const podeAdicionar = !!achada && (achada.saldo > 0 || semEstoqueOk) && (!pedeQuanto || quantoOk)
 
   function adicionar() {
     if (!achada || !podeAdicionar) return
@@ -884,7 +895,7 @@ function EscolhaFolha({
                         <td key={c.valor} className="p-0">
                           <button
                             type="button"
-                            disabled={acabou}
+                            disabled={acabou && !semEstoqueOk}
                             aria-pressed={marcada}
                             aria-label={`${l.valor} ${c.valor}: ${acabou ? 'acabou' : `${x.saldo} na loja`}`}
                             onClick={() => setEscolhas({ [matriz.linhas.nome]: l.valor, [matriz.colunas.nome]: c.valor })}
@@ -934,7 +945,7 @@ function EscolhaFolha({
                     <button
                       key={o.valor}
                       type="button"
-                      disabled={!pode || esgotada}
+                      disabled={!pode || (esgotada && !semEstoqueOk)}
                       aria-pressed={marcada}
                       onClick={() => escolher(e.nome, o.valor)}
                       className={cx(
@@ -978,7 +989,7 @@ function EscolhaFolha({
               <button
                 key={x.id}
                 type="button"
-                disabled={x.saldo <= 0}
+                disabled={x.saldo <= 0 && !semEstoqueOk}
                 onClick={() => (pedeQuanto ? setPeca(x) : aoLancar(x, 1))}
                 className="flex min-h-14 items-center justify-between gap-3 rounded-xl border-2 border-borda px-4 text-left hover:border-marca/50 disabled:opacity-45"
               >

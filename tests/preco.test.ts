@@ -6,15 +6,17 @@ describe('qual tabela vale', () => {
     expect(tabelaDe([])).toBe('vista')
   })
 
-  it('dinheiro, pix, débito, transferência e vale são à vista', () => {
-    for (const f of ['DINHEIRO', 'PIX', 'DEBITO', 'TRANSFERENCIA', 'VALE']) {
+  it('dinheiro, pix, transferência e vale são à vista', () => {
+    for (const f of ['DINHEIRO', 'PIX', 'TRANSFERENCIA', 'VALE']) {
       expect(tabelaDe([f])).toBe('vista')
     }
   })
 
-  it('crédito é cartão, crediário é crediário', () => {
+  it('débito e crédito são cartão (a maquininha morde nos dois), crediário é crediário', () => {
+    expect(tabelaDe(['DEBITO'])).toBe('cartao')
     expect(tabelaDe(['CREDITO'])).toBe('cartao')
     expect(tabelaDe(['CREDIARIO'])).toBe('crediario')
+    expect(tabelaDe(['PIX', 'DEBITO'])).toBe('cartao')
   })
 
   it('duas formas: vale a mais cara', () => {

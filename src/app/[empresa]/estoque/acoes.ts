@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { exigir, SemPermissao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
-import { mexerEstoque, transferir } from '@/servidor/estoque'
+import { marcarConferido, mexerEstoque, transferir } from '@/servidor/estoque'
 import { colunaDoDia } from '@/servidor/dia'
 import { registrarEntrada, definirMinimo, type ItemEntrada } from '@/servidor/entrada'
 import { plural } from '@/ui/texto'
@@ -210,5 +210,22 @@ export async function salvarMinimo(
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para isso.' }
     return { erro: recadoDoErro(e, 'Não deu para salvar.') }
+  }
+}
+
+/**
+ * "Já conferi" na lista "Vendido sem estoque — conferir". A trava inteira
+ * (`estoque.ajustar` na loja da venda, clique duplo) está em `marcarConferido`.
+ */
+export async function jaConferiAcao(slug: string, vendaItemId: string): Promise<{ erro?: string }> {
+  try {
+    const s = await exigirSessao(slug)
+    const r = await marcarConferido(s, vendaItemId)
+    if (!r.ok) return { erro: r.erro }
+    revalidatePath(`/${slug}/estoque`)
+    return {}
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Quem confere é quem pode corrigir o estoque desta loja.' }
+    return { erro: recadoDoErro(e, 'Não deu para marcar agora.') }
   }
 }

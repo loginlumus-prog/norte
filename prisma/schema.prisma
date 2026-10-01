@@ -113,6 +113,22 @@ model Org {
   /// relatorio nunca acusa. Zero = balcao nao da desconto nenhum.
   descontoMaximo Decimal @default(10) @map("desconto_maximo") @db.Decimal(5, 2)
 
+  // ── o balcão ─────────────────────────────────────────────
+  /// Vender a peça que o sistema diz que acabou. Desligado na empresa nova
+  /// (o estoque nasceu aqui e a conta é confiável); ligado em quem chegou com
+  /// estoque importado ainda sem balanço — a loja acha no provador a peça que
+  /// o sistema deu por vendida. Ligado, a venda avisa, passa, o saldo fica
+  /// negativo e o item entra na lista "Vendido sem estoque — conferir".
+  vendeSemEstoque Boolean @default(false) @map("vende_sem_estoque")
+  /// Vale-troca de cada loja só se gasta na loja que o emitiu (lojas com CNPJ
+  /// próprio). Desligado = o vale é da empresa e vale em qualquer loja.
+  valePorLoja Boolean @default(false) @map("vale_por_loja")
+  /// Crédito na maquininha em até quantas vezes o balcão oferece.
+  creditoMaxParcelas Int @default(6) @map("credito_max_parcelas")
+  /// Juro do parcelamento no crédito (2× ou mais), em porcento sobre o valor.
+  /// Zero = a loja parcela sem juros, que é o comum.
+  creditoJurosPct Decimal @default(0) @map("credito_juros_pct") @db.Decimal(5, 2)
+
   // ── lembrete do horário (Agenda) ─────────────────────────
   /// Desligado até a loja decidir. Quando ligado, o cliente que ACEITOU
   /// receber mensagem no WhatsApp (e não pediu para sair) recebe um texto
@@ -149,6 +165,19 @@ model Org {
   crediarioMaxParcelas Int @default(6) @map("crediario_max_parcelas")
   /// Dias entre uma parcela e a outra — e até a primeira.
   crediarioDiasEntre Int @default(30) @map("crediario_dias_entre")
+  /// Multa de atraso, em porcento do que restava, cobrada UMA vez por parcela
+  /// (`Parcela.multaCobrada`). Teto de 2%: o Código de Defesa do Consumidor
+  /// (art. 52, § 1º). Zero = a loja não cobra multa — e é o padrão: multa é
+  /// regra de cada loja, ligada por ela na tela de Crediário, nunca de surpresa
+  /// numa parcela que ontem custava menos.
+  crediarioMultaPct Decimal @default(0) @map("crediario_multa_pct") @db.Decimal(5, 2)
+  /// Dias de atraso perdoados antes de a conta começar ("pagou dois dias
+  /// depois, não cobra"). Passou deles, multa e juro contam do vencimento
+  /// menos a carência.
+  crediarioCarenciaDias Int @default(0) @map("crediario_carencia_dias")
+  /// Arredondar o atraso (multa + juro) do recibo para os 10 centavos de
+  /// cima: no dinheiro, R$ 3,47 de juro vira conversa sobre moeda de 1 centavo.
+  crediarioArredondar Boolean @default(false) @map("crediario_arredondar")
 
   // ── mensalidades (Escola) ────────────────────────────────
   /// Multa de atraso, em porcento do que venceu, cobrada UMA vez por
@@ -252,6 +281,7 @@ model Org {
   matriculas        Matricula[]
   mensalidades      Mensalidade[]
   pagamentosMensalidade PagamentoMensalidade[]
+  recibosCrediario  ReciboCrediario[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -269,6 +299,12 @@ model Unidade {
   nome      String
   documento String? // CNPJ desta unidade
   apelido   String? // como aparece no comprovante
+
+  /// A identidade legal DESTA loja: cada uma pode ter CNPJ próprio, e o carnê
+  /// do crediário é confissão de dívida — precisa dizer a quem se deve. Vazio,
+  /// o papel impresso pede para preencher em Lojas.
+  razaoSocial       String? @map("razao_social")
+  inscricaoEstadual String? @map("inscricao_estadual")
 
   endereco    String?
   numero      String?
@@ -297,6 +333,11 @@ model Unidade {
   /// operação só, e cada venda leva um número que é só dela.
   proximaVenda Int @default(1) @map("proxima_venda")
 
+  /// As maquininhas (e contas de Pix) desta loja: [{ "nome": "Banco X",
+  /// "formas": ["PIX","DEBITO","CREDITO"] }]. O pagamento guarda o NOME, para
+  /// o fechamento separar o que caiu em cada uma. Lida por maquininhas.ts.
+  maquininhas Json?
+
   acessos    Acesso[]
   auditoria  Auditoria[]
   estoques   Estoque[]
@@ -304,6 +345,7 @@ model Unidade {
   caixas      Caixa[]
   vendas      Venda[]
   devolucoes  Devolucao[]
+  vales       Vale[]
   parcelas    Parcela[]
   lancamentos Lancamento[]
   quadros     Quadro[]
@@ -316,6 +358,7 @@ model Unidade {
   matriculas     Matricula[]
   mensalidades   Mensalidade[]
   pagamentosMensalidade PagamentoMensalidade[]
+  recibosCrediario ReciboCrediario[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -339,6 +382,11 @@ model Usuario {
   nome      String
   email     String
   senhaHash String? @map("senha_hash")
+  /// O PIN pessoal (4 a 6 números) para autorizar na hora, no balcão de
+  /// outra pessoa: desconto acima do teto, item avulso. Guardado como a
+  /// senha (scrypt), nunca o número. Ver src/servidor/autorizacao.ts.
+  pinHash       String?   @map("pin_hash")
+  pinDefinidoEm DateTime? @map("pin_definido_em")
   telefone  String?
   fotoUrl   String? @map("foto_url")
 
@@ -1100,6 +1148,7 @@ model Cliente {
   movimentosPontos MovimentoPontos[]
   vales  Vale[]
   parcelas Parcela[]
+  recibosCrediario ReciboCrediario[]
   encomendas Encomenda[]
   agendamentos Agendamento[]
   /// Na escola: quem responde pelo aluno (e paga). Ver `Responsavel`.
@@ -1183,6 +1232,7 @@ model Caixa {
   vendas       Venda[]
   movimentos   CaixaMovimento[]
   recebimentos Recebimento[]
+  recibosCrediario ReciboCrediario[]
   pagamentosMensalidade PagamentoMensalidade[]
 
   @@index([orgId, unidadeId, aberto])
@@ -1266,6 +1316,16 @@ model Venda {
 
   total    Decimal @default(0) @db.Decimal(12, 2)
 
+  /// O contrário do desconto: a peça saiu da promoção e a etiqueta ficou com
+  /// o preço velho, e quem vende soma a diferença. Já está dentro do `total`;
+  /// guardado à parte para o relatório saber de onde veio.
+  acrescimo Decimal @default(0) @db.Decimal(12, 2)
+
+  /// Quem autorizou com o PIN o que passou da regra (desconto acima do teto,
+  /// item avulso). Nome guardado como texto: sobrevive à saída da pessoa.
+  autorizadoPorId String? @map("autorizado_por_id")
+  autorizadoPor   String? @map("autorizado_por")
+
   observacoes String?
 
   itens      VendaItem[]
@@ -1327,6 +1387,13 @@ model VendaItem {
   /// Custo do momento da venda — é o que permite calcular a margem depois.
   custoUnit   Decimal? @map("custo_unit") @db.Decimal(12, 2)
 
+  /// Vendido sem estoque: o saldo que o sistema tinha na hora (0, ou menos
+  /// que o vendido). Nulo = havia estoque. É a pendência "vendeu 2, havia 1"
+  /// que a gerente confere na prateleira; some da lista quando conferida.
+  saldoNaVenda Decimal?  @map("saldo_na_venda") @db.Decimal(14, 3)
+  conferidoEm  DateTime? @map("conferido_em")
+  conferidoPor String?   @map("conferido_por")
+
   devolucoes DevolucaoItem[]
 
   @@index([orgId, vendaId])
@@ -1360,6 +1427,14 @@ model Pagamento {
   /// DRE dos meses que já passaram. Nulo = venda de antes desta coluna (o DRE
   /// usa a taxa de hoje, como sempre usou).
   taxaPct Decimal? @map("taxa_pct") @db.Decimal(5, 2)
+
+  /// Em qual maquininha (ou conta do Pix) caiu — o NOME, como estava no
+  /// cadastro da loja na hora (ver maquininhas.ts). Nulo = não perguntado.
+  maquininha String?
+
+  /// Juro do parcelamento no crédito, já DENTRO de `valor`. Zero quando a
+  /// loja parcela sem juros (o comum).
+  juros Decimal @default(0) @db.Decimal(12, 2)
 
   criadoEm DateTime @default(now()) @map("criado_em")
 
@@ -1454,6 +1529,12 @@ model Vale {
   clienteId String?  @map("cliente_id")
   cliente   Cliente? @relation(fields: [clienteId], references: [id])
 
+  /// A loja que emitiu. Com `Org.valePorLoja`, só se gasta nela (CNPJs
+  /// diferentes). Nulo = vale de antes desta coluna, ou importado sem loja:
+  /// vale em qualquer loja.
+  unidadeId String?  @map("unidade_id")
+  unidade   Unidade? @relation(fields: [unidadeId], references: [id])
+
   valor Decimal @db.Decimal(12, 2)
   /// O que ainda dá para gastar. Vale pode ser usado em mais de uma venda.
   saldo Decimal @db.Decimal(12, 2)
@@ -1510,6 +1591,14 @@ model Parcela {
   pago       Decimal  @default(0) @db.Decimal(12, 2)
   /// Juros de atraso já cobrados nesta parcela, somados.
   juros      Decimal  @default(0) @db.Decimal(12, 2)
+  /// Multa de atraso já cobrada (uma vez só — ver `multaCobrada`).
+  multa      Decimal  @default(0) @db.Decimal(12, 2)
+  /// O desconto concedido (com autorização) que abateu a parcela sem
+  /// dinheiro entrar. A conta: resta = valor − pago − desconto.
+  desconto   Decimal  @default(0) @db.Decimal(12, 2)
+  /// A multa já foi resolvida — cobrada, ou perdoada por quem autorizou. Ela é
+  /// uma vez só: o segundo recebimento atrasado não cobra multa de novo.
+  multaCobrada Boolean @default(false) @map("multa_cobrada")
   /// Até que dia (de São Paulo) o juro de atraso já foi cobrado. O próximo
   /// juro conta daqui, e não do vencimento: senão quem paga metade com juro
   /// hoje paga de novo, na semana que vem, o juro dos mesmos dias.
@@ -1538,22 +1627,102 @@ model Recebimento {
   parcelaId String  @map("parcela_id")
   parcela   Parcela @relation(fields: [parcelaId], references: [id], onDelete: NoAction)
 
-  /// O caixa aberto na hora, quando foi em dinheiro — para o fechamento bater.
+  /// O caixa aberto na hora, em QUALQUER forma: o dinheiro entra na conta da
+  /// gaveta, o cartão e o Pix entram no fechamento para conferir a
+  /// maquininha. Nulo = baixa externa, ou recebido sem turno aberto.
   caixaId String? @map("caixa_id")
   caixa   Caixa?  @relation(fields: [caixaId], references: [id])
+
+  /// O recibo: o que foi pago junto, num papel só (ver ReciboCrediario).
+  /// Nulo = recebimento de antes do recibo, ou importado.
+  reciboId String?          @map("recibo_id")
+  recibo   ReciboCrediario? @relation(fields: [reciboId], references: [id], onDelete: NoAction)
 
   forma FormaPagamento
   /// O total que entrou.
   valor Decimal @db.Decimal(12, 2)
   /// A parte do total que é juro de atraso. O resto abate a parcela.
   juros Decimal @default(0) @db.Decimal(12, 2)
+  /// A parte do total que é multa de atraso.
+  multa Decimal @default(0) @db.Decimal(12, 2)
+  /// O que abateu a parcela SEM dinheiro (desconto autorizado). Não está em
+  /// `valor`. A conta: parcela.pago = Σ (valor − juros − multa).
+  desconto Decimal @default(0) @db.Decimal(12, 2)
+  /// Baixa externa: pago fora (no sistema antigo, na conta da loja). Não
+  /// entra no caixa, no DRE nem nas metas — só acerta a dívida.
+  externo Boolean @default(false)
+  /// Em qual maquininha (ou conta do Pix) caiu — o NOME, como no cadastro da
+  /// loja na hora (ver maquininhas.ts).
+  maquininha String?
+  /// A taxa da maquininha (ou do Pix) que valia na hora — ver taxas.ts.
+  taxaPct Decimal? @map("taxa_pct") @db.Decimal(5, 2)
   quem  String
 
   criadoEm DateTime @default(now()) @map("criado_em")
 
   @@index([orgId, parcelaId])
   @@index([orgId, criadoEm])
+  @@index([orgId, reciboId])
   @@map("recebimentos")
+}
+
+/// O recibo do crediário: tudo o que foi pago JUNTO, num papel só.
+///
+/// A cliente veio pagar três parcelas de duas compras, metade no Pix, metade
+/// em dinheiro: são seis recebimentos (parcela × forma), e um recibo. É ele que
+/// se imprime, se reimprime e aparece na ficha — com a fotografia do saldo
+/// antes e depois, porque o papel de hoje não pode mudar quando ela pagar mais
+/// amanhã.
+model ReciboCrediario {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: NoAction)
+
+  clienteId String  @map("cliente_id")
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: NoAction)
+
+  /// O turno aberto na hora. Nulo na baixa externa.
+  caixaId String? @map("caixa_id")
+  caixa   Caixa?  @relation(fields: [caixaId], references: [id])
+
+  /// O dinheiro que entrou (todas as formas, já sem o troco).
+  valor    Decimal @db.Decimal(12, 2)
+  juros    Decimal @default(0) @db.Decimal(12, 2)
+  multa    Decimal @default(0) @db.Decimal(12, 2)
+  /// Desconto nas parcelas (abate sem dinheiro).
+  desconto Decimal @default(0) @db.Decimal(12, 2)
+  /// O atraso que a conta pedia e foi perdoado (multa + juro não cobrados).
+  perdoado Decimal @default(0) @db.Decimal(12, 2)
+  /// O troco do dinheiro: entregue − o que ficou. Só para o papel.
+  troco    Decimal @default(0) @db.Decimal(12, 2)
+
+  /// O que ela devia NESTA loja antes, e o que ficou devendo depois.
+  saldoAntes  Decimal @map("saldo_antes") @db.Decimal(12, 2)
+  saldoDepois Decimal @map("saldo_depois") @db.Decimal(12, 2)
+
+  /// Baixa externa ("já pagou fora"): de onde veio e em que dia foi pago.
+  externo    Boolean   @default(false)
+  referencia String?
+  pagoEm     DateTime? @map("pago_em") @db.Date
+
+  quemId String? @map("quem_id")
+  quem   String
+  /// Quem autorizou com o PIN o desconto ou o perdão, e por quê.
+  autorizadoPorId String? @map("autorizado_por_id")
+  autorizadoPor   String? @map("autorizado_por")
+  motivo          String?
+
+  recebimentos Recebimento[]
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, clienteId, criadoEm])
+  @@index([orgId, caixaId])
+  @@index([orgId, unidadeId, criadoEm])
+  @@map("recibos_crediario")
 }
 
 /// O que a maquininha (e o Pix) cobram da loja, em porcento, por forma.

@@ -113,7 +113,7 @@ export async function cancelarAcao(
         ja_devolvida:
           'Esta venda já teve devolução, e cancelar faria o estoque e os pontos voltarem de novo. Devolva o que falta.',
         crediario_recebido:
-          'Esta venda no crediário já recebeu parcela. Devolva os itens: o valor abate o que o cliente ainda deve.',
+          'Esta venda no crediário já tem parcela mexida — recebida, com desconto, multa ou baixa de pagamento feito fora. Cancelar apagaria esse registro. Devolva os itens: o valor abate o que o cliente ainda deve.',
         caixa_fechado:
           'Esta venda foi em dinheiro num turno que já fechou, e o dinheiro volta ao cliente pela gaveta de agora. Abra o caixa desta loja para cancelar.',
       }[r.motivo],

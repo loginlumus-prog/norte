@@ -34,6 +34,9 @@ export type DadosLoja = {
   nome: string
   apelido?: string | null
   documento?: string | null
+  /** Razão social e inscrição estadual DESTA loja — o credor do carnê. */
+  razaoSocial?: string | null
+  inscricaoEstadual?: string | null
   ramo?: string | null
   ehDeposito?: boolean
   telefone?: string | null
@@ -52,6 +55,8 @@ export type LojaNaLista = {
   nome: string
   apelido: string | null
   documento: string | null
+  razaoSocial: string | null
+  inscricaoEstadual: string | null
   ramo: string | null
   ehDeposito: boolean
   ativa: boolean
@@ -91,6 +96,8 @@ export function limparLoja(d: DadosLoja): DadosLoja {
     nome,
     apelido: t(d.apelido, 60),
     documento: t(d.documento, 20),
+    razaoSocial: t(d.razaoSocial, 120),
+    inscricaoEstadual: t(d.inscricaoEstadual, 20),
     ramo: RAMO_VALIDO(d.ramo) ? d.ramo : null,
     ehDeposito: !!d.ehDeposito,
     telefone: t(d.telefone, 30),
@@ -128,6 +135,8 @@ export async function listarLojas(sessao: Sessao): Promise<LojaNaLista[]> {
       nome: l.nome,
       apelido: l.apelido,
       documento: l.documento,
+      razaoSocial: l.razaoSocial,
+      inscricaoEstadual: l.inscricaoEstadual,
       ramo: l.ramo,
       ehDeposito: l.ehDeposito,
       ativa: l.ativa,

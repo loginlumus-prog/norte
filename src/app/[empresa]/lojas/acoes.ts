@@ -20,6 +20,8 @@ function dadosDo(form: FormData): DadosLoja {
     nome: texto(form, 'nome'),
     apelido: texto(form, 'apelido'),
     documento: texto(form, 'documento'),
+    razaoSocial: texto(form, 'razaoSocial'),
+    inscricaoEstadual: texto(form, 'inscricaoEstadual'),
     ramo: texto(form, 'ramo') || null,
     ehDeposito: form.get('ehDeposito') === 'on',
     telefone: texto(form, 'telefone'),

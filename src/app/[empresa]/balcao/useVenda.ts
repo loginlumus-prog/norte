@@ -27,9 +27,13 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import type { ClienteNoBalcao, Achado, InicialDoBalcao } from './acoes'
-import { procurar, fecharVenda, consultarValeAcao } from './acoes'
-import { chaveDoBalcao, guardar, recuperar, esquecer } from './guardar'
-import { contar, faltaCom, pagamentosParaEnviar, precoDe, brl, cent } from './conta'
+import { procurar, fecharVenda, consultarValeAcao, fichaNoBalcao } from './acoes'
+import { chaveDoBalcao, guardar, recuperar, esquecer, lembrar, lembrado } from './guardar'
+import { contar, cpfConfere, faltaCom, pagamentosParaEnviar, precoDe, brl, cent, NOME_DA_FORMA, rotuloDoPagamento } from './conta'
+import type { Tabela } from '@/servidor/preco'
+import type { Maquininha } from '@/servidor/maquininhas'
+import { diaEmSP } from '@/servidor/dia'
+import { primeiroVencimentoPadrao } from '@/servidor/crediario-agenda'
 import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
 import { vendidoNaLoja } from '@/servidor/catalogo-loja'
@@ -39,7 +43,48 @@ import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
 import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
-export type Pago = { forma: string; valor: number; referencia?: string; rotulo?: string; parcelas?: number }
+export type Pago = {
+  forma: string
+  valor: number
+  referencia?: string
+  rotulo?: string
+  parcelas?: number
+  /** Pix, débito, crédito: em qual maquininha caiu. Ver servidor/maquininhas.ts. */
+  maquininha?: string | null
+  /** Crediário: o dia do 1º vencimento ('AAAA-MM-DD'). */
+  primeiroVencimento?: string | null
+}
+
+/**
+ * As teclas da tela de pagamento, como no balcão de onde as lojas vêm: F2
+ * dinheiro e F5 Pix são as mesmas do sistema de nota fiscal que costuma
+ * rodar junto — a mão da vendedora já vai sozinha nelas. Mexer nesta lista
+ * muda o dedo de quem trabalha: não reordene sem avisar.
+ */
+export const TECLAS_FORMA: Record<string, string> = {
+  F2: 'DINHEIRO',
+  F3: 'DEBITO',
+  F4: 'CREDITO',
+  F5: 'PIX',
+  F6: 'CREDIARIO',
+}
+export const TECLA_DA_FORMA: Record<string, string> = Object.fromEntries(
+  Object.entries(TECLAS_FORMA).map(([t, f]) => [f, t]),
+)
+
+/** O pedido de autorização aberto: por que a venda precisa do PIN de quem pode. */
+export type PedidoDePin = { motivo: string; erro?: string }
+
+/**
+ * O que a página entrega do jeito desta loja: as regras que a tela precisa
+ * saber para perguntar a coisa certa. O servidor confere tudo de novo.
+ */
+export type ConfigDoBalcao = {
+  semForma: Tabela
+  vendeSemEstoque: boolean
+  maquininhas: Maquininha[]
+  credito: { maxParcelas: number; jurosPct: number }
+}
 
 export type Linha = Achado & {
   quantidade: number
@@ -73,6 +118,8 @@ export type Recado = {
   texto: string
   /** "imprimir comprovante", depois de fechar. */
   link?: { href: string; rotulo: string }
+  /** Um segundo papel ao lado do primeiro: o carnê da venda no crediário. */
+  outro?: { href: string; rotulo: string }
 }
 
 /** A venda que acabou de fechar — o que a tela de sucesso do simples mostra. */
@@ -82,8 +129,11 @@ export type Fechada = {
   total: number
   trocoCent: number
   pontosGanhos: number
-  formas: string[]
+  /** "Crediário 3×", "Crédito 2× · Stone", "Dividido: Pix + Dinheiro" — ver conta.ts. */
+  pagamento: string
   comprovante: string
+  /** A venda teve crediário: o carnê que a cliente assina. Nulo sem crediário. */
+  carne: string | null
 }
 
 export const FORMAS = [
@@ -94,7 +144,7 @@ export const FORMAS = [
 ] as const
 
 export const tituloDaForma = (p: { forma: string; rotulo?: string }) =>
-  p.rotulo ?? FORMAS.find((f) => f.chave === p.forma)?.titulo ?? p.forma
+  p.rotulo ?? FORMAS.find((f) => f.chave === p.forma)?.titulo ?? NOME_DA_FORMA[p.forma] ?? p.forma
 
 export function useVenda({
   slug,
@@ -108,7 +158,19 @@ export function useVenda({
   inicial,
   encomenda = null,
   veAssinatura = false,
+  semForma = 'vista',
+  vendeSemEstoque = false,
+  maquininhas = [],
+  credito = { maxParcelas: 1, jurosPct: 0 },
 }: {
+  /** A tabela mostrada antes de escolher a forma: a mais cara da loja. Ver conta.ts. */
+  semForma?: Tabela
+  /** A empresa vende o que o sistema diz que acabou (avisa, pergunta e deixa). */
+  vendeSemEstoque?: boolean
+  /** As maquininhas desta loja (Configurações). Vazio = não pergunta. */
+  maquininhas?: Maquininha[]
+  /** Crédito: em até quantas vezes, e o juro do parcelamento (0 = sem juro). */
+  credito?: { maxParcelas: number; jurosPct: number }
   /** Aberto por "Receber no balcão", em Encomendas: o que falta dela entra no pedido. */
   encomenda?: EncomendaNoPedido | null
   /** Pode abrir Assinatura — decide o link do recado de "teto do plano". */
@@ -126,7 +188,7 @@ export function useVenda({
   caixaId: string | null
   programa: Programa
   vendedores: Vendedor[] | null
-  crediario: { maxParcelas: number } | null
+  crediario: { maxParcelas: number; diasEntre?: number } | null
 }) {
   // Os recados falam a palavra do ramo: "Atendimento 12 fechado" na recepção.
   const palavras = usePalavras()
@@ -149,8 +211,21 @@ export function useVenda({
   const [valeIndo, setValeIndo] = useState(false)
 
   const [desconto, setDesconto] = useState(0)
-  const [cliente, setCliente] = useState<ClienteNoBalcao | null>(null)
-  const [vendedorId, setVendedorId] = useState(usuarioId)
+  /** O desconto digitado é em %? Guardado como %, ver `Ajustes` em conta.ts. */
+  const [descontoEmPct, setDescontoEmPct] = useState(false)
+  const [acrescimo, setAcrescimo] = useState(0)
+  const [cliente, setCliente_] = useState<ClienteNoBalcao | null>(null)
+  /** O que a busca de cliente não traz: CPF na ficha e os vales dela que valem aqui. */
+  const [ficha, setFicha] = useState<{ temCpf: boolean; vales: { codigo: string; saldo: number }[] } | null>(null)
+  /** O CPF ditado no crediário, para a ficha sem CPF. Vai com a venda. */
+  const [cpf, setCpf] = useState('')
+  const [vendedorId, setVendedorId_] = useState(usuarioId)
+  /** Dividindo o pagamento em duas formas (F8). */
+  const [dividindo, setDividindo] = useState(false)
+  /** O PIN pedido — aberto quando o servidor diz que a venda precisa de autorização. */
+  const [pedidoDePin, setPedidoDePin] = useState<PedidoDePin | null>(null)
+  /** "O sistema diz que acabou — vende assim mesmo?", antes de mandar a venda. */
+  const [perguntaSemEstoque, setPerguntaSemEstoque] = useState<string[] | null>(null)
   const [pontosUsar, setPontosUsar] = useState(0)
   const [observacoes, setObservacoes] = useState('')
   /** O horário da agenda que esta venda cobra. Some ao fechar, ao limpar, e quando a pessoa tira. */
@@ -237,7 +312,9 @@ export function useVenda({
     setCarrinho(g.carrinho as Linha[])
     setPagos(g.pagos)
     setDesconto(g.desconto)
-    setCliente(g.cliente)
+    setDescontoEmPct(!!g.descontoEmPct)
+    setAcrescimo(g.acrescimo ?? 0)
+    setCliente_(g.cliente)
     setPontosUsar(g.pontosUsar)
     setAgendamentoId(g.agendamentoId ?? null)
     setVoltou(g.em)
@@ -277,8 +354,77 @@ export function useVenda({
       return
     }
     if (carrinho.length === 0) esquecer(chave)
-    else guardar(chave, { carrinho, pagos, desconto, cliente, pontosUsar, agendamentoId })
-  }, [chave, carrinho, pagos, desconto, cliente, pontosUsar, agendamentoId])
+    else guardar(chave, { carrinho, pagos, desconto, descontoEmPct, acrescimo, cliente, pontosUsar, agendamentoId })
+  }, [chave, carrinho, pagos, desconto, descontoEmPct, acrescimo, cliente, pontosUsar, agendamentoId])
+
+  // ── a vendedora do turno fica no aparelho ────────────────
+  // Ela é a mesma a manhã inteira: escolher de novo a cada venda é um toque
+  // cobrado de quem já respondeu. Por LOJA e por aparelho — o computador do
+  // balcão lembra a dele. Quem saiu da equipe (não está mais na lista) não
+  // volta: o seletor cai em quem está operando, e a venda não sai no nome de
+  // quem não trabalha mais aqui.
+  const chaveVendedor = `norte:balcao:vendedor:${slug}:${unidadeId}`
+  useEffect(() => {
+    if (!vendedores) return
+    const id = lembrado(chaveVendedor)
+    if (id && vendedores.some((x) => x.id === id)) setVendedorId_(id)
+    // Só ao abrir a loja: trocar de vendedora depois é escolha da pessoa.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveVendedor])
+  function setVendedorId(id: string) {
+    setVendedorId_(id)
+    lembrar(chaveVendedor, id)
+  }
+
+  // ── a maquininha também ──────────────────────────────────
+  // Uma por forma (o Pix cai numa conta, o cartão em outra): escolhida uma
+  // vez, vem marcada nas próximas vendas deste aparelho.
+  const chaveMaquininha = `norte:balcao:maquininha:${slug}:${unidadeId}`
+  function maquininhaPara(forma: string): string | null {
+    const daForma = maquininhas.filter((m) => (m.formas as string[]).includes(forma))
+    if (daForma.length === 0) return null
+    let guardadas: Record<string, string> = {}
+    try {
+      guardadas = JSON.parse(lembrado(chaveMaquininha) ?? '{}') as Record<string, string>
+    } catch {}
+    return daForma.find((m) => m.nome === guardadas[forma])?.nome ?? daForma[0]!.nome
+  }
+  function mudarMaquininha(i: number, nome: string) {
+    const p = pagos[i]
+    if (!p) return
+    setPagos((x) => x.map((y, j) => (j === i ? { ...y, maquininha: nome } : y)))
+    let guardadas: Record<string, string> = {}
+    try {
+      guardadas = JSON.parse(lembrado(chaveMaquininha) ?? '{}') as Record<string, string>
+    } catch {}
+    lembrar(chaveMaquininha, JSON.stringify({ ...guardadas, [p.forma]: nome }))
+  }
+  /** Uma forma nova, já com a maquininha lembrada e (no crédito) à vista. */
+  const novoPago = (forma: string, valor: number): Pago => ({
+    forma,
+    valor,
+    ...(maquininhaPara(forma) ? { maquininha: maquininhaPara(forma) } : {}),
+    ...(forma === 'CREDITO' ? { parcelas: 1 } : {}),
+  })
+
+  // ── a ficha da cliente ───────────────────────────────────
+  // Escolhida a cliente, o balcão pergunta o que a busca não traz. O vale
+  // dela aparece sozinho no pagamento.
+  function setCliente(c: ClienteNoBalcao | null) {
+    setCliente_(c)
+    setCpf('')
+    if (!c) setFicha(null)
+  }
+  useEffect(() => {
+    if (!cliente) return
+    let vivo = true
+    fichaNoBalcao(slug, cliente.id, unidadeId)
+      .then((f) => vivo && setFicha(f))
+      .catch(() => vivo && setFicha(null))
+    return () => {
+      vivo = false
+    }
+  }, [cliente?.id, slug, unidadeId])
 
   // Busca conforme digita, com uma pausa curta para não consultar a cada tecla.
   useEffect(() => {
@@ -307,12 +453,17 @@ export function useVenda({
   // o saldo menos o que já foi marcado — senão, ao aplicar, a tela ofereceria
   // os mesmos pontos de novo.
   const pontosCent = valorEmCentavos(pontosUsar, programa)
-  const conta = contar(carrinho, pagos, desconto, pontosCent)
+  const ajustes = { desconto, descontoEmPct, acrescimo }
+  const conta = contar(carrinho, pagos, ajustes, pontosCent, semForma)
   const { tabela, faltaCent, trocoCent, sobrouSemDinheiro } = conta
   const oferta = cliente ? oferecer(cliente.pontos, conta.comDescontoCent, programa) : null
+  // O CPF digitado que não confere segura a venda aqui (o servidor recusaria
+  // de novo): é o carnê que vai levar esse número.
+  const cpfRuim = cpf.trim() !== '' && !cpfConfere(cpf)
+  const temCrediario = pagos.some((p) => p.forma === 'CREDIARIO')
 
   const podeConcluir =
-    carrinho.length > 0 && faltaCent <= 0 && !sobrouSemDinheiro && !!caixaId && !indo
+    carrinho.length > 0 && faltaCent <= 0 && !sobrouSemDinheiro && !!caixaId && !indo && !(temCrediario && cpfRuim)
 
   // ── cada loja só vende o que é dela ──────────────────────
   // (catalogo-loja.ts) Uma linha de outra loja só chega ao pedido de um jeito:
@@ -349,12 +500,16 @@ export function useVenda({
         : [...c, { ...a, quantidade: novaQtd }],
     )
     // O aviso é agora, não no fim: quem lançou 3 e só tem 1 precisa saber
-    // com a pessoa na frente, não depois de escolher o pagamento.
+    // com a pessoa na frente, não depois de escolher o pagamento. Na loja que
+    // vende o que o sistema diz que acabou, o aviso não trava: a peça está na
+    // mão, e quem confere o estoque depois é a gerente.
     if (novaQtd > a.saldo) {
       setAlerta(
-        a.saldo <= 0
-          ? `${a.descricao} está sem estoque nesta loja. ${palavras.aVenda.replace(/^./, (x) => x.toUpperCase())} não vai fechar assim.`
-          : `Estoque de ${a.descricao}: ${a.saldo}. Você lançou ${novaQtd}. Confira a peça.`,
+        vendeSemEstoque
+          ? `O sistema diz que ${a.saldo <= 0 ? `acabou ${a.descricao}` : `só tem ${a.saldo} de ${a.descricao}`}. Se a peça está na mão, pode vender — fica anotado para conferir o estoque.`
+          : a.saldo <= 0
+            ? `${a.descricao} está sem estoque nesta loja. ${palavras.aVenda.replace(/^./, (x) => x.toUpperCase())} não vai fechar assim.`
+            : `Estoque de ${a.descricao}: ${a.saldo}. Você lançou ${novaQtd}. Confira a peça.`,
       )
     }
     // A quantidade é do lançamento, não da sessão: "×20" vale para o próximo
@@ -456,9 +611,9 @@ export function useVenda({
     // escolhe como vai receber e o valor já vem certo. Mas o valor fica
     // EDITÁVEL: em dinheiro o cliente entrega R$ 100 numa venda de R$ 83, e o
     // caixa precisa digitar os 100 para ver o troco.
-    const falta = faltaCom(carrinho, pagos, forma, desconto, pontosCent) / 100
+    const falta = faltaCom(carrinho, pagos, forma, ajustes, pontosCent) / 100
     if (falta <= 0) return
-    setPagos((p) => [...p, { forma, valor: falta }])
+    setPagos((p) => [...p, novoPago(forma, falta)])
   }
 
   /**
@@ -471,9 +626,23 @@ export function useVenda({
    */
   function pagarSoCom(forma: string) {
     const manter = pagos.filter((p) => p.forma === 'VALE')
-    const falta = faltaCom(carrinho, manter, forma, desconto, pontosCent)
-    setPagos(falta > 0 ? [...manter, { forma, valor: falta / 100 }] : manter)
+    const falta = faltaCom(carrinho, manter, forma, ajustes, pontosCent)
+    setPagos(falta > 0 ? [...manter, novoPago(forma, falta / 100)] : manter)
   }
+
+  /** Em quantas vezes no crédito (até o máximo da loja). */
+  const mudarParcelasCredito = (i: number, n: number) =>
+    setPagos((p) =>
+      p.map((x, j) =>
+        j === i && x.forma === 'CREDITO'
+          ? { ...x, parcelas: Math.min(Math.max(1, Math.floor(n) || 1), credito.maxParcelas), rotulo: n > 1 ? `Crédito ${n}×` : undefined }
+          : x,
+      ),
+    )
+
+  /** O 1º vencimento do crediário ('AAAA-MM-DD'). */
+  const mudarPrimeiroVencimento = (dia: string) =>
+    setPagos((p) => p.map((x) => (x.forma === 'CREDIARIO' ? { ...x, primeiroVencimento: dia } : x)))
 
   const mudarPago = (i: number, valor: number) =>
     setPagos((p) => p.map((x, j) => (j === i ? { ...x, valor: Math.max(valor, 0) } : x)))
@@ -494,11 +663,21 @@ export function useVenda({
     // outras formas (menos o vale), como o Pix entraria no lugar do dinheiro.
     const base = substituir ? pagos.filter((p) => p.forma === 'VALE') : pagos
     if (base.some((p) => p.forma === 'CREDIARIO')) return
-    const falta = faltaCom(carrinho, base, 'CREDIARIO', desconto, pontosCent)
+    const falta = faltaCom(carrinho, base, 'CREDIARIO', ajustes, pontosCent)
     if (falta <= 0) return
     setRecado(null)
     setParcelasN(n)
-    setPagos([...base, { forma: 'CREDIARIO', valor: falta / 100, parcelas: n, rotulo: `Crediário ${n}×` }])
+    setPagos([
+      ...base,
+      {
+        forma: 'CREDIARIO',
+        valor: falta / 100,
+        parcelas: n,
+        rotulo: `Crediário ${n}×`,
+        // Hoje + 30 (o intervalo da loja); a vendedora muda na hora.
+        primeiroVencimento: primeiroVencimentoPadrao(diaEmSP(), crediario.diasEntre ?? 30),
+      },
+    ])
   }
 
   /** Muda em quantas vezes, depois de o crediário já estar na venda. */
@@ -511,26 +690,28 @@ export function useVenda({
 
   // O vale entra pelo código do papel. A tela consulta antes de aceitar,
   // para dizer o saldo e de quem é; o servidor confere de novo ao fechar.
-  async function usarVale() {
-    const codigo = valeCodigo.trim()
+  async function usarVale(codigoDireto?: string) {
+    const codigo = (codigoDireto ?? valeCodigo).trim()
     if (!codigo) return
     setValeIndo(true)
     setValeErro(null)
     try {
-      const r = await consultarValeAcao(slug, codigo)
+      const r = await consultarValeAcao(slug, codigo, unidadeId)
       if (!r.ok) {
         setValeErro(
           r.motivo === 'nao_achado' ? 'Vale não encontrado. Confira o código.'
           : r.motivo === 'zerado' ? 'Este vale já foi todo usado.'
+          : r.motivo === 'outra_loja' ? `Este vale é da ${r.loja} e só vale lá.`
           : 'Este vale venceu.',
         )
+        if (codigoDireto) setValeAberto(true)
         return
       }
       if (pagos.some((p) => p.referencia === r.codigo)) {
         setValeErro('Esse vale já está nesta venda.')
         return
       }
-      const falta = faltaCom(carrinho, pagos, 'VALE', desconto, pontosCent)
+      const falta = faltaCom(carrinho, pagos, 'VALE', ajustes, pontosCent)
       if (falta <= 0) {
         setValeErro('Não falta nada para pagar.')
         return
@@ -554,6 +735,9 @@ export function useVenda({
     }
   }
 
+  /** O vale da cliente que ainda não está nesta venda — o que o F7 usa. */
+  const valeDaCliente = ficha?.vales.find((x) => !pagos.some((p) => p.referencia === x.codigo)) ?? null
+
   function limpar() {
     setAviso(null)
     setVoltou(null)
@@ -561,6 +745,11 @@ export function useVenda({
     setCarrinho([])
     setPagos([])
     setDesconto(0)
+    setDescontoEmPct(false)
+    setAcrescimo(0)
+    setDividindo(false)
+    setPedidoDePin(null)
+    setPerguntaSemEstoque(null)
     setCliente(null)
     setPontosUsar(0)
     setObservacoes('')
@@ -571,13 +760,24 @@ export function useVenda({
     focarBusca()
   }
 
-  function concluir() {
+  /** As linhas que passam do que o sistema diz ter (não conta avulso nem encomenda). */
+  const curtas = carrinho.filter((l) => !l.avulso && l.quantidade > l.saldo)
+
+  function concluir(o: { pin?: string; semEstoqueOk?: boolean } = {}) {
     if (!podeConcluir) return
+    // Vendendo o que o sistema diz que acabou: pergunta UMA vez, com os nomes,
+    // antes de mandar. É o "tem certeza?" de quem está com a peça na mão.
+    if (vendeSemEstoque && curtas.length > 0 && !o.semEstoqueOk && !o.pin) {
+      setPerguntaSemEstoque(curtas.map((l) => l.descricao))
+      return
+    }
+    setPerguntaSemEstoque(null)
     // A foto do que a tela mostrou: o troco e as formas vão para a tela de
     // sucesso depois que o carrinho já foi limpo.
     const trocoAgora = trocoCent
-    const formasAgora = pagos.map((p) => p.forma)
-    const guardado = { carrinho, pagos, desconto, cliente, pontosUsar, agendamentoId }
+    const pagamentoAgora = rotuloDoPagamento(pagos)
+    const comCarne = pagos.some((p) => p.forma === 'CREDIARIO')
+    const guardado = { carrinho, pagos, desconto, descontoEmPct, acrescimo, cliente, pontosUsar, agendamentoId }
     // Marca o guardado como "concluindo" ANTES de pedir: se a tela cair entre
     // o pedido e a resposta, quem abrir de novo fica sabendo.
     guardar(chave, { ...guardado, fechando: Date.now() })
@@ -588,7 +788,12 @@ export function useVenda({
         r = await fecharVenda(slug, {
         unidadeId,
         caixaId,
-        desconto,
+        // Em reais, já calculado na tabela da forma (o % vira dinheiro aqui).
+        desconto: conta.descontoCent / 100,
+        acrescimo: conta.acrescimoCent / 100,
+        // O PIN vai só nesta chamada e não fica em lugar nenhum da tela.
+        pin: o.pin ?? null,
+        clienteCpf: temCrediario && cpf.trim() && cpfConfere(cpf) ? cpf : null,
         clienteId: cliente?.id ?? null,
         vendedorId: vendedores ? vendedorId : null,
         pontosUsar,
@@ -608,6 +813,9 @@ export function useVenda({
             : { variacaoId: l.id, quantidade: l.quantidade, precoUnit: precoDe(l, tabela) },
         ),
         pagamentos: pagamentosParaEnviar(pagos, trocoAgora),
+        // O troco não é pagamento (o que entra é o que FICA na gaveta), mas vai
+        // junto para o comprovante e a ficha da venda poderem mostrá-lo depois.
+        troco: trocoAgora / 100,
         })
       } catch {
         // Caiu a rede no meio: não dá para saber se o servidor gravou. A marca
@@ -624,16 +832,27 @@ export function useVenda({
       // Recusada: o servidor não gravou nada, então a marca sai.
       if (!r.ok) guardar(chave, guardado)
 
+      // A autorização foi usada (ou recusada): o pedido de PIN fecha, ou
+      // fica aberto com a frase do porquê.
+      if (r.ok || r.motivo !== 'autorizacao_recusada') setPedidoDePin(null)
+
       if (r.ok) {
         // O ganho aparece no recado porque e a hora de falar: "voce ja tem
         // 1.240 pontos" dito no balcao e o que faz a pessoa voltar. Guardado
         // so no banco, o programa nao existe para quem compra.
         const ganhou = r.pontosGanhos > 0 ? ` · ganhou ${plural(r.pontosGanhos, 'ponto', 'pontos')}` : ''
+        const autorizada = r.autorizadoPor ? ` · autorizado por ${r.autorizadoPor}` : ''
+        const conferir = r.semEstoque.length > 0
+          ? ` · ${plural(r.semEstoque.length, 'item foi', 'itens foram')} para “Vendido sem estoque — conferir”`
+          : ''
         const comprovante = `/${slug}/vendas/${r.vendaId}/comprovante?imprimir=1`
+        // No crediário, o carnê é o outro papel: o que a cliente assina e leva.
+        const carne = comCarne ? `/${slug}/vendas/${r.vendaId}/carne?imprimir=1` : null
         setRecado({
           nivel: 'bom',
-          texto: `${palavras.Venda} ${r.numero} ${palavras.vendaFeminina ? 'fechada' : 'fechado'} — ${brl(r.total)}${ganhou}`,
+          texto: `${palavras.Venda} ${r.numero} ${palavras.vendaFeminina ? 'fechada' : 'fechado'} — ${brl(r.total)}${pagamentoAgora ? ` · ${pagamentoAgora}` : ''}${ganhou}${autorizada}${conferir}`,
           link: { href: comprovante, rotulo: 'imprimir comprovante' },
+          ...(carne ? { outro: { href: carne, rotulo: 'imprimir carnê' } } : {}),
         })
         setFechada({
           vendaId: r.vendaId,
@@ -641,8 +860,9 @@ export function useVenda({
           total: r.total,
           trocoCent: trocoAgora,
           pontosGanhos: r.pontosGanhos,
-          formas: formasAgora,
+          pagamento: pagamentoAgora,
           comprovante,
+          carne,
         })
         limpar()
       } else if (r.motivo === 'pontos_recusados') {
@@ -693,12 +913,18 @@ export function useVenda({
         setCarrinho((c) => c.filter((l) => !l.encomendaId))
         setRecado({ nivel: 'critico', texto: r.recado, link: { href: `/${slug}/encomendas`, rotulo: 'abrir Encomendas' } })
       } else if (r.motivo === 'desconto_acima_do_teto') {
-        setRecado({
-          nivel: 'critico',
-          texto: `Desconto de ${r.percentual.toFixed(1)}% passa do teto de ${r.teto}%. Chame quem pode autorizar.`,
-        })
+        // Em vez de "chame quem pode", o pedido do PIN: a gerente digita o
+        // dela aqui mesmo, e a venda segue no nome de quem vendeu.
+        const pct = r.percentual.toFixed(1).replace('.', ',')
+        setRecado(null)
+        setPedidoDePin({ motivo: `Desconto de ${pct}% passa do teto de ${String(r.teto).replace('.', ',')}% da loja.` })
       } else if (r.motivo === 'avulso_negado') {
-        setRecado({ nivel: 'critico', texto: 'Item avulso só com permissão de desconto acima do teto.' })
+        setRecado(null)
+        setPedidoDePin({ motivo: 'Item fora do cadastro tem preço digitado na hora: precisa de quem autoriza desconto.' })
+      } else if (r.motivo === 'autorizacao_recusada') {
+        setPedidoDePin((x) => ({ motivo: x?.motivo ?? 'Esta venda precisa de autorização.', erro: r.recado }))
+      } else if (r.motivo === 'pagamento_recusado') {
+        setRecado({ nivel: 'critico', texto: r.recado })
       } else if (r.motivo === 'vendedor_invalido') {
         setRecado({ nivel: 'critico', texto: 'Esse vendedor não pode vender nesta loja.' })
       } else if (r.motivo === 'vale_recusado') {
@@ -733,14 +959,74 @@ export function useVenda({
   // Uma escuta só, na janela, lendo o estado mais recente por referência:
   // registrar de novo a cada tecla digitada seria trocar o ouvinte trinta
   // vezes por venda. F10 é a única que age; as outras só levam o foco.
-  const estado = useRef({ podeConcluir, concluir, temItens: carrinho.length > 0 })
+  // As formas pelas teclas (F2–F8). A mesma regra do toque: sem forma ainda,
+  // a tecla escolhe; faltando receber (pagamento dividido), soma o resto;
+  // com tudo pago numa forma só, troca. F7 usa o vale da cliente (ou abre o
+  // campo do código); F8 liga e desliga o "dividir em duas formas".
+  function teclaDeForma(tecla: string) {
+    if (carrinho.length === 0 || fechada) return
+    if (tecla === 'F7') {
+      if (valeDaCliente) void usarVale(valeDaCliente.codigo)
+      else setValeAberto(true)
+      return
+    }
+    if (tecla === 'F8') {
+      setDividindo((d) => !d)
+      return
+    }
+    const forma = TECLAS_FORMA[tecla]
+    if (!forma) return
+    if (forma === 'CREDIARIO') {
+      if (!crediario) return
+      const formas = pagos.filter((p) => p.forma !== 'VALE')
+      pagarNoCrediario(parcelasN, formas.length === 0 || faltaCent <= 0)
+      return
+    }
+    const formas = pagos.filter((p) => p.forma !== 'VALE')
+    if (formas.some((p) => p.forma === forma)) return
+    if ((dividindo || formas.length > 0) && faltaCent > 0) pagarCom(forma)
+    else pagarSoCom(forma)
+  }
+
+  /** ESC: fecha o que está aberto por cima, do mais novo para o mais velho. */
+  function esc() {
+    if (pedidoDePin) return setPedidoDePin(null)
+    if (perguntaSemEstoque) return setPerguntaSemEstoque(null)
+    if (valeAberto) return setValeAberto(false)
+    if (avulsoAberto) return setAvulsoAberto(false)
+  }
+
+  const estado = useRef({ podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc })
   useEffect(() => {
-    estado.current = { podeConcluir, concluir, temItens: carrinho.length > 0 }
+    estado.current = { podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc }
   })
   useEffect(() => {
+    // Uma janela por cima que NÃO é o pedido (o tamanho, o PIN, as opções):
+    // a tecla é dela. A folha do pedido no tablet é uma janela também, e lá
+    // F2–F8, F10 e Esc têm de continuar valendo — é onde se paga.
+    const janelaAlheia = () => {
+      const janela = (document.activeElement as HTMLElement | null)?.closest('[role="dialog"]')
+      return !!janela && !janela.hasAttribute('data-pagamento')
+    }
     const tecla = (e: KeyboardEvent) => {
+      // F2–F8: as formas. O preventDefault vem SEMPRE — o F5 do navegador
+      // recarregava a página e o pedido sumia. Com uma janela aberta por cima
+      // (a escolha do tamanho, as opções, o PIN), as teclas são dela.
+      if (/^F[2-8]$/.test(e.key)) {
+        e.preventDefault()
+        if (janelaAlheia()) return
+        estado.current.teclaDeForma(e.key)
+        return
+      }
+      if (e.key === 'Escape') {
+        if (janelaAlheia()) return
+        estado.current.esc()
+        return
+      }
       if (e.key === 'F10') {
         e.preventDefault()
+        // Com o PIN aberto, quem conclui é o "Autorizar" dele (Enter).
+        if (janelaAlheia()) return
         const s = estado.current
         if (s.podeConcluir) s.concluir()
         else if (s.temItens) primeiraForma.current?.focus()
@@ -824,6 +1110,27 @@ export function useVenda({
     setParcelasN,
     pagarNoCrediario,
     mudarParcelas,
+    mudarParcelasCredito,
+    mudarPrimeiroVencimento,
+    mudarMaquininha,
+    maquininhas,
+    credito,
+    dividindo,
+    setDividindo,
+    teclaDeForma,
+    // o crediário: o CPF que a ficha não tem
+    ficha,
+    cpf,
+    setCpf,
+    cpfRuim,
+    // a autorização com PIN e o "vende assim mesmo?"
+    pedidoDePin,
+    setPedidoDePin,
+    autorizar: (pin: string) => concluir({ pin }),
+    perguntaSemEstoque,
+    setPerguntaSemEstoque,
+    venderSemEstoque: () => concluir({ semEstoqueOk: true }),
+    vendeSemEstoque,
     // o vale
     vale: {
       aberto: valeAberto,
@@ -832,7 +1139,10 @@ export function useVenda({
       setCodigo: setValeCodigo,
       erro: valeErro,
       indo: valeIndo,
-      usar: usarVale,
+      usar: () => usarVale(),
+      /** O vale da cliente escolhida que ainda não entrou nesta venda. */
+      daCliente: valeDaCliente,
+      usarDaCliente: () => valeDaCliente && usarVale(valeDaCliente.codigo),
     },
     // o avulso
     avulso: {
@@ -850,6 +1160,10 @@ export function useVenda({
     // quem, e o resto
     desconto,
     setDesconto,
+    descontoEmPct,
+    setDescontoEmPct,
+    acrescimo,
+    setAcrescimo,
     cliente,
     setCliente,
     vendedorId,

@@ -392,11 +392,14 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
       where: { unidadeId: { in: unidadeIds }, criadaEm: { gte: de, lte: ate } },
       _sum: { valor: true },
     })
-    // Juro de atraso do crediário é receita que não é venda.
+    // Juro e multa de atraso do crediário são receita que não é venda. A
+    // baixa externa ("já pagou fora") não entra: o dinheiro foi recebido —
+    // e contado — no outro sistema.
     const jurosCred = await db.$queryRaw<{ juros: string }[]>`
-      select coalesce(sum(r.juros), 0) as juros
+      select coalesce(sum(r.juros + r.multa), 0) as juros
         from recebimentos r join parcelas p on p.id = r.parcela_id
        where p.unidade_id = any(${unidadeIds})
+         and not r.externo
          and r.criado_em >= ${de} and r.criado_em <= ${ate}
     `
     // A mensalidade da escola (mensalidades.ts) é receita que não é venda de
@@ -430,7 +433,7 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
     const jurosC = centavos(jurosCred[0]?.juros ?? 0)
     if (jurosC > 0) {
       outrasReceitas.valor += jurosC
-      outrasReceitas.itens.push({ nome: 'Juros de crediário recebidos', valor: reais(jurosC) })
+      outrasReceitas.itens.push({ nome: 'Juros e multa de crediário recebidos', valor: reais(jurosC) })
     }
     const atrasoMensC = centavos(mens[0]?.atraso ?? 0)
     if (atrasoMensC > 0) {
