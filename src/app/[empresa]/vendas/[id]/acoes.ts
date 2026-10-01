@@ -60,6 +60,7 @@ export async function devolverAcao(
       erro: {
         nao_achada: 'Venda não encontrada.',
         cancelada: 'Esta venda foi cancelada — não há o que devolver.',
+        saldo_importado: 'Este é o saldo de crediário trazido do sistema anterior: não tem peça para voltar. Receba ou acerte as parcelas no Crediário.',
         sem_itens: 'Marque quanto de cada item está voltando.',
         passa_do_vendido: 'Está devolvendo mais do que foi vendido.',
         sem_motivo: 'Diga o motivo. Ele vai para o livro.',
@@ -107,6 +108,7 @@ export async function cancelarAcao(
       erro: {
         nao_achada: 'Venda não encontrada.',
         ja_cancelada: 'Esta venda já estava cancelada.',
+        saldo_importado: 'Este é o saldo de crediário trazido do sistema anterior, e não se cancela: as parcelas são a dívida da pessoa.',
         sem_motivo: 'Diga o motivo. Ele vai para o livro, e é o que explica o dinheiro depois.',
         ja_devolvida:
           'Esta venda já teve devolução, e cancelar faria o estoque e os pontos voltarem de novo. Devolva o que falta.',

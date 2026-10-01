@@ -27,6 +27,9 @@ import { Tabela, type Coluna } from '@/ui/Tabela'
 import { Cadeado, Trancado } from '@/ui/Cadeado'
 import type { Tema } from '@/ui/TrocaTema'
 import { Alvo } from './Alvo'
+import { Paginas } from '@/ui/Paginas'
+import { fatiar, lerPagina } from '@/ui/paginacao'
+import { enderecoCom } from '@/ui/Busca'
 
 export const metadata: Metadata = { title: 'Preços' }
 
@@ -80,10 +83,10 @@ export default async function Precos({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ alvo?: string }>
+  searchParams: Promise<{ alvo?: string; pagina?: string }>
 }) {
   const { empresa: slug } = await params
-  const { alvo: alvoPedido } = (await searchParams) as { alvo?: unknown }
+  const { alvo: alvoPedido, pagina: paginaPedida } = (await searchParams) as { alvo?: unknown; pagina?: unknown }
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'produto.preco' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -109,6 +112,11 @@ export default async function Precos({
   const saiu = temMargem ? await vendidos30(sessao) : new Map(AMOSTRA.map((a) => [a.produtoId, a.saiu]))
 
   const resumo = resumirPrecos(linhas)
+  // Cem por página: a ordem já põe o que perde dinheiro primeiro, e o
+  // catálogo inteiro numa tabela só pesava megabytes (ver ui/paginacao.ts).
+  const fatia = fatiar(linhas, lerPagina(paginaPedida), 100)
+  const linkDaPagina = (n: number) =>
+    enderecoCom(`/${slug}/precos`, { alvo: typeof alvoPedido === 'string' ? alvoPedido : null }, { pagina: String(n) })
 
   const colunas: Coluna<LinhaPreco>[] = [
     {
@@ -269,7 +277,10 @@ export default async function Precos({
                 margem calculada.
               </Vazio>
             ) : (
-              <Tabela colunas={colunas} linhas={linhas} chave={(l) => l.produtoId} />
+              <>
+                <Tabela colunas={colunas} linhas={fatia.itens} chave={(l) => l.produtoId} />
+                <Paginas p={fatia} linkDe={linkDaPagina} rotulo="produtos" />
+              </>
             )}
             <p className="text-xs text-tinta-3">
               Preço se muda na ficha do produto: clique no nome, ou vá em{' '}

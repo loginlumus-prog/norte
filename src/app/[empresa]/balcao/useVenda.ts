@@ -33,6 +33,7 @@ import { contar, faltaCom, pagamentosParaEnviar, precoDe, brl, cent } from './co
 import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
 import { vendidoNaLoja } from '@/servidor/catalogo-loja'
+import { escolhaDoEnter } from '@/servidor/etiqueta'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
 import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
@@ -385,9 +386,17 @@ export function useVenda({
         itens = []
       }
     }
-    const a = itens[0] ?? null
-    if (!a) setAlerta(`Nada encontrado com “${t}”. Confira o código ou digite o nome.`)
-    return a
+    // A etiqueta do PRODUTO (um número para a grade inteira — ver
+    // etiqueta.ts) não lança sozinha quando há mais de um tamanho ou cor: a
+    // grade fica na lista e a vendedora toca no que está na mão.
+    const { item, varios } = escolhaDoEnter(t, itens)
+    if (varios > 0) {
+      setBusca_({ de: t, itens })
+      setAlerta(`A etiqueta ${t} tem ${varios} tamanhos ou cores. Toque no da peça.`)
+      return null
+    }
+    if (!item) setAlerta(`Nada encontrado com “${t}”. Confira o código ou digite o nome.`)
+    return item
   }
 
   function lancarAvulso() {

@@ -45,6 +45,7 @@ import { brl, precoDe, linhaCent } from './conta'
 import { useVenda, FORMAS, tituloDaForma, type EncomendaNoPedido, type Linha } from './useVenda'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
+import { escolhaDoEnter } from '@/servidor/etiqueta'
 
 const MEDIDA: Record<string, string> = {
   UN: 'un', KG: 'kg', G: 'g', L: 'l', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx',
@@ -113,6 +114,9 @@ export function Balcao({
     busca, vendedorRef, primeiraForma, raiz, focarBusca,
   } = v
   const { tabela, totalCent, aPagarCent, faltaCent, trocoCent, sobrouSemDinheiro, escada, temEscada } = conta
+  // O item que o Enter lançaria agora (ver etiqueta.ts): nenhum quando a
+  // etiqueta é de um produto com vários tamanhos.
+  const lancaNoEnter = escolhaDoEnter(termo, achados.filter((a) => !a.foraDaLoja)).item?.id ?? null
   const {
     aberto: valeAberto, setAberto: setValeAberto, codigo: valeCodigo, setCodigo: setValeCodigo,
     erro: valeErro, indo: valeIndo, usar: usarVale,
@@ -285,7 +289,7 @@ export function Balcao({
               )}
               {achados.some((a) => !a.foraDaLoja) && (
                 <ul className="absolute z-20 mt-1 flex max-h-80 w-full flex-col overflow-y-auto rounded-norte border border-borda bg-superficie shadow-norte">
-                  {achados.filter((a) => !a.foraDaLoja).map((a, i) => (
+                  {achados.filter((a) => !a.foraDaLoja).map((a) => (
                     <li key={a.id}>
                       <button
                         type="button"
@@ -301,7 +305,9 @@ export function Balcao({
                             {a.servico ? 'serviço' : a.saldo <= 0 ? 'acabou' : `${a.saldo}`}
                           </Situacao>
                           <span className="numero text-sm font-semibold text-tinta">{brl(precoDe(a as Linha, tabela))}</span>
-                          {i === 0 && <Tecla>Enter</Tecla>}
+                          {/* Só no item que o Enter lança de fato: na grade de
+                              uma etiqueta de produto ele não lança nenhum. */}
+                          {a.id === lancaNoEnter && <Tecla>Enter</Tecla>}
                         </span>
                       </button>
                     </li>

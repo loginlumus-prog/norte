@@ -70,8 +70,11 @@ export default async function FichaVenda({
   const g = (feminina: string, masculina: string) => concorda(palavras, feminina, masculina)
 
   const cancelada = v.situacao === 'CANCELADA'
-  const podeCancelar = !cancelada && pode(sessao, 'venda.cancelar', v.unidadeId)
-  const podeDevolver = !cancelada && pode(sessao, 'venda.criar', v.unidadeId)
+  // O saldo de crediário trazido do sistema anterior: não se cancela nem se
+  // devolve (o servidor recusa também), e a tela diz o que ele é.
+  const importado = v.situacao === 'SALDO_IMPORTADO'
+  const podeCancelar = !cancelada && !importado && pode(sessao, 'venda.cancelar', v.unidadeId)
+  const podeDevolver = !cancelada && !importado && pode(sessao, 'venda.criar', v.unidadeId)
 
   const subtotal = Number(v.subtotal)
   const desconto = Number(v.desconto)
@@ -202,6 +205,18 @@ export default async function FichaVenda({
           {v.motivoCancelamento && (
             <p className="text-[13px] text-tinta-2">Motivo: {v.motivoCancelamento}</p>
           )}
+        </div>
+      )}
+
+      {importado && (
+        <div className="flex flex-col gap-1 rounded-norte border border-borda bg-superficie-2 px-4 py-3">
+          <p className="flex items-center gap-2 text-sm font-bold text-tinta">
+            <Situacao nivel="neutro">saldo importado</Situacao>
+          </p>
+          <p className="text-[13px] text-tinta-2">
+            Crediário trazido do sistema anterior: a compra foi feita lá, e aqui ficam só as
+            parcelas que estavam em aberto. Não entra como venda nem como receita do mês.
+          </p>
         </div>
       )}
 

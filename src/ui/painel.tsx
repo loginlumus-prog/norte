@@ -510,7 +510,8 @@ export function Tira({
       {visiveis.map((i) => (
         <span key={i.rotulo} className="flex items-center gap-1.5 text-sm">
           <span aria-hidden className={cx('size-2 rounded-full', cor[i.nivel].ponto)} />
-          <span className={cx('numero font-bold', cor[i.nivel].texto)}>{i.quantos}</span>
+          {/* "4.800", e não "4800": com o catálogo de verdade estes números passam de mil. */}
+          <span className={cx('numero font-bold', cor[i.nivel].texto)}>{i.quantos.toLocaleString('pt-BR')}</span>
           <span className="text-tinta-2">{i.quantos === 1 && i.um ? i.um : i.rotulo}</span>
         </span>
       ))}

@@ -990,7 +990,10 @@ function ondeDasVendas(sessao: Sessao, f: FiltroVendas): Prisma.VendaWhereInput 
   return {
     unidadeId: { in: permitidas },
     criadaEm: { gte: f.de, lt: f.ate },
-    ...(f.situacao ? { situacao: f.situacao } : {}),
+    // O saldo de crediário trazido do sistema anterior não é venda deste
+    // balcão: fica fora da lista, da planilha e do resumo (ele se vê pela
+    // parcela, no Crediário).
+    ...(f.situacao ? { situacao: f.situacao } : { situacao: { not: 'SALDO_IMPORTADO' as const } }),
     ...(f.vendedorId ? { vendedorId: f.vendedorId } : {}),
     ...(f.forma ? { pagamentos: { some: { forma: f.forma } } } : {}),
     ...(numero !== null
@@ -1129,7 +1132,7 @@ export async function listarItensVendidos(
         venda: {
           unidadeId: { in: permitidas },
           criadaEm: { gte: f.de, lt: f.ate },
-          ...(f.situacao ? { situacao: f.situacao } : {}),
+          ...(f.situacao ? { situacao: f.situacao } : { situacao: { not: 'SALDO_IMPORTADO' as const } }),
           ...(f.vendedorId ? { vendedorId: f.vendedorId } : {}),
           ...(f.forma ? { pagamentos: { some: { forma: f.forma } } } : {}),
           ...(numero !== null ? { numero } : q ? { cliente: { nome: { contains: q, mode: 'insensitive' } } } : {}),
@@ -1220,7 +1223,7 @@ export type Cancelamento =
       /** O dinheiro que saiu da gaveta de AGORA (a venda era de um turno já fechado). */
       sangria: number
     }
-  | { ok: false; motivo: 'nao_achada' | 'ja_cancelada' | 'sem_motivo' | 'ja_devolvida' | 'crediario_recebido' | 'caixa_fechado' }
+  | { ok: false; motivo: 'nao_achada' | 'ja_cancelada' | 'saldo_importado' | 'sem_motivo' | 'ja_devolvida' | 'crediario_recebido' | 'caixa_fechado' }
 
 /**
  * Uma parcela desta venda recebeu dinheiro entre a leitura e o apagar. Lançado
@@ -1297,6 +1300,9 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
     exigir(sessao, 'venda.cancelar', v.unidadeId)
 
     if (v.situacao === 'CANCELADA') return { ok: false as const, motivo: 'ja_cancelada' as const }
+    // O saldo trazido do sistema anterior não se cancela: cancelar apagaria as
+    // parcelas — a dívida da pessoa sumiria sem ninguém receber nada.
+    if (v.situacao === 'SALDO_IMPORTADO') return { ok: false as const, motivo: 'saldo_importado' as const }
 
     // Venda que já teve devolução não se cancela inteira: o que voltou já
     // devolveu estoque, pontos e dinheiro (ou vale). Cancelar por cima fazia

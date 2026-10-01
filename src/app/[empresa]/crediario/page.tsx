@@ -7,14 +7,17 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { pode } from '@/servidor/permissao'
 import { moduloLigado } from '@/servidor/modulos'
 import { escolherUnidade } from '@/servidor/unidade'
-import { listarParcelas, resumoCrediario, configCrediario, type ParcelaNaLista, type SituacaoParcela } from '@/servidor/crediario'
+import { contarParcelas, listarParcelas, maioresDevedores, resumoCrediario, configCrediario, type ParcelaNaLista, type SituacaoParcela } from '@/servidor/crediario'
 import { mostrarTelefone } from '@/servidor/cliente'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Tabela } from '@/ui/Tabela'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
-import { Numero, Secao, Tira, brl } from '@/ui/painel'
+import { Numero, Secao, brl } from '@/ui/painel'
+import { Paginas } from '@/ui/Paginas'
+import { plural } from '@/ui/texto'
+import { lerPagina, paginar } from '@/ui/paginacao'
 import { Situacao, cx } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { Receber } from './Receber'
@@ -31,15 +34,18 @@ export const metadata: Metadata = { title: 'Crediário' }
 // mostrava o dia ANTERIOR — "vence 09/10" para a parcela do dia 10.
 const dia = (d: Date) => mostrarDiaDaColuna(d, 'curto')
 
+/** Parcelas por página. Cada linha tem o botão de receber. */
+const POR_PAGINA = 100
+
 export default async function CrediarioPagina({
   params,
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string; q?: string; situacao?: string; cliente?: string }>
+  searchParams: Promise<{ unidade?: string; q?: string; situacao?: string; cliente?: string; pagina?: string }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, q: qBruto, situacao: sitPedida, cliente: clienteId } = await searchParams
+  const { unidade: pedida, q: qBruto, situacao: sitPedida, cliente: clienteId, pagina: paginaPedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
@@ -52,31 +58,31 @@ export default async function CrediarioPagina({
   const situacao: SituacaoParcela | 'todas' =
     sitPedida === 'vencida' || sitPedida === 'quitada' || sitPedida === 'todas' ? sitPedida : 'aberta'
 
-  const [parcelas, resumo, config] = await Promise.all([
-    listarParcelas(sessao, {
-      unidadeIds: onde.ids,
-      situacao: situacao === 'todas' ? null : situacao,
-      q,
-      clienteId: clienteId ?? null,
-    }),
+  const filtro = {
+    unidadeIds: onde.ids,
+    situacao: situacao === 'todas' ? null : situacao,
+    q,
+    clienteId: clienteId ?? null,
+  }
+  // A página é pedida ao banco (com a contagem para saber quantas são): o
+  // carnê de uma loja de verdade passa de oito mil parcelas, e o teto antigo
+  // de 500 cortava a lista sem avisar. Ver ui/paginacao.ts.
+  const total = await contarParcelas(sessao, filtro)
+  const pag = paginar(total, lerPagina(paginaPedida), POR_PAGINA)
+  const [parcelas, resumo, config, maiores] = await Promise.all([
+    listarParcelas(sessao, { ...filtro, pagina: pag.pagina, porPagina: POR_PAGINA }),
     resumoCrediario(sessao, onde.ids),
     configCrediario(sessao),
+    maioresDevedores(sessao, onde.ids, 6),
   ])
 
   const podeReceber = pode(sessao, 'crediario.receber')
   const atuais = { unidade: onde.unidadeId, q, situacao: sitPedida ?? null, cliente: clienteId ?? null }
   const link = (m: Record<string, string | null>) => enderecoCom(`/${slug}/crediario`, atuais, m)
 
-  // Quem deve mais, para a conversa de cobrança começar pelo maior.
-  const porCliente = new Map<string, { id: string; nome: string; resta: number; vencido: number }>()
-  for (const p of parcelas) {
-    if (p.situacao === 'quitada') continue
-    const c = porCliente.get(p.clienteId) ?? { id: p.clienteId, nome: p.cliente, resta: 0, vencido: 0 }
-    c.resta += p.resta
-    if (p.situacao === 'vencida') c.vencido += p.resta
-    porCliente.set(p.clienteId, c)
-  }
-  const devedores = [...porCliente.values()].sort((a, b) => b.vencido - a.vencido || b.resta - a.resta).slice(0, 6)
+  // Quem deve mais, para a conversa de cobrança começar pelo maior — somado
+  // no banco sobre o carnê inteiro, não sobre a página que está na tela.
+  const devedores = maiores
 
   return (
     <Estrutura
@@ -94,14 +100,14 @@ export default async function CrediarioPagina({
             principal
             rotulo="Em aberto"
             valor={brl(resumo.emAberto)}
-            detalhe={`${resumo.clientesDevendo} cliente${resumo.clientesDevendo === 1 ? '' : 's'} devendo`}
+            detalhe={`${plural(resumo.clientesDevendo, 'cliente', 'clientes')} devendo`}
           />
           <Numero
             rotulo="Vencido"
             valor={brl(resumo.vencido)}
             detalhe={
               resumo.parcelasVencidas
-                ? `${resumo.parcelasVencidas} parcela${resumo.parcelasVencidas === 1 ? '' : 's'} · ${resumo.clientesAtrasados} cliente${resumo.clientesAtrasados === 1 ? '' : 's'}`
+                ? `${plural(resumo.parcelasVencidas, 'parcela', 'parcelas')} · ${plural(resumo.clientesAtrasados, 'cliente', 'clientes')}`
                 : 'ninguém atrasado'
             }
             nivel={resumo.vencido > 0 ? 'critico' : 'bom'}
@@ -266,13 +272,7 @@ export default async function CrediarioPagina({
           }
         />
 
-        <Tira
-          itens={[
-            { rotulo: 'parcelas na lista', um: 'parcela na lista', quantos: parcelas.length, nivel: 'neutro' },
-            { rotulo: 'vencidas', um: 'vencida', quantos: parcelas.filter((p) => p.situacao === 'vencida').length, nivel: 'critico' },
-            { rotulo: 'quitadas', um: 'quitada', quantos: parcelas.filter((p) => p.situacao === 'quitada').length, nivel: 'bom' },
-          ]}
-        />
+        <Paginas p={pag} linkDe={(n) => link({ pagina: String(n) })} rotulo={pag.total === 1 ? 'parcela' : 'parcelas'} />
       </Secao>
     </Estrutura>
   )

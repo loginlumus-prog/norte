@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "SituacaoVenda" ADD VALUE 'SALDO_IMPORTADO';

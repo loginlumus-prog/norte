@@ -16,6 +16,8 @@ import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
 import { plural } from '@/ui/texto'
 import { podeExportar } from '@/servidor/exportacao'
+import { Paginas } from '@/ui/Paginas'
+import { fatiar, lerPagina } from '@/ui/paginacao'
 
 // O título diz a palavra do ramo: "Pacientes" na clínica, "Alunos" na escola.
 export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
@@ -36,6 +38,16 @@ const MES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'j
 
 const DIAS_SUMIDO = 60
 
+/**
+ * Até quantas fichas a tela lê para fazer a conta. Eram 500 — e os números de
+ * cima ("devendo", "sumidos", "aniversário") eram contados só nelas, as 500
+ * primeiras por ordem alfabética: numa loja com 1.700 clientes, quem devia e
+ * se chamava Rosa não aparecia no filtro "devendo". A conta é sobre todas; o
+ * desenho é que vai em páginas.
+ */
+const TETO_DA_CONTA = 20_000
+const POR_PAGINA = 100
+
 const diasDesde = (d: Date | null) =>
   d ? Math.floor((Date.now() - d.getTime()) / 864e5) : null
 
@@ -44,10 +56,10 @@ export default async function Clientes({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ q?: string; quem?: string; ordem?: string }>
+  searchParams: Promise<{ q?: string; quem?: string; ordem?: string; pagina?: string }>
 }) {
   const { empresa: slug } = await params
-  const { q, quem: quemPedido, ordem: ordemPedida } = await searchParams
+  const { q, quem: quemPedido, ordem: ordemPedida, pagina: paginaPedida } = await searchParams
   const quem: Quem | null = QUEM.find((x) => x === quemPedido) ?? null
   const ordem: Ordem = ordemPedida === 'gastou' || ordemPedida === 'recente' ? ordemPedida : 'nome'
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'cliente.ver' })
@@ -62,7 +74,7 @@ export default async function Clientes({
   // toda conta e de todo recorte: só aparecem no filtro "desativados". Antes
   // entravam no "todos" e nos números — "cadastrados: 10" aqui, "9 ativos"
   // no Painel, para a mesma loja.
-  const fichas = await listarClientes(sessao, q, 500, 'todos')
+  const fichas = await listarClientes(sessao, q, TETO_DA_CONTA, 'todos')
   const clientes = fichas.filter((c) => c.ativo)
   const desativados = fichas.filter((c) => !c.ativo)
   const podeEditar = pode(sessao, 'cliente.editar')
@@ -110,6 +122,8 @@ export default async function Clientes({
           ? (b.ultimaCompra?.getTime() ?? 0) - (a.ultimaCompra?.getTime() ?? 0)
           : a.nome.localeCompare(b.nome),
     )
+
+  const fatia = fatiar(listados, lerPagina(paginaPedida), POR_PAGINA)
 
   const atuais = { q, quem, ordem: ordem === 'nome' ? null : ordem }
   const link = (mudanca: Record<string, string | null>) =>
@@ -216,9 +230,9 @@ export default async function Clientes({
               : plural(clientes.length, vocab.pessoa, vocab.pessoas)
         }
         acao={
-          fichas.length >= 500 ? (
+          fichas.length >= TETO_DA_CONTA ? (
             <span className="text-xs text-tinta-3">
-              mostrando os 500 primeiros — use a busca
+              mostrando {TETO_DA_CONTA.toLocaleString('pt-BR')} — use a busca
             </span>
           ) : undefined
         }
@@ -310,7 +324,7 @@ export default async function Clientes({
                   ]
                 : []),
             ]}
-            linhas={listados}
+            linhas={fatia.itens}
             chave={(c) => c.id}
             vazio={
               quem === 'sumidos' ? 'Ninguém sumido — bom sinal.'
@@ -323,6 +337,7 @@ export default async function Clientes({
             }
           />
         )}
+        <Paginas p={fatia} linkDe={(n) => link({ pagina: String(n) })} rotulo={vocab.pessoas} />
       </Cartao>
     </Estrutura>
   )

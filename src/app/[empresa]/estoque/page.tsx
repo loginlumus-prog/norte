@@ -23,6 +23,9 @@ import { Trancado } from '@/ui/Cadeado'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { SeletorPeriodo } from '@/ui/Periodo'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
+import { Paginas } from '@/ui/Paginas'
+import { codigoExato, daEtiqueta } from '@/servidor/etiqueta'
+import { fatiar, lerPagina } from '@/ui/paginacao'
 import type { Tema } from '@/ui/TrocaTema'
 import type { TipoMovimento } from '@prisma/client'
 
@@ -33,6 +36,10 @@ import { Minimo } from './Minimo'
 import { Transferir } from './Transferir'
 
 export const metadata: Metadata = { title: 'Estoque' }
+
+/** Linhas por página nas listas da tela, e o teto do "Precisa comprar". */
+const POR_PAGINA = 100
+const PRECISA_MAX = 40
 
 const TIPOS: TipoMovimento[] = ['ENTRADA', 'VENDA', 'DEVOLUCAO', 'AJUSTE', 'PERDA', 'TRANSFERENCIA', 'BALANCO', 'CONSUMO']
 const quando = (d: Date) =>
@@ -94,7 +101,7 @@ export default async function TelaEstoque({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string; q?: string; situacao?: string; periodo?: string; tipo?: string }>
+  searchParams: Promise<{ unidade?: string; q?: string; situacao?: string; periodo?: string; tipo?: string; pagina?: string; mov?: string }>
 }) {
   const { empresa: slug } = await params
   const bruto = await searchParams
@@ -338,9 +345,21 @@ export default async function TelaEstoque({
   const nivelPedido = situacao === 'acabaram' ? 'critico' : situacao === 'minimo' ? 'atencao' : situacao === 'ok' ? 'bom' : null
   const listados = itens.filter(
     (i) =>
-      (!termo || solto(i.nome).includes(termo) || (i.codigo ?? '').toLowerCase() === termo) &&
+      (!termo || solto(i.nome).includes(termo) || codigoExato(i.codigo, q) || daEtiqueta(i.codigo, q)) &&
       (!nivelPedido || nivelDe(i) === nivelPedido),
   )
+
+  // Uma página por vez — a lista inteira, com as ações de cada linha, fazia a
+  // tela pesar 40 MB num catálogo de 7 mil variações (ver ui/paginacao.ts).
+  // A conta de cima continua sobre tudo.
+  const fatia = fatiar(listados, lerPagina(bruto.pagina), POR_PAGINA)
+  const fatiaMov = fatiar(movimentos, lerPagina(bruto.mov), POR_PAGINA)
+  // "Precisa comprar" mostra os primeiros: na loja de roupa e de calçado, o
+  // tamanho esgotado é a regra (a grade inteira de cada peça), e milhares de
+  // linhas aqui enterravam o resto da tela. O resto está na lista de baixo,
+  // filtrado, com páginas.
+  const precisa = [...acabaram, ...noMinimo]
+  const precisaVisiveis = precisa.slice(0, PRECISA_MAX)
 
   const atuais = { unidade: onde.unidadeId, q, situacao, periodo: periodoPedido ?? null, tipo }
   // A busca leva escondido TODO filtro da tela menos o próprio `q` — antes
@@ -491,16 +510,33 @@ export default async function TelaEstoque({
             titulo={onde.unidadeId ? onde.titulo : 'Somando as lojas'}
             acao={
               <span className="text-xs text-tinta-3">
-                {acabaram.length} {acabaram.length === 1 ? 'acabou' : 'acabaram'} · {noMinimo.length} no mínimo
+                {acabaram.length.toLocaleString('pt-BR')} {acabaram.length === 1 ? 'acabou' : 'acabaram'} · {noMinimo.length.toLocaleString('pt-BR')} no mínimo
               </span>
             }
           >
             <Tabela
               colunas={colunas}
-              linhas={[...acabaram, ...noMinimo]}
+              linhas={precisaVisiveis}
               chave={(i) => i.id}
               vazio="Nada faltando."
             />
+            {precisa.length > precisaVisiveis.length && (
+              <p className="flex flex-wrap gap-x-3 text-xs text-tinta-3">
+                <span>
+                  Mostrando {precisaVisiveis.length.toLocaleString('pt-BR')} de {precisa.length.toLocaleString('pt-BR')}.
+                </span>
+                {acabaram.length > 0 && (
+                  <Link href={`${link({ situacao: 'acabaram' })}#tudo`} className="font-semibold text-marca underline-offset-2 hover:underline">
+                    {acabaram.length === 1 ? 'ver o que acabou' : `ver os ${acabaram.length.toLocaleString('pt-BR')} que acabaram`}
+                  </Link>
+                )}
+                {noMinimo.length > 0 && (
+                  <Link href={`${link({ situacao: 'minimo' })}#tudo`} className="font-semibold text-marca underline-offset-2 hover:underline">
+                    {noMinimo.length === 1 ? 'ver o que está no mínimo' : `ver os ${noMinimo.length.toLocaleString('pt-BR')} no mínimo`}
+                  </Link>
+                )}
+              </p>
+            )}
           </Cartao>
         </Secao>
       )}
@@ -534,6 +570,7 @@ export default async function TelaEstoque({
         </Trancado>
       </Secao>
 
+      <span id="tudo" />
       <Secao
         titulo="Tudo que tem"
         acao={
@@ -596,8 +633,9 @@ export default async function TelaEstoque({
               {q ? `Nada com “${q}”.` : 'Nada nessa situação.'}
             </Vazio>
           ) : (
-            <Tabela colunas={colunas} linhas={listados} chave={(i) => i.id} vazio="Vazio." />
+            <Tabela colunas={colunas} linhas={fatia.itens} chave={(i) => i.id} vazio="Vazio." />
           )}
+          <Paginas p={fatia} linkDe={(n) => `${link({ pagina: String(n) })}#tudo`} />
         </Cartao>
       </Secao>
 
@@ -605,6 +643,7 @@ export default async function TelaEstoque({
           Todo movimento fica gravado desde o primeiro dia e não tinha onde
           ser lido. "Quem deu baixa de 30 na terça?" é o que decide se o
           estoque é confiável ou é só um número. */}
+      <span id="movimentos" />
       <Secao
         titulo="Movimentos"
         resumo="Tudo que entrou, saiu, foi corrigido ou transferido — com quem e quando."
@@ -693,10 +732,11 @@ export default async function TelaEstoque({
               celula: (m: MovimentoNaLista) => <span className="truncate text-xs text-tinta-2">{m.quem}</span>,
             },
           ]}
-          linhas={movimentos}
+          linhas={fatiaMov.itens}
           chave={(m) => m.id}
           vazio={q || tipo ? 'Nenhum movimento com esse filtro no período.' : 'Nenhum movimento no período.'}
         />
+        <Paginas p={fatiaMov} linkDe={(n) => `${link({ mov: String(n) })}#movimentos`} rotulo="movimentos" />
         {movimentos.length === 500 && (
           <p className="text-xs text-tinta-3">Mostrando os 500 mais recentes. Aperte o período ou o filtro.</p>
         )}

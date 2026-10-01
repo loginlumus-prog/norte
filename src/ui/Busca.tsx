@@ -103,7 +103,7 @@ export function Fichas<T extends string>({
           {o.rotulo}
           {o.quantos !== undefined && (
             <span className={'numero ml-1 ' + (atual === o.valor ? 'opacity-70' : 'text-tinta-3')}>
-              {o.quantos}
+              {o.quantos.toLocaleString('pt-BR')}
             </span>
           )}
         </Link>

@@ -19,6 +19,8 @@ import { Fichas } from '@/ui/Busca'
 import { pode } from '@/servidor/permissao'
 import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { concorda, plural } from '@/ui/texto'
+import { Paginas } from '@/ui/Paginas'
+import { fatiar, lerPagina } from '@/ui/paginacao'
 
 // "Recebimentos" na clínica, no salão e na escola — a mesma lista, no mesmo
 // endereço (vocabulario.ts).
@@ -55,10 +57,10 @@ export default async function Vendas({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ unidade?: string; periodo?: string; q?: string; situacao?: string; vendedor?: string; forma?: string }>
+  searchParams: Promise<{ unidade?: string; periodo?: string; q?: string; situacao?: string; vendedor?: string; forma?: string; pagina?: string }>
 }) {
   const { empresa: slug } = await params
-  const { unidade: pedida, periodo: pedido, q, situacao: sit, vendedor: vendedorPedido, forma: formaPedida } = await searchParams
+  const { unidade: pedida, periodo: pedido, q, situacao: sit, vendedor: vendedorPedido, forma: formaPedida, pagina: paginaPedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'venda.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
   // No simples a lista responde "o que vendi e quanto": número, hora,
@@ -123,6 +125,12 @@ export default async function Vendas({
     return `/${slug}/vendas?${p.toString()}`
   }
   const linkExportar = link({}).replace(`/${slug}/vendas?`, `/${slug}/vendas/exportar?`)
+  // Cem por página das (até) 500 lidas: um mês de loja movimentada desenhava
+  // trezentas linhas de uma vez (ver ui/paginacao.ts).
+  const fatia = fatiar(vendas, lerPagina(paginaPedida), 100)
+  // O título conta o que o banco somou, não o que a lista leu: com o teto de
+  // 500 ele dizia "500 vendas" num período de 613.
+  const contadas = resumo.concluidas + resumo.canceladas
 
   const todasAsColunas = [
     {
@@ -343,7 +351,7 @@ export default async function Vendas({
       )}
 
       <Cartao
-        titulo={q ? `Resultado de “${q}”` : plural(vendas.length, palavras.venda, palavras.vendas)}
+        titulo={q ? `Resultado de “${q}”` : plural(contadas, palavras.venda, palavras.vendas)}
         acao={
           <span className="flex gap-1 text-xs">
             {(
@@ -399,7 +407,10 @@ export default async function Vendas({
                 : `${palavras.nenhumaVenda} ${j.naFrase}.`}
           </Vazio>
         ) : (
-          <Tabela colunas={colunas} linhas={vendas} chave={(v) => v.id} />
+          <>
+            <Tabela colunas={colunas} linhas={fatia.itens} chave={(v) => v.id} />
+            <Paginas p={fatia} linkDe={(n) => link({ pagina: String(n) })} rotulo={palavras.vendas} />
+          </>
         )}
         {vendas.length >= 500 && (
           <p className="pt-3 text-xs text-tinta-3">

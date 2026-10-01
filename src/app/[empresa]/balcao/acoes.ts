@@ -30,6 +30,7 @@ import { situacaoDosClientes } from '@/servidor/crediario'
 import type { FormaPagamento } from '@prisma/client'
 import type { ProdutoNaVitrine } from './vitrine'
 import { aVendaNaLoja, soDaLoja } from '@/servidor/catalogo-loja'
+import { SEPARADOR_DA_ETIQUETA, codigoExato } from '@/servidor/etiqueta'
 
 export type Achado = {
   id: string
@@ -123,7 +124,8 @@ function montarAchado(v: VariacaoLida): Achado {
  * Busca do balcão: código de etiqueta, código de barras ou pedaço do nome.
  *
  * O código bate EXATO e vem primeiro na lista — quem leu a etiqueta com o
- * leitor quer aquele item, não uma lista de parecidos.
+ * leitor quer aquele item, não uma lista de parecidos. A etiqueta do PRODUTO
+ * (um número para a grade inteira, ver etiqueta.ts) traz a grade dele.
  */
 export async function procurar(
   slug: string,
@@ -143,33 +145,52 @@ export async function procurar(
   if (t.length < 2) return []
 
   return comoOrg(s.orgId, async (db) => {
-    // Só o que ESTA loja vende: a sorveteria não acha camisa, nem por nome.
-    const vs = await db.variacao.findMany({
+    const selecao = {
+      ...SELECAO_DA_VARIACAO,
+      estoques: { where: { unidadeId }, select: { quantidade: true } },
+    }
+    // Primeiro pelo CÓDIGO: o exato, o de barras e a etiqueta do produto
+    // (005990 acha 005990-36, 005990-37... — ver etiqueta.ts). Separado do
+    // nome e com teto maior, porque a grade de uma sandália passa fácil de
+    // doze variações, e cortar a grade no meio esconde o número que a pessoa
+    // tem na mão. Só o que ESTA loja vende: a sorveteria não acha camisa.
+    const porCodigo = await db.variacao.findMany({
       where: {
         ativa: true,
         produto: { ativo: true, ...aVendaNaLoja(unidadeId) },
         OR: [
           { codigo: { equals: t, mode: 'insensitive' } },
           { codigoBarras: t },
+          { codigo: { startsWith: t + SEPARADOR_DA_ETIQUETA, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { codigo: 'asc' },
+      take: 60,
+      select: selecao,
+    })
+    // Uma depois da outra, e não em Promise.all: dentro de comoOrg é uma
+    // conexão só (ver `grade`).
+    const porNome = await db.variacao.findMany({
+      where: {
+        ativa: true,
+        id: { notIn: porCodigo.map((v) => v.id) },
+        produto: { ativo: true, ...aVendaNaLoja(unidadeId) },
+        OR: [
           { produto: { nome: { contains: t, mode: 'insensitive' } } },
           { produto: { marca: { contains: t, mode: 'insensitive' } } },
         ],
       },
       take: 12,
-      select: {
-        ...SELECAO_DA_VARIACAO,
-        estoques: { where: { unidadeId }, select: { quantidade: true } },
-      },
+      select: selecao,
     })
 
-    const achados = vs.map(montarAchado)
-
-    // Código exato na frente: é o caso do leitor de código de barras.
-    const exato = t.toUpperCase()
-    achados.sort((a, b) =>
-      a.codigo?.toUpperCase() === exato ? -1 : b.codigo?.toUpperCase() === exato ? 1 : 0,
+    // Código exato na frente: é o caso do leitor de código de barras. Depois
+    // a grade da etiqueta, em ordem de código, e por último o que achou pelo nome.
+    const achados = [...porCodigo.map(montarAchado)].sort(
+      (a, b) => Number(codigoExato(b.codigo, t)) - Number(codigoExato(a.codigo, t)),
     )
-    if (achados[0]?.codigo?.toUpperCase() === exato) return achados
+    achados.push(...porNome.map(montarAchado))
+    if (porCodigo.length > 0) return achados
 
     // Nenhum código desta loja bateu. Se o código existe no catálogo de OUTRA
     // loja, ele volta marcado — é a etiqueta do picolé bipada na loja de
@@ -180,12 +201,13 @@ export async function procurar(
       where: {
         ativa: true,
         produto: { ativo: true, usoInterno: false, NOT: soDaLoja(unidadeId) },
-        OR: [{ codigo: { equals: t, mode: 'insensitive' } }, { codigoBarras: t }],
+        OR: [
+          { codigo: { equals: t, mode: 'insensitive' } },
+          { codigoBarras: t },
+          { codigo: { startsWith: t + SEPARADOR_DA_ETIQUETA, mode: 'insensitive' } },
+        ],
       },
-      select: {
-        ...SELECAO_DA_VARIACAO,
-        estoques: { where: { unidadeId }, select: { quantidade: true } },
-      },
+      select: selecao,
     })
     return deFora ? [{ ...montarAchado(deFora), foraDaLoja: true }, ...achados] : achados
   })

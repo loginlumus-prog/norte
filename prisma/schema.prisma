@@ -1580,6 +1580,13 @@ enum SituacaoVenda {
   ABERTA
   CONCLUIDA
   CANCELADA
+  /// Não é venda deste sistema: é o crediário que a loja TROUXE do sistema
+  /// anterior — o carnê que ainda estava em aberto quando ela chegou. Existe
+  /// porque a parcela precisa de uma venda por trás, e a venda de verdade foi
+  /// feita (e contada como receita) lá, meses antes. Fica fora de tudo que
+  /// soma venda — receita, custo, meta, ticket, "quem mais compra" — porque
+  /// tudo isso filtra CONCLUIDA; e não se cancela nem se devolve aqui.
+  SALDO_IMPORTADO
 }
 
 enum TipoCaixa {

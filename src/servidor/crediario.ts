@@ -23,7 +23,7 @@ import { centavos, reais } from './dinheiro'
 import { colunaDoDia, diaDaColuna, diaEmSP, diasEntre, somarDias } from './dia'
 import { travarVenda } from './devolucao'
 import { travarCaixaAberto } from './caixa'
-import type { FormaPagamento } from '@prisma/client'
+import type { FormaPagamento, Prisma } from '@prisma/client'
 
 // ─────────────────────────────────────────────────────────────
 // AS CONTAS (puras)
@@ -137,6 +137,45 @@ export type FiltroParcelas = {
   /** Nome do cliente ou número da venda. */
   q?: string | null
   clienteId?: string | null
+  /**
+   * A página da lista (a partir de 1) e o tamanho dela. Sem `porPagina`, vêm
+   * as 500 primeiras — o caso da ficha do cliente, que nunca chega perto.
+   * A tela do Crediário pagina SEMPRE: com o carnê de uma loja de verdade (8
+   * mil parcelas em aberto) o teto de 500 cortava a lista calado, e a parcela
+   * de 2026 de quem devia desde 2023 nunca aparecia.
+   */
+  pagina?: number
+  porPagina?: number
+}
+
+/** O filtro da lista, num lugar só: a lista e a contagem precisam contar as mesmas parcelas. */
+function ondeDasParcelas(f: FiltroParcelas, permitidas: string[], agora: Date): Prisma.ParcelaWhereInput {
+  const q = textoDaBusca(f.q)
+  const numero = numeroDaBusca(q)
+  return {
+    unidadeId: { in: permitidas },
+    ...(f.clienteId ? { clienteId: f.clienteId } : {}),
+    ...(f.situacao === 'quitada'
+      ? { quitadaEm: { not: null } }
+      : f.situacao === 'vencida'
+        ? { quitadaEm: null, vencimento: { lt: colunaDoDia(diaEmSP(agora)) } }
+        : f.situacao === 'aberta'
+          ? { quitadaEm: null }
+          : {}),
+    ...(numero !== null
+      ? { venda: { numero } }
+      : q
+        ? { cliente: { nome: { contains: q, mode: 'insensitive' } } }
+        : {}),
+  }
+}
+
+/** Quantas parcelas o filtro acha — o "de quantas" da paginação. */
+export async function contarParcelas(sessao: Sessao, f: FiltroParcelas, agora = new Date()): Promise<number> {
+  exigir(sessao, 'crediario.ver')
+  const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'crediario.ver', u))
+  if (permitidas.length === 0) return 0
+  return comoOrg(sessao.orgId, (db) => db.parcela.count({ where: ondeDasParcelas(f, permitidas, agora) }))
 }
 
 export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = new Date()): Promise<ParcelaNaLista[]> {
@@ -144,8 +183,8 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = 
   const permitidas = f.unidadeIds.filter((u) => pode(sessao, 'crediario.ver', u))
   if (permitidas.length === 0) return []
 
-  const q = textoDaBusca(f.q)
-  const numero = numeroDaBusca(q)
+  const porPagina = f.porPagina && f.porPagina > 0 ? Math.floor(f.porPagina) : null
+  const pagina = Math.max(1, Math.floor(f.pagina ?? 1) || 1)
 
   return comoOrg(sessao.orgId, async (db) => {
     const org = await db.org.findUniqueOrThrow({
@@ -155,24 +194,12 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = 
     const pct = Number(org.crediarioJurosMes)
 
     const parcelas = await db.parcela.findMany({
-      where: {
-        unidadeId: { in: permitidas },
-        ...(f.clienteId ? { clienteId: f.clienteId } : {}),
-        ...(f.situacao === 'quitada'
-          ? { quitadaEm: { not: null } }
-          : f.situacao === 'vencida'
-            ? { quitadaEm: null, vencimento: { lt: colunaDoDia(diaEmSP(agora)) } }
-            : f.situacao === 'aberta'
-              ? { quitadaEm: null }
-              : {}),
-        ...(numero !== null
-          ? { venda: { numero } }
-          : q
-            ? { cliente: { nome: { contains: q, mode: 'insensitive' } } }
-            : {}),
-      },
-      orderBy: [{ quitadaEm: 'asc' }, { vencimento: 'asc' }],
-      take: 500,
+      where: ondeDasParcelas(f, permitidas, agora),
+      // O id desempata: sem ele, duas parcelas do mesmo dia podiam trocar de
+      // página entre um clique e outro — uma aparecia duas vezes, a outra nunca.
+      orderBy: [{ quitadaEm: 'asc' }, { vencimento: 'asc' }, { id: 'asc' }],
+      skip: porPagina ? (pagina - 1) * porPagina : 0,
+      take: porPagina ?? 500,
       select: {
         id: true, vendaId: true, clienteId: true, unidadeId: true, numero: true, de: true,
         vencimento: true, valor: true, pago: true, juros: true, jurosAte: true, quitadaEm: true,
@@ -212,6 +239,37 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = 
       }
     })
   })
+}
+
+export type Devedor = { id: string; nome: string; resta: number; vencido: number }
+
+/**
+ * Quem deve mais, para a conversa de cobrança começar pelo maior: primeiro
+ * quem tem mais VENCIDO, depois quem deve mais no total.
+ *
+ * Somado no banco, sobre TODAS as parcelas em aberto. A tela fazia a conta em
+ * cima da lista que ela mostrava — as 500 primeiras —, e com o carnê de uma
+ * loja de verdade "quem deve mais" saía de um pedaço dele.
+ */
+export async function maioresDevedores(sessao: Sessao, unidadeIds: string[], limite = 6, agora = new Date()): Promise<Devedor[]> {
+  exigir(sessao, 'crediario.ver')
+  const permitidas = unidadeIds.filter((u) => pode(sessao, 'crediario.ver', u))
+  if (permitidas.length === 0) return []
+  const hoje = colunaDoDia(diaEmSP(agora))
+  const linhas = await comoOrg(sessao.orgId, (db) =>
+    db.$queryRaw<{ id: string; nome: string; resta: string; vencido: string }[]>`
+      select c.id, c.nome,
+             sum(p.valor - p.pago) as resta,
+             coalesce(sum(p.valor - p.pago) filter (where p.vencimento < ${hoje}), 0) as vencido
+        from parcelas p join clientes c on c.id = p.cliente_id
+       where p.unidade_id = any(${permitidas}) and p.quitada_em is null
+       group by c.id, c.nome
+      having sum(p.valor - p.pago) > 0
+       order by 4 desc, 3 desc, c.nome
+       limit ${Math.max(1, Math.floor(limite))}
+    `,
+  )
+  return linhas.map((l) => ({ id: l.id, nome: l.nome, resta: reais(centavos(l.resta)), vencido: reais(centavos(l.vencido)) }))
 }
 
 export type ResumoCrediario = {

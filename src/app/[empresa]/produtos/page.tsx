@@ -17,6 +17,9 @@ import { MENU } from '@/ui/menu'
 import { escolherUnidade } from '@/servidor/unidade'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
+import { Paginas } from '@/ui/Paginas'
+import { SEPARADOR_DA_ETIQUETA } from '@/servidor/etiqueta'
+import { fatiar, lerPagina } from '@/ui/paginacao'
 import type { Tema } from '@/ui/TrocaTema'
 
 // "Serviços e materiais" na clínica (vocabulario.ts).
@@ -31,6 +34,9 @@ type Pendencia = 'sem-categoria' | 'sem-custo' | 'sem-ean' | 'sem-venda'
 const MEDIDA: Record<string, string> = {
   UN: 'un', KG: 'kg', G: 'g', L: 'L', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx',
 }
+
+/** Cartões por página. Cada um traz a grade inteira do produto. */
+const POR_PAGINA = 40
 
 const dinheiro = (v: unknown) =>
   v == null ? '—' : `R$ ${Number(v).toFixed(2).replace('.', ',')}`
@@ -56,12 +62,14 @@ export default async function Produtos({
     ordem?: string
     pendencia?: string
     mostrar?: string
+    pagina?: string
   }>
 }) {
   const { empresa: slug } = await params
   const {
     unidade: pedida, q: qBruto, categoria: categoriaPedida, situacao: sitPedida,
     marca: marcaPedida, ordem: ordemPedida, pendencia: pendenciaPedida, mostrar: mostrarPedido,
+    pagina: paginaPedida,
   } = await searchParams
   // `?q=a&q=b` chega como lista; ver `textoDaBusca`.
   const q = textoDaBusca(qBruto)
@@ -139,7 +147,12 @@ export default async function Produtos({
                 {
                   variacoes: {
                     some: {
-                      OR: [{ codigo: { equals: q, mode: 'insensitive' } }, { codigoBarras: q }],
+                      OR: [
+                        { codigo: { equals: q, mode: 'insensitive' } },
+                        { codigoBarras: q },
+                        // A etiqueta do produto acha a grade dele (ver etiqueta.ts).
+                        { codigo: { startsWith: q + SEPARADOR_DA_ETIQUETA, mode: 'insensitive' } },
+                      ],
                     },
                   },
                 },
@@ -248,6 +261,10 @@ export default async function Produtos({
       : ordem === 'preco' ? Number(b.precoVista ?? 0) - Number(a.precoVista ?? 0)
       : a.nome.localeCompare(b.nome),
     )
+  // Desenha uma página por vez: cada produto é um cartão com a grade inteira,
+  // e 900 deles (7 mil variações) faziam a tela pesar 25 MB. A conta de cima
+  // (tira, pendências) continua sobre a lista toda — ver ui/paginacao.ts.
+  const fatia = fatiar(listados, lerPagina(paginaPedida), POR_PAGINA)
   const pendencias = {
     semCategoria: comSaldo.filter((p) => !p.categoria).length,
     semCusto: comSaldo.filter((p) => p.custo == null).length,
@@ -446,7 +463,8 @@ export default async function Produtos({
         </Cartao>
       )}
 
-      {listados.map((p) => {
+      <Paginas p={fatia} linkDe={(n) => link({ pagina: String(n) })} rotulo={vocab.produtos} />
+      {fatia.itens.map((p) => {
         const total = totalDe(p)
         const acabaram = p.variacoes.filter((v) => situacaoDe(v) === 'critico').length
         const noMinimo = p.variacoes.filter((v) => situacaoDe(v) === 'atencao').length
@@ -592,6 +610,7 @@ export default async function Produtos({
           </Cartao>
         )
       })}
+      <Paginas p={fatia} linkDe={(n) => link({ pagina: String(n) })} rotulo={vocab.produtos} />
     </Estrutura>
   )
 }

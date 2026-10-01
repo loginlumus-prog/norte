@@ -154,6 +154,7 @@ export type ResultadoDevolucao =
       motivo:
         | 'nao_achada'
         | 'cancelada'
+        | 'saldo_importado'
         | 'sem_itens'
         | 'passa_do_vendido'
         | 'sem_motivo'
@@ -199,6 +200,10 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
     })
     if (!v) return { ok: false as const, motivo: 'nao_achada' as const }
     if (v.situacao === 'CANCELADA') return { ok: false as const, motivo: 'cancelada' as const }
+    // O saldo trazido do sistema anterior não tem peça para voltar: o "item"
+    // dele é a dívida. Devolver aqui criaria vale ou sangria de uma venda que
+    // nunca passou por este balcão.
+    if (v.situacao === 'SALDO_IMPORTADO') return { ok: false as const, motivo: 'saldo_importado' as const }
 
     // Troca (vale) é gesto de balcão. Dinheiro saindo da gaveta e estorno
     // são gestos de quem pode cancelar venda — o mesmo nível de confiança.

@@ -225,7 +225,9 @@ export const FONTES_DE_PAGAMENTO: Fonte[] = [
       const lojas = await unidadesVisiveis(s, 'venda.ver')
       const vs = await comoOrg(s.orgId, (db) =>
         db.venda.findMany({
-          where: { clienteId, unidadeId: { in: lojas }, criadaEm: { gte: new Date(agora.getTime() - 90 * 864e5) } },
+          // O saldo de crediário trazido do sistema anterior não é compra: o
+          // assistente diria à pessoa que ela "pagou" uma dívida em aberto.
+          where: { clienteId, unidadeId: { in: lojas }, situacao: { not: 'SALDO_IMPORTADO' }, criadaEm: { gte: new Date(agora.getTime() - 90 * 864e5) } },
           orderBy: { criadaEm: 'desc' },
           take: 8,
           select: { numero: true, criadaEm: true, total: true, situacao: true, pagamentos: { select: { forma: true, valor: true } } },
