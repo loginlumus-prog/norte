@@ -31,6 +31,8 @@ export type EixoEscolhido = {
 export type DadosProduto = {
   nome: string
   marca?: string | null
+  /** A referência do fornecedor (a da caixa e da nota de compra). */
+  referencia?: string | null
   descricao?: string | null
   categoriaId?: string | null
   medida: Medida
@@ -176,6 +178,7 @@ export async function criarProduto(
         orgId: sessao.orgId,
         nome,
         marca: dados.marca?.trim() || null,
+        referencia: dados.referencia?.trim() || null,
         descricao: dados.descricao?.trim() || null,
         categoriaId: dados.categoriaId || null,
         medida: dados.medida,
@@ -305,6 +308,7 @@ export async function editarProduto(
       data: {
         ...(dados.nome !== undefined && { nome: dados.nome.trim() }),
         ...(dados.marca !== undefined && { marca: dados.marca?.trim() || null }),
+        ...(dados.referencia !== undefined && { referencia: dados.referencia?.trim() || null }),
         ...(dados.descricao !== undefined && { descricao: dados.descricao?.trim() || null }),
         ...(dados.categoriaId !== undefined && { categoriaId: dados.categoriaId || null }),
         ...(dados.medida !== undefined && { medida: dados.medida }),
@@ -569,7 +573,7 @@ export async function acharProduto(sessao: Sessao, produtoId: string) {
     db.produto.findUnique({
       where: { id: produtoId },
       select: {
-        id: true, nome: true, marca: true, descricao: true, categoriaId: true,
+        id: true, nome: true, marca: true, referencia: true, descricao: true, categoriaId: true,
         medida: true, precoVista: true, precoCartao: true, precoCrediario: true,
         custo: true, prazoReposicaoDias: true, vendidoEm: true, ativo: true, servico: true, duracaoMin: true,
         usoInterno: true, feitoNoDia: true,

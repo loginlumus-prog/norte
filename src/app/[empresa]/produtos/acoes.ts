@@ -209,6 +209,7 @@ export async function criar(
       {
         nome: String(form.get('nome') ?? ''),
         marca: String(form.get('marca') ?? ''),
+        referencia: String(form.get('referencia') ?? ''),
         descricao: String(form.get('descricao') ?? ''),
         categoriaId: String(form.get('categoriaId') ?? '') || null,
         medida,
@@ -274,6 +275,7 @@ export async function editar(
     const r = await editarProduto(sessao, produtoId, {
       nome: String(form.get('nome') ?? ''),
       marca: String(form.get('marca') ?? ''),
+        referencia: String(form.get('referencia') ?? ''),
       descricao: String(form.get('descricao') ?? ''),
       categoriaId: String(form.get('categoriaId') ?? '') || null,
       medida,

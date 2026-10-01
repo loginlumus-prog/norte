@@ -262,7 +262,9 @@ export function Balcao({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault()
-                    void v.enterNaBusca().then((a) => a && lancar(a))
+                    // Etiqueta de uma grade inteira volta como o produto: aqui a
+                    // lista já mostra cada tamanho, e a vendedora toca no da peça.
+                    void v.enterNaBusca().then((a) => a && !('variacoes' in a) && lancar(a))
                   }
                   if (e.key === 'Escape') {
                     setTermo('')

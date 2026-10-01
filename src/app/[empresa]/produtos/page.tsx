@@ -18,7 +18,7 @@ import { escolherUnidade } from '@/servidor/unidade'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import { Paginas } from '@/ui/Paginas'
-import { SEPARADOR_DA_ETIQUETA } from '@/servidor/etiqueta'
+import { ondeOCodigo } from '@/servidor/etiqueta'
 import { fatiar, lerPagina } from '@/ui/paginacao'
 import type { Tema } from '@/ui/TrocaTema'
 
@@ -144,18 +144,10 @@ export default async function Produtos({
               OR: [
                 { nome: { contains: q, mode: 'insensitive' } },
                 { marca: { contains: q, mode: 'insensitive' } },
-                {
-                  variacoes: {
-                    some: {
-                      OR: [
-                        { codigo: { equals: q, mode: 'insensitive' } },
-                        { codigoBarras: q },
-                        // A etiqueta do produto acha a grade dele (ver etiqueta.ts).
-                        { codigo: { startsWith: q + SEPARADOR_DA_ETIQUETA, mode: 'insensitive' } },
-                      ],
-                    },
-                  },
-                },
+                { referencia: { contains: q, mode: 'insensitive' } },
+                // O código inteiro, a etiqueta da grade e o pedaço dela
+                // ("56522" acha 0056522) — a mesma régua do balcão (etiqueta.ts).
+                { variacoes: { some: { OR: ondeOCodigo(q) } } },
               ],
             }
           : {}),

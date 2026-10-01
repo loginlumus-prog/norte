@@ -30,6 +30,7 @@ export type ProdutoNaTela = {
   id: string
   nome: string
   marca: string
+  referencia?: string | null
   descricao: string
   categoriaId: string
   medida: string
@@ -174,6 +175,12 @@ export function Editor({
             name="marca"
             defaultValue={produto?.marca ?? ''}
             placeholder="Opcional"
+          />
+          <Campo
+            rotulo="Referência do fornecedor"
+            name="referencia"
+            defaultValue={produto?.referencia ?? ''}
+            placeholder="Opcional — a da caixa ou da nota"
           />
           <Selecao
             rotulo="Categoria"

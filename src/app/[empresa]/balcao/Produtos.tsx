@@ -56,7 +56,7 @@ import {
   pesoNoCampo,
   teclasDePeso,
 } from './ramo'
-import { matrizDaGrade } from './vitrine'
+import { agruparAchados, matrizDaGrade } from './vitrine'
 
 type Categoria = { id: string; nome: string; quantos: number }
 
@@ -250,6 +250,7 @@ export function Produtos({
   // falhou.
   const daLoja = v.achados.filter((a) => !a.foraDaLoja)
   const deFora = v.achados.find((a) => a.foraDaLoja)
+  const blocos = agruparAchados(daLoja)
 
   return (
     <section aria-label={palavras.Produtos} className="flex min-h-0 min-w-0 flex-col gap-3">
@@ -273,7 +274,11 @@ export function Produtos({
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
-                void v.enterNaBusca().then((a) => a && tocarAchado(a))
+                void v.enterNaBusca().then((a) => {
+                  if (!a) return
+                  if ('variacoes' in a) tocarProduto(a)
+                  else tocarAchado(a)
+                })
               }
               if (e.key === 'Escape') {
                 v.setTermo('')
@@ -459,22 +464,49 @@ export function Produtos({
             </div>
           ) : (
             <Grade>
-              {daLoja.map((a, i) => (
-                <Cartao
-                  key={a.id}
-                  nome={a.descricao}
-                  preco={precoDe({ ...a, quantidade: 1 }, v.conta.tabela)}
-                  medida={a.medida}
-                  estilo={estiloDoTom(tomDe(-1))}
-                  saldo={a.saldo}
-                  acabou={a.saldo <= 0}
-                  detalhe={a.codigo}
-                  enter={i === 0}
-                  noPedido={noPedido.get(a.id) ?? 0}
-                  piscou={piscou === a.id}
-                  aoTocar={() => tocarAchado(a)}
-                />
-              ))}
+              {blocos.map((b, i) => {
+                if (b.tipo === 'peca') {
+                  const a = b.achado
+                  return (
+                    <Cartao
+                      key={a.id}
+                      nome={a.descricao}
+                      preco={precoDe({ ...a, quantidade: 1 }, v.conta.tabela)}
+                      medida={a.medida}
+                      estilo={estiloDoTom(tomDe(-1))}
+                      saldo={a.saldo}
+                      acabou={a.saldo <= 0}
+                      detalhe={a.codigo}
+                      enter={i === 0}
+                      noPedido={noPedido.get(a.id) ?? 0}
+                      piscou={piscou === a.id}
+                      aoTocar={() => tocarAchado(a)}
+                    />
+                  )
+                }
+                // A grade inteira do produto num cartão só — o tamanho se
+                // escolhe na folha, como na vitrine.
+                const p = b.produto
+                const faixa = faixaDePreco(p.variacoes, v.conta.tabela)
+                const saldo = saldoTotal(p.variacoes)
+                return (
+                  <Cartao
+                    key={p.id}
+                    nome={p.nome}
+                    preco={faixa.de}
+                    aPartirDe={faixa.de !== faixa.ate}
+                    medida={p.medida}
+                    estilo={estiloDoTom(tomDoProduto(p))}
+                    saldo={saldo}
+                    acabou={saldo <= 0}
+                    detalhe={`${p.variacoes.length} opções`}
+                    enter={i === 0}
+                    noPedido={p.variacoes.reduce((s, x) => s + (noPedido.get(x.id) ?? 0), 0)}
+                    piscou={p.variacoes.some((x) => x.id === piscou)}
+                    aoTocar={() => tocarProduto(p)}
+                  />
+                )
+              })}
             </Grade>
           )
         ) : carregando ? (

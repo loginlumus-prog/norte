@@ -204,3 +204,46 @@ export function matrizDaGrade(variacoes: VariacaoNaVitrine[]): MatrizDaGrade | n
     ),
   }
 }
+
+// ── a busca agrupada ─────────────────────────────────────────
+// A busca acha VARIAÇÕES — 0056522 traz a bermuda no 36, no 38... no 48.
+// Sete cartões "Bermuda Cargo — 36", "— 38" parecem sete produtos. A tela
+// mostra o produto UMA vez, como a vitrine, e o tamanho se escolhe dentro.
+
+export type BlocoDaBusca =
+  | { tipo: 'peca'; achado: Achado }
+  | { tipo: 'grade'; produto: ProdutoNaVitrine }
+
+/**
+ * Junta as variações do mesmo produto, na ordem em que a busca as trouxe (a
+ * primeira de cada produto marca o lugar dele). Produto com uma variação só
+ * achada continua cartão de peça — tocar já lança, sem folha de escolha.
+ */
+export function agruparAchados(achados: readonly Achado[]): BlocoDaBusca[] {
+  const ordem: string[] = []
+  const porProduto = new Map<string, Achado[]>()
+  const soltos = new Map<string, Achado>()
+  for (const a of achados) {
+    const chave = a.grade?.produtoId ?? `peca:${a.id}`
+    if (!porProduto.has(chave) && !soltos.has(chave)) ordem.push(chave)
+    if (a.grade) porProduto.set(chave, [...(porProduto.get(chave) ?? []), a])
+    else soltos.set(chave, a)
+  }
+  return ordem.map((chave): BlocoDaBusca => {
+    const solto = soltos.get(chave)
+    if (solto) return { tipo: 'peca', achado: solto }
+    const grupo = porProduto.get(chave)!
+    if (grupo.length === 1) return { tipo: 'peca', achado: grupo[0]! }
+    const g = grupo[0]!.grade!
+    return {
+      tipo: 'grade',
+      produto: {
+        id: g.produtoId,
+        nome: g.nome,
+        medida: grupo[0]!.medida,
+        categoriaId: g.categoriaId,
+        variacoes: grupo.map((a) => ({ ...a, opcoes: a.grade?.opcoes ?? [] })),
+      },
+    }
+  })
+}

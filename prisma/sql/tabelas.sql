@@ -381,6 +381,7 @@ CREATE TABLE "produtos" (
     "nome" TEXT NOT NULL,
     "descricao" TEXT,
     "marca" TEXT,
+    "referencia" TEXT,
     "categoria_id" TEXT,
     "medida" "Medida" NOT NULL DEFAULT 'UN',
     "preco_vista" DECIMAL(12,2),

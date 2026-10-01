@@ -112,6 +112,7 @@ export default async function FichaProduto({
     id: produto.id,
     nome: produto.nome,
     marca: produto.marca ?? '',
+    referencia: produto.referencia ?? null,
     descricao: produto.descricao ?? '',
     categoriaId: produto.categoriaId ?? '',
     medida: produto.medida,

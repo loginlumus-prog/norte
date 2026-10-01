@@ -34,6 +34,7 @@ import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
 import { vendidoNaLoja } from '@/servidor/catalogo-loja'
 import { escolhaDoEnter } from '@/servidor/etiqueta'
+import { agruparAchados, type ProdutoNaVitrine } from './vitrine'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
 import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
@@ -375,7 +376,7 @@ export function useVenda({
    * do "CAM00" digitado antes, e o primeiro dela é o CAM001, não o CAM002).
    * Então: se a lista na tela é deste termo, usa; se não, pergunta agora.
    */
-  async function enterNaBusca(): Promise<Achado | null> {
+  async function enterNaBusca(): Promise<Achado | ProdutoNaVitrine | null> {
     const t = termo.trim()
     if (t.length < 2) return null
     let itens = busca_.de === t ? busca_.itens : null
@@ -392,6 +393,11 @@ export function useVenda({
     const { item, varios } = escolhaDoEnter(t, itens)
     if (varios > 0) {
       setBusca_({ de: t, itens })
+      // A etiqueta é de um produto só: abre a escolha de tamanho dele, como
+      // tocar no cartão. Etiqueta que cobre produtos diferentes (raro) fica na
+      // lista, com o aviso.
+      const grades = agruparAchados(itens.filter((a) => !a.foraDaLoja)).filter((b) => b.tipo === 'grade')
+      if (grades.length === 1 && grades[0]!.tipo === 'grade') return grades[0]!.produto
       setAlerta(`A etiqueta ${t} tem ${varios} tamanhos ou cores. Toque no da peça.`)
       return null
     }

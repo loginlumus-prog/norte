@@ -28,9 +28,9 @@ import { escada, type Tabela } from '@/servidor/preco'
 import { consultarVale } from '@/servidor/devolucao'
 import { situacaoDosClientes } from '@/servidor/crediario'
 import type { FormaPagamento } from '@prisma/client'
-import type { ProdutoNaVitrine } from './vitrine'
+import type { OpcaoDaVariacao, ProdutoNaVitrine } from './vitrine'
 import { aVendaNaLoja, soDaLoja } from '@/servidor/catalogo-loja'
-import { SEPARADOR_DA_ETIQUETA, codigoExato } from '@/servidor/etiqueta'
+import { ondeOCodigo, pedacoDeCodigo, proximidade } from '@/servidor/etiqueta'
 
 export type Achado = {
   id: string
@@ -64,6 +64,12 @@ export type Achado = {
    * "acabou", e a tela mostra "serviço" no lugar do número.
    */
   servico?: boolean
+  /**
+   * Só na busca: de que produto a variação é, e as opções dela. A tela junta
+   * os tamanhos do mesmo produto num cartão só ("Bermuda Cargo · 7 opções")
+   * e abre a escolha de tamanho, como na vitrine — e não sete cartões soltos.
+   */
+  grade?: { produtoId: string; nome: string; categoriaId: string | null; opcoes: OpcaoDaVariacao[] }
 }
 
 /** O saldo que o serviço leva para a tela: grande o bastante para nunca "acabar". */
@@ -82,7 +88,7 @@ type VariacaoLida = {
     vendidoEm?: string[]
     servico?: boolean
   }
-  opcoes: { opcao: { valor: string } }[]
+  opcoes: { opcao: { valor: string; ordem?: number; hex?: string | null; eixo?: { nome: string; ordem: number } } }[]
   estoques: { quantidade: { toString(): string } }[]
 }
 
@@ -91,9 +97,16 @@ const SELECAO_DA_VARIACAO = {
   codigo: true,
   ajustePreco: true,
   produto: {
-    select: { nome: true, medida: true, precoVista: true, precoCartao: true, precoCrediario: true, vendidoEm: true, servico: true },
+    select: {
+      id: true, nome: true, medida: true, categoriaId: true,
+      precoVista: true, precoCartao: true, precoCrediario: true, vendidoEm: true, servico: true,
+    },
   },
-  opcoes: { select: { opcao: { select: { valor: true } } } },
+  // Com o eixo e a ordem: a busca agrupa os tamanhos do mesmo produto num
+  // cartão só, e a folha de escolha precisa saber o que é tamanho e o que é cor.
+  opcoes: {
+    select: { opcao: { select: { valor: true, ordem: true, hex: true, eixo: { select: { nome: true, ordem: true } } } } },
+  },
 } as const
 
 /** Uma variação do banco vira o que o balcão precisa. Um lugar só, para a busca e a grade concordarem. */
@@ -117,6 +130,29 @@ function montarAchado(v: VariacaoLida): Achado {
     saldo: v.produto.servico ? SALDO_DE_SERVICO : Number(v.estoques[0]?.quantidade ?? 0),
     vendidoEm: v.produto.vendidoEm ?? [],
     ...(v.produto.servico ? { servico: true } : {}),
+  }
+}
+
+/** O achado da busca, com o produto e as opções — para a tela agrupar a grade. */
+function montarAchadoDaBusca(v: VariacaoLida & { produto: { id?: string; categoriaId?: string | null } }): Achado {
+  return {
+    ...montarAchado(v),
+    ...(v.produto.id
+      ? {
+          grade: {
+            produtoId: v.produto.id,
+            nome: v.produto.nome,
+            categoriaId: v.produto.categoriaId ?? null,
+            opcoes: v.opcoes.map((o) => ({
+              eixo: o.opcao.eixo?.nome ?? '',
+              eixoOrdem: o.opcao.eixo?.ordem ?? 0,
+              valor: o.opcao.valor,
+              ordem: o.opcao.ordem ?? 0,
+              hex: o.opcao.hex ?? null,
+            })),
+          },
+        }
+      : {}),
   }
 }
 
@@ -154,20 +190,33 @@ export async function procurar(
     // nome e com teto maior, porque a grade de uma sandália passa fácil de
     // doze variações, e cortar a grade no meio esconde o número que a pessoa
     // tem na mão. Só o que ESTA loja vende: a sorveteria não acha camisa.
-    const porCodigo = await db.variacao.findMany({
+    const exatos = await db.variacao.findMany({
       where: {
         ativa: true,
         produto: { ativo: true, ...aVendaNaLoja(unidadeId) },
-        OR: [
-          { codigo: { equals: t, mode: 'insensitive' } },
-          { codigoBarras: t },
-          { codigo: { startsWith: t + SEPARADOR_DA_ETIQUETA, mode: 'insensitive' } },
-        ],
+        OR: ondeOCodigo(t, true),
       },
       orderBy: { codigo: 'asc' },
       take: 60,
       select: selecao,
     })
+    // Depois o PEDAÇO: "56522" acha 0056522, como no balcão de onde a loja
+    // veio. Numa segunda passada, para nunca empurrar para fora o código
+    // inteiro que a pessoa digitou.
+    const pedacos = pedacoDeCodigo(t)
+      ? await db.variacao.findMany({
+          where: {
+            ativa: true,
+            id: { notIn: exatos.map((v) => v.id) },
+            produto: { ativo: true, ...aVendaNaLoja(unidadeId) },
+            OR: ondeOCodigo(t),
+          },
+          orderBy: { codigo: 'asc' },
+          take: 40,
+          select: selecao,
+        })
+      : []
+    const porCodigo = [...exatos, ...pedacos]
     // Uma depois da outra, e não em Promise.all: dentro de comoOrg é uma
     // conexão só (ver `grade`).
     const porNome = await db.variacao.findMany({
@@ -178,6 +227,8 @@ export async function procurar(
         OR: [
           { produto: { nome: { contains: t, mode: 'insensitive' } } },
           { produto: { marca: { contains: t, mode: 'insensitive' } } },
+          // A referência do fornecedor, que está na caixa da peça.
+          { produto: { referencia: { contains: t, mode: 'insensitive' } } },
         ],
       },
       take: 12,
@@ -186,10 +237,9 @@ export async function procurar(
 
     // Código exato na frente: é o caso do leitor de código de barras. Depois
     // a grade da etiqueta, em ordem de código, e por último o que achou pelo nome.
-    const achados = [...porCodigo.map(montarAchado)].sort(
-      (a, b) => Number(codigoExato(b.codigo, t)) - Number(codigoExato(a.codigo, t)),
-    )
-    achados.push(...porNome.map(montarAchado))
+    const perto = (c: string | null) => proximidade(c, t) ?? 9
+    const achados = [...porCodigo.map(montarAchadoDaBusca)].sort((a, b) => perto(a.codigo) - perto(b.codigo))
+    achados.push(...porNome.map(montarAchadoDaBusca))
     if (porCodigo.length > 0) return achados
 
     // Nenhum código desta loja bateu. Se o código existe no catálogo de OUTRA
@@ -201,11 +251,7 @@ export async function procurar(
       where: {
         ativa: true,
         produto: { ativo: true, usoInterno: false, NOT: soDaLoja(unidadeId) },
-        OR: [
-          { codigo: { equals: t, mode: 'insensitive' } },
-          { codigoBarras: t },
-          { codigo: { startsWith: t + SEPARADOR_DA_ETIQUETA, mode: 'insensitive' } },
-        ],
+        OR: ondeOCodigo(t, true),
       },
       select: selecao,
     })

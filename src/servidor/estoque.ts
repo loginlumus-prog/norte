@@ -18,6 +18,7 @@
 // decide o que fazer: o balcão avisa a vendedora, uma importação registra e
 // segue. Erro fica para o que é erro mesmo.
 
+import { ondeOCodigo } from './etiqueta'
 import { randomUUID } from 'node:crypto'
 import { comoOrg } from './banco'
 import { exigir, pode, textoDaBusca, type Capacidade, type Sessao } from './permissao'
@@ -283,8 +284,9 @@ export async function listarMovimentos(sessao: Sessao, f: FiltroMovimentos): Pro
     ...(q
       ? {
           OR: [
-            { codigo: { equals: q, mode: 'insensitive' as const } },
+            ...ondeOCodigo(q),
             { produto: { nome: { contains: q, mode: 'insensitive' as const } } },
+            { produto: { referencia: { contains: q, mode: 'insensitive' as const } } },
           ],
         }
       : {}),

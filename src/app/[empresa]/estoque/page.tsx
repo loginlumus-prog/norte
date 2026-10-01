@@ -24,7 +24,7 @@ import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { SeletorPeriodo } from '@/ui/Periodo'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import { Paginas } from '@/ui/Paginas'
-import { codigoExato, daEtiqueta } from '@/servidor/etiqueta'
+import { codigoBate } from '@/servidor/etiqueta'
 import { fatiar, lerPagina } from '@/ui/paginacao'
 import type { Tema } from '@/ui/TrocaTema'
 import type { TipoMovimento } from '@prisma/client'
@@ -156,7 +156,7 @@ export default async function TelaEstoque({
         select: {
           id: true,
           codigo: true,
-          produto: { select: { nome: true, medida: true, custo: true, vendidoEm: true, usoInterno: true, feitoNoDia: true } },
+          produto: { select: { nome: true, referencia: true, medida: true, custo: true, vendidoEm: true, usoInterno: true, feitoNoDia: true } },
           opcoes: {
             select: {
               opcao: {
@@ -202,6 +202,7 @@ export default async function TelaEstoque({
         id: v.id,
         codigo: v.codigo,
         nome: v.produto.nome,
+        referencia: v.produto.referencia,
         medida: v.produto.medida,
         custo: Number(v.produto.custo ?? 0),
         opcoes: v.opcoes.map((o) => ({
@@ -338,14 +339,15 @@ export default async function TelaEstoque({
   // obedece ao filtro. Se filtrasse antes, buscar "camiseta" faria a tira
   // dizer que só existe camiseta na loja.
   //
-  // A busca casa com nome e com etiqueta — e é sem acento e sem caixa, porque
+  // A busca casa com nome, referência do fornecedor e etiqueta (inteira ou
+  // um pedaço dela, como no balcão) — e é sem acento e sem caixa, porque
   // quem digita no balcão não vai parar para pôr o til em "açaí".
   const solto = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   const termo = solto(q)
   const nivelPedido = situacao === 'acabaram' ? 'critico' : situacao === 'minimo' ? 'atencao' : situacao === 'ok' ? 'bom' : null
   const listados = itens.filter(
     (i) =>
-      (!termo || solto(i.nome).includes(termo) || codigoExato(i.codigo, q) || daEtiqueta(i.codigo, q)) &&
+      (!termo || solto(i.nome).includes(termo) || solto(i.referencia ?? '').includes(termo) || codigoBate(i.codigo, q)) &&
       (!nivelPedido || nivelDe(i) === nivelPedido),
   )
 

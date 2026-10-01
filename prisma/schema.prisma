@@ -819,6 +819,10 @@ model Produto {
   nome      String
   descricao String?
   marca     String?
+  /// A referência do fornecedor ("ref. 6291.1175"). É o que a vendedora
+  /// encontra na caixa e na nota de compra — o balcão acha o produto por ela,
+  /// por pedaço, como acha pelo código da etiqueta.
+  referencia String?
 
   categoriaId String?    @map("categoria_id")
   categoria   Categoria? @relation(fields: [categoriaId], references: [id])
