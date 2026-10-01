@@ -252,7 +252,7 @@ export const FONTES_DE_PAGAMENTO: Fonte[] = [
           where: { clienteId, unidadeId: { in: lojas }, quitadaEm: null },
           orderBy: { vencimento: 'asc' },
           take: 24,
-          select: { valor: true, pago: true, vencimento: true },
+          select: { valor: true, pago: true, vencimento: true, cliente: { select: { cobrancaPausadaEm: true } } },
         }),
       )
       const hoje = diaEmSP(agora)
@@ -263,7 +263,15 @@ export const FONTES_DE_PAGAMENTO: Fonte[] = [
         if (p.vencimento.toISOString().slice(0, 10) < hoje) vencido += resto
         else aVencer += resto
       }
-      return { parcelasEmAberto: ps.length, vencido: brl(vencido), aVencer: brl(aVencer), proximoVencimento: ps[0] ? ps[0].vencimento.toISOString().slice(0, 10) : null }
+      // A cobrança pausada (acordo, advogado — crediario-gestao.ts) vai junto:
+      // quem pergunta fica sabendo antes de sugerir cobrar.
+      return {
+        parcelasEmAberto: ps.length,
+        vencido: brl(vencido),
+        aVencer: brl(aVencer),
+        proximoVencimento: ps[0] ? ps[0].vencimento.toISOString().slice(0, 10) : null,
+        cobrancaPausada: !!ps[0]?.cliente.cobrancaPausadaEm,
+      }
     },
   },
   {

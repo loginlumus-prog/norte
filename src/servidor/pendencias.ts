@@ -401,14 +401,18 @@ export async function pendenciasDoDia(
     }
 
     if (doFiado.length > 0) {
-      // Só o que ainda resta: parcela paga pela metade é meia dívida.
+      // Só o que ainda resta: parcela paga pela metade é meia dívida. Quem
+      // está com a cobrança pausada (acordo, advogado — ver
+      // crediario-gestao.ts) não entra: isto é o chamado de COBRAR.
       const [p] = await db.$queryRaw<{ quantas: number; valor: string; clientes: number }[]>`
         select count(*)::int as quantas,
                coalesce(sum(p.valor - p.pago), 0) as valor,
                count(distinct p.cliente_id)::int as clientes
           from parcelas p
+          join clientes c on c.id = p.cliente_id
          where p.unidade_id = any(${doFiado}) and p.quitada_em is null
            and p.vencimento < ${hoje}::date and p.valor > p.pago
+           and c.cobranca_pausada_em is null
       `
       c.parcelasVencidas = { quantas: n(p?.quantas), valor: n(p?.valor), clientes: n(p?.clientes) }
     }

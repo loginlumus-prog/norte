@@ -21,7 +21,8 @@
 import { ondeOCodigo } from './etiqueta'
 import { randomUUID } from 'node:crypto'
 import { comoOrg } from './banco'
-import { exigir, pode, textoDaBusca, type Capacidade, type Sessao } from './permissao'
+import { exigir, pode, soPelaEmpresa, textoDaBusca, type Capacidade, type Sessao } from './permissao'
+import { assinarExcecao } from './autorizacao'
 import type { TipoMovimento } from '@prisma/client'
 import { vendidoNaLoja } from './catalogo-loja'
 
@@ -117,6 +118,88 @@ export async function mexerEstoque(
       })
     }
     return r
+  })
+}
+
+export type Correcao =
+  | { ok: true; saldo: number; antes: number }
+  /** O saldo mudou entre a pessoa olhar e mandar (uma venda, outra pessoa contando). */
+  | { ok: false; motivo: 'mudou'; saldo: number; erro: string }
+  /** A exceção pede a assinatura de quem corrige (o PIN dela). */
+  | { ok: false; motivo: 'assinatura'; erro: string }
+
+/**
+ * Corrigir o saldo pelo que foi CONTADO na prateleira — o "corrigir" da tela
+ * de Estoque.
+ *
+ * ── "o número mudou enquanto você contava" ───────────────────
+ * A tela manda também o saldo que ELA mostrava quando a pessoa começou a
+ * contar (`saldoVisto`). Se o banco já não está nele, uma venda (ou outra
+ * pessoa) mexeu no meio da contagem — e gravar o contado por cima apagaria
+ * esse movimento em silêncio: a peça vendida às 15h02 "voltava" ao estoque
+ * no balanço das 15h03. Melhor recusar e mostrar o número novo.
+ *
+ * ── a assinatura ─────────────────────────────────────────────
+ * Quem corrige porque a EMPRESA deixou (a vendedora, ver EXTRAS_DO_BALCAO)
+ * assina sempre com o PIN dela; os outros, quando a empresa pede assinatura
+ * nas exceções.
+ */
+export async function corrigirPeloContado(
+  sessao: Sessao,
+  c: { variacaoId: string; unidadeId: string; contado: number; motivo: string; saldoVisto?: number | null; pin?: string | null },
+): Promise<Correcao> {
+  exigir(sessao, 'estoque.ajustar', c.unidadeId)
+  if (!Number.isFinite(c.contado) || c.contado < 0) throw new Error('O que você contou precisa ser um número, zero ou mais.')
+  const motivo = c.motivo.replace(/\s+/g, ' ').trim().slice(0, 200)
+  if (motivo.length < 3) throw new Error('Diga o motivo da correção. Sem isso não dá para conferir depois.')
+
+  const assinatura = await assinarExcecao(sessao, { pin: c.pin, sempre: soPelaEmpresa(sessao, 'estoque.ajustar', c.unidadeId) })
+  if (!assinatura.ok) return { ok: false, motivo: 'assinatura', erro: assinatura.erro }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const v = await db.variacao.findUnique({
+      where: { id: c.variacaoId },
+      select: { codigo: true, produto: { select: { nome: true } } },
+    })
+    const loja = await db.unidade.findUnique({ where: { id: c.unidadeId }, select: { id: true } })
+    if (!v || !loja) throw new Error('Produto ou loja não encontrado nesta empresa.')
+
+    // Travado: a venda que chegar agora espera esta correção terminar.
+    const antes = await saldoDe(db, c.variacaoId, c.unidadeId, true)
+    if (c.saldoVisto !== null && c.saldoVisto !== undefined && Number.isFinite(c.saldoVisto) && Number(c.saldoVisto) !== antes) {
+      return {
+        ok: false as const,
+        motivo: 'mudou' as const,
+        saldo: antes,
+        erro: `O estoque mudou enquanto você contava: agora o sistema diz ${antes} (você viu ${c.saldoVisto}). Confira a prateleira e mande de novo.`,
+      }
+    }
+
+    const r = await mexerEstoqueEm(db, sessao, {
+      variacaoId: c.variacaoId,
+      unidadeId: c.unidadeId,
+      tipo: 'BALANCO',
+      quantidade: c.contado,
+      motivo,
+    })
+    if (!r.ok) throw new Error('Não deu para corrigir o saldo.')
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: c.unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'estoque.ajustou',
+        alvoTipo: 'variacao',
+        alvoId: c.variacaoId,
+        alvoNome: `${v.produto.nome}${v.codigo ? ` (${v.codigo})` : ''}`,
+        motivo,
+        antes: { saldo: antes },
+        depois: { saldo: r.saldo, tipo: 'BALANCO' },
+        assinado: assinatura.assinou,
+      },
+    })
+    return { ok: true as const, saldo: r.saldo, antes }
   })
 }
 

@@ -38,7 +38,7 @@ import { oferecer, valorEmCentavos, type Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
 import { vendidoNaLoja } from '@/servidor/catalogo-loja'
 import { escolhaDoEnter } from '@/servidor/etiqueta'
-import { agruparAchados, type ProdutoNaVitrine } from './vitrine'
+import { agruparAchados, tirarUmDoPedido, type ProdutoNaVitrine } from './vitrine'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
 import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
@@ -71,6 +71,9 @@ export const TECLAS_FORMA: Record<string, string> = {
 export const TECLA_DA_FORMA: Record<string, string> = Object.fromEntries(
   Object.entries(TECLAS_FORMA).map(([t, f]) => [f, t]),
 )
+
+/** As abas da ficha da cliente no balcão (FichaDaCliente.tsx). */
+export type AbaDaFicha = 'resumo' | 'dados' | 'crediario' | 'historico'
 
 /** O pedido de autorização aberto: por que a venda precisa do PIN de quem pode. */
 export type PedidoDePin = { motivo: string; erro?: string }
@@ -216,7 +219,7 @@ export function useVenda({
   const [acrescimo, setAcrescimo] = useState(0)
   const [cliente, setCliente_] = useState<ClienteNoBalcao | null>(null)
   /** O que a busca de cliente não traz: CPF na ficha e os vales dela que valem aqui. */
-  const [ficha, setFicha] = useState<{ temCpf: boolean; vales: { codigo: string; saldo: number }[] } | null>(null)
+  const [ficha, setFicha] = useState<{ temCpf: boolean; vales: { codigo: string; saldo: number }[]; falta?: string[] } | null>(null)
   /** O CPF ditado no crediário, para a ficha sem CPF. Vai com a venda. */
   const [cpf, setCpf] = useState('')
   const [vendedorId, setVendedorId_] = useState(usuarioId)
@@ -245,6 +248,12 @@ export function useVenda({
   const [incerta, setIncerta] = useState(false)
   const [pedidoCliente, setPedidoCliente] = useState(0)
   const [pedidoVendedor, setPedidoVendedor] = useState(0)
+  /**
+   * A ficha da cliente escolhida, em tela cheia (FichaDaCliente.tsx): a aba
+   * que abre, ou nula. Alt+N com a cliente já escolhida abre aqui — sem
+   * cliente, Alt+N continua sendo "procurar cliente".
+   */
+  const [fichaAberta, setFichaAberta] = useState<AbaDaFicha | null>(null)
   const [indo, comecar] = useTransition()
 
   // `qtd` é a quantidade do PRÓXIMO lançamento, e volta a 1 depois de cada um.
@@ -261,6 +270,8 @@ export function useVenda({
   const primeiraForma = useRef<HTMLButtonElement>(null)
   /** A caixa da tela inteira. O bipe só é puxado para a busca se o foco estava aqui dentro. */
   const raiz = useRef<HTMLDivElement>(null)
+  /** Os ids lançados, o mais novo por último — é o que o "tirar um" desfaz (ver `tirarUm`). */
+  const lancados = useRef<string[]>([])
 
   // Regra 9: o último gesto foi toque? Ouvido na janela, na fase de captura,
   // para valer antes do clique que vai lançar o item.
@@ -413,7 +424,17 @@ export function useVenda({
   function setCliente(c: ClienteNoBalcao | null) {
     setCliente_(c)
     setCpf('')
-    if (!c) setFicha(null)
+    if (!c) {
+      setFicha(null)
+      setFichaAberta(null)
+    }
+  }
+  // Mudou na ficha (o CPF que faltava, o telefone novo): o pedido fica com a
+  // mesma cliente, com o nome de agora, e a pergunta do CPF no crediário some.
+  const [fichaMudou, setFichaMudou] = useState(0)
+  function atualizarCliente(dados: { nome: string; telefone: string | null }) {
+    setCliente_((c) => (c ? { ...c, nome: dados.nome, telefone: dados.telefone } : c))
+    setFichaMudou((n) => n + 1)
   }
   useEffect(() => {
     if (!cliente) return
@@ -424,7 +445,7 @@ export function useVenda({
     return () => {
       vivo = false
     }
-  }, [cliente?.id, slug, unidadeId])
+  }, [cliente?.id, slug, unidadeId, fichaMudou])
 
   // Busca conforme digita, com uma pausa curta para não consultar a cada tecla.
   useEffect(() => {
@@ -499,6 +520,7 @@ export function useVenda({
         ? c.map((l) => (l.id === a.id ? { ...l, quantidade: novaQtd } : l))
         : [...c, { ...a, quantidade: novaQtd }],
     )
+    lancados.current = [...lancados.current.slice(-49), a.id]
     // O aviso é agora, não no fim: quem lançou 3 e só tem 1 precisa saber
     // com a pessoa na frente, não depois de escolher o pagamento. Na loja que
     // vende o que o sistema diz que acabou, o aviso não trava: a peça está na
@@ -604,6 +626,21 @@ export function useVenda({
   const tirar = (id: string) => {
     setRecado(null)
     setCarrinho((c) => c.filter((l) => l.id !== id))
+  }
+
+  // ── tirar um (o clique direito da vitrine) ───────────────
+  // Os ids na ordem em que entraram, o mais novo por último: com P e M da
+  // mesma blusa no pedido, o clique direito desfaz o ÚLTIMO toque, e não o
+  // primeiro (ver vitrine.ts, `tirarUmDoPedido`). Fica só na memória: o
+  // pedido recuperado do aparelho cai na ordem das linhas, que é quase igual.
+  // (`lancados` mora junto dos outros ganchos, lá em cima.)
+  /** Tira uma unidade de uma destas peças (a última lançada). Devolve se tirou. */
+  function tirarUm(ids: readonly string[]): boolean {
+    const novo = tirarUmDoPedido(carrinho, ids, lancados.current)
+    if (!novo) return false
+    setRecado(null)
+    setCarrinho(novo)
+    return true
   }
 
   function pagarCom(forma: string) {
@@ -996,9 +1033,9 @@ export function useVenda({
     if (avulsoAberto) return setAvulsoAberto(false)
   }
 
-  const estado = useRef({ podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc })
+  const estado = useRef({ podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc, temCliente: !!cliente })
   useEffect(() => {
-    estado.current = { podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc }
+    estado.current = { podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc, temCliente: !!cliente }
   })
   useEffect(() => {
     // Uma janela por cima que NÃO é o pedido (o tamanho, o PIN, as opções):
@@ -1040,7 +1077,12 @@ export function useVenda({
       }
       if (e.altKey && (e.key === 'n' || e.key === 'N')) {
         e.preventDefault()
-        setPedidoCliente((n) => n + 1)
+        // Com a cliente já escolhida, Alt+N é a ficha dela (o "quanto ela
+        // deve?", o telefone novo); sem cliente, é procurar uma. Com outra
+        // janela por cima, a tecla é dela.
+        if (estado.current.temCliente) {
+          if (!janelaAlheia()) setFichaAberta((a) => a ?? 'resumo')
+        } else setPedidoCliente((n) => n + 1)
         return
       }
       if (e.altKey && (e.key === 'f' || e.key === 'F')) {
@@ -1090,6 +1132,7 @@ export function useVenda({
     lancar,
     mudarQtd,
     tirar,
+    tirarUm,
     limpar,
     itensNaVenda,
     qtd,
@@ -1166,6 +1209,9 @@ export function useVenda({
     setAcrescimo,
     cliente,
     setCliente,
+    atualizarCliente,
+    fichaAberta,
+    setFichaAberta,
     vendedorId,
     setVendedorId,
     pontosUsar,

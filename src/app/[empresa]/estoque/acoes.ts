@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { exigir, SemPermissao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
-import { marcarConferido, mexerEstoque, transferir } from '@/servidor/estoque'
+import { corrigirPeloContado, marcarConferido, transferir } from '@/servidor/estoque'
 import { colunaDoDia } from '@/servidor/dia'
 import { registrarEntrada, definirMinimo, type ItemEntrada } from '@/servidor/entrada'
 import { plural } from '@/ui/texto'
@@ -169,25 +169,29 @@ export async function darEntrada(
  * sistema calcula o movimento. Pedir a diferença obrigaria quem está com a
  * peça na mão a fazer a subtração de cabeça — e é aí que o erro entra.
  */
+/**
+ * `saldoVisto` é o saldo que a tela mostrava quando a pessoa começou a contar:
+ * se o banco já não está nele (uma venda no meio), a correção é recusada com o
+ * número novo (`saldo`). `precisaPin`: a correção pede a assinatura de quem
+ * corrige — a tela mostra o campo do PIN.
+ */
+export type EstadoContagem = EstadoEntrada & { precisaPin?: boolean; saldo?: number }
+
 export async function contar(
   slug: string,
   variacaoId: string,
   unidadeId: string,
   contado: number,
   motivo: string,
-): Promise<EstadoEntrada> {
+  saldoVisto?: number | null,
+  pin?: string | null,
+): Promise<EstadoContagem> {
   const s = await exigirSessao(slug)
   if (!motivo.trim()) return { erro: 'Diga o motivo da correção. Sem isso não dá para conferir depois.' }
 
   try {
-    const r = await mexerEstoque(s, {
-      variacaoId,
-      unidadeId,
-      tipo: 'BALANCO',
-      quantidade: contado,
-      motivo: motivo.trim(),
-    })
-    if (!r.ok) return { erro: 'Não deu para corrigir o saldo.' }
+    const r = await corrigirPeloContado(s, { variacaoId, unidadeId, contado, motivo, saldoVisto, pin })
+    if (!r.ok) return r.motivo === 'mudou' ? { erro: r.erro, saldo: r.saldo } : { erro: r.erro, precisaPin: true }
     revalidatePath(`/${slug}/estoque`)
     return { ok: `Saldo corrigido para ${r.saldo}.` }
   } catch (e) {

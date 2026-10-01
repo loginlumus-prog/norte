@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao, cx } from '@/ui/base'
 import { criar, editar, type EstadoProduto } from './acoes'
 import { semApagar } from '@/ui/formulario'
+import { CampoDoPin } from '@/ui/Assinar'
 
 export type EixoNaTela = {
   id: string
@@ -85,6 +86,7 @@ export function Editor({
   marcas,
   produto,
   servicoPadrao = false,
+  pedePin = false,
 }: {
   slug: string
   eixos: EixoNaTela[]
@@ -103,6 +105,8 @@ export function Editor({
   produto?: ProdutoNaTela
   /** Cadastro novo aberto por "Cadastrar serviço": a ficha já vem marcada como serviço. */
   servicoPadrao?: boolean
+  /** Quem cadastra assina com o PIN (a vendedora, quando a empresa deixa — ver EXTRAS_DO_BALCAO). */
+  pedePin?: boolean
 }) {
   const idsDosEixos = useMemo(() => eixos.map((e) => e.id), [eixos])
   const travado = produto?.travado === true
@@ -453,6 +457,12 @@ export function Editor({
           />
           {travado && produto.ativo && <input type="hidden" name="ativo" value="on" />}
         </Cartao>
+      )}
+
+      {!produto && (pedePin || estado.precisaPin) && (
+        <div className="flex justify-end">
+          <CampoDoPin slug={slug} name="pin" rotulo="Seu PIN (assina o cadastro)" foco={!!estado.precisaPin} />
+        </div>
       )}
 
       <div className="flex items-center justify-between gap-3">

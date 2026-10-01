@@ -39,7 +39,7 @@ import { colunaDoDia, diaDaColuna, diaEmSP, diasEntre } from './dia'
 import { travarVenda } from './devolucao'
 import { travarCaixaAberto } from './caixa'
 import { lerTaxas, taxaDe } from './taxas'
-import { autorizarComPin } from './autorizacao'
+import { assinarExcecao, autorizarComPin } from './autorizacao'
 import { maquininhasNoBanco } from './maquininhas'
 import {
   contaDasMarcadas,
@@ -275,7 +275,8 @@ export type PedidoDeRecibo = {
 
 export type ResultadoDoRecibo =
   | { ok: true; reciboId: string; saldoDepois: number; quitou: boolean; troco: number; recebido: number }
-  | { ok: false; erro: string }
+  /** `precisaPin`: a exceção pede a assinatura de quem faz (ver `assinarExcecao`). */
+  | { ok: false; erro: string; precisaPin?: true }
 
 class Recusa extends Error {}
 
@@ -552,6 +553,15 @@ export type PedidoDeBaixaExterna = {
   unidadeId: string
   parcelaIds: string[]
   valor: number
+  /**
+   * "Quitou tudo": a baixa de TODO o carnê dela nesta loja, com o valor
+   * contado aqui dentro, com o banco travado — e não o que a tela leu antes
+   * (`valor` e `parcelaIds` são ignorados). Uma parcela recebida no meio não
+   * vira baixa de dinheiro que ela não deve mais.
+   */
+  tudo?: boolean
+  /** O PIN de quem dá a baixa, quando a empresa pede assinatura nas exceções. */
+  pin?: string | null
   /** Como ela pagou lá — só para o registro. */
   forma?: FormaPagamento
   /** De onde veio: "sistema antigo, recibo 123". */
@@ -564,13 +574,15 @@ export async function baixaExterna(sessao: Sessao, p: PedidoDeBaixaExterna, agor
   exigir(sessao, 'crediario.cobrar', p.unidadeId)
   const referencia = limparTexto(p.referencia, 120)
   if (referencia.length < 3) return { ok: false, erro: 'Diga de onde veio o pagamento (ex.: "sistema antigo, recibo 123").' }
-  if (!Number.isFinite(p.valor) || p.valor <= 0) return { ok: false, erro: 'Diga quanto ela pagou lá.' }
+  if (!p.tudo && (!Number.isFinite(p.valor) || p.valor <= 0)) return { ok: false, erro: 'Diga quanto ela pagou lá.' }
   const hoje = diaEmSP(agora)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.pagoEm ?? '') || p.pagoEm > hoje || diasEntre(p.pagoEm, hoje) > 5 * 366) {
     return { ok: false, erro: 'O dia do pagamento precisa ser hoje ou antes.' }
   }
   const forma = p.forma && FORMAS_DE_RECEBER.includes(p.forma) ? p.forma : 'DINHEIRO'
-  const valorC = centavos(p.valor)
+  // Fora da transação: a conferência do PIN abre a dela (o freio).
+  const assinatura = await assinarExcecao(sessao, { pin: p.pin })
+  if (!assinatura.ok) return { ok: false, erro: assinatura.erro, precisaPin: true }
 
   try {
     return await comoOrg(sessao.orgId, async (db) => {
@@ -586,8 +598,9 @@ export async function baixaExterna(sessao: Sessao, p: PedidoDeBaixaExterna, agor
       const regra = await regraDoAtraso(db, sessao.orgId)
       const abertas = await parcelasAbertas(db, p.clienteId, p.unidadeId, regra, agora)
       if (abertas.length === 0) throw new Recusa('Ela não deve nada nesta loja.')
-      const marcadas = [...new Set(p.parcelaIds ?? [])]
+      const marcadas = p.tudo ? abertas.map((a) => a.id) : [...new Set(p.parcelaIds ?? [])]
       if (marcadas.some((id) => !abertas.some((a) => a.id === id))) throw new Recusa(MUDOU)
+      const valorC = p.tudo ? abertas.reduce((s, a) => s + a.restaC, 0) : centavos(p.valor)
 
       const plano = planejarRecebimento(abertas, { marcadas, dinheiroC: valorC, semAtraso: true })
       if (!plano.ok) throw new Recusa(explicarRecusa(plano, brlC))
@@ -632,13 +645,14 @@ export async function baixaExterna(sessao: Sessao, p: PedidoDeBaixaExterna, agor
           unidadeId: p.unidadeId,
           usuarioId: sessao.usuarioId,
           quem: sessao.nome,
-          acao: 'crediario.baixa_externa',
+          acao: p.tudo ? 'crediario.quitou' : 'crediario.baixa_externa',
           alvoTipo: 'cliente',
           alvoId: cliente.id,
           alvoNome: cliente.nome,
           valor: reais(plano.dinheiroC),
-          motivo: `pago fora em ${p.pagoEm.split('-').reverse().join('/')} · ${referencia} · ${quaisParcelas(abertas, plano.linhas)}`.slice(0, 300),
+          motivo: `${p.tudo ? 'quitou tudo · ' : ''}pago fora em ${p.pagoEm.split('-').reverse().join('/')} · ${referencia} · ${quaisParcelas(abertas, plano.linhas)}`.slice(0, 300),
           depois: { reciboId: recibo.id, forma },
+          assinado: assinatura.assinou,
         },
       })
       return { ok: true as const, reciboId: recibo.id, saldoDepois: reais(saldoDepoisC), quitou: saldoDepoisC === 0, troco: 0, recebido: reais(plano.dinheiroC) }

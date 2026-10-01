@@ -15,6 +15,7 @@ import { Numero, brl } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { Cancelar } from './Cancelar'
+import { CorrigirData } from './CorrigirData'
 import { Devolver, type ItemDevolvivel } from './Devolver'
 import { pedeInteiro, restante } from '@/servidor/devolucao'
 import { concorda, plural } from '@/ui/texto'
@@ -184,6 +185,15 @@ export default async function FichaVenda({
           >
             Comprovante
           </a>
+          {/* A troca numa tela só (troca/): a peça volta e a nova sai juntas. */}
+          {podeDevolver && devolviveis.length > 0 && v.situacao === 'CONCLUIDA' && (
+            <Link
+              href={`/${slug}/troca?venda=${v.id}`}
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+            >
+              ⇄ Trocar
+            </Link>
+          )}
           {/* No crediário, o carnê: o papel que a cliente assina (vendas/[id]/carne). */}
           {v.parcelas.length > 0 && (
             <a
@@ -228,8 +238,9 @@ export default async function FichaVenda({
             <Situacao nivel="neutro">saldo importado</Situacao>
           </p>
           <p className="text-[13px] text-tinta-2">
-            Crediário trazido do sistema anterior: a compra foi feita lá, e aqui ficam só as
-            parcelas que estavam em aberto. Não entra como venda nem como receita do mês.
+            {v.observacoes?.startsWith('Dívida lançada')
+              ? `${v.observacoes} Não entra como venda nem como receita do mês.`
+              : 'Crediário trazido do sistema anterior: a compra foi feita lá, e aqui ficam só as parcelas que estavam em aberto. Não entra como venda nem como receita do mês.'}
           </p>
         </div>
       )}
@@ -243,6 +254,18 @@ export default async function FichaVenda({
         />
         <Numero rotulo={palavras.vendeu} valor={v.vendedorNome ?? '—'} detalhe={v.unidade.nome} />
       </div>
+
+      {/* A data corrigida (venda-data.ts): a de antes, quem e por quê. */}
+      {v.dataOriginal && (
+        <p className="text-[13px] text-tinta-2">
+          Data corrigida{v.dataCorrigidaPor ? ` por ${v.dataCorrigidaPor}` : ''}
+          {v.dataCorrigidaEm ? ` em ${quando(v.dataCorrigidaEm)}` : ''} — foi lançada em {quando(v.dataOriginal)}
+          {v.dataCorrigidaMotivo ? `. Motivo: ${v.dataCorrigidaMotivo}` : ''}.
+        </p>
+      )}
+      {v.situacao === 'CONCLUIDA' && pode(sessao, 'venda.cancelar', v.unidadeId) && (
+        <CorrigirData slug={slug} vendaId={v.id} dia={diaEmSP(v.criadaEm)} hoje={diaEmSP()} />
+      )}
 
       <Cartao titulo={`${v.itens.length} ${v.itens.length === 1 ? 'item' : 'itens'}`}>
         <Tabela colunas={colunas} linhas={v.itens} chave={(i) => i.id} />

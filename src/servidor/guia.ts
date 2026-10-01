@@ -70,6 +70,7 @@ export const NOME_DA_CAPACIDADE: Record<Capacidade, string> = {
   'produto.ver': 'ver produtos',
   'produto.editar': 'cadastrar e editar produtos',
   'produto.preco': 'mexer em preço',
+  'produto.cadastrar': 'cadastrar produto novo',
   'estoque.ver': 'ver o estoque',
   'estoque.ajustar': 'ajustar o estoque',
   'estoque.consumir': 'anotar o material usado',
@@ -991,10 +992,10 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Imprimir etiquetas',
         passos: [
-          'Na lista, "etiquetas" no produto; ou "Etiquetas" no alto, com uma busca ou categoria aplicada (algum recorte é obrigatório).',
-          'Escolha o formato: folha A4 de adesivo 50×30 mm, ou impressora térmica (uma etiqueta por página).',
-          'Cópias: uma por item, ou uma por peça em estoque — para etiquetar a caixa que acabou de chegar.',
-          '"Imprimir etiquetas". O código de barras é o código interno (Code 128) ou o EAN quando a peça tem. Máximo 400 por vez.',
+          'Na lista, "imprimir etiqueta" no produto, ou marque a caixa de vários e use "Imprimir etiquetas" no alto; na ficha do produto, "Imprimir etiqueta". "Etiquetas" no alto imprime o que a busca ou a categoria filtrou.',
+          'Modelo da loja (o padrão de quem tem os três preços): código grande, nome, à vista/Pix, cartão até N× e crediário, com o selo "economize X% à vista". Rolo 60×40, 33×22 (uma por página ou fileira de 3) ou 50×30; "Saiu deitado?" gira; o ajuste fino acerta o vão.',
+          'Quantas: pelo estoque (uma por peça) ou "eu escolho quantas". Antes do primeiro rolo, "Imprimir o teste" (quadros e uma barra para medir com régua).',
+          'Modelo simples: código de barras e só o à vista, em folha A4 de adesivo 50×30 mm ou na térmica. Máximo 400 por vez.',
         ],
         capacidade: 'produto.ver',
       },

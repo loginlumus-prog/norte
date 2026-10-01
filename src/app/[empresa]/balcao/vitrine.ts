@@ -12,6 +12,8 @@
 
 import type { Achado } from './acoes'
 import type { Tabela } from '@/servidor/preco'
+// Relativo, e não '@/': os testes rodam este arquivo direto, sem o atalho.
+import { SEPARADOR_DA_ETIQUETA } from '../../../servidor/etiqueta'
 
 export type OpcaoDaVariacao = {
   eixo: string
@@ -246,4 +248,54 @@ export function agruparAchados(achados: readonly Achado[]): BlocoDaBusca[] {
       },
     }
   })
+}
+
+// ── o código no cartão ───────────────────────────────────────
+// A vendedora tem a etiqueta na mão e o cartão na tela: o número igual nos
+// dois é o que diz "é esta" sem ler o nome inteiro. Para a grade, é o número
+// da ETIQUETA do produto (005990 de 005990-36, 005990-37 — ver
+// servidor/etiqueta.ts), e não o de um tamanho qualquer.
+
+/**
+ * O código que o cartão mostra: o da peça, se é uma só; o da etiqueta comum,
+ * se todas as variações começam pelo mesmo número antes do hífen. Códigos
+ * soltos (SAP012, SAP013…) não têm etiqueta comum: o cartão não inventa uma.
+ */
+export function etiquetaDoProduto(codigos: readonly (string | null | undefined)[]): string | null {
+  const limpos = codigos.map((c) => (c ?? '').trim()).filter(Boolean)
+  // Variação sem código: a grade não tem etiqueta comum (e a peça única, nenhuma).
+  if (limpos.length === 0 || limpos.length !== codigos.length) return null
+  if (limpos.length === 1) return limpos[0]!
+  const etiqueta = (c: string) => c.split(SEPARADOR_DA_ETIQUETA)[0]!.toUpperCase()
+  const primeira = etiqueta(limpos[0]!)
+  if (!primeira) return null
+  return limpos.every((c) => etiqueta(c) === primeira) ? primeira : null
+}
+
+// ── tirar um do pedido ───────────────────────────────────────
+// O clique direito no cartão (e o "−" no toque) desfaz o último toque naquele
+// produto. Com P e M da mesma blusa no pedido, sai a última que ENTROU — é
+// o "ih, não era esse" de quem tocou errado, e é ele que tem de ser desfeito.
+
+type LinhaQueSai = { id: string; quantidade: number; medida: string; encomendaId?: string }
+
+/**
+ * O pedido com uma unidade a menos das peças `ids`, ou `null` se nenhuma
+ * delas está no pedido. `recentes` são os ids na ordem em que foram lançados
+ * (o mais novo por último); sem eles (pedido recuperado do aparelho), vale a
+ * ordem do pedido. Peça a peso sai inteira: tirar "um quilo" de 0,350 kg não
+ * existe. A encomenda nunca sai por aqui — ela não está na vitrine.
+ */
+export function tirarUmDoPedido<L extends LinhaQueSai>(
+  carrinho: readonly L[],
+  ids: readonly string[],
+  recentes: readonly string[] = [],
+): L[] | null {
+  const alvo = new Set(ids)
+  const candidatas = carrinho.filter((l) => alvo.has(l.id) && !l.encomendaId)
+  if (candidatas.length === 0) return null
+  const naOrdem = (id: string) => recentes.lastIndexOf(id)
+  const linha = candidatas.reduce((ultima, l) => (naOrdem(l.id) >= naOrdem(ultima.id) ? l : ultima))
+  if (fracionado(linha.medida) || linha.quantidade <= 1) return carrinho.filter((l) => l !== linha)
+  return carrinho.map((l) => (l === linha ? { ...l, quantidade: l.quantidade - 1 } : l))
 }

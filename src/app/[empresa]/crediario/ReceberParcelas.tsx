@@ -21,6 +21,7 @@
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Aviso, Botao, Situacao, cx } from '@/ui/base'
+import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
 import { lerDinheiro, lerNumero } from '@/servidor/dinheiro'
 import {
   contaDasMarcadas,
@@ -287,6 +288,10 @@ function Receber({
   const [referencia, setReferencia] = useState('')
   const [pagoEm, setPagoEm] = useState(ficha.hoje)
   const [formaFora, setFormaFora] = useState<FormaChave>('DINHEIRO')
+  // A baixa de pago fora é exceção que a empresa pode mandar assinar: o
+  // campo do PIN de quem dá a baixa aparece quando o servidor pede.
+  const [pedePin, setPedePin] = useState(false)
+  const [meuPin, setMeuPin] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [indo, comecar] = useTransition()
 
@@ -379,6 +384,7 @@ function Receber({
             forma: formaFora,
             referencia,
             pagoEm,
+            pin: meuPin || null,
           })
         : await receberVariasAcao(slug, {
             clienteId: ficha.cliente.id,
@@ -394,8 +400,12 @@ function Receber({
             motivo: negociar ? motivo : null,
           })
       setPin('')
+      setMeuPin('')
       if (r.ok) aoReceber({ ...r, externo: fora })
-      else setErro(r.erro)
+      else {
+        setErro(r.erro)
+        if ('precisaPin' in r && r.precisaPin) setPedePin(true)
+      }
     })
   }
 
@@ -492,7 +502,7 @@ function Receber({
                 <section key={p0.vendaId} className="rounded-norte border border-borda-suave">
                   <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-borda-suave bg-superficie-2 px-3 py-1.5 text-xs text-tinta-2">
                     <span className="font-semibold text-tinta">
-                      {p0.importada ? `Saldo trazido do sistema anterior · nº ${p0.vendaNumero}` : `Compra nº ${p0.vendaNumero} · ${diaCurto(p0.vendaDia)}`}
+                      {p0.importada ? `Saldo trazido de fora (sistema anterior ou lançado à mão) · nº ${p0.vendaNumero}` : `Compra nº ${p0.vendaNumero} · ${diaCurto(p0.vendaDia)}`}
                     </span>
                     <span className="numero">
                       {g.length} em aberto · {brlC(soma)}
@@ -616,6 +626,8 @@ function Receber({
             )}
             {marcadas.size === 0 && plano?.ok && <p className="text-xs text-tinta-2">Sem parcela marcada, o valor abate das mais antigas.</p>}
 
+            {fora && <MotivosProntos excecao="crediario.baixa" atual={referencia} aoEscolher={setReferencia} />}
+            {fora && pedePin && <CampoDoPin slug={slug} valor={meuPin} aoMudar={setMeuPin} aoEnviar={receber} />}
             {fora ? (
               <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
                 <label className="flex flex-col gap-1 text-sm">

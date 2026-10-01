@@ -39,6 +39,8 @@
 
 import { useEffect, useState } from 'react'
 import { EscolherCliente } from './Cliente'
+import { FichaDaCliente } from './FichaDaCliente'
+import { palavraDaContagem } from './ramo'
 import { AlertaDeDivida } from '../crediario/AlertaDeDivida'
 import { BotaoReceber } from '../crediario/BotaoReceber'
 import { faz } from './guardar'
@@ -84,7 +86,10 @@ export function Balcao({
   veAssinatura = false,
   config,
   precisaPin = false,
+  ramo = null,
 }: {
+  /** O ramo da loja: "3 peças" na loja de roupa, "3 itens" no resto (ramo.ts). */
+  ramo?: string | null
   /** As regras desta loja que a tela precisa saber (ver useVenda). */
   config?: ConfigDoBalcao
   /** Quem opera não passa do teto sozinha: desconto e avulso pedem o PIN de quem pode. */
@@ -164,6 +169,7 @@ export function Balcao({
   return (
     <div ref={raiz} className="flex flex-col gap-3">
       <PedirPin v={v} />
+      <FichaDaCliente v={v} slug={slug} unidadeId={unidadeId} />
       {/* Recuperar em silêncio seria pior que perder: a pessoa veria itens
           que ela não lançou agora e não saberia de onde vieram. Diz o que
           aconteceu, de quando é, e deixa jogar fora num clique. */}
@@ -230,7 +236,14 @@ export function Balcao({
           <span className="flex items-center gap-2 text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">
             {p.Pessoa} <Tecla>Alt N</Tecla>
           </span>
-          <EscolherCliente slug={slug} escolhido={cliente} aoEscolher={setCliente} pedido={pedidoCliente} />
+          <EscolherCliente
+            slug={slug}
+            escolhido={cliente}
+            aoEscolher={setCliente}
+            pedido={pedidoCliente}
+            aoAbrirFicha={v.setFichaAberta}
+            falta={v.ficha?.falta}
+          />
           {/* Crediário: "ela já deve" ao escolher a cliente, e o "veio só
               pagar" sem cliente escolhida (crediario/AlertaDeDivida.tsx). */}
           {crediario && cliente && (
@@ -556,7 +569,7 @@ export function Balcao({
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-borda-suave bg-superficie-2 px-3 py-2 text-xs text-tinta-2">
               <span className="flex items-center gap-3">
                 <span>
-                  <b className="numero text-tinta">{itensNaVenda}</b> ite{itensNaVenda === 1 ? 'm' : 'ns'}
+                  <b className="numero text-tinta">{itensNaVenda.toLocaleString('pt-BR')}</b> {palavraDaContagem(ramo, itensNaVenda)}
                 </span>
                 {podeAvulso && !avulsoAberto && (
                   <button

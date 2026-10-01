@@ -98,6 +98,8 @@ export type ParcelaNaLista = {
    * juro num recebimento anterior (ver `diasDeJuros`) e menos a carência.
    */
   diasJuros: number
+  /** A cobrança desta pessoa está pausada (crediario-gestao.ts): a dívida segue, o chamado não. */
+  cobrancaPausada: boolean
   /** O juro sugerido para receber hoje, com a regra da empresa. */
   jurosHoje: number
   /** A multa de hoje (zero se já foi resolvida num recebimento anterior). */
@@ -175,7 +177,7 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = 
         vencimento: true, valor: true, pago: true, desconto: true, juros: true, multa: true,
         jurosAte: true, multaCobrada: true, quitadaEm: true,
         venda: { select: { numero: true } },
-        cliente: { select: { nome: true, telefone: true } },
+        cliente: { select: { nome: true, telefone: true, cobrancaPausadaEm: true } },
         unidade: { select: { nome: true } },
       },
     })
@@ -210,6 +212,7 @@ export async function listarParcelas(sessao: Sessao, f: FiltroParcelas, agora = 
         situacao: quitada ? 'quitada' : e.dias > 0 ? 'vencida' : 'aberta',
         diasAtraso: e.dias,
         diasJuros: e.diasJuros,
+        cobrancaPausada: !!p.cliente.cobrancaPausadaEm,
         jurosHoje: reais(e.jurosC),
         multaHoje: reais(e.multaC),
         quitadaEm: p.quitadaEm,
@@ -222,7 +225,8 @@ export type Devedor = { id: string; nome: string; resta: number; vencido: number
 
 /**
  * Quem deve mais, para a conversa de cobrança começar pelo maior: primeiro
- * quem tem mais VENCIDO, depois quem deve mais no total.
+ * quem tem mais VENCIDO, depois quem deve mais no total. Quem está com a
+ * cobrança pausada (acordo, advogado) fica fora — a lista é de quem COBRAR.
  *
  * Somado no banco, sobre TODAS as parcelas em aberto. A tela fazia a conta em
  * cima da lista que ela mostrava — as 500 primeiras —, e com o carnê de uma
@@ -240,6 +244,7 @@ export async function maioresDevedores(sessao: Sessao, unidadeIds: string[], lim
              coalesce(sum(p.valor - p.pago - p.desconto) filter (where p.vencimento < ${hoje}), 0) as vencido
         from parcelas p join clientes c on c.id = p.cliente_id
        where p.unidade_id = any(${permitidas}) and p.quitada_em is null
+         and c.cobranca_pausada_em is null
        group by c.id, c.nome
       having sum(p.valor - p.pago - p.desconto) > 0
        order by 4 desc, 3 desc, c.nome
@@ -345,6 +350,8 @@ export type SituacaoDeCredito = {
   diasMaisAntiga: number
   /** O que ela deve nas outras lojas que a pessoa enxerga. */
   outrasLojas: { unidadeId: string; nome: string; devendo: number; vencido: number }[]
+  /** A cobrança dela está pausada (acordo, advogado): o balcão avisa sem cobrar. */
+  cobrancaPausada: boolean
 }
 
 /**
@@ -368,7 +375,7 @@ export async function situacaoDeCredito(
       where: { clienteId, quitadaEm: null, ...(visiveis === 'todas' ? {} : { unidadeId: { in: visiveis } }) },
       select: {
         unidadeId: true, vencimento: true, valor: true, pago: true, desconto: true, jurosAte: true, multaCobrada: true,
-        cliente: { select: { nome: true } },
+        cliente: { select: { nome: true, cobrancaPausadaEm: true } },
         unidade: { select: { nome: true } },
       },
     })
@@ -404,6 +411,7 @@ export async function situacaoDeCredito(
       atrasoHoje: reais(aqui.atraso),
       diasMaisAntiga: aqui.dias,
       outrasLojas: [...outras.values()].map((o) => ({ ...o, devendo: reais(o.devendo), vencido: reais(o.vencido) })),
+      cobrancaPausada: !!abertas[0]!.cliente.cobrancaPausadaEm,
     }
   })
 }

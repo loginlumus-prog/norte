@@ -15,8 +15,11 @@
 
 import type { ConsentimentoOfertas } from '@prisma/client'
 import { comoOrg } from './banco'
-import { exigir, textoDaBusca, unidadesQuePodem, type Sessao } from './permissao'
-import { situacaoDosClientes } from './crediario'
+import { exigir, pode, textoDaBusca, unidadesQuePodem, type Sessao } from './permissao'
+import { listarParcelas, situacaoDosClientes, type ParcelaNaLista } from './crediario'
+import { codigoDoRecibo, recibosDoCliente, type ReciboNaLista } from './recibos'
+import { centavos, reais } from './dinheiro'
+import { diaDaColuna, diaEmSP } from './dia'
 import { janelaDoMes, mesDeAgora, outroMes } from './financeiro'
 import { chaveTelefone } from './assistente/telefone'
 import {
@@ -470,4 +473,474 @@ export async function acharCliente(sessao: Sessao, clienteId: string) {
       },
     }),
   )
+}
+
+// ─────────────────────────────────────────────────────────────
+// A FICHA NO BALCÃO
+// ─────────────────────────────────────────────────────────────
+// A cliente na frente do caixa pergunta "quanto eu devo?", "quando paguei a
+// de julho?", "meu telefone mudou". A página da ficha (clientes/[id]) responde
+// tudo isso, mas fica fora do balcão: abrir outra tela com a fila esperando é
+// perder a venda que está montada. Aqui vai a mesma ficha, num pacote só, para
+// a tela cheia do balcão (balcao/FichaDaCliente.tsx) — e a venda continua lá
+// atrás, do jeito que estava.
+//
+// Mesmo alcance das outras telas: as COMPRAS são das lojas em que a pessoa vê
+// venda (`lojasDasCompras`), o CREDIÁRIO das lojas em que ela vê crediário —
+// a vendedora da loja 1 não lê o carnê da loja 2.
+
+/** O que falta no cadastro para o carnê e a nota. O balcão avisa e oferece completar. */
+export function faltaNoCadastro(c: { telefone: string | null; documento: string | null; endereco: string | null }): string[] {
+  const falta: string[] = []
+  if (!c.documento) falta.push('CPF')
+  if (!c.telefone) falta.push('telefone')
+  if (!c.endereco) falta.push('endereço')
+  return falta
+}
+
+/** Um pagamento que abateu a parcela: quando, quanto e por qual papel. */
+export type PagamentoDaParcela = {
+  /** Quando foi pago — na baixa externa, o dia que ela pagou lá fora. */
+  quando: Date
+  valor: number
+  forma: string
+  externo: boolean
+  reciboId: string | null
+  recibo: string | null
+}
+
+export type ParcelaNaFicha = {
+  id: string
+  numero: number
+  de: number
+  /** 'AAAA-MM-DD' (coluna `date` — ver dia.ts). */
+  vencimento: string
+  valor: number
+  pago: number
+  desconto: number
+  resta: number
+  situacao: ParcelaNaLista['situacao']
+  diasAtraso: number
+  /** Multa + juro de hoje, pela regra da empresa. */
+  atrasoHoje: number
+  quitadaEm: Date | null
+  pagamentos: PagamentoDaParcela[]
+}
+
+/** O carnê de uma compra: as parcelas dela, pagas e abertas. */
+export type CarneNaFicha = {
+  vendaId: string
+  vendaNumero: number
+  /** Saldo trazido do sistema anterior (venda SALDO_IMPORTADO). */
+  importada: boolean
+  unidadeId: string
+  unidade: string
+  criadaEm: Date | null
+  aberto: number
+  vencido: number
+  pago: number
+  parcelas: ParcelaNaFicha[]
+}
+
+/** O que ela deve em cada loja (cada loja é um credor, com o caixa dela). */
+export type LojaNaFicha = {
+  unidadeId: string
+  unidade: string
+  aberto: number
+  vencido: number
+  atrasoHoje: number
+  parcelasAbertas: number
+  parcelasVencidas: number
+  /** Quem opera pode receber parcela NESTA loja. */
+  podeReceber: boolean
+}
+
+export type EventoNaFicha =
+  | { tipo: 'compra'; id: string; quando: Date; unidade: string; valor: number; titulo: string; detalhe: string; vendaId: string }
+  | { tipo: 'pagamento'; id: string; quando: Date; unidade: string; valor: number; titulo: string; detalhe: string; reciboId: string | null }
+
+export type FichaNoBalcao = {
+  cliente: {
+    id: string
+    nome: string
+    telefone: string | null
+    documento: string | null
+    email: string | null
+    /** 'AAAA-MM-DD', ou ''. */
+    nascimento: string
+    endereco: string | null
+    numero: string | null
+    bairro: string | null
+    cidade: string | null
+    estado: string | null
+    cep: string | null
+    pontos: number
+    ativo: boolean
+    anonimizado: boolean
+  }
+  falta: string[]
+  /** A pessoa vê o crediário (a aba aparece). */
+  veCrediario: boolean
+  resumo: {
+    compras: number
+    gastou: number
+    ultimaCompra: Date | null
+    /** Compras trazidas do sistema anterior (o carnê importado). */
+    anteriores: number
+    /** Quanto ela já pagou de crediário (o principal abatido), nas lojas visíveis. */
+    pagoCrediario: number
+    lojas: LojaNaFicha[]
+    vales: { codigo: string; saldo: number; validade: string | null; vencido: boolean; loja: string | null }[]
+  }
+  carnes: CarneNaFicha[]
+  /** Os recibos do crediário, do mais novo — para reimprimir ("perdi o recibo de setembro"). */
+  recibos: ReciboNaLista[]
+  historico: EventoNaFicha[]
+}
+
+const NOME_DA_FORMA: Record<string, string> = {
+  DINHEIRO: 'dinheiro', PIX: 'Pix', DEBITO: 'débito', CREDITO: 'crédito', CREDIARIO: 'crediário',
+  VALE: 'vale', TRANSFERENCIA: 'transferência',
+}
+
+/** "parcelas 2/5, 3/5 da compra 41" — o que um pagamento abateu, agrupado por compra. */
+export function parcelasDoPagamento(itens: readonly { numero: number; de: number; vendaNumero: number }[]): string {
+  const porVenda = new Map<number, string[]>()
+  for (const i of itens) {
+    const ps = porVenda.get(i.vendaNumero) ?? []
+    const rotulo = `${i.numero}/${i.de}`
+    if (!ps.includes(rotulo)) ps.push(rotulo)
+    porVenda.set(i.vendaNumero, ps)
+  }
+  return [...porVenda.entries()]
+    .map(([n, ps]) => `${ps.length === 1 ? 'parcela' : 'parcelas'} ${ps.join(', ')} da compra ${n}`)
+    .join('; ')
+}
+
+export async function fichaNoBalcao(sessao: Sessao, clienteId: string, agora = new Date()): Promise<FichaNoBalcao | null> {
+  exigir(sessao, 'cliente.ver')
+  const lojas = lojasDasCompras(sessao)
+  const alcanceCred = pode(sessao, 'crediario.ver') ? unidadesQuePodem(sessao, 'crediario.ver') : []
+  const veCrediario = alcanceCred === 'todas' || alcanceCred.length > 0
+  const naLoja = lojas ? { unidadeId: { in: lojas } } : {}
+  const credNaLoja = alcanceCred === 'todas' ? {} : { unidadeId: { in: alcanceCred } }
+
+  // Uma consulta depois da outra, numa transação só (nunca em paralelo dentro
+  // do comoOrg — ver banco.ts). As parcelas vêm de `listarParcelas`, depois:
+  // é ela que sabe a conta do atraso de hoje.
+  const base = await comoOrg(sessao.orgId, async (db) => {
+    const c = await db.cliente.findUnique({
+      where: { id: clienteId },
+      select: {
+        id: true, nome: true, telefone: true, documento: true, email: true, nascimento: true,
+        endereco: true, numero: true, bairro: true, cidade: true, estado: true, cep: true,
+        pontos: true, ativo: true, anonimizadoEm: true,
+      },
+    })
+    if (!c) return null
+    const vendas = await db.venda.findMany({
+      where: { clienteId, situacao: 'CONCLUIDA', ...naLoja },
+      orderBy: { criadaEm: 'desc' },
+      take: 40,
+      select: {
+        id: true, numero: true, total: true, criadaEm: true,
+        unidade: { select: { nome: true } },
+        itens: { select: { descricao: true } },
+        pagamentos: { select: { forma: true } },
+      },
+    })
+    const somas = await db.venda.aggregate({
+      where: { clienteId, situacao: 'CONCLUIDA', ...naLoja },
+      _count: { _all: true },
+      _sum: { total: true },
+      _max: { criadaEm: true },
+    })
+    const anteriores = await db.venda.count({ where: { clienteId, situacao: 'SALDO_IMPORTADO', ...naLoja } })
+    const vales = await db.vale.findMany({
+      where: { clienteId, saldo: { gt: 0 } },
+      orderBy: { criadoEm: 'desc' },
+      select: { codigo: true, saldo: true, validade: true, unidade: { select: { nome: true } } },
+    })
+    const unidades = veCrediario
+      ? await db.unidade.findMany({ where: alcanceCred === 'todas' ? {} : { id: { in: alcanceCred } }, select: { id: true } })
+      : []
+    const recebimentos = veCrediario
+      ? await db.recebimento.findMany({
+          where: { parcela: { clienteId, ...credNaLoja } },
+          orderBy: { criadoEm: 'asc' },
+          select: {
+            id: true, parcelaId: true, criadoEm: true, valor: true, forma: true, externo: true, reciboId: true,
+            recibo: { select: { pagoEm: true } },
+            parcela: { select: { numero: true, de: true, venda: { select: { numero: true } }, unidade: { select: { nome: true } } } },
+          },
+        })
+      : []
+    const compras = veCrediario
+      ? await db.venda.findMany({
+          where: { parcelas: { some: { clienteId, ...credNaLoja } } },
+          select: { id: true, criadaEm: true, situacao: true },
+        })
+      : []
+    return { c, vendas, somas, anteriores, vales, unidades, recebimentos, compras }
+  })
+  if (!base) return null
+  const { c, vendas, somas, anteriores, vales, unidades, recebimentos, compras } = base
+
+  const parcelas = veCrediario
+    ? await listarParcelas(sessao, { unidadeIds: unidades.map((u) => u.id), clienteId }, agora)
+    : []
+  const recibos = veCrediario ? await recibosDoCliente(sessao, clienteId, 30) : []
+
+  // ── os pagamentos de cada parcela ──
+  const pagamentosDe = new Map<string, PagamentoDaParcela[]>()
+  for (const r of recebimentos) {
+    const lista = pagamentosDe.get(r.parcelaId) ?? []
+    lista.push({
+      quando: r.externo && r.recibo?.pagoEm ? r.recibo.pagoEm : r.criadoEm,
+      valor: Number(r.valor),
+      forma: r.forma,
+      externo: r.externo,
+      reciboId: r.reciboId,
+      recibo: r.reciboId ? codigoDoRecibo(r.reciboId) : null,
+    })
+    pagamentosDe.set(r.parcelaId, lista)
+  }
+
+  // ── os carnês, por compra, e o que ela deve em cada loja ──
+  const dasCompras = new Map(compras.map((v) => [v.id, v]))
+  const carnes = new Map<string, CarneNaFicha>()
+  const porLoja = new Map<string, LojaNaFicha>()
+  let pagoC = 0
+  for (const p of parcelas) {
+    const restaC = centavos(p.resta)
+    pagoC += centavos(p.pago)
+    const venda = dasCompras.get(p.vendaId)
+    const carne: CarneNaFicha = carnes.get(p.vendaId) ?? {
+      vendaId: p.vendaId,
+      vendaNumero: p.vendaNumero,
+      importada: venda?.situacao === 'SALDO_IMPORTADO',
+      unidadeId: p.unidadeId,
+      unidade: p.unidade,
+      criadaEm: venda?.criadaEm ?? null,
+      aberto: 0,
+      vencido: 0,
+      pago: 0,
+      parcelas: [],
+    }
+    const atrasoC = centavos(p.multaHoje) + centavos(p.jurosHoje)
+    carne.parcelas.push({
+      id: p.id,
+      numero: p.numero,
+      de: p.de,
+      vencimento: diaDaColuna(p.vencimento),
+      valor: p.valor,
+      pago: p.pago,
+      desconto: p.desconto,
+      resta: p.resta,
+      situacao: p.situacao,
+      diasAtraso: p.diasAtraso,
+      atrasoHoje: reais(atrasoC),
+      quitadaEm: p.quitadaEm,
+      pagamentos: pagamentosDe.get(p.id) ?? [],
+    })
+    carne.pago = reais(centavos(carne.pago) + centavos(p.pago))
+    if (p.situacao !== 'quitada' && restaC > 0) {
+      carne.aberto = reais(centavos(carne.aberto) + restaC)
+      const loja: LojaNaFicha = porLoja.get(p.unidadeId) ?? {
+        unidadeId: p.unidadeId,
+        unidade: p.unidade,
+        aberto: 0,
+        vencido: 0,
+        atrasoHoje: 0,
+        parcelasAbertas: 0,
+        parcelasVencidas: 0,
+        podeReceber: pode(sessao, 'crediario.receber', p.unidadeId),
+      }
+      loja.aberto = reais(centavos(loja.aberto) + restaC)
+      loja.parcelasAbertas++
+      if (p.situacao === 'vencida') {
+        carne.vencido = reais(centavos(carne.vencido) + restaC)
+        loja.vencido = reais(centavos(loja.vencido) + restaC)
+        loja.atrasoHoje = reais(centavos(loja.atrasoHoje) + atrasoC)
+        loja.parcelasVencidas++
+      }
+      porLoja.set(p.unidadeId, loja)
+    }
+    carnes.set(p.vendaId, carne)
+  }
+  for (const k of carnes.values()) k.parcelas.sort((a, b) => a.numero - b.numero)
+  // Primeiro o que está em aberto (a mais atrasada em cima), depois os pagos,
+  // do mais novo — é a ordem da conversa: "o que eu devo?", e só depois "e as
+  // que já paguei?".
+  const primeiraAberta = (k: CarneNaFicha) => k.parcelas.find((p) => p.situacao !== 'quitada')?.vencimento ?? '9999'
+  const listaDeCarnes = [...carnes.values()].sort((a, b) => {
+    const aa = a.aberto > 0
+    const bb = b.aberto > 0
+    if (aa !== bb) return aa ? -1 : 1
+    if (aa) return primeiraAberta(a).localeCompare(primeiraAberta(b))
+    return (b.criadaEm?.getTime() ?? 0) - (a.criadaEm?.getTime() ?? 0)
+  })
+
+  // ── o histórico: compras e pagamentos, do mais novo ──
+  const historico: EventoNaFicha[] = vendas.map((v) => {
+    const formas = [...new Set(v.pagamentos.map((x) => NOME_DA_FORMA[x.forma] ?? x.forma.toLowerCase()))]
+    const itens = v.itens.map((i) => i.descricao)
+    const levou = itens.slice(0, 3).join(', ') + (itens.length > 3 ? ` e mais ${itens.length - 3}` : '')
+    return {
+      tipo: 'compra' as const,
+      id: `v-${v.id}`,
+      quando: v.criadaEm,
+      unidade: v.unidade.nome,
+      valor: Number(v.total),
+      titulo: `Compra nº ${v.numero}`,
+      detalhe: [levou, formas.join(' + ')].filter(Boolean).join(' · '),
+      vendaId: v.id,
+    }
+  })
+  // Um pagamento é um recibo (o que foi pago junto); o recebimento antigo,
+  // sem recibo (importado), vale sozinho.
+  type Grupo = {
+    quando: Date
+    unidade: string
+    valorC: number
+    formas: Set<string>
+    externo: boolean
+    reciboId: string | null
+    itens: { numero: number; de: number; vendaNumero: number }[]
+  }
+  const pagamentos = new Map<string, Grupo>()
+  for (const r of recebimentos) {
+    const chave = r.reciboId ?? r.id
+    const quando = r.externo && r.recibo?.pagoEm ? r.recibo.pagoEm : r.criadoEm
+    const g: Grupo = pagamentos.get(chave) ?? {
+      quando,
+      unidade: r.parcela.unidade.nome,
+      valorC: 0,
+      formas: new Set<string>(),
+      externo: r.externo,
+      reciboId: r.reciboId,
+      itens: [],
+    }
+    g.valorC += centavos(r.valor)
+    g.formas.add(NOME_DA_FORMA[r.forma] ?? r.forma.toLowerCase())
+    g.itens.push({ numero: r.parcela.numero, de: r.parcela.de, vendaNumero: r.parcela.venda.numero })
+    pagamentos.set(chave, g)
+  }
+  for (const [chave, g] of pagamentos) {
+    historico.push({
+      tipo: 'pagamento',
+      id: `p-${chave}`,
+      quando: g.quando,
+      unidade: g.unidade,
+      valor: reais(g.valorC),
+      titulo: g.externo ? 'Crediário pago fora' : 'Pagou o crediário',
+      detalhe: [parcelasDoPagamento(g.itens), g.externo ? null : [...g.formas].join(' + ')].filter(Boolean).join(' · '),
+      reciboId: g.reciboId,
+    })
+  }
+  historico.sort((a, b) => b.quando.getTime() - a.quando.getTime())
+
+  const hoje = diaEmSP(agora)
+  return {
+    cliente: {
+      id: c.id,
+      nome: c.nome,
+      telefone: c.telefone,
+      documento: c.documento,
+      email: c.email,
+      nascimento: c.nascimento ? diaDaColuna(c.nascimento) : '',
+      endereco: c.endereco,
+      numero: c.numero,
+      bairro: c.bairro,
+      cidade: c.cidade,
+      estado: c.estado,
+      cep: c.cep,
+      pontos: c.pontos,
+      ativo: c.ativo,
+      anonimizado: !!c.anonimizadoEm,
+    },
+    falta: c.anonimizadoEm ? [] : faltaNoCadastro(c),
+    veCrediario,
+    resumo: {
+      compras: somas._count._all,
+      gastou: reais(centavos(somas._sum.total ?? 0)),
+      ultimaCompra: somas._max.criadaEm,
+      anteriores,
+      pagoCrediario: reais(pagoC),
+      lojas: [...porLoja.values()].sort((a, b) => b.vencido - a.vencido || b.aberto - a.aberto),
+      vales: vales.map((v) => {
+        const validade = v.validade ? diaDaColuna(v.validade) : null
+        return { codigo: v.codigo, saldo: Number(v.saldo), validade, vencido: !!validade && validade < hoje, loja: v.unidade?.nome ?? null }
+      }),
+    },
+    carnes: listaDeCarnes,
+    recibos,
+    historico: historico.slice(0, 120),
+  }
+}
+
+/** Os campos que o balcão edita. O resto da ficha (observação, ofertas) fica como está. */
+export type DadosNoBalcao = Pick<
+  DadosCliente,
+  'nome' | 'telefone' | 'documento' | 'email' | 'nascimento' | 'endereco' | 'numero' | 'bairro' | 'cidade' | 'estado' | 'cep'
+>
+
+/**
+ * Completar a ficha no balcão — o CPF que o carnê pede, o telefone novo.
+ *
+ * Lê a ficha e troca SÓ o que o balcão mostra: `editarCliente` grava todos os
+ * campos de uma vez, e mandar só o que a tela tem apagaria a observação que a
+ * gerente escreveu ("não vender fiado").
+ */
+export async function editarNoBalcao(sessao: Sessao, clienteId: string, dados: DadosNoBalcao): Promise<ResultadoCliente> {
+  exigir(sessao, 'cliente.editar')
+  const atual = await comoOrg(sessao.orgId, (db) =>
+    db.cliente.findUnique({ where: { id: clienteId }, select: { observacoes: true } }),
+  )
+  if (!atual) return { ok: false, motivo: 'Cliente não encontrado.' }
+  return editarCliente(sessao, clienteId, { ...dados, observacoes: atual.observacoes })
+}
+
+/**
+ * O cadastro de uma linha só do balcão: nome, telefone e o CPF (perguntado,
+ * nunca exigido). CPF que já está numa ficha não cria outra — a resposta
+ * aponta a ficha que existe. Duas fichas da mesma pessoa são duas dívidas
+ * que ninguém soma.
+ */
+export async function cadastroRapido(
+  sessao: Sessao,
+  nome: string,
+  telefone: string,
+  cpf = '',
+): Promise<
+  | { ok: true; clienteId: string }
+  | { ok: false; erro: string; jaExiste?: { id: string; nome: string; telefone: string | null; pontos: number } }
+> {
+  exigir(sessao, 'cliente.editar')
+  const documento = soDigitos(cpf)
+  if (documento && !cpfValido(documento)) return { ok: false, erro: 'Esse CPF não confere. Confira os números, ou cadastre sem CPF.' }
+  if (documento) {
+    // A ficha desativada também conta: reativar é melhor que duplicar.
+    const dono = await comoOrg(sessao.orgId, (db) =>
+      db.cliente.findFirst({
+        where: { documento, anonimizadoEm: null },
+        orderBy: { ativo: 'desc' },
+        select: { id: true, nome: true, telefone: true, pontos: true, ativo: true },
+      }),
+    )
+    if (dono) {
+      return dono.ativo
+        ? { ok: false, erro: `Esse CPF já é de ${dono.nome}.`, jaExiste: { id: dono.id, nome: dono.nome, telefone: dono.telefone, pontos: dono.pontos } }
+        : { ok: false, erro: `Esse CPF já é de ${dono.nome}, numa ficha desativada. Peça à gerente para reativar.` }
+    }
+  }
+  const r = await criarCliente(sessao, { nome, telefone, documento: documento || null })
+  if (!r.ok) {
+    return {
+      ok: false,
+      erro: r.jaExiste ? `${r.jaExiste.nome} já usa esse telefone.` : r.motivo,
+      jaExiste: r.jaExiste ? { id: r.jaExiste.id, nome: r.jaExiste.nome, telefone: soDigitos(telefone) || null, pontos: 0 } : undefined,
+    }
+  }
+  return { ok: true, clienteId: r.clienteId }
 }

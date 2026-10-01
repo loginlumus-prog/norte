@@ -39,10 +39,16 @@ export function EscolherCliente({
   escolhido,
   aoEscolher,
   pedido = 0,
+  aoAbrirFicha,
+  falta = [],
 }: {
   slug: string
   escolhido: ClienteNoBalcao | null
   aoEscolher: (c: ClienteNoBalcao | null) => void
+  /** Abre a ficha da escolhida em tela cheia (FichaDaCliente.tsx), numa aba. */
+  aoAbrirFicha?: (aba: 'resumo' | 'dados') => void
+  /** O que falta no cadastro da escolhida ("CPF", "endereço"): o aviso de completar. */
+  falta?: string[]
   /**
    * Um contador que o balcão incrementa quando alguém aperta Alt+N: cada
    * mudança abre a busca. É o jeito de um atalho de teclado de fora chegar
@@ -110,15 +116,50 @@ export function EscolherCliente({
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="truncate text-sm font-semibold text-tinta">{escolhido.nome}</span>
+          {aoAbrirFicha ? (
+            // O nome abre a ficha: é onde o olho já está quando ela pergunta
+            // "quanto eu devo?". Alt+N faz o mesmo.
+            <button
+              type="button"
+              onClick={() => aoAbrirFicha('resumo')}
+              title="Ver a ficha (Alt+N)"
+              className="min-w-0 truncate text-left text-sm font-semibold text-tinta underline-offset-2 hover:text-marca hover:underline"
+            >
+              {escolhido.nome}
+            </button>
+          ) : (
+            <span className="truncate text-sm font-semibold text-tinta">{escolhido.nome}</span>
+          )}
+          <span className="flex shrink-0 items-baseline gap-3">
+            {aoAbrirFicha && (
+              <button
+                type="button"
+                onClick={() => aoAbrirFicha('resumo')}
+                className="text-xs font-semibold text-marca underline-offset-2 hover:underline"
+              >
+                ver ficha
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => aoEscolher(null)}
+              className="text-xs text-tinta-3 underline-offset-2 hover:text-tinta hover:underline"
+            >
+              trocar
+            </button>
+          </span>
+        </div>
+        {/* O carnê sai com CPF e endereço: o que falta se completa agora,
+            com a pessoa na frente, e não "depois" — que não chega. */}
+        {aoAbrirFicha && falta.length > 0 && (
           <button
             type="button"
-            onClick={() => aoEscolher(null)}
-            className="shrink-0 text-xs text-tinta-3 underline-offset-2 hover:text-tinta hover:underline"
+            onClick={() => aoAbrirFicha('dados')}
+            className="self-start text-left text-xs text-atencao underline-offset-2 hover:underline"
           >
-            trocar
+            Cadastro incompleto: falta {falta.join(', ')} — completar
           </button>
-        </div>
+        )}
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-tinta-3">
           <span>
             {historicoDoCliente(escolhido, p)}

@@ -307,6 +307,14 @@ export default async function Comprovante({
           </>
         )}
 
+        {/* A venda que nasceu de uma troca diz de onde veio (servidor/troca.ts). */}
+        {v.observacoes?.startsWith('Troca') && (
+          <>
+            <div className="linha" />
+            <div>{v.observacoes}</div>
+          </>
+        )}
+
         <div className="linha" />
         <div style={{ textAlign: 'center', fontSize: '8pt', color: '#333' }}>
           {v.situacao === 'CANCELADA' ? (

@@ -99,6 +99,11 @@ export function AlertaDeDivida({
             Também deve em {outras.map((o) => `${o.nome} (${brl(o.devendo)})`).join(', ')}.
           </p>
         )}
+        {/* Cobrança pausada pela gerência (acordo, advogado): o balcão sabe, e
+            não puxa o assunto de cobrar — só recebe se ela quiser pagar. */}
+        {sit.cobrancaPausada && (
+          <p className="text-xs font-semibold">A cobrança dela está pausada pela gerência: não cobre — só receba se ela quiser pagar.</p>
+        )}
         <p className="font-semibold">Vai pagar alguma parcela agora?</p>
         <div className="flex flex-wrap gap-2">
           {podeReceber && (

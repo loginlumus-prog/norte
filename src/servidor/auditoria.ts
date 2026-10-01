@@ -26,6 +26,7 @@ import { exigir, pode, textoDaBusca, type Sessao } from './permissao'
 export const ACOES: Record<string, string> = {
   'venda.registrou': 'registrou uma venda',
   'venda.cancelou': 'cancelou uma venda',
+  'venda.data_corrigiu': 'corrigiu a data de uma venda',
   'venda.devolveu': 'recebeu uma devolução',
   'caixa.abriu': 'abriu o caixa',
   'caixa.fechou': 'fechou o caixa',
@@ -59,6 +60,15 @@ export const ACOES: Record<string, string> = {
   'exportou.financeiro': 'baixou a planilha do financeiro',
   'exportou.mensalidades': 'baixou a planilha das mensalidades',
   'crediario.recebeu': 'recebeu uma parcela',
+  'crediario.baixa_externa': 'deu baixa de crediário pago fora',
+  'crediario.quitou': 'deu o crediário por quitado (pago fora)',
+  'crediario.pausou': 'pausou a cobrança de uma cliente',
+  'crediario.retomou': 'retomou a cobrança de uma cliente',
+  'crediario.lancou_divida': 'lançou uma dívida à mão no crediário',
+  'cliente.juntou': 'juntou duas fichas da mesma cliente',
+  'cliente.anotou': 'anotou na ficha de uma cliente',
+  'empresa.assinaturas': 'mudou a regra de assinar com o PIN',
+  'empresa.balcao_ampliado': 'mudou o que a vendedora pode no estoque e no cadastro',
   // A escola (escola.ts e mensalidades.ts).
   'turma.criou': 'criou uma turma',
   'turma.alterou': 'alterou uma turma',
@@ -157,6 +167,14 @@ export const ACOES: Record<string, string> = {
  * `venda.registrou` e `venda.cancelou`. Alguns juntam dois prefixos, porque
  * quem procura "gente" quer convite e sessão junto com equipe.
  */
+/**
+ * O livro de assinaturas: o que foi feito com o PIN de quem fez (as exceções
+ * que a empresa manda assinar, juntar fichas, a vendedora corrigindo estoque)
+ * e as autorizações com o PIN da gerente. É um filtro deste livro, e não um
+ * livro à parte: a linha é a mesma da ação.
+ */
+export const ASSINADO = 'assinado'
+
 export const ASSUNTOS: { chave: string; rotulo: string; prefixos: string[] }[] = [
   { chave: 'venda', rotulo: 'vendas e encomendas', prefixos: ['venda.', 'encomenda.', 'autorizacao.'] },
   { chave: 'caixa', rotulo: 'caixa', prefixos: ['caixa.'] },
@@ -167,6 +185,8 @@ export const ASSUNTOS: { chave: string; rotulo: string; prefixos: string[] }[] =
   { chave: 'tarefa', rotulo: 'tarefas', prefixos: ['tarefa.', 'quadro.'] },
   { chave: 'empresa', rotulo: 'empresa e lojas', prefixos: ['empresa.', 'unidade.', 'plano.', 'credito.', 'pedido.', 'agente.', 'campanha.', 'financeiro.'] },
   { chave: 'suporte', rotulo: 'suporte do Norte', prefixos: ['suporte.'] },
+  // Sem prefixo: o filtro é a marca de assinado (ver `filtroDoLivro`).
+  { chave: ASSINADO, rotulo: 'assinado com PIN', prefixos: [] },
 ]
 
 export type FiltroAuditoria = {
@@ -195,6 +215,8 @@ export type LinhaDoLivro = {
   unidade: string | null
   antes: unknown
   depois: unknown
+  /** Feito com o PIN de quem fez (ou autorizado com o PIN). */
+  assinado: boolean
 }
 
 /**
@@ -203,12 +225,14 @@ export type LinhaDoLivro = {
  * Pura e exportada para o teste conferir a FORMA: é aqui que uma chave
  * repetida num objeto do Prisma apaga a outra sem erro nenhum.
  */
-export function filtroDoLivro(permitidas: string[], prefixos: string[] | null, q: string) {
+export function filtroDoLivro(permitidas: string[], prefixos: string[] | null, q: string, soAssinadas = false) {
   return [
     // Linha sem unidade é da empresa inteira (cadastro de produto, troca de
     // plano) e vale para quem tem o livro liberado.
     { OR: [{ unidadeId: null }, { unidadeId: { in: permitidas } }] },
-    ...(prefixos ? [{ OR: prefixos.map((p) => ({ acao: { startsWith: p } })) }] : []),
+    ...(prefixos && prefixos.length > 0 ? [{ OR: prefixos.map((p) => ({ acao: { startsWith: p } })) }] : []),
+    // A autorização com PIN de antes da marca existir também é assinatura.
+    ...(soAssinadas ? [{ OR: [{ assinado: true }, { acao: 'autorizacao.pin' }] }] : []),
     ...(q
       ? [
           {
@@ -245,7 +269,7 @@ export async function listarAuditoria(sessao: Sessao, f: FiltroAuditoria): Promi
         // o segundo SOBRESCREVIA o primeiro: filtrar por "caixa" e digitar
         // "Ana" devolvia tudo que a Ana fez, de qualquer assunto. É o mesmo
         // defeito do `OR` da busca que apagava o `OR` da loja no financeiro.
-        AND: filtroDoLivro(permitidas, assunto?.prefixos ?? null, q),
+        AND: filtroDoLivro(permitidas, assunto?.prefixos ?? null, q, assunto?.chave === ASSINADO),
       },
       orderBy: { criadoEm: 'desc' },
       // Um mês de loja movimentada são umas duas mil linhas. Quinhentas com
@@ -254,7 +278,7 @@ export async function listarAuditoria(sessao: Sessao, f: FiltroAuditoria): Promi
       select: {
         id: true, criadoEm: true, quem: true, autor: true, acao: true,
         alvoTipo: true, alvoId: true, alvoNome: true, valor: true, motivo: true,
-        antes: true, depois: true,
+        antes: true, depois: true, assinado: true,
         unidade: { select: { nome: true } },
       },
     })
@@ -274,6 +298,7 @@ export async function listarAuditoria(sessao: Sessao, f: FiltroAuditoria): Promi
       unidade: l.unidade?.nome ?? null,
       antes: l.antes,
       depois: l.depois,
+      assinado: l.assinado || l.acao === 'autorizacao.pin',
     }))
   })
 }

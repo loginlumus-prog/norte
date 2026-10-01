@@ -94,7 +94,8 @@ export function Devolver({
         onClick={() => setAberto(true)}
         className="text-sm font-medium text-marca underline-offset-2 hover:underline"
       >
-        Devolver ou trocar itens {palavras.destaVenda}
+        {/* Trocar por outra peça é o "⇄ Trocar" lá em cima (troca/): numa tela só. */}
+        Devolver itens {palavras.destaVenda} {podeDinheiro ? '(vale, dinheiro ou estorno)' : 'por vale'}
       </button>
     )
   }

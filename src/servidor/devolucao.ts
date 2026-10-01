@@ -35,6 +35,7 @@ import { exigir, pode, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { travarCaixaAberto } from './caixa'
 import { centavos, reais, multiplicar } from './dinheiro'
+import { fatorPago, valorDevolvidoCent } from './troca-conta'
 import type { DestinoDevolucao } from '@prisma/client'
 
 /** Quantos dias o vale vale. Depois disso ele não paga mais nada. */
@@ -53,6 +54,42 @@ export function gerarCodigoDeVale(sorteio: () => number = Math.random): string {
 }
 
 /**
+ * Um vale novo, dentro de uma transação já aberta: o da devolução e o da
+ * troca sem a compra (troca.ts). Vale 90 dias, da loja que emitiu.
+ */
+export async function criarValeEm(
+  db: BancoDaOrg,
+  sessao: Sessao,
+  p: { clienteId: string | null; unidadeId: string; valorCent: number },
+): Promise<{ id: string; codigo: string; validade: Date }> {
+  // Coluna `date`: o dia, contado no calendário de São Paulo e gravado à
+  // meia-noite UTC, como o banco o devolve. A meia-noite LOCAL gravava o
+  // dia certo só enquanto o servidor estivesse no fuso de São Paulo.
+  const validade = colunaDoDia(somarDias(diaEmSP(), VALE_DIAS))
+  // Código sorteado; se bater num que já existe (raro), sorteia de novo.
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const codigo = gerarCodigoDeVale()
+    const existe = await db.vale.findFirst({ where: { codigo }, select: { id: true } })
+    if (existe) continue
+    const criado = await db.vale.create({
+      data: {
+        orgId: sessao.orgId,
+        codigo,
+        clienteId: p.clienteId,
+        unidadeId: p.unidadeId,
+        valor: reais(p.valorCent),
+        saldo: reais(p.valorCent),
+        validade,
+        quem: sessao.nome,
+      },
+      select: { id: true },
+    })
+    return { id: criado.id, codigo, validade }
+  }
+  throw new Error('Não deu para gerar um código de vale.')
+}
+
+/**
  * Quanto de cada item ainda pode voltar: o vendido menos o já devolvido.
  * Puro, para testar. `quantidade` e `devolvido` na mesma unidade do item.
  */
@@ -61,17 +98,11 @@ export function restante(quantidade: number, devolvido: number): number {
 }
 
 /**
- * O valor que volta por um item, em centavos: o preço pago × a quantidade,
- * ajustado pelo que a venda inteira teve de desconto.
+ * O valor que volta por um item: o preço pago × a quantidade, ajustado pelo
+ * que a venda inteira teve de desconto. Mora em troca-conta.ts (puro), porque
+ * a tela da troca mostra a mesma conta que a devolução grava.
  */
-export function valorDevolvidoCent(
-  precoUnitCent: number,
-  quantidade: number,
-  fatorPago: number,
-): number {
-  const cheio = multiplicar(precoUnitCent, quantidade)
-  return Math.max(0, Math.floor(cheio * fatorPago))
-}
+export { valorDevolvidoCent }
 
 /**
  * As medidas que se CONTAM: peça, par, caixa. Nelas "1,5" não existe — meia
@@ -113,20 +144,27 @@ export async function travarVenda(db: Pick<BancoDaOrg, '$queryRaw'>, vendaId: st
  * para o destino escolhido (vale, dinheiro, estorno).
  *
  * `parcelas` em qualquer ordem; a conta ordena pelo número.
+ *
+ * O que a parcela ainda deve é valor − pago − desconto (o desconto que a
+ * gerente autorizou no recebimento abate sem dinheiro entrar). Sem o
+ * desconto na conta, a parcela de R$ 100 com R$ 30 perdoados parecia dever
+ * R$ 100: a devolução "abatia" R$ 100 de uma dívida de R$ 70, e os R$ 30 a
+ * mais sumiam — nem vale, nem dívida.
  */
 export function abaterDoFiado(
-  parcelas: { id: string; numero: number; valorCent: number; pagoCent: number }[],
+  parcelas: { id: string; numero: number; valorCent: number; pagoCent: number; descontoCent?: number }[],
   valorCent: number,
 ): { abatidoCent: number; parcelas: { id: string; novoValorCent: number; quitada: boolean }[] } {
   let resta = Math.max(0, valorCent)
   const mudadas: { id: string; novoValorCent: number; quitada: boolean }[] = []
   for (const p of [...parcelas].sort((a, b) => b.numero - a.numero)) {
     if (resta <= 0) break
-    const aberto = p.valorCent - p.pagoCent
+    const abatidoAntes = p.pagoCent + Math.max(0, p.descontoCent ?? 0)
+    const aberto = p.valorCent - abatidoAntes
     if (aberto <= 0) continue
     const tira = Math.min(aberto, resta)
     const novoValorCent = p.valorCent - tira
-    mudadas.push({ id: p.id, novoValorCent, quitada: novoValorCent <= p.pagoCent })
+    mudadas.push({ id: p.id, novoValorCent, quitada: novoValorCent <= abatidoAntes })
     resta -= tira
   }
   return { abatidoCent: Math.max(0, valorCent) - resta, parcelas: mudadas }
@@ -134,7 +172,14 @@ export function abaterDoFiado(
 
 export type PedidoDevolucao = {
   vendaId: string
-  itens: { vendaItemId: string; quantidade: number }[]
+  /**
+   * `variacaoId` só vale para o item SEM cadastro (a venda trazida do sistema
+   * anterior, o avulso): é a peça do catálogo que volta ao estoque no lugar
+   * dele. Sem isto, a blusa devolvida voltava em dinheiro ou vale e sumia do
+   * estoque — a gerente achava na arara uma peça que o sistema não tinha.
+   * Item com cadastro volta para a variação dele, sempre.
+   */
+  itens: { vendaItemId: string; quantidade: number; variacaoId?: string | null }[]
   destino: DestinoDevolucao
   motivo: string
 }
@@ -147,7 +192,7 @@ export type ResultadoDevolucao =
       valor: number
       /** O que abateu o fiado desta venda, antes de sobrar para o cliente. */
       abatido: number
-      vale: { codigo: string; validade: Date } | null
+      vale: { id: string; codigo: string; validade: Date } | null
     }
   | {
       ok: false
@@ -164,8 +209,13 @@ export type ResultadoDevolucao =
         | 'quantidade_fracionada'
     }
 
-export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<ResultadoDevolucao> {
-  const motivo = p.motivo.trim()
+/** A forma do pedido, conferida antes de abrir o banco. Pura. */
+function conferirPedido(
+  p: PedidoDevolucao,
+):
+  | { ok: true; motivo: string; pedidos: PedidoDevolucao['itens'] }
+  | { ok: false; motivo: 'sem_motivo' | 'sem_itens' | 'item_repetido' } {
+  const motivo = String(p.motivo ?? '').trim()
   if (motivo.length < 3) return { ok: false, motivo: 'sem_motivo' }
   // Quantidade que não é número finito não é devolução — `NaN > resto` é
   // falso e passava pela conferência.
@@ -182,257 +232,286 @@ export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<Resu
   if (new Set(pedidos.map((i) => i.vendaItemId)).size !== pedidos.length) {
     return { ok: false, motivo: 'item_repetido' }
   }
+  return { ok: true, motivo, pedidos }
+}
 
-  return comoOrg(sessao.orgId, async (db) => {
-    await travarVenda(db, p.vendaId)
-    const v = await db.venda.findUnique({
-      where: { id: p.vendaId },
-      select: {
-        id: true, numero: true, unidadeId: true, situacao: true, clienteId: true,
-        subtotal: true, total: true, pontosGanhos: true, pontosUsados: true,
-        pagamentos: { select: { juros: true } },
-        itens: {
-          select: {
-            id: true, variacaoId: true, descricao: true, medida: true, quantidade: true, precoUnit: true,
-            devolucoes: { select: { quantidade: true } },
-          },
+export async function devolver(sessao: Sessao, p: PedidoDevolucao): Promise<ResultadoDevolucao> {
+  const conferido = conferirPedido(p)
+  if (!conferido.ok) return { ok: false, motivo: conferido.motivo }
+  return comoOrg(sessao.orgId, (db) => devolverEm(db, sessao, p))
+}
+
+/**
+ * A devolução DENTRO de uma transação já aberta. É o que a troca usa
+ * (troca.ts): a devolução e a venda nova na mesma transação, para a peça não
+ * voltar ao estoque sem a outra sair — e o vale não nascer sem a venda que o
+ * gasta.
+ *
+ * Toda recusa (`ok: false`) sai ANTES da primeira escrita: quem chama pode
+ * devolver a recusa sem desfazer nada.
+ */
+export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolucao): Promise<ResultadoDevolucao> {
+  const conferido = conferirPedido(p)
+  if (!conferido.ok) return { ok: false, motivo: conferido.motivo }
+  const { motivo, pedidos } = conferido
+
+  await travarVenda(db, p.vendaId)
+  const v = await db.venda.findUnique({
+    where: { id: p.vendaId },
+    select: {
+      id: true, numero: true, unidadeId: true, situacao: true, clienteId: true,
+      subtotal: true, total: true, pontosGanhos: true, pontosUsados: true,
+      pagamentos: { select: { juros: true } },
+      itens: {
+        select: {
+          id: true, variacaoId: true, descricao: true, medida: true, quantidade: true, precoUnit: true,
+          devolucoes: { select: { quantidade: true } },
         },
       },
-    })
-    if (!v) return { ok: false as const, motivo: 'nao_achada' as const }
-    if (v.situacao === 'CANCELADA') return { ok: false as const, motivo: 'cancelada' as const }
-    // O saldo trazido do sistema anterior não tem peça para voltar: o "item"
-    // dele é a dívida. Devolver aqui criaria vale ou sangria de uma venda que
-    // nunca passou por este balcão.
-    if (v.situacao === 'SALDO_IMPORTADO') return { ok: false as const, motivo: 'saldo_importado' as const }
+    },
+  })
+  if (!v) return { ok: false as const, motivo: 'nao_achada' as const }
+  if (v.situacao === 'CANCELADA') return { ok: false as const, motivo: 'cancelada' as const }
+  // O saldo trazido do sistema anterior não tem peça para voltar: o "item"
+  // dele é a dívida. Devolver aqui criaria vale ou sangria de uma venda que
+  // nunca passou por este balcão.
+  if (v.situacao === 'SALDO_IMPORTADO') return { ok: false as const, motivo: 'saldo_importado' as const }
 
-    // Troca (vale) é gesto de balcão. Dinheiro saindo da gaveta e estorno
-    // são gestos de quem pode cancelar venda — o mesmo nível de confiança.
-    const precisa = p.destino === 'VALE' ? 'venda.criar' : 'venda.cancelar'
-    if (!pode(sessao, precisa, v.unidadeId)) return { ok: false as const, motivo: 'sem_permissao' as const }
+  // Troca (vale) é gesto de balcão. Dinheiro saindo da gaveta e estorno
+  // são gestos de quem pode cancelar venda — o mesmo nível de confiança.
+  const precisa = p.destino === 'VALE' ? 'venda.criar' : 'venda.cancelar'
+  if (!pode(sessao, precisa, v.unidadeId)) return { ok: false as const, motivo: 'sem_permissao' as const }
 
-    // ── o que ainda pode voltar ──
-    const porId = new Map(v.itens.map((i) => [i.id, i]))
-    for (const ped of pedidos) {
-      const item = porId.get(ped.vendaItemId)
-      if (!item) return { ok: false as const, motivo: 'nao_achada' as const }
-      if (pedeInteiro(item.medida) && !Number.isInteger(ped.quantidade)) {
-        return { ok: false as const, motivo: 'quantidade_fracionada' as const }
-      }
-      const jaVoltou = item.devolucoes.reduce((s, d) => s + Number(d.quantidade), 0)
-      if (ped.quantidade > restante(Number(item.quantidade), jaVoltou) + 1e-9) {
-        return { ok: false as const, motivo: 'passa_do_vendido' as const }
-      }
+  // ── o que ainda pode voltar ──
+  const porId = new Map(v.itens.map((i) => [i.id, i]))
+  for (const ped of pedidos) {
+    const item = porId.get(ped.vendaItemId)
+    if (!item) return { ok: false as const, motivo: 'nao_achada' as const }
+    if (pedeInteiro(item.medida) && !Number.isInteger(ped.quantidade)) {
+      return { ok: false as const, motivo: 'quantidade_fracionada' as const }
     }
-
-    // ── quanto volta ──
-    // O juro do crédito parcelado (quando a loja cobra) está dentro do total,
-    // mas não é preço de peça: devolver a blusa não devolve juro de
-    // maquininha — quem estorna o parcelamento é a operadora.
-    const subtotalCent = centavos(v.subtotal)
-    const jurosCent = v.pagamentos.reduce((s, x) => s + centavos(x.juros), 0)
-    const totalCent = centavos(v.total) - jurosCent
-    const fator = subtotalCent > 0 ? totalCent / subtotalCent : 1
-
-    const linhas = pedidos.map((ped) => {
-      const item = porId.get(ped.vendaItemId)!
-      return {
-        item,
-        quantidade: ped.quantidade,
-        valorCent: valorDevolvidoCent(centavos(item.precoUnit), ped.quantidade, fator),
-      }
-    })
-    const valorCent = linhas.reduce((s, l) => s + l.valorCent, 0)
-    // A parte da venda que voltou, pela etiqueta: é a régua dos pontos que o
-    // cliente GASTOU nela (ver "os pontos voltam", embaixo).
-    const cheioCent = linhas.reduce((s, l) => s + multiplicar(centavos(l.item.precoUnit), l.quantidade), 0)
-
-    // ── o fiado desta venda vem primeiro ──
-    // Venda no crediário com parcela em aberto: a peça devolvida ainda não foi
-    // paga. Antes disto a devolução em dinheiro TIRAVA da gaveta o valor de
-    // uma peça que o cliente continuava devendo — e as parcelas seguiam
-    // cobrando. Agora o valor abate a dívida, e só o que sobra vai ao cliente.
-    const emAberto = await db.parcela.findMany({
-      where: { vendaId: v.id, quitadaEm: null },
-      select: { id: true, numero: true, valor: true, pago: true },
-    })
-    const fiado = abaterDoFiado(
-      emAberto.map((x) => ({ id: x.id, numero: x.numero, valorCent: centavos(x.valor), pagoCent: centavos(x.pago) })),
-      valorCent,
-    )
-    const paraClienteCent = valorCent - fiado.abatidoCent
-
-    // ── dinheiro sai da gaveta: precisa de gaveta ──
-    // Preso até o fim: o turno não fecha no meio desta sangria.
-    let caixaId: string | null = null
-    if (p.destino === 'DINHEIRO' && paraClienteCent > 0) {
-      caixaId = await travarCaixaAberto(db, v.unidadeId)
-      if (!caixaId) return { ok: false as const, motivo: 'caixa_fechado' as const }
+    const jaVoltou = item.devolucoes.reduce((s, d) => s + Number(d.quantidade), 0)
+    if (ped.quantidade > restante(Number(item.quantidade), jaVoltou) + 1e-9) {
+      return { ok: false as const, motivo: 'passa_do_vendido' as const }
     }
+  }
 
-    // ── o vale ──
-    let vale: { id: string; codigo: string; validade: Date } | null = null
-    if (p.destino === 'VALE' && paraClienteCent > 0) {
-      // Coluna `date`: o dia, contado no calendário de São Paulo e gravado à
-      // meia-noite UTC, como o banco o devolve. A meia-noite LOCAL gravava o
-      // dia certo só enquanto o servidor estivesse no fuso de São Paulo.
-      const validade = colunaDoDia(somarDias(diaEmSP(), VALE_DIAS))
-      // Código sorteado; se bater num que já existe (raro), sorteia de novo.
-      for (let tentativa = 0; tentativa < 5; tentativa++) {
-        const codigo = gerarCodigoDeVale()
-        const existe = await db.vale.findFirst({ where: { codigo }, select: { id: true } })
-        if (existe) continue
-        const criado = await db.vale.create({
-          data: {
-            orgId: sessao.orgId,
-            codigo,
-            clienteId: v.clienteId,
-            // A loja que emitiu: com "vale por loja" ligado, só se gasta nela.
-            unidadeId: v.unidadeId,
-            valor: reais(paraClienteCent),
-            saldo: reais(paraClienteCent),
-            validade,
-            quem: sessao.nome,
-          },
-          select: { id: true },
-        })
-        vale = { id: criado.id, codigo, validade }
-        break
-      }
-      if (!vale) throw new Error('Não deu para gerar um código de vale.')
+  // ── a peça do catálogo, para o item sem cadastro ──
+  // Conferida antes de qualquer escrita: variação que não existe (ou de
+  // outra empresa — o RLS não a mostra) é recusa limpa.
+  const voltaComo = new Map<string, { id: string; nome: string }>()
+  const pedidasComo = [
+    ...new Set(
+      pedidos.filter((ped) => ped.variacaoId && !porId.get(ped.vendaItemId)!.variacaoId).map((ped) => ped.variacaoId!),
+    ),
+  ]
+  if (pedidasComo.length > 0) {
+    const vs = await db.variacao.findMany({
+      where: { id: { in: pedidasComo } },
+      select: { id: true, produto: { select: { nome: true } }, opcoes: { select: { opcao: { select: { valor: true } } } } },
+    })
+    if (vs.length !== pedidasComo.length) return { ok: false as const, motivo: 'nao_achada' as const }
+    for (const x of vs) {
+      voltaComo.set(x.id, {
+        id: x.id,
+        nome: x.opcoes.length ? `${x.produto.nome} — ${x.opcoes.map((o) => o.opcao.valor).join(' · ')}` : x.produto.nome,
+      })
     }
+  }
 
-    // ── a devolução ──
-    const dev = await db.devolucao.create({
+  // ── quanto volta ──
+  // O juro do crédito parcelado (quando a loja cobra) está dentro do total,
+  // mas não é preço de peça: devolver a blusa não devolve juro de
+  // maquininha — quem estorna o parcelamento é a operadora.
+  const subtotalCent = centavos(v.subtotal)
+  const jurosCent = v.pagamentos.reduce((s, x) => s + centavos(x.juros), 0)
+  const totalCent = centavos(v.total) - jurosCent
+  const fator = fatorPago(subtotalCent, totalCent)
+
+  const linhas = pedidos.map((ped) => {
+    const item = porId.get(ped.vendaItemId)!
+    return {
+      item,
+      quantidade: ped.quantidade,
+      variacaoId: ped.variacaoId ?? null,
+      valorCent: valorDevolvidoCent(centavos(item.precoUnit), ped.quantidade, fator),
+    }
+  })
+  const valorCent = linhas.reduce((s, l) => s + l.valorCent, 0)
+  // A parte da venda que voltou, pela etiqueta: é a régua dos pontos que o
+  // cliente GASTOU nela (ver "os pontos voltam", embaixo).
+  const cheioCent = linhas.reduce((s, l) => s + multiplicar(centavos(l.item.precoUnit), l.quantidade), 0)
+
+  // ── o fiado desta venda vem primeiro ──
+  // Venda no crediário com parcela em aberto: a peça devolvida ainda não foi
+  // paga. Antes disto a devolução em dinheiro TIRAVA da gaveta o valor de
+  // uma peça que o cliente continuava devendo — e as parcelas seguiam
+  // cobrando. Agora o valor abate a dívida, e só o que sobra vai ao cliente.
+  const emAberto = await db.parcela.findMany({
+    where: { vendaId: v.id, quitadaEm: null },
+    select: { id: true, numero: true, valor: true, pago: true, desconto: true },
+  })
+  const fiado = abaterDoFiado(
+    emAberto.map((x) => ({
+      id: x.id,
+      numero: x.numero,
+      valorCent: centavos(x.valor),
+      pagoCent: centavos(x.pago),
+      descontoCent: centavos(x.desconto),
+    })),
+    valorCent,
+  )
+  const paraClienteCent = valorCent - fiado.abatidoCent
+
+  // ── dinheiro sai da gaveta: precisa de gaveta ──
+  // Preso até o fim: o turno não fecha no meio desta sangria.
+  let caixaId: string | null = null
+  if (p.destino === 'DINHEIRO' && paraClienteCent > 0) {
+    caixaId = await travarCaixaAberto(db, v.unidadeId)
+    if (!caixaId) return { ok: false as const, motivo: 'caixa_fechado' as const }
+  }
+
+  // ── o vale ──
+  // A loja que emitiu: com "vale por loja" ligado, só se gasta nela.
+  const vale =
+    p.destino === 'VALE' && paraClienteCent > 0
+      ? await criarValeEm(db, sessao, { clienteId: v.clienteId, unidadeId: v.unidadeId, valorCent: paraClienteCent })
+      : null
+
+  // ── a devolução ──
+  const dev = await db.devolucao.create({
+    data: {
+      orgId: sessao.orgId,
+      vendaId: v.id,
+      unidadeId: v.unidadeId,
+      destino: p.destino,
+      valor: reais(valorCent),
+      motivo,
+      quem: sessao.nome,
+      usuarioId: sessao.usuarioId,
+      valeId: vale?.id ?? null,
+      itens: {
+        create: linhas.map((l) => ({
+          orgId: sessao.orgId,
+          vendaItemId: l.item.id,
+          quantidade: l.quantidade,
+          valor: reais(l.valorCent),
+        })),
+      },
+    },
+    select: { id: true },
+  })
+
+  // ── o estoque volta ──
+  // Para a variação do item; no item sem cadastro, para a peça do catálogo
+  // que quem devolveu apontou (ver `PedidoDevolucao.itens`).
+  for (const l of linhas) {
+    const como = !l.item.variacaoId && l.variacaoId ? voltaComo.get(l.variacaoId) : undefined
+    const variacaoId = l.item.variacaoId ?? como?.id
+    if (!variacaoId) continue
+    await mexerEstoqueEm(db, sessao, {
+      variacaoId,
+      unidadeId: v.unidadeId,
+      tipo: 'DEVOLUCAO',
+      quantidade: l.quantidade,
+      referencia: v.id,
+      motivo: como ? `Devolução da venda ${v.numero} (${l.item.descricao}, sem cadastro, voltou como ${como.nome})` : `Devolução da venda ${v.numero}`,
+    })
+  }
+
+  // ── a dívida do fiado diminui ──
+  for (const x of fiado.parcelas) {
+    await db.parcela.update({
+      where: { id: x.id },
+      data: { valor: reais(x.novoValorCent), ...(x.quitada ? { quitadaEm: new Date() } : {}) },
+    })
+  }
+
+  // ── o dinheiro sai da gaveta ──
+  if (p.destino === 'DINHEIRO' && caixaId && paraClienteCent > 0) {
+    await db.caixaMovimento.create({
       data: {
         orgId: sessao.orgId,
-        vendaId: v.id,
-        unidadeId: v.unidadeId,
-        destino: p.destino,
-        valor: reais(valorCent),
-        motivo,
-        quem: sessao.nome,
-        usuarioId: sessao.usuarioId,
-        valeId: vale?.id ?? null,
-        itens: {
-          create: linhas.map((l) => ({
-            orgId: sessao.orgId,
-            vendaItemId: l.item.id,
-            quantidade: l.quantidade,
-            valor: reais(l.valorCent),
-          })),
-        },
-      },
-      select: { id: true },
-    })
-
-    // ── o estoque volta ──
-    for (const l of linhas) {
-      if (!l.item.variacaoId) continue
-      await mexerEstoqueEm(db, sessao, {
-        variacaoId: l.item.variacaoId,
-        unidadeId: v.unidadeId,
-        tipo: 'DEVOLUCAO',
-        quantidade: l.quantidade,
-        referencia: v.id,
+        caixaId,
+        tipo: 'SANGRIA',
+        valor: reais(paraClienteCent),
         motivo: `Devolução da venda ${v.numero}`,
-      })
-    }
+        quem: sessao.nome,
+      },
+    })
+  }
 
-    // ── a dívida do fiado diminui ──
-    for (const x of fiado.parcelas) {
-      await db.parcela.update({
-        where: { id: x.id },
-        data: { valor: reais(x.novoValorCent), ...(x.quitada ? { quitadaEm: new Date() } : {}) },
-      })
-    }
-
-    // ── o dinheiro sai da gaveta ──
-    if (p.destino === 'DINHEIRO' && caixaId && paraClienteCent > 0) {
-      await db.caixaMovimento.create({
-        data: {
-          orgId: sessao.orgId,
-          caixaId,
-          tipo: 'SANGRIA',
-          valor: reais(paraClienteCent),
-          motivo: `Devolução da venda ${v.numero}`,
-          quem: sessao.nome,
-        },
-      })
-    }
-
-    // ── os pontos voltam na proporção ──
-    // Nos dois sentidos, como no cancelamento. O que a venda DEU sai na
-    // proporção do dinheiro que voltou. O que a venda GASTOU volta na
-    // proporção da peça: numa venda de R$ 100 paga com R$ 80 e 200 pontos, o
-    // dinheiro da devolução já sai com o desconto dos pontos embutido (o
-    // fator total ÷ subtotal) — sem devolver os pontos, o cliente perdia os
-    // 200 que usou numa peça que devolveu. Para baixo, sempre: a soma das
-    // devoluções nunca passa do que foi gasto.
-    const tirar =
-      v.clienteId && v.pontosGanhos > 0 && totalCent > 0 ? Math.floor((v.pontosGanhos * valorCent) / totalCent) : 0
-    const voltam =
-      v.clienteId && v.pontosUsados > 0 && subtotalCent > 0
-        ? Math.floor((v.pontosUsados * Math.min(cheioCent, subtotalCent)) / subtotalCent)
-        : 0
-    const deltaPontos = voltam - tirar
-    if (v.clienteId && deltaPontos !== 0) {
-      const depois = await db.cliente.update({
-        where: { id: v.clienteId },
-        data: { pontos: { increment: deltaPontos } },
-        select: { pontos: true },
-      })
-      await db.movimentoPontos.create({
-        data: {
-          orgId: sessao.orgId,
-          clienteId: v.clienteId,
-          tipo: 'AJUSTE',
-          pontos: deltaPontos,
-          saldoDepois: depois.pontos,
-          vendaId: v.id,
-          motivo: [
-            `Devolução da venda ${v.numero}`,
-            voltam > 0 ? `${voltam} usados voltaram` : null,
-            tirar > 0 ? `${tirar} ganhos saíram` : null,
-          ]
-            .filter(Boolean)
-            .join(' · '),
-          quem: sessao.nome,
-        },
-      })
-    }
-
-    await db.auditoria.create({
+  // ── os pontos voltam na proporção ──
+  // Nos dois sentidos, como no cancelamento. O que a venda DEU sai na
+  // proporção do dinheiro que voltou. O que a venda GASTOU volta na
+  // proporção da peça: numa venda de R$ 100 paga com R$ 80 e 200 pontos, o
+  // dinheiro da devolução já sai com o desconto dos pontos embutido (o
+  // fator total ÷ subtotal) — sem devolver os pontos, o cliente perdia os
+  // 200 que usou numa peça que devolveu. Para baixo, sempre: a soma das
+  // devoluções nunca passa do que foi gasto.
+  const tirar =
+    v.clienteId && v.pontosGanhos > 0 && totalCent > 0 ? Math.floor((v.pontosGanhos * valorCent) / totalCent) : 0
+  const voltam =
+    v.clienteId && v.pontosUsados > 0 && subtotalCent > 0
+      ? Math.floor((v.pontosUsados * Math.min(cheioCent, subtotalCent)) / subtotalCent)
+      : 0
+  const deltaPontos = voltam - tirar
+  if (v.clienteId && deltaPontos !== 0) {
+    const depois = await db.cliente.update({
+      where: { id: v.clienteId },
+      data: { pontos: { increment: deltaPontos } },
+      select: { pontos: true },
+    })
+    await db.movimentoPontos.create({
       data: {
         orgId: sessao.orgId,
-        unidadeId: v.unidadeId,
-        usuarioId: sessao.usuarioId,
-        quem: sessao.nome,
-        acao: 'venda.devolveu',
-        alvoTipo: 'venda',
-        alvoId: v.id,
-        alvoNome: `Venda ${v.numero}`,
-        valor: reais(valorCent),
+        clienteId: v.clienteId,
+        tipo: 'AJUSTE',
+        pontos: deltaPontos,
+        saldoDepois: depois.pontos,
+        vendaId: v.id,
         motivo: [
-          motivo,
-          fiado.abatidoCent > 0 ? `${reais(fiado.abatidoCent).toFixed(2)} abatido do crediário` : null,
-          paraClienteCent > 0
-            ? p.destino === 'VALE' ? `vale ${vale!.codigo}` : p.destino === 'DINHEIRO' ? 'em dinheiro' : 'estorno por fora'
-            : null,
+          `Devolução da venda ${v.numero}`,
+          voltam > 0 ? `${voltam} usados voltaram` : null,
+          tirar > 0 ? `${tirar} ganhos saíram` : null,
         ]
           .filter(Boolean)
           .join(' · '),
+        quem: sessao.nome,
       },
     })
+  }
 
-    return {
-      ok: true as const,
-      devolucaoId: dev.id,
-      valor: reais(paraClienteCent),
-      abatido: reais(fiado.abatidoCent),
-      vale: vale ? { codigo: vale.codigo, validade: vale.validade } : null,
-    }
+  await db.auditoria.create({
+    data: {
+      orgId: sessao.orgId,
+      unidadeId: v.unidadeId,
+      usuarioId: sessao.usuarioId,
+      quem: sessao.nome,
+      acao: 'venda.devolveu',
+      alvoTipo: 'venda',
+      alvoId: v.id,
+      alvoNome: `Venda ${v.numero}`,
+      valor: reais(valorCent),
+      motivo: [
+        motivo,
+        fiado.abatidoCent > 0 ? `${reais(fiado.abatidoCent).toFixed(2)} abatido do crediário` : null,
+        paraClienteCent > 0
+          ? p.destino === 'VALE' ? `vale ${vale!.codigo}` : p.destino === 'DINHEIRO' ? 'em dinheiro' : 'estorno por fora'
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    },
   })
+
+  return {
+    ok: true as const,
+    devolucaoId: dev.id,
+    valor: reais(paraClienteCent),
+    abatido: reais(fiado.abatidoCent),
+    vale: vale ? { id: vale.id, codigo: vale.codigo, validade: vale.validade } : null,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

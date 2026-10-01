@@ -15,6 +15,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao, cx } from '@/ui/base'
+import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
 import { contar } from './acoes'
 
 export function Corrigir({
@@ -32,6 +33,11 @@ export function Corrigir({
   const [contado, setContado] = useState(String(saldo))
   const [motivo, setMotivo] = useState('')
   const [erro, setErro] = useState<string | null>(null)
+  // O saldo que a pessoa VIU ao abrir: vai junto, e o servidor recusa se o
+  // estoque mudou no meio da contagem (uma venda) — ver `corrigirPeloContado`.
+  const [visto, setVisto] = useState(saldo)
+  const [pedePin, setPedePin] = useState(false)
+  const [pin, setPin] = useState('')
   const [indo, comecar] = useTransition()
   const router = useRouter()
 
@@ -39,7 +45,11 @@ export function Corrigir({
     return (
       <button
         type="button"
-        onClick={() => setAberto(true)}
+        onClick={() => {
+          setVisto(saldo)
+          setContado(String(saldo))
+          setAberto(true)
+        }}
         className="text-xs font-medium text-tinta-3 underline-offset-2 hover:text-marca hover:underline"
       >
         corrigir
@@ -47,7 +57,7 @@ export function Corrigir({
     )
   }
 
-  const diferenca = Number(contado) - saldo
+  const diferenca = Number(contado) - visto
 
   return (
     <span className="flex flex-wrap items-center justify-end gap-1.5">
@@ -87,13 +97,22 @@ export function Corrigir({
         onClick={() =>
           comecar(async () => {
             setErro(null)
-            const r = await contar(slug, variacaoId, unidadeId, Number(contado), motivo)
+            const r = await contar(slug, variacaoId, unidadeId, Number(contado), motivo, visto, pin || null)
+            setPin('')
             if (r.erro) {
               setErro(r.erro)
+              if (r.precisaPin) setPedePin(true)
+              // O número mudou: a tela passa a mostrar o novo, e a pessoa
+              // confere de novo antes de mandar.
+              if (r.saldo !== undefined) {
+                setVisto(r.saldo)
+                router.refresh()
+              }
               return
             }
             setAberto(false)
             setMotivo('')
+            setPedePin(false)
             router.refresh()
           })
         }
@@ -110,6 +129,14 @@ export function Corrigir({
       >
         cancelar
       </button>
+      <span className="flex w-full justify-end">
+        <MotivosProntos excecao="estoque.ajuste" atual={motivo} aoEscolher={setMotivo} className="justify-end" />
+      </span>
+      {pedePin && (
+        <span className="flex w-full justify-end">
+          <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} />
+        </span>
+      )}
       {erro && <span className="w-full text-right text-xs font-medium text-critico">{erro}</span>}
     </span>
   )

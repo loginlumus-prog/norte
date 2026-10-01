@@ -51,11 +51,32 @@ export async function salvarCrediario(
   if (!Number.isFinite(jurosMes) || jurosMes < 0) return { erro: 'O juro precisa ser um número, zero ou mais.' }
   if (!Number.isInteger(maxParcelas) || maxParcelas < 1) return { erro: 'Em quantas vezes? Pelo menos 1.' }
   if (!Number.isInteger(diasEntre) || diasEntre < 7) return { erro: 'O intervalo entre parcelas precisa ser de pelo menos 7 dias.' }
+  // O atraso: só quando a tela mostrou os campos (tela antiga não apaga nada).
+  const temAtraso = form.has('multaPct')
+  const multaPct = temAtraso ? (lerNumero(String(form.get('multaPct') ?? '0') || '0') ?? Number.NaN) : undefined
+  const carenciaDias = temAtraso ? (lerNumero(String(form.get('carenciaDias') ?? '0') || '0', 0) ?? Number.NaN) : undefined
+  if (multaPct !== undefined && (!Number.isFinite(multaPct) || multaPct < 0)) return { erro: 'A multa precisa ser um número, zero ou mais. Ex.: 2' }
+  if (multaPct !== undefined && multaPct > 2) return { erro: 'A multa passa do teto de 2% (Código de Defesa do Consumidor).' }
+  if (carenciaDias !== undefined && (!Number.isInteger(carenciaDias) || carenciaDias < 0 || carenciaDias > 30)) {
+    return { erro: 'A carência é em dias inteiros, de 0 a 30.' }
+  }
 
-  const salvo = await salvarConfigCrediario(s, { jurosMes, maxParcelas, diasEntre })
+  const salvo = await salvarConfigCrediario(s, {
+    jurosMes,
+    maxParcelas,
+    diasEntre,
+    ...(temAtraso ? { multaPct, carenciaDias, arredondar: form.get('arredondar') === 'on' } : {}),
+  })
   revalidatePath(`/${slug}/configuracoes`)
   revalidatePath(`/${slug}/balcao`)
-  return { ok: `Crediário: ${salvo.jurosMes}% ao mês de atraso, até ${salvo.maxParcelas}×, a cada ${plural(salvo.diasEntre, 'dia', 'dias')}.` }
+  revalidatePath(`/${slug}/crediario`)
+  return {
+    ok:
+      `Crediário: até ${salvo.maxParcelas}×, a cada ${plural(salvo.diasEntre, 'dia', 'dias')}; atraso de ${String(salvo.jurosMes).replace('.', ',')}% ao mês` +
+      (multaPct !== undefined ? ` e multa de ${String(multaPct).replace('.', ',')}%` : '') +
+      (carenciaDias ? `, com ${plural(carenciaDias, 'dia', 'dias')} de carência` : '') +
+      '.',
+  }
 }
 
 export type EstadoPontos = { erro?: string; ok?: string }

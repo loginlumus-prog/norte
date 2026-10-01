@@ -58,7 +58,11 @@ export function Itens({
           </span>
           <span className="flex flex-col">
             <span className="text-base font-semibold text-tinta">{p.Pedido} vazio</span>
-            <span className="text-sm text-tinta-2">Toque num {p.produto} ou bipe a etiqueta.</span>
+            <span className="text-sm text-tinta-2">
+              Toque num {p.produto} ou bipe a etiqueta.
+              {/* Só para quem tem mouse: no toque, o "−" do cartão é que tira. */}
+              <span className="hidden [@media(pointer:fine)]:inline"> O botão direito no cartão tira um.</span>
+            </span>
           </span>
         </div>
         {vazio}

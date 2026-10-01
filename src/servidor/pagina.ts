@@ -75,7 +75,10 @@ export async function conferirSessao(
           where: { orgId_usuarioId: { orgId: doCookie.orgId, usuarioId: doCookie.usuarioId } },
           select: { desde: true, ultimoSinal: true },
         })
-    return { usuario, presenca }
+    // O que a empresa deu a mais ao Balcão (ver EXTRAS_DO_BALCAO). Daqui, e
+    // não do cookie: desligar a chave vale na próxima tela.
+    const org = await db.org.findUnique({ where: { id: doCookie.orgId }, select: { balcaoAmpliado: true } })
+    return { usuario, presenca, balcaoAmpliado: org?.balcaoAmpliado ?? false }
   })
 
   // Usuário apagado, desativado, ou sessão emitida antes do corte.
@@ -91,7 +94,8 @@ export async function conferirSessao(
     return { sessao: null, motivo: await motivoDaVagaPerdida(doCookie) }
   }
 
-  const { nasceu: _nasceu, ...sessao } = doCookie
+  const { nasceu: _nasceu, ...doCookieSemData } = doCookie
+  const sessao: SessaoViva = { ...doCookieSemData, balcaoAmpliado: achado.balcaoAmpliado }
 
   // ── "ainda estou aqui" ───────────────────────────────────
   // É este toque que segura a vaga. Ele mora aqui porque aqui é o único lugar

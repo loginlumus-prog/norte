@@ -1,6 +1,9 @@
 'use client'
 
-// As três regras do crediário, do lado de quem decide.
+// As regras do crediário, do lado de quem decide: o parcelamento (em quantas
+// vezes, de quanto em quanto) e o atraso (multa, juro, carência, arredondar).
+// O atraso também se muda na tela do Crediário (RegraDoAtraso), onde a dona
+// olha o vencido — as duas gravam a mesma regra.
 //
 // Juro é de ATRASO, não de parcelamento — o preço "no crediário" do produto
 // já cobra o prazo. A tela diz isso em voz alta porque é o erro mais comum:
@@ -8,7 +11,7 @@
 // paga em dia nunca vê juro nenhum.
 
 import { useActionState } from 'react'
-import { Botao, Campo, Aviso } from '@/ui/base'
+import { Botao, Campo, Aviso, Marcar } from '@/ui/base'
 import { salvarCrediario, type EstadoCrediario } from './acoes'
 import { semApagar } from '@/ui/formulario'
 
@@ -17,7 +20,7 @@ export function Crediario({
   inicial,
 }: {
   empresa: string
-  inicial: { jurosMes: number; maxParcelas: number; diasEntre: number }
+  inicial: { jurosMes: number; maxParcelas: number; diasEntre: number; multaPct: number; carenciaDias: number; arredondar: boolean }
 }) {
   const [estado, agir, pendente] = useActionState<EstadoCrediario, FormData>(salvarCrediario, {})
 
@@ -55,6 +58,31 @@ export function Crediario({
           defaultValue={String(inicial.diasEntre)}
           dica="E até a primeira. 30 é o comum."
         />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Campo
+          rotulo="Multa de atraso, %"
+          name="multaPct"
+          inputMode="decimal"
+          defaultValue={String(inicial.multaPct).replace('.', ',')}
+          dica="Uma vez por parcela. Teto de 2% (Código de Defesa do Consumidor)."
+        />
+        <Campo
+          rotulo="Carência, em dias"
+          name="carenciaDias"
+          inputMode="numeric"
+          defaultValue={String(inicial.carenciaDias)}
+          dica="Atraso até aqui não cobra nada. Zero = conta do dia seguinte ao vencimento."
+        />
+        <div className="flex items-end">
+          <Marcar
+            name="arredondar"
+            titulo="Arredondar o atraso"
+            resumo="Para os 10 centavos de cima: R$ 3,47 vira R$ 3,50."
+            defaultChecked={inicial.arredondar}
+          />
+        </div>
       </div>
 
       <div className="flex items-center justify-between gap-3">

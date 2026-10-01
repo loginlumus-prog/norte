@@ -5,13 +5,13 @@ import { exigirEntrada } from '@/servidor/pagina'
 import { eixosDaEmpresa } from '@/servidor/produto'
 import { comoOrg } from '@/servidor/banco'
 import { RAMOS, marcasDaGaveta, type Ramo } from '@/servidor/modulos'
-import { pode, unidadesQuePodem } from '@/servidor/permissao'
+import { pode, soPelaEmpresa, unidadesQuePodem } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Secao } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor } from '../Editor'
-import { alcanceComum, alcancaLoja, lojasSugeridas } from '@/servidor/catalogo-loja'
+import { alcancaLoja, lojasSugeridas } from '@/servidor/catalogo-loja'
 import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 
 export async function generateMetadata({
@@ -37,7 +37,9 @@ export default async function NovoProduto({
   // ficha já abre marcada como serviço. É só o padrão do campo — quem
   // desmarca cadastra material, como sempre.
   const servico = (await searchParams).servico === '1'
-  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'produto.editar' })
+  // Cadastrar é capacidade própria: a vendedora a tem quando a empresa deixa
+  // (EXTRAS_DO_BALCAO), sem poder editar o resto do catálogo.
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'produto.cadastrar' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   // A tela nem abre para quem não pode. O botão que leva até aqui já está
@@ -47,7 +49,7 @@ export default async function NovoProduto({
   // exige ligar uma bandeira. E a nossa tela de "este endereço não abre" já
   // diz as duas possibilidades sem escolher — o que também evita confirmar,
   // para quem não deveria saber, que a tela existe.
-  if (!pode(sessao, 'produto.editar')) notFound()
+  if (!pode(sessao, 'produto.cadastrar')) notFound()
 
   const [eixos, categorias] = await Promise.all([
     eixosDaEmpresa(sessao),
@@ -68,7 +70,7 @@ export default async function NovoProduto({
   ] as const)
   // O gerente cadastra para as lojas DELE: as outras aparecem travadas, e o
   // produto dele nunca nasce "em todas" (ver `vendidoEmDoGerente`).
-  const alcance = alcanceComum(unidadesQuePodem(sessao, 'produto.editar'), unidadesQuePodem(sessao, 'produto.preco'))
+  const alcance = unidadesQuePodem(sessao, 'produto.cadastrar')
   const lojasQueVendem = lojasCruas.map((u) => ({
     ...u,
     ramo: u.ramo && u.ramo in RAMOS ? RAMOS[u.ramo as Ramo].titulo : null,
@@ -106,6 +108,7 @@ export default async function NovoProduto({
           sugestao={sugestao}
           marcas={marcas}
           servicoPadrao={servico}
+          pedePin={soPelaEmpresa(sessao, 'produto.cadastrar')}
         />
       </Secao>
     </Estrutura>

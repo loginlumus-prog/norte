@@ -179,6 +179,19 @@ model Org {
   /// cima: no dinheiro, R$ 3,47 de juro vira conversa sobre moeda de 1 centavo.
   crediarioArredondar Boolean @default(false) @map("crediario_arredondar")
 
+  // ── o livro de assinaturas e o balcão que conta estoque ──
+  /// Pedir o PIN de QUEM FAZ nas exceções: sangria, suprimento, cancelar
+  /// venda, baixa de crediário pago fora, corrigir estoque, corrigir a data de
+  /// uma venda. Nunca em toda venda. Nasce desligado e só liga quando toda a
+  /// equipe que opera já criou o PIN — ligado antes, quem não tem trava no
+  /// meio do atendimento. Ver `assinarExcecao` em src/servidor/autorizacao.ts.
+  pinNasExcecoes Boolean @default(false) @map("pin_nas_excecoes")
+  /// A vendedora (papel Balcão) também conta e corrige o estoque e cadastra
+  /// produto — sem mexer em preço depois — assinando com o PIN dela. É regra
+  /// desta empresa, não do papel: desligado, o Balcão é o de sempre. Ver
+  /// `EXTRAS_DO_BALCAO` em src/servidor/permissao.ts.
+  balcaoAmpliado Boolean @default(false) @map("balcao_ampliado")
+
   // ── mensalidades (Escola) ────────────────────────────────
   /// Multa de atraso, em porcento do que venceu, cobrada UMA vez por
   /// mensalidade. O teto é 2%: é o que o Código de Defesa do Consumidor
@@ -655,6 +668,9 @@ model Auditoria {
   depois Json?
   valor  Decimal? @db.Decimal(14, 2)
   motivo String?
+  /// Quem fez ASSINOU com o PIN dela (`Org.pinNasExcecoes`, juntar fichas, a
+  /// vendedora que corrige estoque). É o filtro "assinado" do livro.
+  assinado Boolean @default(false)
 
   ip        String?
   criadoEm  DateTime @default(now()) @map("criado_em")
@@ -1144,6 +1160,20 @@ model Cliente {
   /// anonimizado" e as vendas continuam penduradas nela pelo prazo fiscal.
   anonimizadoEm DateTime? @map("anonimizado_em")
 
+  // ── a gestão do crediário (src/servidor/crediario-gestao.ts) ──
+  /// Cobrança pausada desta pessoa: acordo em andamento, advogado, doença na
+  /// família. A dívida continua de pé (e no "Em aberto"); o que para é o
+  /// chamado de cobrar — a lista "fiado vencido" do painel, o "quem cobrar
+  /// primeiro" do Crediário. Nulo = cobrança normal.
+  cobrancaPausadaEm     DateTime? @map("cobranca_pausada_em")
+  cobrancaPausadaPor    String?   @map("cobranca_pausada_por")
+  cobrancaPausadaMotivo String?   @map("cobranca_pausada_motivo")
+  /// A mesma pessoa estava cadastrada duas vezes e esta ficha foi JUNTADA na
+  /// outra: o id da que ficou. Vendas, parcelas, recibos, vales e pontos foram
+  /// para lá; esta fica inativa, para o histórico e os links antigos.
+  juntadaNaId String?   @map("juntada_na_id")
+  juntadaEm   DateTime? @map("juntada_em")
+
   vendas Venda[]
   movimentosPontos MovimentoPontos[]
   vales  Vale[]
@@ -1344,6 +1374,16 @@ model Venda {
   concluidaEm DateTime? @map("concluida_em")
   canceladaEm DateTime? @map("cancelada_em")
   motivoCancelamento String? @map("motivo_cancelamento")
+
+  /// A data da venda corrigida (a loja lança no outro sistema e às vezes
+  /// registra aqui no dia seguinte). `criadaEm` é a data do FATO — é por ela
+  /// que DRE, metas e relatórios contam —, e a correção muda só ela: o caixa
+  /// continua o do turno em que o dinheiro entrou (o fechamento soma por
+  /// `caixaId`). Aqui fica a de antes da PRIMEIRA correção, quem e por quê.
+  dataOriginal        DateTime? @map("data_original")
+  dataCorrigidaEm     DateTime? @map("data_corrigida_em")
+  dataCorrigidaPor    String?   @map("data_corrigida_por")
+  dataCorrigidaMotivo String?   @map("data_corrigida_motivo")
 
   @@unique([unidadeId, numero])
   @@index([orgId, unidadeId, criadaEm])

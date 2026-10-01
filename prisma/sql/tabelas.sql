@@ -141,6 +141,8 @@ CREATE TABLE "orgs" (
     "crediario_multa_pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
     "crediario_carencia_dias" INTEGER NOT NULL DEFAULT 0,
     "crediario_arredondar" BOOLEAN NOT NULL DEFAULT false,
+    "pin_nas_excecoes" BOOLEAN NOT NULL DEFAULT false,
+    "balcao_ampliado" BOOLEAN NOT NULL DEFAULT false,
     "mensalidade_multa_pct" DECIMAL(5,2) NOT NULL DEFAULT 2,
     "mensalidade_juros_mes" DECIMAL(5,2) NOT NULL DEFAULT 1,
     "mensalidade_pontualidade_pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
@@ -319,6 +321,7 @@ CREATE TABLE "auditoria" (
     "depois" JSONB,
     "valor" DECIMAL(14,2),
     "motivo" TEXT,
+    "assinado" BOOLEAN NOT NULL DEFAULT false,
     "ip" TEXT,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -504,6 +507,11 @@ CREATE TABLE "clientes" (
     "ofertas_origem" TEXT,
     "ofertas_por" TEXT,
     "anonimizado_em" TIMESTAMP(3),
+    "cobranca_pausada_em" TIMESTAMP(3),
+    "cobranca_pausada_por" TEXT,
+    "cobranca_pausada_motivo" TEXT,
+    "juntada_na_id" TEXT,
+    "juntada_em" TIMESTAMP(3),
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizado_em" TIMESTAMP(3) NOT NULL,
 
@@ -581,6 +589,10 @@ CREATE TABLE "vendas" (
     "concluida_em" TIMESTAMP(3),
     "cancelada_em" TIMESTAMP(3),
     "motivo_cancelamento" TEXT,
+    "data_original" TIMESTAMP(3),
+    "data_corrigida_em" TIMESTAMP(3),
+    "data_corrigida_por" TEXT,
+    "data_corrigida_motivo" TEXT,
 
     CONSTRAINT "vendas_pkey" PRIMARY KEY ("id")
 );

@@ -21,6 +21,7 @@
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
+import { exigirAssinatura } from './autorizacao'
 import type { TipoCaixa } from '@prisma/client'
 
 export type CaixaAberto = {
@@ -184,17 +185,25 @@ function abrirNaTrava(sessao: Sessao, unidadeId: string, saldoAbertura: number) 
   })
 }
 
-/** Sangria tira da gaveta; suprimento põe. Motivo é obrigatório nos dois. */
+/**
+ * Sangria tira da gaveta; suprimento põe. Motivo é obrigatório nos dois.
+ *
+ * Com a empresa pedindo assinatura nas exceções (`Org.pinNasExcecoes`), quem
+ * faz confirma com o PIN dela — sem ele, levanta `PinNecessario` e a tela
+ * mostra o campo. O PIN é conferido ANTES da transação (ver autorizacao.ts).
+ */
 export async function movimentarCaixa(
   sessao: Sessao,
   caixaId: string,
   tipo: TipoCaixa,
   valor: number,
   motivo: string,
+  pin?: string | null,
 ) {
   if (!motivo.trim()) throw new Error('Sangria e suprimento precisam de motivo.')
   if (!Number.isFinite(valor) || valor <= 0) throw new Error('O valor precisa ser maior que zero.')
   if (tipo !== 'SANGRIA' && tipo !== 'SUPRIMENTO') throw new Error('Isso não é sangria nem suprimento.')
+  const assinado = await exigirAssinatura(sessao, { pin })
 
   await comoOrg(sessao.orgId, async (db) => {
     const caixa = await db.caixa.findUnique({
@@ -228,6 +237,7 @@ export async function movimentarCaixa(
         alvoId: caixaId,
         valor,
         motivo: motivo.trim(),
+        assinado,
       },
     })
   })

@@ -125,6 +125,9 @@ export default async function AuditoriaPagina({
             { rotulo: 'registros', um: 'registro', quantos: linhas.length, nivel: 'neutro' },
             { rotulo: 'pessoas diferentes', um: 'pessoa', quantos: pessoas, nivel: 'bom' },
             { rotulo: 'feitos pelo assistente', um: 'feito pelo assistente', quantos: doAgente, nivel: 'atencao' },
+            ...(linhas.some((l) => l.assinado)
+              ? [{ rotulo: 'assinados com PIN', um: 'assinado com PIN', quantos: linhas.filter((l) => l.assinado).length, nivel: 'bom' as const }]
+              : []),
             // Só aparece quando houve: acesso nosso é exceção, e a loja
             // precisa ver de longe que ele aconteceu.
             ...(doSuporte
@@ -171,6 +174,12 @@ export default async function AuditoriaPagina({
                   {ehDoSuporte(l) && (
                     <span className="pt-0.5">
                       <Situacao nivel="atencao">suporte do Norte</Situacao>
+                    </span>
+                  )}
+                  {/* O livro de assinaturas: feito (ou autorizado) com o PIN. */}
+                  {l.assinado && (
+                    <span className="pt-0.5">
+                      <Situacao nivel="bom">assinado com PIN</Situacao>
                     </span>
                   )}
                   {l.autor !== 'PESSOA' && (

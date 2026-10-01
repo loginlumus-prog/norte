@@ -21,9 +21,13 @@ import { lerPagina, paginar } from '@/ui/paginacao'
 import { Situacao, cx } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { recibosDoCliente, type ReciboNaLista } from '@/servidor/recibos'
+import { fichaDeGestao } from '@/servidor/crediario-gestao'
+import { diaEmSP } from '@/servidor/dia'
+import { primeiroVencimentoPadrao } from '@/servidor/crediario-agenda'
 import { BotaoReceber } from './BotaoReceber'
 import { RegraDoAtraso } from './RegraDoAtraso'
 import { ListaDeRecibos } from './Recibos'
+import { Gestao } from './Gestao'
 
 export const metadata: Metadata = { title: 'Crediário' }
 
@@ -79,13 +83,17 @@ export default async function CrediarioPagina({
     maioresDevedores(sessao, onde.ids, 6),
     clienteId ? recibosDoCliente(sessao, clienteId, 20) : Promise.resolve([] as ReciboNaLista[]),
   ])
+  // A gestão da cliente escolhida (crediario-gestao.ts): quitou tudo, pausar
+  // a cobrança, dívida na mão, anotações, juntar ficha repetida.
+  const gestao = clienteId ? await fichaDeGestao(sessao, clienteId) : null
+  const lojasQueCobra = onde.opcoes.filter((u) => pode(sessao, 'crediario.cobrar', u.id)).map((u) => ({ id: u.id, nome: u.nome }))
 
   // Receber é por LOJA (cada loja é um credor, com o caixa dela): o botão de
   // cada linha abre na loja da parcela.
   const podeReceberEm = (u: string) => pode(sessao, 'crediario.receber', u)
   const podeReceber = onde.ids.some(podeReceberEm)
   const podeConfigurar = pode(sessao, 'empresa.configurar')
-  const nomeDoCliente = clienteId ? parcelas.find((p) => p.clienteId === clienteId)?.cliente ?? null : null
+  const nomeDoCliente = clienteId ? (gestao?.cliente.nome ?? parcelas.find((p) => p.clienteId === clienteId)?.cliente ?? null) : null
   const atuais = { unidade: onde.unidadeId, q, situacao: sitPedida ?? null, cliente: clienteId ?? null }
   const link = (m: Record<string, string | null>) => enderecoCom(`/${slug}/crediario`, atuais, m)
 
@@ -114,6 +122,19 @@ export default async function CrediarioPagina({
         </div>
       }
     >
+      {gestao && (
+        <Secao titulo={`Gestão do crediário · ${gestao.cliente.nome}`} resumo="Quitou tudo, pausar a cobrança, dívida na mão, anotações e ficha repetida.">
+          <Gestao
+            slug={slug}
+            ficha={gestao}
+            lojasQueCobra={lojasQueCobra}
+            lojaAtual={onde.unidadeId}
+            hoje={diaEmSP()}
+            primeiroVencimento={primeiroVencimentoPadrao(diaEmSP(), config.diasEntre)}
+          />
+        </Secao>
+      )}
+
       <Secao titulo={`Fiado · ${onde.titulo}`}>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <Numero
@@ -196,6 +217,16 @@ export default async function CrediarioPagina({
                     {p.cliente}
                   </Link>
                   <span className="text-xs text-tinta-3">{mostrarTelefone(p.telefone) || 'sem telefone'}</span>
+                  {!clienteId && (
+                    <Link href={link({ cliente: p.clienteId })} className="text-xs text-tinta-3 underline-offset-2 hover:text-marca hover:underline">
+                      gestão da cliente
+                    </Link>
+                  )}
+                  {p.cobrancaPausada && (
+                    <span className="pt-0.5">
+                      <Situacao nivel="atencao">cobrança pausada</Situacao>
+                    </span>
+                  )}
                 </span>
               ),
             },

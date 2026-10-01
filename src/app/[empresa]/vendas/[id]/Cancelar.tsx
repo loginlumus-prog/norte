@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { Botao, Campo, Aviso } from '@/ui/base'
+import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
 import { cancelarAcao, type EstadoCancelamento } from './acoes'
 import { semApagar } from '@/ui/formulario'
 
@@ -23,6 +24,7 @@ export function Cancelar({
   palavras: { estaVenda: string; aVenda: string; pessoa: string }
 }) {
   const [aberto, setAberto] = useState(false)
+  const [motivo, setMotivo] = useState('')
   const [estado, agir, pendente] = useActionState<EstadoCancelamento, FormData>(cancelarAcao, {})
 
   if (estado.ok) return <Aviso nivel="bom">{estado.ok}</Aviso>
@@ -56,14 +58,20 @@ export function Cancelar({
 
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
 
+      <MotivosProntos excecao="venda.cancelar" atual={motivo} aoEscolher={setMotivo} />
       <Campo
         rotulo="Motivo"
         name="motivo"
         required
         minLength={3}
+        value={motivo}
+        onChange={(e) => setMotivo(e.target.value)}
         placeholder="Cliente desistiu, devolvido em dinheiro"
         autoFocus
       />
+      {/* A empresa pede a assinatura de quem cancela (Configurações): o
+          campo só aparece quando o servidor diz que precisa. */}
+      {estado.precisaPin && <CampoDoPin slug={slug} name="pin" />}
 
       <div className="flex gap-2">
         <Botao type="submit" tom="perigo" carregando={pendente}>

@@ -24,8 +24,24 @@
 //    de açaí puxa os complementos para um toque; o peso tem as teclas do
 //    tamanho de copo da casa; a loja de roupa vê a grade inteira, tamanho por
 //    cor, com o saldo de cada peça. A venda por baixo é a mesma.
+// 7. O BOTÃO DIREITO TIRA. Clique esquerdo põe, direito tira um — como no
+//    balcão de onde a loja veio, onde a mão já aprendeu. No toque não existe
+//    botão direito (e o "segurar" do Android abriria o mesmo menu sem querer):
+//    o cartão com peça no pedido ganha um "−" do lado do número.
+// 8. O CÓDIGO DA ETIQUETA NO CARTÃO. A vendedora tem a etiqueta na mão: o
+//    mesmo número no cartão confirma "é esta" sem ler o nome (vitrine.ts,
+//    `etiquetaDoProduto`).
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react'
 import { Botao, Situacao, cx } from '@/ui/base'
 import { vitrine, type Achado, type Vitrine } from './acoes'
 import { brl, precoDe, linhaCent } from './conta'
@@ -33,6 +49,7 @@ import type { Venda } from './useVenda'
 import {
   acharVariacao,
   eixosDe,
+  etiquetaDoProduto,
   faixaDePreco,
   fracionado,
   iniciais,
@@ -216,6 +233,13 @@ export function Produtos({
     if (origem && complementosDaLoja.length > 0 && pedeComplemento(ramo, nomeDaCategoria(origem.categoriaId), origem.nome)) {
       setSugestao(origem.nome)
     }
+  }
+
+  /** O último gesto nos complementos foi dedo? Ver `useBotaoDireito`. */
+  const dedo = useRef(false)
+  /** O clique direito (ou o "−"): tira uma destas peças do pedido, a última que entrou. */
+  function tirar(ids: readonly string[], marca: string) {
+    if (v.tirarUm(ids)) setPiscou(marca)
   }
 
   function tocarProduto(p: ProdutoNaVitrine) {
@@ -417,6 +441,13 @@ export function Produtos({
                   type="button"
                   disabled={saldo <= 0 && !v.vendeSemEstoque}
                   onClick={() => tocarProduto(p)}
+                  onPointerDown={(e) => {
+                    dedo.current = e.pointerType !== 'mouse'
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    if (!dedo.current) tirar(p.variacoes.map((x) => x.id), p.id)
+                  }}
                   className={cx(
                     'flex min-h-11 shrink-0 touch-manipulation items-center gap-2 rounded-full border bg-superficie px-4 text-sm font-semibold whitespace-nowrap text-tinta transition',
                     'border-borda hover:border-marca/50 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45',
@@ -469,7 +500,7 @@ export function Produtos({
                   const a = b.achado
                   return (
                     <Cartao
-                    semEstoqueOk={v.vendeSemEstoque}
+                      semEstoqueOk={v.vendeSemEstoque}
                       key={a.id}
                       nome={a.descricao}
                       preco={precoDe({ ...a, quantidade: 1 }, v.conta.tabela)}
@@ -477,11 +508,12 @@ export function Produtos({
                       estilo={estiloDoTom(tomDe(-1))}
                       saldo={a.saldo}
                       acabou={a.saldo <= 0}
-                      detalhe={a.codigo}
+                      codigo={a.codigo}
                       enter={i === 0}
                       noPedido={noPedido.get(a.id) ?? 0}
                       piscou={piscou === a.id}
                       aoTocar={() => tocarAchado(a)}
+                      aoTirar={() => tirar([a.id], a.id)}
                     />
                   )
                 }
@@ -501,11 +533,13 @@ export function Produtos({
                     estilo={estiloDoTom(tomDoProduto(p))}
                     saldo={saldo}
                     acabou={saldo <= 0}
+                    codigo={etiquetaDoProduto(p.variacoes.map((x) => x.codigo))}
                     detalhe={`${p.variacoes.length} opções`}
                     enter={i === 0}
                     noPedido={p.variacoes.reduce((s, x) => s + (noPedido.get(x.id) ?? 0), 0)}
-                    piscou={p.variacoes.some((x) => x.id === piscou)}
+                    piscou={piscou === p.id || p.variacoes.some((x) => x.id === piscou)}
                     aoTocar={() => tocarProduto(p)}
+                    aoTirar={() => tirar(p.variacoes.map((x) => x.id), p.id)}
                   />
                 )
               })}
@@ -561,6 +595,7 @@ export function Produtos({
                     estilo={estiloDoTom(tomDoProduto(p))}
                     saldo={saldo}
                     acabou={saldo <= 0}
+                    codigo={etiquetaDoProduto(p.variacoes.map((x) => x.codigo))}
                     detalhe={
                       p.variacoes.length > 1
                         ? `${p.variacoes.length} opções`
@@ -571,6 +606,7 @@ export function Produtos({
                     noPedido={qtd}
                     piscou={piscou === p.id || p.variacoes.some((x) => x.id === piscou)}
                     aoTocar={() => tocarProduto(p)}
+                    aoTirar={() => tirar(p.variacoes.map((x) => x.id), p.id)}
                   />
                 )
               })}
@@ -593,6 +629,8 @@ export function Produtos({
           escolha={escolha}
           ramo={ramo}
           tabela={v.conta.tabela}
+          noPedido={noPedido}
+          aoTirar={(peca) => v.tirarUm([peca.id])}
           aoFechar={() => setEscolha(null)}
           aoLancar={(peca, q) => {
             lancar(peca, q, undefined, { categoriaId: escolha.categoriaId, nome: escolha.titulo })
@@ -614,6 +652,53 @@ function Grade({ children }: { children: ReactNode }) {
   )
 }
 
+/**
+ * O clique direito do cartão. (A folha do tamanho e os complementos leem o
+ * dedo do mesmo jeito, com um ref só para a lista inteira.)
+ *
+ * O botão direito do MOUSE tira um. O "segurar" do dedo no Android também
+ * dispara o menu do botão direito: ali ele só é engolido (nada de menu do
+ * navegador em cima do cartão), sem tirar nada — no toque quem tira é o "−",
+ * que se vê. Tirar sem querer, com o cliente olhando, é pior que não tirar.
+ */
+function useBotaoDireito(aoTirar?: () => void) {
+  // Ref, e não estado: o menu vem logo depois do toque, no mesmo gesto, e
+  // tem de ler o que o toque acabou de anotar.
+  const dedo = useRef(false)
+  return {
+    onPointerDown: (e: PointerEvent) => {
+      dedo.current = e.pointerType !== 'mouse'
+    },
+    onContextMenu: (e: MouseEvent) => {
+      e.preventDefault()
+      if (!dedo.current) aoTirar?.()
+    },
+  }
+}
+
+/** O "−" redondo de tirar um, ao lado do número de quantos estão no pedido. */
+function BotaoMenos({ rotulo, aoTirar, pequeno = false }: { rotulo: string; aoTirar: () => void; pequeno?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={aoTirar}
+      aria-label={rotulo}
+      title={`${rotulo} (no computador, o botão direito também tira)`}
+      className={cx(
+        'pointer-events-auto flex shrink-0 touch-manipulation items-center justify-center rounded-full border-2 border-marca bg-superficie text-marca shadow-norte',
+        'hover:bg-marca-suave active:scale-95',
+        pequeno ? 'size-9' : 'size-11',
+      )}
+    >
+      <svg aria-hidden viewBox="0 0 16 16" className={pequeno ? 'size-3.5' : 'size-4'} fill="none">
+        <path d="M3 8h10" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+      </svg>
+    </button>
+  )
+}
+
+const qtdNaTela = (n: number) => (Number.isInteger(n) ? String(n) : n.toLocaleString('pt-BR'))
+
 function Cartao({
   nome,
   preco,
@@ -622,11 +707,13 @@ function Cartao({
   estilo,
   saldo,
   acabou,
+  codigo = null,
   detalhe,
   enter = false,
   noPedido,
   piscou,
   aoTocar,
+  aoTirar,
   semEstoqueOk = false,
 }: {
   /** A loja vende o que o sistema diz que acabou: o cartão avisa, mas não trava. */
@@ -638,35 +725,47 @@ function Cartao({
   estilo: CSSProperties
   saldo: number
   acabou: boolean
+  /** O código da etiqueta (vitrine.ts, `etiquetaDoProduto`). Nulo = o cartão não mostra. */
+  codigo?: string | null
   detalhe?: string | null
   enter?: boolean
   noPedido: number
   piscou: boolean
   aoTocar: () => void
+  /** Tira um do pedido: o botão direito e o "−". */
+  aoTirar?: () => void
 }) {
   const un = medida !== 'UN' ? `/${UNIDADE[medida] ?? medida.toLowerCase()}` : ''
   const falado = [
     nome,
+    codigo ? `código ${codigo}` : null,
     `${aPartirDe ? 'a partir de ' : ''}${brl(preco)}${un ? ` por ${UNIDADE[medida] ?? medida}` : ''}`,
     detalhe,
     acabou ? 'acabou' : null,
-    noPedido > 0 ? `${noPedido} no pedido` : null,
+    noPedido > 0 ? `${qtdNaTela(noPedido)} no pedido` : null,
   ]
     .filter(Boolean)
     .join(', ')
+  const direito = useBotaoDireito(noPedido > 0 ? aoTirar : undefined)
 
   // O cartão tem duas partes, como nos PDVs de balcão de hoje: em cima, o
   // bloco de cor da categoria com as iniciais grandes (é o que o olho acha de
-  // longe, antes de ler); embaixo, o nome e o preço, em letra de ler de pé.
-  // O toque afunda o cartão (scale) e acende a borda: resposta sem som.
+  // longe, antes de ler) e o código da etiqueta; embaixo, o nome e o preço,
+  // em letra de ler de pé. O toque afunda o cartão (scale) e acende a borda:
+  // resposta sem som.
+  //
+  // O número do pedido e o "−" ficam FORA do botão do cartão (botão dentro
+  // de botão não existe): tocar no "−" nunca põe mais um.
   return (
+    <div className="relative flex" {...direito}>
     <button
       type="button"
       onClick={aoTocar}
       disabled={acabou && !semEstoqueOk}
       aria-label={falado}
+      title={noPedido > 0 && aoTirar ? 'Clique põe mais um · botão direito tira um' : undefined}
       className={cx(
-        'group relative flex min-h-[10rem] flex-col overflow-hidden rounded-2xl border bg-superficie text-left transition',
+        'group relative flex min-h-[10rem] w-full flex-col overflow-hidden rounded-2xl border bg-superficie text-left transition',
         'touch-manipulation select-none',
         acabou
           ? 'cursor-not-allowed border-borda-suave opacity-55'
@@ -674,23 +773,21 @@ function Cartao({
         piscou && 'border-marca ring-2 ring-marca/40',
       )}
     >
-      <span aria-hidden style={estilo} className="flex h-[4.25rem] shrink-0 items-center justify-between px-3.5">
-        <span className="text-[1.625rem] leading-none font-extrabold tracking-tight">{iniciais(nome)}</span>
+      <span aria-hidden style={estilo} className="flex h-[4.25rem] shrink-0 items-center justify-between gap-2 px-3.5">
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="text-[1.625rem] leading-none font-extrabold tracking-tight">{iniciais(nome)}</span>
+          {codigo && (
+            <span className={cx('numero truncate font-mono text-xs leading-none font-bold opacity-85', noPedido > 0 && 'max-w-[5.5rem]')}>
+              {codigo}
+            </span>
+          )}
+        </span>
         {enter && noPedido === 0 && (
           <kbd className="rounded border border-current/20 bg-superficie/70 px-1.5 py-px font-mono text-[10px] font-semibold">
             Enter
           </kbd>
         )}
       </span>
-
-      {noPedido > 0 && (
-        <span
-          aria-hidden
-          className="numero absolute top-2.5 right-2.5 flex h-7 min-w-7 items-center justify-center rounded-full bg-marca px-2 text-sm font-bold text-marca-tinta shadow-norte"
-        >
-          {Number.isInteger(noPedido) ? noPedido : noPedido.toLocaleString('pt-BR')}
-        </span>
-      )}
 
       <span className="flex flex-1 flex-col gap-1 px-3.5 pt-2.5 pb-3">
         <span className="line-clamp-2 text-[15px] leading-snug font-semibold text-tinta">{nome}</span>
@@ -712,6 +809,21 @@ function Cartao({
         </span>
       </span>
     </button>
+
+      {noPedido > 0 && (
+        // Por cima do bloco de cor. O vão entre os dois deixa o toque cair no
+        // cartão (pointer-events), e só o "−" responde.
+        <span className="pointer-events-none absolute top-2 right-2 flex items-center gap-1.5">
+          {aoTirar && <BotaoMenos rotulo={`Tirar um ${nome}`} aoTirar={aoTirar} />}
+          <span
+            aria-hidden
+            className="numero flex h-7 min-w-7 items-center justify-center rounded-full bg-marca px-2 text-sm font-bold text-marca-tinta shadow-norte"
+          >
+            {qtdNaTela(noPedido)}
+          </span>
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -726,6 +838,8 @@ function EscolhaFolha({
   escolha,
   ramo,
   tabela,
+  noPedido,
+  aoTirar,
   aoFechar,
   aoLancar,
   semEstoqueOk = false,
@@ -735,9 +849,21 @@ function EscolhaFolha({
   escolha: Escolha
   ramo: string | null
   tabela: Venda['conta']['tabela']
+  /** Quantos de cada variação já estão no pedido: o tamanho mostra, e dá para tirar um. */
+  noPedido: ReadonlyMap<string, number>
+  /** Tira um desta variação do pedido — a folha continua aberta. */
+  aoTirar: (peca: Achado) => void
   aoFechar: () => void
   aoLancar: (peca: Achado, quantidade: number) => void
 }) {
+  const quantosNoPedido = (x: Achado | null | undefined) => (x ? (noPedido.get(x.id) ?? 0) : 0)
+  // O botão direito num tamanho tira um dele (ver `useBotaoDireito`; aqui
+  // são muitos botões, e o dedo é lido na folha inteira).
+  const dedo = useRef(false)
+  const direito = (x: Achado | null | undefined) => (e: MouseEvent) => {
+    e.preventDefault()
+    if (!dedo.current && x && quantosNoPedido(x) > 0) aoTirar(x)
+  }
   const [escolhas, setEscolhas] = useState<Escolhas>({})
   const [peca, setPeca] = useState<Achado | null>(escolha.peca)
   const [quanto, setQuanto] = useState('')
@@ -828,26 +954,45 @@ function EscolhaFolha({
       }
       rodape={
         mostrarRodape ? (
-          <Botao
-            largo
-            onClick={adicionar}
-            disabled={!podeAdicionar}
-            className="min-h-14 rounded-xl text-base"
-          >
-            {!achada
-              ? `Escolha ${eixos.filter((e) => !escolhas[e.nome]).map((e) => e.nome.toLowerCase()).join(' e ')}`
-              : achada.saldo <= 0
-                ? 'Esta acabou'
-                : pedeQuanto
-                  ? quantoOk
-                    ? `Adicionar · ${brl(linhaCent({ ...achada, quantidade }, tabela) / 100)}`
-                    : `Diga quanto (${un})`
-                  : `Adicionar ${rotuloDaVariacao(achada)} · ${brl(precoUnit ?? 0)}`}
-          </Botao>
+          <div className="flex items-stretch gap-2">
+            {/* A peça escolhida já está no pedido: dá para tirar uma daqui
+                mesmo, sem fechar a folha e procurar a linha no pedido. */}
+            {!pedeQuanto && achada && quantosNoPedido(achada) > 0 && (
+              <Botao
+                tom="secundario"
+                onClick={() => aoTirar(achada)}
+                className="min-h-14 shrink-0 rounded-xl px-4 text-base"
+                aria-label={`Tirar um ${rotuloDaVariacao(achada)} do pedido (${qtdNaTela(quantosNoPedido(achada))} no pedido)`}
+              >
+                − Tirar 1 <span className="numero text-sm font-semibold text-tinta-3">({qtdNaTela(quantosNoPedido(achada))})</span>
+              </Botao>
+            )}
+            <Botao
+              largo
+              onClick={adicionar}
+              disabled={!podeAdicionar}
+              className="min-h-14 rounded-xl text-base"
+            >
+              {!achada
+                ? `Escolha ${eixos.filter((e) => !escolhas[e.nome]).map((e) => e.nome.toLowerCase()).join(' e ')}`
+                : achada.saldo <= 0 && !semEstoqueOk
+                  ? 'Esta acabou'
+                  : pedeQuanto
+                    ? quantoOk
+                      ? `Adicionar · ${brl(linhaCent({ ...achada, quantidade }, tabela) / 100)}`
+                      : `Diga quanto (${un})`
+                    : `Adicionar ${rotuloDaVariacao(achada)} · ${brl(precoUnit ?? 0)}`}
+            </Botao>
+          </div>
         ) : undefined
       }
     >
-      <div className="flex flex-col gap-5">
+      <div
+        className="flex flex-col gap-5"
+        onPointerDownCapture={(e) => {
+          dedo.current = e.pointerType !== 'mouse'
+        }}
+      >
         {/* A grade inteira: linha é o primeiro eixo, coluna o segundo, e cada
             cruzamento diz quanto tem. Um toque escolhe os dois de uma vez. */}
         {matriz && usaMatriz && (
@@ -891,16 +1036,19 @@ function EscolhaFolha({
                       }
                       const marcada = escolhas[matriz.linhas.nome] === l.valor && escolhas[matriz.colunas.nome] === c.valor
                       const acabou = x.saldo <= 0
+                      const jaTem = quantosNoPedido(x)
                       return (
                         <td key={c.valor} className="p-0">
                           <button
                             type="button"
                             disabled={acabou && !semEstoqueOk}
                             aria-pressed={marcada}
-                            aria-label={`${l.valor} ${c.valor}: ${acabou ? 'acabou' : `${x.saldo} na loja`}`}
+                            aria-label={`${l.valor} ${c.valor}: ${acabou ? 'acabou' : `${x.saldo} na loja`}${jaTem > 0 ? `, ${qtdNaTela(jaTem)} no pedido` : ''}`}
+                            title={jaTem > 0 ? `${qtdNaTela(jaTem)} no pedido · botão direito tira um` : undefined}
                             onClick={() => setEscolhas({ [matriz.linhas.nome]: l.valor, [matriz.colunas.nome]: c.valor })}
+                            onContextMenu={direito(x)}
                             className={cx(
-                              'numero flex min-h-12 w-full min-w-12 items-center justify-center rounded-lg border-2 px-1 text-base font-bold transition-colors',
+                              'numero relative flex min-h-12 w-full min-w-12 items-center justify-center rounded-lg border-2 px-1 text-base font-bold transition-colors',
                               marcada
                                 ? 'border-marca bg-marca-suave text-tinta'
                                 : acabou
@@ -911,6 +1059,14 @@ function EscolhaFolha({
                             )}
                           >
                             {acabou ? 'acabou' : x.saldo.toLocaleString('pt-BR')}
+                            {jaTem > 0 && (
+                              <span
+                                aria-hidden
+                                className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-marca px-1 text-[11px] font-bold text-marca-tinta"
+                              >
+                                {qtdNaTela(jaTem)}
+                              </span>
+                            )}
                           </button>
                         </td>
                       )
@@ -919,7 +1075,9 @@ function EscolhaFolha({
                 ))}
               </tbody>
             </table>
-            <p className="px-1 text-xs text-tinta-3">O número é quanto tem nesta loja. Toque para escolher.</p>
+            <p className="px-1 text-xs text-tinta-3">
+              O número é quanto tem nesta loja. Toque para escolher. A bolinha é quanto já está no pedido.
+            </p>
           </div>
         )}
 
@@ -941,15 +1099,19 @@ function EscolhaFolha({
                   const peca1 = acharVariacao(variacoes, { ...outras, [e.nome]: o.valor }) ?? undefined
                   const esgotada = peca1 ? peca1.saldo <= 0 : false
                   const marcada = escolhas[e.nome] === o.valor
+                  // Já no pedido (só quando o botão é uma peça): a bolinha diz
+                  // quantos, e o "−" do canto tira um sem fechar a folha.
+                  const jaTem = quantosNoPedido(peca1)
                   return (
+                    <div key={o.valor} className="relative flex" onContextMenu={direito(peca1)}>
                     <button
-                      key={o.valor}
                       type="button"
                       disabled={!pode || (esgotada && !semEstoqueOk)}
                       aria-pressed={marcada}
+                      title={jaTem > 0 ? `${qtdNaTela(jaTem)} no pedido · botão direito tira um` : undefined}
                       onClick={() => escolher(e.nome, o.valor)}
                       className={cx(
-                        'flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border-2 px-2 py-2 text-center transition-colors',
+                        'flex min-h-16 w-full flex-col items-center justify-center gap-1 rounded-xl border-2 px-2 py-2 text-center transition-colors',
                         marcada
                           ? 'border-marca bg-marca-suave text-tinta'
                           : 'border-borda bg-superficie text-tinta hover:border-marca/50 hover:bg-superficie-2',
@@ -976,7 +1138,24 @@ function EscolhaFolha({
                           {esgotada ? 'acabou' : brl(precoDe({ ...peca1, quantidade: 1 }, tabela))}
                         </span>
                       )}
+                      {jaTem > 0 && <span className="sr-only">, {qtdNaTela(jaTem)} no pedido</span>}
                     </button>
+                    {/* O "−" no canto esquerdo e a bolinha no direito: o nome do
+                        tamanho fica no meio, livre. */}
+                    {jaTem > 0 && peca1 && (
+                      <>
+                        <span className="pointer-events-none absolute -top-2 -left-2">
+                          <BotaoMenos pequeno rotulo={`Tirar um ${o.valor}`} aoTirar={() => aoTirar(peca1)} />
+                        </span>
+                        <span
+                          aria-hidden
+                          className="numero pointer-events-none absolute -top-2 -right-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-marca px-1.5 text-xs font-bold text-marca-tinta"
+                        >
+                          {qtdNaTela(jaTem)}
+                        </span>
+                      </>
+                    )}
+                    </div>
                   )
                 })}
               </div>
@@ -985,18 +1164,31 @@ function EscolhaFolha({
 
         {semEixo && !peca && (
           <div className="grid gap-2">
-            {variacoes.map((x) => (
-              <button
-                key={x.id}
-                type="button"
-                disabled={x.saldo <= 0 && !semEstoqueOk}
-                onClick={() => (pedeQuanto ? setPeca(x) : aoLancar(x, 1))}
-                className="flex min-h-14 items-center justify-between gap-3 rounded-xl border-2 border-borda px-4 text-left hover:border-marca/50 disabled:opacity-45"
-              >
-                <span className="font-semibold text-tinta">{x.descricao}</span>
-                <span className="numero font-bold">{brl(precoDe({ ...x, quantidade: 1 }, tabela))}</span>
-              </button>
-            ))}
+            {variacoes.map((x) => {
+              const jaTem = quantosNoPedido(x)
+              return (
+                <div key={x.id} className="flex items-center gap-2" onContextMenu={direito(x)}>
+                  <button
+                    type="button"
+                    disabled={x.saldo <= 0 && !semEstoqueOk}
+                    onClick={() => (pedeQuanto ? setPeca(x) : aoLancar(x, 1))}
+                    title={jaTem > 0 ? `${qtdNaTela(jaTem)} no pedido · botão direito tira um` : undefined}
+                    className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 rounded-xl border-2 border-borda px-4 text-left hover:border-marca/50 disabled:opacity-45"
+                  >
+                    <span className="font-semibold text-tinta">{x.descricao}</span>
+                    <span className="flex items-center gap-2">
+                      {jaTem > 0 && (
+                        <span className="numero rounded-full bg-marca px-2 py-0.5 text-xs font-bold text-marca-tinta">
+                          {qtdNaTela(jaTem)} no pedido
+                        </span>
+                      )}
+                      <span className="numero font-bold">{brl(precoDe({ ...x, quantidade: 1 }, tabela))}</span>
+                    </span>
+                  </button>
+                  {jaTem > 0 && <BotaoMenos rotulo={`Tirar um ${x.descricao}`} aoTirar={() => aoTirar(x)} />}
+                </div>
+              )
+            })}
           </div>
         )}
 

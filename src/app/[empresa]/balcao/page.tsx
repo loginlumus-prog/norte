@@ -24,6 +24,8 @@ import { programaNoPlano, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
 import { paraCobrarHorario } from './acoes'
 import { ComPalavras } from './palavras'
+import { AvisoVersao } from './AvisoVersao'
+import { versaoDoBuild } from './versaoDoBuild'
 import { lerMaquininhas } from '@/servidor/maquininhas'
 import type { ConfigDoBalcao } from './useVenda'
 
@@ -190,6 +192,8 @@ export default async function BalcaoPagina({
       }
     >
       <ComPalavras palavras={palavras}>
+        {/* O balcão fica aberto o dia todo: subiu versão nova, ele avisa. */}
+        <AvisoVersao slug={slug} versao={versaoDoBuild()} />
         {recebendo && !recebendo.ok && aba !== 'fechar' && <Aviso nivel="atencao">{recebendo.erro}</Aviso>}
         {!unidadeId ? (
           <Aviso nivel="atencao">
@@ -197,6 +201,31 @@ export default async function BalcaoPagina({
               ? 'Aqui só há depósito, e depósito não vende. Para vender, a empresa precisa de uma loja.'
               : 'Você não tem acesso de venda em nenhuma unidade. Peça para quem responde pela empresa liberar.'}
           </Aviso>
+        ) : aba === 'fechar' && podeOperarCaixa ? (
+          // ANTES do "caixa fechado → abrir": fechar atualiza a página, e o
+          // caixa some dela. Se este ramo dependesse do caixa aberto, a tela do
+          // fechamento (a conta, o "Imprimir o fechamento", o "Sair da minha
+          // conta") era trocada pelo "Abrir o caixa" no mesmo instante. Aqui
+          // ela continua montada, no mesmo lugar, e mostra a conta.
+          <div className="flex flex-col gap-4">
+            <FecharCaixa
+              slug={slug}
+              caixaId={caixa?.id ?? null}
+              hrefBalcao={`/${slug}/balcao${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
+              turno={
+                caixa && conferencia
+                  ? {
+                      vendas: conferencia.vendas,
+                      // Cartão e Pix por maquininha (vendas e crediário juntos);
+                      // fiado e vale à parte — não passam por máquina nenhuma.
+                      maquininhas: conferencia.maquininhas,
+                      semMaquininha: conferencia.porForma.filter((f) => f.forma === 'CREDIARIO' || f.forma === 'VALE'),
+                    }
+                  : null
+              }
+            />
+            {caixa && <Movimento slug={slug} caixaId={caixa.id} />}
+          </div>
         ) : !caixa ? (
           podeOperarCaixa ? (
             <AbrirCaixa slug={slug} unidadeId={unidadeId} unidadeNome={unidadeNome} />
@@ -206,21 +235,6 @@ export default async function BalcaoPagina({
               gerente.
             </Aviso>
           )
-        ) : aba === 'fechar' ? (
-          <div className="flex flex-col gap-4">
-            <FecharCaixa
-              slug={slug}
-              caixaId={caixa.id}
-              turno={{
-                vendas: conferencia!.vendas,
-                // Cartão e Pix por maquininha (vendas e crediário juntos);
-                // fiado e vale à parte — não passam por máquina nenhuma.
-                maquininhas: conferencia!.maquininhas,
-                semMaquininha: conferencia!.porForma.filter((f) => f.forma === 'CREDIARIO' || f.forma === 'VALE'),
-              }}
-            />
-            <Movimento slug={slug} caixaId={caixa.id} />
-          </div>
         ) : simples ? (
           <BalcaoSimples
             slug={slug}
@@ -268,6 +282,7 @@ export default async function BalcaoPagina({
               unidadeId={unidadeId}
               usuarioId={sessao.usuarioId}
               grade={usaGrade}
+              ramo={ramo}
               caixaId={caixa.id}
               unidadeNome={unidadeNome}
               programa={programa}

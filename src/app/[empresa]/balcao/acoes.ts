@@ -23,7 +23,15 @@ import {
   type ResultadoVenda,
 } from '@/servidor/venda'
 import { abrirCaixa, fecharCaixa, movimentarCaixa } from '@/servidor/caixa'
-import { listarClientes, criarCliente, cpfValido } from '@/servidor/cliente'
+import { PinNecessario } from '@/servidor/autorizacao'
+import {
+  listarClientes,
+  cadastroRapido,
+  editarNoBalcao,
+  faltaNoCadastro,
+  fichaNoBalcao as fichaCompleta,
+  type FichaNoBalcao,
+} from '@/servidor/cliente'
 import { escada, type Tabela } from '@/servidor/preco'
 import { consultarVale, valesParaUsarEm, type ValeNoBalcao } from '@/servidor/devolucao'
 import { situacaoDosClientes } from '@/servidor/crediario'
@@ -680,13 +688,16 @@ export async function movimentar(
   tipo: 'SANGRIA' | 'SUPRIMENTO',
   valor: number,
   motivo: string,
-): Promise<{ erro?: string }> {
+  /** O PIN de quem tira ou põe, quando a empresa pede assinatura nas exceções. */
+  pin?: string | null,
+): Promise<{ erro?: string; precisaPin?: boolean }> {
   try {
     const s = await exigirSessao(slug)
-    await movimentarCaixa(s, caixaId, tipo, valor, motivo)
+    await movimentarCaixa(s, caixaId, tipo, valor, motivo, pin)
     revalidatePath(`/${slug}/balcao`)
     return {}
   } catch (e) {
+    if (e instanceof PinNecessario) return { erro: e.message, precisaPin: true }
     return { erro: recadoDoErro(e, 'Não deu para registrar. Tente de novo.') }
   }
 }
@@ -711,19 +722,84 @@ export async function fichaNoBalcao(
   slug: string,
   clienteId: string,
   unidadeId: string,
-): Promise<{ temCpf: boolean; vales: ValeNoBalcao[] }> {
+): Promise<{ temCpf: boolean; vales: ValeNoBalcao[]; falta: string[] }> {
   const s = await exigirSessao(slug)
   exigir(s, 'venda.criar', unidadeId)
-  if (!/^[\w-]{1,64}$/.test(clienteId)) return { temCpf: false, vales: [] }
+  if (!/^[\w-]{1,64}$/.test(clienteId)) return { temCpf: false, vales: [], falta: [] }
   return comoOrg(s.orgId, async (db) => {
-    const c = await db.cliente.findUnique({ where: { id: clienteId }, select: { documento: true } })
-    if (!c) return { temCpf: false, vales: [] }
+    const c = await db.cliente.findUnique({
+      where: { id: clienteId },
+      select: { documento: true, telefone: true, endereco: true, anonimizadoEm: true },
+    })
+    if (!c) return { temCpf: false, vales: [], falta: [] }
     const org = await db.org.findUnique({ where: { id: s.orgId }, select: { valePorLoja: true } })
     return {
       temCpf: !!c.documento,
       vales: await valesParaUsarEm(db, clienteId, unidadeId, !!org?.valePorLoja),
+      // "Cadastro incompleto — falta CPF": o balcão avisa e abre a ficha
+      // para completar com a pessoa na frente (FichaDaCliente.tsx).
+      falta: c.anonimizadoEm ? [] : faltaNoCadastro(c),
     }
   })
+}
+
+// ── a ficha da cliente, em tela cheia no balcão ──────────────
+// Ver servidor/cliente.ts, `fichaNoBalcao`. A capacidade (`cliente.ver`, e o
+// alcance de venda e de crediário por loja) é conferida lá.
+
+export async function fichaDaClienteAcao(slug: string, clienteId: string): Promise<FichaNoBalcao | null> {
+  const s = await exigirSessao(slug)
+  if (!/^[\w-]{1,64}$/.test(clienteId)) return null
+  return fichaCompleta(s, clienteId)
+}
+
+export type DadosDaFicha = {
+  nome: string
+  telefone: string
+  documento: string
+  email: string
+  /** 'AAAA-MM-DD', ou ''. */
+  nascimento: string
+  endereco: string
+  numero: string
+  bairro: string
+  cidade: string
+  estado: string
+  cep: string
+}
+
+/** Completar a ficha no balcão. Devolve o erro em vez de lançar (ver "o caixa", embaixo). */
+export async function salvarDadosDaCliente(
+  slug: string,
+  clienteId: string,
+  d: DadosDaFicha,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  try {
+    const s = await exigirSessao(slug)
+    if (!/^[\w-]{1,64}$/.test(clienteId)) return { ok: false, erro: 'Cliente não encontrado.' }
+    const texto = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v.trim().slice(0, 200) : null)
+    const nascimento = typeof d.nascimento === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.nascimento) ? d.nascimento : null
+    const r = await editarNoBalcao(s, clienteId, {
+      nome: String(d.nome ?? '').slice(0, 200),
+      telefone: texto(d.telefone),
+      documento: texto(d.documento),
+      email: texto(d.email),
+      // 'T12:00' evita o pulo de dia por fuso: a data digitada é a gravada.
+      nascimento: nascimento ? new Date(`${nascimento}T12:00:00`) : null,
+      endereco: texto(d.endereco),
+      numero: texto(d.numero),
+      bairro: texto(d.bairro),
+      cidade: texto(d.cidade),
+      estado: texto(d.estado),
+      cep: texto(d.cep),
+    })
+    if (!r.ok) return { ok: false, erro: r.jaExiste ? `${r.motivo} (${r.jaExiste.nome})` : r.motivo }
+    revalidatePath(`/${slug}/clientes/${clienteId}`)
+    return { ok: true }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { ok: false, erro: 'Você não tem permissão para mudar o cadastro.' }
+    return { ok: false, erro: recadoDoErro(e, 'Não deu para salvar. Tente de novo.') }
+  }
 }
 
 // ── o cliente da venda ───────────────────────────────────────
@@ -810,30 +886,25 @@ export async function cadastrarNoBalcao(
   cpf = '',
 ): Promise<{ ok: true; cliente: ClienteNoBalcao } | { ok: false; erro: string; jaExiste?: ClienteNoBalcao }> {
   const s = await exigirSessao(slug)
-  const documento = cpf.replace(/\D/g, '')
-  if (documento && !cpfValido(documento)) return { ok: false, erro: 'Esse CPF não confere. Confira os números, ou cadastre sem CPF.' }
-
-  if (documento) {
-    const dono = await comoOrg(s.orgId, (db) =>
-      db.cliente.findFirst({ where: { documento, ativo: true }, select: { id: true, nome: true, telefone: true, pontos: true } }),
-    )
-    if (dono) {
-      return {
-        ok: false,
-        erro: `Esse CPF já é de ${dono.nome}.`,
-        jaExiste: { id: dono.id, nome: dono.nome, telefone: dono.telefone, compras: 0, gastou: 0, diasSemVir: null, pontos: dono.pontos, devendo: 0, vencido: 0 },
-      }
-    }
-  }
-
-  const r = await criarCliente(s, { nome, telefone, documento: documento || null })
+  // A regra (CPF conferido, CPF e telefone que já têm ficha) mora em
+  // servidor/cliente.ts, `cadastroRapido` — com teste.
+  const r = await cadastroRapido(s, String(nome ?? ''), String(telefone ?? ''), String(cpf ?? ''))
   if (!r.ok) {
+    if (!r.jaExiste) return { ok: false, erro: r.erro }
+    // A ficha que já existe vem com a situação do crediário: escolher a
+    // pessoa por aqui tem de avisar "deve · atrasado" igual à busca.
+    const fiado = await comoOrg(s.orgId, (db) => situacaoDosClientes(db, [r.jaExiste!.id]))
     return {
       ok: false,
-      erro: r.jaExiste ? `${r.jaExiste.nome} já usa esse telefone.` : r.motivo,
-      jaExiste: r.jaExiste
-        ? { id: r.jaExiste.id, nome: r.jaExiste.nome, telefone: telefone.trim() || null, compras: 0, gastou: 0, diasSemVir: null, pontos: 0, devendo: 0, vencido: 0 }
-        : undefined,
+      erro: r.erro,
+      jaExiste: {
+        ...r.jaExiste,
+        compras: 0,
+        gastou: 0,
+        diasSemVir: null,
+        devendo: fiado.get(r.jaExiste.id)?.devendo ?? 0,
+        vencido: fiado.get(r.jaExiste.id)?.vencido ?? 0,
+      },
     }
   }
 

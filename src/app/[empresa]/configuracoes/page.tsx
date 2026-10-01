@@ -20,6 +20,8 @@ import { planoLibera } from '@/servidor/planos'
 import { HORAS_DE_LEMBRETE, textoDoLembrete } from '@/servidor/lembretes'
 import { Taxas } from './Taxas'
 import { CartoesDoBalcao } from './CartoesDoBalcao'
+import { Assinaturas } from './Assinaturas'
+import { situacaoDasAssinaturas } from '@/servidor/livro-assinaturas'
 import { configCrediario } from '@/servidor/crediario'
 import { moduloLigado } from '@/servidor/modulos'
 import { taxasDaEmpresa, FORMAS_COM_TAXA } from '@/servidor/taxas'
@@ -154,6 +156,12 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
       </Cartao>
 
       {pode(sessao, 'empresa.configurar') && <CartoesDoBalcao slug={slug} sessao={sessao} />}
+
+      {pode(sessao, 'empresa.configurar') && (
+        <Cartao titulo="Assinatura com PIN e o que a vendedora pode">
+          <Assinaturas slug={slug} {...(await situacaoDasAssinaturas(sessao))} />
+        </Cartao>
+      )}
 
       {moduloLigado(empresa, 'agenda') && (
         <Cartao titulo="Lembrete do horário no WhatsApp">

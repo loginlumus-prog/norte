@@ -185,3 +185,27 @@ export function pedeComplemento(
   if (/picole/.test(texto)) return false
   return /(acai|copo|taca|pote|massa|sorvete|milk|shake|sundae|casquinha|cascao|barca)/.test(texto)
 }
+
+// ─────────────────────────────────────────────────────────────
+// A CONTAGEM DO PEDIDO
+// ─────────────────────────────────────────────────────────────
+
+/** Os ramos em que o pedido se conta em PEÇA: a vendedora confere a sacola peça por peça. */
+const CONTA_PECA = new Set(['roupa', 'calcados', 'bijuteria'])
+
+/** "peça"/"peças" na loja de roupa, "item"/"itens" no resto — só a palavra. */
+export function palavraDaContagem(ramo: string | null | undefined, n: number): string {
+  const peca = !!ramo && CONTA_PECA.has(ramo)
+  const um = n === 1
+  return peca ? (um ? 'peça' : 'peças') : um ? 'item' : 'itens'
+}
+
+/**
+ * "3 peças" na loja de roupa, "3 itens" no resto. É o número que a vendedora
+ * confere com a sacola antes de fechar ("são 3 peças, né?"): na loja de roupa
+ * ninguém fala "item". Peso conta um por linha — 0,350 kg de açaí é um item.
+ */
+export function contagemDoPedido(ramo: string | null | undefined, n: number): string {
+  const inteiro = Number.isInteger(n) ? n : Math.round(n * 1000) / 1000
+  return `${inteiro.toLocaleString('pt-BR')} ${palavraDaContagem(ramo, inteiro)}`
+}

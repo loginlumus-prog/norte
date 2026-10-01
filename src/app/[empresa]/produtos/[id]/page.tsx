@@ -169,7 +169,7 @@ export default async function FichaProduto({
             href={`/${slug}/produtos/etiquetas?produto=${produto.id}`}
             className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
           >
-            Etiquetas
+            Imprimir etiqueta
           </a>
         </span>
       }

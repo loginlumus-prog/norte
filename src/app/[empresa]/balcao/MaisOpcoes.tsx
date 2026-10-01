@@ -106,7 +106,14 @@ export function MaisOpcoes({
             {p.Pessoa} <kbd className="ml-1 rounded border border-borda bg-superficie-2 px-1 font-mono text-[10px] text-tinta-3 normal-case">Alt N</kbd>
           </h3>
           <div className="rounded-xl border border-borda bg-superficie px-3 py-2.5 [&_button]:min-h-9 [&_input]:h-11 [&_input]:text-base">
-            <EscolherCliente slug={slug} escolhido={v.cliente} aoEscolher={v.setCliente} pedido={pedidoCliente} />
+            <EscolherCliente
+              slug={slug}
+              escolhido={v.cliente}
+              aoEscolher={v.setCliente}
+              pedido={pedidoCliente}
+              aoAbrirFicha={v.setFichaAberta}
+              falta={v.ficha?.falta}
+            />
           </div>
           {/* Crediário: "ela já deve R$ X — vai pagar agora?" assim que a
               cliente é escolhida, e o "veio só pagar" sem cliente — o mesmo

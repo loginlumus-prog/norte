@@ -158,11 +158,137 @@ export async function autorizarComPin(p: {
         alvoNome: p.quemPediu.nome,
         motivo: `${motivo} · pedido por ${p.quemPediu.nome}`,
         depois: { capacidade: p.capacidade },
+        // Autorizar com o PIN é assinar: entra no livro de assinaturas.
+        assinado: true,
       },
     }),
   )
 
   return { ok: true, autorizador: { usuarioId: autorizador.id, nome: autorizador.nome } }
+}
+
+// ─────────────────────────────────────────────────────────────
+// ASSINAR AS EXCEÇÕES COM O PRÓPRIO PIN (o livro de assinaturas)
+// ─────────────────────────────────────────────────────────────
+//
+// Autorizar (acima) é a GERENTE digitando o PIN dela no balcão da vendedora.
+// Assinar é outra coisa: é a PRÓPRIA pessoa que está fazendo a exceção — a
+// sangria, o cancelamento, a baixa de crediário pago fora, a correção do
+// estoque — confirmando com o PIN dela que foi ela. A sessão aberta diz qual
+// conta está na tela; o PIN diz quem está na frente dela. Sem isto, a tela
+// esquecida aberta no balcão faz sangria no nome de quem saiu para almoçar.
+//
+// Quando pedir é decisão da empresa (`Org.pinNasExcecoes`, nasce desligado):
+// ligado, toda exceção pede; desligado, nenhuma — exceto as que pedem SEMPRE
+// (juntar fichas de cliente; a vendedora que corrige estoque porque a empresa
+// deixou, ver `soPelaEmpresa`). Nunca em toda venda: a venda é o normal, e
+// pedir PIN no normal ensina a equipe a burlar.
+//
+// Mesma cautela do autorizar: fora de `comoOrg` (abre as próprias transações
+// para o freio), PIN nunca guardado, e o freio é POR PESSOA — aqui quem chuta
+// sabe de quem é o PIN que está tentando: o da conta aberta na tela.
+
+/** A recusa de uma exceção que precisa de assinatura — a tela mostra o campo do PIN. */
+export class PinNecessario extends Error {
+  readonly precisaPin = true
+  constructor(recado: string) {
+    super(recado)
+    this.name = 'PinNecessario'
+  }
+}
+
+export type Assinatura = { ok: true; assinou: boolean } | { ok: false; erro: string; precisaPin: true }
+
+/** A empresa pede o PIN de quem faz nas exceções? */
+export async function pedePinNasExcecoes(orgId: string): Promise<boolean> {
+  const o = await comoOrg(orgId, (db) => db.org.findUnique({ where: { id: orgId }, select: { pinNasExcecoes: true } }))
+  return o?.pinNasExcecoes === true
+}
+
+/**
+ * Confere o PIN da PRÓPRIA pessoa da sessão. A recusa vem numa frase; quem
+ * ainda não criou o PIN ouve isso (não é chute, não gasta tentativa).
+ */
+export async function conferirMeuPin(
+  sessao: Sessao,
+  pin: string | null | undefined,
+): Promise<{ ok: true } | { ok: false; erro: string; semPin?: true }> {
+  const p = String(pin ?? '').trim()
+  const eu = await comoOrg(sessao.orgId, (db) =>
+    db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { ativo: true, pinHash: true } }),
+  )
+  if (!eu?.ativo) return { ok: false, erro: 'Esta conta não está ativa.' }
+  if (!eu.pinHash) {
+    return { ok: false, semPin: true, erro: 'Você ainda não criou o seu PIN. Crie em Minha conta (leva um minuto) e faça de novo.' }
+  }
+  // Formato errado não gasta tentativa: é dedo, não chute.
+  if (!/^\d+$/.test(p) || p.length < PIN_MIN || p.length > PIN_MAX) {
+    return { ok: false, erro: `Digite o seu PIN (de ${PIN_MIN} a ${PIN_MAX} números).` }
+  }
+  const reserva = await reservarTentativa(sessao.orgId, `pin-meu:${sessao.usuarioId}`, null)
+  if (reserva.bloqueado) {
+    return { ok: false, erro: `PIN errado muitas vezes. Espere ${reserva.esperarMin} min e tente de novo.` }
+  }
+  if (!(await conferirSenha(materialDoPin(sessao.usuarioId, p), eu.pinHash))) {
+    // A tentativa já nasceu erro (ver `reservarTentativa`).
+    return { ok: false, erro: 'O PIN não confere. É o SEU PIN, o que você criou em Minha conta.' }
+  }
+  await concluirTentativa(sessao.orgId, reserva.tentativaId, true)
+  return { ok: true }
+}
+
+/**
+ * A assinatura de uma exceção: se a empresa (ou a própria exceção, com
+ * `sempre`) pede, confere o PIN de quem faz. `assinou` vai para a linha do
+ * livro (`Auditoria.assinado`). Não pedida, passa sem assinar — e um PIN que
+ * venha mesmo assim é ignorado (a tela não mostra o campo).
+ */
+export async function assinarExcecao(
+  sessao: Sessao,
+  p: { pin?: string | null; sempre?: boolean },
+): Promise<Assinatura> {
+  const pede = p.sempre || (await pedePinNasExcecoes(sessao.orgId))
+  if (!pede) return { ok: true, assinou: false }
+  if (!String(p.pin ?? '').trim()) {
+    const r = await comoOrg(sessao.orgId, (db) =>
+      db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { pinHash: true } }),
+    )
+    return {
+      ok: false,
+      precisaPin: true,
+      erro: r?.pinHash
+        ? 'Assine com o seu PIN para registrar.'
+        : 'Isto pede a sua assinatura, e você ainda não criou o seu PIN. Crie em Minha conta (leva um minuto) e faça de novo.',
+    }
+  }
+  const r = await conferirMeuPin(sessao, p.pin)
+  return r.ok ? { ok: true, assinou: true } : { ok: false, erro: r.erro, precisaPin: true }
+}
+
+/** `assinarExcecao` para quem trabalha com exceção: recusa vira `PinNecessario`. */
+export async function exigirAssinatura(sessao: Sessao, p: { pin?: string | null; sempre?: boolean }): Promise<boolean> {
+  const r = await assinarExcecao(sessao, p)
+  if (!r.ok) throw new PinNecessario(r.erro)
+  return r.assinou
+}
+
+/**
+ * Quem ainda não criou o PIN, entre as pessoas ATIVAS que fazem exceção
+ * (todo papel que opera — não o contador, que só lê, nem o nosso suporte).
+ * Ligar a chave com alguém nesta lista trava essa pessoa no meio de uma
+ * sangria; a tela de Configurações mostra os nomes e só liga com ela vazia.
+ */
+export async function quemFaltaPin(orgId: string, agora = new Date()): Promise<{ id: string; nome: string }[]> {
+  const gente = await comoOrg(orgId, (db) =>
+    db.usuario.findMany({
+      where: { ativo: true, pinHash: null },
+      orderBy: { nome: 'asc' },
+      select: { id: true, nome: true, acessos: { select: { papel: true, expiraEm: true } } },
+    }),
+  )
+  return gente
+    .filter((u) => u.acessos.some((a) => (!a.expiraEm || a.expiraEm > agora) && a.papel !== 'CONTADOR' && a.papel !== 'SUPORTE'))
+    .map((u) => ({ id: u.id, nome: u.nome }))
 }
 
 // ─────────────────────────────────────────────────────────────

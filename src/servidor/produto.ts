@@ -16,7 +16,8 @@
 // continua no histórico e no relatório.
 
 import { comoOrg } from './banco'
-import { exigir, unidadesQuePodem, type Capacidade, type Sessao } from './permissao'
+import { exigir, soPelaEmpresa, unidadesQuePodem, type Capacidade, type Sessao } from './permissao'
+import { assinarExcecao } from './autorizacao'
 import type { BancoDaOrg } from './banco'
 import { Prisma, type Medida } from '@prisma/client'
 import { alcancaOProduto, alcanceComum, vendidoNaLoja } from './catalogo-loja'
@@ -60,7 +61,8 @@ export type DadosProduto = {
 
 export type ResultadoProduto =
   | { ok: true; produtoId: string; variacoes: number }
-  | { ok: false; motivo: string }
+  /** `precisaPin`: o cadastro pede a assinatura de quem cadastra (a vendedora, ver EXTRAS_DO_BALCAO). */
+  | { ok: false; motivo: string; precisaPin?: true }
 
 // ─────────────────────────────────────────────────────────────
 // O CÓDIGO DA ETIQUETA
@@ -139,10 +141,14 @@ export async function criarProduto(
   sessao: Sessao,
   dados: DadosProduto,
   eixos: EixoEscolhido[] = [],
+  /** O PIN de quem cadastra, quando o cadastro pede assinatura. */
+  pin?: string | null,
 ): Promise<ResultadoProduto> {
-  exigir(sessao, 'produto.editar')
-  // Nascer com preço é mexer em preço. Quem não pode, não cria.
-  exigir(sessao, 'produto.preco')
+  // Cadastrar é a capacidade própria (o preço de PARTIDA vem junto). Quem tem
+  // editar e preço tem esta; a vendedora a ganha quando a empresa deixa
+  // (EXTRAS_DO_BALCAO) — e o preço, depois de publicado, continua com quem
+  // tem `produto.preco` (ver `editarProduto`).
+  exigir(sessao, 'produto.cadastrar')
 
   const nome = dados.nome.trim()
   if (!nome) return { ok: false, motivo: 'O produto precisa de um nome.' }
@@ -151,9 +157,17 @@ export async function criarProduto(
   // O gerente cadastra o que a loja DELE vende. Produto que nasce em loja
   // alheia — ou em todas (vazio) — decide preço por quem não estava lá.
   const lojas = dados.vendidoEm ?? []
-  if (!alcancaOProduto(alcanceDe(sessao, 'produto.editar'), lojas) || !alcancaOProduto(alcanceDe(sessao, 'produto.preco'), lojas)) {
+  if (!alcancaOProduto(alcanceDe(sessao, 'produto.cadastrar'), lojas)) {
     return { ok: false, motivo: MOTIVO_FORA_DO_ALCANCE }
   }
+
+  // A vendedora que cadastra porque a empresa deixou assina sempre, com o
+  // PIN dela — foi a condição para deixar. Para quem cadastra pelo papel,
+  // cadastro não é exceção: não pede.
+  const assinatura = soPelaEmpresa(sessao, 'produto.cadastrar')
+    ? await assinarExcecao(sessao, { pin, sempre: true })
+    : ({ ok: true, assinou: false } as const)
+  if (!assinatura.ok) return { ok: false, motivo: assinatura.erro, precisaPin: true }
 
   const usados = eixos.filter((e) => e.opcaoIds.length > 0)
 
@@ -226,6 +240,7 @@ export async function criarProduto(
         alvoId: produto.id,
         alvoNome: nome,
         depois: { medida: dados.medida, precoVista: dados.precoVista, variacoes: combinacoes.length },
+        assinado: assinatura.assinou,
       },
     })
 

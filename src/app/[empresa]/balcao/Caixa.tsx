@@ -12,7 +12,9 @@
 
 import { useState, useTransition } from 'react'
 import { Botao, Campo, Aviso, cx } from '@/ui/base'
+import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
 import { abrir, fechar, movimentar } from './acoes'
+import { sairAcao } from '../acoes'
 import type { Fechamento, NaMaquininha } from '@/servidor/caixa'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
@@ -124,9 +126,18 @@ export function FecharCaixa({
   slug,
   caixaId,
   turno,
+  hrefBalcao,
 }: {
   slug: string
-  caixaId: string
+  /**
+   * O caixa aberto. Nulo DEPOIS de fechar: a página se atualiza sem ele (o
+   * caixa fechou), e esta tela continua montada no mesmo lugar para mostrar
+   * a conta — antes ela sumia, e o "Abrir o caixa" tomava o lugar da conta e
+   * do "Imprimir o fechamento" no mesmo instante.
+   */
+  caixaId: string | null
+  /** Para onde vai o "Abrir o caixa de novo" (a mesma loja). */
+  hrefBalcao: string
   /**
    * O que dá para mostrar ANTES de contar: quantas vendas e o que entrou fora
    * da gaveta — cada maquininha (vendas e crediário juntos) e o que não passa
@@ -137,12 +148,14 @@ export function FecharCaixa({
     vendas: number
     maquininhas: NaMaquininha[]
     semMaquininha: { forma: string; total: number }[]
-  }
+  } | null
 }) {
   const p = usePalavras()
   const [contado, setContado] = useState('')
   const [obs, setObs] = useState('')
   const [feito, setFeito] = useState<Fechamento | null>(null)
+  /** O caixa que ESTA tela fechou — o `caixaId` vira nulo quando a página se atualiza. */
+  const [fechadoId, setFechadoId] = useState<string | null>(null)
   const [erroFechar, setErroFechar] = useState<string | null>(null)
   const [indo, comecar] = useTransition()
 
@@ -174,10 +187,32 @@ export function FecharCaixa({
             ? `Caixa fechado certinho, ${brl(feito.esperado)}.`
             : `Caixa fechado com ${feito.diferenca > 0 ? 'sobra' : 'falta'} de ${brl(Math.abs(feito.diferenca))}.`}{' '}
           {/* O papel que vai no envelope com o dinheiro (caixa/[id]/fechamento). */}
-          <a href={`/${slug}/caixa/${caixaId}/fechamento?imprimir=1`} target="_blank" rel="noopener" className="font-semibold underline underline-offset-2">
-            Imprimir o fechamento
-          </a>
+          {fechadoId && (
+            <a href={`/${slug}/caixa/${fechadoId}/fechamento?imprimir=1`} target="_blank" rel="noopener" className="font-semibold underline underline-offset-2">
+              Imprimir o fechamento
+            </a>
+          )}
         </Aviso>
+        {/* A troca de turno: quem fechou sai, e quem chega entra com o login
+            dela — senão a venda da tarde sai no nome de quem foi embora. */}
+        <div className="flex flex-wrap items-center gap-3 rounded-norte border border-borda bg-superficie p-4">
+          <p className="min-w-0 flex-1 text-sm text-tinta-2">
+            Terminou o turno? Saia da sua conta: quem chega entra com a dela, e cada {p.venda} sai no nome de quem
+            {' '}{p.vendeu.toLowerCase()}.
+          </p>
+          <form action={sairAcao}>
+            <input type="hidden" name="empresa" value={slug} />
+            <Botao type="submit" tom="principal" className="min-h-11 rounded-xl px-5">
+              Sair da minha conta
+            </Botao>
+          </form>
+          <a
+            href={hrefBalcao}
+            className="min-h-11 rounded-xl border border-borda px-4 py-2.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
+          >
+            Abrir o caixa de novo
+          </a>
+        </div>
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="rounded-norte border border-borda bg-superficie p-4">
             <h3 className="mb-2 text-sm font-bold">O que passou pela gaveta</h3>
@@ -230,6 +265,21 @@ export function FecharCaixa({
             <PorMaquininha grupos={conferencia.maquininhas} />
           </div>
         )}
+      </div>
+    )
+  }
+
+  // Sem caixa aberto e sem ter fechado por aqui: o endereço de fechar ficou
+  // aberto num aparelho, e o caixa foi fechado em outro (ou o turno já acabou).
+  if (!caixaId || !turno) {
+    // A página se atualizou (o caixa fechou) antes de a resposta chegar aqui.
+    if (indo) return <p className="text-sm text-tinta-2" role="status">Fechando o caixa…</p>
+    return (
+      <div className="flex flex-col items-start gap-3 rounded-norte border border-borda bg-superficie p-4">
+        <p className="text-sm text-tinta-2">Este caixa já foi fechado.</p>
+        <a href={hrefBalcao} className="botao-marca rounded-xl px-4 py-2.5 text-sm font-semibold text-marca-tinta">
+          Abrir o caixa
+        </a>
       </div>
     )
   }
@@ -304,6 +354,7 @@ export function FecharCaixa({
               const r = await fechar(slug, caixaId, Number(contado) || 0, obs || undefined)
               // Deu errado: o contado continua no campo, e a frase aparece aqui.
               if (!r.ok) return setErroFechar(r.erro)
+              setFechadoId(caixaId)
               setFeito(r)
             })
           }
@@ -375,6 +426,10 @@ export function Movimento({
   const [valor, setValor] = useState('')
   const [motivo, setMotivo] = useState('')
   const [erro, setErro] = useState<string | null>(null)
+  // A empresa pode pedir a assinatura de quem tira ou põe dinheiro: o campo
+  // do PIN aparece quando o servidor diz que precisa.
+  const [pedePin, setPedePin] = useState(false)
+  const [pin, setPin] = useState('')
   const [indo, comecar] = useTransition()
 
   return (
@@ -415,6 +470,8 @@ export function Movimento({
           dica="Obrigatório. Dinheiro saindo sem motivo é o começo de toda confusão."
         />
       </div>
+      <MotivosProntos excecao={tipo === 'SANGRIA' ? 'caixa.sangria' : 'caixa.suprimento'} atual={motivo} aoEscolher={setMotivo} />
+      {pedePin && <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} />}
 
       <Botao
         disabled={!valor || !motivo.trim()}
@@ -423,11 +480,16 @@ export function Movimento({
           comecar(async () => {
             setErro(null)
             try {
-              const r = await movimentar(slug, caixaId, tipo, Number(valor), motivo)
-              if (r.erro) return setErro(r.erro)
+              const r = await movimentar(slug, caixaId, tipo, Number(valor), motivo, pin || null)
+              setPin('')
+              if (r.erro) {
+                if (r.precisaPin) setPedePin(true)
+                return setErro(r.erro)
+              }
               const v = Number(valor)
               setValor('')
               setMotivo('')
+              setPedePin(false)
               aoRegistrar?.(tipo, v)
             } catch {
               // Queda de rede: a ação nem chegou a responder.

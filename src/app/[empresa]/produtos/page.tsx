@@ -9,6 +9,7 @@ import { pode, textoDaBusca, unidadesQuePodem } from '@/servidor/permissao'
 import { podeVerCustoDe, saldoNaVista } from '@/servidor/produto'
 import { palavra, plural } from '@/ui/texto'
 import { VoltarAVenda } from './VoltarAVenda'
+import { EtiquetasEmLote } from './etiquetas/EmLote'
 import { Estrutura } from '@/ui/Estrutura'
 import { Cartao, Situacao, Vazio, Ponto, cx } from '@/ui/base'
 import { Tira } from '@/ui/painel'
@@ -287,14 +288,17 @@ export default async function Produtos({
       acao={
         <span className="flex flex-wrap items-center gap-2">
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+          {/* As etiquetas dos produtos marcados na lista (a caixa de cada cartão). */}
+          {!fora && <EtiquetasEmLote acao={`/${slug}/produtos/etiquetas`} unidade={onde.unidadeId} />}
           {(q || categoriaId) && (
-            <Link
+            // <a>: página de impressão abre inteira — ver etiquetas/page.tsx.
+            <a
               href={linkEtiquetas}
               className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
               title="Imprimir as etiquetas do que está filtrado"
             >
               Etiquetas
-            </Link>
+            </a>
           )}
           {!simples && (
             <a
@@ -305,7 +309,7 @@ export default async function Produtos({
               Planilha
             </a>
           )}
-          {podeEditar && (
+          {pode(sessao, 'produto.cadastrar') && (
             <Link
               href={`/${slug}/produtos/novo`}
               className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"
@@ -481,15 +485,28 @@ export default async function Produtos({
                   </Link>
                 )}
                 {fora && podeEditar && <VoltarAVenda slug={slug} produtoId={p.id} />}
-                {!simples && (
-                  // <a>: página de impressão abre inteira — ver etiquetas/page.tsx.
-                  <a
-                    href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
-                    className="hover:text-tinta"
-                    title="Imprimir etiquetas deste produto"
-                  >
-                    etiquetas
-                  </a>
+                {/* Também no simples: a vendedora etiqueta a peça que chegou. */}
+                {!fora && (
+                  <>
+                    {/* <a>: página de impressão abre inteira — ver etiquetas/page.tsx. */}
+                    <a
+                      href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
+                      className="hover:text-tinta"
+                      title="Imprimir a etiqueta deste produto"
+                    >
+                      imprimir etiqueta
+                    </a>
+                    {/* Marca para o lote: o formulário é o "Imprimir etiquetas" lá em cima (etiquetas/EmLote.tsx). */}
+                    <input
+                      type="checkbox"
+                      form="etiquetas-lote"
+                      name="produto"
+                      value={p.id}
+                      aria-label={`Marcar ${p.nome} para imprimir etiquetas`}
+                      title="Marcar para imprimir as etiquetas junto"
+                      className="size-4 accent-marca"
+                    />
+                  </>
                 )}
                 {!simples && p.categoria && (
                   <Link href={link({ categoria: p.categoria.id })} className="hover:text-tinta">

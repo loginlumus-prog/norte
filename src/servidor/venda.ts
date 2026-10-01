@@ -40,7 +40,7 @@
 //    autorizou.
 
 import { vendidoNaLoja } from './catalogo-loja'
-import { comoOrg } from './banco'
+import { comoOrg, type BancoDaOrg } from './banco'
 import type { Prisma, SituacaoVenda } from '@prisma/client'
 import { exigir, numeroDaBusca, pode, PODERES, textoDaBusca, type Papel, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
@@ -48,7 +48,7 @@ import { centavos, reais, multiplicar, mostrar } from './dinheiro'
 import { tabelaDe, precoNaTabela, ROTULO_TABELA, type Tabela } from './preco'
 import { normalizarCodigo, pedeInteiro, travarVenda, venceu } from './devolucao'
 import { agendaDoCrediario, primeiroVencimentoPadrao, problemaDoPrimeiroVencimento } from './crediario-agenda'
-import { autorizarComPin } from './autorizacao'
+import { assinarExcecao, autorizarComPin } from './autorizacao'
 import { maquininhaDoPagamento, maquininhasNoBanco } from './maquininhas'
 import { cpfValido } from './cliente'
 import { travarCaixaAberto } from './caixa'
@@ -208,6 +208,14 @@ const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) =>
 export async function registrarVenda(
   sessao: Sessao,
   pedido: NovaVenda,
+  /**
+   * A troca (troca.ts): a venda nasce DENTRO da transação que já devolveu a
+   * peça — ou as duas acontecem, ou nenhuma. O PIN, quando a troca pediu,
+   * já foi conferido lá fora (a conferência abre transação própria, e
+   * transação não aninha): vem pronto em `autorizador`. Sem isto, a venda
+   * abre a própria transação, como sempre.
+   */
+  dentro?: { db: BancoDaOrg; autorizador: { usuarioId: string; nome: string } | null },
 ): Promise<ResultadoVenda> {
   exigir(sessao, 'venda.criar', pedido.unidadeId)
 
@@ -265,9 +273,9 @@ export async function registrarVenda(
   // servidor dizer que precisa (desconto acima do teto, avulso) — então o
   // livro de "autorizou" fala de um pedido de verdade. Quem já tem o poder
   // não precisa de PIN, e o PIN que veio à toa é ignorado.
-  let autorizador: { usuarioId: string; nome: string } | null = null
+  let autorizador: { usuarioId: string; nome: string } | null = dentro?.autorizador ?? null
   const temPoder = pode(sessao, 'venda.desconto', v.unidadeId)
-  if (!temPoder && v.autorizacao?.pin) {
+  if (!temPoder && v.autorizacao?.pin && !dentro) {
     const pedidoDe = [
       avulsos.length > 0 ? plural(avulsos.length, 'item avulso', 'itens avulsos') : null,
       (v.desconto ?? 0) > 0 || v.itens.some((i) => (i.desconto ?? 0) > 0 || i.precoUnit != null)
@@ -288,7 +296,7 @@ export async function registrarVenda(
   const podeDesconto = temPoder || !!autorizador
   if (avulsos.length > 0 && !podeDesconto) return { ok: false, motivo: 'avulso_negado' }
 
-  return comoOrg(sessao.orgId, async (db) => {
+  const corpo = async (db: BancoDaOrg): Promise<ResultadoVenda> => {
     const empresa = await db.org.findUnique({
       where: { id: sessao.orgId },
       select: {
@@ -1134,7 +1142,8 @@ export async function registrarVenda(
       semEstoque: [...semEstoque],
       autorizadoPor: autorizou?.nome ?? null,
     }
-  })
+  }
+  return dentro ? corpo(dentro.db) : comoOrg(sessao.orgId, corpo)
 }
 
 /**
@@ -1241,6 +1250,62 @@ function ondeDasVendas(sessao: Sessao, f: FiltroVendas): Prisma.VendaWhereInput 
   if (permitidas.length === 0) return null
   const q = textoDaBusca(f.q)
   const numero = numeroDaBusca(q)
+
+  // ── a busca ──
+  // A cliente volta para trocar e não lembra o número da venda: lembra a
+  // PEÇA ("a blusa listrada"), tem a ETIQUETA na mão (0056522), ou sabe
+  // QUANTO pagou ("foi 189,90"). Como no balcão de onde a loja veio, a busca
+  // acha por tudo isso — além do número e do nome, como antes.
+  //
+  // - só algarismos: o número da venda, e (com 3 ou mais) o código da etiqueta
+  //   de alguma peça — "56522" acha 0056522, como no balcão;
+  // - com vírgula de centavos ("189,90", "R$ 89,9", "1.234,50"): o total da
+  //   venda, ou o preço de alguma peça dela;
+  // - o resto: nome do cliente, nome da peça, código, referência do
+  //   fornecedor, ou quem vendeu.
+  const insensivel = 'insensitive' as const
+  const dinheiro = /^(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{1,2})|\.(\d{2}))?$/i.exec(q)
+  const temCentavos = !!dinheiro && (q.includes(',') || /^R\$/i.test(q) || /\.\d{2}$/.test(q))
+  const valor = dinheiro && temCentavos
+    ? `${dinheiro[1]!.replace(/\./g, '')}.${(dinheiro[2] ?? dinheiro[3] ?? '0').padEnd(2, '0')}`
+    : null
+  // A etiqueta antiga com o tipo de preço grudado no fim (0056522AV): procura
+  // também sem o final, como a busca do balcão (servidor/etiqueta.ts).
+  const semFinal = /^(.*\d)\s*(AV|CA|CR)$/i.exec(q)?.[1] ?? null
+  const pedacoDeCodigo = (t: string) => t.length >= 3 && /\d/.test(t)
+  const peloCodigo = (t: string): Prisma.VendaItemWhereInput =>
+    pedacoDeCodigo(t) ? { codigo: { contains: t, mode: insensivel } } : { codigo: { equals: t, mode: insensivel } }
+
+  const busca: Prisma.VendaWhereInput | null = !q
+    ? null
+    : valor !== null
+      ? {
+          OR: [
+            { total: valor },
+            { itens: { some: { OR: [{ total: valor }, { precoUnit: valor }] } } },
+          ],
+        }
+      : numero !== null
+        ? { OR: [{ numero }, ...(q.length >= 3 ? [{ itens: { some: peloCodigo(q) } }] : [])] }
+        : {
+            OR: [
+              { cliente: { nome: { contains: q, mode: insensivel } } },
+              { vendedorNome: { contains: q, mode: insensivel } },
+              {
+                itens: {
+                  some: {
+                    OR: [
+                      { descricao: { contains: q, mode: insensivel } },
+                      peloCodigo(q),
+                      ...(semFinal ? [peloCodigo(semFinal)] : []),
+                      ...(q.length >= 3 ? [{ variacao: { produto: { referencia: { contains: q, mode: insensivel } } } }] : []),
+                    ],
+                  },
+                },
+              },
+            ],
+          }
+
   return {
     unidadeId: { in: permitidas },
     criadaEm: { gte: f.de, lt: f.ate },
@@ -1250,11 +1315,7 @@ function ondeDasVendas(sessao: Sessao, f: FiltroVendas): Prisma.VendaWhereInput 
     ...(f.situacao ? { situacao: f.situacao } : { situacao: { not: 'SALDO_IMPORTADO' as const } }),
     ...(f.vendedorId ? { vendedorId: f.vendedorId } : {}),
     ...(f.forma ? { pagamentos: { some: { forma: f.forma } } } : {}),
-    ...(numero !== null
-      ? { numero }
-      : q
-        ? { cliente: { nome: { contains: q, mode: 'insensitive' } } }
-        : {}),
+    ...(busca ? { AND: [busca] } : {}),
   }
 }
 
@@ -1494,6 +1555,8 @@ export type Cancelamento =
       sangria: number
     }
   | { ok: false; motivo: 'nao_achada' | 'ja_cancelada' | 'saldo_importado' | 'sem_motivo' | 'ja_devolvida' | 'crediario_recebido' | 'caixa_fechado' }
+  /** A empresa pede o PIN de quem cancela (`Org.pinNasExcecoes`), e ele não veio ou não confere. */
+  | { ok: false; motivo: 'assinatura'; erro: string }
 
 /**
  * Uma parcela desta venda recebeu dinheiro entre a leitura e o apagar. Lançado
@@ -1543,19 +1606,25 @@ export async function cancelarVenda(
   sessao: Sessao,
   vendaId: string,
   motivo: string,
+  /** O PIN de quem cancela, quando a empresa pede assinatura nas exceções. */
+  pin?: string | null,
 ): Promise<Cancelamento> {
   const texto = motivo.trim()
   if (texto.length < 3) return { ok: false, motivo: 'sem_motivo' }
 
+  // Fora da transação: a conferência do PIN abre a dela (o freio).
+  const assinatura = await assinarExcecao(sessao, { pin })
+  if (!assinatura.ok) return { ok: false, motivo: 'assinatura', erro: assinatura.erro }
+
   try {
-    return await cancelarNaTransacao(sessao, vendaId, texto)
+    return await cancelarNaTransacao(sessao, vendaId, texto, assinatura.assinou)
   } catch (e) {
     if (e instanceof ParcelaRecebidaNoCaminho) return { ok: false, motivo: 'crediario_recebido' }
     throw e
   }
 }
 
-async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: string): Promise<Cancelamento> {
+async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: string, assinado = false): Promise<Cancelamento> {
   return comoOrg(sessao.orgId, async (db) => {
     // Trava a linha da venda até o fim da transação. Dois cliques em
     // "Cancelar" (ou cancelar enquanto outra pessoa devolve) liam os dois
@@ -1737,6 +1806,7 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
         alvoNome: `Venda ${v.numero}`,
         valor: v.total,
         motivo: [texto, ...notas].join(' · '),
+        assinado,
       },
     })
 

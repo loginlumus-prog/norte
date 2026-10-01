@@ -90,7 +90,8 @@ export async function devolverAcao(
   }
 }
 
-export type EstadoCancelamento = { erro?: string; ok?: string }
+/** `precisaPin`: a empresa pede a assinatura de quem cancela — a tela mostra o campo do PIN. */
+export type EstadoCancelamento = { erro?: string; ok?: string; precisaPin?: boolean }
 
 export async function cancelarAcao(
   _anterior: EstadoCancelamento,
@@ -99,10 +100,12 @@ export async function cancelarAcao(
   const slug = String(form.get('empresa') ?? '')
   const vendaId = String(form.get('venda') ?? '')
   const motivo = String(form.get('motivo') ?? '')
+  const pin = String(form.get('pin') ?? '').replace(/\D/g, '') || null
 
   const sessao = await exigirSessao(slug)
-  const r = await cancelarVenda(sessao, vendaId, motivo)
+  const r = await cancelarVenda(sessao, vendaId, motivo, pin)
 
+  if (!r.ok && r.motivo === 'assinatura') return { erro: r.erro, precisaPin: true }
   if (!r.ok) {
     return {
       erro: {

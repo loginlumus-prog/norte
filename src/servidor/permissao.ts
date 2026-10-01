@@ -25,6 +25,11 @@ export const CAPACIDADES = [
   'produto.ver',
   'produto.editar',
   'produto.preco', // separado: mexer em preço não é editar descrição
+  // Cadastrar produto NOVO, com o preço de partida. Separado de editar e de
+  // mexer em preço porque é o que a empresa pode dar à vendedora (ver
+  // EXTRAS_DO_BALCAO): a peça chega, ela cadastra e etiqueta; o preço, depois
+  // de publicado, continua de quem tem `produto.preco`.
+  'produto.cadastrar',
   'estoque.ver',
   'estoque.ajustar',
   'estoque.consumir', // anotar o material usado dentro de casa (esmalte, luva)
@@ -96,7 +101,7 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
   GERENTE: [
     'venda.ver', 'venda.criar', 'venda.cancelar', 'venda.desconto',
     'caixa.ver', 'caixa.operar',
-    'produto.ver', 'produto.editar', 'produto.preco',
+    'produto.ver', 'produto.editar', 'produto.preco', 'produto.cadastrar',
     'estoque.ver', 'estoque.ajustar', 'estoque.consumir',
     'compra.ver', 'compra.gerir',
     'agenda.ver', 'agenda.marcar',
@@ -167,6 +172,19 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
   // fizer aparece no livro de auditoria do cliente, igual a qualquer pessoa.
   SUPORTE: SO_LEITURA,
 }
+
+/**
+ * O que a EMPRESA pode dar a mais ao papel Balcão (`Org.balcaoAmpliado`).
+ *
+ * A loja de roupa tem a vendedora que conta a arara e cadastra a peça que
+ * chegou — é ela quem está no balcão quando o fornecedor entrega. Dar isso ao
+ * papel Balcão de TODAS as empresas seria abrir o estoque da padaria para quem
+ * só passa o pão; por isso é chave da empresa, desligada por padrão. Ligada, a
+ * vendedora corrige o estoque pelo contado e cadastra produto novo (com o
+ * preço de partida) — e assina com o PIN dela, sempre (ver `soPelaEmpresa`).
+ * Mudar preço depois de publicado continua de quem tem `produto.preco`.
+ */
+export const EXTRAS_DO_BALCAO: readonly Capacidade[] = ['estoque.ajustar', 'produto.cadastrar']
 
 /**
  * Que papéis cada papel pode conceder a outra pessoa.
@@ -247,6 +265,14 @@ export type Sessao = {
   usuarioId: string
   nome: string
   acessos: Acesso[]
+  /**
+   * A empresa ligou `Org.balcaoAmpliado` (ver EXTRAS_DO_BALCAO). Lido do banco
+   * a cada requisição, em `conferirSessao` — NUNCA do cookie: o cookie é uma
+   * fotografia de até 12 horas, e desligar a chave tem de valer na próxima
+   * tela. Sessão montada sem ele (o assistente, os testes) fica com o Balcão
+   * de sempre, que é o lado seguro.
+   */
+  balcaoAmpliado?: boolean
 }
 
 /**
@@ -271,8 +297,9 @@ export const sessaoAindaVale = (
 
 const valeAgora = (a: Acesso, agora: Date) => !a.expiraEm || a.expiraEm > agora
 
-const concede = (a: Acesso, c: Capacidade) =>
-  PODERES[a.papel].includes(c) && (a.unidadeId === null || !SO_DA_EMPRESA_INTEIRA.includes(c))
+const concede = (a: Acesso, c: Capacidade, s?: Pick<Sessao, 'balcaoAmpliado'>) =>
+  (PODERES[a.papel].includes(c) || (a.papel === 'BALCAO' && !!s?.balcaoAmpliado && EXTRAS_DO_BALCAO.includes(c))) &&
+  (a.unidadeId === null || !SO_DA_EMPRESA_INTEIRA.includes(c))
 
 /**
  * Pode fazer isso?
@@ -292,9 +319,21 @@ export function pode(
   return sessao.acessos.some(
     (a) =>
       valeAgora(a, agora) &&
-      concede(a, capacidade) &&
+      concede(a, capacidade, sessao) &&
       (unidadeId === undefined || a.unidadeId === null || a.unidadeId === unidadeId),
   )
+}
+
+/**
+ * Pode isso SÓ porque a empresa deu a mais ao Balcão (EXTRAS_DO_BALCAO)?
+ *
+ * É a pergunta de quem pede a assinatura: a gerente corrige o estoque como
+ * sempre corrigiu (o PIN dela só é pedido se a empresa mandar assinar as
+ * exceções); a vendedora, que corrige porque a empresa deixou, assina SEMPRE —
+ * foi a condição para deixar.
+ */
+export function soPelaEmpresa(sessao: Sessao, capacidade: Capacidade, unidadeId?: string, agora = new Date()): boolean {
+  return pode(sessao, capacidade, unidadeId, agora) && !pode({ ...sessao, balcaoAmpliado: false }, capacidade, unidadeId, agora)
 }
 
 /**
@@ -307,7 +346,7 @@ export function unidadesQuePodem(
   capacidade: Capacidade,
   agora = new Date(),
 ): 'todas' | string[] {
-  const validos = sessao.acessos.filter((a) => valeAgora(a, agora) && concede(a, capacidade))
+  const validos = sessao.acessos.filter((a) => valeAgora(a, agora) && concede(a, capacidade, sessao))
   if (validos.some((a) => a.unidadeId === null)) return 'todas'
   return [...new Set(validos.map((a) => a.unidadeId!))]
 }

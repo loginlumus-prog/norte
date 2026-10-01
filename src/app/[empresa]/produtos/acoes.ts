@@ -8,7 +8,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { criarProduto, editarProduto, ajustarGrade, GradeRecusada, type EixoEscolhido } from '@/servidor/produto'
-import { SemPermissao, unidadesQuePodem, type Sessao } from '@/servidor/permissao'
+import { SemPermissao, pode, unidadesQuePodem, type Sessao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { alcanceComum, normalizarVendidoEm, vendidoEmDoGerente } from '@/servidor/catalogo-loja'
 import { palavra, plural } from '@/ui/texto'
@@ -18,6 +18,8 @@ import type { Medida } from '@prisma/client'
 export type EstadoProduto = {
   erro?: string
   ok?: string
+  /** O cadastro pede a assinatura de quem cadastra: a tela mostra o campo do PIN. */
+  precisaPin?: boolean
   /** O erro de cada campo, pelo `name` dele — a tela pinta o campo e diz o que houve. */
   campos?: Record<string, string>
 }
@@ -141,7 +143,13 @@ async function vendidoEmDo(
   sessao: Sessao,
   antes: string[] | null,
 ): Promise<{ valor?: string[]; erro?: string }> {
-  const alcance = alcanceComum(unidadesQuePodem(sessao, 'produto.editar'), unidadesQuePodem(sessao, 'produto.preco'))
+  // Produto novo: o alcance de quem CADASTRA (a vendedora, quando a empresa
+  // deixa, cadastra só para a loja dela). Produto que já existe: o de quem
+  // edita E mexe em preço, como sempre.
+  const alcance =
+    antes === null
+      ? unidadesQuePodem(sessao, 'produto.cadastrar')
+      : alcanceComum(unidadesQuePodem(sessao, 'produto.editar'), unidadesQuePodem(sessao, 'produto.preco'))
   const temPergunta = form.get('temLojas') === '1'
   if (!temPergunta && alcance === 'todas') return {}
 
@@ -223,17 +231,22 @@ export async function criar(
         vendidoEm: vendido.valor,
       },
       eixosDoFormulario(form, eixosDaEmpresa),
+      String(form.get('pin') ?? '').replace(/\D/g, '') || null,
     )
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para cadastrar produto.' }
     return { erro: recadoDoErro(e, 'Não deu para cadastrar.') }
   }
 
-  if (!r.ok) return { erro: r.motivo }
+  if (!r.ok) return { erro: r.motivo, precisaPin: r.precisaPin }
 
   revalidatePath(`/${slug}/produtos`)
   // Vai direto para a ficha: quem acabou de cadastrar quer conferir a grade
-  // que nasceu, e é lá que ela está.
+  // que nasceu, e é lá que ela está. Quem cadastra sem editar (a vendedora,
+  // ver EXTRAS_DO_BALCAO) não abre a ficha: volta à lista, já no produto.
+  if (!pode(sessao, 'produto.editar')) {
+    redirect(`/${slug}/produtos?q=${encodeURIComponent(String(form.get('nome') ?? '').trim().slice(0, 60))}`)
+  }
   redirect(`/${slug}/produtos/${r.produtoId}`)
 }
 

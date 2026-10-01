@@ -215,6 +215,49 @@ export default async function Vendas({
         ),
     },
     {
+      // Reimprimir (e o carnê, se teve crediário) sem abrir a venda: "perdi o
+      // cupom" é pedido de todo dia no balcão. Abre em outra aba, já
+      // imprimindo, e a lista fica onde estava.
+      chave: 'acoes',
+      titulo: '',
+      largura: simples ? '6.5rem' : '9rem',
+      celula: (v: (typeof vendas)[number]) =>
+        v.situacao === 'CANCELADA' ? null : (
+          <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs font-semibold whitespace-nowrap">
+            <a
+              href={`/${slug}/vendas/${v.id}/comprovante?imprimir=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-marca underline-offset-2 hover:underline"
+              aria-label={`Reimprimir o comprovante ${palavras.daVenda} ${v.numero}`}
+            >
+              Reimprimir
+            </a>
+            {v.formas.includes('CREDIARIO') && (
+              <a
+                href={`/${slug}/vendas/${v.id}/carne?imprimir=1`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-marca underline-offset-2 hover:underline"
+                aria-label={`Reimprimir o carnê ${palavras.daVenda} ${v.numero}`}
+              >
+                carnê
+              </a>
+            )}
+            {/* A troca numa tela só (troca/), já com esta compra aberta. */}
+            {v.situacao === 'CONCLUIDA' && v.devolvido + 0.005 < v.total && pode(sessao, 'venda.criar') && (
+              <Link
+                href={`/${slug}/troca?venda=${v.id}`}
+                className="text-marca underline-offset-2 hover:underline"
+                aria-label={`Trocar peças ${palavras.daVenda} ${v.numero}`}
+              >
+                Trocar
+              </Link>
+            )}
+          </span>
+        ),
+    },
+    {
       chave: 'abrir',
       titulo: '',
       largura: '4rem',
@@ -285,8 +328,10 @@ export default async function Vendas({
         />
       </div>
 
-      {/* Busca e filtro no endereço. `q` aceita número da venda ou nome do
-          cliente — é o que a pessoa tem na mão quando vem procurar. */}
+      {/* Busca e filtro no endereço. `q` aceita o número da venda, o nome do
+          cliente, a peça, o código da etiqueta ou o valor ("189,90") — é o que
+          a pessoa tem na mão quando a cliente volta para trocar (ver
+          `ondeDasVendas`). */}
       <form className="flex flex-wrap gap-2">
         {/* Buscar não apaga os outros filtros: o formulário leva junto tudo
             o que já estava escolhido no endereço. */}
@@ -298,7 +343,7 @@ export default async function Vendas({
         <input
           name="q"
           defaultValue={q ?? ''}
-          placeholder={`Número ${palavras.daVenda} ou nome ${palavras.daPessoa}`}
+          placeholder={`Número, nome ${palavras.daPessoa}, peça, código ou valor (189,90)`}
           aria-label={`Buscar ${palavras.venda}`}
           className="min-w-[14rem] flex-1 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
         />

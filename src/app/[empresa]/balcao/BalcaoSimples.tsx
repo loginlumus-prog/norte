@@ -37,7 +37,9 @@ import { MaisOpcoes, opcoesEmUso } from './MaisOpcoes'
 import { AlertaDeDivida } from '../crediario/AlertaDeDivida'
 import { BotaoReceber } from '../crediario/BotaoReceber'
 import { Folha } from './Folha'
+import { FichaDaCliente } from './FichaDaCliente'
 import { usePalavras } from './palavras'
+import { contagemDoPedido } from './ramo'
 
 const CHAVE_TELA_CHEIA = 'norte:balcao:tela-cheia'
 
@@ -217,6 +219,7 @@ export function BalcaoSimples({
       aoPedirCliente={pedirCliente}
       aoNova={novaVenda}
       fiado={fiado}
+      ramo={ramo}
     />
   )
 
@@ -307,7 +310,7 @@ export function BalcaoSimples({
         >
           <span className="flex flex-col items-start leading-tight">
             <span className="text-xs font-semibold opacity-80">
-              {v.fechada ? p.vendaConcluida : v.carrinho.length === 0 ? `${p.Pedido} vazio` : `${v.itensNaVenda} ${v.itensNaVenda === 1 ? 'item' : 'itens'}`}
+              {v.fechada ? p.vendaConcluida : v.carrinho.length === 0 ? `${p.Pedido} vazio` : contagemDoPedido(ramo, v.itensNaVenda)}
             </span>
             <span className="text-base font-bold">{v.fechada ? 'Ver o troco' : `Ver ${p.Pedido.toLowerCase()} e pagar`}</span>
           </span>
@@ -340,6 +343,7 @@ export function BalcaoSimples({
       </div>
 
       <PedirPin v={v} />
+      <FichaDaCliente v={v} slug={slug} unidadeId={unidadeId} />
       <MaisOpcoes
         v={v}
         unidadeId={unidadeId}
@@ -426,7 +430,16 @@ function CabecaDoPedido({
         <div className="flex flex-wrap gap-1.5">
           {v.cliente && (
             <span className={etiqueta}>
-              {p.Pessoa}: <span className="text-tinta">{v.cliente.nome}</span>
+              {p.Pessoa}:{' '}
+              {/* O nome abre a ficha (Alt+N também): "quanto eu devo?" sem sair do pedido. */}
+              <button
+                type="button"
+                onClick={() => v.setFichaAberta('resumo')}
+                title="Ver a ficha (Alt+N)"
+                className="max-w-[12rem] truncate text-tinta underline decoration-tinta-3/40 underline-offset-2 hover:text-marca"
+              >
+                {v.cliente.nome}
+              </button>
               <button type="button" onClick={() => v.setCliente(null)} aria-label={`Tirar o ${p.pessoa}`} className={tirar}>
                 ✕
               </button>
@@ -460,6 +473,17 @@ function CabecaDoPedido({
             </span>
           )}
         </div>
+      )}
+
+      {/* O carnê sai com CPF e endereço: o que falta se completa agora. */}
+      {v.cliente && (v.ficha?.falta?.length ?? 0) > 0 && (
+        <button
+          type="button"
+          onClick={() => v.setFichaAberta('dados')}
+          className="self-start text-left text-xs text-atencao underline-offset-2 hover:underline"
+        >
+          Cadastro incompleto: falta {v.ficha!.falta!.join(', ')} — completar
+        </button>
       )}
 
       {/* A cliente escolhida deve no crediário: o mesmo cartão do avançado,
@@ -513,7 +537,10 @@ function PainelDoPedido({
   aoPedirCliente,
   aoNova,
   fiado,
+  ramo,
 }: {
+  /** O ramo da loja: "3 peças" na loja de roupa, "3 itens" no resto (ramo.ts). */
+  ramo: string | null
   v: Venda
   caixaId: string | null
   crediario: { maxParcelas: number; diasEntre?: number } | null
@@ -548,9 +575,7 @@ function PainelDoPedido({
                 <h2 className="flex min-w-0 items-baseline gap-2 text-lg font-bold">
                   {p.Pedido}
                   {v.itensNaVenda > 0 && (
-                    <span className="numero text-sm font-semibold text-tinta-3">
-                      {v.itensNaVenda} {v.itensNaVenda === 1 ? 'item' : 'itens'}
-                    </span>
+                    <span className="numero text-sm font-semibold text-tinta-3">{contagemDoPedido(ramo, v.itensNaVenda)}</span>
                   )}
                   <span className="sr-only"> — {unidadeNome}</span>
                 </h2>

@@ -142,8 +142,9 @@ export function BarraCaixa({
               ↑ Suprimento
             </button>
             {/* Troca começa achando a compra, não numa tela em branco: é da
-                venda que sai o que a pessoa pagou e o que pode levar no lugar. */}
-            <Link href={`/${slug}/vendas?unidade=${unidadeId}`} className={botao}>
+                venda que sai o que a pessoa pagou e o que pode levar no lugar.
+                Numa tela só (troca/): a peça volta e a nova sai juntas. */}
+            <Link href={`/${slug}/troca?unidade=${unidadeId}`} className={botao}>
               ⇄ Troca
             </Link>
             <Link
