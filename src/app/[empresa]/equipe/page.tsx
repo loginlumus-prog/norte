@@ -26,6 +26,8 @@ import { outroMes } from '@/servidor/fechamento'
 import { Equipe, type PessoaNaTela, type ConviteNaTela, type SuporteNaTela } from './Equipe'
 import { Metas } from './Metas'
 import { Desempenho, SetasDoMes } from './Desempenho'
+import { Cargos } from './Cargos'
+import { GRUPOS_DE_CARGO, MODELOS_DE_CARGO, listarCargos } from '@/servidor/cargos'
 
 export const metadata: Metadata = { title: 'Equipe' }
 
@@ -99,6 +101,14 @@ export default async function TelaEquipe({
   // a pessoa o que ela está perdendo.
   const papeisQuePosso = TODOS_PAPEIS.filter((p) => podeConceder(sessao, p))
 
+  // ── os cargos que a empresa criou ────────────────────────
+  // Quem vê a equipe vê o nome do cargo nas linhas; criar e mudar cargo é de
+  // quem configura a empresa (o dono).
+  const cargos = await listarCargos(sessao)
+  const podeDarCargo = podeConceder(sessao, 'CARGO')
+  const podeEditarCargos = pode(sessao, 'empresa.configurar')
+  const gruposDeCargo = GRUPOS_DE_CARGO.filter((g) => !g.modulo || moduloLigado(empresa, g.modulo))
+
   const agora = new Date()
   const vale = (a: { expiraEm: Date | null }) => !a.expiraEm || a.expiraEm > agora
 
@@ -131,6 +141,8 @@ export default async function TelaEquipe({
         ativo: p.ativo,
         ultimoLogin: p.ultimoLogin ? dia(p.ultimoLogin) : null,
         papel: a?.papel ?? null,
+        cargoId: a?.cargoId ?? null,
+        cargoNome: a?.cargoNome ?? null,
         unidadeId: a?.unidadeId ?? null,
         unidadeNome: a?.unidadeNome ?? null,
         souEu,
@@ -145,6 +157,7 @@ export default async function TelaEquipe({
     id: c.id,
     email: c.email,
     papel: c.papel,
+    cargoNome: c.cargo?.nome ?? null,
     expiraEm: dia(c.expiraEm),
     vencido: c.expiraEm < agora,
   }))
@@ -217,11 +230,29 @@ export default async function TelaEquipe({
           convites={convitesNaTela}
           unidades={unidades}
           papeisQuePosso={papeisQuePosso}
+          cargos={podeDarCargo ? cargos.map((c) => ({ id: c.id, nome: c.nome })) : []}
           podeGerir={podeGerir}
           suportes={suportes}
           podeCortarSuporte={podeCortarSuporte}
         />
       </Secao>
+
+      {(podeEditarCargos || cargos.length > 0) && (
+        <Secao
+          titulo="Cargos"
+          resumo="Além de Gerente, Balcão e Financeiro: crie o cargo que a sua operação tem (Subgerente, Estoquista…) e marque o que ele pode. Depois é só dar o cargo a alguém, em uma loja ou em todas."
+        >
+          <Cartao caixa>
+            <Cargos
+              slug={slug}
+              cargos={cargos}
+              grupos={gruposDeCargo}
+              modelos={MODELOS_DE_CARGO}
+              podeEditar={podeEditarCargos}
+            />
+          </Cartao>
+        </Secao>
+      )}
     </Estrutura>
   )
 }

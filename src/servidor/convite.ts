@@ -48,11 +48,13 @@ export type ConviteCriado = {
 
 export async function convidar(
   sessao: Sessao,
-  dados: { email: string; papel: Papel; unidadeId?: string | null },
+  dados: { email: string; papel: Papel; unidadeId?: string | null; cargoId?: string | null },
   baseDoLink: string,
 ): Promise<ConviteCriado> {
   const email = normalizar(dados.email)
   const unidadeId = dados.unidadeId ?? null
+  const cargoId = dados.papel === 'CARGO' ? (dados.cargoId ?? null) : null
+  if (dados.papel === 'CARGO' && !cargoId) throw new Error('Escolha qual cargo.')
 
   exigir(sessao, 'equipe.gerir', unidadeId ?? undefined)
 
@@ -68,13 +70,14 @@ export async function convidar(
   // Lançar de dentro dela aborta a transação, e transação abortada deixa a
   // conexão inutilizável em alguns servidores — inclusive no banco local de
   // desenvolvimento. Ler antes, escrever depois: mais simples e mais seguro.
-  const { jaTem, lojaExiste, pendentes } = await comoOrg(sessao.orgId, async (db) => ({
+  const { jaTem, lojaExiste, cargoExiste, pendentes } = await comoOrg(sessao.orgId, async (db) => ({
     jaTem: await db.usuario.findUnique({
       where: { orgId_email: { orgId: sessao.orgId, email } },
       select: { id: true },
     }),
     // A loja vem do formulário: procurar aqui passa pelo RLS.
     lojaExiste: unidadeId ? !!(await db.unidade.findUnique({ where: { id: unidadeId }, select: { id: true } })) : true,
+    cargoExiste: cargoId ? !!(await db.cargo.findUnique({ where: { id: cargoId }, select: { id: true } })) : true,
     pendentes: await db.convite.findMany({
       where: { email, aceitoEm: null },
       select: { papel: true, unidadeId: true },
@@ -82,6 +85,7 @@ export async function convidar(
   }))
   if (jaTem) throw new EmailJaUsado(email)
   if (!lojaExiste) throw new Error('Loja não encontrada nesta empresa.')
+  if (!cargoExiste) throw new Error('Cargo não encontrado nesta empresa.')
   // Convidar de novo o mesmo e-mail apaga o convite anterior. Se o anterior
   // foi feito por alguém acima (a dona convidando uma gerente), o gerente não
   // pode derrubá-lo trocando por um convite de balconista.
@@ -111,6 +115,7 @@ export async function convidar(
         email,
         papel: dados.papel,
         unidadeId,
+        cargoId,
         token: resumir(token),
         expiraEm,
       },
@@ -167,7 +172,7 @@ export async function aceitarConvite(
   return comoOrg(org.id, async (db) => {
     const convite = await db.convite.findUnique({
       where: { token: resumir(token) },
-      select: { id: true, email: true, papel: true, unidadeId: true, expiraEm: true, aceitoEm: true },
+      select: { id: true, email: true, papel: true, unidadeId: true, cargoId: true, expiraEm: true, aceitoEm: true },
     })
     if (!convite) return { ok: false as const, motivo: 'invalido' as const }
     if (convite.aceitoEm) return { ok: false as const, motivo: 'ja_usado' as const }
@@ -189,6 +194,7 @@ export async function aceitarConvite(
         usuarioId: usuario.id,
         unidadeId: convite.unidadeId,
         papel: convite.papel,
+        cargoId: convite.papel === 'CARGO' ? convite.cargoId : null,
       },
     })
 
@@ -222,7 +228,7 @@ export async function listarConvites(sessao: Sessao) {
   return comoOrg(sessao.orgId, (db) =>
     db.convite.findMany({
       where: { aceitoEm: null },
-      select: { id: true, email: true, papel: true, unidadeId: true, expiraEm: true, criadoEm: true },
+      select: { id: true, email: true, papel: true, unidadeId: true, expiraEm: true, criadoEm: true, cargo: { select: { nome: true } } },
       orderBy: { criadoEm: 'desc' },
     }),
   )

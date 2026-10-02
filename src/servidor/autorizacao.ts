@@ -31,6 +31,7 @@
 // (o freio e o livro), e transação não aninha.
 
 import { comoOrg } from './banco'
+import { SELECT_ACESSO, acessosDoBanco } from './cargos'
 import { podeNoAlcance, type Capacidade, type Papel, type Sessao } from './permissao'
 import { conferirSenha, guardarSenha, HASH_ISCA } from './senha'
 import { concluirTentativa, reservarTentativa } from './limite'
@@ -105,7 +106,7 @@ export async function autorizarComPin(p: {
         id: true,
         nome: true,
         pinHash: true,
-        acessos: { select: { papel: true, unidadeId: true, expiraEm: true } },
+        acessos: { select: SELECT_ACESSO },
       },
     }),
   )
@@ -117,7 +118,7 @@ export async function autorizarComPin(p: {
       orgId: p.orgId,
       usuarioId: u.id,
       nome: u.nome,
-      acessos: u.acessos.map((a) => ({ papel: a.papel as Papel, unidadeId: a.unidadeId, expiraEm: a.expiraEm })),
+      acessos: acessosDoBanco(u.acessos),
     }
     return podeNoAlcance(comoSessao, p.capacidade, p.unidadeId, agora)
   })

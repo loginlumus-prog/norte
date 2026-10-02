@@ -16,6 +16,7 @@ import { acharOrgPorSlug } from '@/servidor/banco'
 import { NOME_DO_PAPEL } from '@/servidor/guia'
 import { cortarAcessoDoSuporte, mudarAcesso, mudarSituacao, mudarTelefone } from '@/servidor/equipe'
 import { salvarMeta, mesValido } from '@/servidor/metas'
+import { apagarCargo, salvarCargo } from '@/servidor/cargos'
 import { SemPermissao, type Papel } from '@/servidor/permissao'
 
 export async function salvarMetaAcao(
@@ -44,6 +45,16 @@ export type EstadoEquipe = { erro?: string; ok?: string; link?: string }
 const PAPEIS: Papel[] = ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR']
 
 /**
+ * O valor da lista de papéis: um papel fixo ("GERENTE") ou um cargo da
+ * empresa ("CARGO:<id>"). Qualquer outra coisa é recusada.
+ */
+function lerPapel(v: string): { papel: Papel; cargoId: string | null } | null {
+  if (PAPEIS.includes(v as Papel)) return { papel: v as Papel, cargoId: null }
+  const m = /^CARGO:([A-Za-z0-9_-]{1,64})$/.exec(v)
+  return m ? { papel: 'CARGO', cargoId: m[1]! } : null
+}
+
+/**
  * A base do link do convite.
  *
  * Sai dos cabeçalhos da requisição, não de variável de ambiente: o mesmo
@@ -67,8 +78,8 @@ export async function convidarPessoa(
   const email = String(form.get('email') ?? '').trim()
   if (!email.includes('@')) return { erro: 'Informe um e-mail válido.' }
 
-  const papelBruto = String(form.get('papel') ?? '') as Papel
-  if (!PAPEIS.includes(papelBruto)) return { erro: 'Escolha um papel.' }
+  const escolhido = lerPapel(String(form.get('papel') ?? ''))
+  if (!escolhido) return { erro: 'Escolha um papel.' }
 
   const unidadeId = String(form.get('unidadeId') ?? '') || null
 
@@ -78,7 +89,7 @@ export async function convidarPessoa(
   const publico = emailConfigurado() ? await enderecoPublico() : null
 
   try {
-    const c = await convidar(sessao, { email, papel: papelBruto, unidadeId }, publico ? `${publico}/${slug}` : await baseDoSite(slug))
+    const c = await convidar(sessao, { email, ...escolhido, unidadeId }, publico ? `${publico}/${slug}` : await baseDoSite(slug))
     revalidatePath(`/${slug}/equipe`)
     // O link aparece UMA vez. Ele não fica guardado em lugar nenhum que dê
     // para recuperar — o banco só tem o resumo dele.
@@ -125,12 +136,13 @@ export async function trocarPapel(
   unidadeId: string | null,
 ): Promise<EstadoEquipe> {
   const sessao = await exigirSessao(slug)
-  if (!PAPEIS.includes(papel as Papel)) return { erro: 'Escolha um papel da lista.' }
+  const escolhido = lerPapel(papel)
+  if (!escolhido) return { erro: 'Escolha um papel da lista.' }
 
   try {
     // O dono vale para a empresa inteira, sempre (ver `DONO_SO_DA_EMPRESA`):
     // promover a dono quem estava preso a uma loja solta a loja junto.
-    const r = await mudarAcesso(sessao, usuarioId, { papel: papel as Papel, unidadeId: papel === 'DONO' ? null : unidadeId })
+    const r = await mudarAcesso(sessao, usuarioId, { ...escolhido, unidadeId: escolhido.papel === 'DONO' ? null : unidadeId })
     if (!r.ok) return { erro: r.motivo }
     revalidatePath(`/${slug}/equipe`)
     return { ok: 'Acesso alterado. A pessoa vai precisar entrar de novo.' }
@@ -216,5 +228,40 @@ export async function cortarSuporte(slug: string, usuarioId: string): Promise<Es
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode cortar o acesso do suporte.' }
     return { erro: recadoDoErro(e, 'Não deu para cortar o acesso.') }
+  }
+}
+
+/** Criar ou mudar um cargo da empresa — só quem configura a empresa (o serviço confere). */
+export async function salvarCargoAcao(
+  slug: string,
+  dados: { id?: string | null; nome: string; capacidades: string[] },
+): Promise<EstadoEquipe> {
+  const sessao = await exigirSessao(slug)
+  if (!Array.isArray(dados?.capacidades)) return { erro: 'Marque o que o cargo pode fazer.' }
+  try {
+    const r = await salvarCargo(sessao, {
+      id: typeof dados.id === 'string' ? dados.id : null,
+      nome: String(dados.nome ?? '').slice(0, 200),
+      capacidades: dados.capacidades.map(String).slice(0, 100),
+    })
+    if (!r.ok) return { erro: r.motivo }
+    revalidatePath(`/${slug}/equipe`)
+    return { ok: dados.id ? 'Cargo salvo. Vale na próxima tela de quem tem o cargo.' : 'Cargo criado. Agora é só dar a alguém, na lista de quem tem acesso.' }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Só quem configura a empresa cria e muda cargos.' }
+    return { erro: recadoDoErro(e, 'Não deu para salvar o cargo.') }
+  }
+}
+
+export async function apagarCargoAcao(slug: string, id: string): Promise<EstadoEquipe> {
+  const sessao = await exigirSessao(slug)
+  try {
+    const r = await apagarCargo(sessao, String(id))
+    if (!r.ok) return { erro: r.motivo }
+    revalidatePath(`/${slug}/equipe`)
+    return { ok: 'Cargo apagado.' }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Só quem configura a empresa apaga cargos.' }
+    return { erro: recadoDoErro(e, 'Não deu para apagar o cargo.') }
   }
 }

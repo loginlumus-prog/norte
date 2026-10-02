@@ -21,7 +21,8 @@ import { comoOrg } from './banco'
 import { chaveTelefone, soDigitos } from './assistente/telefone'
 import { SELECT_TELEFONE, estadoDoTelefone, type EstadoTelefone } from './assistente/confirmacao'
 import { cortarSessoes } from './pagina'
-import { exigir, podeConcederAcesso, PODERES, type Papel, type Sessao } from './permissao'
+import { exigir, pode, podeConcederAcesso, PODERES, type Papel, type Sessao } from './permissao'
+import { SELECT_ACESSO, acessosDoBanco } from './cargos'
 import { NOME_DO_PAPEL } from './guia'
 
 export type PessoaDaEquipe = {
@@ -41,6 +42,9 @@ export type PessoaDaEquipe = {
     expiraEm: Date | null
     /** Só o SUPORTE tem: por que o acesso foi aberto. A dona lê na tela. */
     motivo: string | null
+    /** Só no papel CARGO: qual cargo. */
+    cargoId: string | null
+    cargoNome: string | null
   }[]
 }
 
@@ -52,7 +56,7 @@ export async function listarEquipe(sessao: Sessao): Promise<PessoaDaEquipe[]> {
       orderBy: [{ ativo: 'desc' }, { nome: 'asc' }],
       select: {
         id: true, nome: true, email: true, ativo: true, ultimoLogin: true, ...SELECT_TELEFONE,
-        acessos: { select: { id: true, papel: true, unidadeId: true, expiraEm: true, motivo: true } },
+        acessos: { select: { id: true, papel: true, unidadeId: true, expiraEm: true, motivo: true, cargoId: true, cargo: { select: { nome: true } } } },
       },
     })
     const unidades = await db.unidade.findMany({ select: { id: true, nome: true } })
@@ -62,10 +66,11 @@ export async function listarEquipe(sessao: Sessao): Promise<PessoaDaEquipe[]> {
     return pessoas.map(({ telefoneConfirmado: _c, telefoneConfirmadoEm: _e, telefoneVistoEm: _v, ...p }) => ({
       ...p,
       telefoneEstado: estadoDoTelefone({ telefone: p.telefone, telefoneConfirmado: _c, telefoneConfirmadoEm: _e, telefoneVistoEm: _v }, agora),
-      acessos: p.acessos.map((a) => ({
+      acessos: p.acessos.map(({ cargo, ...a }) => ({
         ...a,
         papel: a.papel as Papel,
         unidadeNome: a.unidadeId ? (nomeDa.get(a.unidadeId) ?? null) : null,
+        cargoNome: cargo?.nome ?? null,
       })),
     }))
   })
@@ -92,16 +97,19 @@ export async function listarVendedores(sessao: Sessao, unidadeId: string): Promi
         ativo: true,
         acessos: {
           some: {
-            papel: { in: papeis },
+            papel: { in: [...papeis, 'CARGO'] },
             OR: [{ unidadeId: null }, { unidadeId }],
             AND: [{ OR: [{ expiraEm: null }, { expiraEm: { gt: agora } }] }],
           },
         },
       },
       orderBy: { nome: 'asc' },
-      select: { id: true, nome: true },
+      select: { id: true, nome: true, acessos: { select: SELECT_ACESSO } },
     })
+    // O cargo vende só se o cargo dele marca "Vender no balcão".
     return pessoas
+      .filter((p) => pode({ orgId: sessao.orgId, usuarioId: p.id, nome: p.nome, acessos: acessosDoBanco(p.acessos) }, 'venda.criar', unidadeId, agora))
+      .map(({ id, nome }) => ({ id, nome }))
   })
 }
 
@@ -147,9 +155,11 @@ export const DONO_SO_DA_EMPRESA =
 export async function mudarAcesso(
   sessao: Sessao,
   usuarioId: string,
-  novo: { papel: Papel; unidadeId: string | null },
+  novo: { papel: Papel; unidadeId: string | null; cargoId?: string | null },
 ): Promise<ResultadoEquipe> {
   exigir(sessao, 'equipe.gerir')
+  const cargoId = novo.papel === 'CARGO' ? (novo.cargoId ?? null) : null
+  if (novo.papel === 'CARGO' && !cargoId) return { ok: false, motivo: 'Escolha qual cargo.' }
 
   if (usuarioId === sessao.usuarioId) {
     return { ok: false, motivo: 'Você não pode mudar o próprio acesso. Peça para outra pessoa.' }
@@ -177,6 +187,9 @@ export async function mudarAcesso(
       const loja = await db.unidade.findUnique({ where: { id: novo.unidadeId }, select: { id: true } })
       if (!loja) return { ok: false, motivo: 'Loja não encontrada nesta empresa.' }
     }
+    // O cargo vem do formulário: procurar aqui passa pelo RLS.
+    const cargo = cargoId ? await db.cargo.findUnique({ where: { id: cargoId }, select: { nome: true } }) : null
+    if (cargoId && !cargo) return { ok: false, motivo: 'Cargo não encontrado nesta empresa.' }
 
     // Tirar o último dono é o erro que só aparece quando ninguém mais entra.
     const eraDono = acessos.some((a) => a.papel === 'DONO')
@@ -189,7 +202,7 @@ export async function mudarAcesso(
 
     await db.acesso.deleteMany({ where: { usuarioId } })
     await db.acesso.create({
-      data: { orgId: sessao.orgId, usuarioId, papel: novo.papel, unidadeId: novo.unidadeId },
+      data: { orgId: sessao.orgId, usuarioId, papel: novo.papel, unidadeId: novo.unidadeId, cargoId },
     })
 
     await db.auditoria.create({
@@ -203,7 +216,7 @@ export async function mudarAcesso(
         alvoId: usuarioId,
         alvoNome: pessoa.nome,
         antes: { papel: acessos[0]?.papel ?? null, unidadeId: acessos[0]?.unidadeId ?? null },
-        depois: { papel: novo.papel, unidadeId: novo.unidadeId },
+        depois: { papel: novo.papel, unidadeId: novo.unidadeId, ...(cargo ? { cargo: cargo.nome } : {}) },
       },
     })
     return { ok: true }

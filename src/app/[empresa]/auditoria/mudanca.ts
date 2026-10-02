@@ -65,6 +65,7 @@ const PAPEL: Record<Papel, string> = {
   FINANCEIRO: 'Financeiro',
   CONTADOR: 'Contador',
   SUPORTE: 'Suporte',
+  CARGO: 'Cargo',
 }
 
 const SITUACAO: Record<string, string> = {

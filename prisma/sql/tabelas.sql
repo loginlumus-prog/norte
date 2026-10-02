@@ -23,7 +23,7 @@ CREATE TYPE "Plano" AS ENUM ('GRATIS', 'BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPO
 CREATE TYPE "Situacao" AS ENUM ('TESTE', 'ATIVA', 'INADIMPLENTE', 'SUSPENSA', 'CANCELADA');
 
 -- CreateEnum
-CREATE TYPE "Papel" AS ENUM ('DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR', 'SUPORTE');
+CREATE TYPE "Papel" AS ENUM ('DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR', 'SUPORTE', 'CARGO');
 
 -- CreateEnum
 CREATE TYPE "Autor" AS ENUM ('PESSOA', 'AGENTE', 'SISTEMA');
@@ -247,6 +247,7 @@ CREATE TABLE "acessos" (
     "usuario_id" TEXT NOT NULL,
     "unidade_id" TEXT,
     "papel" "Papel" NOT NULL,
+    "cargo_id" TEXT,
     "expira_em" TIMESTAMP(3),
     "motivo" TEXT,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -261,6 +262,7 @@ CREATE TABLE "convites" (
     "email" TEXT NOT NULL,
     "papel" "Papel" NOT NULL,
     "unidade_id" TEXT,
+    "cargo_id" TEXT,
     "token" TEXT NOT NULL,
     "expira_em" TIMESTAMP(3) NOT NULL,
     "aceito_em" TIMESTAMP(3),
@@ -352,6 +354,18 @@ CREATE TABLE "presencas" (
     "ultimo_sinal" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "presencas_pkey" PRIMARY KEY ("org_id","usuario_id")
+);
+
+-- CreateTable
+CREATE TABLE "cargos" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "nome" TEXT NOT NULL,
+    "capacidades" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizado_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "cargos_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1471,6 +1485,12 @@ CREATE UNIQUE INDEX "cobranca_org_id_key" ON "cobranca"("org_id");
 CREATE INDEX "presencas_org_id_ultimo_sinal_idx" ON "presencas"("org_id", "ultimo_sinal");
 
 -- CreateIndex
+CREATE INDEX "cargos_org_id_idx" ON "cargos"("org_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "cargos_org_id_nome_key" ON "cargos"("org_id", "nome");
+
+-- CreateIndex
 CREATE INDEX "categorias_org_id_idx" ON "categorias"("org_id");
 
 -- CreateIndex
@@ -1858,7 +1878,13 @@ ALTER TABLE "acessos" ADD CONSTRAINT "acessos_usuario_id_fkey" FOREIGN KEY ("usu
 ALTER TABLE "acessos" ADD CONSTRAINT "acessos_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "acessos" ADD CONSTRAINT "acessos_cargo_id_fkey" FOREIGN KEY ("cargo_id") REFERENCES "cargos"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "convites" ADD CONSTRAINT "convites_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "convites" ADD CONSTRAINT "convites_cargo_id_fkey" FOREIGN KEY ("cargo_id") REFERENCES "cargos"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "tokens_conta" ADD CONSTRAINT "tokens_conta_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1886,6 +1912,9 @@ ALTER TABLE "presencas" ADD CONSTRAINT "presencas_org_id_fkey" FOREIGN KEY ("org
 
 -- AddForeignKey
 ALTER TABLE "presencas" ADD CONSTRAINT "presencas_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "cargos" ADD CONSTRAINT "cargos_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "categorias" ADD CONSTRAINT "categorias_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

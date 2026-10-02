@@ -42,7 +42,8 @@
 import { vendidoNaLoja } from './catalogo-loja'
 import { comoOrg, type BancoDaOrg } from './banco'
 import type { Prisma, SituacaoVenda } from '@prisma/client'
-import { exigir, numeroDaBusca, pode, PODERES, textoDaBusca, type Papel, type Sessao } from './permissao'
+import { exigir, numeroDaBusca, pode, textoDaBusca, type Sessao } from './permissao'
+import { SELECT_ACESSO, acessosDoBanco } from './cargos'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, reais, multiplicar, mostrar } from './dinheiro'
 import { tabelaDe, precoNaTabela, ROTULO_TABELA, type Tabela } from './preco'
@@ -199,11 +200,6 @@ export type ResultadoVenda =
 
 /** Troco acima disto é dedo errado (R$ 5.000 de troco não sai de gaveta de loja). */
 const TETO_DO_TROCO_CENT = 500_000
-
-/** Os papéis que podem vender. Derivado da tabela de poderes, não escrito à mão. */
-const PAPEIS_QUE_VENDEM = (Object.keys(PODERES) as Papel[]).filter((p) =>
-  PODERES[p].includes('venda.criar'),
-)
 
 export async function registrarVenda(
   sessao: Sessao,
@@ -455,17 +451,13 @@ export async function registrarVenda(
         where: { id: v.vendedorId },
         select: {
           nome: true, ativo: true,
-          acessos: { select: { papel: true, unidadeId: true, expiraEm: true } },
+          acessos: { select: SELECT_ACESSO },
         },
       })
+      // A mesma régua do balcão (`pode`): o cargo vende se marca "Vender".
       const podeVender =
         !!pessoa?.ativo &&
-        pessoa.acessos.some(
-          (a) =>
-            (!a.expiraEm || a.expiraEm > agora) &&
-            PAPEIS_QUE_VENDEM.includes(a.papel as Papel) &&
-            (a.unidadeId === null || a.unidadeId === v.unidadeId),
-        )
+        pode({ orgId: sessao.orgId, usuarioId: v.vendedorId, nome: pessoa.nome, acessos: acessosDoBanco(pessoa.acessos) }, 'venda.criar', v.unidadeId, agora)
       if (!podeVender) return { ok: false as const, motivo: 'vendedor_invalido' as const }
       vendedor = { id: v.vendedorId, nome: pessoa!.nome }
     }

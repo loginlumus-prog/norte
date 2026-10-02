@@ -360,3 +360,69 @@ describe('o IP de quem pediu', () => {
     expect(ipDoCabecalho(' , ', null)).toBeNull()
   })
 })
+
+// ── cargos criados pela empresa ──────────────────────────────
+import { CAPACIDADES_DE_CARGO, PODERES } from '../src/servidor/permissao'
+import { acessosDoBanco, limparCapacidades } from '../src/servidor/cargos'
+
+describe('cargo da empresa: só o que o cargo marca, e nunca acima do gerente', () => {
+  const subgerente3 = sessao('Subgerente da 3', [
+    { papel: 'CARGO', unidadeId: LOJA_3, capacidades: ['venda.criar', 'caixa.operar', 'estoque.ver'] },
+  ])
+
+  it('pode o que está marcado, na loja dele', () => {
+    expect(pode(subgerente3, 'venda.criar', LOJA_3)).toBe(true)
+    expect(pode(subgerente3, 'caixa.operar', LOJA_3)).toBe(true)
+    expect(pode(subgerente3, 'estoque.ver', LOJA_3)).toBe(true)
+  })
+
+  it('não pode o que não está marcado, nem em outra loja', () => {
+    expect(pode(subgerente3, 'produto.preco', LOJA_3)).toBe(false)
+    expect(pode(subgerente3, 'venda.cancelar', LOJA_3)).toBe(false)
+    expect(pode(subgerente3, 'venda.criar', LOJA_5)).toBe(false)
+  })
+
+  it('cargo sem as capacidades lidas (caminho que esqueceu o cargo) não pode nada', () => {
+    const esquecido = sessao('Esquecido', [{ papel: 'CARGO', unidadeId: null }])
+    for (const c of PODERES.DONO) expect(pode(esquecido, c)).toBe(false)
+  })
+
+  it('marcar além do teto não vale: configurar, lançar no financeiro e dar acesso ficam de fora', () => {
+    const ambicioso = sessao('Ambicioso', [
+      { papel: 'CARGO', unidadeId: null, capacidades: ['empresa.configurar', 'agente.configurar', 'equipe.gerir', 'financeiro.lancar', 'venda.ver'] },
+    ])
+    expect(pode(ambicioso, 'empresa.configurar')).toBe(false)
+    expect(pode(ambicioso, 'agente.configurar')).toBe(false)
+    expect(pode(ambicioso, 'equipe.gerir')).toBe(false)
+    expect(pode(ambicioso, 'financeiro.lancar')).toBe(false)
+    expect(pode(ambicioso, 'venda.ver')).toBe(true)
+  })
+
+  it('o teto é o gerente menos montar a equipe', () => {
+    for (const c of CAPACIDADES_DE_CARGO) expect(PODERES.GERENTE).toContain(c)
+    expect(CAPACIDADES_DE_CARGO).not.toContain('equipe.gerir')
+  })
+
+  it('só o dono dá um cargo; o gerente e o próprio cargo não', () => {
+    expect(podeConceder(dono, 'CARGO', LOJA_3)).toBe(true)
+    expect(podeConceder(gerente3, 'CARGO', LOJA_3)).toBe(false)
+    expect(podeConceder(subgerente3, 'BALCAO', LOJA_3)).toBe(false)
+  })
+
+  it('limparCapacidades joga fora o que não é de cargo e repetição', () => {
+    expect(limparCapacidades(['venda.criar', 'venda.criar', 'empresa.configurar', 'inventado'])).toEqual(['venda.criar'])
+  })
+
+  it('acessosDoBanco leva as capacidades só para o papel CARGO', () => {
+    const lidos = acessosDoBanco([
+      { papel: 'CARGO', unidadeId: LOJA_3, expiraEm: null, cargo: { capacidades: ['venda.criar'] } },
+      { papel: 'CARGO', unidadeId: LOJA_5, expiraEm: null, cargo: null },
+      { papel: 'GERENTE', unidadeId: LOJA_3, expiraEm: null, cargo: { capacidades: [] } },
+    ])
+    expect(lidos[0]!.capacidades).toEqual(['venda.criar'])
+    expect(lidos[1]!.capacidades).toEqual([])
+    expect('capacidades' in lidos[2]!).toBe(false)
+    // O gerente continua gerente: o cargo pendurado por engano não o restringe nem amplia.
+    expect(pode({ ...gerente3, acessos: [lidos[2]!] }, 'produto.preco', LOJA_3)).toBe(true)
+  })
+})

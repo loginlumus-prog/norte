@@ -78,7 +78,15 @@ export async function conferirSessao(
     // O que a empresa deu a mais ao Balcão (ver EXTRAS_DO_BALCAO). Daqui, e
     // não do cookie: desligar a chave vale na próxima tela.
     const org = await db.org.findUnique({ where: { id: doCookie.orgId }, select: { balcaoAmpliado: true } })
-    return { usuario, presenca, balcaoAmpliado: org?.balcaoAmpliado ?? false }
+    // O que cada CARGO pode, daqui e não do cookie: o dono desmarca uma caixa
+    // no cargo e vale na próxima tela de quem tem o cargo.
+    const cargos = doCookie.acessos.some((a) => a.papel === 'CARGO')
+      ? await db.acesso.findMany({
+          where: { usuarioId: doCookie.usuarioId, papel: 'CARGO' },
+          select: { unidadeId: true, cargo: { select: { capacidades: true } } },
+        })
+      : []
+    return { usuario, presenca, balcaoAmpliado: org?.balcaoAmpliado ?? false, cargos }
   })
 
   // Usuário apagado, desativado, ou sessão emitida antes do corte.
@@ -95,7 +103,15 @@ export async function conferirSessao(
   }
 
   const { nasceu: _nasceu, ...doCookieSemData } = doCookie
-  const sessao: SessaoViva = { ...doCookieSemData, balcaoAmpliado: achado.balcaoAmpliado }
+  const sessao: SessaoViva = {
+    ...doCookieSemData,
+    acessos: doCookieSemData.acessos.map((a) =>
+      a.papel === 'CARGO'
+        ? { ...a, capacidades: achado.cargos.find((c) => c.unidadeId === a.unidadeId)?.cargo?.capacidades ?? [] }
+        : a,
+    ),
+    balcaoAmpliado: achado.balcaoAmpliado,
+  }
 
   // ── "ainda estou aqui" ───────────────────────────────────
   // É este toque que segura a vaga. Ele mora aqui porque aqui é o único lugar

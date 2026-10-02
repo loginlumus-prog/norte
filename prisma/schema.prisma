@@ -10,7 +10,7 @@
 // A parede 2 existe para o dia em que a 1 falhar.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   // partialIndexes: índice com WHERE (ver Caixa). Sem o recurso, o índice
   // parcial teria de morar fora do schema, e todo `migrar --nova` o veria
   // como sobra no banco e escreveria um DROP dele.
@@ -30,7 +30,7 @@ datasource db {
 /// A empresa cliente. É o tenant: tudo pendura aqui.
 /// Loja de bairro = 1 Org com 1 Unidade. Rede de 40 = 1 Org com 40 Unidades.
 model Org {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   nome      String
   slug      String  @unique // subdomínio / URL
   documento String? // CNPJ
@@ -88,10 +88,10 @@ model Org {
   /// a etiqueta)? Sorveteria nao etiqueta picole; loja de roupa nao vende por
   /// botao com seis tamanhos de cada peca. O ramo escolhe o padrao no
   /// cadastro inicial, e o dono troca em Configuracoes quando quiser.
-  balcaoGrade Boolean @default(false) @map("balcao_grade") 
+  balcaoGrade Boolean @default(false) @map("balcao_grade")
 
-  plano       Plano     @default(BALCAO)
-  situacao    Situacao  @default(TESTE)
+  plano    Plano    @default(BALCAO)
+  situacao Situacao @default(TESTE)
 
   /// O que ESTA empresa usa. Quem não vende fiado não vê Crediário em lugar
   /// nenhum — nem no menu, nem em relatório, nem no agente. A chave para
@@ -99,13 +99,13 @@ model Org {
   ///
   /// Módulo é grosso de propósito: cada chave dobra as combinações a testar.
   /// Com trinta chaves ninguém garante mais que o sistema funciona.
-  modulos     String[]  @default([])
-  testeAte    DateTime? @map("teste_ate")
-  suspensaEm  DateTime? @map("suspensa_em")
+  modulos    String[]  @default([])
+  testeAte   DateTime? @map("teste_ate")
+  suspensaEm DateTime? @map("suspensa_em")
 
   // marca (white-label)
-  logoUrl   String? @map("logo_url")
-  corMarca  String? @map("cor_marca")
+  logoUrl  String? @map("logo_url")
+  corMarca String? @map("cor_marca")
 
   /// Teto de desconto do balcao, em PORCENTO do preco de tabela.
   /// Existe porque preco que chega do navegador e' pedido, nao ordem: sem
@@ -119,15 +119,15 @@ model Org {
   /// estoque importado ainda sem balanço — a loja acha no provador a peça que
   /// o sistema deu por vendida. Ligado, a venda avisa, passa, o saldo fica
   /// negativo e o item entra na lista "Vendido sem estoque — conferir".
-  vendeSemEstoque Boolean @default(false) @map("vende_sem_estoque")
+  vendeSemEstoque    Boolean @default(false) @map("vende_sem_estoque")
   /// Vale-troca de cada loja só se gasta na loja que o emitiu (lojas com CNPJ
   /// próprio). Desligado = o vale é da empresa e vale em qualquer loja.
-  valePorLoja Boolean @default(false) @map("vale_por_loja")
+  valePorLoja        Boolean @default(false) @map("vale_por_loja")
   /// Crédito na maquininha em até quantas vezes o balcão oferece.
-  creditoMaxParcelas Int @default(6) @map("credito_max_parcelas")
+  creditoMaxParcelas Int     @default(6) @map("credito_max_parcelas")
   /// Juro do parcelamento no crédito (2× ou mais), em porcento sobre o valor.
   /// Zero = a loja parcela sem juros, que é o comum.
-  creditoJurosPct Decimal @default(0) @map("credito_juros_pct") @db.Decimal(5, 2)
+  creditoJurosPct    Decimal @default(0) @map("credito_juros_pct") @db.Decimal(5, 2)
 
   // ── lembrete do horário (Agenda) ─────────────────────────
   /// Desligado até a loja decidir. Quando ligado, o cliente que ACEITOU
@@ -160,24 +160,24 @@ model Org {
   /// Não é juro do parcelamento: parcelar não custa nada ao cliente — o preço
   /// "no crediário" do produto já embute o risco. Quem recebe pode mudar o
   /// valor na hora, com a pessoa na frente.
-  crediarioJurosMes Decimal @default(3) @map("crediario_juros_mes") @db.Decimal(5, 2)
+  crediarioJurosMes     Decimal @default(3) @map("crediario_juros_mes") @db.Decimal(5, 2)
   /// Em quantas vezes, no máximo, a loja parcela.
-  crediarioMaxParcelas Int @default(6) @map("crediario_max_parcelas")
+  crediarioMaxParcelas  Int     @default(6) @map("crediario_max_parcelas")
   /// Dias entre uma parcela e a outra — e até a primeira.
-  crediarioDiasEntre Int @default(30) @map("crediario_dias_entre")
+  crediarioDiasEntre    Int     @default(30) @map("crediario_dias_entre")
   /// Multa de atraso, em porcento do que restava, cobrada UMA vez por parcela
   /// (`Parcela.multaCobrada`). Teto de 2%: o Código de Defesa do Consumidor
   /// (art. 52, § 1º). Zero = a loja não cobra multa — e é o padrão: multa é
   /// regra de cada loja, ligada por ela na tela de Crediário, nunca de surpresa
   /// numa parcela que ontem custava menos.
-  crediarioMultaPct Decimal @default(0) @map("crediario_multa_pct") @db.Decimal(5, 2)
+  crediarioMultaPct     Decimal @default(0) @map("crediario_multa_pct") @db.Decimal(5, 2)
   /// Dias de atraso perdoados antes de a conta começar ("pagou dois dias
   /// depois, não cobra"). Passou deles, multa e juro contam do vencimento
   /// menos a carência.
-  crediarioCarenciaDias Int @default(0) @map("crediario_carencia_dias")
+  crediarioCarenciaDias Int     @default(0) @map("crediario_carencia_dias")
   /// Arredondar o atraso (multa + juro) do recibo para os 10 centavos de
   /// cima: no dinheiro, R$ 3,47 de juro vira conversa sobre moeda de 1 centavo.
-  crediarioArredondar Boolean @default(false) @map("crediario_arredondar")
+  crediarioArredondar   Boolean @default(false) @map("crediario_arredondar")
 
   // ── o livro de assinaturas e o balcão que conta estoque ──
   /// Pedir o PIN de QUEM FAZ nas exceções: sangria, suprimento, cancelar
@@ -196,18 +196,18 @@ model Org {
   /// Multa de atraso, em porcento do que venceu, cobrada UMA vez por
   /// mensalidade. O teto é 2%: é o que o Código de Defesa do Consumidor
   /// (art. 52, § 1º) deixa cobrar, e é o que a Justiça aplica à escola.
-  mensalidadeMultaPct Decimal @default(2) @map("mensalidade_multa_pct") @db.Decimal(5, 2)
+  mensalidadeMultaPct        Decimal @default(2) @map("mensalidade_multa_pct") @db.Decimal(5, 2)
   /// Juro de mora, em porcento ao mês, proporcional aos dias. Teto de 1%.
-  mensalidadeJurosMes Decimal @default(1) @map("mensalidade_juros_mes") @db.Decimal(5, 2)
+  mensalidadeJurosMes        Decimal @default(1) @map("mensalidade_juros_mes") @db.Decimal(5, 2)
   /// Desconto para quem paga até o vencimento, em porcento. Zero = não dá.
   mensalidadePontualidadePct Decimal @default(0) @map("mensalidade_pontualidade_pct") @db.Decimal(5, 2)
   /// O aviso da mensalidade ao RESPONSÁVEL no WhatsApp. Desligado até a
   /// escola decidir; texto fixo, só para quem aceitou.
-  avisoMensalidadeAtivo Boolean @default(false) @map("aviso_mensalidade_ativo")
+  avisoMensalidadeAtivo      Boolean @default(false) @map("aviso_mensalidade_ativo")
   /// Quantos dias ANTES do vencimento o aviso sai.
-  avisoMensalidadeDias  Int     @default(3) @map("aviso_mensalidade_dias")
+  avisoMensalidadeDias       Int     @default(3) @map("aviso_mensalidade_dias")
   /// Quantos dias DEPOIS do vencimento sai o aviso de atraso. Zero = não sai.
-  avisoAtrasoDias       Int     @default(5) @map("aviso_atraso_dias")
+  avisoAtrasoDias            Int     @default(5) @map("aviso_atraso_dias")
 
   // ── credito de IA ────────────────────────────────────────
   /// Saldo de credito de IA, em centavos.
@@ -231,70 +231,71 @@ model Org {
   presencas Presenca[]
   acessos   Acesso[]
   convites  Convite[]
+  cargos    Cargo[]
   auditoria Auditoria[]
   cobranca  Cobranca?
 
-  categorias     Categoria[]
-  movimentosPontos MovimentoPontos[]
-  eixos          Eixo[]
-  opcoes         Opcao[]
-  produtos       Produto[]
-  produtoEixos   ProdutoEixo[]
-  variacoes      Variacao[]
-  variacaoOpcoes VariacaoOpcao[]
-  estoques       Estoque[]
-  movimentos     MovimentoEstoque[]
-  clientes       Cliente[]
-  caixas         Caixa[]
-  caixaMovimentos CaixaMovimento[]
-  vendas         Venda[]
-  vendaItens     VendaItem[]
-  pagamentos     Pagamento[]
-  devolucoes     Devolucao[]
-  devolucaoItens DevolucaoItem[]
-  vales          Vale[]
-  parcelas       Parcela[]
-  recebimentos   Recebimento[]
-  taxas          TaxaPagamento[]
-  metas          Meta[]
-  categoriasFin  CategoriaFinanceira[]
-  contasFin      ContaFinanceira[]
-  lancamentos    Lancamento[]
-  recorrentes    Recorrente[]
-  tentativas     TentativaLogin[]
-  tokensConta    TokenConta[]
-  pedidosConta   PedidoConta[]
-  agente         Agente?
-  sessaoWhatsapp    SessaoWhatsapp?
-  gatilhos       GatilhoAgente[]
-  propostas      PropostaAgente[]
-  recibos        ReciboAgente[]
-  consumoIA      ConsumoIA[]
-  conversas      ConversaAgente[]
-  mensagens      MensagemAgente[]
-  quadros        Quadro[]
-  tarefas        Tarefa[]
-  encomendas     Encomenda[]
-  campanhas         Campanha[]
-  campanhaExecucoes CampanhaExecucao[]
-  campanhaPassos    CampanhaPasso[]
-  campanhaAjustes   CampanhaAjustes?
-  midias            Midia[]
-  semOfertas        OptOutWhatsapp[]
-  colaboradores     Colaborador[]
-  registrosPonto    RegistroPonto[]
-  agendamentos      Agendamento[]
-  fornecedores      Fornecedor[]
-  pedidosCompra     PedidoCompra[]
-  itensCompra       ItemCompra[]
-  recebimentosCompra RecebimentoCompra[]
-  confirmacoesTelefone ConfirmacaoTelefone[]
-  responsaveis      Responsavel[]
-  turmas            Turma[]
-  matriculas        Matricula[]
-  mensalidades      Mensalidade[]
+  categorias            Categoria[]
+  movimentosPontos      MovimentoPontos[]
+  eixos                 Eixo[]
+  opcoes                Opcao[]
+  produtos              Produto[]
+  produtoEixos          ProdutoEixo[]
+  variacoes             Variacao[]
+  variacaoOpcoes        VariacaoOpcao[]
+  estoques              Estoque[]
+  movimentos            MovimentoEstoque[]
+  clientes              Cliente[]
+  caixas                Caixa[]
+  caixaMovimentos       CaixaMovimento[]
+  vendas                Venda[]
+  vendaItens            VendaItem[]
+  pagamentos            Pagamento[]
+  devolucoes            Devolucao[]
+  devolucaoItens        DevolucaoItem[]
+  vales                 Vale[]
+  parcelas              Parcela[]
+  recebimentos          Recebimento[]
+  taxas                 TaxaPagamento[]
+  metas                 Meta[]
+  categoriasFin         CategoriaFinanceira[]
+  contasFin             ContaFinanceira[]
+  lancamentos           Lancamento[]
+  recorrentes           Recorrente[]
+  tentativas            TentativaLogin[]
+  tokensConta           TokenConta[]
+  pedidosConta          PedidoConta[]
+  agente                Agente?
+  sessaoWhatsapp        SessaoWhatsapp?
+  gatilhos              GatilhoAgente[]
+  propostas             PropostaAgente[]
+  recibos               ReciboAgente[]
+  consumoIA             ConsumoIA[]
+  conversas             ConversaAgente[]
+  mensagens             MensagemAgente[]
+  quadros               Quadro[]
+  tarefas               Tarefa[]
+  encomendas            Encomenda[]
+  campanhas             Campanha[]
+  campanhaExecucoes     CampanhaExecucao[]
+  campanhaPassos        CampanhaPasso[]
+  campanhaAjustes       CampanhaAjustes?
+  midias                Midia[]
+  semOfertas            OptOutWhatsapp[]
+  colaboradores         Colaborador[]
+  registrosPonto        RegistroPonto[]
+  agendamentos          Agendamento[]
+  fornecedores          Fornecedor[]
+  pedidosCompra         PedidoCompra[]
+  itensCompra           ItemCompra[]
+  recebimentosCompra    RecebimentoCompra[]
+  confirmacoesTelefone  ConfirmacaoTelefone[]
+  responsaveis          Responsavel[]
+  turmas                Turma[]
+  matriculas            Matricula[]
+  mensalidades          Mensalidade[]
   pagamentosMensalidade PagamentoMensalidade[]
-  recibosCrediario  ReciboCrediario[]
+  recibosCrediario      ReciboCrediario[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -351,27 +352,27 @@ model Unidade {
   /// o fechamento separar o que caiu em cada uma. Lida por maquininhas.ts.
   maquininhas Json?
 
-  acessos    Acesso[]
-  auditoria  Auditoria[]
-  estoques   Estoque[]
-  movimentos MovimentoEstoque[]
-  caixas      Caixa[]
-  vendas      Venda[]
-  devolucoes  Devolucao[]
-  vales       Vale[]
-  parcelas    Parcela[]
-  lancamentos Lancamento[]
-  quadros     Quadro[]
-  encomendas  Encomenda[]
-  colaboradores  Colaborador[]
-  registrosPonto RegistroPonto[]
-  agendamentos   Agendamento[]
-  pedidosCompra  PedidoCompra[]
-  turmas         Turma[]
-  matriculas     Matricula[]
-  mensalidades   Mensalidade[]
+  acessos               Acesso[]
+  auditoria             Auditoria[]
+  estoques              Estoque[]
+  movimentos            MovimentoEstoque[]
+  caixas                Caixa[]
+  vendas                Venda[]
+  devolucoes            Devolucao[]
+  vales                 Vale[]
+  parcelas              Parcela[]
+  lancamentos           Lancamento[]
+  quadros               Quadro[]
+  encomendas            Encomenda[]
+  colaboradores         Colaborador[]
+  registrosPonto        RegistroPonto[]
+  agendamentos          Agendamento[]
+  pedidosCompra         PedidoCompra[]
+  turmas                Turma[]
+  matriculas            Matricula[]
+  mensalidades          Mensalidade[]
   pagamentosMensalidade PagamentoMensalidade[]
-  recibosCrediario ReciboCrediario[]
+  recibosCrediario      ReciboCrediario[]
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -392,16 +393,16 @@ model Usuario {
   orgId String @map("org_id")
   org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  nome      String
-  email     String
-  senhaHash String? @map("senha_hash")
+  nome          String
+  email         String
+  senhaHash     String?   @map("senha_hash")
   /// O PIN pessoal (4 a 6 números) para autorizar na hora, no balcão de
   /// outra pessoa: desconto acima do teto, item avulso. Guardado como a
   /// senha (scrypt), nunca o número. Ver src/servidor/autorizacao.ts.
   pinHash       String?   @map("pin_hash")
   pinDefinidoEm DateTime? @map("pin_definido_em")
-  telefone  String?
-  fotoUrl   String? @map("foto_url")
+  telefone      String?
+  fotoUrl       String?   @map("foto_url")
 
   ativo       Boolean   @default(true)
   ultimoLogin DateTime? @map("ultimo_login")
@@ -438,13 +439,13 @@ model Usuario {
   /// e o número da dona de ontem pode ser de outra pessoa amanhã.
   telefoneVistoEm      DateTime? @map("telefone_visto_em")
 
-  acessos   Acesso[]
-  auditoria Auditoria[]
-  presencas Presenca[]
-  metas     Meta[]
-  tarefas   Tarefa[]
-  tokens    TokenConta[]
-  colaborador Colaborador?
+  acessos              Acesso[]
+  auditoria            Auditoria[]
+  presencas            Presenca[]
+  metas                Meta[]
+  tarefas              Tarefa[]
+  tokens               TokenConta[]
+  colaborador          Colaborador?
   confirmacoesTelefone ConfirmacaoTelefone[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
@@ -509,7 +510,7 @@ model Meta {
   mes String
 
   /// Quanto a pessoa precisa vender no mês. Zero = sem meta, só comissão.
-  valor Decimal @default(0) @db.Decimal(12, 2)
+  valor       Decimal @default(0) @db.Decimal(12, 2)
   /// Porcento sobre o que ela vendeu (líquido de devolução).
   comissaoPct Decimal @default(0) @map("comissao_pct") @db.Decimal(5, 2)
 
@@ -536,6 +537,11 @@ model Acesso {
 
   papel Papel
 
+  /// Só no papel CARGO: o cargo que a empresa criou ("Subgerente") e que diz
+  /// o que este acesso pode. Sem cargo, o papel CARGO não pode nada.
+  cargoId String? @map("cargo_id")
+  cargo   Cargo?  @relation(fields: [cargoId], references: [id], onDelete: NoAction)
+
   /// Acesso de suporte (nosso) é temporário e precisa de motivo.
   expiraEm DateTime? @map("expira_em")
   motivo   String?
@@ -555,6 +561,9 @@ model Convite {
   email     String
   papel     Papel
   unidadeId String? @map("unidade_id")
+  /// Só no papel CARGO: o cargo que a pessoa recebe ao aceitar.
+  cargoId   String? @map("cargo_id")
+  cargo     Cargo?  @relation(fields: [cargoId], references: [id], onDelete: NoAction)
 
   token    String    @unique
   expiraEm DateTime  @map("expira_em")
@@ -580,7 +589,7 @@ model TokenConta {
 
   tipo TipoTokenConta
   /// SHA-256 (hex) do token. O token em si não existe em lugar nenhum daqui.
-  hash String @unique
+  hash String         @unique
 
   expiraEm DateTime  @map("expira_em")
   /// Preenchido no uso. Link usado não abre de novo.
@@ -659,21 +668,21 @@ model Auditoria {
   quem  String
   autor Autor  @default(PESSOA)
 
-  acao      String // "produto.preco.alterou", "caixa.fechou"
-  alvoTipo  String? @map("alvo_tipo")
-  alvoId    String? @map("alvo_id")
-  alvoNome  String? @map("alvo_nome")
+  acao     String // "produto.preco.alterou", "caixa.fechou"
+  alvoTipo String? @map("alvo_tipo")
+  alvoId   String? @map("alvo_id")
+  alvoNome String? @map("alvo_nome")
 
-  antes  Json?
-  depois Json?
-  valor  Decimal? @db.Decimal(14, 2)
-  motivo String?
+  antes    Json?
+  depois   Json?
+  valor    Decimal? @db.Decimal(14, 2)
+  motivo   String?
   /// Quem fez ASSINOU com o PIN dela (`Org.pinNasExcecoes`, juntar fichas, a
   /// vendedora que corrige estoque). É o filtro "assinado" do livro.
-  assinado Boolean @default(false)
+  assinado Boolean  @default(false)
 
-  ip        String?
-  criadoEm  DateTime @default(now()) @map("criado_em")
+  ip       String?
+  criadoEm DateTime @default(now()) @map("criado_em")
 
   @@index([orgId, criadoEm])
   @@index([orgId, alvoTipo, alvoId])
@@ -691,7 +700,7 @@ model Cobranca {
 
   provedor       String? // asaas | iugu | vindi
   assinaturaId   String? @map("assinatura_id")
-  valorMensal    Decimal @default(0) @db.Decimal(10, 2) @map("valor_mensal")
+  valorMensal    Decimal @default(0) @map("valor_mensal") @db.Decimal(10, 2)
   unidadesExtras Int     @default(0) @map("unidades_extras")
 
   proximaCobranca DateTime? @map("proxima_cobranca")
@@ -793,6 +802,30 @@ enum Papel {
   FINANCEIRO
   CONTADOR // convidado, só leitura do financeiro
   SUPORTE // nós, com prazo e motivo
+  CARGO // cargo criado pela empresa: pode só o que o cargo marca (ver Cargo)
+}
+
+/// Um cargo da empresa: o nome ("Subgerente", "Caixa da fábrica") e o que ele
+/// pode, marcado pelo dono. Nunca passa do que um Gerente pode — a lista de
+/// escolha sai de `CAPACIDADES_DE_CARGO` (src/servidor/cargos.ts) e o servidor
+/// confere de novo a cada pergunta de permissão.
+model Cargo {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome        String
+  capacidades String[] @default([])
+
+  acessos  Acesso[]
+  convites Convite[]
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@unique([orgId, nome])
+  @@index([orgId])
+  @@map("cargos")
 }
 
 enum Autor {
@@ -880,9 +913,9 @@ model Produto {
   orgId String @map("org_id")
   org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  nome      String
-  descricao String?
-  marca     String?
+  nome       String
+  descricao  String?
+  marca      String?
   /// A referência do fornecedor ("ref. 6291.1175"). É o que a vendedora
   /// encontra na caixa e na nota de compra — o balcão acha o produto por ela,
   /// por pedaço, como acha pelo código da etiqueta.
@@ -924,10 +957,10 @@ model Produto {
   /// É SERVIÇO: não é mercadoria, não tem estoque. A manicure, a consulta, a
   /// aula avulsa. Vende no balcão como qualquer produto, mas não baixa saldo
   /// nem aparece como "acabou" — serviço não acaba na prateleira.
-  servico Boolean @default(false)
+  servico    Boolean @default(false)
   /// Quanto tempo o serviço ocupa na agenda, em minutos. É o padrão do
   /// horário marcado; quem marca pode mudar naquele horário.
-  duracaoMin Int? @map("duracao_min")
+  duracaoMin Int?    @map("duracao_min")
 
   /// MATERIAL DE USO — não vende. A luva e a gaze da clínica, a acetona e o
   /// algodão do salão: têm estoque, mínimo, compra e "Material usado", mas
@@ -945,8 +978,8 @@ model Produto {
 
   ativo Boolean @default(true)
 
-  eixos     ProdutoEixo[]
-  variacoes Variacao[]
+  eixos        ProdutoEixo[]
+  variacoes    Variacao[]
   agendamentos Agendamento[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
@@ -995,10 +1028,10 @@ model Variacao {
   padrao Boolean @default(false)
   ativa  Boolean @default(true)
 
-  opcoes     VariacaoOpcao[]
-  estoques   Estoque[]
-  movimentos MovimentoEstoque[]
-  vendaItens VendaItem[]
+  opcoes      VariacaoOpcao[]
+  estoques    Estoque[]
+  movimentos  MovimentoEstoque[]
+  vendaItens  VendaItem[]
   itensCompra ItemCompra[]
 
   criadaEm DateTime @default(now()) @map("criada_em")
@@ -1057,22 +1090,22 @@ model MovimentoEstoque {
   unidadeId  String   @map("unidade_id")
   unidade    Unidade  @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
 
-  tipo TipoMovimento
+  tipo        TipoMovimento
   /// Positiva para entrada, negativa para saída. Sempre o delta, nunca o saldo.
-  quantidade Decimal @db.Decimal(14, 3)
+  quantidade  Decimal       @db.Decimal(14, 3)
   /// Saldo logo depois deste movimento — para conferir sem refazer a soma toda.
-  saldoDepois Decimal @map("saldo_depois") @db.Decimal(14, 3)
+  saldoDepois Decimal       @map("saldo_depois") @db.Decimal(14, 3)
 
-  motivo String?
+  motivo          String?
   /// Id da venda, da entrada de mercadoria, do que originou.
-  referencia String?
+  referencia      String?
   /// As duas pernas de uma transferência entre lojas (a saída TRANSFERENCIA
   /// e a ENTRADA no destino) levam o MESMO id aqui. É o que separa "a peça só
   /// mudou de prateleira" de "entrou mercadoria" sem ler o texto do motivo —
   /// que é da pessoa, e pode dizer qualquer coisa.
   transferenciaId String? @map("transferencia_id")
-  usuarioId  String? @map("usuario_id")
-  quem       String
+  usuarioId       String? @map("usuario_id")
+  quem            String
 
   criadoEm DateTime @default(now()) @map("criado_em")
 
@@ -1114,10 +1147,10 @@ model Cliente {
   orgId String @map("org_id")
   org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  nome      String
-  documento String? // CPF
-  telefone  String?
-  email     String?
+  nome       String
+  documento  String? // CPF
+  telefone   String?
+  email      String?
   nascimento DateTime? @db.Date
 
   endereco String?
@@ -1171,22 +1204,22 @@ model Cliente {
   /// A mesma pessoa estava cadastrada duas vezes e esta ficha foi JUNTADA na
   /// outra: o id da que ficou. Vendas, parcelas, recibos, vales e pontos foram
   /// para lá; esta fica inativa, para o histórico e os links antigos.
-  juntadaNaId String?   @map("juntada_na_id")
-  juntadaEm   DateTime? @map("juntada_em")
+  juntadaNaId           String?   @map("juntada_na_id")
+  juntadaEm             DateTime? @map("juntada_em")
 
-  vendas Venda[]
+  vendas           Venda[]
   movimentosPontos MovimentoPontos[]
-  vales  Vale[]
-  parcelas Parcela[]
+  vales            Vale[]
+  parcelas         Parcela[]
   recibosCrediario ReciboCrediario[]
-  encomendas Encomenda[]
-  agendamentos Agendamento[]
+  encomendas       Encomenda[]
+  agendamentos     Agendamento[]
   /// Na escola: quem responde pelo aluno (e paga). Ver `Responsavel`.
-  responsavel  Responsavel?
-  matriculas   Matricula[]
-  mensalidades Mensalidade[]
+  responsavel      Responsavel?
+  matriculas       Matricula[]
+  mensalidades     Mensalidade[]
 
-  criadoEm     DateTime @default(now()) @map("criado_em")
+  criadoEm  DateTime         @default(now()) @map("criado_em")
   conversas ConversaAgente[]
 
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -1246,26 +1279,25 @@ model Caixa {
 
   aberto Boolean @default(true)
 
-  abertoPorId String?  @map("aberto_por_id")
-  abertoPor   String   @map("aberto_por")
-  abertoEm    DateTime @default(now()) @map("aberto_em")
-  saldoAbertura Decimal @default(0) @map("saldo_abertura") @db.Decimal(12, 2)
+  abertoPorId   String?  @map("aberto_por_id")
+  abertoPor     String   @map("aberto_por")
+  abertoEm      DateTime @default(now()) @map("aberto_em")
+  saldoAbertura Decimal  @default(0) @map("saldo_abertura") @db.Decimal(12, 2)
 
-  fechadoPor String?   @map("fechado_por")
-  fechadoEm  DateTime? @map("fechado_em")
+  fechadoPor    String?   @map("fechado_por")
+  fechadoEm     DateTime? @map("fechado_em")
   /// O que o sistema diz que devia ter na gaveta.
-  saldoEsperado Decimal? @map("saldo_esperado") @db.Decimal(12, 2)
+  saldoEsperado Decimal?  @map("saldo_esperado") @db.Decimal(12, 2)
   /// O que a pessoa contou. A diferença entre os dois é o que importa.
-  saldoContado  Decimal? @map("saldo_contado") @db.Decimal(12, 2)
+  saldoContado  Decimal?  @map("saldo_contado") @db.Decimal(12, 2)
   observacoes   String?
 
-  vendas       Venda[]
-  movimentos   CaixaMovimento[]
-  recebimentos Recebimento[]
-  recibosCrediario ReciboCrediario[]
+  vendas                Venda[]
+  movimentos            CaixaMovimento[]
+  recebimentos          Recebimento[]
+  recibosCrediario      ReciboCrediario[]
   pagamentosMensalidade PagamentoMensalidade[]
 
-  @@index([orgId, unidadeId, aberto])
   /// Uma loja, no máximo UM caixa aberto. A trava do `abrirCaixa` (advisory
   /// lock por loja) é a resposta educada; este índice é a garantia — vale
   /// também para quem escreve por fora dela (script, rotina, bug).
@@ -1276,6 +1308,7 @@ model Caixa {
   /// FECHADO. Caixa aberto se procura com `findFirst({ where: { unidadeId,
   /// aberto: true } })`, como em `caixaAberto`.
   @@unique([unidadeId], map: "caixas_um_aberto_por_unidade", where: raw("aberto"))
+  @@index([orgId, unidadeId, aberto])
   @@map("caixas")
 }
 
@@ -1290,7 +1323,7 @@ model CaixaMovimento {
 
   tipo   TipoCaixa
   /// Sempre positiva; o sinal vem do tipo.
-  valor  Decimal @db.Decimal(12, 2)
+  valor  Decimal   @db.Decimal(12, 2)
   motivo String
   quem   String
 
@@ -1341,10 +1374,10 @@ model Venda {
   /// pontos e que estava caro.
   descontoPontos Decimal @default(0) @map("desconto_pontos") @db.Decimal(12, 2)
 
-  pontosUsados  Int @default(0) @map("pontos_usados")
-  pontosGanhos  Int @default(0) @map("pontos_ganhos")
+  pontosUsados Int @default(0) @map("pontos_usados")
+  pontosGanhos Int @default(0) @map("pontos_ganhos")
 
-  total    Decimal @default(0) @db.Decimal(12, 2)
+  total Decimal @default(0) @db.Decimal(12, 2)
 
   /// O contrário do desconto: a peça saiu da promoção e a etiqueta ficou com
   /// o preço velho, e quem vende soma a diferença. Já está dentro do `total`;
@@ -1358,10 +1391,10 @@ model Venda {
 
   observacoes String?
 
-  itens      VendaItem[]
-  pagamentos Pagamento[]
-  devolucoes Devolucao[]
-  parcelas   Parcela[]
+  itens       VendaItem[]
+  pagamentos  Pagamento[]
+  devolucoes  Devolucao[]
+  parcelas    Parcela[]
   /// O horário da agenda que esta venda cobrou ("Atender e cobrar").
   agendamento Agendamento?
 
@@ -1370,10 +1403,10 @@ model Venda {
   encomendaId String?    @unique @map("encomenda_id")
   encomenda   Encomenda? @relation(fields: [encomendaId], references: [id], onDelete: SetNull)
 
-  criadaEm    DateTime  @default(now()) @map("criada_em")
-  concluidaEm DateTime? @map("concluida_em")
-  canceladaEm DateTime? @map("cancelada_em")
-  motivoCancelamento String? @map("motivo_cancelamento")
+  criadaEm           DateTime  @default(now()) @map("criada_em")
+  concluidaEm        DateTime? @map("concluida_em")
+  canceladaEm        DateTime? @map("cancelada_em")
+  motivoCancelamento String?   @map("motivo_cancelamento")
 
   /// A data da venda corrigida (a loja lança no outro sistema e às vezes
   /// registra aqui no dia seguinte). `criadaEm` é a data do FATO — é por ela
@@ -1420,12 +1453,12 @@ model VendaItem {
   codigo    String?
   medida    Medida  @default(UN)
 
-  quantidade  Decimal @db.Decimal(14, 3)
-  precoUnit   Decimal @map("preco_unit") @db.Decimal(12, 2)
-  desconto    Decimal @default(0) @db.Decimal(12, 2)
-  total       Decimal @db.Decimal(12, 2)
+  quantidade Decimal  @db.Decimal(14, 3)
+  precoUnit  Decimal  @map("preco_unit") @db.Decimal(12, 2)
+  desconto   Decimal  @default(0) @db.Decimal(12, 2)
+  total      Decimal  @db.Decimal(12, 2)
   /// Custo do momento da venda — é o que permite calcular a margem depois.
-  custoUnit   Decimal? @map("custo_unit") @db.Decimal(12, 2)
+  custoUnit  Decimal? @map("custo_unit") @db.Decimal(12, 2)
 
   /// Vendido sem estoque: o saldo que o sistema tinha na hora (0, ou menos
   /// que o vendido). Nulo = havia estoque. É a pendência "vendeu 2, havia 1"
@@ -1451,9 +1484,9 @@ model Pagamento {
   vendaId String @map("venda_id")
   venda   Venda  @relation(fields: [vendaId], references: [id], onDelete: Cascade)
 
-  forma    FormaPagamento
-  valor    Decimal @db.Decimal(12, 2)
-  parcelas Int     @default(1)
+  forma      FormaPagamento
+  valor      Decimal        @db.Decimal(12, 2)
+  parcelas   Int            @default(1)
   /// Bandeira, autorização, chave do Pix — o que ajuda a conciliar depois.
   referencia String?
 
@@ -1508,12 +1541,12 @@ model Devolucao {
   unidade   Unidade @relation(fields: [unidadeId], references: [id])
 
   /// Para onde foi o valor devolvido.
-  destino DestinoDevolucao
+  destino   DestinoDevolucao
   /// O que a pessoa recebe de volta, já proporcional ao que ela pagou.
-  valor   Decimal @db.Decimal(12, 2)
-  motivo  String
-  quem    String
-  usuarioId String? @map("usuario_id")
+  valor     Decimal          @db.Decimal(12, 2)
+  motivo    String
+  quem      String
+  usuarioId String?          @map("usuario_id")
 
   /// Quando `destino` é VALE, o vale que nasceu daqui.
   valeId String? @unique @map("vale_id")
@@ -1625,25 +1658,25 @@ model Parcela {
   numero Int
   de     Int
 
-  vencimento DateTime @db.Date
-  valor      Decimal  @db.Decimal(12, 2)
+  vencimento   DateTime  @db.Date
+  valor        Decimal   @db.Decimal(12, 2)
   /// O que já foi abatido do valor (sem contar juros). Pode ser parcial.
-  pago       Decimal  @default(0) @db.Decimal(12, 2)
+  pago         Decimal   @default(0) @db.Decimal(12, 2)
   /// Juros de atraso já cobrados nesta parcela, somados.
-  juros      Decimal  @default(0) @db.Decimal(12, 2)
+  juros        Decimal   @default(0) @db.Decimal(12, 2)
   /// Multa de atraso já cobrada (uma vez só — ver `multaCobrada`).
-  multa      Decimal  @default(0) @db.Decimal(12, 2)
+  multa        Decimal   @default(0) @db.Decimal(12, 2)
   /// O desconto concedido (com autorização) que abateu a parcela sem
   /// dinheiro entrar. A conta: resta = valor − pago − desconto.
-  desconto   Decimal  @default(0) @db.Decimal(12, 2)
+  desconto     Decimal   @default(0) @db.Decimal(12, 2)
   /// A multa já foi resolvida — cobrada, ou perdoada por quem autorizou. Ela é
   /// uma vez só: o segundo recebimento atrasado não cobra multa de novo.
-  multaCobrada Boolean @default(false) @map("multa_cobrada")
+  multaCobrada Boolean   @default(false) @map("multa_cobrada")
   /// Até que dia (de São Paulo) o juro de atraso já foi cobrado. O próximo
   /// juro conta daqui, e não do vencimento: senão quem paga metade com juro
   /// hoje paga de novo, na semana que vem, o juro dos mesmos dias.
-  jurosAte   DateTime? @map("juros_ate") @db.Date
-  quitadaEm  DateTime? @map("quitada_em")
+  jurosAte     DateTime? @map("juros_ate") @db.Date
+  quitadaEm    DateTime? @map("quitada_em")
 
   recebimentos Recebimento[]
 
@@ -1678,25 +1711,25 @@ model Recebimento {
   reciboId String?          @map("recibo_id")
   recibo   ReciboCrediario? @relation(fields: [reciboId], references: [id], onDelete: NoAction)
 
-  forma FormaPagamento
+  forma      FormaPagamento
   /// O total que entrou.
-  valor Decimal @db.Decimal(12, 2)
+  valor      Decimal        @db.Decimal(12, 2)
   /// A parte do total que é juro de atraso. O resto abate a parcela.
-  juros Decimal @default(0) @db.Decimal(12, 2)
+  juros      Decimal        @default(0) @db.Decimal(12, 2)
   /// A parte do total que é multa de atraso.
-  multa Decimal @default(0) @db.Decimal(12, 2)
+  multa      Decimal        @default(0) @db.Decimal(12, 2)
   /// O que abateu a parcela SEM dinheiro (desconto autorizado). Não está em
   /// `valor`. A conta: parcela.pago = Σ (valor − juros − multa).
-  desconto Decimal @default(0) @db.Decimal(12, 2)
+  desconto   Decimal        @default(0) @db.Decimal(12, 2)
   /// Baixa externa: pago fora (no sistema antigo, na conta da loja). Não
   /// entra no caixa, no DRE nem nas metas — só acerta a dívida.
-  externo Boolean @default(false)
+  externo    Boolean        @default(false)
   /// Em qual maquininha (ou conta do Pix) caiu — o NOME, como no cadastro da
   /// loja na hora (ver maquininhas.ts).
   maquininha String?
   /// A taxa da maquininha (ou do Pix) que valia na hora — ver taxas.ts.
-  taxaPct Decimal? @map("taxa_pct") @db.Decimal(5, 2)
-  quem  String
+  taxaPct    Decimal?       @map("taxa_pct") @db.Decimal(5, 2)
+  quem       String
 
   criadoEm DateTime @default(now()) @map("criado_em")
 
@@ -1748,8 +1781,8 @@ model ReciboCrediario {
   referencia String?
   pagoEm     DateTime? @map("pago_em") @db.Date
 
-  quemId String? @map("quem_id")
-  quem   String
+  quemId          String? @map("quem_id")
+  quem            String
   /// Quem autorizou com o PIN o desconto ou o perdão, e por quê.
   autorizadoPorId String? @map("autorizado_por_id")
   autorizadoPor   String? @map("autorizado_por")
@@ -1905,8 +1938,8 @@ model Lancamento {
   recorrenteId String?     @map("recorrente_id")
   recorrente   Recorrente? @relation(fields: [recorrenteId], references: [id])
 
-  quem      String
-  criadoEm  DateTime @default(now()) @map("criado_em")
+  quem         String
+  criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
   @@index([orgId, vencimento])
@@ -1929,16 +1962,16 @@ model Recorrente {
 
   unidadeId String? @map("unidade_id")
 
-  tipo       TipoLancamento
-  descricao  String
-  valor      Decimal        @db.Decimal(14, 2)
+  tipo          TipoLancamento
+  descricao     String
+  valor         Decimal        @db.Decimal(14, 2)
   /// Dia do mês. 31 em fevereiro cai no último dia — quem trata isso é o código.
-  diaVencimento Int         @map("dia_vencimento")
-  fornecedor String?
+  diaVencimento Int            @map("dia_vencimento")
+  fornecedor    String?
 
-  ativo    Boolean   @default(true)
+  ativo Boolean   @default(true)
   /// Até quando gerar. Nulo = para sempre.
-  ateEm    DateTime? @map("ate_em") @db.Date
+  ateEm DateTime? @map("ate_em") @db.Date
 
   lancamentos Lancamento[]
 
@@ -2069,7 +2102,7 @@ model Agente {
   /// sha256 (hex) do token do endereço do webhook. O token em si aparece UMA
   /// vez, na tela, e não é guardado; trocar é gerar outro. Nulo = empresa
   /// ainda no endereço antigo, derivado do slug com WEBHOOK_SEGREDO.
-  webhookTokenHash String? @map("webhook_token_hash")
+  webhookTokenHash       String? @map("webhook_token_hash")
 
   // ── o WhatsApp OFICIAL (Meta, Cloud API) ─────────────────
   // A loja conecta pelo "Cadastro incorporado" da Meta (Embedded Signup) na
@@ -2204,7 +2237,7 @@ model PropostaAgente {
   agente   Agente @relation(fields: [agenteId], references: [id], onDelete: Cascade)
 
   /// A chave do poder que ela exerce (PODERES em agente.ts).
-  poder String
+  poder  String
   /// O que vai acontecer, escrito para uma pessoa ler no WhatsApp.
   resumo String
   /// Os argumentos, para executar sem reinterpretar o texto.
@@ -2409,7 +2442,7 @@ model RecargaIA {
   tipo TipoRecarga
 
   /// De onde veio: 'manual', 'plano' (o incluso do mes), ou o gateway.
-  origem String @default("manual")
+  origem     String  @default("manual")
   /// Id da cobranca no gateway, quando houver.
   referencia String?
 
@@ -2496,20 +2529,20 @@ model Tarefa {
   responsavelId String?  @map("responsavel_id")
   responsavel   Usuario? @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
 
-  situacao SituacaoTarefa @default(A_FAZER)
+  situacao   SituacaoTarefa @default(A_FAZER)
   /// De 1 a 5 estrelas. Zero = ninguém marcou.
-  prioridade Int @default(0)
+  prioridade Int            @default(0)
   /// De 0 a 100. É a linha do tempo preenchendo.
-  progresso Int @default(0)
+  progresso  Int            @default(0)
 
   /// Datas sem hora: uma tarefa é "para sexta", não "para sexta às 14h07".
-  inicio DateTime? @db.Date
-  prazo  DateTime? @db.Date
+  inicio      DateTime? @db.Date
+  prazo       DateTime? @db.Date
   /// Carimbada quando vira FEITO; apagada se voltar. É o que permite dizer
   /// "entregou no prazo" depois.
   concluidaEm DateTime? @map("concluida_em")
 
-  ordem Int @default(0)
+  ordem Int    @default(0)
   quem  String
 
   criadoEm     DateTime @default(now()) @map("criado_em")
@@ -2551,26 +2584,26 @@ model Encomenda {
   /// O cliente do cadastro, quando existe. Nome e telefone ficam gravados
   /// junto (fotografia), porque encomenda de balcão muitas vezes é de quem
   /// nunca foi cadastrado.
-  clienteId String?  @map("cliente_id")
-  cliente   Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
-  clienteNome String  @map("cliente_nome")
+  clienteId   String?  @map("cliente_id")
+  cliente     Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  clienteNome String   @map("cliente_nome")
   telefone    String?
 
   /// O que é: "Bolo de chocolate 2 kg, escrito Parabéns Ana".
-  descricao String
-  valor     Decimal @default(0) @db.Decimal(12, 2)
-  sinal     Decimal @default(0) @db.Decimal(12, 2)
+  descricao  String
+  valor      Decimal         @default(0) @db.Decimal(12, 2)
+  sinal      Decimal         @default(0) @db.Decimal(12, 2)
   /// Como o sinal foi pago (o último pagamento dele, quando foi em partes).
   /// Em DINHEIRO ele entra pela gaveta — suprimento no caixa aberto — e o
   /// fechamento bate. Nulo nas encomendas de antes desta coluna.
   sinalForma FormaPagamento? @map("sinal_forma")
 
   /// Quando o cliente busca ou quando a loja entrega.
-  para    DateTime
-  entrega Boolean  @default(false)
+  para     DateTime
+  entrega  Boolean  @default(false)
   endereco String?
 
-  situacao SituacaoEncomenda @default(ABERTA)
+  situacao   SituacaoEncomenda @default(ABERTA)
   observacao String?
 
   /// Carimbada quando vira ENTREGUE.
@@ -3249,9 +3282,6 @@ model Matricula {
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
 
-  @@index([orgId, turmaId, situacao])
-  @@index([orgId, alunoId])
-  @@index([orgId, situacao])
   /// O mesmo aluno não fica duas vezes na mesma turma (entre as vivas). Viva
   /// é a que não tem `fim`: cancelar e concluir carimbam o fim; trancar não.
   /// A condição é a forma que o Postgres devolve igual ao que se escreveu
@@ -3259,6 +3289,9 @@ model Matricula {
   /// `= ANY (ARRAY[...])`, e todo `migrar --nova` passaria a pedir o DROP dele
   /// (o que já acontece com `campanha_execucoes_uma_viva`).
   @@unique([turmaId, alunoId], map: "matriculas_uma_viva", where: raw("fim IS NULL"))
+  @@index([orgId, turmaId, situacao])
+  @@index([orgId, alunoId])
+  @@index([orgId, situacao])
   @@map("matriculas")
 }
 
@@ -3295,12 +3328,12 @@ model Mensalidade {
   desconto Decimal @default(0) @db.Decimal(12, 2)
 
   /// O que entrou abatendo (sem juro nem multa).
-  pago  Decimal @default(0) @db.Decimal(12, 2)
+  pago         Decimal   @default(0) @db.Decimal(12, 2)
   /// O desconto de pontualidade concedido: abate, mas não é dinheiro.
-  abono Decimal @default(0) @db.Decimal(12, 2)
+  abono        Decimal   @default(0) @db.Decimal(12, 2)
   /// Juro e multa de atraso já cobrados, somados.
-  juros Decimal @default(0) @db.Decimal(12, 2)
-  multa Decimal @default(0) @db.Decimal(12, 2)
+  juros        Decimal   @default(0) @db.Decimal(12, 2)
+  multa        Decimal   @default(0) @db.Decimal(12, 2)
   /// A multa já foi resolvida (cobrada, ou dispensada por quem recebeu). Ela é
   /// uma vez só: o segundo recebimento atrasado não cobra multa de novo.
   multaCobrada Boolean   @default(false) @map("multa_cobrada")
@@ -3351,14 +3384,14 @@ model PagamentoMensalidade {
   caixaId String? @map("caixa_id")
   caixa   Caixa?  @relation(fields: [caixaId], references: [id])
 
-  forma FormaPagamento
-  valor Decimal @db.Decimal(12, 2)
-  juros Decimal @default(0) @db.Decimal(12, 2)
-  multa Decimal @default(0) @db.Decimal(12, 2)
+  forma   FormaPagamento
+  valor   Decimal        @db.Decimal(12, 2)
+  juros   Decimal        @default(0) @db.Decimal(12, 2)
+  multa   Decimal        @default(0) @db.Decimal(12, 2)
   /// O desconto de pontualidade dado NESTE recebimento.
-  abono Decimal @default(0) @db.Decimal(12, 2)
+  abono   Decimal        @default(0) @db.Decimal(12, 2)
   /// A taxa da maquininha (ou do Pix) que valia na hora — ver taxas.ts.
-  taxaPct Decimal? @map("taxa_pct") @db.Decimal(5, 2)
+  taxaPct Decimal?       @map("taxa_pct") @db.Decimal(5, 2)
 
   quemId String? @map("quem_id")
   quem   String

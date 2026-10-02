@@ -111,6 +111,7 @@ export const NOME_DO_PAPEL: Record<Papel, string> = {
   FINANCEIRO: 'Financeiro',
   CONTADOR: 'Contador',
   SUPORTE: 'Suporte',
+  CARGO: 'Cargo',
 }
 
 /** "do Balcão para cima", "da Direção para cima" — ou "em todo plano". */
@@ -1462,7 +1463,20 @@ export const GUIA: Entrada[] = [
           'Balcão: vende, opera o caixa, vê produto e estoque, cadastra cliente, recebe parcela do crediário, vê o quadro e dá baixa nas próprias tarefas. Não mexe em preço, não vê financeiro nem painel.',
           'Financeiro: lança e vê o dinheiro, cobra e recebe crediário, vê vendas, caixa, relatório e auditoria. Não vende nem mexe em produto.',
           'Contador: só lê financeiro e relatório (painel, análise, fechamento).',
+          'Cargo da empresa (Subgerente, Caixa da fábrica…): só o que o dono marcou no cargo — veja "Criar um cargo".',
         ],
+      },
+      {
+        titulo: 'Criar um cargo (Subgerente, Caixa da fábrica…)',
+        passos: [
+          'Em Equipe, na seção "Cargos", clique em "+ Novo cargo" — ou em "Começar de Subgerente" para partir de um modelo.',
+          'Dê o nome e marque o que o cargo pode: vender, cancelar, mudar preço, abrir e fechar o caixa, dar entrada e transferir, receber parcela, ver o painel… "marcar todas" marca o grupo inteiro.',
+          'O teto é o Gerente: configurar a empresa, lançar no financeiro e dar acesso a outras pessoas ficam sempre com o dono.',
+          'Depois, dê o cargo a alguém: no convite ou na linha da pessoa, ele aparece na lista de papéis, junto com a loja (uma ou todas).',
+          'Mudou o cargo? Vale para todo mundo que tem ele na próxima tela que abrir, sem precisar sair.',
+          'Cargo com gente dentro não apaga: mude o acesso dessas pessoas antes.',
+        ],
+        capacidade: 'empresa.configurar',
       },
       {
         titulo: 'Definir meta e comissão',

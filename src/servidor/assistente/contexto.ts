@@ -6,6 +6,7 @@
 // em paralelo dentro da transação (o pg avisa e quebra no pg@9).
 
 import type { Agente, Plano, Situacao } from '@prisma/client'
+import { SELECT_ACESSO, acessosDoBanco } from '../cargos'
 import { comoOrg } from '../banco'
 import { planoLibera } from '../planos'
 import { vencerTesteSeAcabou } from '../assinatura'
@@ -95,12 +96,12 @@ export async function sessaoDoUsuario(orgId: string, usuarioId: string): Promise
         id: true,
         nome: true,
         ativo: true,
-        acessos: { select: { papel: true, unidadeId: true, expiraEm: true } },
+        acessos: { select: SELECT_ACESSO },
       },
     }),
   )
   if (!u || !u.ativo) return null
-  return { orgId, usuarioId: u.id, nome: u.nome, acessos: u.acessos as Acesso[] }
+  return { orgId, usuarioId: u.id, nome: u.nome, acessos: acessosDoBanco(u.acessos) }
 }
 
 /**

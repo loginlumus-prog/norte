@@ -442,3 +442,78 @@ describe('o antes → depois da Auditoria', () => {
     expect(resumoDaMudanca(null, { a: 1 })).toBeNull()
   })
 })
+
+// ─────────────────────────────────────────────────────────────
+// 6. CARGO DA EMPRESA, DE PONTA A PONTA
+// ─────────────────────────────────────────────────────────────
+
+describe('cargo criado pelo dono', () => {
+  const DONA = () => sessao('usr-dona', [{ papel: 'DONO', unidadeId: null }], 'org-r')
+
+  it('o dono cria, dá a alguém; vale na loja, muda na próxima tela e não apaga em uso', async () => {
+    const cargos = await import('../src/servidor/cargos')
+    const hash = await m.senha.guardarSenha(SENHA)
+    await db.query(
+      `insert into usuarios (id, org_id, nome, email, senha_hash, sessoes_desde, atualizado_em)
+       values ('usr-sub', 'org-r', 'Sara Sub', 'sara@r.test', $1, now() - interval '1 day', now())`,
+      [hash],
+    )
+
+    // Marcar além do teto é ignorado; o gerente não cria cargo.
+    const c = await cargos.salvarCargo(DONA(), { nome: 'Subgerente', capacidades: ['venda.criar', 'caixa.operar', 'empresa.configurar'] })
+    expect(c.ok).toBe(true)
+    const id = (c as { id: string }).id
+    expect((await linhas<{ capacidades: string[] }>(`select capacidades from cargos where id = $1`, [id]))[0]!.capacidades).toEqual([
+      'venda.criar',
+      'caixa.operar',
+    ])
+    await expect(
+      cargos.salvarCargo(sessao('usr-ger', [{ papel: 'GERENTE', unidadeId: 'uni-r1' }], 'org-r'), { nome: 'Outro', capacidades: ['venda.ver'] }),
+    ).rejects.toThrow()
+    expect((await cargos.salvarCargo(DONA(), { nome: 'subgerente', capacidades: ['venda.ver'] })).ok).toBe(false)
+
+    expect(await m.equipe.mudarAcesso(DONA(), 'usr-sub', { papel: 'CARGO', unidadeId: 'uni-r1', cargoId: id })).toEqual({ ok: true })
+    // O gerente não dá cargo.
+    const ger = sessao('usr-ger', [{ papel: 'GERENTE', unidadeId: 'uni-r1' }], 'org-r')
+    expect((await m.equipe.mudarAcesso(ger, 'usr-bal', { papel: 'CARGO', unidadeId: 'uni-r1', cargoId: id })).ok).toBe(false)
+
+    const cookie = await entrarE('rede-r', 'sara@r.test')
+    const tela = await comCookie('rede-r', cookie)
+    const s = tela.sessao!
+    expect(m.permissao.pode(s, 'venda.criar', 'uni-r1')).toBe(true)
+    expect(m.permissao.pode(s, 'caixa.operar', 'uni-r1')).toBe(true)
+    expect(m.permissao.pode(s, 'venda.criar', 'uni-r2')).toBe(false)
+    expect(m.permissao.pode(s, 'produto.preco', 'uni-r1')).toBe(false)
+    expect(m.permissao.pode(s, 'empresa.configurar')).toBe(false)
+    expect((await m.equipe.listarVendedores(DONA(), 'uni-r1')).map((v) => v.id)).toContain('usr-sub')
+
+    // O dono muda o cargo: vale na próxima tela, sem a pessoa sair.
+    expect((await cargos.salvarCargo(DONA(), { id, nome: 'Subgerente', capacidades: ['venda.ver', 'produto.preco'] })).ok).toBe(true)
+    const s2 = (await comCookie('rede-r', cookie)).sessao!
+    expect(m.permissao.pode(s2, 'produto.preco', 'uni-r1')).toBe(true)
+    expect(m.permissao.pode(s2, 'caixa.operar', 'uni-r1')).toBe(false)
+    // Sem "Vender", sai da lista de quem vendeu.
+    expect((await m.equipe.listarVendedores(DONA(), 'uni-r1')).map((v) => v.id)).not.toContain('usr-sub')
+
+    // Em uso, não apaga.
+    expect((await cargos.apagarCargo(DONA(), id)).ok).toBe(false)
+    expect((await cargos.listarCargos(DONA()))[0]).toMatchObject({ nome: 'Subgerente', pessoas: 1 })
+  })
+
+  it('o convite leva o cargo, e quem aceita nasce com ele', async () => {
+    const cargos = await import('../src/servidor/cargos')
+    const c = await cargos.salvarCargo(DONA(), { nome: 'Estoquista', capacidades: ['estoque.ver', 'estoque.ajustar'] })
+    const id = (c as { id: string }).id
+    await expect(
+      m.convite.convidar(DONA(), { email: 'eva@r.test', papel: 'CARGO', unidadeId: 'uni-r2' }, 'http://x/rede-r'),
+    ).rejects.toThrow(/cargo/i)
+    const conv = await m.convite.convidar(DONA(), { email: 'eva@r.test', papel: 'CARGO', unidadeId: 'uni-r2', cargoId: id }, 'http://x/rede-r')
+    const token = conv.link.split('/convite/')[1]!
+    const aceite = await m.convite.aceitarConvite('rede-r', token, { nome: 'Eva Estoque', senha: 'senha-boa-da-eva-1' })
+    expect(aceite.ok).toBe(true)
+    const ac = await linhas<{ papel: string; cargo_id: string; unidade_id: string }>(
+      `select a.papel, a.cargo_id, a.unidade_id from acessos a join usuarios u on u.id = a.usuario_id where u.email = 'eva@r.test'`,
+    )
+    expect(ac).toEqual([{ papel: 'CARGO', cargo_id: id, unidade_id: 'uni-r2' }])
+  })
+})

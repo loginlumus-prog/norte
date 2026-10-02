@@ -33,6 +33,9 @@ export type PessoaNaTela = {
   ativo: boolean
   ultimoLogin: string | null
   papel: string | null
+  /** Só no papel CARGO: qual cargo da empresa. */
+  cargoId: string | null
+  cargoNome: string | null
   unidadeId: string | null
   unidadeNome: string | null
   souEu: boolean
@@ -173,6 +176,7 @@ export type ConviteNaTela = {
   id: string
   email: string
   papel: string
+  cargoNome: string | null
   expiraEm: string
   vencido: boolean
 }
@@ -194,6 +198,16 @@ const RESUMO: Record<string, string> = {
   CONTADOR: 'Só olha o financeiro',
 }
 
+/** O valor da lista: o papel fixo, ou "CARGO:<id>" para um cargo da empresa. */
+const valorDoPapel = (papel: string | null, cargoId: string | null) =>
+  papel === 'CARGO' && cargoId ? `CARGO:${cargoId}` : (papel ?? '')
+
+/** O nome que a tela mostra: o do cargo, quando é um. */
+const nomeDoPapel = (papel: string, cargoNome?: string | null) =>
+  papel === 'CARGO' ? (cargoNome ?? 'Cargo') : (ROTULO[papel] ?? papel)
+
+type OpcaoDePapel = { valor: string; titulo: string }
+
 /**
  * O papel de alguém, com confirmação.
  *
@@ -210,10 +224,10 @@ function TrocaDePapel({
 }: {
   slug: string
   pessoa: PessoaNaTela
-  papeis: string[]
+  papeis: OpcaoDePapel[]
   aoTerminar: (r: EstadoEquipe) => void
 }) {
-  const atual = pessoa.papel ?? ''
+  const atual = valorDoPapel(pessoa.papel, pessoa.cargoId)
   const [escolhido, setEscolhido] = useState(atual)
   const [indo, comecar] = useTransition()
   const router = useRouter()
@@ -221,9 +235,12 @@ function TrocaDePapel({
   // senão a lista mostraria outro nome no lugar do papel que a pessoa tem.
   const opcoes = [
     ...(atual ? [] : [{ valor: '', titulo: 'Escolha o papel...' }]),
-    ...(atual && !papeis.includes(atual) ? [{ valor: atual, titulo: ROTULO[atual] ?? atual }] : []),
-    ...papeis.map((v) => ({ valor: v, titulo: ROTULO[v] ?? v })),
+    ...(atual && !papeis.some((p) => p.valor === atual)
+      ? [{ valor: atual, titulo: nomeDoPapel(pessoa.papel ?? atual, pessoa.cargoNome) }]
+      : []),
+    ...papeis,
   ]
+  const tituloDe = (v: string) => opcoes.find((o) => o.valor === v)?.titulo ?? v
   const mudou = escolhido !== atual && escolhido !== ''
 
   return (
@@ -241,7 +258,7 @@ function TrocaDePapel({
       {mudou && (
         <span role="group" aria-label="Confirmar a troca de papel" className="inline-flex flex-wrap items-center gap-1.5">
           <span className="text-xs font-medium text-tinta-2">
-            Mudar para {ROTULO[escolhido] ?? escolhido}? {pessoa.nome.split(' ')[0]} vai precisar entrar de novo.
+            Mudar para {tituloDe(escolhido)}? {pessoa.nome.split(' ')[0]} vai precisar entrar de novo.
           </span>
           <Botao
             tom="confirmar"
@@ -274,6 +291,7 @@ export function Equipe({
   convites,
   unidades,
   papeisQuePosso,
+  cargos,
   podeGerir,
   suportes,
   podeCortarSuporte,
@@ -284,12 +302,19 @@ export function Equipe({
   unidades: { id: string; nome: string }[]
   /** Só os papéis que ESTA pessoa pode conceder. */
   papeisQuePosso: string[]
+  /** Os cargos da empresa — vazio quando quem vê não pode dar cargo. */
+  cargos: { id: string; nome: string }[]
   podeGerir: boolean
   /** O nosso suporte com acesso valendo — fora da lista da equipe. */
   suportes: SuporteNaTela[]
   /** Só a dona da empresa inteira corta o acesso do suporte. */
   podeCortarSuporte: boolean
 }) {
+  // A lista de papéis que esta pessoa pode dar: os fixos e, depois, os cargos.
+  const opcoesDePapel: OpcaoDePapel[] = [
+    ...papeisQuePosso.filter((p) => p !== 'CARGO').map((v) => ({ valor: v, titulo: ROTULO[v] ?? v })),
+    ...cargos.map((c) => ({ valor: `CARGO:${c.id}`, titulo: c.nome })),
+  ]
   const acao = convidarPessoa.bind(null, slug)
   const [estado, agir, pendente] = useActionState<EstadoEquipe, FormData>(acao, {})
   const [abrindo, setAbrindo] = useState(false)
@@ -375,7 +400,7 @@ export function Equipe({
               <span className="flex flex-wrap items-center gap-2">
                 {p.papel ? (
                   <Situacao nivel={p.ativo ? 'bom' : 'neutro'}>
-                    {ROTULO[p.papel] ?? p.papel}
+                    {nomeDoPapel(p.papel, p.cargoNome)}
                     {p.unidadeNome ? ` · ${p.unidadeNome}` : ''}
                   </Situacao>
                 ) : (
@@ -384,7 +409,7 @@ export function Equipe({
 
                 {p.podeMexer && (
                   <>
-                    <TrocaDePapel slug={slug} pessoa={p} papeis={papeisQuePosso} aoTerminar={setRecado} />
+                    <TrocaDePapel slug={slug} pessoa={p} papeis={opcoesDePapel} aoTerminar={setRecado} />
                     {p.ativo ? (
                       <Confirmar
                         tom="secundario"
@@ -506,7 +531,8 @@ export function Equipe({
                 required
                 opcoes={[
                   { valor: '', titulo: 'Escolha...' },
-                  ...papeisQuePosso.map((v) => ({ valor: v, titulo: `${ROTULO[v]} — ${RESUMO[v]}` })),
+                  ...papeisQuePosso.filter((v) => v !== 'CARGO').map((v) => ({ valor: v, titulo: `${ROTULO[v]} — ${RESUMO[v]}` })),
+                  ...cargos.map((c) => ({ valor: `CARGO:${c.id}`, titulo: `${c.nome} — cargo da empresa` })),
                 ]}
               />
               <Selecao
@@ -544,7 +570,7 @@ export function Equipe({
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-sm text-tinta">{c.email}</span>
                   <span className="text-xs text-tinta-3">
-                    {ROTULO[c.papel] ?? c.papel} · {c.vencido ? 'venceu' : `vale até ${c.expiraEm}`}
+                    {nomeDoPapel(c.papel, c.cargoNome)} · {c.vencido ? 'venceu' : `vale até ${c.expiraEm}`}
                   </span>
                 </span>
                 <span className="flex items-center gap-2">

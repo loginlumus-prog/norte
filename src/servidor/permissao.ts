@@ -71,7 +71,7 @@ export const CAPACIDADES = [
 ] as const
 
 export type Capacidade = (typeof CAPACIDADES)[number]
-export type Papel = 'DONO' | 'GERENTE' | 'BALCAO' | 'FINANCEIRO' | 'CONTADOR' | 'SUPORTE'
+export type Papel = 'DONO' | 'GERENTE' | 'BALCAO' | 'FINANCEIRO' | 'CONTADOR' | 'SUPORTE' | 'CARGO'
 
 const SO_LEITURA: Capacidade[] = [
   'venda.ver',
@@ -171,7 +171,21 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
   // Suporte (nós): só leitura, com prazo e motivo obrigatórios, e tudo o que
   // fizer aparece no livro de auditoria do cliente, igual a qualquer pessoa.
   SUPORTE: SO_LEITURA,
+
+  // Cargo criado pela empresa ("Subgerente"): por si só, NADA. O que ele pode
+  // vem do cargo (`Acesso.capacidades`), e só do que está em
+  // CAPACIDADES_DE_CARGO. Vazio aqui é de propósito: qualquer caminho que
+  // monte a sessão sem ler o cargo deixa a pessoa sem poder nenhum, e não com
+  // o poder de um gerente — falha fechada.
+  CARGO: [],
 }
+
+/**
+ * O que um cargo criado pela empresa PODE ter. É o teto: o que o Gerente pode,
+ * menos montar a equipe (quem dá acesso a outras pessoas é dono ou gerente de
+ * verdade — um cargo que se dá acesso viraria escada para subir).
+ */
+export const CAPACIDADES_DE_CARGO: readonly Capacidade[] = PODERES.GERENTE.filter((c) => c !== 'equipe.gerir')
 
 /**
  * O que a EMPRESA pode dar a mais ao papel Balcão (`Org.balcaoAmpliado`).
@@ -197,12 +211,13 @@ export const EXTRAS_DO_BALCAO: readonly Capacidade[] = ['estoque.ajustar', 'prod
  * prazo e motivo, e não se concede pela tela de equipe do cliente.
  */
 export const PODE_CONCEDER: Record<Papel, readonly Papel[]> = {
-  DONO: ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR'],
+  DONO: ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR', 'CARGO'],
   GERENTE: ['BALCAO'],
   BALCAO: [],
   FINANCEIRO: [],
   CONTADOR: [],
   SUPORTE: [],
+  CARGO: [],
 }
 
 /** Pode dar este papel a alguém, nesta unidade? */
@@ -258,6 +273,11 @@ export type Acesso = {
   unidadeId: string | null
   /** só o SUPORTE costuma ter; passou da hora, não vale mais */
   expiraEm?: Date | null
+  /**
+   * Só no papel CARGO: o que o cargo marca. Lido do banco a cada requisição
+   * (ver `conferirSessao`), nunca do cookie. Ausente = nada.
+   */
+  capacidades?: readonly string[] | null
 }
 
 export type Sessao = {
@@ -298,7 +318,9 @@ export const sessaoAindaVale = (
 const valeAgora = (a: Acesso, agora: Date) => !a.expiraEm || a.expiraEm > agora
 
 const concede = (a: Acesso, c: Capacidade, s?: Pick<Sessao, 'balcaoAmpliado'>) =>
-  (PODERES[a.papel].includes(c) || (a.papel === 'BALCAO' && !!s?.balcaoAmpliado && EXTRAS_DO_BALCAO.includes(c))) &&
+  (PODERES[a.papel].includes(c) ||
+    (a.papel === 'BALCAO' && !!s?.balcaoAmpliado && EXTRAS_DO_BALCAO.includes(c)) ||
+    (a.papel === 'CARGO' && CAPACIDADES_DE_CARGO.includes(c) && !!a.capacidades?.includes(c))) &&
   (a.unidadeId === null || !SO_DA_EMPRESA_INTEIRA.includes(c))
 
 /**
