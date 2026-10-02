@@ -537,6 +537,32 @@ async function situacao() {
   )
 }
 
+/** Liga ou desliga um módulo vendido à parte (fábrica, Farol): o mesmo da tela do console. */
+async function modulo() {
+  const [slug, qual, acao] = resto
+  if (!slug || !qual || !['ligar', 'desligar'].includes(acao ?? '')) {
+    parar('Uso: operacao modulo <empresa> <fabrica|farol> <ligar|desligar> --motivo "..." [--confirmar]')
+  }
+  const motivo = op.validarMotivo(texto('motivo'))
+  const org = await empresaDo(slug)
+  const ligar = acao === 'ligar'
+  const ligado = org.modulos.includes(qual!)
+
+  titulo(`Módulo ${qual} de /${org.slug}`)
+  resumo([
+    ['Empresa', `${org.nome} (${org.situacao.toLowerCase()})`],
+    ['Módulo', `${qual}: ${ligado ? 'ligado' : 'desligado'} → ${ligar ? 'ligado' : 'desligado'}`],
+    ['Motivo', `"${motivo}" — vai para o livro da loja`],
+  ])
+  if (ligado === ligar) parar(`/${org.slug} já está com ${qual} ${ligar ? 'ligado' : 'desligado'}.`)
+
+  const quem = confirmar ? operador() : null
+  if (!(await porta(org.slug))) return
+  const r = await op.definirModuloDaEquipe(org.id, qual as never, ligar, { motivo, quem: quem! })
+  console.log(`  Feito. /${org.slug}: módulos agora: ${r.modulos.join(', ') || '(nenhum)'}. No livro da loja: ${quem}.
+`)
+}
+
 async function farolMarcas() {
   const [slug, quantasBruto] = resto
   const quantas = Number(quantasBruto)
@@ -606,6 +632,7 @@ const COMANDOS: Record<string, () => Promise<void> | void> = {
   'suporte-revogar': suporteRevogar,
   situacao,
   'farol-marcas': farolMarcas,
+  modulo,
   ajuda,
 }
 
