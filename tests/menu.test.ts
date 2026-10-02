@@ -22,7 +22,7 @@ const visiveis = (papel: Papel, modulos: string[] = TODOS) =>
 describe('o que cada perfil vê no menu', () => {
   it('o dono vê tudo', () => {
     expect(visiveis('DONO')).toEqual([
-      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
+      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Catálogo', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
       'Produtos', 'Estoque', 'Fábrica', 'Compras', 'Material usado', 'Preços', 'Clientes', 'Equipe', 'Tarefas', 'Financeiro', 'Análise', 'Assistente',
       'Farol', 'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
     ])
@@ -41,7 +41,7 @@ describe('o que cada perfil vê no menu', () => {
     // Fábrica entra (ver o estoque basta para ver a produção e os pedidos);
     // produzir, mandar e pedir é de quem mexe no estoque da unidade.
     expect(v).toEqual([
-      'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
+      'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Catálogo', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
       'Produtos', 'Estoque', 'Fábrica', 'Material usado', 'Clientes', 'Tarefas',
     ])
     expect(v).not.toContain('Compras')

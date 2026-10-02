@@ -57,7 +57,12 @@ describe('o catálogo de poderes', () => {
     // horário é trabalho da recepção PELA TELA (ver permissao.ts). A proposta
     // não dá ao balcão nada que ele já não faça — e quem executa é o mesmo
     // serviço da tela (agenda.ts), que confere a loja da pessoa de novo.
-    const ESCRITA_QUE_O_BALCAO_JA_FAZ: string[] = ['agenda.marcar', 'agenda.desmarcar']
+    //
+    // E a ENCOMENDA, pelo mesmo motivo: aceitar o pedido do catálogo e
+    // marcar pronta é trabalho do balcão na tela de Encomendas (`venda.criar`).
+    // Cancelar pede `venda.cancelar`, que o balcão não tem — e quem confere é
+    // o serviço da tela (`mudarSituacao`), na hora do sim.
+    const ESCRITA_QUE_O_BALCAO_JA_FAZ: string[] = ['agenda.marcar', 'agenda.desmarcar', 'encomenda.mudar']
     const doBalcao = PODERES_HUMANOS.BALCAO
     for (const chave of TODOS_PODERES) {
       const p: Poder = PODERES[chave]

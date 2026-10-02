@@ -10,6 +10,7 @@ import { resumoCrediario } from '@/servidor/crediario'
 import { metasDoMes, mesChave } from '@/servidor/metas'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { moduloLigado } from '@/servidor/modulos'
+import { primeirosPassos, type PrimeiroPasso } from '@/servidor/primeiros-passos'
 import { desempenhoDoMes, semDados } from '@/servidor/desempenho'
 import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 import { lerModo } from '@/servidor/modo'
@@ -39,6 +40,7 @@ import {
   type Contagens,
 } from '@/servidor/pendencias'
 import { Estrutura, type ItemMenu } from '@/ui/Estrutura'
+import { PrimeirosPassos } from './PrimeirosPassos'
 import { MENU } from '@/ui/menu'
 import { Situacao, Aviso, Ponto, cx } from '@/ui/base'
 import { Estrelas } from '@/ui/Estrelas'
@@ -207,6 +209,22 @@ function menuComAvisos(slug: string, c: Contagens, parados = 0): ItemMenu[] {
   })
 }
 
+/**
+ * Os primeiros passos da empresa nova, para o dono (ver primeiros-passos.ts).
+ * Falhar aqui não pode derrubar o painel: sem a resposta, o cartão some.
+ */
+async function passosSemDerrubar(sessao: Sessao, empresa: Empresa, slug: string): Promise<PrimeiroPasso[] | null> {
+  try {
+    return await primeirosPassos(sessao, { slug, temAssistente: moduloLigado(empresa, 'agente') })
+  } catch (e) {
+    registrarErro('painel.primeiros-passos', e)
+    return null
+  }
+}
+
+const Passos = ({ passos, sessao }: { passos: PrimeiroPasso[] | null; sessao: Sessao }) =>
+  passos ? <PrimeirosPassos passos={passos} chave={`${sessao.orgId}:${sessao.usuarioId}`} /> : null
+
 const SemUnidade = () => (
   <Aviso nivel="atencao">
     Você ainda não tem acesso a nenhuma unidade. Peça para quem responde pela empresa
@@ -230,6 +248,7 @@ async function Simples({ slug, empresa, sessao, tema, onde }: Base) {
   const v = await vocabularioDaEmpresa(sessao.orgId)
   const pendencias = montarPendencias(contagens, slug, onde.unidadeId, v)
   const passada = mesmoDiaPassado(agora)
+  const passos = await passosSemDerrubar(sessao, empresa, slug)
 
   // Até a MESMA hora da semana passada (ver `resumoDeHoje`). Sem venda
   // naquele trecho não existe porcentagem — "+∞%" seria pior que nada.
@@ -293,6 +312,9 @@ async function Simples({ slug, empresa, sessao, tema, onde }: Base) {
             {onde.mostrarSeletor && <> · {onde.titulo}</>}
           </p>
         </header>
+
+        {/* A empresa nova: o que falta para o sistema trabalhar. Só o dono vê. */}
+        <Passos passos={passos} sessao={sessao} />
 
         {/* Duas colunas no computador: o que aconteceu à esquerda, o que
             fazer à direita. No celular vira uma fila só, e a ORDEM muda —
@@ -427,6 +449,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
   ])
   const v = await vocabularioDaEmpresa(sessao.orgId)
   const pendencias = montarPendencias(contagens, slug, onde.unidadeId, v)
+  const passos = await passosSemDerrubar(sessao, empresa, slug)
 
   const completo = r.plano !== 'GRATIS'
 
@@ -504,6 +527,9 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
             <PendenciasCurtas itens={pendencias} />
           </div>
         )}
+
+        {/* A empresa nova: o que falta para o sistema trabalhar. Só o dono vê. */}
+        <Passos passos={passos} sessao={sessao} />
 
         {/* ── VENDAS ── */}
         <Secao titulo={`${j.rotulo} · ${onde.titulo}`}>

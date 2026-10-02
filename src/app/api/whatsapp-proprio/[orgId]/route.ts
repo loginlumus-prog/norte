@@ -12,11 +12,14 @@
 
 import { after, NextResponse } from 'next/server'
 import { veioDoConector } from '@/servidor/assistente/conector'
-import { receberDoConector } from '@/servidor/assistente/proprio'
+import { MAXIMO_AUDIO_BASE64, receberDoConector } from '@/servidor/assistente/proprio'
 import { resumoDoErro } from '@/servidor/registro'
 
-/** Mensagem de texto normalizada pelo conector não chega perto disto. */
-const MAXIMO_CORPO = 64 * 1024
+/**
+ * Mensagem de texto normalizada pelo conector não chega perto de 64 KB; a
+ * nota de voz (até 3 MB, que em base64 viram 4) vem junto no mesmo corpo.
+ */
+const MAXIMO_CORPO = 64 * 1024 + MAXIMO_AUDIO_BASE64
 
 export async function POST(request: Request, { params }: { params: Promise<{ orgId: string }> }) {
   const { orgId } = await params

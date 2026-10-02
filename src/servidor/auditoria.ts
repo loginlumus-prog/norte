@@ -95,6 +95,7 @@ export const ACOES: Record<string, string> = {
   'tarefa.apagou': 'apagou uma tarefa',
   'encomenda.criou': 'anotou uma encomenda',
   'encomenda.alterou': 'alterou uma encomenda',
+  'encomenda.aceitou': 'aceitou um pedido do catálogo',
   'encomenda.pronta': 'marcou uma encomenda como pronta',
   'encomenda.entregou': 'entregou uma encomenda',
   'encomenda.cancelou': 'cancelou uma encomenda',

@@ -161,6 +161,15 @@ export const PODERES = {
     modulo: 'escola',
     disponivel: true,
   },
+  // ── encomendas: o caderno do balcão e o pedido do catálogo ──
+  'encomendas.ver': {
+    titulo: 'Consultar as encomendas',
+    resumo: 'O que sai hoje e nos próximos dias, com os pedidos novos do catálogo em destaque — o que é, o total, a hora e se é retirada ou entrega.',
+    exige: 'venda.ver',
+    escreve: false,
+    modulo: 'encomenda',
+    disponivel: true,
+  },
   'ver.cliente': {
     titulo: 'Consultar cliente',
     resumo: 'Última compra, o que costuma levar, há quanto tempo sumiu.',
@@ -200,6 +209,28 @@ export const PODERES = {
       'Somar peça que apareceu na contagem, sempre com motivo escrito. Perda e quebra continuam na tela de Estoque.',
     exige: 'estoque.ajustar',
     escreve: true,
+    disponivel: true,
+  },
+  // Sem teto de valor, e de propósito: a entrada não gasta dinheiro (não
+  // lança conta a pagar) — ela conta o que JÁ chegou. O valor vai na
+  // proposta só para a pessoa conferir. Produto que não existe pode nascer
+  // junto, e aí quem confirma precisa poder cadastrar produto (conferido na
+  // hora do sim, em `executar`).
+  'estoque.entrada': {
+    titulo: 'Dar entrada de compra',
+    resumo:
+      'Você diz o que chegou — "comprei 10 kg de picanha a 39,90 o quilo", por texto ou áudio —, ele confere os produtos, monta a entrada e lança depois do seu SIM. Produto novo pode ser cadastrado junto.',
+    exige: 'estoque.ajustar',
+    escreve: true,
+    disponivel: true,
+  },
+  'encomenda.mudar': {
+    titulo: 'Aceitar, aprontar ou cancelar encomenda',
+    resumo:
+      'Aceitar o pedido novo do catálogo, marcar pronta ou cancelar com motivo — sempre depois do seu SIM. A cliente do catálogo recebe o aviso no WhatsApp.',
+    exige: 'venda.criar',
+    escreve: true,
+    modulo: 'encomenda',
     disponivel: true,
   },
   'agenda.marcar': {

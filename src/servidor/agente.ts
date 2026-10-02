@@ -7,12 +7,16 @@
 
 import { marcarHorario, mudarSituacaoAgenda, type DadosHorario } from './agenda'
 import { comoOrg } from './banco'
-import { exigir, pode, type Sessao } from './permissao'
+import { exigir, pode, unidadesQuePodem, type Sessao } from './permissao'
 import { type ComModulos } from './modulos'
 import { centavos, reais } from './dinheiro'
 import { lancar } from './financeiro'
 import { mexerEstoque } from './estoque'
-import { Prisma, type TipoRecibo } from '@prisma/client'
+import { registrarEntrada, type ItemEntrada } from './entrada'
+import { criarProduto } from './produto'
+import { codigoEncomenda, marcarVista, mudarSituacao } from './encomenda'
+import { quantidade as comMedida } from './texto'
+import { Prisma, type Medida, type TipoRecibo } from '@prisma/client'
 import { custoEmCentavos, cobrancaEmCentavos } from './custo-ia'
 import {
   PODERES,
@@ -135,6 +139,13 @@ export type NovaProposta = {
   dados: Record<string, unknown>
   valor?: number
   descontoPct?: number
+  /**
+   * Quem pediu, quando pediu pela conversa. É a única pessoa que pode
+   * responder "sim" ali mesmo, no WhatsApp (ver assistente/respostas.ts) — e
+   * ainda assim com a capacidade dela conferida na hora. Sem quem pediu (a
+   * rotina das 9h), a proposta só se confirma na tela.
+   */
+  usuarioId?: string | null
 }
 
 /**
@@ -162,6 +173,7 @@ export async function propor(orgId: string, empresa: ComModulos, p: NovaProposta
         resumo: p.resumo,
         dados: p.dados as object,
         valor: p.valor ?? null,
+        usuarioId: p.usuarioId ?? null,
         expiraEm: new Date(Date.now() + HORAS_DE_VALIDADE * 3600_000),
       },
     }),
@@ -169,8 +181,23 @@ export async function propor(orgId: string, empresa: ComModulos, p: NovaProposta
 }
 
 export type Resposta =
-  | { ok: true; recibo?: { tipo: TipoRecibo; valor: number } }
-  | { ok: false; motivo: 'nao_existe' | 'ja_respondida' | 'expirada' | 'sem_permissao' | 'falhou'; detalhe?: string }
+  | {
+      ok: true
+      recibo?: { tipo: TipoRecibo; valor: number }
+      /** O que foi feito, numa frase para a pessoa ("entrada de 10 kg de Picanha lançada..."). */
+      feito?: string
+    }
+  | {
+      ok: false
+      motivo: 'nao_existe' | 'ja_respondida' | 'expirada' | 'sem_permissao' | 'falhou'
+      detalhe?: string
+      /**
+       * A recusa em palavras de gente, quando ela é de gente ("Esta
+       * encomenda já está entregue."). Erro de máquina não vem aqui: fica no
+       * `detalhe`, que vai para o banco e o log — nunca para o WhatsApp.
+       */
+      recado?: string
+    }
 
 /**
  * A pessoa responde. É o único caminho por onde a ação do agente acontece.
@@ -238,12 +265,12 @@ export async function responderProposta(
     )
   } catch (e) {
     await marcar(sessao.orgId, propostaId, 'FALHOU', sessao.nome, msg(e))
-    return { ok: false, motivo: 'falhou', detalhe: msg(e) }
+    return { ok: false, motivo: 'falhou', detalhe: msg(e), ...recadoDe(e) }
   }
 
   // 3. executa
   try {
-    const recibo = await executar(sessao, proposta.poder as ChavePoder, proposta.dados as Record<string, unknown>)
+    const { recibo, feito } = await executar(sessao, proposta.poder as ChavePoder, proposta.dados as Record<string, unknown>)
     await marcar(sessao.orgId, propostaId, 'CONFIRMADA', sessao.nome)
 
     // Duas linhas no livro, e as duas são verdade: o serviço já gravou a
@@ -270,14 +297,32 @@ export async function responderProposta(
     if (recibo) {
       await emitirRecibo(sessao.orgId, agente.id, recibo.tipo, recibo.valor, proposta.resumo)
     }
-    return { ok: true, recibo }
+    return { ok: true, recibo, ...(feito ? { feito } : {}) }
   } catch (e) {
     await marcar(sessao.orgId, propostaId, 'FALHOU', sessao.nome, msg(e))
-    return { ok: false, motivo: 'falhou', detalhe: msg(e) }
+    return { ok: false, motivo: 'falhou', detalhe: msg(e), ...recadoDe(e) }
   }
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'erro desconhecido')
+
+/**
+ * A frase do erro, só quando ela foi escrita para gente: as recusas dos
+ * serviços ("Esta encomenda já está entregue.", "Loja não encontrada") são
+ * `Error` comum, com a frase pronta. Erro do Prisma, do driver ou de tipo é
+ * de máquina e pode carregar dado — esse não sai daqui (mesma régua de
+ * `recadoDoErro` em pagina.ts).
+ */
+function recadoDe(e: unknown): { recado?: string } {
+  if (!(e instanceof Error)) return {}
+  // A recusa de permissão traz o nome técnico da capacidade: vira frase.
+  if (e.name === 'SemPermissao') return { recado: 'Isso não é do seu acesso (nessa loja, pelo menos).' }
+  const deMaquina =
+    e.name.startsWith('Prisma') ||
+    ['TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'DatabaseError'].includes(e.name) ||
+    'code' in e
+  return deMaquina || !e.message ? {} : { recado: e.message.slice(0, 300) }
+}
 
 async function marcar(
   orgId: string,
@@ -300,12 +345,18 @@ async function marcar(
  * Repare que ele chama os MESMOS serviços que a tela chama. O agente não tem
  * um caminho paralelo para escrever no banco — se tivesse, a regra de negócio
  * existiria em dois lugares e um dos dois ficaria para trás.
+ *
+ * Devolve o recibo (quando há) e, quando dá para dizer melhor que o resumo da
+ * proposta, a frase do que foi feito — é ela que volta no WhatsApp depois do
+ * "sim" ("entrada de 10 kg de Picanha lançada. Saldo agora: 14 kg.").
  */
+type Executado = { recibo?: { tipo: TipoRecibo; valor: number }; feito?: string }
+
 async function executar(
   sessao: Sessao,
   poder: ChavePoder,
   dados: Record<string, unknown>,
-): Promise<{ tipo: TipoRecibo; valor: number } | undefined> {
+): Promise<Executado> {
   switch (poder) {
     case 'lancar.despesa':
     case 'pedir.compra': {
@@ -322,7 +373,7 @@ async function executar(
       // recibo não é o da compra: gastar não é ganhar. Aqui ainda não há o que
       // medir; quem emite é `apurarRecibos`, trinta dias depois, com o que a
       // reposição de fato vendeu além do saldo que havia no aviso.
-      return undefined
+      return {}
     }
 
     case 'ajustar.estoque': {
@@ -339,8 +390,14 @@ async function executar(
         motivo: String(dados.motivo ?? 'Ajuste proposto pelo assistente'),
       })
       if (!r.ok) throw new Error('O estoque não permite esse ajuste agora.')
-      return undefined
+      return {}
     }
+
+    case 'estoque.entrada':
+      return { feito: await executarEntrada(sessao, dados) }
+
+    case 'encomenda.mudar':
+      return { feito: await executarEncomenda(sessao, dados) }
 
     case 'agenda.marcar': {
       // O MESMO serviço da tela: confere a permissão na loja, a profissional,
@@ -349,7 +406,7 @@ async function executar(
       // funcionamento, que a proposta já avisou.
       const r = await marcarHorario(sessao, { ...(dados as unknown as DadosHorario), confirmar: true })
       if (!r.ok) throw new Error(r.erro)
-      return undefined
+      return {}
     }
 
     case 'agenda.desmarcar': {
@@ -358,12 +415,206 @@ async function executar(
         motivo: String(dados.motivo ?? 'Desmarcado pelo assistente'),
       })
       if (!r.ok) throw new Error(r.erro)
-      return undefined
+      return {}
     }
 
     default:
       throw new Error(`"${poder}" ainda não sabe executar.`)
   }
+}
+
+// ── a entrada de compra ──────────────────────────────────────
+
+/** Um item da proposta de entrada, como `assistente/ferramentas-loja.ts` grava. */
+type ItemDaProposta = {
+  /** A variação do cadastro. Ausente = produto novo, cadastrado no sim. */
+  variacaoId?: string
+  nome: string
+  medida: Medida
+  quantidade: number
+  custoUnit?: number | null
+  /** Só no produto novo: o preço de venda de partida. */
+  precoVista?: number | null
+}
+
+const MEDIDAS: readonly Medida[] = ['UN', 'KG', 'G', 'L', 'ML', 'M', 'PAR', 'CX']
+
+function itensDaProposta(dados: Record<string, unknown>): ItemDaProposta[] {
+  const brutos = Array.isArray(dados.itens) ? dados.itens : []
+  return brutos.flatMap((b): ItemDaProposta[] => {
+    if (!b || typeof b !== 'object') return []
+    const i = b as Record<string, unknown>
+    const custo = i.custoUnit == null ? null : Number(i.custoUnit)
+    const preco = i.precoVista == null ? null : Number(i.precoVista)
+    return [
+      {
+        variacaoId: typeof i.variacaoId === 'string' && i.variacaoId ? i.variacaoId : undefined,
+        nome: String(i.nome ?? '').trim().slice(0, 120),
+        medida: MEDIDAS.includes(i.medida as Medida) ? (i.medida as Medida) : 'UN',
+        quantidade: Number(i.quantidade),
+        custoUnit: custo != null && Number.isFinite(custo) ? custo : null,
+        precoVista: preco != null && Number.isFinite(preco) ? preco : null,
+      },
+    ]
+  })
+}
+
+/**
+ * A entrada de compra pelos MESMOS serviços da tela: o produto novo nasce por
+ * `criarProduto` (com a permissão de cadastrar conferida lá dentro — e aqui
+ * antes, para a recusa ter frase clara), e a mercadoria entra por
+ * `registrarEntrada`, que confere `estoque.ajustar` NA LOJA, se a loja vende o
+ * produto, e quem pode mexer no custo.
+ *
+ * Produto novo e entrada não são uma transação só (são dois serviços, cada um
+ * com a sua): se a entrada for recusada depois do cadastro, o produto fica —
+ * é um cadastro válido, e a frase diz.
+ */
+async function executarEntrada(sessao: Sessao, dados: Record<string, unknown>): Promise<string> {
+  const unidadeId = String(dados.unidadeId ?? '')
+  const fornecedor = String(dados.fornecedor ?? '').trim().slice(0, 80)
+  const documento = String(dados.documento ?? '').trim().slice(0, 60)
+  const itens = itensDaProposta(dados)
+  if (!unidadeId || itens.length === 0) throw new Error('A proposta de entrada veio sem loja ou sem itens.')
+  // Antes de cadastrar qualquer coisa: quem não pode dar entrada nesta loja
+  // não deixa produto novo para trás.
+  exigir(sessao, 'estoque.ajustar', unidadeId)
+
+  const criados: string[] = []
+  const prontos: (ItemDaProposta & { variacaoId: string })[] = []
+  for (const i of itens) {
+    if (i.variacaoId) {
+      prontos.push({ ...i, variacaoId: i.variacaoId })
+      continue
+    }
+    if (!pode(sessao, 'produto.cadastrar')) {
+      throw new Error(
+        `"${i.nome}" não está cadastrado, e cadastrar produto não é do seu acesso. Peça a quem cadastra, ou cadastre pela tela de Produtos.`,
+      )
+    }
+    const alcance = unidadesQuePodem(sessao, 'produto.cadastrar')
+    const r = await criarProduto(sessao, {
+      nome: i.nome,
+      medida: i.medida,
+      precoVista: Number(i.precoVista ?? 0),
+      custo: i.custoUnit ?? null,
+      // Quem cadastra para todas as lojas cadastra para todas; o gerente,
+      // para a loja dele — a mesma régua da tela (`alcancaOProduto`).
+      vendidoEm: alcance === 'todas' ? [] : [unidadeId],
+    })
+    if (!r.ok) {
+      throw new Error(
+        r.precisaPin
+          ? `Cadastrar "${i.nome}" pede o PIN de quem cadastra. Cadastre pela tela de Produtos e me peça a entrada de novo.`
+          : r.motivo,
+      )
+    }
+    const v = await comoOrg(sessao.orgId, (db) =>
+      db.variacao.findFirst({ where: { produtoId: r.produtoId }, orderBy: { codigo: 'asc' }, select: { id: true } }),
+    )
+    if (!v) throw new Error(`"${i.nome}" foi cadastrado, mas sem variação para dar entrada.`)
+    criados.push(i.nome)
+    prontos.push({ ...i, variacaoId: v.id })
+  }
+
+  const paraEntrada: ItemEntrada[] = prontos.map((i) => ({
+    variacaoId: i.variacaoId,
+    quantidade: i.quantidade,
+    custoUnit: i.custoUnit ?? null,
+  }))
+  const r = await registrarEntrada(sessao, {
+    unidadeId,
+    fornecedor: fornecedor || undefined,
+    documento: documento || undefined,
+    itens: paraEntrada,
+  })
+  if (!r.ok) {
+    throw new Error(criados.length > 0 ? `${r.motivo} (O cadastro de ${criados.join(', ')} ficou feito.)` : r.motivo)
+  }
+
+  // O saldo de agora, na loja da entrada: é a conferência que a pessoa faz de
+  // cabeça ("tinha 4, chegaram 10, ficou 14").
+  const { loja, saldos } = await comoOrg(sessao.orgId, async (db) => {
+    const loja = await db.unidade.findUnique({ where: { id: unidadeId }, select: { nome: true } })
+    const saldos = await db.estoque.findMany({
+      where: { unidadeId, variacaoId: { in: prontos.map((i) => i.variacaoId) } },
+      select: { variacaoId: true, quantidade: true },
+    })
+    return { loja, saldos }
+  })
+  const saldoDe = new Map(saldos.map((s) => [s.variacaoId, Number(s.quantidade)]))
+  const onde = loja ? ` na ${loja.nome}` : ''
+  const partes: string[] = []
+  if (prontos.length === 1) {
+    const i = prontos[0]!
+    const saldo = saldoDe.get(i.variacaoId)
+    partes.push(
+      `entrada de ${comMedida(i.quantidade, i.medida)} de ${i.nome} lançada${onde}.` +
+        (saldo != null ? ` Saldo agora: ${comMedida(saldo, i.medida)}.` : ''),
+    )
+  } else {
+    const linhas = prontos.map((i) => {
+      const saldo = saldoDe.get(i.variacaoId)
+      return `${comMedida(i.quantidade, i.medida)} de ${i.nome}${saldo != null ? ` (saldo ${comMedida(saldo, i.medida)})` : ''}`
+    })
+    partes.push(`entrada lançada${onde}: ${linhas.join('; ')}.`)
+  }
+  if (criados.length > 0) {
+    partes.push(`Cadastrei ${criados.length === 1 ? 'o produto novo' : 'os produtos novos'}: ${criados.join(', ')}.`)
+  }
+  if (r.naoFeito.length > 0) partes.push(`Ficou de fora: ${r.naoFeito.join('; ')}.`)
+  return partes.join(' ')
+}
+
+// ── a encomenda ──────────────────────────────────────────────
+
+/**
+ * Aceitar, aprontar ou cancelar, pelos MESMOS serviços da tela de
+ * Encomendas: `marcarVista` e `mudarSituacao` conferem a loja da pessoa, a
+ * transição e (no cancelar) `venda.cancelar`. Depois do sim que deu certo, a
+ * cliente do catálogo recebe o aviso — e o aviso nunca derruba o que já foi
+ * feito (ver `avisarClienteDaEncomenda`, que não lança).
+ */
+async function executarEncomenda(sessao: Sessao, dados: Record<string, unknown>): Promise<string> {
+  const id = String(dados.encomendaId ?? '')
+  const acao = String(dados.acao ?? '')
+  const codigo = codigoEncomenda(id)
+  // Import tardio: o aviso mora com o assistente (canal, conversa), e o
+  // assistente importa este arquivo — no topo, os dois se puxariam na carga.
+  const avisar = async (evento: 'ACEITA' | 'PRONTA' | 'CANCELADA') => {
+    const { avisarClienteDaEncomenda } = await import('./assistente/avisos-encomenda')
+    await avisarClienteDaEncomenda(sessao.orgId, id, evento)
+  }
+
+  if (acao === 'aceitar') {
+    const r = await marcarVista(sessao, id)
+    if (!r.ok) throw new Error(r.erro)
+    if (r.jaEstava) return `o pedido ${codigo} já estava aceito.`
+    await avisar('ACEITA')
+    return `pedido ${codigo} aceito.`
+  }
+  if (acao === 'pronta') {
+    const r = await mudarSituacao(sessao, id, { para: 'PRONTA' })
+    if (!r.ok) throw new Error(r.erro)
+    // Pronta é vista, por definição: o pedido do catálogo que ninguém tinha
+    // aberto deixa de aparecer como novo.
+    if (dados.origem === 'CATALOGO') await marcarVista(sessao, id).catch(() => undefined)
+    await avisar('PRONTA')
+    return `encomenda ${codigo} marcada como pronta.`
+  }
+  if (acao === 'cancelar') {
+    const r = await mudarSituacao(sessao, id, {
+      para: 'CANCELADA',
+      motivo: String(dados.motivo ?? ''),
+      // Devolver sinal mexe em dinheiro e na gaveta: isso é na tela, com a
+      // pessoa escolhendo como devolveu. Pelo WhatsApp, o sinal fica.
+      devolveuSinal: false,
+    })
+    if (!r.ok) throw new Error(r.erro)
+    await avisar('CANCELADA')
+    return `encomenda ${codigo} cancelada.`
+  }
+  throw new Error('Essa mudança de encomenda não existe.')
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { minhaMeta, mesChave } from '@/servidor/metas'
 import { moduloLigado, RAMOS } from '@/servidor/modulos'
 import { pode, podeVerPlanos } from '@/servidor/permissao'
 import { encomendaParaReceber } from '@/servidor/encomenda'
+import { achadosPorVariacao } from './acoes'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Aviso } from '@/ui/base'
@@ -69,7 +70,19 @@ export default async function BalcaoPagina({
     unidadeId && encomendaPedida && /^[\w-]{1,64}$/.test(encomendaPedida)
       ? await encomendaParaReceber(sessao, encomendaPedida, unidadeId)
       : null
-  const encomenda = recebendo?.ok ? recebendo.encomenda : null
+  const lida = recebendo?.ok ? recebendo.encomenda : null
+  // O pedido do catálogo traz os produtos: eles entram como linhas do pedido.
+  const achadosDoPedido = lida && lida.itens.length > 0 && unidadeId ? await achadosPorVariacao(slug, unidadeId, lida.itens.map((i) => i.variacaoId)) : []
+  const encomenda = lida
+    ? {
+        ...lida,
+        itens: lida.itens.flatMap((i) => {
+          const a = achadosDoPedido.find((x) => x.id === i.variacaoId)
+          return a ? [{ achado: a, quantidade: i.quantidade }] : []
+        }),
+        faltaram: lida.itens.length - lida.itens.filter((i) => achadosDoPedido.some((x) => x.id === i.variacaoId)).length,
+      }
+    : null
   const veAssinatura = podeVerPlanos(sessao)
 
   // O programa de pontos vem do servidor junto com a tela. A conta de quanto

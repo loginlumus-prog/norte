@@ -94,6 +94,15 @@ services:
       # A chave da IA (console da Anthropic → API Keys).
       - key: ANTHROPIC_API_KEY
         sync: false
+      # O áudio da EQUIPE virado texto (src/servidor/assistente/transcricao.ts):
+      # um serviço compatível com o Whisper da OpenAI — o padrão é o da Groq
+      # (console.groq.com → API Keys). Sem a chave, o áudio segue como hoje
+      # ("peça para escrever"). Áudio de cliente nunca é mandado.
+      # Opcionais, só para trocar de serviço: TRANSCRICAO_URL (padrão
+      # https://api.groq.com/openai/v1/audio/transcriptions) e
+      # TRANSCRICAO_MODELO (padrão whisper-large-v3-turbo).
+      - key: TRANSCRICAO_CHAVE
+        sync: false
       # A instância GLOBAL do Z-API (a do piloto): o id e o token DA
       # INSTÂNCIA, e o token de segurança DA CONTA (Z-API → Segurança →
       # Client-Token). Uma instância é UM número de WhatsApp, e ela só fala

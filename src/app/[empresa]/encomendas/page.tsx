@@ -109,7 +109,11 @@ export default async function Encomendas({
   const atrasada = (e: EncomendaNaLista) => !ehFinal(e.situacao) && e.para.getTime() < agora.getTime()
 
   const pilula = (e: EncomendaNaLista) =>
-    atrasada(e) ? (
+    e.nova ? (
+      <span className="flex flex-wrap gap-1">
+        <Situacao nivel="atencao">novo · catálogo</Situacao>
+      </span>
+    ) : atrasada(e) ? (
       <span className="flex flex-wrap gap-1">
         <Situacao nivel="critico">atrasada</Situacao>
         {e.situacao === 'PRONTA' && <Situacao nivel="atencao">pronta</Situacao>}
@@ -155,6 +159,23 @@ export default async function Encomendas({
       <span className="text-[11px] text-tinta-3">{ROTULO_FORMA_SINAL[e.sinalForma]}</span>
     ) : null
 
+  // O pedido do catálogo: os itens, um por linha, e como a cliente vai pagar.
+  const doCatalogo = (e: EncomendaNaLista) =>
+    e.origem === 'CATALOGO' && e.itens.length > 0 ? (
+      <span className="flex flex-col gap-0.5 text-xs text-tinta-2">
+        {e.itens.map((i, n) => (
+          <span key={n}>
+            <b className="numero font-semibold text-tinta">{i.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}×</b> {i.descricao}{' '}
+            <span className="numero text-tinta-3">{brl(i.total)}</span>
+          </span>
+        ))}
+        {e.taxaEntrega > 0 && <span>Entrega <span className="numero text-tinta-3">{brl(e.taxaEntrega)}</span></span>}
+        <span className="text-tinta-3">
+          Pelo catálogo{e.formaCombinada ? ` · pagamento: ${ROTULO_FORMA_SINAL[e.formaCombinada as keyof typeof ROTULO_FORMA_SINAL] ?? e.formaCombinada}` : ''}
+        </span>
+      </span>
+    ) : null
+
   const comoSai = (e: EncomendaNaLista) =>
     e.entrega ? (
       <span className="text-xs text-tinta-2">
@@ -179,6 +200,7 @@ export default async function Encomendas({
       podeVender={pode(sessao, 'venda.criar', e.unidadeId)}
       editarEm={link({ editar: e.id })}
       simples={simples}
+      nova={e.nova}
     />
   )
 
@@ -204,7 +226,7 @@ export default async function Encomendas({
             {pilula(e)}
           </div>
           {contato(e)}
-          <p className="text-sm text-tinta">{e.descricao}</p>
+          {doCatalogo(e) ?? <p className="text-sm text-tinta">{e.descricao}</p>}
           {comoSai(e)}
           {e.observacao && <p className="text-xs whitespace-pre-line text-tinta-3">{e.observacao}</p>}
           {recebida(e)}
@@ -254,7 +276,7 @@ export default async function Encomendas({
           titulo: 'Encomenda',
           celula: (e: EncomendaNaLista) => (
             <span className="flex min-w-[13rem] flex-col gap-0.5">
-              <span className="text-tinta">{e.descricao}</span>
+              {doCatalogo(e) ?? <span className="text-tinta">{e.descricao}</span>}
               {comoSai(e)}
               {e.observacao && <span className="text-xs whitespace-pre-line text-tinta-3">{e.observacao}</span>}
               {recebida(e)}

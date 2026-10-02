@@ -17,9 +17,10 @@
 //
 // ── escrever: nunca ──────────────────────────────────────────
 // A ferramenta de escrita monta a PROPOSTA (`propor` em agente.ts, que confere
-// o teto antes de gravar) e para. Quem executa é a pessoa que confirma, pela
-// tela, com a capacidade dela conferida de novo. Não existe neste arquivo uma
-// linha que escreva em lançamento, estoque ou preço.
+// o teto antes de gravar) e para. Quem executa é a pessoa que confirma — com
+// um SIM na própria conversa (ver respostas.ts, que não passa pelo modelo) ou
+// pela tela —, com a capacidade dela conferida de novo. Não existe neste
+// arquivo uma linha que escreva em lançamento, estoque ou preço.
 
 import { comoOrg } from '../banco'
 import { propor, AcimaDoTeto, PoderNegado, PODERES, type ChavePoder, type Poder } from '../agente'
@@ -48,6 +49,7 @@ import {
   proporDesmarcar,
   proporMarcar,
 } from './ferramentas-atendimento'
+import { proporEntrada, proporMudancaEncomenda, verEncomendas } from './ferramentas-loja'
 
 export type ResultadoFerramenta = { texto: string; erro?: boolean; propostaId?: string }
 
@@ -93,9 +95,15 @@ export async function executarFerramenta(
         return explicarSistema(empresa, quem.sessao, str(entrada.pergunta, 300), nomesNoGuia(await vocabularioDaEmpresa(orgId)))
       case 'lancar.despesa':
       case 'pedir.compra':
-        return await proporLancamento(orgId, empresa, poder, entrada)
+        return await proporLancamento(orgId, empresa, poder, entrada, quem.sessao.usuarioId)
       case 'ajustar.estoque':
         return await proporAjuste(orgId, empresa, quem.sessao, entrada)
+      case 'estoque.entrada':
+        return await proporEntrada(orgId, empresa, quem.sessao, entrada)
+      case 'encomendas.ver':
+        return await verEncomendas(quem.sessao)
+      case 'encomenda.mudar':
+        return await proporMudancaEncomenda(orgId, empresa, quem.sessao, entrada)
       case 'agenda.consultar':
         return await consultarAgenda(quem.sessao, entrada)
       case 'agenda.marcar':
@@ -314,6 +322,8 @@ async function proporLancamento(
   empresa: ComModulos,
   poder: 'lancar.despesa' | 'pedir.compra',
   e: Record<string, unknown>,
+  /** Quem pediu: é quem pode responder SIM na conversa. */
+  usuarioId: string,
 ): Promise<ResultadoFerramenta> {
   const descricao = str(e.descricao, 120)
   const valor = numero(e.valor)
@@ -335,6 +345,7 @@ async function proporLancamento(
     poder,
     resumo,
     valor,
+    usuarioId,
     dados: {
       categoriaId: categoria.id,
       unidadeId: null,
@@ -345,7 +356,7 @@ async function proporLancamento(
     },
   })
   return {
-    texto: `Proposta criada e esperando confirmação de uma pessoa da loja na tela do assistente: ${resumo} Nada foi lançado ainda.`,
+    texto: `Proposta criada: ${resumo} Nada foi lançado ainda. Mostre o resumo e termine com "Responda SIM para confirmar" (também dá para confirmar na tela do assistente).`,
     propostaId: proposta.id,
   }
 }
@@ -415,10 +426,11 @@ async function proporAjuste(
   const proposta = await propor(orgId, empresa, {
     poder: 'ajustar.estoque',
     resumo,
+    usuarioId: sessao.usuarioId,
     dados: { variacaoId: achado.variacao.id, unidadeId: unidade.id, quantidade, motivo },
   })
   return {
-    texto: `Proposta criada e esperando confirmação na tela do assistente: ${resumo} O estoque ainda não mudou.`,
+    texto: `Proposta criada: ${resumo} O estoque ainda não mudou. Mostre o resumo e termine com "Responda SIM para confirmar".`,
     propostaId: proposta.id,
   }
 }

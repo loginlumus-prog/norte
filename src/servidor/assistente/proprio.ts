@@ -23,6 +23,7 @@ import { cifrar, decifrar, temCifra } from '../cifra'
 import { marcarHumano, processarMensagem, soPedidoDeLista, type Dependencias, type Desfecho } from './conversa'
 import { escolherCanal, SELECT_LINHA, type Canal } from './canal'
 import { ehPedidoDeVolta, lerParada } from '../campanhas/casar'
+import { MAXIMO_AUDIO_BYTES } from './transcricao'
 
 // ─────────────────────────────────────────────────────────────
 // A EMPRESA DO ENDEREÇO
@@ -44,7 +45,16 @@ export async function empresaExiste(orgId: string): Promise<boolean> {
 // ─────────────────────────────────────────────────────────────
 
 export type DoConector =
-  | { tipo: 'mensagem'; telefone: string; nome: string | null; texto: string; idExterno: string; anuncioId: string | null }
+  | {
+      tipo: 'mensagem'
+      telefone: string
+      nome: string | null
+      texto: string
+      idExterno: string
+      anuncioId: string | null
+      /** A nota de voz, quando o conector baixou (ver conector/src/sessoes.ts). */
+      audio?: { base64: string; mime: string }
+    }
   | { tipo: 'humano'; telefone: string }
   | { tipo: 'ignorar'; motivo: string }
 
@@ -66,7 +76,26 @@ export function lerDoConector(corpo: unknown): DoConector {
   const nome = typeof c.nome === 'string' && c.nome.trim() ? c.nome.trim().slice(0, 80) : null
   const anuncioId =
     typeof c.anuncioId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(c.anuncioId) ? c.anuncioId : null
-  return { tipo: 'mensagem', telefone, nome, texto, idExterno: id, anuncioId }
+  const audio = audioDoConector(c.audio)
+  return { tipo: 'mensagem', telefone, nome, texto, idExterno: id, anuncioId, ...(audio ? { audio } : {}) }
+}
+
+/** O base64 de 3 MB ocupa 4 MB: o teto do corpo da rota conta com isso. */
+export const MAXIMO_AUDIO_BASE64 = Math.ceil(MAXIMO_AUDIO_BYTES / 3) * 4
+
+/**
+ * A nota de voz que o conector manda junto (conector novo; o antigo não
+ * manda, e a mensagem segue só com o aviso). Fora do formato, ignorada — e a
+ * mensagem continua valendo com o aviso no lugar.
+ */
+function audioDoConector(v: unknown): { base64: string; mime: string } | null {
+  if (!v || typeof v !== 'object') return null
+  const a = v as Record<string, unknown>
+  const mime = typeof a.mime === 'string' ? a.mime.trim().slice(0, 80) : ''
+  const base64 = typeof a.base64 === 'string' ? a.base64 : ''
+  if (!/^audio\/[\w.+-]+/i.test(mime)) return null
+  if (!base64 || base64.length > MAXIMO_AUDIO_BASE64 || !/^[A-Za-z0-9+/=]+$/.test(base64)) return null
+  return { base64, mime }
 }
 
 export type PortaProprio = {
@@ -124,6 +153,7 @@ export async function receberDoConector(
           texto: r.texto,
           idExterno: r.idExterno,
           anuncioId: r.anuncioId,
+          audio: r.audio ?? null,
         },
         { ...deps, canal },
       )

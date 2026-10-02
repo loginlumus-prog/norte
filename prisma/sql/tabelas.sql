@@ -83,6 +83,9 @@ CREATE TYPE "SituacaoTarefa" AS ENUM ('A_FAZER', 'EM_ANDAMENTO', 'PARADO', 'FEIT
 CREATE TYPE "SituacaoEncomenda" AS ENUM ('ABERTA', 'PRONTA', 'ENTREGUE', 'CANCELADA');
 
 -- CreateEnum
+CREATE TYPE "OrigemEncomenda" AS ENUM ('BALCAO', 'CATALOGO');
+
+-- CreateEnum
 CREATE TYPE "TipoPonto" AS ENUM ('ENTRADA', 'SAIDA');
 
 -- CreateEnum
@@ -423,6 +426,7 @@ CREATE TABLE "produtos" (
     "nome" TEXT NOT NULL,
     "descricao" TEXT,
     "marca" TEXT,
+    "foto_id" TEXT,
     "referencia" TEXT,
     "categoria_id" TEXT,
     "medida" "Medida" NOT NULL DEFAULT 'UN',
@@ -939,6 +943,7 @@ CREATE TABLE "propostas_agente" (
     "resumo" TEXT NOT NULL,
     "dados" JSONB NOT NULL,
     "valor" DECIMAL(14,2),
+    "usuario_id" TEXT,
     "situacao" "SituacaoProposta" NOT NULL DEFAULT 'AGUARDANDO',
     "expira_em" TIMESTAMP(3) NOT NULL,
     "respondida_em" TIMESTAMP(3),
@@ -1098,12 +1103,54 @@ CREATE TABLE "encomendas" (
     "endereco" TEXT,
     "situacao" "SituacaoEncomenda" NOT NULL DEFAULT 'ABERTA',
     "observacao" TEXT,
+    "origem" "OrigemEncomenda" NOT NULL DEFAULT 'BALCAO',
+    "acompanhamento" TEXT,
+    "forma_combinada" "FormaPagamento",
+    "taxa_entrega" DECIMAL(12,2),
+    "vista_em" TIMESTAMP(3),
+    "ip_resumo" TEXT,
     "concluida_em" TIMESTAMP(3),
     "quem" TEXT NOT NULL,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizada_em" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "encomendas_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "encomenda_itens" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "encomenda_id" TEXT NOT NULL,
+    "variacao_id" TEXT,
+    "descricao" TEXT NOT NULL,
+    "quantidade" DECIMAL(12,3) NOT NULL,
+    "preco_unit" DECIMAL(12,2) NOT NULL,
+    "total" DECIMAL(12,2) NOT NULL,
+    "observacao" TEXT,
+
+    CONSTRAINT "encomenda_itens_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "catalogos" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "unidade_id" TEXT NOT NULL,
+    "ativo" BOOLEAN NOT NULL DEFAULT false,
+    "endereco" TEXT NOT NULL,
+    "whatsapp" TEXT,
+    "recado" TEXT,
+    "retirada" BOOLEAN NOT NULL DEFAULT true,
+    "entrega" BOOLEAN NOT NULL DEFAULT false,
+    "taxa_entrega" DECIMAL(12,2),
+    "pedido_minimo" DECIMAL(12,2),
+    "chave_pix" TEXT,
+    "mostrar_esgotado" BOOLEAN NOT NULL DEFAULT false,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizado_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "catalogos_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1884,10 +1931,25 @@ CREATE INDEX "tarefas_org_id_responsavel_id_situacao_idx" ON "tarefas"("org_id",
 CREATE INDEX "tarefas_org_id_prazo_idx" ON "tarefas"("org_id", "prazo");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "encomendas_acompanhamento_key" ON "encomendas"("acompanhamento");
+
+-- CreateIndex
 CREATE INDEX "encomendas_org_id_unidade_id_para_idx" ON "encomendas"("org_id", "unidade_id", "para");
 
 -- CreateIndex
 CREATE INDEX "encomendas_org_id_situacao_idx" ON "encomendas"("org_id", "situacao");
+
+-- CreateIndex
+CREATE INDEX "encomendas_org_id_origem_criada_em_idx" ON "encomendas"("org_id", "origem", "criada_em");
+
+-- CreateIndex
+CREATE INDEX "encomenda_itens_org_id_encomenda_id_idx" ON "encomenda_itens"("org_id", "encomenda_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "catalogos_unidade_id_key" ON "catalogos"("unidade_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "catalogos_org_id_endereco_key" ON "catalogos"("org_id", "endereco");
 
 -- CreateIndex
 CREATE INDEX "campanhas_org_id_ativa_idx" ON "campanhas"("org_id", "ativa");
@@ -2131,6 +2193,9 @@ ALTER TABLE "opcoes" ADD CONSTRAINT "opcoes_eixo_id_fkey" FOREIGN KEY ("eixo_id"
 
 -- AddForeignKey
 ALTER TABLE "produtos" ADD CONSTRAINT "produtos_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "produtos" ADD CONSTRAINT "produtos_foto_id_fkey" FOREIGN KEY ("foto_id") REFERENCES "midias"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "produtos" ADD CONSTRAINT "produtos_categoria_id_fkey" FOREIGN KEY ("categoria_id") REFERENCES "categorias"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -2407,6 +2472,21 @@ ALTER TABLE "encomendas" ADD CONSTRAINT "encomendas_unidade_id_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "encomendas" ADD CONSTRAINT "encomendas_cliente_id_fkey" FOREIGN KEY ("cliente_id") REFERENCES "clientes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "encomenda_itens" ADD CONSTRAINT "encomenda_itens_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "encomenda_itens" ADD CONSTRAINT "encomenda_itens_encomenda_id_fkey" FOREIGN KEY ("encomenda_id") REFERENCES "encomendas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "encomenda_itens" ADD CONSTRAINT "encomenda_itens_variacao_id_fkey" FOREIGN KEY ("variacao_id") REFERENCES "variacoes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "catalogos" ADD CONSTRAINT "catalogos_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "catalogos" ADD CONSTRAINT "catalogos_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "campanhas" ADD CONSTRAINT "campanhas_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

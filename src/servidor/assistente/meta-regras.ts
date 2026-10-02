@@ -182,6 +182,13 @@ function textoDaMensagem(m: Record<string, unknown>): string | null {
     const escolha = obj(i?.button_reply) ?? obj(i?.list_reply)
     return (txt(escolha?.title) || txt(escolha?.id)).trim() || null
   }
+  // O áudio do WhatsApp oficial fica no aviso, sem transcrição. A Meta não
+  // manda o arquivo nem um link aberto: manda um id de mídia, que só vira
+  // arquivo com duas chamadas à Graph API usando o token de negócio da loja
+  // (o endereço, depois o download autenticado) — e este leitor é puro, sem
+  // token nem rede. Ligar isso é trabalho do webhook da Meta (meta-webhook),
+  // com o token decifrado lá; até lá, a equipe que usa o número oficial
+  // escreve, ou fala pelo QR Code.
   const desc = MIDIA_NOME[tipo]
   if (desc) {
     const legenda = txt(obj(m[tipo])?.caption).trim()

@@ -102,7 +102,17 @@ export type Linha = Achado & {
 }
 
 /** A encomenda que abriu o balcão, como a página a entrega. */
-export type EncomendaNoPedido = { id: string; codigo: string; descricao: string; clienteNome: string; falta: number }
+export type EncomendaNoPedido = {
+  id: string
+  codigo: string
+  descricao: string
+  clienteNome: string
+  falta: number
+  /** O pedido do catálogo: os produtos entram como linhas de verdade. */
+  itens?: { achado: Achado; quantidade: number }[]
+  /** Itens do pedido que a loja não vende mais (não entraram). */
+  faltaram?: number
+}
 
 const linhaDaEncomenda = (e: EncomendaNoPedido): Linha => ({
   id: `encomenda-${e.id}`,
@@ -376,7 +386,16 @@ export function useVenda({
       )
       return
     }
-    setCarrinho((c) => (c.some((l) => l.encomendaId) ? c : [...c, linhaDaEncomenda(encomenda)]))
+    setCarrinho((c) =>
+      c.some((l) => l.encomendaId)
+        ? c
+        : [...c, linhaDaEncomenda(encomenda), ...(encomenda.itens ?? []).map((i) => ({ ...i.achado, quantidade: i.quantidade }))],
+    )
+    if (encomenda.faltaram) {
+      setAviso(
+        `${encomenda.faltaram === 1 ? 'Um item' : `${encomenda.faltaram} itens`} do pedido de ${encomenda.clienteNome} não ${encomenda.faltaram === 1 ? 'é' : 'são'} mais vendido${encomenda.faltaram === 1 ? '' : 's'} nesta loja e ficou de fora. Confira com a cliente.`,
+      )
+    }
     // Só na montagem: a encomenda é do endereço que abriu a tela.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chave, encomenda?.id])

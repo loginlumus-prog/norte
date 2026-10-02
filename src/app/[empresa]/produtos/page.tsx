@@ -322,6 +322,17 @@ export default async function Produtos({
             </Link>
           )}
           {pode(sessao, 'produto.cadastrar') && (
+            // O catálogo que já existe em outro lugar (sistema antigo,
+            // planilha, relatório) entra de uma vez — ver produtos/importar.
+            <Link
+              href={`/${slug}/produtos/importar`}
+              className="rounded-norte border border-marca/50 bg-marca-suave px-3 py-1.5 text-sm font-semibold text-tinta hover:border-marca"
+              title="Trazer o catálogo de uma planilha (Excel, CSV) ou do sistema antigo"
+            >
+              Trazer de outra planilha ou sistema
+            </Link>
+          )}
+          {pode(sessao, 'produto.cadastrar') && (
             <Link
               href={`/${slug}/produtos/novo`}
               className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"
@@ -439,17 +450,28 @@ export default async function Produtos({
         <Cartao>
           <Vazio
             acao={
-              podeEditar ? (
-                <Link
-                  href={`/${slug}/produtos/novo`}
-                  className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
-                >
-                  Cadastrar o primeiro
-                </Link>
+              pode(sessao, 'produto.cadastrar') ? (
+                // Quem chega de outro sistema não começa do zero: o catálogo
+                // vem inteiro da planilha. Um por um continua ao lado.
+                <span className="flex flex-wrap items-center justify-center gap-2">
+                  <Link
+                    href={`/${slug}/produtos/importar`}
+                    className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
+                  >
+                    Trazer de outra planilha ou sistema
+                  </Link>
+                  <Link
+                    href={`/${slug}/produtos/novo`}
+                    className="rounded-norte border border-borda bg-superficie px-4 py-2 text-sm font-semibold text-tinta hover:bg-superficie-2"
+                  >
+                    Cadastrar um por um
+                  </Link>
+                </span>
               ) : undefined
             }
           >
-            Nenhum {vocab.produto} cadastrado ainda.
+            Nenhum {vocab.produto} cadastrado ainda. Já tem o catálogo numa planilha do Excel ou no sistema antigo? Traga
+            tudo de uma vez — o Norte entende as colunas e mostra antes de gravar.
           </Vazio>
         </Cartao>
       )}

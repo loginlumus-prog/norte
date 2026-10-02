@@ -21,7 +21,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Marcar, Selecao, cx } from '@/ui/base'
 import { brl } from '@/ui/painel'
-import { mudarSituacaoAcao } from './acoes'
+import { aceitarEncomendaAcao, mudarSituacaoAcao } from './acoes'
 
 type Situacao = 'ABERTA' | 'PRONTA' | 'ENTREGUE' | 'CANCELADA'
 type FormaSinal = 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'TRANSFERENCIA'
@@ -72,6 +72,7 @@ export function AcoesEncomenda({
   podeVender,
   editarEm,
   simples,
+  nova = false,
 }: {
   slug: string
   id: string
@@ -90,6 +91,8 @@ export function AcoesEncomenda({
   podeVender: boolean
   editarEm: string
   simples: boolean
+  /** Pedido do catálogo que ninguém aceitou ainda: o primeiro botão é "Aceitar". */
+  nova?: boolean
 }) {
   const [painel, setPainel] = useState<null | 'entregar' | 'cancelar'>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -121,6 +124,22 @@ export function AcoesEncomenda({
   return (
     <div className="flex flex-col gap-2">
       <div className={cx('flex flex-wrap gap-1.5', simples && 'gap-2')}>
+        {podeMexer && nova && (
+          <Botao
+            className={grande}
+            carregando={indo}
+            title="A cliente recebe o aviso de que a loja aceitou (se o WhatsApp do assistente estiver ligado)."
+            onClick={() => {
+              setErro(null)
+              comecar(async () => {
+                const r = await aceitarEncomendaAcao(slug, id)
+                if (r.erro) setErro(r.erro)
+              })
+            }}
+          >
+            Aceitar pedido
+          </Botao>
+        )}
         {podeMexer && situacao === 'ABERTA' && (
           <Botao tom="secundario" className={grande} carregando={indo} onClick={() => mudar({ para: 'PRONTA' })}>
             Pronta

@@ -6,6 +6,7 @@
 // para uma frase que a tela pode mostrar.
 
 import { revalidatePath } from 'next/cache'
+import { avisarClienteDaEncomenda } from '@/servidor/assistente/avisos-encomenda'
 import { redirect } from 'next/navigation'
 import { exigirSessao } from '@/servidor/pagina'
 import { SemPermissao } from '@/servidor/permissao'
@@ -15,6 +16,7 @@ import {
   editarEncomenda,
   formaSinalValida,
   mudarSituacao,
+  marcarVista,
   type DadosEncomenda,
   type Mudanca,
 } from '@/servidor/encomenda'
@@ -114,6 +116,8 @@ export async function mudarSituacaoAcao(
   try {
     const r = await mudarSituacao(sessao, id, m)
     if (!r.ok) return { erro: r.erro }
+    // O pedido do catálogo: a cliente fica sabendo pelo WhatsApp (sem esperar).
+    if (para === 'PRONTA' || para === 'CANCELADA') void avisarClienteDaEncomenda(sessao.orgId, id, para).catch(() => {})
   } catch (e) {
     if (e instanceof SemPermissao) {
       return { erro: para === 'CANCELADA' ? 'Você não pode cancelar encomenda. Peça para a gerência.' : 'Você não pode mexer nas encomendas desta loja.' }
@@ -143,4 +147,20 @@ export async function buscarClientesAcao(slug: string, termo: string) {
     if (e instanceof SemPermissao) return []
     throw e
   }
+}
+
+/** "Aceitar pedido": o pedido do catálogo foi visto, e a cliente fica sabendo. */
+export async function aceitarEncomendaAcao(slug: string, id: string): Promise<{ ok?: string; erro?: string }> {
+  const sessao = await exigirSessao(slug)
+  if (!idValido(id)) return { erro: 'Encomenda inválida.' }
+  try {
+    const r = await marcarVista(sessao, id)
+    if (!r.ok) return { erro: r.erro }
+    if (!r.jaEstava) void avisarClienteDaEncomenda(sessao.orgId, id, 'ACEITA').catch(() => {})
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode mexer nas encomendas desta loja.' }
+    return { erro: `Não deu para aceitar. Tente de novo. (código ${registrarErro('encomenda.aceitar', e)})` }
+  }
+  revalidatePath(`/${slug}/encomendas`)
+  return { ok: 'Pedido aceito.' }
 }

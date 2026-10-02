@@ -24,9 +24,11 @@ import { join } from 'node:path'
 import makeWASocket, {
   Browsers,
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   type AnyMessageContent,
+  type WAMessage,
   type WASocket,
 } from '@whiskeysockets/baileys'
 import { pino } from 'pino'
@@ -34,8 +36,15 @@ import QRCode from 'qrcode'
 import { GuardaDaSessao } from './autenticacao'
 import type { Config } from './config'
 import { finalDoNumero, log, mascararNumero, resumoDoErro } from './log'
-import type { ClienteNorte } from './norte'
-import { ehLid, normalizar, telefoneDoJid, type MensagemBruta } from './normalizar'
+import type { ClienteNorte, RecebidaParaNorte } from './norte'
+import {
+  ehLid,
+  normalizar,
+  telefoneDoJid,
+  MAXIMO_AUDIO_BYTES,
+  type AudioParaBaixar,
+  type MensagemBruta,
+} from './normalizar'
 import { Fila, Ritmo, tempoDigitando } from './ritmo'
 import { Idempotencia } from './idempotencia'
 
@@ -250,7 +259,7 @@ class SessaoDaEmpresa {
       // 'notify' = chegou agora. 'append' é o que o próprio conector mandou,
       // ou histórico — nada disso é conversa nova.
       if (type !== 'notify') return
-      for (const m of messages) void this.recebeu(sock, m as MensagemBruta)
+      for (const m of messages) void this.recebeu(sock, m)
     })
   }
 
@@ -306,7 +315,8 @@ class SessaoDaEmpresa {
     }, espera)
   }
 
-  private async recebeu(sock: WASocket, m: MensagemBruta) {
+  private async recebeu(sock: WASocket, original: WAMessage) {
+    const m = original as MensagemBruta
     try {
       let telefoneDoLid: string | null = null
       const jid = m.key?.remoteJid
@@ -322,11 +332,19 @@ class SessaoDaEmpresa {
         telefoneDoLid,
       })
       if (n.tipo === 'ignorar') return
+      const { audioParaBaixar, ...resto } = n
+      let corpo: RecebidaParaNorte = resto
+      // A nota de voz vai junto, em base64 — baixada UMA vez, antes das
+      // tentativas. Não baixou: vai só o aviso, como antes.
+      if (audioParaBaixar && !n.deMim) {
+        const audio = await this.baixarAudio(sock, original, audioParaBaixar)
+        if (audio) corpo = { ...resto, audio }
+      }
       // Três tentativas: o Norte pode estar reiniciando. A mensagem é gravada
       // pelo id lá dentro, então entregar duas vezes não duplica nada.
       for (let i = 0; i < 3; i++) {
         try {
-          if (await this.norte.entregar(this.orgId, n)) return
+          if (await this.norte.entregar(this.orgId, corpo)) return
         } catch {
           // tenta de novo
         }
@@ -335,6 +353,25 @@ class SessaoDaEmpresa {
       log.erro('mensagem.entrega_falhou', { orgId: this.orgId, de: finalDoNumero(n.telefone) })
     } catch (e) {
       log.erro('mensagem.falhou', { orgId: this.orgId, erro: resumoDoErro(e) })
+    }
+  }
+
+  /**
+   * Baixa a nota de voz (o WhatsApp guarda cifrada; o Baileys busca e abre).
+   * Tempo e tamanho com teto: o arquivo maior que o limite é descartado. O
+   * conteúdo não fica em lugar nenhum daqui — vai para o Norte e some.
+   */
+  private async baixarAudio(sock: WASocket, m: WAMessage, a: AudioParaBaixar): Promise<{ base64: string; mime: string } | null> {
+    try {
+      const baixado = await Promise.race([
+        downloadMediaMessage(m, 'buffer', {}, { logger: silencioso, reuploadRequest: sock.updateMediaMessage }),
+        dormir(20_000).then(() => null),
+      ])
+      if (!baixado || baixado.length === 0 || baixado.length > MAXIMO_AUDIO_BYTES) return null
+      return { base64: baixado.toString('base64'), mime: a.mime }
+    } catch (e) {
+      log.aviso('audio.baixar_falhou', { orgId: this.orgId, erro: resumoDoErro(e) })
+      return null
     }
   }
 

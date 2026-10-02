@@ -53,6 +53,14 @@ const D: Record<string, ReactNode> = {
       <path d="M4 7.5 12 11.5l8-4M12 11.5v9" />
     </>
   ),
+  // Catálogo: a vitrine — a página com a grade de produtos e o toldo.
+  catalogo: (
+    <>
+      <path d="M4 9.5 5.5 4h13L20 9.5" />
+      <path d="M4 9.5c0 1.4 1.1 2.5 2.7 2.5s2.6-1.1 2.6-2.5c0 1.4 1.1 2.5 2.7 2.5s2.7-1.1 2.7-2.5c0 1.4 1 2.5 2.6 2.5S20 10.9 20 9.5" />
+      <path d="M5.5 12v8.5h13V12M10 20.5v-5h4v5" />
+    </>
+  ),
   // Agenda: a folha do calendário, com a hora marcada num canto.
   agenda: (
     <>

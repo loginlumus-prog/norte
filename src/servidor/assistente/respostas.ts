@@ -1,0 +1,309 @@
+// O "SIM" no WhatsApp — e o ACEITAR / PRONTO do pedido do catálogo.
+//
+// A proposta do assistente sempre pôde ser confirmada na tela. Pela conversa,
+// o dono que mandou "comprei 10 kg de picanha" quer responder "sim" ali
+// mesmo, e é isto que trata essa resposta — ANTES do modelo, sem modelo
+// nenhum. O modelo nunca confirma nada: ele não tem ferramenta para isso, e
+// a frase "sim" nem chega a ele quando há proposta esperando.
+//
+// ── quem pode dizer sim, e a qual proposta ───────────────────
+// Só quem PEDIU a proposta (`PropostaAgente.usuarioId`, gravado por `propor`
+// a partir da conversa), e só para o que pediu na última hora: o "ok" de
+// amanhã não confirma a conta de hoje. O sim de outra pessoa da equipe não
+// alcança proposta alheia — ela confirma na tela, se puder. Proposta sem
+// quem pediu (a rotina das 9h) é só da tela, como sempre foi.
+//
+// A confirmação é `responderProposta` — o MESMO caminho da tela —, com a
+// sessão de quem respondeu montada do banco agora (os papéis de agora, não
+// os de quando pediu). Então tudo o que a tela confere vale aqui: a
+// capacidade da pessoa, o teto de agora, a validade, e a proposta TOMADA
+// antes de executar (o sim no WhatsApp e o clique na tela ao mesmo tempo não
+// executam duas vezes).
+//
+// Uma proposta esperando: "sim" confirma, "não" recusa. Várias: a resposta
+// lista numeradas, e "sim 2" escolhe. Nenhuma: a mensagem segue para o
+// modelo, como qualquer outra.
+//
+// ── ACEITAR e PRONTO ─────────────────────────────────────────
+// O aviso do pedido novo do catálogo (avisos-encomenda.ts) termina com
+// "Responda ACEITAR, PRONTO ou abra Encomendas". A resposta é o próprio
+// comando de uma pessoa da equipe — não há modelo no meio para confirmar —,
+// e vai pelos MESMOS serviços da tela de Encomendas (`marcarVista`,
+// `mudarSituacao`), que conferem a loja e a permissão de quem respondeu.
+// Sem código, vale o pedido avisado NESTA conversa nas últimas 24 horas; com
+// mais de um, a resposta pergunta qual.
+
+import type { Agente } from '@prisma/client'
+import { comoOrg } from '../banco'
+import { responderProposta, type Resposta } from '../agente'
+import { codigoEncomenda, marcarVista, mudarSituacao } from '../encomenda'
+import { moduloLigado } from '../modulos'
+import { SemPermissao } from '../permissao'
+import { resumoDoErro } from '../registro'
+import type { Canal } from './canal'
+import { enviarEGravar, type Contexto } from './contexto'
+import type { Equipe } from './regras'
+import { acharPeloCodigo } from './ferramentas-loja'
+import { avisarClienteDaEncomenda, PREFIXO_PEDIDO_NOVO } from './avisos-encomenda'
+
+/** Até quanto tempo depois de pedir o "sim" na conversa vale. */
+export const MINUTOS_DO_SIM = 60
+/** Até quanto tempo depois do aviso o ACEITAR sem código acha o pedido. */
+const HORAS_DO_ATALHO = 24
+
+// ─────────────────────────────────────────────────────────────
+// A LEITURA (pura)
+// ─────────────────────────────────────────────────────────────
+
+/** Sem acento, sem caixa, sem pontuação nem emoji: "Sim!! 👍" → "sim". */
+const limpar = (t: string) =>
+  t
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
+const SIM = ['sim', 'confirmo', 'confirma', 'confirmar', 'confirmado', 'pode', 'pode lancar', 'pode sim', 'sim pode', 'ok', 'okay', 'isso', 'isso mesmo', 'pode confirmar']
+const NAO = ['nao', 'cancela', 'cancelar', 'nao pode', 'nao quero']
+
+/** "o 2", "a 2", "numero 2", "n 2", "2". */
+const NUMERO = String.raw`(?:\s+(?:o|a|numero|n)?\s*(\d{1,2}))?`
+const RESPOSTA = new RegExp(`^(${[...SIM, ...NAO].sort((a, b) => b.length - a.length).join('|')})${NUMERO}$`)
+
+export type RespostaCurta = { aceita: boolean; numero: number | null }
+
+/**
+ * A mensagem INTEIRA é um sim ou um não (com o número, opcional)? Frase com
+ * mais coisa ("sim, mas muda a data") não é: vai para o modelo, que entende.
+ */
+export function lerRespostaCurta(texto: string): RespostaCurta | null {
+  const t = limpar(texto)
+  if (!t || t.length > 30) return null
+  const m = RESPOSTA.exec(t)
+  if (!m) return null
+  return { aceita: !NAO.includes(m[1]!), numero: m[2] ? Number(m[2]) : null }
+}
+
+export type AtalhoEncomenda = { acao: 'aceitar' | 'pronta'; codigo: string | null; numero: number | null }
+
+const ACEITAR = ['aceitar', 'aceito', 'aceita', 'aceite']
+const PRONTO = ['pronto', 'pronta', 'ta pronto', 'ta pronta', 'esta pronto', 'esta pronta']
+
+/** "ACEITAR", "aceito ENC-A1B2C3", "pronto 2". A mensagem inteira, de novo. */
+export function lerAtalhoEncomenda(texto: string): AtalhoEncomenda | null {
+  const t = limpar(texto)
+  if (!t || t.length > 40) return null
+  const palavra = [...ACEITAR, ...PRONTO].sort((a, b) => b.length - a.length).find((p) => t === p || t.startsWith(`${p} `))
+  if (!palavra) return null
+  const acao = ACEITAR.includes(palavra) ? 'aceitar' : 'pronta'
+  const resto = t.slice(palavra.length).trim()
+  if (!resto) return { acao, codigo: null, numero: null }
+  const n = /^(?:o |a |numero |n )?(\d{1,2})$/.exec(resto)
+  if (n) return { acao, codigo: null, numero: Number(n[1]) }
+  // Código só com o ENC na frente (limpar() tira o hífen: "enc a1b2c3"):
+  // sem ele, "aceito cartao" viraria o código "cartao".
+  const c = /^enc\s*([a-z0-9]{6})$/.exec(resto)
+  return c ? { acao, codigo: c[1]!, numero: null } : null
+}
+
+// ─────────────────────────────────────────────────────────────
+// A RESPOSTA
+// ─────────────────────────────────────────────────────────────
+
+export type Atalho = { tipo: 'atalho'; texto: string; enviada: boolean }
+
+type Conversa = { id: string; telefone: string }
+
+/**
+ * Trata a mensagem se ela for a resposta a uma proposta (ou o ACEITAR /
+ * PRONTO de um pedido). Nulo = não era: segue para o modelo.
+ *
+ * `eco`: a linha "Ouvi: …" quando a mensagem veio de áudio.
+ */
+export async function responderPeloWhatsApp(
+  ctx: Contexto & { agente: Agente },
+  quem: Equipe,
+  conversa: Conversa,
+  texto: string,
+  canal: Canal,
+  eco?: string | null,
+): Promise<Atalho | null> {
+  const curta = lerRespostaCurta(texto)
+  const resposta = curta
+    ? await responderAProposta(ctx, quem, curta)
+    : await atalhoDeEncomenda(ctx, quem, conversa, texto)
+  if (resposta === null) return null
+  const saida = await enviarEGravar(canal, ctx.agente, conversa, eco ? `${eco}\n\n${resposta}` : resposta)
+  return { tipo: 'atalho', texto: resposta, enviada: saida.enviada }
+}
+
+/** Resumo de proposta numa linha de lista: cortado, que a lista é para escolher. */
+const linha = (resumo: string) => (resumo.length > 220 ? `${resumo.slice(0, 219).trimEnd()}…` : resumo)
+
+function lista(propostas: { resumo: string }[]): string {
+  return [
+    `Tem ${propostas.length} propostas suas esperando:`,
+    ...propostas.map((p, i) => `${i + 1}) ${linha(p.resumo)}`),
+    `Responda SIM 1${propostas.length > 1 ? `, SIM ${propostas.length}` : ''} para confirmar uma, ou NÃO 1 para cancelar.`,
+  ].join('\n')
+}
+
+/** A frase que volta depois de `responderProposta`. */
+export function fraseDaResposta(r: Resposta, aceita: boolean, resumo: string): string {
+  if (r.ok) {
+    if (!aceita) return `Certo, cancelei. Nada foi feito: ${linha(resumo)}`
+    return `Feito: ${r.feito ?? linha(resumo)}`
+  }
+  switch (r.motivo) {
+    case 'sem_permissao':
+      return 'Isso não é do seu acesso pela tela, então também não por aqui. Quem pode confirma na tela do assistente — a proposta continua lá.'
+    case 'expirada':
+      return 'Essa proposta venceu (vale 24 horas). Me peça de novo que eu monto outra.'
+    case 'ja_respondida':
+      return 'Essa proposta já foi respondida.'
+    case 'nao_existe':
+      return 'Não achei essa proposta.'
+    default:
+      return r.recado
+        ? `Não deu: ${r.recado}`
+        : 'Não deu para fazer isso agora. A proposta ficou marcada com o erro na tela do assistente.'
+  }
+}
+
+async function responderAProposta(ctx: Contexto & { agente: Agente }, quem: Equipe, curta: RespostaCurta): Promise<string | null> {
+  const orgId = ctx.org.id
+  const agora = new Date()
+  const recentes = await comoOrg(orgId, (db) =>
+    db.propostaAgente.findMany({
+      where: {
+        usuarioId: quem.sessao.usuarioId,
+        situacao: 'AGUARDANDO',
+        respondidaEm: null,
+        criadaEm: { gte: new Date(agora.getTime() - MINUTOS_DO_SIM * 60_000) },
+      },
+      orderBy: { criadaEm: 'asc' },
+      take: 10,
+      select: { id: true, resumo: true, expiraEm: true },
+    }),
+  )
+  // Nada que esta pessoa pediu há pouco: o "ok" é só um ok. O modelo responde.
+  if (recentes.length === 0) return null
+
+  const valendo = recentes.filter((p) => p.expiraEm > agora)
+  let alvo: (typeof recentes)[number] | undefined
+  if (valendo.length === 0) {
+    // Só vencidas: `responderProposta` diz isso e marca a proposta.
+    alvo = recentes.at(-1)
+  } else if (curta.numero !== null) {
+    alvo = valendo[curta.numero - 1]
+    if (!alvo) return `Não tenho a proposta ${curta.numero}.\n${lista(valendo)}`
+  } else if (valendo.length === 1) {
+    alvo = valendo[0]
+  } else {
+    return lista(valendo)
+  }
+
+  const r = await responderProposta(quem.sessao, ctx.org, alvo!.id, curta.aceita)
+  if (!r.ok && r.motivo === 'falhou' && !r.recado && r.detalhe) {
+    console.error(`[assistente] ${orgId}: o sim pelo WhatsApp falhou na execução`)
+  }
+  return fraseDaResposta(r, curta.aceita, alvo!.resumo)
+}
+
+// ── ACEITAR / PRONTO ─────────────────────────────────────────
+
+const CODIGO_NO_AVISO = new RegExp(`^${PREFIXO_PEDIDO_NOVO} \\(ENC-([A-Z0-9]{6})\\)`)
+
+async function atalhoDeEncomenda(
+  ctx: Contexto & { agente: Agente },
+  quem: Equipe,
+  conversa: Conversa,
+  texto: string,
+): Promise<string | null> {
+  const a = lerAtalhoEncomenda(texto)
+  if (!a || !moduloLigado(ctx.org, 'encomenda')) return null
+  const orgId = ctx.org.id
+  const sessao = quem.sessao
+
+  type Achada = Extract<Awaited<ReturnType<typeof acharPeloCodigo>>, { encomenda: unknown }>['encomenda']
+  const serve = (e: Achada) =>
+    (e.situacao === 'ABERTA' || e.situacao === 'PRONTA') &&
+    (a.acao === 'aceitar' ? e.origem === 'CATALOGO' && !e.vistaEm : e.situacao === 'ABERTA')
+
+  let alvo: Achada | undefined
+  if (a.codigo) {
+    const r = await acharPeloCodigo(sessao, a.codigo)
+    if ('erro' in r) return r.erro!
+    alvo = r.encomenda
+  } else {
+    // Os pedidos avisados NESTA conversa, nas últimas 24 horas.
+    const avisos = await comoOrg(orgId, (db) =>
+      db.mensagemAgente.findMany({
+        where: {
+          conversaId: conversa.id,
+          de: 'AGENTE',
+          texto: { startsWith: PREFIXO_PEDIDO_NOVO },
+          criadaEm: { gte: new Date(Date.now() - HORAS_DO_ATALHO * 3600_000) },
+        },
+        orderBy: { criadaEm: 'asc' },
+        take: 20,
+        select: { texto: true },
+      }),
+    )
+    const codigos = [...new Set(avisos.map((m) => CODIGO_NO_AVISO.exec(m.texto)?.[1]).filter((c): c is string => !!c))]
+    // Sem pedido avisado aqui: "pronto" é só uma palavra. O modelo responde.
+    if (codigos.length === 0) return null
+    const candidatos: Achada[] = []
+    for (const c of codigos) {
+      const r = await acharPeloCodigo(sessao, c)
+      if (!('erro' in r) && serve(r.encomenda)) candidatos.push(r.encomenda)
+    }
+    if (candidatos.length === 0) {
+      return a.acao === 'aceitar' ? 'Os pedidos que avisei já foram aceitos.' : 'Os pedidos que avisei já não estão a fazer.'
+    }
+    if (a.numero !== null) {
+      alvo = candidatos[a.numero - 1]
+      if (!alvo) return `Não tenho o pedido ${a.numero} na lista.`
+    } else if (candidatos.length === 1) {
+      alvo = candidatos[0]
+    } else {
+      const verbo = a.acao === 'aceitar' ? 'ACEITAR' : 'PRONTO'
+      return [
+        'Qual deles?',
+        ...candidatos.map((e, i) => `${i + 1}) ${codigoEncomenda(e.id)}`),
+        `Responda ${verbo} 1, ${verbo} 2... ou ${verbo} com o código.`,
+      ].join('\n')
+    }
+  }
+
+  const e = alvo!
+  const codigo = codigoEncomenda(e.id)
+  if (!serve(e)) {
+    return a.acao === 'aceitar'
+      ? e.origem !== 'CATALOGO'
+        ? `A ${codigo} foi anotada no balcão — não há o que aceitar.`
+        : `O pedido ${codigo} já foi aceito.`
+      : `A ${codigo} não está a fazer (está ${e.situacao === 'PRONTA' ? 'pronta' : 'encerrada'}).`
+  }
+
+  try {
+    if (a.acao === 'aceitar') {
+      const r = await marcarVista(sessao, e.id)
+      if (!r.ok) return `Não deu: ${r.erro}`
+    } else {
+      const r = await mudarSituacao(sessao, e.id, { para: 'PRONTA' })
+      if (!r.ok) return `Não deu: ${r.erro}`
+      if (e.origem === 'CATALOGO' && !e.vistaEm) await marcarVista(sessao, e.id).catch(() => undefined)
+    }
+  } catch (erro) {
+    if (erro instanceof SemPermissao) return 'Isso não é do seu acesso nas encomendas dessa loja.'
+    console.error(`[assistente] ${orgId}: o ${a.acao} pelo WhatsApp falhou:`, resumoDoErro(erro))
+    return 'Não deu para fazer isso agora. Tente pela tela de Encomendas.'
+  }
+
+  const avisa = e.origem === 'CATALOGO' && !!e.telefone
+  if (avisa) await avisarClienteDaEncomenda(orgId, e.id, a.acao === 'aceitar' ? 'ACEITA' : 'PRONTA')
+  const feito = a.acao === 'aceitar' ? `pedido ${codigo} aceito.` : `encomenda ${codigo} marcada como pronta.`
+  return `Feito: ${feito}${avisa ? ' A cliente recebe o aviso pelo WhatsApp.' : ''}`
+}

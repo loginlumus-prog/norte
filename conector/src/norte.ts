@@ -16,6 +16,12 @@ export type RecebidaParaNorte = {
   id: string
   deMim: boolean
   anuncioId?: string
+  /**
+   * A nota de voz, baixada pelo conector. O Norte de antes deste campo o
+   * ignora (e segue com o aviso no texto); o de agora transcreve, se quem
+   * falou for da equipe.
+   */
+  audio?: { base64: string; mime: string }
 }
 
 export class ClienteNorte {

@@ -38,6 +38,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { acharOrgPorSlug, comoOrg } from '../banco'
 import { marcarHumano, processarMensagem, soPedidoDeLista, type Dependencias, type Desfecho } from './conversa'
 import { escolherCanal, SELECT_LINHA, type Canal } from './canal'
+import { MAXIMO_AUDIO_SEGUNDOS, type AudioRecebido } from './transcricao'
 
 // ─────────────────────────────────────────────────────────────
 // O TOKEN
@@ -123,6 +124,8 @@ export type Recebida =
       idExterno: string
       /** O anúncio "clique para o WhatsApp" de onde a pessoa veio, se veio de um. */
       anuncioId?: string | null
+      /** A nota de voz: o link que o Z-API guarda. Só baixada se quem mandou for da equipe. */
+      audio?: AudioRecebido
     }
   /** Alguém da loja escreveu pelo próprio celular: o recado fixo fica calado 24 h. */
   | { tipo: 'humano'; telefone: string }
@@ -186,16 +189,37 @@ export function lerZapi(
   }
   const qual = Object.keys(MIDIA).find((k) => c[k] && typeof c[k] === 'object')
   if (qual) {
+    const audio = qual === 'audio' ? audioDoZapi(c.audio) : null
     return {
       tipo: 'mensagem',
       telefone,
       nome,
       idExterno,
       ...anuncioId,
+      ...(audio ? { audio } : {}),
+      // O aviso continua sendo o texto: é o que vale para cliente (áudio de
+      // cliente não é transcrito) e quando a transcrição não dá.
       texto: `(a pessoa mandou ${MIDIA[qual]}, que o assistente ainda não consegue abrir — peça para escrever)`,
     }
   }
   return { tipo: 'ignorar', motivo: 'tipo de mensagem não tratado' }
+}
+
+/**
+ * A nota de voz do Z-API: `audio.audioUrl` (o arquivo, guardado por eles),
+ * `mimeType` e `seconds`. Só https, e só até três minutos — o resto fica com
+ * o aviso de sempre. Quem baixa (e só se a pessoa for da equipe) é
+ * `transcricao.ts`.
+ */
+export function audioDoZapi(v: unknown): AudioRecebido | null {
+  if (!v || typeof v !== 'object') return null
+  const a = v as Record<string, unknown>
+  const url = typeof a.audioUrl === 'string' ? a.audioUrl.trim() : ''
+  if (!url.startsWith('https://') || url.length > 2_000) return null
+  const segundos = typeof a.seconds === 'number' && Number.isFinite(a.seconds) ? a.seconds : null
+  if (segundos !== null && segundos > MAXIMO_AUDIO_SEGUNDOS) return null
+  const mime = typeof a.mimeType === 'string' && a.mimeType.trim() ? a.mimeType.trim().slice(0, 80) : null
+  return { url, mime, segundos }
 }
 
 /**
@@ -274,7 +298,15 @@ export async function receberWebhook(slug: string, token: string, corpo: unknown
       if (r.tipo === 'humano') return marcarHumano(org.id, agente.id, r.telefone)
 
       return processarMensagem(
-        { orgId: org.id, telefone: r.telefone, nome: r.nome, texto: r.texto, idExterno: r.idExterno, anuncioId: r.anuncioId ?? null },
+        {
+          orgId: org.id,
+          telefone: r.telefone,
+          nome: r.nome,
+          texto: r.texto,
+          idExterno: r.idExterno,
+          anuncioId: r.anuncioId ?? null,
+          audio: r.audio ?? null,
+        },
         { ...deps, canal },
       )
     },

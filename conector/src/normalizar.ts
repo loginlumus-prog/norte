@@ -12,7 +12,9 @@
 //     texto: o Norte só precisa saber que um humano assumiu a conversa;
 //   • mensagem velha (a sessão ficou fora do ar) → fora depois de um tempo;
 //   • áudio, foto e afins sem legenda → vão como aviso, igual ao Z-API: o
-//     assistente pede para a pessoa escrever.
+//     assistente pede para a pessoa escrever. A NOTA DE VOZ (até 3 minutos e
+//     3 MB) vai marcada em `audioParaBaixar`: quem chama baixa o arquivo e
+//     manda junto, e o Norte transcreve — só se quem falou for da equipe.
 //
 // Anúncio: quem chega por um anúncio "clique para o WhatsApp" do Facebook ou
 // do Instagram traz o id do anúncio em `contextInfo.externalAdReply`. Ele vai
@@ -44,8 +46,19 @@ export type Normalizada =
       id: string
       deMim: boolean
       anuncioId?: string
+      /**
+       * A nota de voz cabe no limite e vale baixar. NÃO vai para o Norte
+       * assim: quem chama baixa o arquivo e troca isto pelo `audio`.
+       */
+      audioParaBaixar?: AudioParaBaixar
     }
   | { tipo: 'ignorar'; motivo: string }
+
+export type AudioParaBaixar = { mime: string; segundos: number | null; bytes: number | null }
+
+/** Até onde a nota de voz é baixada e mandada. O Norte confere o mesmo. */
+export const MAXIMO_AUDIO_SEGUNDOS = 180
+export const MAXIMO_AUDIO_BYTES = 3 * 1024 * 1024
 
 const soDigitos = (v: string) => v.replace(/\D/g, '')
 
@@ -140,6 +153,22 @@ export function anuncioDa(m: Obj | null): string | null {
   return null
 }
 
+/**
+ * A nota de voz (ou o áudio encaminhado), se couber no limite: três minutos
+ * e 3 MB. Sem a duração ou o tamanho na mensagem, vale — quem baixa confere
+ * o tamanho de novo.
+ */
+export function audioDa(m: Obj | null): AudioParaBaixar | null {
+  const a = obj(m?.audioMessage)
+  if (!a) return null
+  const segundos = segundosDe(a.seconds as MensagemBruta['messageTimestamp'])
+  const bytes = segundosDe(a.fileLength as MensagemBruta['messageTimestamp'])
+  if (segundos !== null && segundos > MAXIMO_AUDIO_SEGUNDOS) return null
+  if (bytes !== null && bytes > MAXIMO_AUDIO_BYTES) return null
+  const mime = typeof a.mimetype === 'string' && /^audio\/[\w.+-]+/i.test(a.mimetype) ? a.mimetype.slice(0, 80) : 'audio/ogg; codecs=opus'
+  return { mime, segundos, bytes }
+}
+
 /** Segundos desde 1970, do jeito que o Baileys entregar (número, texto ou Long). */
 export function segundosDe(t: MensagemBruta['messageTimestamp']): number | null {
   if (t == null) return null
@@ -201,9 +230,13 @@ export function normalizar(m: MensagemBruta, c: ContextoNormalizar): Normalizada
 
   const qual = MIDIA.find(([k]) => conteudo[k] && typeof conteudo[k] === 'object')
   if (qual) {
+    const audio = qual[0] === 'audioMessage' ? audioDa(conteudo) : null
     return {
       ...base,
+      // O aviso vai sempre: é o que vale se o áudio não baixar, se o Norte
+      // for de antes da transcrição, e para cliente.
       texto: `(a pessoa mandou ${qual[1]}, que o assistente ainda não consegue abrir — peça para escrever)`,
+      ...(audio ? { audioParaBaixar: audio } : {}),
     }
   }
   return { tipo: 'ignorar', motivo: 'tipo de mensagem não tratado' }

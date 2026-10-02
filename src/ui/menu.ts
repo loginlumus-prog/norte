@@ -43,6 +43,10 @@ export const MENU = (slug: string): ItemMenu[] => [
   // cliente paga metade hoje e busca na semana que vem. Só existe para quem
   // ligou o módulo — quem vende e entrega na hora nunca vê.
   { grupo: 'Vender', href: `/${slug}/encomendas`, titulo: 'Encomendas', exige: 'venda.ver', modulo: 'encomenda' },
+  // O link que a loja manda para a cliente ver o que tem e pedir. Para todo
+  // mundo: é o jeito mais curto de vender pelo WhatsApp e pelo Instagram. O
+  // pedido que chega vira encomenda (abrir o catálogo liga as Encomendas).
+  { grupo: 'Vender', href: `/${slug}/catalogo`, titulo: 'Catálogo', exige: 'venda.ver' },
   // A mensalidade da escola: o mês, quem pagou, quem está em atraso, e
   // receber. Ao lado do Crediário porque é a mesma conversa — dinheiro que
   // entra com a pessoa na frente —, e a secretaria abre as duas.

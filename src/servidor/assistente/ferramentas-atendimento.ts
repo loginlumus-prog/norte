@@ -178,9 +178,14 @@ export async function proporMarcar(
   const resumo =
     `Marcar ${nomeCliente} com ${prof.nome}: ${doCatalogo?.nome ?? servicoPedido}, ${diaCurtoSP(inicio)} às ${horaEmSP(inicio)} (${duracao} min)` +
     `${lojas.length > 1 ? `, na ${loja.nome}` : ''}.${fora ? ` Atenção: fora do funcionamento da loja (${texto}).` : ''}`
-  const proposta = await propor(orgId, empresa, { poder: 'agenda.marcar', resumo, dados: dados as unknown as Record<string, unknown> })
+  const proposta = await propor(orgId, empresa, {
+    poder: 'agenda.marcar',
+    resumo,
+    usuarioId: sessao.usuarioId,
+    dados: dados as unknown as Record<string, unknown>,
+  })
   return {
-    texto: `Proposta criada, esperando uma pessoa da loja confirmar na tela do assistente: ${resumo} O horário ainda não está marcado, e o cliente não é avisado por aqui.`,
+    texto: `Proposta criada: ${resumo} O horário ainda não está marcado, e o cliente não é avisado por aqui. Mostre o resumo e termine com "Responda SIM para confirmar".`,
     propostaId: proposta.id,
   }
 }
@@ -195,9 +200,9 @@ export async function proporDesmarcar(orgId: string, empresa: ComModulos, sessao
   if (!pode(sessao, 'agenda.marcar', a.unidadeId)) return falha('Esta pessoa não mexe na agenda dessa loja.')
   if (!ocupa(a.situacao) || a.situacao === 'ATENDIDO') return falha(`Esse horário já está ${ROTULO_AGENDA[a.situacao].toLowerCase()}.`)
   const resumo = `Desmarcar ${a.clienteNome} com ${a.colaboradorNome}, ${diaCurtoSP(a.inicio)} às ${horaEmSP(a.inicio)} (${a.servico}). Motivo: ${motivo}.`
-  const proposta = await propor(orgId, empresa, { poder: 'agenda.desmarcar', resumo, dados: { id, motivo } })
+  const proposta = await propor(orgId, empresa, { poder: 'agenda.desmarcar', resumo, usuarioId: sessao.usuarioId, dados: { id, motivo } })
   return {
-    texto: `Proposta criada, esperando confirmação na tela do assistente: ${resumo} O horário ainda está de pé, e o cliente não é avisado por aqui.`,
+    texto: `Proposta criada: ${resumo} O horário ainda está de pé, e o cliente não é avisado por aqui. Mostre o resumo e termine com "Responda SIM para confirmar".`,
     propostaId: proposta.id,
   }
 }

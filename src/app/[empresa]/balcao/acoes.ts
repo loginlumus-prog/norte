@@ -174,6 +174,27 @@ function montarAchadoDaBusca(v: VariacaoLida & { produto: { id?: string; categor
 }
 
 /**
+ * Os itens de um pedido do catálogo, prontos para o carrinho ("Receber no
+ * balcão"): cada variação como a busca entregaria, com o saldo DESTA loja.
+ * O que a loja deixou de vender (ou apagou) simplesmente não vem — a tela
+ * avisa que faltou.
+ */
+export async function achadosPorVariacao(slug: string, unidadeId: string, ids: string[]): Promise<Achado[]> {
+  const s = await exigirSessao(slug)
+  exigir(s, 'produto.ver', unidadeId)
+  exigir(s, 'estoque.ver', unidadeId)
+  const limpos = (Array.isArray(ids) ? ids : []).filter((i) => typeof i === 'string' && /^[\w-]{1,64}$/.test(i)).slice(0, 80)
+  if (limpos.length === 0) return []
+  const lidos = await comoOrg(s.orgId, (db) =>
+    db.variacao.findMany({
+      where: { id: { in: limpos }, ativa: true, produto: { ativo: true, ...aVendaNaLoja(unidadeId) } },
+      select: { ...SELECAO_DA_VARIACAO, estoques: { where: { unidadeId }, select: { quantidade: true } } },
+    }),
+  )
+  return lidos.map(montarAchadoDaBusca)
+}
+
+/**
  * Busca do balcão: código de etiqueta, código de barras ou pedaço do nome.
  *
  * O código bate EXATO e vem primeiro na lista — quem leu a etiqueta com o

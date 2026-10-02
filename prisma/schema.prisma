@@ -236,6 +236,8 @@ model Org {
   ordensProducao OrdemProducao[]
   pedidosFabrica PedidoFabrica[]
   marcasFarol    MarcaFarol[]
+  catalogosLoja  CatalogoLoja[]
+  itensEncomenda EncomendaItem[]
   pecasFarol     PecaFarol[]
   auditoria      Auditoria[]
   cobranca       Cobranca?
@@ -373,6 +375,7 @@ model Unidade {
   lancamentos           Lancamento[]
   quadros               Quadro[]
   encomendas            Encomenda[]
+  catalogo              CatalogoLoja?
   colaboradores         Colaborador[]
   registrosPonto        RegistroPonto[]
   agendamentos          Agendamento[]
@@ -928,6 +931,10 @@ model Produto {
   nome       String
   descricao  String?
   marca      String?
+  /// A foto do produto (o catálogo da loja mostra; o balcão também). Guardada
+  /// em Midia, já reduzida no aparelho de quem enviou.
+  fotoId     String? @map("foto_id")
+  foto       Midia?  @relation("fotoDoProduto", fields: [fotoId], references: [id], onDelete: SetNull)
   /// A referência do fornecedor ("ref. 6291.1175"). É o que a vendedora
   /// encontra na caixa e na nota de compra — o balcão acha o produto por ela,
   /// por pedaço, como acha pelo código da etiqueta.
@@ -1047,6 +1054,7 @@ model Variacao {
   itensCompra     ItemCompra[]
   receita         Receita?            @relation("receitaDoProduto")
   usadaEmReceitas ReceitaItem[]
+  itensEncomenda  EncomendaItem[]
   ordensProducao  OrdemProducao[]
   consumosOrdem   OrdemConsumo[]
   pedidosFabrica  PedidoFabricaItem[]
@@ -2268,6 +2276,10 @@ model PropostaAgente {
   /// Quanto custa, quando custa. É o número que a pessoa confere.
   valor  Decimal? @db.Decimal(14, 2)
 
+  /// Quem pediu pelo WhatsApp. É quem pode responder "sim" ali mesmo — se
+  /// tiver o poder de fazer aquilo pela tela (ver responderPeloWhatsApp).
+  usuarioId String? @map("usuario_id")
+
   situacao SituacaoProposta @default(AGUARDANDO)
 
   /// Proposta velha não vale: o estoque mudou, o preço mudou, o dia passou.
@@ -2629,6 +2641,23 @@ model Encomenda {
   situacao   SituacaoEncomenda @default(ABERTA)
   observacao String?
 
+  /// De onde veio: anotada no balcão, ou feita pela própria cliente no
+  /// catálogo da loja (ver src/servidor/catalogo.ts).
+  origem         OrigemEncomenda @default(BALCAO)
+  /// Os itens, quando a encomenda é de produtos do cadastro (a do catálogo).
+  /// A de balcão continua podendo ser só a descrição ("bolo 2 kg").
+  itens          EncomendaItem[]
+  /// O pedaço secreto do link em que a cliente acompanha o pedido. Só existe
+  /// na do catálogo.
+  acompanhamento String?         @unique
+  /// Como a cliente disse que vai pagar (combinado, não pago).
+  formaCombinada FormaPagamento? @map("forma_combinada")
+  taxaEntrega    Decimal?        @map("taxa_entrega") @db.Decimal(12, 2)
+  /// Quando alguém da loja abriu o pedido do catálogo. Nulo = pedido novo.
+  vistaEm        DateTime?       @map("vista_em")
+  /// O resumo do IP de quem pediu pelo catálogo — só para o freio de abuso.
+  ipResumo       String?         @map("ip_resumo")
+
   /// Carimbada quando vira ENTREGUE.
   concluidaEm DateTime? @map("concluida_em")
 
@@ -2644,6 +2673,7 @@ model Encomenda {
 
   @@index([orgId, unidadeId, para])
   @@index([orgId, situacao])
+  @@index([orgId, origem, criadaEm])
   @@map("encomendas")
 }
 
@@ -2652,6 +2682,73 @@ enum SituacaoEncomenda {
   PRONTA
   ENTREGUE
   CANCELADA
+}
+
+enum OrigemEncomenda {
+  BALCAO
+  CATALOGO
+}
+
+/// Um item da encomenda do catálogo: o produto, quanto e por quanto — a
+/// fotografia do preço na hora do pedido.
+model EncomendaItem {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  encomendaId String    @map("encomenda_id")
+  encomenda   Encomenda @relation(fields: [encomendaId], references: [id], onDelete: Cascade)
+
+  variacaoId String?   @map("variacao_id")
+  variacao   Variacao? @relation(fields: [variacaoId], references: [id], onDelete: SetNull)
+
+  /// "Picolé de morango" / "Blusa Ana — P, Azul".
+  descricao  String
+  quantidade Decimal @db.Decimal(12, 3)
+  precoUnit  Decimal @map("preco_unit") @db.Decimal(12, 2)
+  total      Decimal @db.Decimal(12, 2)
+  observacao String?
+
+  @@index([orgId, encomendaId])
+  @@map("encomenda_itens")
+}
+
+/// O CATÁLOGO de uma loja: o link que a loja manda para a cliente ver o que
+/// tem e pedir. Um por loja — cada unidade tem o seu, com o estoque dela.
+/// O link é /{empresa}/catalogo/{endereco}.
+model CatalogoLoja {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  unidadeId String  @unique @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  ativo    Boolean @default(false)
+  /// O pedaço do link: "vida-nova". Único na empresa.
+  endereco String
+  /// O WhatsApp da loja, só números com DDI ("5571999990000"). É para onde a
+  /// cliente manda o pedido, e de onde a loja fala com ela.
+  whatsapp String?
+  /// O recado do topo: "Entregamos no bairro até 22h".
+  recado   String?
+
+  /// Como a cliente recebe.
+  retirada        Boolean  @default(true)
+  entrega         Boolean  @default(false)
+  taxaEntrega     Decimal? @map("taxa_entrega") @db.Decimal(12, 2)
+  pedidoMinimo    Decimal? @map("pedido_minimo") @db.Decimal(12, 2)
+  /// A chave Pix que aparece no pedido feito (o pagamento é combinado; o
+  /// sistema não cobra pelo catálogo).
+  chavePix        String?  @map("chave_pix")
+  /// Mostrar o que acabou, marcado como "esgotado" (em vez de esconder).
+  mostrarEsgotado Boolean  @default(false) @map("mostrar_esgotado")
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@unique([orgId, endereco])
+  @@map("catalogos")
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -2832,6 +2929,8 @@ model Midia {
   /// sha256 em hex: o mesmo arquivo enviado duas vezes vira uma linha só.
   sha256  String
   dados   Bytes  @db.ByteA
+
+  produtos Produto[] @relation("fotoDoProduto")
 
   criadaEm DateTime @default(now()) @map("criada_em")
 

@@ -417,6 +417,17 @@ export async function registrarVenda(
     if (v.encomendaId) {
       const e = await travarParaVenda(db, empresa, v.encomendaId, v.unidadeId)
       if (!e.ok) return { ok: false as const, motivo: 'encomenda_recusada' as const, recado: e.recado }
+      // O pedido do catálogo vem com os produtos: eles entram no pedido como
+      // linhas de verdade (baixam estoque), e a linha da encomenda cobra só a
+      // entrega. Sem nenhum produto no pedido, a encomenda sairia "entregue"
+      // cobrando só a taxa.
+      if (e.comItens && doCatalogo.length === 0) {
+        return {
+          ok: false as const,
+          motivo: 'encomenda_recusada' as const,
+          recado: 'Os produtos deste pedido do catálogo não estão na venda. Abra a encomenda de novo pelo botão "Receber no balcão".',
+        }
+      }
       daEncomenda = e
     }
 

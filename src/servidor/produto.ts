@@ -591,7 +591,7 @@ export async function acharProduto(sessao: Sessao, produtoId: string) {
         id: true, nome: true, marca: true, referencia: true, descricao: true, categoriaId: true,
         medida: true, precoVista: true, precoCartao: true, precoCrediario: true,
         custo: true, prazoReposicaoDias: true, vendidoEm: true, ativo: true, servico: true, duracaoMin: true,
-        usoInterno: true, feitoNoDia: true,
+        usoInterno: true, feitoNoDia: true, fotoId: true,
         eixos: { orderBy: { ordem: 'asc' }, select: { eixoId: true, ordem: true } },
         variacoes: {
           orderBy: { codigo: 'asc' },

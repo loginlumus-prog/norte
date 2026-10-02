@@ -38,6 +38,18 @@
 // antes de ligar o assistente. Mensagem com essa forma que não bate com
 // código nenhum segue o caminho de sempre.
 //
+// ── o SIM, antes do modelo ───────────────────────────────────
+// "sim", "pode lançar", "não", "sim 2" de quem pediu uma proposta na última
+// hora — e o ACEITAR / PRONTO do pedido do catálogo — são tratados sem IA
+// (ver respostas.ts), com a permissão de quem respondeu conferida pelo mesmo
+// caminho da tela. O modelo nunca confirma nada.
+//
+// ── o áudio da equipe ────────────────────────────────────────
+// Quem é da equipe pode falar em vez de digitar: o áudio vira texto
+// (transcricao.ts) e segue como se tivesse sido digitado, e a resposta
+// começa com o que foi ouvido. Áudio de CLIENTE não é transcrito — nem sai
+// do Norte: segue o caminho de sempre, com o aviso no lugar do texto.
+//
 // ── erro nunca vaza ──────────────────────────────────────────
 // Falha da IA vira uma frase educada para quem mandou a mensagem. Nome de
 // modelo, status HTTP, corpo de erro, nome de ferramenta: nada disso chega ao
@@ -74,6 +86,8 @@ import {
 } from './contexto'
 import { agoraEmSP, ferramentasParaModelo, montarSistema, poderDaFerramenta, poderesDaConversa, type Equipe } from './regras'
 import { executarFerramenta } from './ferramentas'
+import { responderPeloWhatsApp } from './respostas'
+import { ecoDoAudio, ouvir, type AudioRecebido } from './transcricao'
 import { decidirRecado, humanoAteDepoisDe, recadoDe, type DecisaoRecado } from './recado'
 import { chaveTelefone, mesmoTelefone } from './telefone'
 import {
@@ -108,12 +122,20 @@ export type Entrada = {
   idExterno: string
   /** O anúncio de onde a pessoa veio (clique para o WhatsApp), quando o provedor diz. */
   anuncioId?: string | null
+  /**
+   * O áudio, quando a mensagem é uma nota de voz e o provedor entregou o
+   * arquivo (ou o link). `texto` continua sendo o aviso "a pessoa mandou um
+   * áudio": é o que vale se não der para transcrever — e sempre, para cliente.
+   */
+  audio?: AudioRecebido | null
 }
 
 export type Dependencias = {
   canal: Canal
   /** A API da Anthropic. Nos testes, uma de mentira. */
   buscar?: typeof fetch
+  /** O serviço de transcrição (e o download do áudio). Nos testes, um de mentira. */
+  buscarTranscricao?: typeof fetch
 }
 
 /**
@@ -135,6 +157,8 @@ export type Desfecho =
   // ── equipe ──
   | { tipo: 'recusada'; motivo: 'sem_chave' | 'sem_credito' | 'teto_do_dia' | 'sem_agente' }
   | { tipo: 'respondida'; texto: string; enviada: boolean; propostas: string[] }
+  /** A resposta a uma proposta ("sim", "não 2") ou o ACEITAR/PRONTO — sem modelo. */
+  | { tipo: 'atalho'; texto: string; enviada: boolean }
 
 /**
  * O id da mensagem no NOSSO banco sai do id do provedor.
@@ -177,21 +201,40 @@ export async function processarMensagem(e: Entrada, deps: Dependencias): Promise
   // campanha duas vezes, nem chamar o modelo duas vezes. `skipDuplicates` é
   // ON CONFLICT DO NOTHING: a entrega repetida não levanta erro (erro dentro
   // da transação a deixaria inutilizável), só volta zero linhas.
-  const texto = e.texto.trim().slice(0, MAXIMO_ENTRADA)
+  const textoGravado = e.texto.trim().slice(0, MAXIMO_ENTRADA)
   const gravadas = await comoOrg(e.orgId, (db) =>
     db.mensagemAgente.createMany({
-      data: [{ id: idDaMensagem(e.orgId, e.idExterno), orgId: e.orgId, conversaId: conversa.id, de: 'PESSOA', texto }],
+      data: [{ id: idDaMensagem(e.orgId, e.idExterno), orgId: e.orgId, conversaId: conversa.id, de: 'PESSOA', texto: textoGravado }],
       skipDuplicates: true,
     }),
   )
   if (gravadas.count === 0) return { tipo: 'duplicada' }
 
   if (quem.tipo === 'cliente') {
-    return atenderCliente(agente, conversa, { nome: quem.nome, texto, anuncioId: e.anuncioId ?? null }, deps.canal)
+    return atenderCliente(agente, conversa, { nome: quem.nome, texto: textoGravado, anuncioId: e.anuncioId ?? null }, deps.canal)
   }
 
   // O número confirmado continua em uso: é o que empurra os 180 dias.
   await anotarVisto(e.orgId, quem.sessao.usuarioId)
+
+  // O áudio de quem é da equipe vira o texto da mensagem. O aviso já gravado
+  // dá lugar ao que foi dito (é o que o modelo vai ler no histórico), e o
+  // `midia` guarda que veio de áudio. Sem transcrição, fica o aviso.
+  let texto = textoGravado
+  let eco: string | null = null
+  if (e.audio) {
+    const ouvido = await ouvir(e.audio, deps.buscarTranscricao)
+    if (ouvido) {
+      texto = ouvido
+      eco = ecoDoAudio(ouvido)
+      await comoOrg(e.orgId, (db) =>
+        db.mensagemAgente.update({
+          where: { id: idDaMensagem(e.orgId, e.idExterno) },
+          data: { texto: ouvido.slice(0, MAXIMO_ENTRADA), midia: `Áudio transcrito: ${ouvido}`.slice(0, MAXIMO_ENTRADA + 20) },
+        }),
+      )
+    }
+  }
 
   // O dono testando a própria campanha ("Testar com meu número"): o número
   // dele é de equipe, mas enquanto houver uma execução de TESTE viva para ele,
@@ -209,7 +252,12 @@ export async function processarMensagem(e: Entrada, deps: Dependencias): Promise
     })
     if (r.tratou) return { tipo: 'campanha' }
   }
-  return conversarComEquipe(ctx, quem, conversa, texto, deps)
+
+  // "sim", "não", "sim 2", ACEITAR, PRONTO: sem modelo (ver respostas.ts).
+  const atalho = await responderPeloWhatsApp(ctx, quem, conversa, texto, deps.canal, eco)
+  if (atalho) return atalho
+
+  return conversarComEquipe(ctx, quem, conversa, texto, deps, eco)
 }
 
 /**
@@ -354,6 +402,8 @@ async function conversarComEquipe(
   conversa: { id: string; telefone: string },
   texto: string,
   deps: Dependencias,
+  /** "Ouvi: …", quando a mensagem veio de áudio: abre a resposta. */
+  eco: string | null = null,
 ): Promise<Desfecho> {
   const orgId = ctx.org.id
   const agente = ctx.agente
@@ -461,7 +511,7 @@ async function conversarComEquipe(
     resposta = RECADO_FALHA_ASSISTENTE
   }
 
-  const saida = await enviarEGravar(deps.canal, agente, conversa, resposta)
+  const saida = await enviarEGravar(deps.canal, agente, conversa, eco ? `${eco}\n\n${resposta}` : resposta)
   return { tipo: 'respondida', texto: resposta, enviada: saida.enviada, propostas }
 }
 

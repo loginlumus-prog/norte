@@ -592,7 +592,7 @@ export const GUIA: Entrada[] = [
         passos: [
           '"Pronta" quando a encomenda estiver feita (fica amarela: está esperando o cliente). Marcou por engano? "Não está pronta" volta atrás.',
           '"Entregue": a tela mostra quanto falta receber e lembra que o sinal já está no Financeiro.',
-          '"Receber no balcão" marca a entrega e só abre o Balcão — a venda você lança lá, SÓ do que falta. Lançar o valor cheio contaria o sinal duas vezes.',
+          '"Receber no balcão" abre o Balcão com a encomenda já no pedido, pelo que falta — o sinal não é cobrado de novo. O pedido do catálogo chega com os produtos, um por linha. A entrega é marcada quando a venda fecha.',
           '"Só marcar entregue" é para quando o que faltava já foi pago de outro jeito. Entregue não volta: sai da lista em aberto e fica no filtro "entregues".',
         ],
         capacidade: 'venda.criar',
@@ -616,6 +616,18 @@ export const GUIA: Entrada[] = [
           'Entregue ou cancelada não muda mais.',
         ],
         capacidade: 'venda.criar',
+      },
+      {
+        titulo: 'Acompanhar encomendas pelo WhatsApp',
+        passos: [
+          'Com o assistente ligado, pergunte no WhatsApp da loja: "o que tem de encomenda hoje?" — ele lista as de hoje, as atrasadas e as dos próximos dias, com o código (ENC-…).',
+          'Pedido novo pelo catálogo chega sozinho no WhatsApp de quem é dono ou gerente da loja (telefone confirmado), com os itens, o total e a hora.',
+          'Responda ACEITAR para aceitar o pedido, ou PRONTO quando estiver feito. Com mais de um pedido avisado, ele pergunta qual.',
+          'Para cancelar, peça a ele ("cancela a ENC-… porque acabou o morango"): ele monta a proposta e você responde SIM.',
+          'A cliente que pediu pelo catálogo recebe o aviso de aceito, pronto ou cancelado, com o link do pedido. Devolver sinal continua sendo aqui na tela.',
+        ],
+        capacidade: 'venda.criar',
+        plano: 'BALCAO_AGENTE',
       },
       {
         titulo: 'Achar uma encomenda e avisar o cliente',
@@ -643,6 +655,71 @@ export const GUIA: Entrada[] = [
       },
     ],
     palavras: ['pedido', 'pedidos', 'bolo', 'reserva', 'retirada', 'retirar', 'entrega', 'entregar', 'sinal', 'adiantamento', 'encomendar', 'buquê', 'agendar', 'data de entrega', 'para sábado'],
+  },
+
+  // ── Catálogo ──
+  {
+    chave: 'catalogo',
+    titulo: 'Catálogo',
+    caminho: '/catalogo',
+    abre: ['venda.ver'],
+    oQueE:
+      'O link que a loja manda para a cliente ver o que tem e pedir — no WhatsApp, no Instagram, no cartaz do balcão. Cada loja tem o seu, com o que tem nela: a cliente abre no celular, navega pelas categorias, escolhe e manda o pedido, dizendo se retira ou recebe e como vai pagar. O pedido chega em Encomendas (marcado como "novo · catálogo") e no WhatsApp da loja, e você recebe no Balcão como qualquer encomenda. O pagamento é combinado com a loja: o catálogo não cobra cartão.',
+    comoFazer: [
+      {
+        titulo: 'Abrir o catálogo de uma loja',
+        passos: [
+          'Em Catálogo, cada loja tem o seu cartão. "Ajustes" mostra o que dá para mudar.',
+          'Diga o WhatsApp da loja: é para onde os pedidos vão.',
+          'Escolha como a cliente recebe (retirada, entrega, ou as duas), a taxa de entrega e o pedido mínimo, se tiver. A chave Pix aparece para quem escolher pagar no Pix.',
+          '"Abrir o catálogo desta loja". Abrir liga as Encomendas, se estavam desligadas.',
+        ],
+        capacidade: 'empresa.configurar',
+      },
+      {
+        titulo: 'Mandar o link para as clientes',
+        passos: [
+          '"Copiar link" e cole onde quiser: status do WhatsApp, bio do Instagram, grupo de clientes.',
+          '"Mandar no WhatsApp" abre o WhatsApp com o convite e o link prontos — é só escolher para quem.',
+          '"Ver como a cliente vê" abre o catálogo do jeito que ela vai abrir.',
+        ],
+        capacidade: 'venda.ver',
+      },
+      {
+        titulo: 'Deixar o catálogo bonito',
+        passos: [
+          'Ponha foto nos produtos: em Produtos, abra o produto e toque em "Pôr foto" — dá para tirar com a câmera do celular. A foto é reduzida sozinha.',
+          'Organize por categoria: cada categoria vira um botão no topo do catálogo.',
+          'Aparece o que tem preço, está ativo e é vendido nesta loja. O que acabou some sozinho — ou aparece como "esgotado", se você marcar nos ajustes.',
+        ],
+        capacidade: 'produto.editar',
+      },
+      {
+        titulo: 'Atender um pedido do catálogo',
+        passos: [
+          'O pedido chega em Encomendas com os itens, como a cliente vai pagar e se retira ou recebe.',
+          '"Aceitar pedido": a cliente recebe o aviso (com o assistente no WhatsApp ligado).',
+          '"Pronta" quando estiver separado — ela recebe "pode vir buscar" ou "saiu para entrega".',
+          '"Entregue" › "Receber no balcão": os produtos entram no pedido, um por linha.',
+        ],
+        capacidade: 'venda.criar',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'A cliente vê quanto eu tenho de cada coisa, ou o meu custo?',
+        r: 'Não. O catálogo mostra o que um cartaz na vitrine mostraria: nome, foto, preço e se tem. Quantidade, custo e fornecedor nunca saem.',
+      },
+      {
+        p: 'E se alguém mandar pedido falso?',
+        r: 'Cada aparelho e cada telefone tem limite de pedidos por hora, e o preço é sempre o do cadastro — ninguém muda o valor pelo navegador. Pedido estranho, cancele em Encomendas.',
+      },
+      {
+        p: 'A cliente acompanha o pedido?',
+        r: 'Sim: depois de pedir, ela recebe um link que mostra se o pedido foi aceito, se está pronto ou se saiu para entrega, com o botão para falar com a loja no WhatsApp.',
+      },
+    ],
+    palavras: ['catálogo', 'catalogo', 'vitrine', 'link', 'cardápio', 'cardapio', 'loja online', 'pedido online', 'delivery', 'foto do produto', 'mandar catálogo', 'instagram'],
   },
 
   // ── Produtos ──
@@ -1055,6 +1132,77 @@ export const GUIA: Entrada[] = [
       },
     ],
     palavras: ['catálogo', 'cadastro de produto', 'cadastrar produto', 'mercadoria', 'peça', 'variação', 'grade', 'tamanho', 'cor', 'etiqueta', 'código de barras', 'ean', 'sku', 'preço', 'custo', 'categoria', 'marca', 'planilha', 'exportar', 'material de uso', 'insumo', 'não vende', 'feito no dia', 'produção'],
+  },
+
+  // ── Trazer de outro sistema ──
+  {
+    chave: 'importar-produtos',
+    titulo: 'Trazer produtos de outro sistema',
+    caminho: '/produtos/importar',
+    abre: ['produto.cadastrar'],
+    oQueE:
+      'O catálogo que já existe em outro lugar — o sistema antigo, uma planilha do Excel ou do Google Planilhas, o relatório de estoque — entra de uma vez, com preço, custo, categoria, código e estoque. A planilha é lida no seu navegador, o Norte mostra o que entendeu de cada coluna e uma prévia antes de gravar, e trazer a mesma planilha de novo não duplica nada.',
+    comoFazer: [
+      {
+        titulo: 'Trazer a planilha',
+        passos: [
+          'Em Produtos, "Trazer de outra planilha ou sistema" (aparece também na lista vazia e nos Primeiros passos do Painel).',
+          'Escolha o arquivo — Excel (.xlsx), CSV ou TSV — ou arraste para o quadro. Excel antigo (.xls) precisa ser salvo antes como .xlsx ou CSV.',
+          'Ou copie as células no Excel, no Google Planilhas ou no relatório do sistema antigo e cole no quadro "Ou copie e cole".',
+          'Não precisa arrumar nada antes: título do relatório em cima, total embaixo, "R$ 1.234,56", "10 kg" e acento estragado ("CalÃ§a") são entendidos.',
+          'Começando do zero? "Baixe a planilha modelo", preencha e traga de volta.',
+        ],
+        capacidade: 'produto.cadastrar',
+      },
+      {
+        titulo: 'Conferir o que é cada coluna',
+        passos: [
+          'O Norte lê os títulos (Descrição, Cód., Vlr Venda, Qtde, Grupo…) e diz o que acha que é cada coluna, com três exemplos ao lado.',
+          'Quando a planilha não tem títulos, ou eles não dizem nada, a IA olha só os títulos e as oito primeiras linhas e sugere.',
+          'Troque o que estiver errado na lista "Esta coluna é": Nome, Código, Código de barras, Categoria, Preço de venda, Preço no cartão, Custo, Estoque, Unidade, Marca, Tamanho, Cor ou Ignorar.',
+          'Nome e preço de venda são obrigatórios. Se os títulos estão numa linha mais abaixo, escolha a linha em "Os títulos das colunas estão na".',
+          'Com coluna de tamanho ou cor, as linhas com o mesmo nome (ou o mesmo código) viram um produto só, com grade.',
+        ],
+        capacidade: 'produto.cadastrar',
+      },
+      {
+        titulo: 'Ler a prévia e escolher o que fazer com o que já existe',
+        passos: [
+          'A prévia conta os produtos, as categorias novas (criadas na hora), o que já existe no Norte e as linhas com problema — "veja" mostra cada uma, com o motivo (sem nome, preço ilegível, código repetido…).',
+          'As vinte primeiras linhas aparecem como vão entrar, marcadas "novo" ou "já existe".',
+          'O que já existe é achado pelo código, pelo código de barras ou pelo nome (sem acento): escolha "Atualizar o preço e o estoque" ou "Pular o que já existe".',
+          'Com estoque na planilha, escolha a loja onde ele entra. Estoque negativo do sistema antigo entra como zero.',
+          '"Trazer N produtos".',
+        ],
+        capacidade: 'produto.cadastrar',
+      },
+      {
+        titulo: 'Acompanhar e terminar',
+        passos: [
+          'Os produtos sobem em lotes de 200, com a barra andando. Deixe a tela aberta até terminar.',
+          'Se a conexão cair, "Continuar de onde parou" retoma do lote que faltou. Mandar tudo de novo também não duplica.',
+          'No fim: quantos entraram, quantos foram atualizados ou pulados, e "Linha por linha" com o recado de cada um.',
+          '"Baixar as linhas que ficaram de fora" traz uma planilha com o motivo de cada uma: arrume e traga só ela.',
+          'Com "assinar as exceções" ligado em Configurações, o estoque pede o seu PIN — uma vez, para a importação inteira.',
+        ],
+        capacidade: 'produto.cadastrar',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'Se eu trouxer a mesma planilha duas vezes, os produtos duplicam?',
+        r: 'Não. Cada linha procura antes o que já existe — pelo código, pelo código de barras e, sem eles, pelo nome — e atualiza ou pula, como você escolheu. O estoque entra como o saldo contado: trazer de novo deixa o número da planilha, não soma.',
+      },
+      {
+        p: 'O código do sistema antigo continua valendo no balcão?',
+        r: 'Sim: o código da planilha vira o código da etiqueta, então a etiqueta que já está colada na peça continua sendo lida. Produto sem código ganha um do Norte (três letras do nome e um número). Na grade com uma etiqueta só para todos os tamanhos, cada opção ganha o código seguido do tamanho e da cor (005990-38).',
+      },
+      {
+        p: 'Quem pode trazer produtos?',
+        r: 'Quem cadastra produto. O estoque entra só nas lojas em que a pessoa pode ajustar estoque, e o preço do que já existe só muda para quem pode mexer em preço. Tudo fica no livro de Auditoria, com o motivo "Importado de outro sistema".',
+      },
+    ],
+    palavras: ['importar', 'importação', 'trazer', 'migrar', 'migração', 'sistema antigo', 'outro sistema', 'excel', 'xlsx', 'csv', 'colar', 'implantação', 'começar'],
   },
 
   // ── Estoque ──
@@ -1857,12 +2005,25 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Responder uma proposta',
         passos: [
-          'Em "Esperando você", leia a frase — ela já tem o número dentro.',
-          '"Não" ou "Confirmar", com o mesmo peso.',
-          'Quem confirma precisa ter a permissão daquela ação; o teto é conferido de novo na hora do sim.',
+          'Pelo WhatsApp: quem pediu responde SIM (ou NÃO) na própria conversa, até uma hora depois. Com várias esperando, ele lista numeradas e você responde "SIM 2".',
+          'Pela tela: em "Esperando você", leia a frase — ela já tem o número dentro — e "Não" ou "Confirmar", com o mesmo peso.',
+          'Quem confirma precisa ter a permissão daquela ação, pela tela ou pelo WhatsApp; o teto é conferido de novo na hora do sim.',
           'Proposta vale 24 horas. Depois disso o estoque e o preço já são outros, e ele precisa propor de novo.',
         ],
         capacidade: 'agente.configurar',
+      },
+      {
+        titulo: 'Lançar compra pelo WhatsApp, por áudio ou texto',
+        passos: [
+          'Ligue o poder "Dar entrada de compra" nesta tela. Quem fala com ele precisa ter o telefone confirmado em Minha conta.',
+          'No WhatsApp da loja, escreva ou mande um áudio: "comprei agora 10 kg de picanha a 39,90 o quilo, fornecedor Frigorífico X".',
+          'Ele acha o produto pelo nome ou pelo código e responde com o nome como está no cadastro, a loja, a quantidade e o valor — confira. Com dois produtos parecidos, ele pergunta qual.',
+          'Produto que não existe: ele pergunta o preço de venda e cadastra junto, se você puder cadastrar produto.',
+          'Responda SIM: a entrada é lançada (saldo e custo, como na tela de Estoque) e ele diz o saldo de agora. NÃO cancela.',
+          'Áudio só é ouvido de quem é da equipe; o de cliente nunca é transcrito. A resposta começa com "Ouvi: …" para você conferir o que ele entendeu.',
+        ],
+        capacidade: 'estoque.ajustar',
+        plano: 'BALCAO_AGENTE',
       },
       {
         titulo: 'Ler o balanço e o gasto do dia',
@@ -1902,7 +2063,7 @@ export const GUIA: Entrada[] = [
         r: 'Não. Os poderes são uma lista fechada, os tetos moram no banco e são conferidos no servidor depois da resposta, e toda ação que mexe em dinheiro, preço ou estoque vira proposta que uma pessoa confirma.',
       },
     ],
-    palavras: ['assistente', 'agente', 'inteligência artificial', 'whatsapp', 'robô', 'bot', 'proposta', 'propostas', 'poderes', 'teto', 'crédito de ia', 'personalidade', 'manual da loja', 'chatbot', 'recado automático', 'resposta automática', 'atendimento'],
+    palavras: ['assistente', 'agente', 'inteligência artificial', 'whatsapp', 'robô', 'bot', 'proposta', 'propostas', 'poderes', 'teto', 'crédito de ia', 'personalidade', 'manual da loja', 'chatbot', 'recado automático', 'resposta automática', 'atendimento', 'áudio', 'audio', 'mensagem de voz', 'lançar compra', 'compra pelo whatsapp', 'entrada pelo whatsapp', 'confirmar sim'],
   },
 
   // ── Farol ──

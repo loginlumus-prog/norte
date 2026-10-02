@@ -55,6 +55,7 @@
 //
 // Puro em cima (datas, grupos, validação, transições), banco embaixo.
 
+import { Prisma } from '@prisma/client'
 import type { FormaPagamento, Plano, SituacaoEncomenda, TipoCaixa, TipoLancamento } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, SemPermissao, unidadesQuePodem, type Sessao } from './permissao'
@@ -471,6 +472,14 @@ export type EncomendaNaLista = {
   quem: string
   /** A venda do balcão que recebeu o que faltava, quando foi por lá. */
   venda: { id: string; numero: number } | null
+  /** Anotada no balcão, ou feita pela cliente no catálogo da loja. */
+  origem: 'BALCAO' | 'CATALOGO'
+  /** Pedido do catálogo que ninguém da loja abriu ainda. */
+  nova: boolean
+  /** Como a cliente disse que vai pagar (só no pedido do catálogo). */
+  formaCombinada: FormaPagamento | null
+  taxaEntrega: number
+  itens: { descricao: string; quantidade: number; total: number }[]
 }
 
 export type FiltroEncomendas = {
@@ -490,9 +499,28 @@ const SELECT = {
   id: true, unidadeId: true, clienteId: true, clienteNome: true, telefone: true, descricao: true,
   valor: true, sinal: true, sinalForma: true, para: true, entrega: true, endereco: true, situacao: true,
   observacao: true, concluidaEm: true, quem: true,
+  origem: true, vistaEm: true, formaCombinada: true, taxaEntrega: true,
   unidade: { select: { nome: true } },
   venda: { select: { id: true, numero: true } },
 } as const
+
+type ItemLido = { encomendaId: string; descricao: string; quantidade: { toString(): string }; total: { toString(): string } }
+
+/**
+ * Os itens das encomendas, numa leitura à parte. Aninhados no SELECT (junto
+ * com a venda), o Prisma lia os dois em paralelo na conexão da transação —
+ * o aviso do pg sobre consulta em cima de consulta.
+ */
+async function itensDe(db: BancoDaOrg, ids: string[]): Promise<Map<string, ItemLido[]>> {
+  const por = new Map<string, ItemLido[]>()
+  if (ids.length === 0) return por
+  const itens = await db.encomendaItem.findMany({
+    where: { encomendaId: { in: ids } },
+    select: { encomendaId: true, descricao: true, quantidade: true, total: true },
+  })
+  for (const i of itens) por.set(i.encomendaId, [...(por.get(i.encomendaId) ?? []), i])
+  return por
+}
 
 type Linha = {
   id: string; unidadeId: string; clienteId: string | null; clienteNome: string; telefone: string | null
@@ -500,9 +528,11 @@ type Linha = {
   para: Date; entrega: boolean
   endereco: string | null; situacao: SituacaoEncomenda; observacao: string | null; concluidaEm: Date | null
   quem: string; unidade: { nome: string }; venda: { id: string; numero: number } | null
+  origem: 'BALCAO' | 'CATALOGO'; vistaEm: Date | null; formaCombinada: FormaPagamento | null
+  taxaEntrega: { toString(): string } | null
 }
 
-const naLista = (e: Linha): EncomendaNaLista => ({
+const naLista = (e: Linha, itens: ItemLido[] = []): EncomendaNaLista => ({
   id: e.id,
   unidadeId: e.unidadeId,
   unidadeNome: e.unidade.nome,
@@ -522,6 +552,11 @@ const naLista = (e: Linha): EncomendaNaLista => ({
   concluidaEm: e.concluidaEm,
   quem: e.quem,
   venda: e.venda,
+  origem: e.origem,
+  nova: e.origem === 'CATALOGO' && !e.vistaEm && !ehFinal(e.situacao),
+  formaCombinada: e.formaCombinada,
+  taxaEntrega: e.taxaEntrega != null ? reais(centavos(e.taxaEntrega)) : 0,
+  itens: itens.map((i) => ({ descricao: i.descricao, quantidade: Number(i.quantidade), total: reais(centavos(i.total)) })),
 })
 
 /**
@@ -566,7 +601,8 @@ export async function listarEncomendas(sessao: Sessao, f: FiltroEncomendas): Pro
       take: 500,
       select: SELECT,
     })
-    return linhas.map(naLista)
+    const itens = await itensDe(db, linhas.filter((l) => l.origem === 'CATALOGO').map((l) => l.id))
+    return linhas.map((l) => naLista(l, itens.get(l.id)))
   })
 }
 
@@ -1172,6 +1208,53 @@ export async function mudarSituacao(
   })
 }
 
+/**
+ * O pedido do catálogo foi visto — "aceito" — por alguém da loja.
+ *
+ * Só carimba `vistaEm` (nulo = pedido novo, que ninguém abriu). Não muda a
+ * situação: aceito continua "a fazer". Quem aceita é quem poderia anotar a
+ * encomenda na loja dela (`venda.criar`), e o livro guarda quem foi.
+ * Já vista não é erro: o segundo "aceitar" (a tela e o WhatsApp ao mesmo
+ * tempo) só não carimba de novo.
+ */
+export async function marcarVista(
+  sessao: Sessao,
+  id: string,
+  agora = new Date(),
+): Promise<{ ok: true; jaEstava: boolean } | { ok: false; erro: string }> {
+  exigir(sessao, 'venda.criar')
+  return comoOrg(sessao.orgId, async (db) => {
+    const recusa = await recusaDoModulo(db, sessao.orgId)
+    if (recusa) return { ok: false as const, erro: recusa }
+    const e = await db.encomenda.findUnique({
+      where: { id },
+      select: { unidadeId: true, situacao: true, vistaEm: true, clienteNome: true, descricao: true, valor: true },
+    })
+    if (!e) return { ok: false as const, erro: 'Essa encomenda não existe mais.' }
+    if (!pode(sessao, 'venda.criar', e.unidadeId)) throw new SemPermissao('venda.criar', e.unidadeId)
+    if (e.vistaEm) return { ok: true as const, jaEstava: true }
+    if (ehFinal(e.situacao)) {
+      return { ok: false as const, erro: `Esta encomenda já está ${ROTULO_ENCOMENDA[e.situacao].toLowerCase()}.` }
+    }
+    const r = await db.encomenda.updateMany({ where: { id, vistaEm: null }, data: { vistaEm: agora } })
+    if (r.count === 0) return { ok: true as const, jaEstava: true }
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: e.unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'encomenda.aceitou',
+        alvoTipo: 'encomenda',
+        alvoId: id,
+        alvoNome: `${e.clienteNome}: ${e.descricao}`.slice(0, 200),
+        valor: Number(e.valor),
+      },
+    })
+    return { ok: true as const, jaEstava: false }
+  })
+}
+
 /* ── receber no balcão ───────────────────────────────────────── */
 //
 // "Receber no balcão" era: marcar entregue aqui e abrir o balcão vazio, para a
@@ -1197,6 +1280,12 @@ export type EncomendaNoBalcao = {
   clienteNome: string
   /** Em reais. É o que a linha do pedido cobra. */
   falta: number
+  /**
+   * O pedido do catálogo: os produtos entram no pedido do balcão como linhas
+   * de verdade (baixam estoque, contam no ranking), e a linha da encomenda
+   * cobra só a taxa de entrega. Vazio na encomenda de balcão.
+   */
+  itens: { variacaoId: string; quantidade: number }[]
 }
 
 /** A linha do pedido: "Encomenda ENC-3F9K2A: Bolo de chocolate 2 kg". */
@@ -1211,7 +1300,24 @@ type EncomendaTravada = {
   sinal: { toString(): string }
   descricao: string
   cliente_nome: string
+  taxa_entrega: { toString(): string } | null
+  /** Quantos itens com produto do cadastro (a do catálogo tem; a de balcão, não). */
+  itens_com_produto: number
 }
+
+/**
+ * A encomenda vem com os produtos? Só a do catálogo SEM sinal: com sinal pago
+ * (a loja anotou depois), o que falta não fecha com os itens a preço cheio, e
+ * ela volta a ser recebida como uma linha só, pelo que falta.
+ */
+const comItens = (e: EncomendaTravada) => Number(e.itens_com_produto) > 0 && centavos(e.sinal) === 0
+
+/** O que a linha da encomenda cobra quando os produtos vêm separados: a taxa. */
+const taxaC = (e: EncomendaTravada) => (e.taxa_entrega != null ? centavos(e.taxa_entrega) : 0)
+
+const COLUNAS_TRAVADA = Prisma.sql`
+  e.id, e.unidade_id, e.situacao::text as situacao, e.valor, e.sinal, e.descricao, e.cliente_nome, e.taxa_entrega,
+  (select count(*)::int from encomenda_itens i where i.encomenda_id = e.id and i.variacao_id is not null) as itens_com_produto`
 
 /**
  * Por que esta encomenda não pode ser recebida nesta loja agora — ou null.
@@ -1243,19 +1349,26 @@ export async function encomendaParaReceber(
     const recusa = await recusaDoModulo(db, sessao.orgId)
     if (recusa) return { ok: false as const, erro: recusa }
     const [e] = await db.$queryRaw<EncomendaTravada[]>`
-      select id, unidade_id, situacao::text as situacao, valor, sinal, descricao, cliente_nome
-        from encomendas where id = ${id}
+      select ${COLUNAS_TRAVADA} from encomendas e where e.id = ${id}
     `
     const nao = recusaDoRecebimento(e, unidadeId)
     if (nao) return { ok: false as const, erro: nao }
+    const separados = comItens(e!)
+    const itens = separados
+      ? await db.encomendaItem.findMany({
+          where: { encomendaId: id, variacaoId: { not: null } },
+          select: { variacaoId: true, quantidade: true },
+        })
+      : []
     return {
       ok: true as const,
       encomenda: {
         id: e!.id,
         codigo: codigoEncomenda(e!.id),
-        descricao: e!.descricao,
+        descricao: separados ? (taxaC(e!) > 0 ? 'taxa de entrega' : 'pedido do catálogo') : e!.descricao,
         clienteNome: e!.cliente_nome,
-        falta: faltaPagar(e!.valor, e!.sinal),
+        falta: separados ? reais(taxaC(e!)) : faltaPagar(e!.valor, e!.sinal),
+        itens: itens.map((i) => ({ variacaoId: i.variacaoId!, quantidade: Number(i.quantidade) })),
       },
     }
   })
@@ -1272,19 +1385,30 @@ export async function travarParaVenda(
   empresa: { plano: Plano; modulos: string[] } | null,
   id: string,
   unidadeId: string,
-): Promise<{ ok: true; faltaC: number; linha: string } | { ok: false; recado: string }> {
+): Promise<{ ok: true; faltaC: number; linha: string; comItens: boolean } | { ok: false; recado: string }> {
   const recusa = recusaDoModuloEm(empresa)
   if (recusa) return { ok: false, recado: recusa }
   const [e] = await db.$queryRaw<EncomendaTravada[]>`
-    select id, unidade_id, situacao::text as situacao, valor, sinal, descricao, cliente_nome
-      from encomendas where id = ${id} for update
+    select ${COLUNAS_TRAVADA} from encomendas e where e.id = ${id} for update of e
   `
   const nao = recusaDoRecebimento(e, unidadeId)
   if (nao) return { ok: false, recado: nao }
+  // A do catálogo: os produtos vêm no pedido como linhas de verdade, e a linha
+  // da encomenda cobra só a entrega (pode ser zero).
+  if (comItens(e!)) {
+    const t = taxaC(e!)
+    return {
+      ok: true,
+      faltaC: t,
+      linha: descricaoDaLinha({ id: e!.id, descricao: t > 0 ? 'taxa de entrega' : 'pedido do catálogo' }),
+      comItens: true,
+    }
+  }
   return {
     ok: true,
     faltaC: centavos(e!.valor) - centavos(e!.sinal),
     linha: descricaoDaLinha(e!),
+    comItens: false,
   }
 }
 

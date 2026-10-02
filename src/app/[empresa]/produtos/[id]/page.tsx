@@ -17,6 +17,8 @@ import { Linhas } from '@/ui/Graficos'
 import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ProdutoNaTela } from '../Editor'
+import { fotoUrl } from '@/servidor/catalogo'
+import { FotoDoProduto } from './FotoDoProduto'
 import { palavra, plural, quantidade } from '@/ui/texto'
 import { diaEmSP, somarDias } from '@/servidor/dia'
 
@@ -174,6 +176,10 @@ export default async function FichaProduto({
         </span>
       }
     >
+      {/* ── A FOTO ──
+          É o que o catálogo da loja mostra para a cliente. */}
+      <FotoDoProduto slug={slug} produtoId={produto.id} nome={produto.nome} foto={fotoUrl(slug, produto.fotoId)} />
+
       {/* ── COMO VENDE ──
           A ficha sem isto é cadastro. "Vale repor?" e "por quanto está saindo?"
           se respondem aqui, antes de qualquer campo de edição. */}
