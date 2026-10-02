@@ -980,6 +980,19 @@ export const GUIA: Entrada[] = [
         capacidade: 'produto.editar',
       },
       {
+        titulo: 'Editar em planilha (ou baixar): vários produtos de uma vez',
+        passos: [
+          'Em Produtos (ou em Estoque), clique em "Editar em planilha". Cada produto vira uma linha, e cada célula um campo: nome, gaveta, preço, custo e o estoque da loja escolhida no alto.',
+          'Clique e digite. O que mudou fica marcado em azul; nada é gravado até "Salvar", e "Desfazer" volta tudo.',
+          'O estoque é o número que você CONTOU, não a diferença. Mudar estoque pede o motivo (botões prontos: "Estoque inicial", "Contagem da loja", "Produção / chegou da fábrica") e fica no livro de auditoria.',
+          'Com "assinar as exceções" ligado em Configurações, mudar estoque pede o PIN de quem está mexendo — cada um cria o seu em Minha conta.',
+          'A primeira linha, "novo", cadastra um produto simples (sem cor, tamanho ou sabor) com o estoque inicial: nome, gaveta, preço, custo, estoque e "Adicionar". O código da etiqueta sai sozinho.',
+          'Produto com várias opções mostra "N opções →": o estoque de cada opção se mexe na tela de Estoque. Grade, foto, medida e lojas continuam na ficha (clique no código). Estoque nunca lançado aparece "não lançado", e no balcão não fica como "acabou".',
+          'Para levar ao contador ou conferir fora do sistema, o botão "Planilha" baixa o catálogo em CSV, com o saldo da loja escolhida.',
+        ],
+        capacidade: 'produto.editar',
+      },
+      {
         titulo: 'Material de uso e o que é feito no dia',
         passos: [
           'Na ficha do produto, o bloco "Estoque" tem duas caixas.',
@@ -1007,15 +1020,6 @@ export const GUIA: Entrada[] = [
           'Pendências: sem venda em 30 dias, sem custo, sem categoria, sem código de barras.',
           'Ordenar por nome, mais vendidos em 30 dias, mais estoque ou maior preço.',
           'A marca vira filtro quando a loja tem até 12 marcas; acima disso, use a busca.',
-        ],
-        capacidade: 'produto.ver',
-      },
-      {
-        titulo: 'Baixar a planilha',
-        passos: [
-          '"Planilha" no alto baixa o catálogo em CSV, com o saldo da loja escolhida.',
-          'Serve para conferir preços em massa ou levar ao contador.',
-          'Alterar preço em massa pela planilha ainda não existe: o preço se muda na ficha de cada produto.',
         ],
         capacidade: 'produto.ver',
       },

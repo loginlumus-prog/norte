@@ -742,6 +742,13 @@ export type SaldoNaVista = {
    * e o nível fica neutro — não entra no "acabaram".
    */
   doDia?: boolean
+  /**
+   * Nenhuma loja da vista tem linha de estoque desta variação: nunca houve
+   * entrada, contagem nem venda que mexesse no saldo. É "ainda não controlo",
+   * não "acabou" — a empresa que acabou de chegar ao sistema veria o catálogo
+   * inteiro em vermelho. Nível neutro, fora do "acabaram".
+   */
+  semLancamento?: boolean
 }
 
 /**
@@ -777,6 +784,7 @@ export function saldoNaVista(
   // na padaria às 20h é o dia que deu certo, não falta. A padaria continua
   // vendo o saldo; só não recebe o alarme.
   if (saldo <= 0 && feitoNoDia) return { aparece, saldo, minimo, nivel: 'bom', doDia: true }
+  if (naVista.length === 0) return { aparece, saldo, minimo, nivel: 'bom', semLancamento: true }
   const nivel = saldo <= 0 ? 'critico' : minimo > 0 && saldo <= minimo ? 'atencao' : 'bom'
   return { aparece, saldo, minimo, nivel }
 }

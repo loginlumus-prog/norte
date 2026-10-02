@@ -216,6 +216,7 @@ export default async function TelaEstoque({
         minimo: na.minimo,
         nivel: na.nivel,
         doDia: na.doDia === true,
+        semLancamento: na.semLancamento === true,
         usoInterno: v.produto.usoInterno,
       }
     })
@@ -225,6 +226,8 @@ export default async function TelaEstoque({
 
   const acabaram = itens.filter((i) => nivelDe(i) === 'critico')
   const noMinimo = itens.filter((i) => nivelDe(i) === 'atencao')
+  // Sem linha de estoque nenhuma: a loja ainda não deu entrada nem contou.
+  const semLancamento = itens.filter((i) => i.semLancamento)
   // Dinheiro parado a preço de CUSTO é custo — a mesma regra da planilha
   // (`estoque/exportar`): só quem mexe em preço ou vê o financeiro. Antes
   // aparecia para qualquer um com `estoque.ver`, inclusive o balcão.
@@ -349,7 +352,7 @@ export default async function TelaEstoque({
   const listados = itens.filter(
     (i) =>
       (!termo || solto(i.nome).includes(termo) || solto(i.referencia ?? '').includes(termo) || codigoBate(i.codigo, q)) &&
-      (!nivelPedido || nivelDe(i) === nivelPedido),
+      (!nivelPedido || (nivelDe(i) === nivelPedido && !(nivelPedido === 'bom' && i.semLancamento))),
   )
 
   // Uma página por vez — a lista inteira, com as ações de cada linha, fazia a
@@ -423,6 +426,9 @@ export default async function TelaEstoque({
         i.doDia ? (
           // Feito no dia e zerado: a sobra saiu ao fechar. Não é falta.
           <Situacao nivel="neutro">feito no dia</Situacao>
+        ) : i.semLancamento ? (
+          // Nunca teve entrada nem contagem nesta vista: ainda não é controlado.
+          <Situacao nivel="neutro">sem estoque lançado</Situacao>
         ) : (
           <Situacao nivel={nivelDe(i)}>
             {i.saldo <= 0 ? 'acabou' : qtd(i.saldo, i.medida)}
@@ -476,6 +482,15 @@ export default async function TelaEstoque({
           >
             Planilha
           </a>
+          {pode(sessao, 'estoque.ajustar') && (
+            <Link
+              href={`/${slug}/produtos/rapida${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
+              className="rounded-norte border border-marca/50 bg-marca-suave px-3 py-1.5 text-sm font-semibold text-tinta hover:border-marca"
+              title="Digitar o estoque contado de vários produtos numa tabela"
+            >
+              Editar em planilha
+            </Link>
+          )}
         </span>
       }
     >
@@ -483,7 +498,8 @@ export default async function TelaEstoque({
         itens={[
           { rotulo: 'acabaram', um: 'acabou', quantos: acabaram.length, nivel: 'critico' },
           { rotulo: 'no mínimo', quantos: noMinimo.length, nivel: 'atencao' },
-          { rotulo: 'com estoque', quantos: itens.length - acabaram.length - noMinimo.length, nivel: 'bom' },
+          { rotulo: 'com estoque', quantos: itens.length - acabaram.length - noMinimo.length - semLancamento.length, nivel: 'bom' },
+          { rotulo: 'sem estoque lançado', quantos: semLancamento.length, nivel: 'neutro' },
         ]}
       />
 

@@ -430,6 +430,7 @@ export function Produtos({
           <div className="flex flex-wrap gap-2">
             {complementosDaLoja.map((p) => {
               const saldo = saldoTotal(p.variacoes)
+              const semLanc = nuncaLancado(p.variacoes)
               const unica = p.variacoes.length === 1 ? p.variacoes[0] : undefined
               const qtd = p.variacoes.reduce((s, x) => s + (noPedido.get(x.id) ?? 0), 0)
               const preco = unica
@@ -456,7 +457,7 @@ export function Produtos({
                 >
                   {p.nome}
                   <span className="numero text-xs font-medium text-tinta-3">
-                    {saldo <= 0 ? 'acabou' : `+${brl(preco)}`}
+                    {saldo <= 0 && !semLanc ? 'acabou' : `+${brl(preco)}`}
                   </span>
                   {qtd > 0 && (
                     <span className="numero flex h-5 min-w-5 items-center justify-center rounded-full bg-marca px-1.5 text-[11px] font-bold text-marca-tinta">
@@ -508,6 +509,7 @@ export function Produtos({
                       estilo={estiloDoTom(tomDe(-1))}
                       saldo={a.saldo}
                       acabou={a.saldo <= 0}
+                      semLancamento={!!a.semLancamento}
                       codigo={a.codigo}
                       enter={i === 0}
                       noPedido={noPedido.get(a.id) ?? 0}
@@ -533,6 +535,7 @@ export function Produtos({
                     estilo={estiloDoTom(tomDoProduto(p))}
                     saldo={saldo}
                     acabou={saldo <= 0}
+                    semLancamento={nuncaLancado(p.variacoes)}
                     codigo={etiquetaDoProduto(p.variacoes.map((x) => x.codigo))}
                     detalhe={`${p.variacoes.length} opções`}
                     enter={i === 0}
@@ -595,6 +598,7 @@ export function Produtos({
                     estilo={estiloDoTom(tomDoProduto(p))}
                     saldo={saldo}
                     acabou={saldo <= 0}
+                    semLancamento={nuncaLancado(p.variacoes)}
                     codigo={etiquetaDoProduto(p.variacoes.map((x) => x.codigo))}
                     detalhe={
                       p.variacoes.length > 1
@@ -697,6 +701,9 @@ function BotaoMenos({ rotulo, aoTirar, pequeno = false }: { rotulo: string; aoTi
   )
 }
 
+/** Nenhuma das variações teve estoque lançado nesta loja (ver `semLancamento`). */
+const nuncaLancado = (vs: readonly { semLancamento?: boolean }[]) => vs.length > 0 && vs.every((x) => x.semLancamento)
+
 const qtdNaTela = (n: number) => (Number.isInteger(n) ? String(n) : n.toLocaleString('pt-BR'))
 
 function Cartao({
@@ -715,9 +722,16 @@ function Cartao({
   aoTocar,
   aoTirar,
   semEstoqueOk = false,
+  semLancamento = false,
 }: {
   /** A loja vende o que o sistema diz que acabou: o cartão avisa, mas não trava. */
   semEstoqueOk?: boolean
+  /**
+   * Zerado porque nunca teve estoque lançado nesta loja — não porque vendeu
+   * tudo. Não é "acabou": na loja que vende sem estoque o cartão fica normal;
+   * na que não vende, fica travado com "sem estoque", em cinza.
+   */
+  semLancamento?: boolean
   nome: string
   preco: number
   aPartirDe?: boolean
@@ -741,12 +755,16 @@ function Cartao({
     codigo ? `código ${codigo}` : null,
     `${aPartirDe ? 'a partir de ' : ''}${brl(preco)}${un ? ` por ${UNIDADE[medida] ?? medida}` : ''}`,
     detalhe,
-    acabou ? 'acabou' : null,
+    acabou ? (semLancamento ? 'sem estoque lançado' : 'acabou') : null,
     noPedido > 0 ? `${qtdNaTela(noPedido)} no pedido` : null,
   ]
     .filter(Boolean)
     .join(', ')
   const direito = useBotaoDireito(noPedido > 0 ? aoTirar : undefined)
+  const travado = acabou && !semEstoqueOk
+  // Apagado é o cartão que não vende, ou o que acabou de verdade. O que só
+  // nunca teve estoque lançado, numa loja que vende sem estoque, fica normal.
+  const apagado = travado || (acabou && !semLancamento)
 
   // O cartão tem duas partes, como nos PDVs de balcão de hoje: em cima, o
   // bloco de cor da categoria com as iniciais grandes (é o que o olho acha de
@@ -761,13 +779,13 @@ function Cartao({
     <button
       type="button"
       onClick={aoTocar}
-      disabled={acabou && !semEstoqueOk}
+      disabled={travado}
       aria-label={falado}
       title={noPedido > 0 && aoTirar ? 'Clique põe mais um · botão direito tira um' : undefined}
       className={cx(
         'group relative flex min-h-[10rem] w-full flex-col overflow-hidden rounded-2xl border bg-superficie text-left transition',
         'touch-manipulation select-none',
-        acabou
+        apagado
           ? 'cursor-not-allowed border-borda-suave opacity-55'
           : 'border-borda shadow-norte hover:-translate-y-0.5 hover:border-marca/40 hover:shadow-norte-alta active:translate-y-0 active:scale-[0.97]',
         piscou && 'border-marca ring-2 ring-marca/40',
@@ -799,8 +817,10 @@ function Cartao({
               {un && <span className="text-sm font-semibold text-tinta-3">{un}</span>}
             </span>
           </span>
-          {acabou ? (
+          {acabou && !semLancamento ? (
             <Situacao nivel="critico">acabou</Situacao>
+          ) : travado ? (
+            <Situacao nivel="neutro">sem estoque</Situacao>
           ) : detalhe ? (
             <span className="truncate text-xs text-tinta-3">{detalhe}</span>
           ) : saldo > 0 && saldo <= 3 && medida === 'UN' ? (
@@ -1035,15 +1055,16 @@ function EscolhaFolha({
                         )
                       }
                       const marcada = escolhas[matriz.linhas.nome] === l.valor && escolhas[matriz.colunas.nome] === c.valor
-                      const acabou = x.saldo <= 0
+                      const zerada = x.saldo <= 0
+                      const acabou = zerada && !x.semLancamento
                       const jaTem = quantosNoPedido(x)
                       return (
                         <td key={c.valor} className="p-0">
                           <button
                             type="button"
-                            disabled={acabou && !semEstoqueOk}
+                            disabled={zerada && !semEstoqueOk}
                             aria-pressed={marcada}
-                            aria-label={`${l.valor} ${c.valor}: ${acabou ? 'acabou' : `${x.saldo} na loja`}${jaTem > 0 ? `, ${qtdNaTela(jaTem)} no pedido` : ''}`}
+                            aria-label={`${l.valor} ${c.valor}: ${acabou ? 'acabou' : zerada ? 'sem estoque lançado' : `${x.saldo} na loja`}${jaTem > 0 ? `, ${qtdNaTela(jaTem)} no pedido` : ''}`}
                             title={jaTem > 0 ? `${qtdNaTela(jaTem)} no pedido · botão direito tira um` : undefined}
                             onClick={() => setEscolhas({ [matriz.linhas.nome]: l.valor, [matriz.colunas.nome]: c.valor })}
                             onContextMenu={direito(x)}
@@ -1058,7 +1079,7 @@ function EscolhaFolha({
                                     : 'border-borda bg-superficie text-tinta hover:border-marca/50',
                             )}
                           >
-                            {acabou ? 'acabou' : x.saldo.toLocaleString('pt-BR')}
+                            {acabou ? 'acabou' : zerada ? <span className="text-xs font-semibold text-tinta-3">sem est.</span> : x.saldo.toLocaleString('pt-BR')}
                             {jaTem > 0 && (
                               <span
                                 aria-hidden
@@ -1135,7 +1156,7 @@ function EscolhaFolha({
                       </span>
                       {peca1 && (
                         <span className="numero text-xs text-tinta-3">
-                          {esgotada ? 'acabou' : brl(precoDe({ ...peca1, quantidade: 1 }, tabela))}
+                          {esgotada && !peca1?.semLancamento ? 'acabou' : brl(precoDe({ ...peca1!, quantidade: 1 }, tabela))}
                         </span>
                       )}
                       {jaTem > 0 && <span className="sr-only">, {qtdNaTela(jaTem)} no pedido</span>}
@@ -1287,7 +1308,12 @@ function EscolhaFolha({
             )}
 
             {pesa && <LerBalanca aoPesar={(kg) => setQuanto(pesoNoCampo(kg, escolha.medida))} />}
-            {achada.saldo <= 0 && <Situacao nivel="critico">acabou nesta loja</Situacao>}
+            {achada.saldo <= 0 &&
+              (achada.semLancamento ? (
+                <Situacao nivel="neutro">sem estoque lançado nesta loja</Situacao>
+              ) : (
+                <Situacao nivel="critico">acabou nesta loja</Situacao>
+              ))}
           </div>
         )}
       </div>

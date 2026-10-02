@@ -229,8 +229,12 @@ describe('saldoNaVista: Produtos e Estoque contam igual', () => {
     ], [CENTRO, SHOP]).nivel).toBe('atencao')
   })
 
-  it('item nunca estocado que a loja vende aparece como "acabou"', () => {
-    expect(m.produto.saldoNaVista(['c'], [], [CENTRO])).toMatchObject({ aparece: true, nivel: 'critico' })
+  it('item nunca estocado que a loja vende aparece, mas como "sem estoque lançado" — não "acabou"', () => {
+    // A empresa que acabou de chegar não vê o catálogo inteiro em vermelho.
+    expect(m.produto.saldoNaVista(['c'], [], [CENTRO])).toMatchObject({ aparece: true, nivel: 'bom', semLancamento: true })
+    // Teve linha (entrada, contagem ou venda) e zerou: aí acabou de verdade.
+    expect(m.produto.saldoNaVista(['c'], [{ unidadeId: 'c', quantidade: 0, minimo: null }], [CENTRO])).toMatchObject({ nivel: 'critico' })
+    expect(m.produto.saldoNaVista(['c'], [{ unidadeId: 'c', quantidade: 0, minimo: null }], [CENTRO]).semLancamento).toBeUndefined()
   })
 
   it('o que a loja não vende e não tem ali não aparece — não é "acabou"', () => {

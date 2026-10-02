@@ -74,6 +74,13 @@ export type Achado = {
    */
   servico?: boolean
   /**
+   * Nunca teve estoque lançado NESTA loja (nenhuma linha de estoque): a loja
+   * ainda não contou nem deu entrada. Zerado assim não é "acabou" — é "ainda
+   * não controlo". A tela não pinta de vermelho; a venda segue a mesma régua
+   * de sempre (vender sem estoque é chave da empresa).
+   */
+  semLancamento?: boolean
+  /**
    * Só na busca: de que produto a variação é, e as opções dela. A tela junta
    * os tamanhos do mesmo produto num cartão só ("Bermuda Cargo · 7 opções")
    * e abre a escolha de tamanho, como na vitrine — e não sete cartões soltos.
@@ -139,6 +146,7 @@ function montarAchado(v: VariacaoLida): Achado {
     saldo: v.produto.servico ? SALDO_DE_SERVICO : Number(v.estoques[0]?.quantidade ?? 0),
     vendidoEm: v.produto.vendidoEm ?? [],
     ...(v.produto.servico ? { servico: true } : {}),
+    ...(!v.produto.servico && v.estoques.length === 0 ? { semLancamento: true } : {}),
   }
 }
 

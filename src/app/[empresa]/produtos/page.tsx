@@ -218,7 +218,8 @@ export default async function Produtos({
   const situacaoDe = (v: { na: { nivel: 'critico' | 'atencao' | 'bom' } }) => v.na.nivel
   const todas = comSaldo.filter((p) => !p.servico).flatMap((p) => p.variacoes)
   const conta = {
-    bom: todas.filter((v) => situacaoDe(v) === 'bom').length,
+    bom: todas.filter((v) => situacaoDe(v) === 'bom' && !v.na.semLancamento).length,
+    semLancamento: todas.filter((v) => v.na.semLancamento).length,
     atencao: todas.filter((v) => situacaoDe(v) === 'atencao').length,
     critico: todas.filter((v) => situacaoDe(v) === 'critico').length,
   }
@@ -233,7 +234,7 @@ export default async function Produtos({
   const nivelPedido = situacao === 'acabaram' ? 'critico' : situacao === 'minimo' ? 'atencao' : situacao === 'ok' ? 'bom' : null
   const porSituacao = nivelPedido
     ? comSaldo
-        .map((p) => ({ ...p, variacoes: p.variacoes.filter((v) => situacaoDe(v) === nivelPedido) }))
+        .map((p) => ({ ...p, variacoes: p.variacoes.filter((v) => situacaoDe(v) === nivelPedido && !(nivelPedido === 'bom' && v.na.semLancamento)) }))
         .filter((p) => p.variacoes.length > 0)
     : comSaldo
 
@@ -309,6 +310,17 @@ export default async function Produtos({
               Planilha
             </a>
           )}
+          {(pode(sessao, 'produto.editar') || pode(sessao, 'produto.cadastrar') || pode(sessao, 'estoque.ajustar')) && (
+            // A planilha: nome, gaveta, preço, custo e estoque de muitos de uma
+            // vez, e cadastro em sequência. A ficha fica para grade e foto.
+            <Link
+              href={`/${slug}/produtos/rapida${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
+              className="rounded-norte border border-marca/50 bg-marca-suave px-3 py-1.5 text-sm font-semibold text-tinta hover:border-marca"
+              title="Editar nome, preço e estoque de vários produtos numa tabela"
+            >
+              Editar em planilha
+            </Link>
+          )}
           {pode(sessao, 'produto.cadastrar') && (
             <Link
               href={`/${slug}/produtos/novo`}
@@ -324,6 +336,7 @@ export default async function Produtos({
         <Tira
           itens={[
             { rotulo: 'com estoque', quantos: conta.bom, nivel: 'bom' },
+            { rotulo: 'sem estoque lançado', quantos: conta.semLancamento, nivel: 'neutro' },
             { rotulo: 'no mínimo', quantos: conta.atencao, nivel: 'atencao' },
             { rotulo: 'acabaram', um: 'acabou', quantos: conta.critico, nivel: 'critico' },
           ]}
@@ -551,9 +564,13 @@ export default async function Produtos({
                 ) : p.servico ? (
                   <Situacao nivel="neutro">serviço, sem estoque</Situacao>
                 ) : (
-                  <Situacao nivel={total > 0 ? 'bom' : p.feitoNoDia ? 'neutro' : 'critico'}>
-                    {quantidade(total, p.medida)} {onde.unidadeId ? 'aqui' : 'no total'}
-                  </Situacao>
+                  p.variacoes.length > 0 && p.variacoes.every((v) => v.na.semLancamento) ? (
+                    <Situacao nivel="neutro">sem estoque lançado</Situacao>
+                  ) : (
+                    <Situacao nivel={total > 0 ? 'bom' : p.feitoNoDia ? 'neutro' : 'critico'}>
+                      {quantidade(total, p.medida)} {onde.unidadeId ? 'aqui' : 'no total'}
+                    </Situacao>
+                  )
                 )}
               </span>
             }
@@ -603,6 +620,8 @@ export default async function Produtos({
                     ) : (
                       v.na.doDia ? (
                         <Situacao nivel="neutro">feito no dia</Situacao>
+                      ) : v.na.semLancamento ? (
+                        <Situacao nivel="neutro">sem estoque lançado</Situacao>
                       ) : (
                         <Situacao nivel={situacaoDe(v)}>
                           {v.na.saldo <= 0 ? 'acabou' : quantidade(v.na.saldo, p.medida)}
