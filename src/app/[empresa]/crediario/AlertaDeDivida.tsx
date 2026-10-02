@@ -12,7 +12,8 @@
 //
 // Em dia, só um atalho discreto para quem veio adiantar parcela.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Botao } from '@/ui/base'
 import type { SituacaoDeCredito } from '@/servidor/crediario'
 import { situacaoDeCreditoAcao } from './acoes'
@@ -54,6 +55,8 @@ export function AlertaDeDivida({
   const [oculto, setOculto] = useState(false)
   const [recebendo, setRecebendo] = useState(false)
   const [versao, setVersao] = useState(0)
+  const recebeu = useRef(false)
+  const router = useRouter()
 
   useEffect(() => {
     let vivo = true
@@ -73,9 +76,17 @@ export function AlertaDeDivida({
       slug={slug}
       unidadeId={unidadeId}
       clienteId={clienteId}
+      aoReceber={() => {
+        recebeu.current = true
+      }}
       aoFechar={() => {
         setRecebendo(false)
         setVersao((v) => v + 1)
+        // A barra do caixa lá atrás mostra o dinheiro que entrou.
+        if (recebeu.current) {
+          recebeu.current = false
+          router.refresh()
+        }
       }}
     />
   )

@@ -226,7 +226,7 @@ export function AssinarVenda({ v, slug }: { v: Venda; slug: string }) {
           <h2 id="assinar-titulo" className="text-sm font-semibold text-tinta-2">
             Confirme com o seu PIN para registrar
           </h2>
-          <p className="numero text-4xl font-extrabold tracking-tight text-titulo">{brl(v.conta.totalCent / 100)}</p>
+          <p className="numero text-4xl font-extrabold tracking-tight text-titulo">{brl(v.conta.aPagarCent / 100)}</p>
           <p id="assinar-resumo" className="text-sm text-tinta-2">
             {plural(itens, 'item', 'itens')}
             {formas ? ` · ${formas}` : ''}

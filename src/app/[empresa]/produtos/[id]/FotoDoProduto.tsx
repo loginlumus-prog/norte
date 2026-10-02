@@ -91,7 +91,7 @@ export function FotoDoProduto({ slug, produtoId, nome, foto }: { slug: string; p
                 })
               }
             >
-              Tirar foto
+              Remover foto
             </Botao>
           ) : null}
         </div>

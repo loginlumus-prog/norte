@@ -88,7 +88,11 @@ export type FatosDoMes = {
 /** Diferença de gaveta acima disto deixa de ser troco e vira conferência. */
 const GAVETA_TOLERANCIA = 20
 
-export function conferir(f: FatosDoMes, slug: string): ItemDoFechamento[] {
+/**
+ * `mes` ("2026-09"): o mês do fechamento. O "Abrir o DRE" leva ao Financeiro
+ * NAQUELE mês — sem ele, o fechamento de setembro abria o DRE de outubro.
+ */
+export function conferir(f: FatosDoMes, slug: string, mes?: string): ItemDoFechamento[] {
   const brl = (v: number) =>
     v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -194,7 +198,7 @@ export function conferir(f: FatosDoMes, slug: string): ItemDoFechamento[] {
     porque:
       'É o que sobrou depois de tudo: mercadoria, pessoal, ocupação e taxa. Com as linhas acima resolvidas, este número é o número.',
     situacao: f.receita === 0 ? 'atencao' : f.resultado >= 0 ? 'ok' : 'pendente',
-    onde: { texto: 'Abrir o DRE', href: `/${slug}/financeiro` },
+    onde: { texto: 'Abrir o DRE', href: `/${slug}/financeiro${mes ? `?mes=${mes}` : ''}` },
   })
 
   return itens
@@ -350,6 +354,7 @@ export async function montarFechamento(
       resultado: dre.resultado,
     },
     slug,
+    mes,
   ), (c) => pode(sessao, c))
 
   return {

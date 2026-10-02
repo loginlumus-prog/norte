@@ -119,9 +119,19 @@ function UmaLoja({
         setAberto(true)
         return setRecado({ nivel: 'critico', texto: r.erro })
       }
+      // Só os ajustes (sem abrir nem fechar): dizer "Catálogo fechado" a quem
+      // tocou em Salvar soava como se o salvar tivesse fechado o catálogo.
+      const abriuOuFechou = ativo !== salvo.ativo
       setF((x) => ({ ...x, ativo, endereco: r.endereco }))
       setSalvo({ ativo, endereco: r.endereco })
-      setRecado({ nivel: 'bom', texto: ativo ? 'Catálogo no ar. Copie o link e mande para as clientes.' : 'Catálogo fechado. O link deixa de abrir.' })
+      setRecado({
+        nivel: 'bom',
+        texto: !abriuOuFechou
+          ? 'Ajustes salvos.'
+          : ativo
+            ? 'Catálogo no ar. Copie o link e mande para as clientes.'
+            : 'Catálogo fechado. O link deixa de abrir.',
+      })
     })
   }
 

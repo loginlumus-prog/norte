@@ -1036,7 +1036,7 @@ export function useVenda({
             chave: chaveVenda,
             unidadeId,
             quando: Date.now(),
-            total: conta.totalCent / 100,
+            total: conta.aPagarCent / 100,
             resumo: `${plural(carrinho.length, 'item', 'itens')}${pagamentoAgora ? ` · ${pagamentoAgora}` : ''}`,
             dados,
           })
@@ -1046,7 +1046,7 @@ export function useVenda({
             setFechada({
               vendaId: chaveVenda,
               numero: 0,
-              total: conta.totalCent / 100,
+              total: conta.aPagarCent / 100,
               trocoCent: trocoAgora,
               pontosGanhos: 0,
               pagamento: pagamentoAgora,
@@ -1056,7 +1056,7 @@ export function useVenda({
             })
             setRecado({
               nivel: 'bom',
-              texto: `Sem internet: ${palavras.aVenda} de ${brl(conta.totalCent / 100)} ficou guardad${palavras.vendaFeminina ? 'a' : 'o'} neste aparelho e sobe sozinh${palavras.vendaFeminina ? 'a' : 'o'} quando a conexão voltar. O comprovante sai depois, em ${palavras.Vendas}.`,
+              texto: `Sem internet: ${palavras.aVenda} de ${brl(conta.aPagarCent / 100)} ficou guardad${palavras.vendaFeminina ? 'a' : 'o'} neste aparelho e sobe sozinh${palavras.vendaFeminina ? 'a' : 'o'} quando a conexão voltar. O comprovante sai depois, em ${palavras.Vendas}.`,
             })
             limpar()
             return
@@ -1105,12 +1105,15 @@ export function useVenda({
         const conferir = r.semEstoque.length > 0
           ? ` · ${plural(r.semEstoque.length, 'item foi', 'itens foram')} para “Vendido sem estoque — conferir”`
           : ''
+        // O troco some da tela junto com o pedido: o recado guarda o valor
+        // até a gaveta fechar (a cara simples já diz o troco no "concluída").
+        const troco = trocoAgora > 0 ? ` · troco ${brl(trocoAgora / 100)}` : ''
         const comprovante = `/${slug}/vendas/${r.vendaId}/comprovante?imprimir=1`
         // No crediário, o carnê é o outro papel: o que a cliente assina e leva.
         const carne = comCarne ? `/${slug}/vendas/${r.vendaId}/carne?imprimir=1` : null
         setRecado({
           nivel: 'bom',
-          texto: `${palavras.Venda} ${r.numero} ${palavras.vendaFeminina ? 'fechada' : 'fechado'} — ${brl(r.total)}${pagamentoAgora ? ` · ${pagamentoAgora}` : ''}${quemVendeu}${ganhou}${autorizada}${conferir}`,
+          texto: `${palavras.Venda} ${r.numero} ${palavras.vendaFeminina ? 'fechada' : 'fechado'} — ${brl(r.total)}${pagamentoAgora ? ` · ${pagamentoAgora}` : ''}${troco}${quemVendeu}${ganhou}${autorizada}${conferir}`,
           link: { href: comprovante, rotulo: 'imprimir comprovante' },
           ...(carne ? { outro: { href: carne, rotulo: 'imprimir carnê' } } : {}),
         })

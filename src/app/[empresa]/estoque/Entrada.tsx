@@ -16,6 +16,7 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao, cx } from '@/ui/base'
 import { CampoDoPin } from '@/ui/Assinar'
 import { procurarParaEntrada, darEntrada, type AchadoEstoque } from './acoes'
+import { escolhaDoEnter } from '@/servidor/etiqueta'
 
 type Linha = AchadoEstoque & { quantidade: number; custoUnit: number | null }
 
@@ -216,6 +217,23 @@ export function Entrada({
           placeholder={unidadeId ? 'Bipe a etiqueta ou digite o nome' : 'Escolha a loja primeiro'}
           disabled={!unidadeId}
           autoComplete="off"
+          onKeyDown={(e) => {
+            // O leitor digita a etiqueta e aperta Enter num piscar — antes da
+            // lista aparecer. Sem isto, o bipe só escrevia o código no campo e
+            // a pessoa tinha de clicar no achado a cada peça. Procura na hora
+            // e lança como o balcão (a grade com várias opções fica na lista).
+            if (e.key !== 'Enter') return
+            e.preventDefault()
+            const t = termo.trim()
+            if (t.length < 2 || !unidadeId) return
+            procurarParaEntrada(slug, unidadeId, t)
+              .then((r) => {
+                const { item } = escolhaDoEnter(t, r)
+                if (item) adicionar(item)
+                else setAchados(r)
+              })
+              .catch(() => setAchados([]))
+          }}
         />
         {achados.length > 0 && (
           <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-norte border border-borda bg-superficie shadow-norte">

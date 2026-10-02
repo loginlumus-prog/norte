@@ -95,6 +95,11 @@ describe('o resultado', () => {
   it('leva sempre um caminho para o DRE', () => {
     expect(achar(com({}), 'resultado').onde?.href).toBe('/loja/financeiro')
   })
+
+  it('o DRE abre no mês do fechamento, não no mês de hoje', () => {
+    const itens = conferir({ ...LIMPO }, 'loja', '2026-09')
+    expect(achar(itens, 'resultado').onde?.href).toBe('/loja/financeiro?mes=2026-09')
+  })
 })
 
 describe('a janela do mês', () => {

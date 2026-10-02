@@ -25,6 +25,11 @@ import { lerNumero } from '@/servidor/dinheiro'
 
 const SEM_PERMISSAO = 'Você não tem permissão para isso nesta loja.'
 
+// O receber (e a baixa de fora) NÃO revalida: qualquer revalidatePath numa
+// ação redesenha a tela aberta na hora, e na lista do Crediário a linha da
+// parcela paga sumia — levando junto a janela do receber, com o troco e o
+// "Imprimir recibo" que ela ia mostrar. Quem abre a janela atualiza a tela de
+// trás ao fechar (BotaoReceber, FichaDaCliente, AlertaDeDivida).
 function revalidar(slug: string, clienteId: string) {
   revalidatePath(`/${slug}/crediario`)
   revalidatePath(`/${slug}/clientes/${clienteId}`)
@@ -71,9 +76,7 @@ export async function situacaoDeCreditoAcao(slug: string, clienteId: string, uni
 export async function receberVariasAcao(slug: string, pedido: PedidoDeRecibo): Promise<ResultadoDoRecibo> {
   try {
     const sessao = await exigirSessao(slug)
-    const r = await receberVarias(sessao, pedido)
-    if (r.ok) revalidar(slug, pedido.clienteId)
-    return r
+    return await receberVarias(sessao, pedido)
   } catch (e) {
     if (e instanceof SemPermissao) return { ok: false, erro: SEM_PERMISSAO }
     throw e
@@ -83,9 +86,7 @@ export async function receberVariasAcao(slug: string, pedido: PedidoDeRecibo): P
 export async function baixaExternaAcao(slug: string, pedido: PedidoDeBaixaExterna): Promise<ResultadoDoRecibo> {
   try {
     const sessao = await exigirSessao(slug)
-    const r = await baixaExterna(sessao, pedido)
-    if (r.ok) revalidar(slug, pedido.clienteId)
-    return r
+    return await baixaExterna(sessao, pedido)
   } catch (e) {
     if (e instanceof SemPermissao) return { ok: false, erro: 'Baixa de pagamento feito fora é de quem negocia o crediário (gerente ou dona).' }
     throw e

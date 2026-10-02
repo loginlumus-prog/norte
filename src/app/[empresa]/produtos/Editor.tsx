@@ -427,7 +427,8 @@ export function Editor({
 
             {usados.length > 1 && (
               <p className="mt-4 text-sm text-tinta-2">
-                {usados.map((e) => `${marcadas[e.id]!.length} ${e.nome.toLowerCase()}`).join(' × ')}{' '}
+                {/* "cor (2)", não "2 cor": o nome do eixo é da empresa e não dá para pôr no plural. */}
+                {usados.map((e) => `${e.nome.toLowerCase()} (${marcadas[e.id]!.length})`).join(' × ')}{' '}
                 = <b className="numero text-tinta">{total}</b> itens contados separado no estoque.
               </p>
             )}
