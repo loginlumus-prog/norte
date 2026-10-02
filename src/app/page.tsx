@@ -1,139 +1,90 @@
 import type { Metadata } from 'next'
 import type { CSSProperties, ComponentType, ReactNode } from 'react'
 import type { Plano } from '@prisma/client'
-import {
-  PLANOS as LIMITES,
-  PLANOS_COM_PRECO,
-  PRECOS,
-  RECOMENDADO,
-  RECURSOS,
-  mensalidade,
-} from '@/servidor/planos'
+import './site.css'
+import { PLANOS as LIMITES, PLANOS_COM_PRECO, PRECOS, RECURSOS } from '@/servidor/planos'
 import { PODERES, TODOS_PODERES } from '@/servidor/poderes'
-import { Marca, Simbolo } from '@/ui/Marca'
-import { AoEntrar } from '@/ui/AoEntrar'
-import { ConversaFlutuante } from '@/ui/ConversaFlutuante'
-import { CompararPlanos } from '@/ui/CompararPlanos'
-import { Estrelas } from '@/ui/Estrelas'
-import { BarraTopo } from '@/ui/venda/BarraTopo'
-import { Vitrine } from '@/ui/venda/Vitrine'
-import { Ramos } from '@/ui/venda/Ramos'
-import { Palco } from '@/ui/venda/Palco'
-import { SimplesAvancado } from '@/ui/venda/SimplesAvancado'
+import { RAMOS } from '@/servidor/modulos'
+import { EMPRESA } from '@/servidor/legal'
+import { Marca } from '@/ui/Marca'
 import { SistemaPorDentro, type TextoTela } from '@/ui/venda/demo/SistemaPorDentro'
 import type { TelaId } from '@/ui/venda/demo/estado'
-import { Avatar, Barra, Pilula, reais as reaisCentavos } from '@/ui/venda/Pecas'
 import { COMECAR, ENTRAR, mailto } from '@/ui/venda/mapa'
-import { EMPRESA } from '@/servidor/legal'
 import {
-  IconeAbaixo,
-  IconeAdiante,
-  IconeAuditoria,
-  IconeCorte,
-  IconeExcesso,
-  IconeFechamento,
-  IconeFiado,
-  IconeFreio,
-  IconeGuia,
-  IconeMais,
-  IconeParedes,
-  IconePessoas,
-  IconePreco,
-  IconeRuptura,
-  IconeTranca,
-  IconeVisto,
-} from '@/ui/Icones'
+  CelularCatalogo,
+  ConversaAssistente,
+  FichaFabrica,
+  MiniBalcao,
+  MiniEquipe,
+  MiniEstoque,
+  MiniGrafico,
+  MiniSemInternet,
+  PecasFarol,
+  PlanilhaParaNorte,
+} from '@/ui/site/Cenas'
+import { Calculadora } from '@/ui/site/Calculadora'
+import { LuzQueSegue } from '@/ui/site/LuzQueSegue'
+import { IconeAuditoria, IconeCorte, IconeFreio, IconeParedes, IconeTranca } from '@/ui/Icones'
 
 // A página de venda.
 //
-// Ela existe para uma pessoa que nunca ouviu falar da gente decidir, em dois
-// minutos, se vale a conversa. A ordem responde as perguntas na ordem em que
-// elas aparecem na cabeça de quem chega:
+// Ela existe para o dono de uma loja que nunca ouviu falar da gente decidir,
+// em dois minutos, que vale testar. A ordem segue as perguntas que aparecem
+// na cabeça dele:
 //
-//   1. o que é isto?            → o topo, com o produto grande logo embaixo
-//   2. serve para o meu ramo?   → as fichas dos ramos, lidas da tabela real
-//   3. como é por dentro?       → o exemplo clicável, oito telas que respondem
-//   4. vou conseguir usar?      → simples ou avançado
-//   5. o que só vocês têm?      → o assistente, e o controle sobre ele
-//   6. resolve o que me dói?    → o bento das dores, cada uma com a tela
-//   7. meu dado fica seguro?    → as cinco garantias
-//   8. quanto custa?            → os planos e a tabela item por item
-//   9. e se…?                   → as dúvidas
+//   1. o que é, e serve para mim?      → o topo: a loja de verdade, com o
+//                                        sistema acontecendo por cima
+//   2. o que muda no meu dia?          → antes e depois
+//   3. o que ele faz?                  → o bento das funções da loja
+//   4. o que só vocês têm?             → catálogo, assistente por áudio,
+//                                        Farol e fábrica, um de cada vez
+//   5. vou conseguir começar?          → a planilha velha entrando
+//   6. como é por dentro?              → o exemplo clicável
+//   7. meu dado fica seguro?           → as cinco garantias
+//   8. quanto fica para MIM?           → a calculadora, e os planos
+//   9. e se…?                          → as dúvidas
 //
-// ── em 24/09 ela virou branca ────────────────────────────────
-// O dono achou a versão anterior amadora e pediu "tema branco, muito
-// moderna, fácil de navegar", olhando Monday e ClickUp. O que mudou de
-// desenho, e por quê:
+// ── 02/10/2026: viva e colorida ──────────────────────────────
+// O dono pediu "muito mais profissional, mais vida, mais cor, mais
+// interação, moderna de 2026", e que a página venda — palavra que o lojista
+// procura, o que entrega, o que facilita. O que mudou:
 //
-// • O topo deixou de ser uma cena desenhada sobre azul-noite e passou a ser
-//   o PRODUTO, grande, em HTML (`ui/venda/Vitrine.tsx`). Quem chega quer
-//   saber o que é; um painel legível responde, uma ilustração sugere.
-// • A aurora escura saiu de todas as seções. Azul-noite sobrou só onde é
-//   detalhe: o azulejo do símbolo e o bloco pequeno das duas paredes.
-// • A barra ganhou o painel "Produto", com os grupos do menu real — é o
-//   mapa do sistema inteiro a um clique, em vez de oito âncoras soltas.
-// • As telas viraram abas: seis seções de texto-e-figura seguidas cansam;
-//   uma área onde a pessoa escolhe o que ver, não.
+// • FOTO de loja brasileira de verdade no topo, com o sistema flutuando por
+//   cima (venda, pedido do catálogo, áudio, gráfico). As fotos foram geradas
+//   para nós (public/img/site), sem marca de ninguém.
+// • Cada função com a sua cor (site.css): azul o Norte, rosa o catálogo,
+//   verde o WhatsApp, sol o Farol, violeta a fábrica.
+// • As telinhas contam uma história em laço (src/ui/site/Cenas.tsx): a
+//   cliente monta o pedido, o dono manda o áudio, o Farol escreve.
+// • Entrar ao rolar com CSS puro, bento com luz que segue o mouse, faixa de
+//   ramos correndo, calculadora de preço.
 //
-// ── três coisas que NÃO estão aqui, de propósito ─────────────
-// • Logo de cliente e depoimento. Não temos ainda. Inventar isso é o tipo de
-//   mentira que o primeiro cliente descobre na primeira conversa.
-// • Número de mercado ("+30% de vendas"). Não medimos. Promessa que a gente
-//   não sabe cumprir vira pedido de reembolso no segundo mês.
-// • "O mais pedido" no plano do meio. Estava no selo — e sem cliente nenhum
-//   não existe "mais pedido". O selo agora diz o que é verdade: é o plano
-//   que a gente RECOMENDA (`RECOMENDADO` em `servidor/planos.ts`).
-//
-// ── e o "grátis para sempre", que esteve aqui até 02/10/2026 ─
-// Saiu com a tabela nova. Quem se cadastra pelo site ganha um teste com tudo
-// (`PRECOS.diasDeTeste` dias), e o Grátis deixou de ser vendido: ficou só
-// como o lugar onde a empresa cai quando o teste acaba sem assinatura. A
-// página diz isso com essas palavras — "grátis para sempre" seria vender o
-// que não se vende.
-//
-// ── a tabela de 02/10/2026, em uma frase ─────────────────────
-// A LOJA é o que se paga: a primeira, e cada loja a mais, com tudo o que a
-// loja usa dentro. À parte só o que tem custo que varia (o assistente e a IA
-// dele) e o que é trabalho nosso (a implantação, e o Farol e a Fábrica quando
-// existirem). Por isso a página quase não diz "do plano X para cima": quase
-// tudo é "incluso no Norte", e o resto é "com o assistente".
-//
-// ── de onde vem cada número ──────────────────────────────────
-// Preço, cota e crédito: `servidor/planos.ts`. Em que plano cada tela abre:
-// `RECURSOS` e `LIBERACOES`, pelo mesmo arquivo. O que o assistente faz:
-// `servidor/poderes.ts`. O que cada ramo semeia: `servidor/modulos.ts`.
-// Nenhum desses aparece digitado à mão aqui — número repetido é o jeito de
-// a página passar a prometer o que o sistema não entrega.
+// ── o que continua NÃO estando aqui, de propósito ───────────
+// • Logo de cliente e depoimento: não inventamos. Quando houver, com nome e
+//   permissão.
+// • Número de mercado ("+30% de vendas"): não medimos.
+// • Preço digitado à mão: tudo sai de `servidor/planos.ts`.
 
 export const metadata: Metadata = {
-  title: 'Norte — gestão da empresa, do balcão ao fim do mês',
+  title: 'Norte — sistema de gestão para loja: PDV, estoque, catálogo no WhatsApp e IA',
   description:
-    'Sistema de gestão para comércio: balcão e caixa, produto com grade, estoque por loja, financeiro com DRE, tarefas e desempenho da equipe. Modo simples para o balcão e avançado para o dono, e um assistente que propõe e espera o seu sim.',
+    'Frente de caixa (PDV) que funciona sem internet, controle de estoque por loja, catálogo online para mandar no WhatsApp, financeiro com DRE, equipe com metas e um assistente com IA que lança a compra por áudio. Teste 30 dias grátis, sem cartão.',
+  openGraph: {
+    title: 'Norte — sua loja vendendo mais, você no controle',
+    description: 'PDV, estoque, catálogo no WhatsApp, financeiro e um assistente com IA. 30 dias grátis.',
+    images: [{ url: '/img/site/balcao.webp', width: 1400, height: 1056 }],
+  },
 }
 
 /* ═══════════════════════════════════════════════════════════
    Os números, lidos da tabela
    ═══════════════════════════════════════════════════════════ */
 
-const reais = (v: number) =>
-  new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    maximumFractionDigits: 0,
-  }).format(v)
+const reais = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
 
-/** O plano de entrada da tabela (o Norte) e o de cima (com o assistente). */
 const [BASE, COM_ASSISTENTE] = PLANOS_COM_PRECO as [Plano, Plano]
 
-/**
- * Onde um recurso da tabela vem, dito em uma frase: "Incluso no Norte" ou
- * "Com o assistente".
- *
- * Recebe o TÍTULO exato da linha em `RECURSOS`. Se alguém renomear a linha
- * lá e esquecer aqui, a página quebra na hora de montar — e é de propósito:
- * quebrar no build é melhor que mentir no ar. Recurso que nenhum plano à
- * venda tem também quebra: a página de venda não cita o que não se vende.
- */
+/** "Incluso no Norte" ou "Com o assistente", lido de `RECURSOS`. Título errado quebra o build — de propósito. */
 function desde(titulo: string): string {
   const r = RECURSOS.find((x) => x.titulo === titulo)
   if (!r) throw new Error(`A página de venda cita "${titulo}", que não existe em RECURSOS.`)
@@ -141,131 +92,23 @@ function desde(titulo: string): string {
   if (r.em.includes(COM_ASSISTENTE)) return 'Com o assistente'
   throw new Error(`A página de venda cita "${titulo}", que nenhum plano à venda tem.`)
 }
-
-/**
- * A implantação e o anual: condições comerciais que não são preço de tabela.
- *
- * Não moram em `PRECOS` porque não são mensalidade: a implantação é faixa de
- * orçamento (fecha depois de ver o que vem de outro sistema), e o anual é
- * desconto de forma de pagamento. Ficam aqui, num lugar só, e nunca soltos
- * no meio do texto.
- */
-const IMPLANTACAO = { de: PRECOS.implantacaoMigracao[0], ate: PRECOS.implantacaoFabrica[1] }
-const ANUAL = { meses: 12, paga: PRECOS.anualPagaMeses }
-
-/** O exemplo da conta: duas lojas, com o assistente. */
-const EXEMPLO_LOJAS = 2
-const EXEMPLO = mensalidade(COM_ASSISTENTE, EXEMPLO_LOJAS).total!
-
-/* ═══════════════════════════════════════════════════════════
-   O texto de venda dos dois cartões
-   ═══════════════════════════════════════════════════════════
-   Só o que é TEXTO mora aqui. Preço, loja a mais e crédito mensal vêm de
-   `servidor/planos.ts`, que é a mesma fonte que a tela de assinatura e a de
-   lojas consultam para dizer a conta antes de abrir a loja.
-
-   São dois cartões porque são duas escolhas: a loja (tudo dela) e a loja com
-   o assistente. O Grátis não se vende, o plano de contrato é dos primeiros
-   clientes e o Corporativo tem faixa própria.
-
-   O sufixo " · em breve" vira etiqueta. Toda linha que corresponde a um
-   recurso com `quando: 'breve'` na tabela TEM que levar o sufixo — hoje, a
-   nota fiscal e a análise do negócio. */
-const CARTOES: Partial<
-  Record<
-    Plano,
-    {
-      /** O título da lista: "Incluso no Norte", "Tudo do Norte, e com o assistente". */
-      lista: string
-      /** A tradução do crédito para a unidade que o cliente entende. */
-      conta: string | null
-      itens: string[]
-      fora: string[]
-    }
-  >
-> = {
-  BALCAO: {
-    lista: `Incluso no ${LIMITES.BALCAO.titulo}`,
-    conta: null,
-    itens: [
-      'Balcão e caixa, com várias formas de pagamento, troca e etiqueta',
-      'Estoque por loja, com grade de cor e tamanho',
-      'Clientes, programa de pontos e crediário com carnê',
-      'Financeiro com DRE do mês e fechamento guiado',
-      'Metas e comissão por vendedor, e o desempenho em estrelas',
-      'Curva ABC, previsão de ruptura e comparação entre lojas',
-      'Equipe sem limite: de pessoas e de gente dentro ao mesmo tempo',
-      'Encomenda, agenda, compras e ponto, se o seu ramo usa',
-      'Relatórios e o livro de auditoria de tudo que mexe',
-      // A tabela marca a nota fiscal como "em breve" desde 24/09 (depende de
-      // emissor contratado e do certificado A1 de cada loja). Sem a etiqueta,
-      // o cartão prometia o que a tabela logo abaixo desmente.
-      'Nota fiscal no balcão · em breve',
-    ],
-    fora: ['Assistente no WhatsApp'],
-  },
-  BALCAO_AGENTE: {
-    lista: `Tudo do ${LIMITES.BALCAO.titulo}, e com o assistente`,
-    // "R$ 100 de crédito" não diz nada para quem nunca comprou token. O número
-    // sai do custo medido por conversa, com cache e roteamento de modelo.
-    conta: '~1.650 conversas com o assistente',
-    itens: [
-      'Assistente com o nome que você der, no WhatsApp, para você e a equipe',
-      'Relatório de manhã e à noite, e aviso de peça acabando e de cliente sumido',
-      'Perguntas sobre o negócio, respondidas com os seus números',
-      'Propostas de compra e de conta que só valem com o seu sim',
-      'Teto de valor e de gasto que você define',
-      'Toda ação do assistente assinada no livro',
-      'Análise do negócio: o que aconteceu no dia e no mês · em breve',
-    ],
-    fora: [],
-  },
+function juntos(...titulos: string[]): string {
+  const onde = titulos.map(desde)
+  if (new Set(onde).size === 1) return onde[0]!
+  return titulos.map((t, i) => `${t}: ${onde[i]!.replace(/^./, (c) => c.toLowerCase())}`).join('. ')
 }
 
-/** O que vem à parte. O que ainda não existe diz "em breve", com o preço já dito. */
-const A_PARTE: { t: string; breve: boolean; d: string; preco: string; sub: string }[] = [
-  {
-    t: 'Farol',
-    breve: false,
-    d: `Direcionamento digital da marca: o perfil de Instagram e TikTok, com diagnóstico, calendário, roteiros, carrosséis, legendas e anúncios escritos com IA, e as campanhas no WhatsApp. ${reais(PRECOS.creditoDoFarol)} de crédito de IA por marca todo mês.`,
-    preco: `${reais(PRECOS.farolMarca)}/mês`,
-    sub: `a primeira marca · ${reais(PRECOS.farolMarcaExtra)} cada marca a mais do mesmo dono`,
-  },
-  {
-    t: 'Fábrica',
-    breve: false,
-    d: 'Para quem produz o que vende: ficha técnica, ordem de produção, lote e o pedido das lojas para a fábrica.',
-    preco: `${reais(PRECOS.fabrica)}/mês`,
-    sub: 'por fábrica',
-  },
-  {
-    t: 'Implantação',
-    breve: false,
-    d: 'Uma vez só, com o treinamento junto. Cadastro simples não paga nada; trazer os dados de outro sistema, ou montar a fábrica, tem orçamento antes de começar.',
-    preco: `De ${reais(0)}`,
-    sub: `a ${reais(IMPLANTACAO.de)}–${reais(IMPLANTACAO.ate)}, uma vez`,
-  },
-]
-
-const CORPORATIVO_EXTRAS: [string, string][] = [
-  ['Site, tráfego e condução', 'A gente entra junto na operação, não só entrega o sistema.'],
-  ['Atendimento direto', 'Uma pessoa nossa que conhece a sua operação pelo nome.'],
-  ['Crédito sob medida', 'O volume de conversa de uma rede grande não cabe em número de tabela.'],
-]
+const IMPLANTACAO = { de: PRECOS.implantacaoMigracao[0], ate: PRECOS.implantacaoFabrica[1] }
 
 /* ═══════════════════════════════════════════════════════════
-   O sistema por dentro
-   ═══════════════════════════════════════════════════════════
-   Uma chamada e três frases por tela, cada frase dizendo uma coisa que a tela
-   FAZ — conferida contra o manual (`servidor/guia.ts`) e contra a tela de
-   verdade. A última linha diz em que plano, lida da tabela. As telas em si
-   são o exemplo clicável de `ui/venda/demo/`. */
+   O sistema por dentro (o exemplo clicável de ui/venda/demo)
+   ═══════════════════════════════════════════════════════════ */
 const TEXTOS: Record<TelaId, TextoTela> = {
   painel: {
     chamada: 'O dia da loja numa olhada, e o que precisa de você.',
     frases: [
-      'No simples, o painel abre pelo que precisa de você hoje — o que acabou, a conta que vence, a proposta esperando — e cada linha leva à tela que resolve.',
-      'No avançado, o período que você escolher, de hoje ao mês passado, sempre contra o período anterior do mesmo tamanho.',
+      'No simples, o painel abre pelo que precisa de você hoje — o que acabou, a conta que vence, o pedido esperando — e cada linha leva à tela que resolve.',
+      'No avançado, o período que você escolher, sempre contra o período anterior do mesmo tamanho.',
       'Hora a hora contra a mesma semana passada, ticket médio, margem sobre o custo e quem mais vendeu.',
     ],
     plano: `${desde('Relatório de vendas')}.`,
@@ -275,7 +118,7 @@ const TEXTOS: Record<TelaId, TextoTela> = {
     frases: [
       'Bipe a etiqueta e o Enter lança. Quem não etiqueta — sorveteria, lanchonete, floricultura — vende tocando em botões grandes.',
       'Várias formas de pagamento na mesma venda, troco grande na tela, e três preços por produto: à vista, no cartão e no crediário.',
-      'O caixa abre, sangra e fecha conferindo a gaveta. A diferença vai para o livro — inclusive quando é zero.',
+      'Caiu a internet? O balcão continua vendendo e as vendas sobem sozinhas quando a conexão volta.',
     ],
     plano: `${desde('Balcão, caixa e sangria')}.`,
   },
@@ -284,7 +127,7 @@ const TEXTOS: Record<TelaId, TextoTela> = {
     frases: [
       'Cada loja com o saldo dela. Transferir sai de uma e entra na outra na mesma operação.',
       '“Vai faltar”: quantos dias o saldo aguenta no ritmo dos últimos 30 dias, contra o prazo de reposição — e até quando pedir.',
-      'O histórico é a verdade: se o saldo divergir da soma dos movimentos, o sistema acusa em vez de esconder.',
+      'Editar em planilha: nome, preço e estoque de tudo numa tela só, com a assinatura de quem mexeu.',
     ],
     plano: `${juntos('Estoque, entrada de mercadoria e balanço', 'Previsão de ruptura com prazo de reposição')}.`,
   },
@@ -302,7 +145,7 @@ const TEXTOS: Record<TelaId, TextoTela> = {
     frases: [
       'Busca por nome, telefone ou CPF, e a ficha de cada um com o histórico de compra.',
       'Fichas prontas para o que vira ação: quem sumiu há mais de 60 dias e quem faz aniversário no mês.',
-      'Programa de pontos: a venda com cliente escolhido soma os pontos na hora.',
+      'Programa de pontos e crediário com carnê: a venda com cliente escolhido soma na hora.',
     ],
     plano: `${juntos('Ficha do cliente com histórico', 'Programa de pontos')}.`,
   },
@@ -320,1264 +163,1006 @@ const TEXTOS: Record<TelaId, TextoTela> = {
     frases: [
       'As lojas lado a lado: vendas, o que entrou, margem, ticket e o que ficou sem saída.',
       'A curva ABC separa o que sustenta a loja do que só ocupa prateleira.',
-      'O dinheiro parado em reais, a preço de custo — o que não vende há 90 dias e o que nunca vendeu são as candidatas a promoção.',
+      'O dinheiro parado em reais, a preço de custo — o que não vende há 90 dias são as candidatas a promoção.',
     ],
     plano: `${desde('Curva ABC e dinheiro parado')}. No menu, só no modo avançado.`,
   },
   assistente: {
     chamada: 'Um assistente que age — e que pede antes.',
     frases: [
-      'Ele conversa com você e a equipe: conta como foi o dia e consulta estoque, caixa e contas. Com cliente, só campanha de roteiro fixo — o resto quem responde é a loja.',
-      'Para agir — registrar uma compra, lançar uma conta, somar ao estoque a peça que apareceu — ele monta a proposta com o número e espera o seu sim, na tela.',
-      'Os tetos moram no banco: valor máximo, desconto máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
+      'Ele conversa com você e a equipe no WhatsApp: conta como foi o dia e consulta estoque, caixa, contas e encomendas.',
+      'Para agir — lançar uma compra, uma conta, aceitar um pedido — ele monta a proposta com o número e espera o seu SIM, ali mesmo na conversa.',
+      'Os tetos moram no banco: valor máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
     ],
-    // Aqui o "com o assistente" seria redundante: diz o plano e o preço.
     plano: `No ${LIMITES[COM_ASSISTENTE].titulo}: ${reais(PRECOS.assistente)} a mais por mês, com ${reais(PRECOS.creditoDoAssistente)} de crédito de IA.`,
   },
 }
 
-/**
- * Vários recursos numa frase só. Quando todos vêm no mesmo lugar (o comum,
- * agora que quase tudo é do Norte), uma frase; quando não, cada um com o seu.
- */
-function juntos(...titulos: string[]): string {
-  const onde = titulos.map(desde)
-  if (new Set(onde).size === 1) return onde[0]!
-  return titulos.map((t, i) => `${t}: ${onde[i]!.replace(/^./, (c) => c.toLowerCase())}`).join('. ')
-}
-
-/** As telas no rodapé, na ordem do menu. */
-const TELAS_RODAPE: [string, TelaId][] = [
-  ['Painel', 'painel'],
-  ['Balcão', 'balcao'],
-  ['Estoque', 'estoque'],
-  ['Financeiro', 'financeiro'],
-  ['Clientes', 'clientes'],
-  ['Tarefas e equipe', 'tarefas'],
-  ['Análise', 'analise'],
-  ['Assistente', 'assistente'],
-]
+const CONSULTA_EXEMPLO = TODOS_PODERES.filter((k) => !('semIA' in PODERES[k]) && !PODERES[k].escreve).map((k) => ({
+  titulo: PODERES[k].titulo,
+  disponivel: PODERES[k].disponivel as boolean,
+}))
 
 /* ═══════════════════════════════════════════════════════════
-   O assistente
-   ═══════════════════════════════════════════════════════════
-   O que ele faz sai de `PODERES`, a lista FECHADA que o próprio agente
-   recebe. O que ainda não foi construído (`disponivel: false`) aparece com
-   a etiqueta — e não some, porque é o que a pessoa vai ver apagado na tela
-   dele. */
-// Só os poderes da conversa com a equipe: o recado fixo ao cliente
-// (`semIA`) não é algo que ele "consulta" nem "propõe".
-const DO_MODELO = TODOS_PODERES.filter((k) => !('semIA' in PODERES[k]))
-const CONSULTA = DO_MODELO.filter((k) => !PODERES[k].escreve).map((k) => PODERES[k])
-const AGE = DO_MODELO.filter((k) => PODERES[k].escreve).map((k) => PODERES[k])
-// O que ele consulta sozinho, na tela do exemplo.
-const CONSULTA_EXEMPLO = CONSULTA.map((p) => ({ titulo: p.titulo, disponivel: p.disponivel as boolean }))
-
-// "Gain full control", no desenho das referências — mas com o que é NOSSO:
-// cada cartão é uma trava que existe no código, e a miniatura embaixo é a
-// peça da tela onde a trava aparece.
-const CONTROLE: { t: string; d: string; peca: ReactNode }[] = [
-  {
-    t: 'Ele propõe. Uma pessoa confirma.',
-    d: 'Mexeu em dinheiro, preço ou estoque, vira proposta com o número dentro. Vale 24 horas; depois disso o estoque já é outro, e ele propõe de novo.',
-    peca: (
-      <div className="flex flex-col gap-2 rounded-lg border border-borda bg-superficie p-3">
-        <p className="text-[12px] leading-snug text-tinta">
-          Registrar a compra de 20 un. · <b className="numero">{reaisCentavos(448)}</b>
-        </p>
-        <span className="flex gap-1.5 text-[11px] font-semibold">
-          <span className="rounded-md border border-borda px-2.5 py-0.5 text-tinta-2">Não</span>
-          <span className="rounded-md bg-marca px-2.5 py-0.5 text-marca-tinta">Confirmar</span>
-        </span>
-      </div>
-    ),
-  },
-  {
-    t: 'Teto é número no banco.',
-    d: 'Instrução de texto decide o jeito de falar, nunca o que ele pode. E o teto é conferido de novo no servidor, na hora do sim.',
-    peca: (
-      <dl className="flex flex-col rounded-lg border border-borda bg-superficie px-3 py-1.5 text-[12px]">
-        {[
-          ['Valor máximo de uma proposta', reais(1000)],
-          ['Desconto máximo', '10%'],
-        ].map(([t, v]) => (
-          <div key={t} className="flex justify-between gap-2 border-t border-borda-suave py-1.5 first:border-t-0">
-            <dt className="text-tinta-2">{t}</dt>
-            <dd className="numero font-semibold text-tinta">{v}</dd>
-          </div>
-        ))}
-      </dl>
-    ),
-  },
-  {
-    t: 'Tudo no livro, com antes e depois.',
-    d: 'O que ele propôs e alguém confirmou aparece no nome de quem confirmou, com “assistente” embaixo. Enquanto a conta existir, ninguém edita nem apaga o livro.',
-    peca: (
-      <div className="flex flex-col gap-1.5 rounded-lg border border-borda bg-superficie p-3 text-[12px]">
-        <span className="flex items-center gap-2">
-          <Avatar iniciais="MC" />
-          <b className="text-tinta">Marina</b>
-          <span className="ml-auto text-[10.5px] text-tinta-3">hoje, 10:42</span>
-        </span>
-        <span className="text-tinta-2">
-          Compra registrada · <b className="numero text-tinta">{reaisCentavos(448)}</b>
-        </span>
-        <span className="text-[10.5px] font-semibold text-marca">proposta do assistente</span>
-      </div>
-    ),
-  },
-  {
-    t: 'Gasto de IA com teto por dia.',
-    // Dizia "a tela mostra o que ele trouxe de volta contra o que custou" — e o
-    // "trouxe de volta" ainda não soma nada (nenhuma ação dele emite recibo).
-    // O custo do mês é real.
-    d: 'Passou do teto do dia, ele para de responder até amanhã. E a tela mostra quanto ele custou de IA no mês.',
-    peca: (
-      <div className="flex flex-col gap-2 rounded-lg border border-borda bg-superficie p-3 text-[12px]">
-        <span className="flex justify-between">
-          <span className="text-tinta-2">Gasto de IA hoje</span>
-          <span className="numero font-semibold text-tinta">
-            {reaisCentavos(1.84)} de {reaisCentavos(5)}
-          </span>
-        </span>
-        <Barra valor={37} tom="bom" />
-      </div>
-    ),
-  },
-]
-
-/* ═══════════════════════════════════════════════════════════
-   As dores, e a tela que resolve cada uma
-   ═══════════════════════════════════════════════════════════
-   São as dores de qualquer loja, não as de um fornecedor. O que é nosso é a
-   resposta: cada cartão termina com a tela onde o número aparece e o plano
-   em que ela abre — lido da tabela. Tela que não existe não entra. */
-type Dor = {
-  Icone: ComponentType<{ tamanho?: number; className?: string }>
-  t: string
-  d: string
-  tela: string
-  plano: string
-  peca?: ReactNode
-  classe: string
-}
-
-const DORES: Dor[] = [
-  {
-    Icone: IconeRuptura,
-    t: 'A peça que acabou sem ninguém ver',
-    d: 'Quantos dias o saldo aguenta no ritmo de venda, contra o prazo que o fornecedor leva — e o último dia para pedir e a peça chegar antes de faltar.',
-    tela: 'Estoque › Vai faltar',
-    plano: desde('Previsão de ruptura com prazo de reposição'),
-    classe: 'lg:col-span-2',
-    peca: (
-      <ul className="flex flex-col gap-1.5">
-        {(
-          [
-            ['Camiseta canelada · Preto · G', 'dura 2 dias · prazo 7', 'Pedir hoje', 'critico'],
-            ['Tênis casual · 38', 'dura 9 dias · prazo 7', 'Pedir até 26 set', 'atencao'],
-          ] as const
-        ).map(([n, d, p, tom]) => (
-          <li
-            key={n}
-            className="flex items-center justify-between gap-3 rounded-lg border border-borda bg-superficie px-3 py-2"
-          >
-            <span className="flex min-w-0 flex-col">
-              <span className="truncate text-[12.5px] font-semibold text-tinta">{n}</span>
-              <span className="numero text-[11px] text-tinta-3">{d}</span>
-            </span>
-            <Pilula tom={tom}>{p}</Pilula>
-          </li>
-        ))}
-      </ul>
-    ),
-  },
-  {
-    Icone: IconeExcesso,
-    t: 'Dinheiro parado na prateleira',
-    d: 'A curva ABC separa o que sustenta a loja do que só ocupa espaço, e o parado aparece em reais, a preço de custo.',
-    tela: 'Análise',
-    plano: desde('Curva ABC e dinheiro parado'),
-    classe: '',
-    peca: (
-      <div className="flex h-6 overflow-hidden rounded-md text-[10px] font-bold">
-        <span className="grid w-[62%] place-items-center bg-marca text-marca-tinta">A</span>
-        <span className="grid w-[23%] place-items-center bg-marca/45 text-tinta">B</span>
-        <span className="grid w-[15%] place-items-center bg-atencao-fundo text-atencao">C</span>
-      </div>
-    ),
-  },
-  {
-    Icone: IconePreco,
-    t: 'Preço no chute',
-    d: 'Margem e markup item a item, e o preço que a margem alvo pede. O que está abaixo do custo vem numa lista, antes de virar prejuízo.',
-    tela: 'Preços',
-    plano: desde('Precificação: margem, markup e preço sugerido'),
-    classe: '',
-  },
-  {
-    Icone: IconeFiado,
-    t: 'O fiado no caderno',
-    d: 'Crediário com parcelas, juros de atraso e a lista de quem deve, quanto e há quantos dias — e a venda fiada só sai com cliente escolhido.',
-    tela: 'Crediário',
-    plano: desde('Crediário próprio, com juros de atraso e a lista de quem deve'),
-    classe: '',
-  },
-  {
-    Icone: IconePessoas,
-    t: '“De quem era isso?”',
-    d: 'O quadro diz quem está com o quê e o que parou; as estrelas do mês dizem quem entregou, com número e não impressão.',
-    tela: 'Tarefas e Equipe',
-    plano: juntos('Quadro de tarefas da equipe', 'Desempenho da equipe em estrelas'),
-    classe: '',
-    peca: (
-      <div className="flex items-center justify-between gap-2 rounded-lg border border-borda bg-superficie px-3 py-2">
-        <span className="flex items-center gap-2 text-[12.5px] font-semibold text-tinta">
-          <Avatar iniciais="MC" /> Marina
-        </span>
-        <Estrelas valor={4.5} tamanho="sm" />
-      </div>
-    ),
-  },
-  {
-    Icone: IconeFechamento,
-    t: 'O fim do mês no susto',
-    d: 'O fechamento guiado confere caixa, gaveta, contas, taxa da maquininha e fiado — e o resultado do mês sai no formato que o contador reconhece.',
-    tela: 'Financeiro › Fechar o mês',
-    plano: desde('Fechamento de mês guiado'),
-    classe: 'lg:col-span-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center lg:gap-10',
-    peca: (
-      <ul className="grid gap-1.5 text-[12.5px] sm:grid-cols-2">
-        {[
-          ['Nenhum caixa aberto', true],
-          ['Gaveta batendo', true],
-          ['Taxa da maquininha no cálculo', true],
-          ['Contas vencidas: 1', false],
-        ].map(([t, ok]) => (
-          <li
-            key={t as string}
-            className="flex items-center gap-2 rounded-lg border border-borda bg-superficie px-3 py-2"
-          >
-            <span
-              className={
-                'grid size-4 shrink-0 place-items-center rounded-full ' +
-                (ok ? 'bg-bom-fundo text-bom' : 'bg-atencao-fundo text-atencao')
-              }
-            >
-              {ok ? <IconeVisto tamanho={10} /> : <span className="text-[9px] font-bold">!</span>}
-            </span>
-            <span className="text-tinta">{t as string}</span>
-          </li>
-        ))}
-      </ul>
-    ),
-  },
-]
-
-/* ═══════════════════════════════════════════════════════════
-   Segurança
+   Os textos
    ═══════════════════════════════════════════════════════════ */
-const SEGURANCA: {
-  Icone: ComponentType<{ tamanho?: number; className?: string }>
-  t: string
-  d: string
-}[] = [
+
+const ANTES_DEPOIS: [string, string][] = [
+  ['O fiado anotado no caderno, que some', 'Crediário com carnê, vencimento e aviso de quem atrasou'],
+  ['Descobrir que acabou quando a cliente pede', '“Vai faltar”: o aviso com o dia certo de pedir ao fornecedor'],
+  ['Pedido de WhatsApp perdido no meio da conversa', 'Catálogo com link: o pedido chega pronto, com itens e endereço'],
+  ['A planilha que ninguém atualiza', 'Tudo lançado na hora — do balcão ao financeiro, sem digitar duas vezes'],
+  ['Caixa que não bate, e ninguém sabe por quê', 'Fechamento guiado: a diferença aparece, com quem e quando'],
+  ['Sistema que trava quando a internet cai', 'O balcão segue vendendo e sobe tudo quando a conexão volta'],
+]
+
+const SEGURANCA: { Icone: ComponentType<{ tamanho?: number; className?: string }>; t: string; d: string }[] = [
+  { Icone: IconeParedes, t: 'Duas paredes entre empresas', d: 'A aplicação só fala com o banco já presa à sua empresa, e o próprio banco se recusa a devolver linha de outra.' },
+  { Icone: IconeAuditoria, t: 'O livro não se apaga', d: 'Quem mexeu, no quê, quando, de quanto para quanto. Ninguém edita nem apaga — nem a gente.' },
+  { Icone: IconeCorte, t: 'Tirou o acesso, acabou', d: 'Desativou alguém no meio do expediente? A próxima tela que ele abrir já pede login.' },
+  { Icone: IconeFreio, t: 'Porta com freio', d: 'Senha errada repetida trava a tentativa por alguns minutos. Chute em lista não vai longe.' },
+  { Icone: IconeTranca, t: 'A tela que tranca', d: 'Parada por meia hora, ela pede a senha de novo — sem perder a venda do balcão.' },
+]
+
+const PLANOS_TEXTO: { plano: Plano; nome: string; preco: string; sub: string; destaque: boolean; itens: string[] }[] = [
   {
-    Icone: IconeParedes,
-    t: 'Duas paredes entre empresas',
-    d: 'A aplicação só fala com o banco já presa à sua empresa. E o Postgres, por baixo, se recusa a devolver linha de outra — para o dia em que a primeira falhar.',
+    plano: BASE,
+    nome: LIMITES[BASE].titulo,
+    preco: reais(PRECOS.primeiraLoja),
+    sub: `por mês, a primeira loja · ${reais(PRECOS.lojaExtra)} cada loja a mais`,
+    destaque: false,
+    itens: [
+      'Frente de caixa (PDV) que funciona sem internet',
+      'Estoque por loja, com grade de cor e tamanho',
+      'Catálogo online de cada loja, para mandar no WhatsApp',
+      'Encomendas, agenda, compras e fornecedores',
+      'Clientes, programa de pontos e crediário com carnê',
+      'Financeiro com DRE do mês e fechamento guiado',
+      'Metas, comissão e equipe sem limite de usuários',
+      'Trazer produtos de planilha ou de outro sistema',
+      'Nota fiscal no balcão · em breve',
+    ],
   },
   {
-    Icone: IconeAuditoria,
-    t: 'O livro não se apaga',
-    // Dizia "inclusive para nós" — e a política de privacidade apaga tudo em
-    // até 90 dias depois do fim do contrato. As duas coisas são verdade só
-    // com o "enquanto a conta existir".
-    d: 'Quem mexeu, no quê, quando, de quanto para quanto. Enquanto a conta existir, ninguém edita nem apaga o livro — nem a sua equipe, nem o sistema. O banco recusa.',
-  },
-  {
-    Icone: IconeCorte,
-    t: 'Tirou o acesso, acabou na hora',
-    d: 'Desativou alguém no meio do expediente? A próxima tela que ele abrir já pede login. Não espera sessão vencer.',
-  },
-  {
-    Icone: IconeFreio,
-    t: 'Porta com freio',
-    d: 'Senha errada repetida trava a tentativa por alguns minutos, por conta e por origem — chute em lista não vai longe.',
-  },
-  {
-    Icone: IconeTranca,
-    t: 'A tela que tranca',
-    d: 'Trinta minutos parada, ela pede a senha de novo — sem perder a venda que estava no balcão.',
+    plano: COM_ASSISTENTE,
+    nome: LIMITES[COM_ASSISTENTE].titulo,
+    preco: reais(PRECOS.primeiraLoja + PRECOS.assistente),
+    sub: `por mês, a primeira loja · ${reais(PRECOS.creditoDoAssistente)} de crédito de IA todo mês`,
+    destaque: true,
+    itens: [
+      'Tudo do Norte, e:',
+      'Assistente com IA no WhatsApp, para você e a equipe',
+      'Lançar compra e estoque por texto ou por áudio',
+      'Relatório de manhã e à noite, e aviso do que vai faltar',
+      'Pedido do catálogo avisado na hora: ACEITAR ou PRONTO',
+      'Perguntas do negócio respondidas com os seus números',
+      'Nada acontece sem o seu SIM, com tetos que você define',
+    ],
   },
 ]
 
-/* ═══════════════════════════════════════════════════════════
-   Dúvidas
-   ═══════════════════════════════════════════════════════════ */
+const A_PARTE: { t: string; cor: string; d: string; preco: string; sub: string }[] = [
+  {
+    t: 'Farol',
+    cor: 'var(--s-sol)',
+    d: 'Marketing com IA para o Instagram e o TikTok da marca, e campanhas no WhatsApp.',
+    preco: `${reais(PRECOS.farolMarca)}/mês`,
+    sub: `por marca · ${reais(PRECOS.farolMarcaExtra)} cada marca a mais · ${reais(PRECOS.creditoDoFarol)} de crédito de IA`,
+  },
+  {
+    t: 'Fábrica',
+    cor: 'var(--s-violeta)',
+    d: 'Ficha técnica, ordem de produção com lote e validade, e o pedido das lojas.',
+    preco: `${reais(PRECOS.fabrica)}/mês`,
+    sub: 'por fábrica',
+  },
+  {
+    t: 'Implantação',
+    cor: 'var(--s-azul)',
+    d: 'A gente traz os dados do sistema antigo e treina a equipe. Cadastro simples não paga nada.',
+    preco: 'Grátis',
+    sub: `no cadastro simples · trazer de outro sistema ou montar a fábrica: de ${reais(IMPLANTACAO.de)} a ${reais(IMPLANTACAO.ate)}, uma vez, com orçamento antes`,
+  },
+]
+
 const PERGUNTAS: { p: string; r: string }[] = [
   {
-    p: 'Eu não vendo fiado. Vou ter que ver crediário na tela?',
-    r: 'Não. No cadastro inicial você diz o que a sua empresa usa, e o que não usa some — do menu, dos relatórios e do que o assistente sabe fazer. Ligar depois é uma chave em Configurações.',
+    p: 'Preciso de computador, ou funciona no celular?',
+    r: 'Funciona no navegador de qualquer aparelho: computador, tablet ou celular. O balcão pode ser instalado como aplicativo no tablet, e o catálogo da loja é feito para o celular da cliente.',
   },
   {
-    p: 'A moça do balcão vai se perder em tanta tela?',
-    r: 'Não precisa ver: o modo simples esconde as telas de análise do menu, abre o painel pelo que precisa de atenção hoje e vende por botões grandes. O modo é do aparelho — o computador do balcão fica no simples, o notebook do dono no avançado. E em toda tela o Guia do Norte explica o que ela faz.',
+    p: 'Como eu trago os meus produtos do sistema antigo?',
+    r: 'Exporte a planilha do sistema antigo (Excel ou CSV) ou copie e cole as colunas. O Norte entende sozinho qual coluna é nome, preço, código e estoque — a IA ajuda quando o título é estranho —, mostra a prévia e importa sem repetir. Para migrações grandes, a nossa equipe faz junto com você.',
   },
   {
-    p: 'O assistente já responde no WhatsApp?',
-    // A conexão existe no código (Z-API, `servidor/assistente/canal.ts`), mas
-    // com UMA instância global: uma empresa conversa por vez. Dizer "sim" a
-    // todo mundo seria prometer o número de cada loja, que ainda não há.
-    r: `A configuração dele — nome, jeito de falar, manual da loja, poderes e tetos — e as propostas esperando o seu sim já estão no sistema. A conversa pelo WhatsApp também já existe, e a conexão do número é montada junto com a nossa equipe — hoje uma loja de cada vez. Quando der para ligar o número de toda loja, a gente avisa; antes disso, não promete data. Ele vem no ${LIMITES[COM_ASSISTENTE].titulo}: ${reais(PRECOS.assistente)} a mais por mês, para a empresa inteira.`,
+    p: 'E se a internet cair no meio do movimento?',
+    r: 'O balcão continua vendendo em dinheiro, Pix e cartão. As vendas ficam guardadas no aparelho e sobem sozinhas quando a conexão volta, com a hora certa — e mandar de novo nunca duplica a venda.',
   },
   {
-    p: 'O assistente responde os meus clientes?',
-    // As campanhas para cliente passaram para o Farol em 02/10/2026 (ver
-    // servidor/campanhas/acesso.ts): saem pelo número do assistente, mas se
-    // contratam com o Farol.
-    r: 'Não em conversa solta. Com cliente, só as campanhas, que vêm com o Farol — roteiro fixo, com começo e fim, que começa quando a pessoa manda a palavra-chave ou chega pelo anúncio. Qualquer outra mensagem fica para alguém da loja responder no WhatsApp, sem IA e sem custo. Se quiser, você liga um recado fixo avisando que a loja já vai responder. Com você e a equipe, sim: relatório de manhã e à noite, aviso do que vai faltar, propostas para confirmar na tela e resposta ao que vocês perguntarem.',
+    p: 'O catálogo cobra taxa por pedido?',
+    r: `Não. O catálogo de cada loja vem no ${LIMITES[BASE].titulo}, sem taxa por pedido. O pagamento é combinado com a loja (Pix, dinheiro ou cartão na entrega ou na retirada), e o pedido entra em Encomendas e no WhatsApp da loja.`,
   },
   {
-    p: 'O assistente pode dar desconto sozinho? Mexer no meu preço?',
-    r: 'Sozinho, nunca: tudo que mexe em dinheiro, preço ou estoque vira proposta que uma pessoa confirma. Oferecer desconto ainda está em construção — e quando chegar, o teto de desconto é número no banco, não instrução de texto. Texto quem manda mensagem consegue tentar sobrescrever.',
+    p: 'O assistente faz alguma coisa sozinho?',
+    r: 'Consultar, sim: como foi o dia, o que vai faltar, quanto tem no caixa. Agir, nunca sozinho: lançar uma compra, uma conta ou aceitar um pedido vira proposta com o número, e só acontece quando você responde SIM. Os tetos de valor e de gasto ficam no banco — mensagem nenhuma passa deles.',
   },
   {
-    // Dizia "Sim, do Balcão para cima". A nota fiscal está marcada "em breve"
-    // na tabela desde 24/09 — responder "sim" aqui era a mentira mais cara da
-    // página, porque é a pergunta que decide a assinatura de muita loja.
     p: 'Emite nota fiscal?',
-    r: `Ainda não — está marcada como “em breve” na tabela de planos. Ela depende de um emissor contratado e do certificado digital A1 de cada loja, e quando entrar vem no ${LIMITES[BASE].titulo}. Até lá, o comprovante do balcão é a via do cliente, não nota.`,
-  },
-  {
-    p: 'Tenho várias lojas. Cada uma com o estoque dela?',
-    r: `Sim, e o consolidado num clique. O dono vê todas; o gerente de cada loja vê só a dele — inclusive se colar na barra de endereço o código de outra. Cada loja a mais soma ${reais(PRECOS.lojaExtra)} por mês, e o sistema diz o valor antes de abrir; depósito não entra na conta.`,
-  },
-  {
-    p: 'Como funciona o teste?',
-    r: `São ${PRECOS.diasDeTeste} dias com tudo ligado — o assistente também, com ${reais(PRECOS.creditoDoTeste)} de crédito de IA para conhecer —, sem cartão. Assinando, nada muda: o que você lançou continua. Sem assinar, a conta não vira cobrança: ela fica no plano básico, de uma loja, uma pessoa por vez e até ${LIMITES.GRATIS.tetoVendasMes} vendas no mês, com os dados todos guardados.`,
+    r: `Ainda não — está como “em breve”. Ela depende de um emissor contratado e do certificado digital A1 de cada loja, e quando entrar vem no ${LIMITES[BASE].titulo}, sem custo a mais de plano.`,
   },
   {
     p: 'Pago por usuário?',
-    r: 'Não. Cadastrar a equipe inteira é de graça, e não há limite de gente dentro ao mesmo tempo: cada pessoa entra com a própria senha, e o livro de auditoria diz quem fez o quê. O que se paga é a loja.',
+    r: 'Não. A equipe inteira entra sem custo a mais, sem limite de gente dentro ao mesmo tempo, cada um com a própria senha e o que o cargo dele permite. O que se paga é a loja.',
   },
   {
-    p: 'E os meus dados ficam misturados com os de outra empresa?',
-    r: 'Não. O isolamento tem duas paredes: a aplicação só fala com o banco já presa à sua empresa, e o próprio Postgres se recusa a devolver linha de outra. A segunda existe justamente para o dia em que a primeira falhar.',
+    p: 'Como funciona o teste?',
+    r: `São ${PRECOS.diasDeTeste} dias com tudo ligado — o assistente também, com ${reais(PRECOS.creditoDoTeste)} de crédito de IA para conhecer —, sem cartão. Assinando, nada muda: o que você lançou continua. Sem assinar, a conta não vira cobrança: fica no básico, com os dados guardados.`,
   },
   {
-    p: 'Quanto tempo para começar a usar?',
-    r: 'O cadastro inicial leva uns dois minutos, e o sistema já abre com as variações, as categorias e o jeito de vender do seu ramo. Cadastrar o catálogo é o que dá trabalho — e é onde a gente ajuda.',
+    p: 'Meus dados ficam misturados com os de outra empresa?',
+    r: 'Não. São duas paredes: a aplicação só fala com o banco já presa à sua empresa, e o próprio banco se recusa a devolver linha de outra — para o dia em que a primeira falhar.',
   },
 ]
 
-// Os ramos do rodapé: os cinco mais comuns, cada um abrindo a própria ficha.
-const RAMOS_RODAPE: [string, string][] = [
-  ['Moda', 'roupa'],
-  ['Calçados', 'calcados'],
-  ['Sorveteria e açaí', 'sorveteria'],
-  ['Lanchonete', 'lanchonete'],
-  ['Distribuidora', 'distribuidora'],
+const RAMOS_FAIXA = Object.values(RAMOS)
+  .map((r) => r.titulo)
+  .filter((t) => t !== 'Outro' && t !== 'Serviços')
+
+/* ═══════════════════════════════════════════════════════════
+   Peças
+   ═══════════════════════════════════════════════════════════ */
+
+const v = (d: number) => ({ '--d': `${d}s` }) as CSSProperties
+
+function Olho({ cor, children }: { cor: string; children: ReactNode }) {
+  return (
+    <span className="site-olho inline-flex items-center gap-2" style={{ color: cor }}>
+      <span className="h-2 w-2 rounded-full" style={{ background: cor }} />
+      {children}
+    </span>
+  )
+}
+
+function Cabeca({ olho, cor, titulo, texto, centro = false }: { olho: string; cor: string; titulo: ReactNode; texto?: ReactNode; centro?: boolean }) {
+  return (
+    <div className={`site-revela flex max-w-3xl flex-col gap-4 ${centro ? 'mx-auto items-center text-center' : ''}`}>
+      <Olho cor={cor}>{olho}</Olho>
+      <h2 className="text-[2.1rem] leading-[1.05] font-extrabold sm:text-5xl">{titulo}</h2>
+      {texto ? <p className="text-lg leading-relaxed text-[var(--s-tinta-2)]">{texto}</p> : null}
+    </div>
+  )
+}
+
+function Ficha({ cor, children }: { cor: string; children: ReactNode }) {
+  return (
+    <span
+      className="rounded-full border px-3.5 py-1.5 text-[13px] font-semibold"
+      style={{ borderColor: `color-mix(in srgb, ${cor} 30%, transparent)`, background: `color-mix(in srgb, ${cor} 9%, transparent)`, color: cor }}
+    >
+      {children}
+    </span>
+  )
+}
+
+function Visto({ cor = 'var(--s-verde)' }: { cor?: string }) {
+  return (
+    <span aria-hidden className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-white" style={{ background: cor }}>
+      ✓
+    </span>
+  )
+}
+
+function Foto({ src, alt, className = '', prioridade = false }: { src: string; alt: string; className?: string; prioridade?: boolean }) {
+  return (
+    <div className={`site-foto overflow-hidden ${className}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt} loading={prioridade ? 'eager' : 'lazy'} decoding="async" fetchPriority={prioridade ? 'high' : 'auto'} className="h-full w-full object-cover" />
+    </div>
+  )
+}
+
+/** Um destaque: texto de um lado, foto + telinha do outro. */
+function Destaque({
+  id,
+  cor,
+  olho,
+  titulo,
+  texto,
+  itens,
+  fichas,
+  foto,
+  alt,
+  tela,
+  invertido = false,
+  rodape,
+}: {
+  id: string
+  cor: string
+  olho: string
+  titulo: ReactNode
+  texto: ReactNode
+  itens: string[]
+  fichas?: string[]
+  foto: string
+  alt: string
+  tela: ReactNode
+  invertido?: boolean
+  rodape?: ReactNode
+}) {
+  return (
+    <section id={id} className="relative scroll-mt-20 overflow-hidden py-20 sm:py-28">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10" style={{ background: `radial-gradient(60% 60% at ${invertido ? '15%' : '85%'} 40%, color-mix(in srgb, ${cor} 10%, transparent), transparent 70%)` }} />
+      <div className={`mx-auto grid max-w-6xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-2 lg:gap-20 ${invertido ? 'lg:[&>*:first-child]:order-2' : ''}`}>
+        <div className="flex flex-col gap-6">
+          <Cabeca olho={olho} cor={cor} titulo={titulo} texto={texto} />
+          <ul className="site-revela flex flex-col gap-3">
+            {itens.map((i) => (
+              <li key={i} className="flex gap-3 text-[15px] leading-relaxed">
+                <Visto cor={cor} />
+                <span>{i}</span>
+              </li>
+            ))}
+          </ul>
+          {fichas ? (
+            <div className="site-revela flex flex-wrap gap-2">
+              {fichas.map((f) => (
+                <Ficha key={f} cor={cor}>
+                  {f}
+                </Ficha>
+              ))}
+            </div>
+          ) : null}
+          {rodape}
+        </div>
+        <div className="site-revela relative lg:h-[640px]">
+          <Foto
+            src={foto}
+            alt={alt}
+            className={`aspect-[4/5] w-[86%] rounded-[36px] shadow-[var(--s-sombra-alta)] lg:absolute lg:top-4 lg:aspect-auto lg:h-[88%] lg:w-[66%] ${invertido ? 'ml-auto lg:right-0' : 'lg:left-0'}`}
+          />
+          <div
+            className={`relative -mt-32 flex ${invertido ? 'justify-start' : 'justify-end'} lg:absolute lg:top-1/2 lg:mt-0 lg:-translate-y-1/2 ${invertido ? 'lg:left-0' : 'lg:right-0'}`}
+          >
+            {tela}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════
+   A página
+   ═══════════════════════════════════════════════════════════ */
+
+const NAV: [string, string][] = [
+  ['Funções', '#funcoes'],
+  ['Catálogo', '#catalogo'],
+  ['Assistente', '#assistente'],
+  ['Farol', '#farol'],
+  ['Preços', '#precos'],
+  ['Dúvidas', '#duvidas'],
 ]
 
 export default function Inicio() {
   return (
-    <div className="flex min-h-dvh flex-col bg-superficie text-base">
-      {/* O primeiro Tab de quem navega por teclado pula a barra inteira. */}
-      <a
-        href="#conteudo"
-        className="sr-only z-50 rounded-md bg-marca px-4 py-2 text-sm font-semibold text-marca-tinta focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
-      >
+    <div className="site flex min-h-dvh flex-col text-base">
+      <a href="#conteudo" className="sr-only z-50 rounded-md bg-marca px-4 py-2 text-sm font-semibold text-marca-tinta focus:not-sr-only focus:fixed focus:top-3 focus:left-3">
         Pular para o conteúdo
       </a>
 
-      <BarraTopo />
+      {/* ── a barra ── */}
+      <header className="sticky top-0 z-40 border-b border-[var(--s-borda)] bg-[color-mix(in_srgb,var(--s-fundo)_78%,transparent)] backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+          <a href="#topo" aria-label="Norte, início">
+            <Marca tamanho={26} id="nav-sol" />
+          </a>
+          <nav aria-label="Seções" className="hidden items-center gap-1 lg:flex">
+            {NAV.map(([n, h]) => (
+              <a key={h} href={h} className="rounded-full px-3.5 py-2 text-[14px] font-semibold text-[var(--s-tinta-2)] transition-colors hover:bg-[var(--s-borda)] hover:text-[var(--s-tinta)]">
+                {n}
+              </a>
+            ))}
+          </nav>
+          <div className="flex items-center gap-2">
+            <a href={ENTRAR} className="hidden rounded-full px-3.5 py-2 text-[14px] font-semibold text-[var(--s-tinta-2)] hover:text-[var(--s-tinta)] sm:block">
+              Entrar
+            </a>
+            <a href={COMECAR} className="site-botao site-botao-principal px-5 py-2.5 text-[14px]">
+              Testar grátis
+            </a>
+            <details className="group relative lg:hidden">
+              <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-[var(--s-borda)] [&::-webkit-details-marker]:hidden" aria-label="Abrir menu">
+                <span aria-hidden className="flex flex-col gap-1">
+                  <i className="block h-0.5 w-4 rounded bg-current" />
+                  <i className="block h-0.5 w-4 rounded bg-current" />
+                </span>
+              </summary>
+              <nav aria-label="Seções" className="site-cartao absolute right-0 mt-2 flex w-56 flex-col rounded-2xl p-2">
+                {NAV.map(([n, h]) => (
+                  <a key={h} href={h} className="rounded-xl px-3 py-2.5 text-[15px] font-semibold hover:bg-[var(--s-borda)]">
+                    {n}
+                  </a>
+                ))}
+                <a href={ENTRAR} className="rounded-xl px-3 py-2.5 text-[15px] font-semibold text-[var(--s-tinta-2)] hover:bg-[var(--s-borda)]">
+                  Entrar
+                </a>
+              </nav>
+            </details>
+          </div>
+        </div>
+      </header>
 
       <main id="conteudo">
-        {/* ── o topo ──────────────────────────────────────────────
-            Centrado, curto e com o produto logo embaixo. Título de duas
-            linhas, uma frase, dois botões e a letra miúda que tira o medo
-            ("30 dias grátis, sem cartão"). A pílula de cima é a novidade de verdade
-            desta semana — o modo simples — e leva até ela.
-
-            ── vivo, desde 25/09 ──
-            O título entra palavra por palavra e "numa tela só" ganha a cor
-            que corre para a marca, com um fio de sol que atravessa de tempos
-            em tempos. Atrás, a luz anda devagar (`Palco`). Embaixo, a vitrine
-            é uma tarde de loja acontecendo. Tudo CSS na carga — nada espera
-            JavaScript para aparecer — e tudo para quando o topo sai da tela. */}
-        <Palco id="topo" className="fundo-topo relative isolate overflow-x-clip">
-          <div aria-hidden className="grade-fundo pointer-events-none absolute inset-0 -z-10" />
-          <div className="mx-auto max-w-6xl px-4 pt-12 pb-16 sm:px-6 md:pt-20 md:pb-24">
-            <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+        {/* ── o topo ──────────────────────────────────────────── */}
+        <section id="topo" className="relative isolate overflow-hidden">
+          <div aria-hidden className="site-aurora">
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+          <div aria-hidden className="site-grade" />
+          <div className="mx-auto grid max-w-6xl items-center gap-14 px-4 pt-14 pb-20 sm:px-6 md:pt-20 lg:grid-cols-[1.05fr_1fr] lg:pb-28">
+            <div className="flex flex-col items-start">
               <a
-                href="#modos"
-                className="chega group inline-flex items-center gap-2 rounded-full border border-borda bg-superficie py-1 pr-3 pl-1 text-[13px] font-medium text-tinta-2 shadow-norte hover:border-tinta-3"
+                href="#catalogo"
+                className="site-chega group inline-flex items-center gap-2 rounded-full border border-[var(--s-borda)] bg-[var(--s-cartao)] py-1 pr-3.5 pl-1 text-[13px] font-semibold text-[var(--s-tinta-2)] shadow-[var(--s-sombra)]"
               >
-                <span className="rounded-full bg-marca-suave px-2 py-0.5 text-[11px] font-bold text-marca">
-                  Novo
-                </span>
-                <span className="sm:hidden">Modo simples e avançado</span>
-                <span className="hidden sm:inline">Modo simples para o balcão, avançado para o dono</span>
-                <IconeAdiante tamanho={13} className="transition-transform group-hover:translate-x-0.5" />
+                <span className="rounded-full bg-[var(--s-rosa)] px-2.5 py-0.5 text-[11px] font-extrabold text-white">Novo</span>
+                <span className="sm:hidden">Catálogo e estoque por áudio</span>
+                <span className="hidden sm:inline">Catálogo no WhatsApp e estoque por áudio</span>
+                <span aria-hidden className="transition-transform group-hover:translate-x-0.5">→</span>
               </a>
-              <h1 className="mt-6 text-[2.5rem] leading-[1.04] text-balance sm:text-[3.4rem] lg:text-[4.1rem]">
-                <Palavras texto="Do balcão ao fim do mês," />{' '}
-                <span className="texto-luz" style={{ '--i': 6 } as CSSProperties}>
-                  numa tela só.
+              <h1 className="site-chega mt-7 text-[2.9rem] leading-[1.02] font-extrabold sm:text-[4rem] lg:text-[4.6rem]" style={v(0.1)}>
+                Sua loja vende mais
+                <br />
+                <span className="site-troca" aria-hidden>
+                  <span>no balcão.</span>
+                  <span>no WhatsApp.</span>
+                  <span>no catálogo.</span>
+                  <span>no Instagram.</span>
                 </span>
+                <span className="sr-only">no balcão, no WhatsApp, no catálogo e no Instagram.</span>
               </h1>
-              <p
-                className="chega mt-5 max-w-2xl text-lg leading-relaxed text-balance text-tinta-2 sm:text-xl"
-                style={{ '--d': '.4s' } as CSSProperties}
-              >
-                Venda, estoque, dinheiro e equipe. E um assistente que pede antes de agir.
+              <p className="site-chega mt-6 max-w-xl text-lg leading-relaxed text-[var(--s-tinta-2)] sm:text-xl" style={v(0.25)}>
+                Frente de caixa, estoque, catálogo online, financeiro e equipe numa tela só — e um assistente no WhatsApp que lança a compra quando
+                você manda um áudio. Feito para o comércio brasileiro de verdade.
               </p>
-              <div
-                className="chega mt-8 flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center"
-                style={{ '--d': '.5s' } as CSSProperties}
-              >
-                <a
-                  href={COMECAR}
-                  className="botao-marca rounded-norte px-7 py-3.5 text-center text-[15px] font-semibold text-marca-tinta"
-                >
-                  Começar grátis
+              <div className="site-chega mt-9 flex w-full flex-col gap-3 sm:w-auto sm:flex-row" style={v(0.4)}>
+                <a href={COMECAR} className="site-botao site-botao-principal px-8 py-4 text-[16px]">
+                  Testar {PRECOS.diasDeTeste} dias grátis
                 </a>
-                <a
-                  href="#produto"
-                  className="flex items-center justify-center gap-2 rounded-norte border border-borda bg-superficie px-7 py-3.5 text-[15px] font-semibold text-tinta hover:bg-superficie-2"
-                >
-                  Explorar o sistema por dentro
-                  <IconeAbaixo tamanho={14} className="text-tinta-3" />
+                <a href="#demo" className="site-botao site-botao-claro px-8 py-4 text-[16px]">
+                  Ver o sistema funcionando
                 </a>
               </div>
-              <p className="chega mt-4 text-sm text-tinta-3" style={{ '--d': '.6s' } as CSSProperties}>
-                {PRECOS.diasDeTeste} dias grátis com tudo · sem cartão
-              </p>
-            </div>
-
-            <div className="mt-12 md:mt-16">
-              <Vitrine />
-            </div>
-          </div>
-        </Palco>
-
-        {/* ── feito para o seu ramo ─────────────────────────────── */}
-        <section id="ramos" className="scroll-mt-16 border-t border-borda-suave bg-superficie">
-          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
-            <Titulo
-              olho="Para quem é"
-              titulo="Feito para o seu ramo desde o primeiro dia"
-              resumo="Escolha o ramo no cadastro e o Norte já abre com as variações, as categorias e o jeito de vender de quem é do ramo. Toque num deles para ver o que muda."
-            />
-            <div className="mt-10">
-              <Ramos />
-            </div>
-
-            <AoEntrar className="cascata mt-12 grid gap-x-8 gap-y-6 sm:grid-cols-3">
-              {(
-                [
-                  [
-                    'De uma loja à rede inteira',
-                    'Quem tem uma loja nem vê o seletor de loja: ele só aparece quando nasce a segunda. A mesma tela serve às duas.',
-                  ],
-                  [
-                    'Depósito fora da conta',
-                    'Cada unidade com estoque e caixa próprios, e o painel soma tudo num clique. O depósito guarda e transfere — e não entra na mensalidade.',
-                  ],
-                  [
-                    'Cada gerente na sua loja',
-                    'O gerente da loja 3 não vê o caixa da 5, e ninguém concede um cargo que ele mesmo não tem.',
-                  ],
-                ] as const
-              ).map(([t, d]) => (
-                <div key={t} className="flex flex-col gap-1.5 border-t border-borda pt-4">
-                  <h3 className="text-lg">{t}</h3>
-                  <p className="text-[15px] leading-relaxed text-tinta-2">{d}</p>
-                </div>
-              ))}
-            </AoEntrar>
-          </div>
-        </section>
-
-        {/* ── o sistema por dentro ──────────────────────────────────
-            Um Norte pequeno para clicar (`ui/venda/demo/`): o menu de
-            verdade, oito telas que respondem umas às outras e a chave
-            Simples | Avançado no cabeçalho, onde ela mora no sistema. */}
-        <section id="produto" className="scroll-mt-16 bg-superficie">
-          <div className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 md:pb-24">
-            <Titulo
-              centro
-              olho="O sistema por dentro"
-              titulo="Uma tela para cada parte da loja. Pode mexer."
-              resumo="Venda no balcão, pague uma conta, confirme uma proposta do assistente — cada tela responde às outras, como lá dentro. Os números são de exemplo."
-            />
-            <AoEntrar className="mt-10">
-              <div className="surge">
-                <SistemaPorDentro textos={TEXTOS} consulta={CONSULTA_EXEMPLO} />
-              </div>
-            </AoEntrar>
-          </div>
-        </section>
-
-        {/* ── simples ou avançado ───────────────────────────────── */}
-        <section id="modos" className="scroll-mt-16 bg-fundo">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-20 sm:px-6 md:py-24 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-            <div className="flex flex-col gap-6">
-              <Titulo
-                olho="Fácil de verdade"
-                titulo="Simples para o balcão. Avançado para o dono."
-                resumo="A mesma ferramenta é aberta por duas pessoas muito diferentes. Uma chave decide quanto do sistema aparece de uma vez."
-              />
-              <ul className="flex flex-col gap-4">
-                {(
-                  [
-                    [
-                      'O simples mostra o essencial',
-                      'O menu esconde Caixa, Preços, Análise e Auditoria; o painel abre pelo que precisa de você hoje; o balcão vende por botões grandes.',
-                    ],
-                    [
-                      'O modo é do aparelho, não da pessoa',
-                      'O computador do balcão fica no simples para sempre, seja quem for que sentar. O notebook do dono fica no avançado.',
-                    ],
-                    [
-                      'Nenhum dos dois tira permissão',
-                      'O modo decide o que se vê primeiro, nunca o que se pode. E quem ninguém configurou começa no simples.',
-                    ],
-                  ] as const
-                ).map(([t, d]) => (
-                  <li key={t} className="flex gap-3">
-                    <span className="mt-1 grid size-5 shrink-0 place-items-center rounded-full bg-marca-suave text-marca">
-                      <IconeVisto tamanho={12} />
-                    </span>
-                    <span className="flex flex-col gap-0.5">
-                      <span className="text-base font-semibold text-tinta">{t}</span>
-                      <span className="text-[15px] leading-relaxed text-tinta-2">{d}</span>
-                    </span>
+              <ul className="site-chega mt-7 grid gap-x-6 gap-y-2.5 sm:grid-cols-2 text-[14px] font-medium text-[var(--s-tinta-2)]" style={v(0.55)}>
+                {['Sem cartão de crédito', 'Traga seus produtos da planilha', 'Funciona sem internet', 'Equipe sem limite de usuários'].map((t) => (
+                  <li key={t} className="flex items-center gap-2">
+                    <Visto />
+                    {t}
                   </li>
                 ))}
               </ul>
-              <p className="flex items-start gap-3 rounded-xl border border-borda bg-superficie p-4 text-[14px] leading-relaxed text-tinta-2">
-                <IconeGuia tamanho={24} className="mt-0.5 shrink-0 text-marca" />
-                <span>
-                  <b className="text-tinta">E o Guia do Norte em toda tela.</b> A ajuda sabe o
-                  sistema inteiro: o que a tela faz, o passo a passo e as perguntas de quem está
-                  nela — sem sair do lugar.
-                </span>
-              </p>
             </div>
-            <SimplesAvancado />
-          </div>
-        </section>
 
-        {/* ── o assistente ──────────────────────────────────────────
-            O diferencial. Em cima, o que ele faz (da lista fechada de
-            poderes) e a conversa acontecendo; embaixo, o controle — as
-            quatro travas, cada uma com a peça da tela onde ela aparece. */}
-        <section id="assistente" className="scroll-mt-16 bg-superficie">
-          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
-            <div className="grid items-start gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
-              <div className="flex flex-col gap-8">
-                <Titulo
-                  olho="O diferencial"
-                  titulo="Um assistente que age. E que pede antes."
-                  resumo="Ele não é um chat de respostas prontas: lê o seu estoque, o seu caixa e as suas contas de verdade, e conversa com você e a sua equipe. Você dá o nome, o jeito de falar — e decide, em número, até onde ele vai."
-                />
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <ListaPoderes titulo="Consulta sozinho" poderes={CONSULTA} />
-                  <ListaPoderes titulo="Propõe, e você confirma" poderes={AGE} />
+            {/* A loja de verdade, com o sistema acontecendo por cima. */}
+            <div className="site-chega relative mx-auto w-full max-w-xl" style={v(0.3)}>
+              <Foto
+                src="/img/site/balcao.webp"
+                alt="Dona de sorveteria sorrindo no balcão, lançando a venda no tablet"
+                prioridade
+                className="aspect-[4/3.4] rounded-[36px] shadow-[var(--s-sombra-alta)]"
+              />
+              <div className="site-boia site-cartao absolute -top-5 -left-3 flex items-center gap-3 rounded-2xl px-4 py-3 sm:-left-8" style={{ animationDelay: '-1s' }}>
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--s-verde)] text-sm font-black text-white">✓</span>
+                <div className="leading-tight">
+                  <p className="text-[11px] text-[var(--s-tinta-2)]">Venda concluída · Pix</p>
+                  <p className="text-lg font-extrabold tabular-nums">R$ 38,00</p>
                 </div>
-                <p className="text-[13px] leading-relaxed text-tinta-3">
-                  A configuração dele e as propostas já funcionam dentro do sistema. A conversa
-                  pelo WhatsApp também existe, e o número é conectado junto com a nossa equipe —
-                  hoje uma loja de cada vez. Ele vem no {LIMITES[COM_ASSISTENTE].titulo}, por{' '}
-                  {reais(PRECOS.assistente)} a mais por mês.
+              </div>
+              <div className="site-boia site-cartao absolute top-[30%] -right-3 w-52 rounded-2xl p-3.5 sm:-right-10" style={{ animationDelay: '-3s' }}>
+                <p className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--s-rosa)]">
+                  <span className="site-pulsa h-2 w-2 rounded-full bg-[var(--s-rosa)]" style={{ '--cor': 'var(--s-rosa)' } as CSSProperties} />
+                  Pedido novo pelo catálogo
+                </p>
+                <p className="mt-1 text-[13px] font-bold">ENC-7Q2K · 3 itens</p>
+                <p className="text-[12px] text-[var(--s-tinta-2)]">Retirada às 15h · Pix</p>
+              </div>
+              <div className="site-boia site-cartao absolute -bottom-6 left-2 flex max-w-[15rem] items-center gap-2.5 rounded-2xl px-3.5 py-3 sm:-left-6" style={{ animationDelay: '-2s' }}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0f6e47] text-[11px] font-black text-white">▶</span>
+                <p className="text-[12px] leading-snug">
+                  <span className="text-[var(--s-tinta-2)]">Ouvi:</span> “comprei 10 kg de picanha”
                 </p>
               </div>
-
-              <div className="papel-conversa rounded-3xl border border-borda-suave bg-fundo p-5 sm:p-7 lg:sticky lg:top-24">
-                <ConversaFlutuante />
+              <div className="site-boia site-cartao absolute -right-2 -bottom-8 hidden w-44 rounded-2xl p-3.5 sm:block" style={{ animationDelay: '-4s' }}>
+                <p className="text-[11px] text-[var(--s-tinta-2)]">Vendido hoje</p>
+                <p className="text-lg font-extrabold tabular-nums">R$ 3.906</p>
+                <div className="mt-2">
+                  <MiniGrafico baixo />
+                </div>
               </div>
-            </div>
-
-            <div className="mt-20">
-              <h3 className="text-center text-[1.75rem] leading-tight sm:text-[2rem]">
-                O controle é seu, e é número.
-              </h3>
-              <p className="mx-auto mt-3 max-w-2xl text-center text-base leading-relaxed text-tinta-2">
-                Personalidade é texto; permissão não. As quatro travas moram no banco, onde
-                mensagem nenhuma alcança.
-              </p>
-              <AoEntrar className="cascata mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {CONTROLE.map((c) => (
-                  <div
-                    key={c.t}
-                    className="flex flex-col gap-4 rounded-2xl border border-borda-suave bg-fundo p-5"
-                  >
-                    <div className="flex flex-col gap-2">
-                      <h4 className="font-display text-lg leading-snug font-bold text-titulo">{c.t}</h4>
-                      <p className="text-[14px] leading-relaxed text-tinta-2">{c.d}</p>
-                    </div>
-                    <div className="mt-auto">{c.peca}</div>
-                  </div>
-                ))}
-              </AoEntrar>
             </div>
           </div>
         </section>
 
-        {/* ── o que resolve ───────────────────────────────────────
-            Bento: a dor com mais mecânica para mostrar ganha o cartão largo
-            (a ruptura, com a lista de "pedir até"), as do meio ficam em
-            fileira, e o fechamento do mês — a dor que junta todas as outras
-            — fecha a grade na largura inteira. Cada cartão termina com a
-            tela e o plano. */}
-        <section id="resolve" className="scroll-mt-16 bg-fundo">
-          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
-            <Titulo
-              olho="O que resolve"
-              titulo="As dores do varejo, e onde cada uma é resolvida"
-              resumo="Cada uma termina com o nome da tela onde o número aparece. Não é promessa de consultoria: é o lugar onde você vai olhar."
+        {/* ── a faixa dos ramos ── */}
+        <section aria-label="Para quem é" className="border-y border-[var(--s-borda)] bg-[var(--s-cartao)] py-5">
+          <div className="site-faixa overflow-hidden">
+            <div>
+              {[...RAMOS_FAIXA, ...RAMOS_FAIXA].map((r, i) => (
+                <span key={i} aria-hidden={i >= RAMOS_FAIXA.length} className="mx-3 flex shrink-0 items-center gap-3 text-[15px] font-bold whitespace-nowrap text-[var(--s-tinta-2)]">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: ['var(--s-azul)', 'var(--s-rosa)', 'var(--s-verde)', 'var(--s-sol)', 'var(--s-violeta)'][i % 5] }} />
+                  {r}
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── antes e depois ── */}
+        <section className="py-20 sm:py-28">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <Cabeca
+              centro
+              olho="O que muda no seu dia"
+              cor="var(--s-azul)"
+              titulo={
+                <>
+                  Chega de caderno, planilha e <span className="text-[var(--s-rosa)]">pedido perdido</span>.
+                </>
+              }
+              texto="Tudo o que hoje mora em cinco lugares diferentes passa a morar num só — e conversa entre si."
             />
-            <AoEntrar className="cascata mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {DORES.map((d) => (
-                <article
-                  key={d.t}
-                  className={'flex flex-col gap-5 rounded-2xl border border-borda bg-superficie p-6 shadow-norte ' + d.classe}
-                >
-                  <div className="flex flex-col gap-3">
-                    <span className="grid size-11 place-items-center rounded-xl bg-marca-suave text-marca">
-                      <d.Icone tamanho={28} />
-                    </span>
-                    <h3 className="text-xl leading-snug">{d.t}</h3>
-                    <p className="text-[15px] leading-relaxed text-tinta-2">{d.d}</p>
-                    <p className="text-[13px] text-tinta-3">
-                      Na tela <span className="font-semibold text-tinta-2">{d.tela}</span> · {d.plano}
-                    </p>
+            <div className="site-revela mt-14 grid gap-4 md:grid-cols-2">
+              <div className="rounded-[28px] border border-[var(--s-borda)] bg-[var(--s-cartao)] p-6 sm:p-8">
+                <p className="site-olho text-[var(--s-tinta-2)]">Sem o Norte</p>
+                <ul className="mt-5 flex flex-col gap-4">
+                  {ANTES_DEPOIS.map(([a]) => (
+                    <li key={a} className="flex gap-3 text-[15px] text-[var(--s-tinta-2)]">
+                      <span aria-hidden className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--s-borda)] text-[11px] font-black">
+                        ✕
+                      </span>
+                      <span className="line-through decoration-[color-mix(in_srgb,var(--s-rosa)_50%,transparent)]">{a}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(150deg,#1f4fd8,#6d4cf0)] p-6 text-white shadow-[var(--s-sombra-alta)] sm:p-8">
+                <span aria-hidden className="pointer-events-none absolute -right-16 -bottom-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+                <p className="site-olho text-white/80">Com o Norte</p>
+                <ul className="mt-5 flex flex-col gap-4">
+                  {ANTES_DEPOIS.map(([, d]) => (
+                    <li key={d} className="flex gap-3 text-[15px] font-semibold">
+                      <span aria-hidden className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[11px] font-black text-[#1f4fd8]">
+                        ✓
+                      </span>
+                      {d}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── o bento das funções ── */}
+        <section id="funcoes" className="scroll-mt-20 bg-[var(--s-cartao)] py-20 sm:py-28">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <Cabeca
+              olho="Tudo numa tela só"
+              cor="var(--s-azul)"
+              titulo="O sistema de gestão que a loja inteira consegue usar."
+              texto="Do balcão ao fim do mês: vender, controlar o estoque, cuidar do dinheiro e da equipe — com o modo simples para quem atende e o avançado para o dono."
+            />
+            <LuzQueSegue className="mt-14 grid gap-4 md:grid-cols-3">
+              <article className="site-bloco site-revela site-cartao flex flex-col gap-5 p-6 sm:p-8 md:col-span-2" style={{ '--cor': 'var(--s-azul)' } as CSSProperties}>
+                <div>
+                  <Olho cor="var(--s-azul)">Frente de caixa (PDV)</Olho>
+                  <h3 className="mt-3 text-2xl font-extrabold sm:text-3xl">Bipe, toque e receba.</h3>
+                  <p className="mt-2 max-w-lg text-[15px] text-[var(--s-tinta-2)]">
+                    Dinheiro, Pix, cartão, crediário e vale na mesma venda. Grade de cor e tamanho, três preços por produto, troca e etiqueta. Botões grandes para quem vende sem código de barras.
+                  </p>
+                </div>
+                <div className="site-mostra grid gap-4 sm:grid-cols-[1.2fr_1fr]">
+                  <MiniBalcao />
+                  <div className="flex flex-col justify-center gap-2 text-[13px]">
+                    {['Venda por peso (kg)', 'Troco grande na tela', 'Caixa que abre, sangra e fecha', 'Comprovante e carnê na hora'].map((t) => (
+                      <span key={t} className="flex items-center gap-2 font-semibold">
+                        <Visto cor="var(--s-azul)" />
+                        {t}
+                      </span>
+                    ))}
                   </div>
-                  {d.peca && <div className="mt-auto">{d.peca}</div>}
+                </div>
+              </article>
+              <article className="site-bloco site-revela site-cartao flex flex-col gap-5 p-6 sm:p-8" style={{ '--cor': 'var(--s-verde)' } as CSSProperties}>
+                <div>
+                  <Olho cor="var(--s-verde)">Controle de estoque</Olho>
+                  <h3 className="mt-3 text-2xl font-extrabold">Saiba antes de faltar.</h3>
+                  <p className="mt-2 text-[15px] text-[var(--s-tinta-2)]">Cada loja com o seu saldo, o aviso do que acaba e o dia de pedir ao fornecedor.</p>
+                </div>
+                <div className="site-mostra">
+                  <MiniEstoque />
+                </div>
+              </article>
+              <article className="site-bloco site-revela site-cartao flex flex-col gap-5 p-6 sm:p-8" style={{ '--cor': 'var(--s-violeta)' } as CSSProperties}>
+                <div>
+                  <Olho cor="var(--s-violeta)">Financeiro e DRE</Olho>
+                  <h3 className="mt-3 text-2xl font-extrabold">Quanto sobrou de verdade.</h3>
+                  <p className="mt-2 text-[15px] text-[var(--s-tinta-2)]">O lucro do mês com o custo de cada peça e a taxa da maquininha já descontados.</p>
+                </div>
+                <div className="site-mostra">
+                  <MiniGrafico cor="var(--s-violeta)" />
+                </div>
+              </article>
+              <article className="site-bloco site-revela site-cartao flex flex-col gap-5 p-6 sm:p-8" style={{ '--cor': 'var(--s-rosa)' } as CSSProperties}>
+                <div>
+                  <Olho cor="var(--s-rosa)">Equipe, metas e comissão</Olho>
+                  <h3 className="mt-3 text-2xl font-extrabold">O time no mesmo ritmo.</h3>
+                  <p className="mt-2 text-[15px] text-[var(--s-tinta-2)]">Meta e comissão por vendedor, tarefas no quadro e o mês de cada um em estrelas.</p>
+                </div>
+                <div className="site-mostra">
+                  <MiniEquipe />
+                </div>
+              </article>
+              <article className="site-bloco site-revela site-cartao flex flex-col gap-5 p-6 sm:p-8" style={{ '--cor': 'var(--s-sol)' } as CSSProperties}>
+                <div>
+                  <Olho cor="var(--s-sol)">Funciona sem internet</Olho>
+                  <h3 className="mt-3 text-2xl font-extrabold">A fila não para.</h3>
+                  <p className="mt-2 text-[15px] text-[var(--s-tinta-2)]">Caiu a conexão no pico? O balcão segue vendendo e sobe tudo depois, sem duplicar.</p>
+                </div>
+                <div className="site-mostra">
+                  <MiniSemInternet />
+                </div>
+              </article>
+              <article className="site-bloco site-revela site-cartao flex flex-col gap-4 p-6 sm:p-8" style={{ '--cor': 'var(--s-rosa)' } as CSSProperties}>
+                <Olho cor="var(--s-rosa)">Clientes e crediário</Olho>
+                <h3 className="text-2xl font-extrabold">Cliente que volta.</h3>
+                <p className="text-[15px] text-[var(--s-tinta-2)]">
+                  Ficha com o histórico, programa de pontos, crediário com carnê e a lista de quem sumiu há mais de 60 dias — pronta para chamar.
+                </p>
+              </article>
+              <article className="site-bloco site-revela site-cartao flex flex-col gap-4 p-6 sm:p-8 md:col-span-2" style={{ '--cor': 'var(--s-azul)' } as CSSProperties}>
+                <Olho cor="var(--s-azul)">Simples ou avançado</Olho>
+                <h3 className="text-2xl font-extrabold">A moça do balcão não se perde. O dono vê tudo.</h3>
+                <p className="max-w-2xl text-[15px] text-[var(--s-tinta-2)]">
+                  O modo simples mostra só o que importa para atender, com botões grandes. O avançado abre os gráficos, a curva ABC, a comparação entre lojas e o dinheiro parado.
+                  Cada cargo vê só o que pode — subgerente, estoquista, caixa — e cada mexida fica assinada no livro.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {['Encomendas e agenda', 'Compras e fornecedores', 'Etiquetas', 'Várias lojas e depósito', 'Ponto da equipe', 'Relatórios'].map((f) => (
+                    <Ficha key={f} cor="var(--s-azul)">
+                      {f}
+                    </Ficha>
+                  ))}
+                </div>
+              </article>
+            </LuzQueSegue>
+          </div>
+        </section>
+
+        {/* ── catálogo ── */}
+        <Destaque
+          id="catalogo"
+          cor="var(--s-rosa)"
+          olho="Catálogo online · novo"
+          titulo={
+            <>
+              Sua vitrine no celular de <span className="text-[var(--s-rosa)]">cada cliente</span>.
+            </>
+          }
+          texto="Cada loja ganha um link com o que tem nela agora: foto, preço e categoria. A cliente escolhe, monta a sacola e manda o pedido — que chega organizado em Encomendas e no seu WhatsApp. Sem site para montar e sem taxa por pedido."
+          itens={[
+            'Abra o catálogo com um clique e mande o link no status, no Instagram e nos grupos.',
+            'O pedido chega com os itens, a forma de pagamento e se é entrega ou retirada.',
+            'A cliente acompanha: aceito, pronto, saiu para entrega — com o botão para falar com a loja.',
+            'Na hora de receber, os produtos entram no balcão e o estoque baixa sozinho.',
+          ]}
+          fichas={['Retirada ou entrega', 'Taxa e pedido mínimo', 'Chave Pix', 'Esgotado some sozinho', 'Um link por loja']}
+          foto="/img/site/catalogo.webp"
+          alt="Cliente escolhendo produtos pelo catálogo da loja no celular, numa mesa de café"
+          tela={<CelularCatalogo />}
+        />
+
+        {/* ── assistente ── */}
+        <section className="bg-[var(--s-cartao)]">
+          <Destaque
+            id="assistente"
+            cor="var(--s-verde)"
+            olho="Assistente com IA no WhatsApp"
+            titulo={
+              <>
+                Mande um áudio. <span className="text-[var(--s-verde)]">O estoque se atualiza.</span>
+              </>
+            }
+            texto={
+              <>
+                “Comprei 10 kg de picanha a 39,90.” O assistente entende, monta a entrada com o valor e pergunta. Você responde <b>SIM</b> e está feito — com o saldo
+                novo na resposta. Para você e a sua equipe, no WhatsApp que vocês já usam.
+              </>
+            }
+            itens={[
+              'Relatório de manhã e à noite: o que vendeu, o que vai faltar, as contas do dia.',
+              'Pergunte qualquer coisa: “quanto vendi ontem na loja do centro?”',
+              'Pedido novo do catálogo avisado na hora — responda ACEITAR ou PRONTO.',
+              'Nada acontece sem o seu SIM. Tetos de valor no banco, tudo assinado no livro.',
+            ]}
+            foto="/img/site/audio.webp"
+            alt="Dono de açougue sorrindo enquanto grava um áudio no WhatsApp"
+            tela={<ConversaAssistente />}
+            invertido
+            rodape={
+              <p className="site-revela text-[14px] text-[var(--s-tinta-2)]">
+                No {LIMITES[COM_ASSISTENTE].titulo}: {reais(PRECOS.assistente)} a mais por mês para a empresa inteira, com {reais(PRECOS.creditoDoAssistente)} de crédito de IA.
+              </p>
+            }
+          />
+        </section>
+
+        {/* ── Farol ── */}
+        <Destaque
+          id="farol"
+          cor="var(--s-sol)"
+          olho="Farol · marketing com IA"
+          titulo={
+            <>
+              Conteúdo que vende, escrito a partir do que <span className="text-[var(--s-sol)]">a sua loja vende</span>.
+            </>
+          }
+          texto="O Farol lê os seus números — o que mais sai, os horários de movimento, os bairros — e escreve o mês inteiro da sua marca. Você revisa, aprova e posta. Sem agência, sem página em branco."
+          itens={[
+            'Diagnóstico do nicho e calendário do mês, com a data de cada post.',
+            'Roteiros de Reels, carrosséis, legendas e os comentários certos para fazer.',
+            'Anúncios e campanhas no WhatsApp com começo, meio e fim.',
+            'Nunca usa dado de cliente: só os números da loja, somados.',
+          ]}
+          fichas={['Instagram', 'TikTok', 'WhatsApp', `${reais(PRECOS.farolMarca)}/mês por marca`]}
+          foto="/img/site/farol.webp"
+          alt="Dona de sorveteria gravando um vídeo do sorvete com o celular e um anel de luz"
+          tela={<PecasFarol />}
+        />
+
+        {/* ── fábrica e rede ── */}
+        <section className="bg-[var(--s-cartao)]">
+          <Destaque
+            id="fabrica"
+            cor="var(--s-violeta)"
+            olho="Fábrica e rede de lojas"
+            titulo={
+              <>
+                Da produção à <span className="text-[var(--s-violeta)]">prateleira de cada loja</span>.
+              </>
+            }
+            texto="Para quem produz o que vende: ficha técnica com o custo de cada litro, ordem de produção com lote e validade, e o pedido de cada loja para a fábrica — que sai de um estoque e entra no outro na mesma hora."
+            itens={[
+              'Custo real por produto, puxado da ficha técnica.',
+              'Lote e validade na etiqueta, do freezer à vitrine.',
+              'A loja pede, a fábrica envia, a loja confere — e o que faltou vira perda registrada.',
+              'Cada loja com o seu estoque e os seus cargos; o dono vê a rede inteira.',
+            ]}
+            foto="/img/site/fabrica.webp"
+            alt="Funcionário produzindo sorvete artesanal numa fábrica limpa, com potes coloridos"
+            tela={<FichaFabrica />}
+            invertido
+          />
+        </section>
+
+        {/* ── começar ── */}
+        <section id="comecar" className="scroll-mt-20 py-20 sm:py-28">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <Cabeca
+              centro
+              olho="Comece hoje"
+              cor="var(--s-azul)"
+              titulo={
+                <>
+                  Seus produtos entram em <span className="text-[var(--s-azul)]">minutos</span>, não em semanas.
+                </>
+              }
+              texto="Exporte a planilha do sistema antigo — ou copie e cole. O Norte entende as colunas sozinho, mostra a prévia e importa sem repetir nada."
+            />
+            <div className="site-revela mt-14">
+              <PlanilhaParaNorte />
+            </div>
+            <div className="mt-12 grid gap-4 md:grid-cols-3">
+              {[
+                ['1', 'Crie a conta', 'Dois minutos. O sistema já abre com as categorias, as variações e o jeito de vender do seu ramo.'],
+                ['2', 'Traga o que você já tem', 'Excel, CSV ou colar da planilha. Para migração grande, a nossa equipe faz junto com você.'],
+                ['3', 'Abra o caixa e mande o link', 'Comece a vender no balcão e mande o catálogo para as clientes no mesmo dia.'],
+              ].map(([n, t, d]) => (
+                <div key={n} className="site-revela site-cartao rounded-[24px] p-6">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--s-azul-claro)] text-lg font-extrabold text-[var(--s-azul)]">{n}</span>
+                  <h3 className="mt-4 text-xl font-extrabold">{t}</h3>
+                  <p className="mt-1.5 text-[15px] text-[var(--s-tinta-2)]">{d}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── o sistema por dentro ── */}
+        <section id="demo" className="scroll-mt-20 bg-[var(--s-cartao)] py-20 sm:py-28">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <Cabeca
+              centro
+              olho="Por dentro"
+              cor="var(--s-violeta)"
+              titulo="Clique e explore o sistema de verdade."
+              texto="Uma tarde numa loja de exemplo. Troque de tela, abra o balcão, veja o estoque e o financeiro — sem cadastro."
+            />
+            <div className="site-cresce mt-12 overflow-hidden rounded-[28px]">
+              <SistemaPorDentro textos={TEXTOS} consulta={CONSULTA_EXEMPLO} />
+            </div>
+          </div>
+        </section>
+
+        {/* ── para quem é ── */}
+        <section className="py-20 sm:py-28">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <Cabeca
+              olho="Para quem é"
+              cor="var(--s-rosa)"
+              titulo="Feito para o seu ramo desde o primeiro dia."
+              texto="Diga o seu ramo no cadastro e o Norte já abre com as variações, as categorias e o jeito de vender de quem é do ramo."
+            />
+            <div className="mt-12 grid gap-4 md:grid-cols-2">
+              {[
+                {
+                  src: '/img/site/moda.webp',
+                  alt: 'Vendedora de loja de roupa dobrando peças coloridas ao lado da arara',
+                  t: 'Moda, calçados e acessórios',
+                  d: 'Grade de cor e tamanho, troca com vale, crediário com carnê, etiqueta com código de barras e meta por vendedora.',
+                  cor: 'var(--s-rosa)',
+                },
+                {
+                  src: '/img/site/retirada.webp',
+                  alt: 'Atendente entregando um pedido em sacola de papel para uma cliente no balcão',
+                  t: 'Alimentação, mercearia e conveniência',
+                  d: 'Venda por peso, botões grandes, encomenda com sinal, catálogo para retirada e entrega, e o aviso do que acaba hoje.',
+                  cor: 'var(--s-verde)',
+                },
+              ].map((c) => (
+                <article key={c.t} className="site-revela group relative overflow-hidden rounded-[32px]">
+                  <Foto src={c.src} alt={c.alt} className="aspect-[4/3]" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-6 text-white sm:p-8">
+                    <span className="site-olho" style={{ color: 'white' }}>
+                      <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: c.cor }} />
+                      Ramo
+                    </span>
+                    <h3 className="mt-2 text-2xl font-extrabold text-white sm:text-3xl" style={{ color: 'white' }}>
+                      {c.t}
+                    </h3>
+                    <p className="mt-2 max-w-md text-[15px] text-white/85">{c.d}</p>
+                  </div>
                 </article>
               ))}
-            </AoEntrar>
+            </div>
+            <div className="site-revela mt-8 flex flex-wrap gap-2">
+              {RAMOS_FAIXA.map((r, i) => (
+                <Ficha key={r} cor={['var(--s-azul)', 'var(--s-rosa)', 'var(--s-verde)', 'var(--s-sol)', 'var(--s-violeta)'][i % 5]!}>
+                  {r}
+                </Ficha>
+              ))}
+            </div>
           </div>
         </section>
 
-        {/* ── segurança ───────────────────────────────────────────
-            O único bloco azul-noite da página é aqui, e pequeno: o desenho
-            das duas paredes. É detalhe, não seção — e o azul-noite é a cor do
-            "por baixo", que é exatamente o que o desenho mostra. */}
-        <section id="seguranca" className="scroll-mt-16 bg-superficie">
-          <div className="mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:px-6 md:py-24 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
-            <div className="flex flex-col gap-8">
-              <Titulo
-                olho="Segurança"
-                titulo="O que a gente faz para o seu dado não virar problema"
-                resumo="Isto costuma ficar escondido no contrato. Fica aqui porque é o que separa sistema de várias empresas feito direito de sistema de uma empresa adaptado às pressas."
-              />
-              <div className="nav-fundo flex flex-col gap-4 rounded-2xl p-6 text-[13px]" aria-hidden>
-                <span className="text-[11px] font-bold tracking-[0.14em] text-sol-claro uppercase">
-                  Duas paredes
-                </span>
-                {[
-                  ['Sua empresa', 'o pedido chega'],
-                  ['A aplicação', 'só fala com o banco já presa à sua empresa'],
-                  ['O Postgres', 'recusa devolver linha de outra empresa'],
-                ].map(([t, d], i) => (
-                  <div key={t} className="flex items-center gap-3">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-nav-3 font-bold text-nav-tinta">
-                      {i + 1}
-                    </span>
-                    <span className="flex flex-col leading-snug">
-                      <span className="font-semibold text-nav-tinta">{t}</span>
-                      <span className="text-nav-tinta-2">{d}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
+        {/* ── segurança ── */}
+        <section className="bg-[#0b1230] py-20 text-white sm:py-24">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <div className="site-revela flex max-w-3xl flex-col gap-4">
+              <span className="site-olho text-[#8fb0ff]">Segurança</span>
+              <h2 className="text-[2.1rem] leading-[1.05] font-extrabold sm:text-5xl" style={{ color: 'white' }}>
+                O seu dado fica com você. Trancado.
+              </h2>
             </div>
-            <AoEntrar className="cascata flex flex-col">
+            <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               {SEGURANCA.map(({ Icone, t, d }) => (
-                <div key={t} className="flex gap-4 border-t border-borda py-5 first:border-t-0 first:pt-0">
-                  <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-borda text-marca">
-                    <Icone tamanho={26} />
-                  </span>
-                  <span className="flex flex-col gap-1">
-                    <h3 className="text-lg">{t}</h3>
-                    <span className="text-[15px] leading-relaxed text-tinta-2">{d}</span>
-                  </span>
+                <div key={t} className="site-revela rounded-[24px] border border-white/10 bg-white/[0.04] p-5">
+                  <Icone tamanho={36} className="text-[#8fb0ff]" />
+                  <h3 className="mt-4 text-[17px] font-extrabold" style={{ color: 'white' }}>
+                    {t}
+                  </h3>
+                  <p className="mt-1.5 text-[14px] leading-relaxed text-white/70">{d}</p>
                 </div>
               ))}
-            </AoEntrar>
+            </div>
           </div>
         </section>
 
-        {/* ── preço ───────────────────────────────────────────────
-            ── a ordem, e por quê ──
-            Primeiro os dois cartões (a loja; a loja com o assistente), que
-            são a escolha. Logo embaixo, a CONTA — porque a pergunta seguinte
-            de quem tem duas lojas é "e quanto fica para mim?", e a resposta
-            é uma soma que cabe num recibo. Depois o que vem à parte (o Farol,
-            a Fábrica e a implantação), o Corporativo em
-            faixa larga, e a tabela item por item.
-
-            ── e por que o número vem do servidor ──
-            A MESMA fonte que a tela de lojas lê para dizer, antes de abrir a
-            terceira loja, quanto a conta passa a ser. Divergir aqui é
-            prometer na venda o que o sistema não cobra — ou cobrar o que a
-            venda não disse. */}
-        <section id="planos" className="scroll-mt-16 bg-fundo">
-          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
-            <Titulo
+        {/* ── preço ── */}
+        <section id="precos" className="scroll-mt-20 py-20 sm:py-28">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <Cabeca
               centro
               olho="Preço"
-              titulo="A loja é o que se paga"
-              resumo={`${reais(PRECOS.primeiraLoja)} por mês a primeira loja e ${reais(PRECOS.lojaExtra)} cada loja a mais, com tudo o que a loja usa dentro. O assistente é à parte. E ${PRECOS.diasDeTeste} dias para testar com tudo, sem cartão.`}
+              cor="var(--s-verde)"
+              titulo={
+                <>
+                  Preço por loja. <span className="text-[var(--s-verde)]">A equipe entra de graça.</span>
+                </>
+              }
+              texto="Monte a sua conta: sem taxa por usuário, sem taxa por pedido do catálogo, sem fidelidade."
             />
-
-            <AoEntrar className="cascata mx-auto mt-10 grid max-w-2xl gap-5 lg:max-w-4xl lg:grid-cols-2 lg:items-stretch">
-              {PLANOS_COM_PRECO.map((codigo) => {
-                const l = LIMITES[codigo]
-                const c = CARTOES[codigo]
-                if (!c) throw new Error(`O plano ${l.titulo} está à venda e não tem cartão na página.`)
-                const eleito = codigo === RECOMENDADO
-                const comAssistente = l.modulos.includes('agente')
-                return (
-                  <div
-                    key={codigo}
-                    className={
-                      'relative flex flex-col rounded-2xl bg-superficie p-6 ' +
-                      (eleito ? 'shadow-norte-alta ring-2 ring-marca' : 'shadow-norte ring-1 ring-borda')
-                    }
-                  >
-                    {/* "Recomendado", e não "o mais pedido": sem cliente não
-                        existe mais pedido — ver o topo. */}
-                    {eleito && (
-                      <span className="absolute -top-3 left-6 rounded-full bg-marca px-3 py-1 text-[11px] font-bold tracking-[0.08em] text-marca-tinta uppercase">
-                        Recomendado
-                      </span>
-                    )}
-                    <h3 className="text-2xl">{l.titulo}</h3>
-
-                    <p className="mt-5 flex items-baseline gap-1.5">
-                      <span className="numero font-display text-[2.75rem] leading-none font-bold tracking-[-0.03em] text-titulo">
-                        {reais(l.mensal!)}
-                      </span>
-                      <span className="text-sm text-tinta-3">/mês</span>
-                    </p>
-                    <p className="mt-2 text-[13px] leading-snug text-tinta-2">
-                      {comAssistente
-                        ? `A primeira loja (${reais(PRECOS.primeiraLoja)}) e o assistente (${reais(PRECOS.assistente)}).`
-                        : 'A primeira loja, com tudo dela.'}{' '}
-                      Cada loja a mais: <b className="numero text-tinta">+{reais(l.porUnidadeExtra!)}</b>.
-                    </p>
-
-                    <a
-                      href={COMECAR}
-                      className={
-                        'mt-5 rounded-norte px-4 py-2.5 text-center text-sm font-semibold ' +
-                        (eleito
-                          ? 'botao-marca text-marca-tinta'
-                          : 'border border-borda text-tinta hover:bg-superficie-2')
-                      }
-                    >
-                      Testar {PRECOS.diasDeTeste} dias grátis
-                    </a>
-
-                    <dl className="mt-6">
-                      <Ficha rotulo="Lojas" valor={`1 incluída, +${reais(l.porUnidadeExtra!)} cada`} />
-                      <Ficha rotulo="Equipe" valor={l.vagas === null ? 'Sem limite' : `${l.vagas} por vez`} />
-                      <Ficha
-                        rotulo="Crédito de IA"
-                        valor={l.creditoMensal ? `${reais(l.creditoMensal)}/mês` : 'Sem assistente'}
-                        nota={c.conta}
-                        // O crédito existe: cai todo mês (`garantirCreditoDoMes`),
-                        // e acabou antes, recarrega pela tela de Assinatura.
-                        rodape={l.creditoMensal ? 'cai todo mês · recarga quando acabar' : undefined}
-                      />
-                    </dl>
-
-                    <p className="mt-5 border-t border-borda-suave pt-4 text-[12px] font-bold tracking-[0.1em] text-tinta-3 uppercase">
-                      {c.lista}
-                    </p>
-                    <ul className="mt-3 flex flex-1 flex-col gap-2">
-                      {c.itens.map((x) => {
-                        const breve = x.endsWith(' · em breve')
-                        const texto = breve ? x.slice(0, -' · em breve'.length) : x
-                        return (
-                          <li key={x} className="flex gap-2 text-[13.5px] leading-snug text-tinta-2">
-                            <IconeVisto
-                              tamanho={14}
-                              className={'mt-0.5 shrink-0 ' + (breve ? 'text-tinta-3' : 'text-bom')}
-                            />
-                            <span>
-                              {texto}
-                              {breve && <EmBreve />}
-                            </span>
-                          </li>
-                        )
-                      })}
-                      {/* O que NÃO tem, no fim. Esconder o que falta é o que
-                          faz o cliente descobrir depois de assinar. */}
-                      {c.fora.map((x) => (
-                        <li
-                          key={x}
-                          className="flex gap-2 text-[13.5px] leading-snug text-tinta-3 line-through decoration-tinta-3/40"
-                        >
-                          <IconeMais tamanho={14} className="mt-0.5 shrink-0 rotate-45 opacity-60" />
-                          {x}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )
-              })}
-            </AoEntrar>
-
-            {/* ── a conta ──
-                Um recibo de verdade, montado pelo `mensalidade` do servidor —
-                o mesmo que a tela de assinatura soma. As linhas são as peças
-                de `PRECOS`; o total é o da função. Se um dia não fecharem, o
-                build quebra aqui antes de a página mentir. */}
-            <div className="mx-auto mt-16 grid max-w-2xl gap-8 lg:max-w-4xl lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-start">
-              <div className="flex flex-col gap-4">
-                <h3 className="text-[1.75rem] leading-tight">A conta, loja por loja</h3>
-                <p className="text-[15px] leading-relaxed text-tinta-2">
-                  A primeira loja custa {reais(PRECOS.primeiraLoja)} e cada loja a mais{' '}
-                  {reais(PRECOS.lojaExtra)}, sempre com tudo dentro. O assistente soma{' '}
-                  {reais(PRECOS.assistente)} uma vez só, para a empresa inteira — não por loja. Depósito
-                  não entra na conta, e gente também não: a equipe é à vontade.
-                </p>
-                <p className="text-[15px] leading-relaxed text-tinta-2">
-                  Abrir a terceira loja não é surpresa na fatura: antes do clique, a tela de lojas diz
-                  quanto ela soma e como fica o mês.
-                </p>
-                <table className="mt-1 w-full border-collapse text-sm">
-                  <caption className="sr-only">Quanto fica por mês, pelo número de lojas.</caption>
-                  <thead>
-                    <tr className="text-left text-xs text-tinta-3">
-                      <th scope="col" className="py-2 font-medium">Lojas</th>
-                      {PLANOS_COM_PRECO.map((p) => (
-                        <th key={p} scope="col" className="py-2 text-right font-medium">
-                          {LIMITES[p].titulo}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[1, 2, 3, 5].map((n) => (
-                      <tr key={n} className="border-t border-borda-suave">
-                        <th scope="row" className="py-2 text-left font-normal text-tinta-2">
-                          {n === 1 ? '1 loja' : `${n} lojas`}
-                        </th>
-                        {PLANOS_COM_PRECO.map((p) => (
-                          <td key={p} className="numero py-2 text-right font-semibold text-tinta">
-                            {reais(mensalidade(p, n).total!)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="rounded-2xl border border-borda bg-superficie p-6 shadow-norte">
-                <p className="text-[12px] font-bold tracking-[0.1em] text-tinta-3 uppercase">
-                  Exemplo · {EXEMPLO_LOJAS} lojas com o assistente
-                </p>
-                <dl className="mt-4 flex flex-col text-[15px]">
-                  {(
-                    [
-                      ['Primeira loja', PRECOS.primeiraLoja],
-                      ...Array.from({ length: EXEMPLO_LOJAS - 1 }, (_, i) => [
-                        i === 0 ? 'Segunda loja' : `Loja ${i + 2}`,
-                        PRECOS.lojaExtra,
-                      ]),
-                      ['Assistente, com o crédito de IA', PRECOS.assistente],
-                    ] as [string, number][]
-                  ).map(([t, v]) => (
-                    <div key={t} className="flex items-baseline justify-between gap-4 border-b border-borda-suave py-2">
-                      <dt className="text-tinta-2">{t}</dt>
-                      <dd className="numero text-tinta">{reais(v)}</dd>
-                    </div>
-                  ))}
-                  <div className="flex items-baseline justify-between gap-4 pt-3">
-                    <dt className="font-semibold text-tinta">Por mês</dt>
-                    <dd className="numero font-display text-[1.75rem] leading-none font-bold text-titulo">
-                      {reais(EXEMPLO)}
-                    </dd>
-                  </div>
-                </dl>
-                <p className="mt-4 text-[13px] leading-relaxed text-tinta-3">
-                  No anual, {ANUAL.meses} meses pelo preço de {ANUAL.paga}:{' '}
-                  <span className="numero font-semibold text-tinta-2">{reais(EXEMPLO * ANUAL.paga)}</span>{' '}
-                  por ano.
-                </p>
-              </div>
+            <div className="site-revela mt-12">
+              <Calculadora comecar={COMECAR} />
             </div>
 
-            {/* ── à parte ──
-                O Farol e a Fábrica ainda não existem, e a etiqueta diz isso
-                com o preço já dito: é expectativa, não promessa. Quem assina
-                pelo que não encontra cancela — ver `quando` em planos.ts. */}
-            <div className="mx-auto mt-16 max-w-2xl lg:max-w-none">
-              <h3 className="text-[1.75rem] leading-tight">À parte</h3>
-              <AoEntrar className="cascata mt-6 grid gap-4 sm:grid-cols-3">
-                {A_PARTE.map((x) => (
-                  <div key={x.t} className="flex flex-col gap-3 rounded-2xl border border-borda bg-superficie p-5">
-                    <div className="flex items-center">
-                      <h4 className="font-display text-lg leading-snug font-bold text-titulo">{x.t}</h4>
-                      {x.breve && <EmBreve />}
-                    </div>
-                    <p className="text-[14px] leading-relaxed text-tinta-2">{x.d}</p>
-                    <div className="mt-auto border-t border-borda-suave pt-3">
-                      <p className="numero text-lg font-bold text-tinta">{x.preco}</p>
-                      <p className="text-[12.5px] leading-snug text-tinta-3">{x.sub}</p>
-                    </div>
-                  </div>
-                ))}
-              </AoEntrar>
-            </div>
-
-            {/* O Corporativo, em faixa larga e clara. O que se contrata aqui
-                é a condução do negócio junto com o sistema — por isso o lado
-                direito não tem preço: tem o convite para conversar. */}
-            <div className="mx-auto mt-5 flex max-w-2xl flex-col gap-8 rounded-2xl border border-borda bg-superficie p-6 sm:p-8 lg:max-w-none lg:flex-row lg:items-center lg:justify-between">
-              <div className="max-w-2xl">
-                <span className="flex items-center gap-2 text-[11px] font-bold tracking-[0.14em] text-marca uppercase">
-                  <Simbolo tamanho={18} id="corporativo-sol" /> Para rede grande
-                </span>
-                <h3 className="mt-2 text-2xl">{LIMITES.CORPORATIVO.titulo}</h3>
-                <p className="mt-2 max-w-[60ch] text-[15px] leading-relaxed text-tinta-2">
-                  {LIMITES.CORPORATIVO.resumo}
-                </p>
-                <div className="mt-6 grid gap-x-8 gap-y-4 sm:grid-cols-3">
-                  {CORPORATIVO_EXTRAS.map(([t, d]) => (
-                    <div key={t} className="flex flex-col gap-1 border-t border-borda pt-3">
-                      <p className="text-[14px] font-bold text-tinta">{t}</p>
-                      <p className="text-[13px] leading-relaxed text-tinta-2">{d}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-col gap-3 lg:w-56 lg:items-end lg:text-right">
-                <p className="font-display text-2xl leading-none font-bold text-titulo">Sob consulta</p>
-                <p className="text-[13px] leading-relaxed text-tinta-2">
-                  Sem limite de loja nem de gente, com o crédito de IA combinado no contrato.
-                </p>
-                <a
-                  href={mailto('Quero conversar sobre o Corporativo')}
-                  className="rounded-norte border border-borda px-6 py-3 text-center text-sm font-semibold text-tinta hover:bg-superficie-2"
+            <div className="mt-10 grid gap-4 lg:grid-cols-2">
+              {PLANOS_TEXTO.map((p) => (
+                <article
+                  key={p.plano}
+                  className={`site-revela relative flex flex-col gap-5 rounded-[28px] p-7 ${p.destaque ? 'border-2 border-[var(--s-verde)] bg-[var(--s-cartao)] shadow-[var(--s-sombra-alta)]' : 'site-cartao'}`}
                 >
-                  Falar com a gente
-                </a>
-              </div>
+                  {p.destaque ? (
+                    <span className="absolute -top-3 left-7 rounded-full bg-[var(--s-verde)] px-3 py-1 text-[12px] font-extrabold text-white">O que a gente recomenda</span>
+                  ) : null}
+                  <div>
+                    <h3 className="text-2xl font-extrabold">{p.nome}</h3>
+                    <p className="mt-2">
+                      <span className="font-[family-name:var(--font-display)] text-4xl font-extrabold tabular-nums">{p.preco}</span>
+                    </p>
+                    <p className="text-[14px] text-[var(--s-tinta-2)]">{p.sub}</p>
+                  </div>
+                  <ul className="flex flex-col gap-2.5">
+                    {p.itens.map((i) => {
+                      const breve = i.endsWith(' · em breve')
+                      return (
+                        <li key={i} className={`flex gap-2.5 text-[15px] ${i.endsWith(':') ? 'font-bold' : ''}`}>
+                          {i.endsWith(':') ? null : <Visto cor={p.destaque ? 'var(--s-verde)' : 'var(--s-azul)'} />}
+                          <span>
+                            {breve ? i.replace(' · em breve', '') : i}
+                            {breve ? <span className="ml-2 rounded-full bg-[var(--s-sol-claro)] px-2 py-0.5 text-[11px] font-bold text-[var(--s-sol)]">em breve</span> : null}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  <a href={COMECAR} className={`site-botao mt-auto px-6 py-3.5 text-[15px] ${p.destaque ? 'site-botao-principal' : 'site-botao-claro'}`}>
+                    Testar {PRECOS.diasDeTeste} dias grátis
+                  </a>
+                </article>
+              ))}
             </div>
 
-            <p className="mt-5 text-center text-xs text-tinta-3">
-              Valores mensais, por empresa. O teste não pede cartão e não vira cobrança sozinho:
-              acabado sem assinatura, a conta segue no plano básico, de uma loja, com os dados todos.
+            <div className="mt-10 grid gap-4 md:grid-cols-3">
+              {A_PARTE.map((a) => (
+                <div key={a.t} className="site-revela site-cartao rounded-[24px] p-6">
+                  <Olho cor={a.cor}>{a.t}</Olho>
+                  <p className="mt-3 text-[15px] text-[var(--s-tinta-2)]">{a.d}</p>
+                  <p className="mt-4 text-2xl font-extrabold tabular-nums">{a.preco}</p>
+                  <p className="text-[13px] text-[var(--s-tinta-2)]">{a.sub}</p>
+                </div>
+              ))}
+            </div>
+            <p className="site-revela mt-8 text-center text-[15px] text-[var(--s-tinta-2)]">
+              Rede grande, várias marcas ou operação especial?{' '}
+              <a href={mailto('Norte para a minha rede')} className="font-bold text-[var(--s-azul)] underline-offset-4 hover:underline">
+                Fale com a gente
+              </a>{' '}
+              e montamos o plano com você.
             </p>
-
-            {/* A tabela item por item. Cartão vende, tabela decide: quem está
-                com um cartão quase escolhido tem UMA pergunta específica, e
-                ela responde sem ninguém do outro lado. */}
-            <div className="mt-20">
-              <h3 className="text-[1.75rem] leading-tight sm:text-[2rem]">Item por item</h3>
-              <p className="mt-2 mb-6 max-w-[60ch] text-[15px] text-tinta-2">
-                O que vem no {LIMITES[BASE].titulo} e o que vem com o assistente, sem asterisco. O que
-                ainda não existe está marcado “em breve”.
-              </p>
-              <CompararPlanos />
-            </div>
           </div>
         </section>
 
-        {/* ── dúvidas ─────────────────────────────────────────────
-            `<details>` de verdade: abre sem JavaScript, o leitor de tela
-            anuncia aberto e fechado, e o Ctrl+F do navegador acha texto
-            dentro da resposta fechada. A abertura desliza onde o navegador
-            sabe animar altura (ver `.perguntas` no globals). */}
-        <section id="duvidas" className="scroll-mt-16 bg-superficie">
-          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 md:py-24 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] lg:gap-16">
-            <div className="flex flex-col gap-5">
-              <Titulo olho="Dúvidas" titulo="O que costumam perguntar antes de assinar" />
-              <p className="text-[15px] leading-relaxed text-tinta-2">
-                Não achou a sua?{' '}
-                <a href={mailto('Tenho uma dúvida sobre o Norte')} className="font-semibold text-marca underline-offset-4 hover:underline">
-                  Escreva para a gente
-                </a>
-                .
-              </p>
-            </div>
-            <div className="perguntas flex flex-col">
+        {/* ── dúvidas ── */}
+        <section id="duvidas" className="scroll-mt-20 bg-[var(--s-cartao)] py-20 sm:py-28">
+          <div className="mx-auto grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr]">
+            <Cabeca olho="Dúvidas" cor="var(--s-violeta)" titulo="O que costumam perguntar antes de assinar." texto="Não achou a sua? Escreva para a gente — quem responde é quem faz o sistema." />
+            <div className="site-revela flex flex-col gap-3">
               {PERGUNTAS.map((q) => (
-                <details key={q.p} className="group border-b border-borda">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-md py-5 text-left text-base font-semibold text-tinta [&::-webkit-details-marker]:hidden">
+                <details key={q.p} className="group site-cartao rounded-2xl px-5 py-4 open:shadow-[var(--s-sombra-alta)]">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-bold [&::-webkit-details-marker]:hidden">
                     {q.p}
-                    <span
-                      aria-hidden
-                      className="grid size-7 shrink-0 place-items-center rounded-full border border-borda text-tinta-2 transition-transform duration-300 group-open:rotate-45"
-                    >
-                      <IconeMais tamanho={14} />
+                    <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--s-violeta-claro)] text-[var(--s-violeta)] transition-transform group-open:rotate-45">
+                      +
                     </span>
                   </summary>
-                  <p className="pb-5 text-[15px] leading-relaxed text-tinta-2">{q.r}</p>
+                  <p className="mt-3 text-[15px] leading-relaxed text-[var(--s-tinta-2)]">{q.r}</p>
                 </details>
               ))}
             </div>
           </div>
         </section>
 
-        {/* ── o fechamento ────────────────────────────────────────
-            Grande e claro: um painel no azul mais suave da marca, com o
-            símbolo e uma frase. O botão principal leva ao cadastro pelo site
-            (`COMECAR`), que abre o teste; com o cadastro fechado, a mesma
-            página mostra o e-mail. */}
-        <section id="comecar" className="scroll-mt-16 bg-superficie">
-          <div className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 md:pb-24">
-            <div className="relative isolate overflow-hidden rounded-3xl border border-borda bg-marca-suave px-6 py-14 text-center sm:px-12 md:py-20">
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-0 -z-10"
-                style={{
-                  background:
-                    'radial-gradient(40rem 20rem at 50% 0%, color-mix(in srgb, var(--superficie) 70%, transparent), transparent 70%), radial-gradient(30rem 18rem at 100% 100%, color-mix(in srgb, var(--sol) 12%, transparent), transparent 70%)',
-                }}
-              />
-              <Simbolo tamanho={52} id="fim-sol" className="mx-auto" />
-              <h2 className="mx-auto mt-6 max-w-2xl text-[2.25rem] leading-[1.05] text-balance sm:text-[3rem]">
-                Comece pelo que dói mais.
+        {/* ── o fechamento ── */}
+        <section className="px-4 py-20 sm:px-6 sm:py-28">
+          <div className="site-cresce relative mx-auto max-w-6xl overflow-hidden rounded-[40px]">
+            <Foto src="/img/site/fimdodia.webp" alt="Dona de loja tranquila no fim do dia, olhando os números no notebook" className="absolute inset-0 h-full w-full" />
+            <div className="absolute inset-0 bg-[linear-gradient(100deg,rgb(11_18_48/0.92)_20%,rgb(11_18_48/0.55)_60%,rgb(11_18_48/0.15))]" />
+            <div className="relative flex max-w-2xl flex-col items-start gap-6 p-8 py-16 sm:p-14 sm:py-24">
+              <span className="site-olho text-[#ffc04d]">Comece hoje</span>
+              <h2 className="text-[2.3rem] leading-[1.04] font-extrabold sm:text-6xl" style={{ color: 'white' }}>
+                Feche o mês sabendo para onde foi cada real.
               </h2>
-              <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-tinta-2">
-                Crie a conta, suba o catálogo — a gente ajuda — e ligue o assistente com o nome
-                que você escolher. Em {PRECOS.diasDeTeste} dias de teste, com tudo, você sabe se
-                vale.
+              <p className="text-lg text-white/80">
+                {PRECOS.diasDeTeste} dias com tudo liberado, o assistente incluso, sem cartão. Se não fizer sentido, você não paga nada.
               </p>
-              <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
-                <a
-                  href={COMECAR}
-                  className="botao-marca rounded-norte px-7 py-3.5 text-[15px] font-semibold text-marca-tinta"
-                >
-                  Começar grátis
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <a href={COMECAR} className="site-botao site-botao-principal px-8 py-4 text-[16px]">
+                  Testar {PRECOS.diasDeTeste} dias grátis
                 </a>
-                <a
-                  href="#planos"
-                  className="rounded-norte border border-borda bg-superficie px-7 py-3.5 text-[15px] font-semibold text-tinta hover:bg-superficie-2"
-                >
-                  Ver os planos
+                <a href={mailto('Quero conhecer o Norte')} className="site-botao border border-white/30 px-8 py-4 text-[16px] text-white hover:bg-white/10">
+                  Falar com a gente
                 </a>
               </div>
-              <p className="mt-4 text-sm text-tinta-3">
-                {PRECOS.diasDeTeste} dias grátis com tudo · sem cartão · não vira cobrança sozinho
-              </p>
             </div>
           </div>
         </section>
       </main>
 
-      {/* ── o rodapé ──
-          Só link que existe: âncora desta página, termos, privacidade e a
-          entrada. Termos e privacidade moram aqui porque é onde quem procura
-          procura — e quem não acha desconfia, com razão. */}
-      <footer className="border-t border-borda bg-fundo">
-        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,1fr))]">
+      {/* ── o rodapé ── */}
+      <footer className="border-t border-[var(--s-borda)]">
+        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_repeat(3,1fr)]">
           <div className="flex flex-col gap-4">
             <Marca tamanho={26} id="rodape-sol" />
-            <p className="max-w-xs text-sm leading-relaxed text-tinta-2">
-              Gestão da empresa, do balcão ao fim do mês. Cada empresa entra pelo próprio endereço;
-              recebeu um convite? Use o link que chegou para você.
+            <p className="max-w-xs text-sm leading-relaxed text-[var(--s-tinta-2)]">
+              Sistema de gestão para o comércio: PDV, estoque, catálogo no WhatsApp, financeiro e um assistente com IA. Recebeu um convite? Use o link que chegou para você.
             </p>
           </div>
-          <Coluna
-            titulo="Produto"
-            links={[
-              ...TELAS_RODAPE.map(([nome, id]) => ({ nome, href: `#tela-${id}` })),
-              { nome: 'Simples ou avançado', href: '#modos' },
-              { nome: 'Segurança', href: '#seguranca' },
-            ]}
-          />
-          <Coluna
-            titulo="Para quem é"
-            links={RAMOS_RODAPE.map(([nome, id]) => ({ nome, href: `#ramo-${id}` }))}
-          />
-          <Coluna
-            titulo="Empresa"
-            links={[
-              { nome: 'Planos', href: '#planos' },
-              { nome: 'Dúvidas', href: '#duvidas' },
-              { nome: 'Falar com a gente', href: mailto('Contato pelo site') },
-              { nome: 'Entrar', href: ENTRAR },
-            ]}
-          />
-          <Coluna
-            titulo="Legal"
-            links={[
-              { nome: 'Termos de uso', href: '/termos' },
-              { nome: 'Privacidade', href: '/privacidade' },
-              { nome: 'Exclusão de dados', href: '/exclusao-de-dados' },
-            ]}
-          />
-        </div>
-        {/* A identidade de quem opera o site, igual ao cartão do CNPJ — a
-            verificação de empresa da Meta confere letra por letra. Vem de
-            src/servidor/legal.ts; enquanto for nula, só o e-mail aparece:
-            nada de razão social de mentira. */}
-        <div className="border-t border-borda-suave">
-          <div className="mx-auto flex max-w-6xl flex-col gap-1.5 px-4 py-6 text-xs leading-relaxed text-tinta-3 sm:px-6">
-            <p className="break-words">
-              {[
-                EMPRESA.razaoSocial,
-                EMPRESA.cnpj && `CNPJ ${EMPRESA.cnpj}`,
-                EMPRESA.endereco,
-              ]
-                .filter(Boolean)
-                .map((parte) => (
-                  <span key={parte as string}>{parte} · </span>
+          {[
+            {
+              t: 'Produto',
+              l: [
+                ['Funções', '#funcoes'],
+                ['Catálogo online', '#catalogo'],
+                ['Assistente no WhatsApp', '#assistente'],
+                ['Farol', '#farol'],
+                ['Fábrica', '#fabrica'],
+                ['Por dentro', '#demo'],
+              ],
+            },
+            {
+              t: 'Empresa',
+              l: [
+                ['Preços', '#precos'],
+                ['Dúvidas', '#duvidas'],
+                ['Falar com a gente', mailto('Contato pelo site')],
+                ['Entrar', ENTRAR],
+              ],
+            },
+            {
+              t: 'Legal',
+              l: [
+                ['Termos de uso', '/termos'],
+                ['Privacidade', '/privacidade'],
+                ['Exclusão de dados', '/exclusao-de-dados'],
+              ],
+            },
+          ].map((c) => (
+            <div key={c.t}>
+              <p className="site-olho text-[var(--s-tinta-2)]">{c.t}</p>
+              <ul className="mt-4 flex flex-col gap-2.5 text-[14px]">
+                {c.l.map(([n, h]) => (
+                  <li key={n}>
+                    <a href={h} className="font-medium text-[var(--s-tinta-2)] hover:text-[var(--s-tinta)]">
+                      {n}
+                    </a>
+                  </li>
                 ))}
-              <a href={`mailto:${EMPRESA.email}`} className="hover:text-tinta-2">
+              </ul>
+            </div>
+          ))}
+        </div>
+        {/* A identidade de quem opera o site (src/servidor/legal.ts). Enquanto
+            for nula, só o e-mail aparece: nada de razão social de mentira. */}
+        <div className="border-t border-[var(--s-borda)]">
+          <div className="mx-auto flex max-w-6xl flex-col gap-1.5 px-4 py-6 text-xs leading-relaxed text-[var(--s-tinta-2)] sm:px-6">
+            <p className="break-words">
+              {[EMPRESA.razaoSocial, EMPRESA.cnpj && `CNPJ ${EMPRESA.cnpj}`, EMPRESA.endereco].filter(Boolean).map((parte) => (
+                <span key={parte as string}>{parte} · </span>
+              ))}
+              <a href={`mailto:${EMPRESA.email}`} className="hover:text-[var(--s-tinta)]">
                 {EMPRESA.email}
               </a>
             </p>
-            <p>© {new Date().getFullYear()} Norte. Os números das telas desta página são de exemplo.</p>
+            <p>© {new Date().getFullYear()} Norte. As telas e os números desta página são de uma loja de exemplo; as fotos são ilustrativas.</p>
           </div>
         </div>
       </footer>
     </div>
-  )
-}
-
-/* ═══════════════════════════════════════════════════════════
-   Peças da página
-   ═══════════════════════════════════════════════════════════ */
-
-function Titulo({
-  olho,
-  titulo,
-  resumo,
-  centro = false,
-}: {
-  olho: string
-  titulo: string
-  resumo?: string
-  centro?: boolean
-}) {
-  return (
-    <AoEntrar className={'cascata flex max-w-2xl flex-col gap-3 ' + (centro ? 'mx-auto items-center text-center' : '')}>
-      <span className="text-[13px] font-bold tracking-[0.12em] text-marca uppercase">{olho}</span>
-      <h2 className="text-[2rem] leading-[1.08] text-balance sm:text-[2.5rem] lg:text-[2.75rem]">
-        {titulo}
-      </h2>
-      {resumo && <p className="text-[17px] leading-relaxed text-tinta-2 sm:text-lg">{resumo}</p>}
-    </AoEntrar>
-  )
-}
-
-/**
- * O título partido em palavras, cada uma com o seu atraso (`--i`). É CSS
- * puro na carga (`.palavra` no globals): o servidor manda as palavras já no
- * lugar, e a entrada roda sozinha na primeira pintura.
- */
-function Palavras({ texto, de = 0 }: { texto: string; de?: number }) {
-  const partes = texto.split(' ')
-  return (
-    <>
-      {partes.map((p, i) => (
-        <span key={i}>
-          <span className="palavra" style={{ '--i': de + i } as CSSProperties}>
-            {p}
-          </span>
-          {i < partes.length - 1 ? ' ' : ''}
-        </span>
-      ))}
-    </>
-  )
-}
-
-function EmBreve() {
-  return (
-    <span className="ml-1.5 inline-block rounded-full bg-superficie-2 px-1.5 py-0.5 align-middle text-[9.5px] font-bold tracking-wide whitespace-nowrap text-tinta-3 uppercase">
-      em breve
-    </span>
-  )
-}
-
-function ListaPoderes({
-  titulo,
-  poderes,
-}: {
-  titulo: string
-  poderes: { titulo: string; resumo: string; disponivel: boolean }[]
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-[12px] font-bold tracking-[0.12em] text-tinta-3 uppercase">{titulo}</p>
-      <ul className="flex flex-col gap-3">
-        {poderes.map((p) => (
-          <li key={p.titulo} className="flex gap-2.5">
-            <IconeVisto
-              tamanho={15}
-              className={'mt-1 shrink-0 ' + (p.disponivel ? 'text-bom' : 'text-tinta-3')}
-            />
-            <span className="flex flex-col gap-0.5">
-              <span className={'text-[15px] font-semibold ' + (p.disponivel ? 'text-tinta' : 'text-tinta-2')}>
-                {p.titulo}
-                {!p.disponivel && <EmBreve />}
-              </span>
-              <span className="text-[13.5px] leading-snug text-tinta-2">{p.resumo}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-/**
- * Uma linha da ficha do plano: rótulo à esquerda, número à direita.
- *
- * É `<dl>` de verdade porque é exatamente isso — termo e definição. Leitor de
- * tela anuncia "Lojas, até 5"; num par de divs ele leria "até 5" solto.
- */
-function Ficha({
-  rotulo,
-  valor,
-  nota,
-  rodape,
-}: {
-  rotulo: string
-  valor: string
-  nota?: string | null
-  rodape?: string
-}) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-3 border-t border-borda-suave py-2.5">
-      <dt className="text-[13px] text-tinta-2">{rotulo}</dt>
-      <dd className="numero ml-auto text-[13px] font-bold text-tinta">{valor}</dd>
-      {(nota || rodape) && (
-        <dd className="w-full">
-          {nota && <span className="numero block pt-1 text-[11.5px] font-semibold text-bom">{nota}</span>}
-          {rodape && (
-            <span className="block pt-0.5 text-right text-[11px] leading-snug text-tinta-3">{rodape}</span>
-          )}
-        </dd>
-      )}
-    </div>
-  )
-}
-
-function Coluna({ titulo, links }: { titulo: string; links: { nome: string; href: string }[] }) {
-  return (
-    <nav aria-label={titulo} className="flex flex-col gap-3">
-      <p className="text-[12px] font-bold tracking-[0.12em] text-tinta uppercase">{titulo}</p>
-      <ul className="flex flex-col gap-2">
-        {links.map((l) => (
-          <li key={l.href + l.nome}>
-            <a href={l.href} className="text-sm text-tinta-2 hover:text-marca">
-              {l.nome}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
   )
 }
