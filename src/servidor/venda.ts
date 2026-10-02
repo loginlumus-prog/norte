@@ -152,6 +152,20 @@ export type NovaVenda = {
    * e `acharVenda` lê de lá. Só vale com dinheiro na venda.
    */
   troco?: number
+  /**
+   * A chave que o balcão gerou para esta venda (ver `Venda.chave`). Com ela,
+   * mandar de novo a mesma venda devolve a que já entrou, sem gravar outra.
+   */
+  chave?: string | null
+  /**
+   * A venda aconteceu SEM INTERNET e está subindo agora, da fila do aparelho.
+   * `quando` é a hora em que ela aconteceu de verdade. A peça já saiu da loja
+   * e o dinheiro já está na gaveta: o estoque não trava (fica negativo, como
+   * em "vender sem estoque"), e se o turno de caixa em que ela aconteceu já
+   * fechou, ela entra no caixa aberto da loja. Desconto, PIN, preço e o resto
+   * seguem a mesma régua de sempre — offline não é atalho.
+   */
+  offline?: { quando: Date } | null
 }
 
 export type ResultadoVenda =
@@ -230,8 +244,17 @@ export async function registrarVenda(
   if (pedido.pagamentos.some((p) => !Number.isFinite(p.valor) || p.valor < 0)) {
     return { ok: false, motivo: 'pagamento_nao_fecha', total: 0, pago: 0 }
   }
+  // A chave vem do navegador: só letras, números e hífen, de tamanho de uuid.
+  const chave = typeof pedido.chave === 'string' && /^[\w-]{8,64}$/.test(pedido.chave) ? pedido.chave : null
+  // A hora de quando estava sem internet: nem no futuro, nem de mais de 7 dias.
+  const quando = pedido.offline?.quando instanceof Date && Number.isFinite(pedido.offline.quando.getTime())
+    ? new Date(Math.min(pedido.offline.quando.getTime(), Date.now()))
+    : null
+  const offline = quando && Date.now() - quando.getTime() <= 7 * 864e5 ? { quando } : null
   const v: NovaVenda = {
     ...pedido,
+    chave,
+    offline,
     desconto: Math.max(0, pedido.desconto ?? 0),
     acrescimo: Number.isFinite(pedido.acrescimo) ? Math.max(0, pedido.acrescimo ?? 0) : 0,
     itens: pedido.itens.map((i) => (i.desconto !== undefined ? { ...i, desconto: Math.max(0, i.desconto) } : i)),
@@ -293,6 +316,29 @@ export async function registrarVenda(
   if (avulsos.length > 0 && !podeDesconto) return { ok: false, motivo: 'avulso_negado' }
 
   const corpo = async (db: BancoDaOrg): Promise<ResultadoVenda> => {
+    // ── 0.0 a mesma venda de novo ──
+    // A chave é da empresa (único no banco): se ela já entrou, devolve a que
+    // entrou. A trava da chave faz a segunda chamada ao mesmo tempo esperar a
+    // primeira terminar, e aí achar a venda pronta.
+    if (v.chave) {
+      await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`venda-chave:${sessao.orgId}:${v.chave}`}))`
+      const ja = await db.venda.findFirst({
+        where: { chave: v.chave },
+        select: { id: true, numero: true, total: true, pontosUsados: true, pontosGanhos: true, autorizadoPor: true },
+      })
+      if (ja) {
+        return {
+          ok: true as const,
+          vendaId: ja.id,
+          numero: ja.numero,
+          total: Number(ja.total),
+          pontosUsados: ja.pontosUsados,
+          pontosGanhos: ja.pontosGanhos,
+          semEstoque: [],
+          autorizadoPor: ja.autorizadoPor,
+        }
+      }
+    }
     const empresa = await db.org.findUnique({
       where: { id: sessao.orgId },
       select: {
@@ -562,7 +608,8 @@ export async function registrarVenda(
     // está na mão da cliente, e o sistema é que está errado. A venda passa,
     // o saldo fica negativo, e o item leva o saldo que o sistema tinha — é a
     // pendência "vendeu 2, havia 1" que a gerente confere na prateleira.
-    const vendeSemEstoque = !!empresa?.vendeSemEstoque
+    // A venda de quando estava sem internet já aconteceu: a peça saiu.
+    const vendeSemEstoque = !!empresa?.vendeSemEstoque || !!v.offline
     if (faltando.length > 0 && !vendeSemEstoque) {
       return {
         ok: false as const,
@@ -789,6 +836,9 @@ export async function registrarVenda(
     let caixaId: string | null = null
     if (v.caixaId) {
       caixaId = await travarCaixaAberto(db, v.unidadeId, v.caixaId)
+      // Sem internet, o turno em que a venda aconteceu pode ter fechado antes
+      // de ela subir: entra no caixa aberto da loja, se houver um.
+      if (!caixaId && v.offline) caixaId = await travarCaixaAberto(db, v.unidadeId)
       if (!caixaId) return { ok: false as const, motivo: 'caixa_fechado' as const }
     } else {
       caixaId = await travarCaixaAberto(db, v.unidadeId)
@@ -895,7 +945,10 @@ export async function registrarVenda(
         // garantia de que a encomenda não se recebe em duas vendas).
         encomendaId: v.encomendaId && daEncomenda ? v.encomendaId : null,
         observacoes: v.observacoes || undefined,
-        concluidaEm: new Date(),
+        chave: v.chave ?? null,
+        // A hora de verdade da venda: a de quando estava sem internet, se foi.
+        ...(v.offline ? { criadaEm: v.offline.quando } : {}),
+        concluidaEm: v.offline?.quando ?? new Date(),
         itens: {
           create: itens.map(({ _cent, _tabelaCent, ...i }) => ({ orgId: sessao.orgId, ...i })),
         },

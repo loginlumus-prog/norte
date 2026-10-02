@@ -797,10 +797,16 @@ export function Sucesso({ v, aoNova }: { v: Venda; aoNova: () => void }) {
 
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-extrabold">{p.vendaConcluida}</h2>
-        <p className="text-sm text-tinta-2">
-          Nº <span className="numero">{f.numero}</span>
-          {f.pagamento && <> · {f.pagamento}</>}
-        </p>
+        {f.semInternet ? (
+          // Sem internet: a venda está guardada no aparelho e ganha o número
+          // quando subir. O troco (abaixo) vale do mesmo jeito.
+          <p className="text-sm font-medium text-atencao">Sem internet: guardada neste aparelho, sobe sozinha quando a conexão voltar.</p>
+        ) : (
+          <p className="text-sm text-tinta-2">
+            Nº <span className="numero">{f.numero}</span>
+            {f.pagamento && <> · {f.pagamento}</>}
+          </p>
+        )}
       </div>
 
       <p className="numero text-4xl font-extrabold tracking-tight text-tinta">{brl(f.total)}</p>
@@ -820,10 +826,14 @@ export function Sucesso({ v, aoNova }: { v: Venda; aoNova: () => void }) {
         </Botao>
         {/* No crediário, dois papéis: o comprovante e o carnê que ela assina. */}
         <div className="grid gap-2">
+          {f.semInternet ? (
+            <p className="text-xs text-tinta-3">O comprovante sai depois que a venda subir, em Vendas.</p>
+          ) : (
           <a href={f.comprovante} target="_blank" rel="noopener noreferrer" className={papel}>
             {impressora}
             Imprimir comprovante
           </a>
+          )}
           {f.carne && (
             <a href={f.carne} target="_blank" rel="noopener noreferrer" className={papel}>
               {impressora}

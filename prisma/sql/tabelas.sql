@@ -620,6 +620,7 @@ CREATE TABLE "vendas" (
     "data_corrigida_em" TIMESTAMP(3),
     "data_corrigida_por" TEXT,
     "data_corrigida_motivo" TEXT,
+    "chave" TEXT,
 
     CONSTRAINT "vendas_pkey" PRIMARY KEY ("id")
 );
@@ -1737,6 +1738,9 @@ CREATE INDEX "vendas_org_id_vendedor_id_criada_em_idx" ON "vendas"("org_id", "ve
 
 -- CreateIndex
 CREATE UNIQUE INDEX "vendas_unidade_id_numero_key" ON "vendas"("unidade_id", "numero");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "vendas_org_id_chave_key" ON "vendas"("org_id", "chave");
 
 -- CreateIndex
 CREATE INDEX "venda_itens_org_id_venda_id_idx" ON "venda_itens"("org_id", "venda_id");

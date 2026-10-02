@@ -51,6 +51,7 @@ import type { Vendedor } from '@/servidor/equipe'
 import { Botao, Aviso, Situacao, cx } from '@/ui/base'
 import { grade, type Grade, type InicialDoBalcao } from './acoes'
 import { brl, precoDe, linhaCent } from './conta'
+import { FilaSemInternet } from './FilaSemInternet'
 import { useVenda, FORMAS, TECLA_DA_FORMA, tituloDaForma, type ConfigDoBalcao, type EncomendaNoPedido, type Linha } from './useVenda'
 import { PedirPin, PerguntaSemEstoque } from './Autorizar'
 import { DadosDoCartao, DadosDoCrediario } from './Pedido'
@@ -186,6 +187,8 @@ export function Balcao({
           </span>
         </Aviso>
       )}
+
+      <FilaSemInternet online={v.online} fila={v.fila} subir={v.subirFila} descartar={v.descartarDaFila} />
 
       {recado && (
         <Aviso nivel={recado.nivel}>

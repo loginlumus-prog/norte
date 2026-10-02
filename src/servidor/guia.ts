@@ -292,7 +292,7 @@ export const GUIA: Entrada[] = [
           'Crédito cobra o preço "no cartão"; as outras formas, o "à vista". Com formas misturadas vale a tabela mais cara, e a escada dos três totais aparece quando os preços diferem.',
           'Aperte F10 ou "Fechar venda". Sai o recado com o número da venda, os pontos que o cliente ganhou e o link "imprimir comprovante".',
           'Atalhos: F10 fecha (ou leva às formas, se ainda falta pagar), Ctrl+P volta à busca, Alt+N abre o cliente, Alt+F o vendedor; na busca, Enter lança o primeiro resultado e Esc limpa.',
-          'No plano Grátis, a venda de número 301 do mês é recusada, com o recado do limite: o plano vai até 300 vendas concluídas por mês (a cancelada não conta), e o limite solta no dia 1º.',
+          'Sem internet, dinheiro, Pix e cartão seguem: a venda fica guardada no aparelho (a faixa amarela diz quantas esperam) e sobe sozinha quando a conexão voltar, com a hora em que aconteceu. Crediário, vale, pontos e PIN precisam de internet. (No Grátis, a venda 301 do mês é recusada.)',
         ],
         capacidade: 'venda.criar',
       },

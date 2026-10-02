@@ -29,6 +29,7 @@ import type { Vendedor } from '@/servidor/equipe'
 import { faz } from './guardar'
 import { VendaIncerta, AvisoFixo } from './VendaIncerta'
 import { brl } from './conta'
+import { FilaSemInternet } from './FilaSemInternet'
 import { useVenda, type ConfigDoBalcao, type EncomendaNoPedido, type Venda } from './useVenda'
 import { PedirPin } from './Autorizar'
 import { Produtos } from './Produtos'
@@ -205,7 +206,7 @@ export function BalcaoSimples({
   // O anúncio para quem usa leitor de tela. Fica montado sempre — região viva
   // que nasce junto com o texto não é lida por todos os leitores.
   const anuncio = v.fechada
-    ? `${p.Venda} ${v.fechada.numero} ${p.vendaFeminina ? 'concluída' : 'concluído'}, ${brl(v.fechada.total)}.${v.fechada.trocoCent > 0 ? ` Troco: ${brl(v.fechada.trocoCent / 100)}.` : ''}`
+    ? `${p.Venda} ${v.fechada.semInternet ? 'guardad' + (p.vendaFeminina ? 'a' : 'o') + ' sem internet' : `${v.fechada.numero} ${p.vendaFeminina ? 'concluída' : 'concluído'}`}, ${brl(v.fechada.total)}.${v.fechada.trocoCent > 0 ? ` Troco: ${brl(v.fechada.trocoCent / 100)}.` : ''}`
     : ''
 
   const pedido = (
@@ -259,6 +260,7 @@ export function BalcaoSimples({
           </span>
         </Aviso>
       )}
+      <FilaSemInternet online={v.online} fila={v.fila} subir={v.subirFila} descartar={v.descartarDaFila} />
       {v.alerta && <Aviso nivel="atencao">{v.alerta}</Aviso>}
       {v.aviso && <AvisoFixo texto={v.aviso} aoFechar={() => v.setAviso(null)} />}
       {v.cobrando && (

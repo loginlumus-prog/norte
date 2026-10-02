@@ -25,9 +25,10 @@
 //     bipe leva o foco para a busca e o resto do código cai lá. Sem isso, a
 //     regra 9 quebraria o leitor no tablet.
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import type { ClienteNoBalcao, Achado, InicialDoBalcao } from './acoes'
 import { procurar, fecharVenda, consultarValeAcao, fichaNoBalcao } from './acoes'
+import { lerFila, marcarErro, novaChave, podeIrParaFila, porNaFila, procurarGuardado, tirarDaFila, type VendaNaFila } from './semInternet'
 import { chaveDoBalcao, guardar, recuperar, esquecer, lembrar, lembrado } from './guardar'
 import { contar, cpfConfere, faltaCom, pagamentosParaEnviar, precoDe, brl, cent, NOME_DA_FORMA, rotuloDoPagamento } from './conta'
 import type { Tabela } from '@/servidor/preco'
@@ -137,6 +138,8 @@ export type Fechada = {
   comprovante: string
   /** A venda teve crediário: o carnê que a cliente assina. Nulo sem crediário. */
   carne: string | null
+  /** Guardada no aparelho, sem internet: ainda sem número nem comprovante. */
+  semInternet?: boolean
 }
 
 export const FORMAS = [
@@ -148,6 +151,25 @@ export const FORMAS = [
 
 export const tituloDaForma = (p: { forma: string; rotulo?: string }) =>
   p.rotulo ?? FORMAS.find((f) => f.chave === p.forma)?.titulo ?? NOME_DA_FORMA[p.forma] ?? p.forma
+
+/** A recusa da fila em palavras de gente, para quem for resolver. */
+function motivoEmPalavras(motivo: string): string {
+  const m: Record<string, string> = {
+    sem_itens: 'A venda chegou sem itens.',
+    pagamento_nao_fecha: 'A conta não fecha com o preço de agora (o preço mudou?).',
+    caixa_fechado: 'Não há caixa aberto na loja: abra o caixa para esta venda subir.',
+    desconto_acima_do_teto: 'O desconto passa do teto da loja: precisa de autorização.',
+    avulso_negado: 'Item fora do cadastro precisa de autorização.',
+    vendedor_invalido: 'O vendedor escolhido não pode vender nesta loja.',
+    fora_da_loja: 'Um produto não é vendido nesta loja.',
+    uso_interno: 'Um item é material de uso e não se vende.',
+    teto_do_plano: 'O plano chegou ao teto de vendas do mês.',
+    loja_nao_vende: 'A loja não vende (depósito ou fechada).',
+    item_inativo: 'Um produto foi desativado no cadastro.',
+    quantidade_fracionada: 'Quantidade quebrada em produto por unidade.',
+  }
+  return m[motivo] ?? 'O servidor recusou esta venda.'
+}
 
 export function useVenda({
   slug,
@@ -456,11 +478,73 @@ export function useVenda({
     }
     const t = setTimeout(() => {
       procurar(slug, unidadeId, t0)
+        // Sem internet, a busca sai do catálogo guardado no aparelho.
+        .catch(async () => (await procurarGuardado(slug, unidadeId, t0)) ?? [])
         .then((itens) => setBusca_({ de: t0, itens }))
         .catch(() => setBusca_({ de: t0, itens: [] }))
     }, 180)
     return () => clearTimeout(t)
   }, [termo, slug, unidadeId])
+
+  // ── sem internet: a fila do aparelho (ver semInternet.ts) ──
+  // A chave desta venda: nasce no primeiro "Concluir" e vale até ela entrar.
+  // Mandar de novo (a rede caiu no meio, a fila subiu outra vez) com a mesma
+  // chave devolve a venda que já entrou, em vez de gravar outra.
+  const chaveDaVenda = useRef<string | null>(null)
+  const [fila, setFila] = useState<VendaNaFila[]>([])
+  const [online, setOnline] = useState(true)
+  const subindo = useRef(false)
+
+  const subirFila = useCallback(async (tambemRecusadas = false) => {
+    if (subindo.current) return
+    subindo.current = true
+    try {
+      for (const item of lerFila(slug)) {
+        if (item.erro && !tambemRecusadas) continue
+        let r: Awaited<ReturnType<typeof fecharVenda>>
+        try {
+          r = await fecharVenda(slug, { ...(item.dados as Parameters<typeof fecharVenda>[1]), chave: item.chave, offline: { quando: item.quando } })
+        } catch {
+          break // ainda sem internet: tenta na próxima
+        }
+        if (r.ok) tirarDaFila(slug, item.chave)
+        else marcarErro(slug, item.chave, 'recado' in r && typeof r.recado === 'string' ? r.recado : motivoEmPalavras(r.motivo))
+      }
+    } finally {
+      subindo.current = false
+      setFila(lerFila(slug))
+    }
+  }, [slug])
+
+  useEffect(() => {
+    // O ajudante do navegador que guarda a página do balcão para abrir sem
+    // internet (public/sw.js). Só em produção: no desenvolvimento os arquivos
+    // mudam a cada salvamento, e guardá-los só atrapalharia.
+    if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {})
+    }
+    setFila(lerFila(slug))
+    setOnline(navigator.onLine)
+    const voltou = () => {
+      setOnline(true)
+      void subirFila()
+    }
+    const caiu = () => setOnline(false)
+    window.addEventListener('online', voltou)
+    window.addEventListener('offline', caiu)
+    const t = setInterval(() => void subirFila(), 20_000)
+    void subirFila()
+    return () => {
+      window.removeEventListener('online', voltou)
+      window.removeEventListener('offline', caiu)
+      clearInterval(t)
+    }
+  }, [slug, subirFila])
+
+  function descartarDaFila(chave: string) {
+    tirarDaFila(slug, chave)
+    setFila(lerFila(slug))
+  }
 
   // O aviso de estoque some sozinho: ele é informação de agora, não erro.
   useEffect(() => {
@@ -561,7 +645,7 @@ export function useVenda({
       try {
         itens = await procurar(slug, unidadeId, t)
       } catch {
-        itens = []
+        itens = (await procurarGuardado(slug, unidadeId, t).catch(() => null)) ?? []
       }
     }
     // A etiqueta do PRODUTO (um número para a grade inteira — ver
@@ -819,10 +903,14 @@ export function useVenda({
     // o pedido e a resposta, quem abrir de novo fica sabendo.
     guardar(chave, { ...guardado, fechando: Date.now() })
     setIncerta(false)
+    chaveDaVenda.current ??= novaChave()
+    const chaveVenda = chaveDaVenda.current
     comecar(async () => {
       let r: Awaited<ReturnType<typeof fecharVenda>>
+      let enviado: Parameters<typeof fecharVenda>[1] | null = null
       try {
-        r = await fecharVenda(slug, {
+        r = await fecharVenda(slug, enviado = {
+        chave: chaveVenda,
         unidadeId,
         caixaId,
         // Em reais, já calculado na tabela da forma (o % vira dinheiro aqui).
@@ -855,7 +943,43 @@ export function useVenda({
         troco: trocoAgora / 100,
         })
       } catch {
-        // Caiu a rede no meio: não dá para saber se o servidor gravou. A marca
+        // Caiu a rede. Com a chave, mandar de novo não duplica: a venda vai
+        // para a fila do aparelho e sobe sozinha quando a conexão voltar — se
+        // for uma venda que se faz sem internet (dinheiro, Pix, cartão).
+        if (enviado && podeIrParaFila({ ...enviado, pin: o.pin ?? null })) {
+          const { chave: _c, ...dados } = enviado
+          const foi = porNaFila(slug, {
+            chave: chaveVenda,
+            unidadeId,
+            quando: Date.now(),
+            total: conta.totalCent / 100,
+            resumo: `${plural(carrinho.length, 'item', 'itens')}${pagamentoAgora ? ` · ${pagamentoAgora}` : ''}`,
+            dados,
+          })
+          if (foi) {
+            setFila(lerFila(slug))
+            chaveDaVenda.current = null
+            setFechada({
+              vendaId: chaveVenda,
+              numero: 0,
+              total: conta.totalCent / 100,
+              trocoCent: trocoAgora,
+              pontosGanhos: 0,
+              pagamento: pagamentoAgora,
+              comprovante: '',
+              carne: null,
+              semInternet: true,
+            })
+            setRecado({
+              nivel: 'bom',
+              texto: `Sem internet: ${palavras.aVenda} de ${brl(conta.totalCent / 100)} ficou guardad${palavras.vendaFeminina ? 'a' : 'o'} neste aparelho e sobe sozinh${palavras.vendaFeminina ? 'a' : 'o'} quando a conexão voltar. O comprovante sai depois, em ${palavras.Vendas}.`,
+            })
+            limpar()
+            return
+          }
+        }
+        // Não pôde ir para a fila (crediário, vale, pontos, PIN, encomenda ou
+        // o aparelho sem lugar): não dá para saber se o servidor gravou. A marca
         // de "concluindo" fica, e a tela diz para conferir antes de repetir.
         setIncerta(true)
         setRecado({
@@ -874,6 +998,7 @@ export function useVenda({
       if (r.ok || r.motivo !== 'autorizacao_recusada') setPedidoDePin(null)
 
       if (r.ok) {
+        chaveDaVenda.current = null
         // O ganho aparece no recado porque e a hora de falar: "voce ja tem
         // 1.240 pontos" dito no balcao e o que faz a pessoa voltar. Guardado
         // so no banco, o programa nao existe para quem compra.
@@ -1121,6 +1246,11 @@ export function useVenda({
   const itensNaVenda = carrinho.reduce((s, l) => s + (l.medida === 'UN' ? l.quantidade : 1), 0)
 
   return {
+    // sem internet: a fila do aparelho
+    fila,
+    online,
+    subirFila,
+    descartarDaFila,
     // a busca
     termo,
     setTermo,

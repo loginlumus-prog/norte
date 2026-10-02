@@ -44,6 +44,7 @@ import {
 } from 'react'
 import { Botao, Situacao, cx } from '@/ui/base'
 import { vitrine, type Achado, type Vitrine } from './acoes'
+import { baixarCatalogo, vitrineGuardada } from './semInternet'
 import { brl, precoDe, linhaCent } from './conta'
 import type { Venda } from './useVenda'
 import {
@@ -143,7 +144,13 @@ export function Produtos({
   useEffect(() => {
     let vivo = true
     const k = `${unidadeId}:${categoriaId ?? '*'}`
+    // Sem internet, a vitrine sai do catálogo guardado no aparelho (semInternet.ts).
     vitrine(slug, unidadeId, categoriaId, 0)
+      .catch(async () => {
+        const g = await vitrineGuardada(slug, unidadeId, categoriaId, 0)
+        if (!g) throw new Error('sem catálogo guardado')
+        return g as Vitrine
+      })
       .then((r: Vitrine) => {
         if (!vivo) return
         if (r.categorias) {
@@ -153,6 +160,11 @@ export function Produtos({
         }
         setPagina({ chave: k, produtos: r.produtos, mais: r.mais })
         setFalhou(null)
+        // Com internet, guarda o catálogo inteiro da loja no aparelho, sem
+        // pressa (no máximo a cada meia hora), para a queda de internet.
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          setTimeout(() => void baixarCatalogo(slug, unidadeId, (pular) => vitrine(slug, unidadeId, null, pular)), 4000)
+        }
       })
       .catch(() => vivo && setFalhou(k))
     return () => {
@@ -164,7 +176,11 @@ export function Produtos({
     if (!pagina || maisIndo) return
     setMaisIndo(true)
     try {
-      const r = await vitrine(slug, unidadeId, categoriaId, pagina.produtos.length)
+      const r = await vitrine(slug, unidadeId, categoriaId, pagina.produtos.length).catch(async () => {
+        const g = await vitrineGuardada(slug, unidadeId, categoriaId, pagina.produtos.length)
+        if (!g) throw new Error('sem catálogo guardado')
+        return g as Vitrine
+      })
       setPagina((p) =>
         p && p.chave === chave ? { chave, produtos: [...p.produtos, ...r.produtos], mais: r.mais } : p,
       )
@@ -201,7 +217,9 @@ export function Produtos({
     let vivo = true
     const k = `${unidadeId}:${idComplemento}`
     vitrine(slug, unidadeId, idComplemento, 0)
+      .catch(async () => (await vitrineGuardada(slug, unidadeId, idComplemento, 0)) as Vitrine)
       .then((r) => {
+        if (!r) return
         if (vivo) setComplementos({ chave: k, produtos: r.produtos })
       })
       // Sem complementos a venda segue igual: a sugestão só não aparece.

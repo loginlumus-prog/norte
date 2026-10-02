@@ -1435,7 +1435,13 @@ model Venda {
   dataCorrigidaPor    String?   @map("data_corrigida_por")
   dataCorrigidaMotivo String?   @map("data_corrigida_motivo")
 
+  /// A chave que o BALCÃO gera para esta venda, antes de mandar. A mesma
+  /// venda mandada duas vezes (a rede caiu no meio, a fila de quando estava
+  /// sem internet subiu de novo) volta como a primeira, em vez de gravar duas.
+  chave String?
+
   @@unique([unidadeId, numero])
+  @@unique([orgId, chave])
   @@index([orgId, unidadeId, criadaEm])
   @@index([orgId, situacao])
   // O histórico do cliente e a conta de metas por vendedor filtram por essas

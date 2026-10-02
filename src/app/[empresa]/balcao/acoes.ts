@@ -505,6 +505,10 @@ export async function fecharVenda(
     encomendaId?: string | null
     /** O troco devolvido em dinheiro. Não é pagamento — vai para o papel. */
     troco?: number
+    /** A chave que esta tela gerou para a venda: mandar de novo não duplica. */
+    chave?: string | null
+    /** A venda foi feita sem internet: a hora (ms) em que aconteceu. Ver venda.ts. */
+    offline?: { quando: number } | null
   },
 ): Promise<ResultadoVenda | { ok: false; motivo: 'recusa'; recado: string; soltar?: 'vale' | 'pontos' }> {
   const s = await exigirSessao(slug)
@@ -563,6 +567,8 @@ async function registrarVendaDoBalcao(
     pontosUsar: dados.pontosUsar ?? 0,
     observacoes: obs || undefined,
     troco: Number(dados.troco) || 0,
+    chave: typeof dados.chave === 'string' ? dados.chave : null,
+    offline: dados.offline && Number.isFinite(Number(dados.offline.quando)) ? { quando: new Date(Number(dados.offline.quando)) } : null,
     agendamentoId: typeof dados.agendamentoId === 'string' && /^[\w-]{1,64}$/.test(dados.agendamentoId) ? dados.agendamentoId : null,
     pagamentos: dados.pagamentos.map((p) => ({
       forma: p.forma as FormaPagamento,

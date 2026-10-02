@@ -62,6 +62,11 @@ export function proxy(request: NextRequest) {
     // pilha de erro do servidor no navegador. Em produção ele não usa.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${comMeta ? ` ${META.script}` : ''}${DEV ? " 'unsafe-eval'" : ''}`,
 
+    // Worker: só o do próprio site (/sw.js, o balcão que abre sem internet).
+    // Sem esta linha valeria a regra do script, e o 'strict-dynamic' dela não
+    // cobre registrar um service worker pelo endereço.
+    `worker-src 'self'`,
+
     // Iframe: nenhum — menos a janelinha invisível do SDK da Meta, na tela dela.
     ...(comMeta ? [`frame-src ${META.frame}`] : []),
 
