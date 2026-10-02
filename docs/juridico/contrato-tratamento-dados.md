@@ -19,7 +19,7 @@ Anexo aos Termos de Uso do Norte (`/termos`), dos quais faz parte.
 **CONTROLADORA:** a empresa identificada no cadastro da conta no Norte, que
 aceitou os Termos de Uso, doravante **"Loja"**.
 
-Encarregado do Norte: [NOME DO ENCARREGADO] — privacidade@usenorte.com.br.
+Encarregado do Norte: [NOME DO ENCARREGADO] — privacidade@gestornorte.com.
 
 ## 1. Definições
 

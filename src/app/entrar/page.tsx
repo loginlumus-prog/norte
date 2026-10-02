@@ -6,7 +6,7 @@ import { QualEmpresa } from './QualEmpresa'
 
 // "Entrar" da página de venda.
 //
-// Cada empresa entra pelo próprio endereço (usenorte.com.br/<empresa>/entrar),
+// Cada empresa entra pelo próprio endereço (gestornorte.com/<empresa>/entrar),
 // porque a sessão mora no caminho da empresa. Até 02/10/2026 o botão "Entrar"
 // do site levava para o login da empresa de EXEMPLO — o dono de verdade caía
 // numa tela que nunca ia aceitar a senha dele. Esta página pergunta o endereço
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 
 export default async function Entrar() {
   const publico = await enderecoPublico()
-  const dominio = (publico ?? 'https://usenorte.com.br').replace(/^https?:\/\//, '')
+  const dominio = (publico ?? 'https://gestornorte.com').replace(/^https?:\/\//, '')
 
   return (
     <div className="flex min-h-dvh flex-col bg-fundo">

@@ -34,7 +34,7 @@ const SEMENTE = `
     ('uni-b1', 'org-b', 'B1', false, false, now());
   insert into usuarios (id, org_id, nome, email, telefone, senha_hash, sessoes_desde, atualizado_em) values
     ('usr-ana', 'org-a', 'Ana Dona', 'ana@a.com', '11 99999-0000', 'x', '2026-01-01', now()),
-    ('usr-sup', 'org-b', 'Suporte do Norte', 'sup@usenorte.com.br', null, null, '2026-01-01', now());
+    ('usr-sup', 'org-b', 'Suporte do Norte', 'sup@gestornorte.com', null, null, '2026-01-01', now());
   insert into acessos (id, org_id, usuario_id, unidade_id, papel, expira_em) values
     ('ac-ana', 'org-a', 'usr-ana', null, 'DONO', null),
     ('ac-sup', 'org-b', 'usr-sup', null, 'SUPORTE', (now() at time zone 'utc') + interval '2 hours');
@@ -112,7 +112,7 @@ describe('leitura de todas as empresas (credencial de admin)', () => {
 
   it('o detalhe traz lojas, equipe com papéis e o convite pendente', async () => {
     const d = await m.leitura.detalheEmpresa(admin, 'vizinha-b')
-    expect(d!.equipe).toEqual([expect.objectContaining({ email: 'sup@usenorte.com.br', temSenha: false, papeis: [expect.objectContaining({ papel: 'SUPORTE' })] })])
+    expect(d!.equipe).toEqual([expect.objectContaining({ email: 'sup@gestornorte.com', temSenha: false, papeis: [expect.objectContaining({ papel: 'SUPORTE' })] })])
     expect(d!.convites).toEqual([expect.objectContaining({ papel: 'DONO', aceitoEm: null })])
     expect(await m.leitura.detalheEmpresa(admin, 'nao-existe')).toBeNull()
   })

@@ -180,12 +180,12 @@ async function sessaoDoSuporte(email: string): Promise<Sessao> {
 
 describe('conceder escolhe o modo', () => {
   it('sem edição é só leitura; com edição grava o modo e o livro diz qual', async () => {
-    await m.operacao.concederSuporte('org-s', { email: 'rafa@usenorte.com.br', horas: 2, motivo: 'Olhar o estoque', quem: 'Rafa' })
+    await m.operacao.concederSuporte('org-s', { email: 'rafa@gestornorte.com', horas: 2, motivo: 'Olhar o estoque', quem: 'Rafa' })
     let [a] = await linhas<{ suporte_edita: boolean }>(`select suporte_edita from acessos where papel = 'SUPORTE'`)
     expect(a!.suporte_edita).toBe(false)
 
     const r = await m.operacao.concederSuporte('org-s', {
-      email: 'rafa@usenorte.com.br', horas: 4, motivo: 'Arrumar o cadastro de produtos', quem: 'Rafa', edicao: true,
+      email: 'rafa@gestornorte.com', horas: 4, motivo: 'Arrumar o cadastro de produtos', quem: 'Rafa', edicao: true,
     })
     expect(r.edicao).toBe(true)
     ;[a] = await linhas<{ suporte_edita: boolean }>(`select suporte_edita from acessos where papel = 'SUPORTE'`)
@@ -197,14 +197,14 @@ describe('conceder escolhe o modo', () => {
     expect(livro.at(-1)!.antes.modo).toBe('leitura')
     expect(livro.at(-1)!.depois.modo).toBe('edicao')
 
-    const e = await m.operacao.estadoDoSuporte('org-s', 'rafa@usenorte.com.br')
+    const e = await m.operacao.estadoDoSuporte('org-s', 'rafa@gestornorte.com')
     expect(e.suporte?.edicao).toBe(true)
   })
 })
 
 describe('no modo edição', () => {
   it('edita um produto (nome e preço), e o livro diz "Equipe Norte (...)"', async () => {
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     expect(s.nome).toBe('Equipe Norte (Rafa)')
     const r = await m.produto.editarProduto(s, 'p-blusa', { nome: 'Blusa de linho', precoVista: 90 })
     expect(r.ok).toBe(true)
@@ -222,7 +222,7 @@ describe('no modo edição', () => {
   })
 
   it('convida uma balconista, e não um gerente', async () => {
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     const c = await m.convite.convidar(s, { email: 'nova@s.com', papel: 'BALCAO', unidadeId: 'uni-s1' }, 'http://x/loja-s')
     expect(c.link).toContain('/convite/')
     const [l] = await linhas<{ quem: string }>(`select quem from auditoria where acao = 'convite.criou'`)
@@ -232,7 +232,7 @@ describe('no modo edição', () => {
   })
 
   it('não registra venda', async () => {
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     await expect(
       m.venda.registrarVenda(s, {
         unidadeId: 'uni-s1',
@@ -243,20 +243,20 @@ describe('no modo edição', () => {
   })
 
   it('não cancela venda', async () => {
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     await expect(m.venda.cancelarVenda(s, 'venda-1', 'teste do suporte')).rejects.toBeInstanceOf(SemPermissao)
     const [v] = await linhas<{ situacao: string }>(`select situacao from vendas where id = 'venda-1'`)
     expect(v!.situacao).toBe('CONCLUIDA')
   })
 
   it('não abre caixa', async () => {
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     await expect(m.caixa.abrirCaixa(s, 'uni-s1', 100)).rejects.toBeInstanceOf(SemPermissao)
     expect(await linhas(`select id from caixas`)).toHaveLength(0)
   })
 
   it('não mexe na Assinatura (pedido, troca de plano) mesmo tendo empresa.configurar', async () => {
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     expect(pode(s, 'empresa.configurar')).toBe(true)
     await expect(m.assinatura.registrarPedido(s, { tipo: 'respostas' })).rejects.toThrow(/suporte do Norte não mexe na Assinatura/)
     await expect(m.assinatura.trocarPlano(s, 'REDE')).rejects.toThrow(/suporte do Norte/)
@@ -264,7 +264,7 @@ describe('no modo edição', () => {
   })
 
   it('encomenda: corrige o texto e marca pronta; valor, sinal, entregar e cancelar não', async () => {
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     const dias = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(Date.now() + 3 * 864e5))
     const base = { clienteNome: 'Cliente', descricao: 'Bolo de cenoura com cobertura', valor: 120, sinal: 50, dia: dias, hora: '15:00', entrega: false }
     expect((await m.encomenda.editarEncomenda(s, 'enc-1', base)).ok).toBe(true)
@@ -287,7 +287,7 @@ describe('no modo edição', () => {
   })
 
   it('não abre loja (muda a conta) nem fecha', async () => {
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     await expect(m.lojas.mudarSituacaoLoja(s, 'uni-s1', false)).rejects.toBeInstanceOf(SemPermissao)
     const [u] = await linhas<{ ativa: boolean }>(`select ativa from unidades where id = 'uni-s1'`)
     expect(u!.ativa).toBe(true)
@@ -296,8 +296,8 @@ describe('no modo edição', () => {
 
 describe('no modo leitura e depois do prazo', () => {
   it('só leitura não edita produto', async () => {
-    await m.operacao.concederSuporte('org-s', { email: 'rafa@usenorte.com.br', horas: 1, motivo: 'Só olhar agora', quem: 'Rafa' })
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    await m.operacao.concederSuporte('org-s', { email: 'rafa@gestornorte.com', horas: 1, motivo: 'Só olhar agora', quem: 'Rafa' })
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     expect(s.acessos[0]!.suporteEdita).toBe(false)
     await expect(m.produto.editarProduto(s, 'p-blusa', { nome: 'Outra' })).rejects.toBeInstanceOf(SemPermissao)
     await expect(m.convite.convidar(s, { email: 'x@s.com', papel: 'BALCAO', unidadeId: 'uni-s1' }, 'http://x/loja-s')).rejects.toThrow()
@@ -305,10 +305,10 @@ describe('no modo leitura e depois do prazo', () => {
 
   it('vencido não edita, mesmo no modo edição', async () => {
     await m.operacao.concederSuporte('org-s', {
-      email: 'rafa@usenorte.com.br', horas: 1, motivo: 'Arrumar de novo', quem: 'Rafa', edicao: true,
+      email: 'rafa@gestornorte.com', horas: 1, motivo: 'Arrumar de novo', quem: 'Rafa', edicao: true,
     })
     await db.query(`update acessos set expira_em = now() - interval '1 minute' where papel = 'SUPORTE'`)
-    const s = await sessaoDoSuporte('rafa@usenorte.com.br')
+    const s = await sessaoDoSuporte('rafa@gestornorte.com')
     expect(s.acessos[0]!.suporteEdita).toBe(true)
     await expect(m.produto.editarProduto(s, 'p-blusa', { nome: 'Vencida' })).rejects.toBeInstanceOf(SemPermissao)
   })

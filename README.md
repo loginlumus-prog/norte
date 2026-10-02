@@ -142,7 +142,7 @@ administra a empresa gerar um link na tela Equipe".
 | | |
 |---|---|
 | `RESEND_API_KEY` | a chave do Resend (Resend › API Keys), com permissão de envio |
-| `EMAIL_REMETENTE` | quem manda, ex.: `Norte <nao-responda@usenorte.com.br>` — o domínio precisa estar verificado no Resend (SPF e DKIM no DNS) |
+| `EMAIL_REMETENTE` | quem manda, ex.: `Norte <nao-responda@gestornorte.com>` — o domínio precisa estar verificado no Resend (SPF e DKIM no DNS) |
 | `NORTE_URL` | já existente. É a base de TODO link que sai por e-mail; em produção, sem ela, o e-mail fica desligado (link montado pelo cabeçalho `Host` deixaria um golpista pedir a senha de alguém e receber o link verdadeiro apontando para o site dele) |
 | `CADASTRO_ABERTO` | opcional. `0` fecha o cadastro pelo site (`/cadastro`): a página passa a dizer "fale com a gente" com o e-mail. Qualquer outro valor, ou nenhum, deixa aberto |
 
@@ -271,17 +271,17 @@ tela Equipe e corta quando quiser. O modo é lido do banco a cada tela:
 conceder de novo com outro modo vale na próxima tela.
 
 ```
-$ npm run operacao -- suporte exemplo --email suporte.teste@usenorte.com.br --horas 4 \
+$ npm run operacao -- suporte exemplo --email suporte.teste@gestornorte.com --horas 4 \
     --motivo "Chamado 118: conferir o fechamento de caixa de sexta" --quem "Seu nome" --confirmar
 
     Conta     será criada agora, sem senha
-    Senha     ninguém daqui escolhe: o link de "Esqueci a senha" vai para suporte.teste@usenorte.com.br
+    Senha     ninguém daqui escolhe: o link de "Esqueci a senha" vai para suporte.teste@gestornorte.com
     Prazo     até 27/09/26, 01:35 (4 h)
     Modo      só leitura (para editar, rode com --edicao)
     Livro     cada tela aberta vira linha no livro da loja; cada mudança sai assinada "Equipe Norte (nome)"
 
   Feito. Acesso de suporte até 27/09/26, 01:35. A conta foi criada.
-  Como entrar: http://localhost:3000/exemplo/entrar — com o e-mail suporte.teste@usenorte.com.br e a SENHA DA PRÓPRIA PESSOA.
+  Como entrar: http://localhost:3000/exemplo/entrar — com o e-mail suporte.teste@gestornorte.com e a SENHA DA PRÓPRIA PESSOA.
 ```
 
 - Usuário é sempre de uma empresa só: quem atende três lojas tem três contas,
@@ -297,7 +297,7 @@ $ npm run operacao -- suporte exemplo --email suporte.teste@usenorte.com.br --ho
   `suporte-revogar` corta as sessões abertas na hora.
 - Recusa e-mail de gente da loja (suporte é conta separada) e conta que a
   própria loja desativou na tela Equipe — a decisão é dela.
-  `NORTE_EQUIPE_DOMINIO=usenorte.com.br` restringe ao e-mail da equipe.
+  `NORTE_EQUIPE_DOMINIO=gestornorte.com` restringe ao e-mail da equipe.
 - A conta de suporte não conta como "pessoa cadastrada" na Assinatura da loja.
 
 ### Situação da empresa
@@ -422,6 +422,11 @@ E no `.env.development.local` do Norte: `CONECTOR_URL=http://localhost:3200` e
 o mesmo `CONECTOR_SEGREDO`.
 
 ### Pôr no ar numa VPS (passo a passo)
+
+> **Produção de verdade (o Norte inteiro numa VPS):** siga
+> [`deploy/LEIA-ME.md`](deploy/LEIA-ME.md) — site + conector + HTTPS com
+> Docker Compose, do DNS ao último teste. O guia abaixo é a **alternativa**:
+> só o conector numa VPS, com o Norte hospedado em outro lugar (Render).
 
 Serve qualquer servidor Linux pequeno e **sempre ligado**: 1 GB de memória
 atende dezenas de lojas. Opções: Hetzner (CX22, ~4 €/mês), Contabo (VPS S),

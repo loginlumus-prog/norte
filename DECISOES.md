@@ -39,7 +39,7 @@ gente quer atender.
 
 **Fraqueza conhecida:** "Norte" é palavra comum, então marca isolada é fraca no
 INPI. Registrar como marca mista (nome + símbolo) e/ou composta ("Norte
-Sistemas"). Domínio: `norte.com.br` certamente ocupado — usar `usenorte.com.br`
+Sistemas"). Domínio: `norte.com.br` certamente ocupado — usar `gestornorte.com`
 ou `norte.app`. **Confirmar disponibilidade antes de mandar fazer logo.**
 
 ---
@@ -418,7 +418,7 @@ recalcular depois daria o número errado para o passado.
 
 ## 15. O que continua em aberto
 
-- [ ] Confirmar domínio (`usenorte.com.br`) e registrar marca MISTA no INPI —
+- [ ] Confirmar domínio (`gestornorte.com`) e registrar marca MISTA no INPI —
       "Norte" isolado é fraco, ver §1
 - [ ] Regras de troca por loja (hoje são provisórias, do varejo genérico)
 - [ ] Qual emissor de nota fiscal: Focus NFe ou Nuvem Fiscal

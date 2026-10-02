@@ -1,0 +1,9 @@
+# Scripts e arquivos de deploy rodam no Linux: fim de linha LF sempre, mesmo
+# quando o checkout é no Windows (CRLF quebra o bash com "\r: comando não
+# encontrado").
+*.sh text eol=lf
+deploy/Caddyfile text eol=lf
+deploy/Dockerfile text eol=lf
+deploy/Dockerfile.dockerignore text eol=lf
+deploy/docker-compose.yml text eol=lf
+deploy/env.exemplo text eol=lf

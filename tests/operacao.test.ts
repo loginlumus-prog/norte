@@ -142,7 +142,7 @@ describe('a assinatura da equipe no livro', () => {
     expect(quemDaEquipe('  Rafa   Lima ')).toBe('Equipe Norte (Rafa Lima)')
     expect(quemDaEquipe('Equipe Norte (Rafa)')).toBe('Equipe Norte (Rafa)')
     expect(() => quemDaEquipe('')).toThrow(/--quem/)
-    expect(() => quemDaEquipe('rafa@usenorte.com.br')).toThrow(/sem e-mail/)
+    expect(() => quemDaEquipe('rafa@gestornorte.com')).toThrow(/sem e-mail/)
     expect(() => quemDaEquipe('123')).toThrow()
     expect(() => quemDaEquipe('x'.repeat(61))).toThrow()
   })
@@ -182,7 +182,7 @@ describe('a linha de comando', () => {
     expect(validarMotivo('  chamado   4412  ')).toBe('chamado 4412')
     expect(() => validarMotivo('ok')).toThrow(/--motivo/)
     expect(() => validarMotivo(true)).toThrow()
-    expect(validarEmail(' Rafa@UseNorte.com.br ')).toBe('rafa@usenorte.com.br')
+    expect(validarEmail(' Rafa@gestornorte.com ')).toBe('rafa@gestornorte.com')
     expect(() => validarEmail('rafa')).toThrow()
   })
 
@@ -214,7 +214,7 @@ describe('quem pode receber acesso de suporte', () => {
     expect(impedimentoDoSuporte({ ...base, usuario: { id: 'u', nome: 'S', ativo: false, temSenha: true } })).toMatch(/desativou/)
   })
   it('com domínio da equipe configurado, só e-mail dele', () => {
-    expect(impedimentoDoSuporte(base, 'usenorte.com.br', 'rafa@gmail.com')).toMatch(/@usenorte/)
-    expect(impedimentoDoSuporte(base, 'usenorte.com.br', 'rafa@usenorte.com.br')).toBeNull()
+    expect(impedimentoDoSuporte(base, 'gestornorte.com', 'rafa@gmail.com')).toMatch(/@gestornorte/)
+    expect(impedimentoDoSuporte(base, 'gestornorte.com', 'rafa@gestornorte.com')).toBeNull()
   })
 })

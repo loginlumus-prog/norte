@@ -40,7 +40,7 @@ export type Envio =
 const API_RESEND = 'https://api.resend.com/emails'
 const TEMPO_MAX_MS = 10_000
 
-/** "Norte <nao-responda@usenorte.com.br>" ou só o endereço. */
+/** "Norte <nao-responda@gestornorte.com>" ou só o endereço. */
 const FORMATO_REMETENTE = /^(?:[^<>\r\n]{1,80}<[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+>|[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+)$/
 
 type Ambiente = Record<string, string | undefined>

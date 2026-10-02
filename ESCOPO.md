@@ -188,5 +188,5 @@ achar que continuam em aberto.
       (`DECISOES.md` §6) — falta contratar. Decidir antes de passar de ~15 clientes.
 - [ ] **Emissor de NF-e:** Focus NFe ou Nuvem Fiscal.
 - [ ] **Gateway da nossa mensalidade:** Asaas, Iugu ou Vindi.
-- [ ] **Domínio e marca:** confirmar `usenorte.com.br` e registrar como marca
+- [ ] **Domínio e marca:** confirmar `gestornorte.com` e registrar como marca
       mista no INPI (nome isolado é fraco — ver `DECISOES.md` §1).

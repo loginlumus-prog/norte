@@ -1,6 +1,6 @@
-// O endereço da empresa: o primeiro pedaço da URL (usenorte.com.br/<slug>).
+// O endereço da empresa: o primeiro pedaço da URL (gestornorte.com/<slug>).
 //
-// Ele disputa espaço com as páginas do próprio site. `usenorte.com.br/termos`
+// Ele disputa espaço com as páginas do próprio site. `gestornorte.com/termos`
 // precisa ser os termos, não a loja de alguém que se cadastrou como "Termos".
 // Por isso existe uma lista de nomes que empresa nenhuma pode ter.
 //

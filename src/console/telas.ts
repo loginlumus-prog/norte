@@ -487,7 +487,7 @@ export function telaEmpresa(c: Contexto, d: DetalheEmpresa, dominioDaEquipe: str
       ${form(
         c, slug, 'suporte',
         `Dar acesso de SUPORTE em /${slug}, no modo escolhido? Cada tela aberta vira linha no livro da loja, com este motivo, e cada mudança sai assinada "Equipe Norte".`,
-        `<label>E-mail de quem vai entrar${dominioDaEquipe ? ` (@${esc(dominioDaEquipe)})` : ''}<input type="email" name="email" required placeholder="voce@usenorte.com.br"></label>
+        `<label>E-mail de quem vai entrar${dominioDaEquipe ? ` (@${esc(dominioDaEquipe)})` : ''}<input type="email" name="email" required placeholder="voce@gestornorte.com"></label>
          <div class="lado"><label>Horas (1 a ${SUPORTE_MAX_HORAS})<input type="number" name="horas" min="1" max="${SUPORTE_MAX_HORAS}" value="4" required></label>
          <label>Nome (opcional)<input name="nome" maxlength="80" placeholder="Suporte do Norte"></label></div>
          <label>Modo<select name="modo"><option value="leitura">Só leitura</option><option value="edicao">Edição — arruma produto, preço, estoque, catálogo, Configurações, convites, encomendas</option></select></label>

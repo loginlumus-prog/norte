@@ -18,3 +18,8 @@ src/generated/
 # o conector do WhatsApp: segredo local e a lista de empresas conectadas
 conector/.env
 conector/dados/
+
+# segredos do deploy na VPS (montar-env.mjs grava aqui; nunca commitar)
+deploy/.env
+deploy/.env.servidor
+deploy/.env.extras

@@ -1,0 +1,21 @@
+# O que NÃO entra no contexto do build do Norte. Importante: .env* nunca
+# entra numa imagem (segredo na camada da imagem é segredo para sempre).
+.git
+.github
+.next
+node_modules
+.env
+.env.*
+**/.env
+**/.env.*
+.video
+.banco
+.claude
+.tmp
+conector
+deploy
+docs
+arte
+tests
+*.log
+tsconfig.tsbuildinfo

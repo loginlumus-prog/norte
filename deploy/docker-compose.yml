@@ -1,0 +1,117 @@
+# O Norte inteiro na VPS: o site, o conector do WhatsApp e o Caddy (HTTPS).
+# O banco NÃO está aqui: é o Supabase.
+#
+# Rode sempre de dentro de /opt/norte:
+#   docker compose -f deploy/docker-compose.yml up -d --build
+# (o deploy/.env é lido sozinho; ver env.exemplo.)
+#
+# ── como os três se falam ────────────────────────────────────
+#   internet ─► caddy (80/443) ─► norte:3000     (pela rede do compose)
+#   norte ◄──► conector                          (por 127.0.0.1)
+#
+# O conector divide a "rede" do container do Norte (network_mode: service).
+# É de propósito: o Norte só aceita falar com o conector em https:// OU em
+# localhost (conector.ts recusa http:// para qualquer outro nome, porque o
+# segredo viaja em todo pedido), e o conector só aceita NORTE_URL em http://
+# se for localhost. Dividindo a rede, os dois são "localhost" um do outro —
+# igual ao que a demonstração pelo túnel faz hoje (.video/demo.mjs) — sem
+# gastar um certificado nem expor o conector na internet. Ele nem tem porta
+# publicada.
+#
+# Consequência: se o container do Norte for RECRIADO, o do conector precisa
+# ser recriado junto. O compose já faz isso; o atualizar.sh ainda reinicia o
+# conector por garantia (ele religa as sessões do WhatsApp sozinho, a partir
+# do banco).
+
+name: norte
+
+x-logs: &logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  norte:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        NORTE_COMMIT: ${NORTE_COMMIT:-}
+    image: norte-app:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      TZ: America/Sao_Paulo
+      # Onde está o conector: ele divide a rede deste container.
+      CONECTOR_URL: http://127.0.0.1:3200
+    # Só a própria VPS enxerga a 3000 (para teste com curl). O mundo entra
+    # pelo Caddy.
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/saude').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging: *logs
+
+  conector:
+    build:
+      context: ../conector
+    image: norte-conector:latest
+    restart: unless-stopped
+    network_mode: "service:norte"
+    depends_on:
+      norte:
+        condition: service_healthy
+    # SÓ o que o conector precisa. Nada de banco aqui: a sessão do WhatsApp de
+    # cada loja vive cifrada no banco do Norte (NORTE_CIFRA é do Norte).
+    environment:
+      NODE_ENV: production
+      TZ: America/Sao_Paulo
+      PORT: "3200"
+      HOST: 127.0.0.1
+      NORTE_URL: http://127.0.0.1:3000
+      PASTA_DADOS: /app/dados
+      CONECTOR_TOKEN: ${CONECTOR_TOKEN:?falta CONECTOR_TOKEN no deploy/.env}
+      CONECTOR_ASSINATURA: ${CONECTOR_ASSINATURA:?falta CONECTOR_ASSINATURA no deploy/.env}
+      # Com ela o conector é também o RELÓGIO: campanhas a cada minuto, rotinas
+      # a cada hora. Sem ela, nada agendado acontece.
+      ROTINAS_SEGREDO: ${ROTINAS_SEGREDO:?falta ROTINAS_SEGREDO no deploy/.env}
+    volumes:
+      - conector-dados:/app/dados
+    # O healthcheck do Dockerfile do conector usa CONECTOR_SEGREDO (o antigo);
+    # aqui o segredo é o CONECTOR_TOKEN.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3200/saude',{headers:{authorization:'Bearer '+process.env.CONECTOR_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 20s
+    logging: *logs
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - norte
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # O certificado fica aqui: perder o volume é pedir outro (a Let's
+      # Encrypt limita os pedidos por semana). Não use `down -v`.
+      - caddy-dados:/data
+      - caddy-config:/config
+    logging: *logs
+
+volumes:
+  conector-dados:
+  caddy-dados:
+  caddy-config:

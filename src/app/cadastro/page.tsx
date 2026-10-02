@@ -41,7 +41,7 @@ const INCLUI = [
 export default async function Cadastro() {
   const aberto = cadastroAberto()
   const publico = await enderecoPublico()
-  const dominio = (publico ?? 'https://usenorte.com.br').replace(/^https?:\/\//, '')
+  const dominio = (publico ?? 'https://gestornorte.com').replace(/^https?:\/\//, '')
   const comEmail = emailConfigurado() && !!publico
   const ramos = Object.entries(RAMOS).map(([valor, r]) => ({ valor, titulo: r.titulo }))
 

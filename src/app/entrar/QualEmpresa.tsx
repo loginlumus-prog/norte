@@ -10,7 +10,7 @@ export const ULTIMA_EMPRESA = 'norte:ultima-empresa'
 const CAMPO =
   'h-12 w-full min-w-0 bg-transparent px-2 text-[15px] text-tinta placeholder:text-tinta-3 focus:outline-none'
 
-/** Aceita o endereço puro, "usenorte.com.br/loja" ou o link inteiro colado. */
+/** Aceita o endereço puro, "gestornorte.com/loja" ou o link inteiro colado. */
 function limpar(texto: string): string {
   const t = texto.trim().toLowerCase()
   const semDominio = t.replace(/^https?:\/\//, '').replace(/^[^/]*\.[^/]*\//, '')

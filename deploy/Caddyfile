@@ -1,0 +1,47 @@
+# O Caddy: porta de entrada do Norte. Pega o certificado HTTPS sozinho
+# (Let's Encrypt), renova sozinho e manda HTTP para HTTPS sozinho.
+#
+# Trocar de domínio = trocar as duas linhas de endereço abaixo (e o
+# NORTE_URL no deploy/.env).
+#
+# ── o IP de quem acessa ──────────────────────────────────────
+# O Norte usa o ÚLTIMO endereço do X-Forwarded-For como IP do cliente (freio
+# de tentativas de login, src/servidor/requisicao.ts). O Caddy, quando o
+# pedido vem direto da internet (nenhum proxy confiável na frente: não há
+# `trusted_proxies` aqui), DESCARTA o X-Forwarded-For que o cliente mandou e
+# escreve só o IP real da conexão. A lista chega ao Norte com um endereço só,
+# o verdadeiro — então "o último" é o certo, e quem forja o cabeçalho não
+# passa. NÃO ponha Cloudflare ou outro proxy na frente sem rever isto (aí o
+# último passaria a ser o do proxy).
+#
+# ── cabeçalhos ───────────────────────────────────────────────
+# CSP, HSTS, X-Frame-Options e companhia já saem do próprio Norte
+# (src/proxy.ts). Repetir aqui duplicaria o cabeçalho; por isso só se tira o
+# que identifica o servidor.
+
+www.gestornorte.com {
+	redir https://gestornorte.com{uri} permanent
+}
+
+gestornorte.com {
+	encode zstd gzip
+
+	# O Norte aceita até 17 MB (vídeo de campanha); folga para o envelope.
+	request_body {
+		max_size 20MB
+	}
+
+	header -Server
+
+	reverse_proxy norte:3000 {
+		# Uma Server Action de vídeo pode demorar; não corta no meio.
+		transport http {
+			response_header_timeout 120s
+		}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

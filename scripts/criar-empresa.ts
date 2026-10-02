@@ -3,7 +3,7 @@
 //   npm run empresa -- --nome "Sorveteria da Praça" --slug sorveteria-praca \
 //                      --email dono@sorveteria.com.br
 //
-//   npm run empresa -- ... --producao --url https://usenorte.com.br
+//   npm run empresa -- ... --producao --url https://gestornorte.com
 //
 // Cria a empresa e o convite do DONO. Devolve um link. Quem abre o link
 // escolhe nome e senha, a conta nasce, e ele cai no cadastro inicial que já

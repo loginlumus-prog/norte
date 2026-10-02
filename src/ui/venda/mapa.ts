@@ -99,7 +99,7 @@ export const LINKS_BARRA: { nome: string; href: string }[] = [
  */
 export const COMECAR = '/cadastro'
 export const ENTRAR = '/entrar'
-export const EMAIL = 'contato@usenorte.com.br'
+export const EMAIL = 'contato@gestornorte.com'
 
 export const mailto = (assunto: string) =>
   `mailto:${EMAIL}?subject=${encodeURIComponent(assunto)}`

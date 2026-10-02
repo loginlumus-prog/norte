@@ -20,7 +20,7 @@ export const EMPRESA = {
   endereco: null as string | null,
 
   /** Para onde vai pedido de suporte, cancelamento e exercício de direito. */
-  email: 'contato@usenorte.com.br' as string,
+  email: 'contato@gestornorte.com' as string,
 
   /**
    * O encarregado pelo tratamento de dados (LGPD, art. 41). Pode ser pessoa
@@ -28,7 +28,7 @@ export const EMPRESA = {
    * legal, não boa prática.
    */
   encarregado: null as string | null,
-  encarregadoEmail: 'privacidade@usenorte.com.br' as string,
+  encarregadoEmail: 'privacidade@gestornorte.com' as string,
 
   /** Comarca do foro. */
   foro: 'Salvador, Bahia' as string,

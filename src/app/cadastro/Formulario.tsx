@@ -24,7 +24,7 @@ export function Formulario({
   /** A hora em que a página abriu, assinada (ver autocadastro.ts). */
   carimbo: string
   ramos: { valor: string; titulo: string }[]
-  /** "usenorte.com.br" — só para mostrar o endereço que a loja vai ter. */
+  /** "gestornorte.com" — só para mostrar o endereço que a loja vai ter. */
   dominio: string
   /** O servidor manda e-mail? Muda o que acontece depois do botão. */
   comEmail: boolean

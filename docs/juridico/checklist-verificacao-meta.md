@@ -59,7 +59,7 @@ foto torta de papel, documento de outro CNPJ (filial, empresa do sócio).
 
 **Site e domínio**
 
-- [ ] Site no ar, em **HTTPS**, no domínio próprio (ex.: `usenorte.com.br`).
+- [ ] Site no ar, em **HTTPS**, no domínio próprio (ex.: `gestornorte.com`).
 - [ ] Páginas públicas, abrindo **sem login**:
   - [ ] `https://<domínio>/privacidade` — URL da Política de Privacidade
   - [ ] `https://<domínio>/termos` — URL dos Termos de Serviço
@@ -68,7 +68,7 @@ foto torta de papel, documento de outro CNPJ (filial, empresa do sócio).
 - [ ] **Verificação do domínio** no portfólio da Meta (registro TXT no DNS ou
       meta tag no site — o registro no DNS é o que não se perde num deploy).
 - [ ] **E-mail no domínio** funcionando e lido por alguém (ex.:
-      `contato@usenorte.com.br`, `privacidade@usenorte.com.br`): a Meta pode
+      `contato@gestornorte.com`, `privacidade@gestornorte.com`): a Meta pode
       mandar o código de verificação para um e-mail **do domínio do site**.
 
 **Portfólio empresarial da Meta** (business.facebook.com)

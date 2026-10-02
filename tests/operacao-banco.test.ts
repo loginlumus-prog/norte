@@ -180,12 +180,12 @@ describe('acesso de SUPORTE', () => {
   it('cria a conta (sem senha) e um acesso SUPORTE com prazo e motivo; o livro registra', async () => {
     const agora = new Date()
     const r = await m.operacao.concederSuporte(
-      'org-a', { email: 'Rafa@UseNorte.com.br', horas: 4, motivo: 'chamado 51: conferir fechamento', quem: 'Rafa Teste' }, {}, agora)
+      'org-a', { email: 'Rafa@gestornorte.com', horas: 4, motivo: 'chamado 51: conferir fechamento', quem: 'Rafa Teste' }, {}, agora)
     expect(r).toMatchObject({ criouConta: true, temSenha: false, expiravaEm: null, sessoesCortadas: false })
 
-    const u = await usuario('rafa@usenorte.com.br')
+    const u = await usuario('rafa@gestornorte.com')
     expect(u).toMatchObject({ nome: 'Suporte do Norte (Rafa Teste)', senha_hash: null, ativo: true })
-    const [a] = await acessosDe('rafa@usenorte.com.br')
+    const [a] = await acessosDe('rafa@gestornorte.com')
     expect(a).toMatchObject({ papel: 'SUPORTE', unidade_id: null, motivo: 'chamado 51: conferir fechamento' })
     expect(a!.expira_ms).toBe(agora.getTime() + 4 * 3_600_000)
 
@@ -199,19 +199,19 @@ describe('acesso de SUPORTE', () => {
 
   it('estender atualiza o MESMO acesso; encurtar corta as sessões abertas', async () => {
     const t = new Date()
-    const r8 = await m.operacao.concederSuporte('org-a', { email: 'rafa@usenorte.com.br', horas: 8, motivo: 'chamado 51, continua', quem: 'Rafa' }, {}, t)
+    const r8 = await m.operacao.concederSuporte('org-a', { email: 'rafa@gestornorte.com', horas: 8, motivo: 'chamado 51, continua', quem: 'Rafa' }, {}, t)
     expect(r8).toMatchObject({ criouConta: false, sessoesCortadas: false })
-    let acessos = await acessosDe('rafa@usenorte.com.br')
+    let acessos = await acessosDe('rafa@gestornorte.com')
     expect(acessos).toHaveLength(1)
     expect(acessos[0]!.expira_ms).toBe(t.getTime() + 8 * 3_600_000)
     expect(acessos[0]!.motivo).toBe('chamado 51, continua')
 
-    const r1 = await m.operacao.concederSuporte('org-a', { email: 'rafa@usenorte.com.br', horas: 1, motivo: 'chamado 51, só mais uma hora', quem: 'Rafa' }, {}, t)
+    const r1 = await m.operacao.concederSuporte('org-a', { email: 'rafa@gestornorte.com', horas: 1, motivo: 'chamado 51, só mais uma hora', quem: 'Rafa' }, {}, t)
     expect(r1.sessoesCortadas).toBe(true)
-    expect((await usuario('rafa@usenorte.com.br'))!.sessoes_ms).toBe(t.getTime())
-    acessos = await acessosDe('rafa@usenorte.com.br')
+    expect((await usuario('rafa@gestornorte.com'))!.sessoes_ms).toBe(t.getTime())
+    acessos = await acessosDe('rafa@gestornorte.com')
     expect(acessos).toHaveLength(1)
-    expect(await linhas(`select id from usuarios where email = 'rafa@usenorte.com.br'`)).toHaveLength(1)
+    expect(await linhas(`select id from usuarios where email = 'rafa@gestornorte.com'`)).toHaveLength(1)
   })
 
   it('não dá SUPORTE a quem é da loja, nem passa por cima da loja que desativou a conta', async () => {
@@ -219,21 +219,21 @@ describe('acesso de SUPORTE', () => {
       .rejects.toThrow(/empresa cliente/)
     expect(await acessosDe('ana@a.com')).toEqual([expect.objectContaining({ papel: 'DONO' })])
 
-    await db.exec(`update usuarios set ativo = false where email = 'rafa@usenorte.com.br'`)
-    await expect(m.operacao.concederSuporte('org-a', { email: 'rafa@usenorte.com.br', horas: 2, motivo: 'teste de recusa', quem: 'Rafa' }))
+    await db.exec(`update usuarios set ativo = false where email = 'rafa@gestornorte.com'`)
+    await expect(m.operacao.concederSuporte('org-a', { email: 'rafa@gestornorte.com', horas: 2, motivo: 'teste de recusa', quem: 'Rafa' }))
       .rejects.toThrow(/desativou/)
-    await db.exec(`update usuarios set ativo = true where email = 'rafa@usenorte.com.br'`)
+    await db.exec(`update usuarios set ativo = true where email = 'rafa@gestornorte.com'`)
   })
 
   it('revogar: prazo vira agora, sessões cortadas, linha no livro; de novo não faz nada', async () => {
     const agora = new Date()
-    expect(await m.operacao.revogarSuporte('org-a', { email: 'rafa@usenorte.com.br', quem: 'Rafa Teste' }, agora)).toEqual({ revogou: true })
-    const [a] = await acessosDe('rafa@usenorte.com.br')
+    expect(await m.operacao.revogarSuporte('org-a', { email: 'rafa@gestornorte.com', quem: 'Rafa Teste' }, agora)).toEqual({ revogou: true })
+    const [a] = await acessosDe('rafa@gestornorte.com')
     expect(a!.expira_ms).toBe(agora.getTime())
-    expect((await usuario('rafa@usenorte.com.br'))!.sessoes_ms).toBe(agora.getTime())
+    expect((await usuario('rafa@gestornorte.com'))!.sessoes_ms).toBe(agora.getTime())
     const [l] = await livro('org-a', 'suporte.revogou')
     expect(l).toMatchObject({ quem: 'Equipe Norte (Rafa Teste)', autor: 'SISTEMA', motivo: 'Acesso de suporte encerrado.' })
-    expect(await m.operacao.revogarSuporte('org-a', { email: 'rafa@usenorte.com.br', quem: 'Rafa Teste' })).toEqual({ revogou: false })
+    expect(await m.operacao.revogarSuporte('org-a', { email: 'rafa@gestornorte.com', quem: 'Rafa Teste' })).toEqual({ revogou: false })
   })
 })
 

@@ -77,7 +77,7 @@ services:
       # A chave do Resend (Resend › API Keys).
       - key: RESEND_API_KEY
         sync: false
-      # Quem manda, ex.: Norte <nao-responda@usenorte.com.br>. O domínio
+      # Quem manda, ex.: Norte <nao-responda@gestornorte.com>. O domínio
       # precisa estar verificado no Resend.
       - key: EMAIL_REMETENTE
         sync: false

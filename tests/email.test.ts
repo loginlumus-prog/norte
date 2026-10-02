@@ -20,7 +20,7 @@ import {
 } from '../src/servidor/email-modelos'
 import { EMPRESA } from '../src/servidor/legal'
 
-const CFG = { RESEND_API_KEY: 're_teste_123', EMAIL_REMETENTE: 'Norte <nao-responda@usenorte.com.br>' }
+const CFG = { RESEND_API_KEY: 're_teste_123', EMAIL_REMETENTE: 'Norte <nao-responda@gestornorte.com>' }
 const MSG = { para: 'Ana.Souza@Exemplo.com.br', assunto: 'Oi', texto: 'texto', html: '<p>html</p>' }
 
 afterEach(() => {
@@ -35,7 +35,7 @@ describe('configuração', () => {
     expect(emailConfigurado({ ...CFG, EMAIL_REMETENTE: 'Norte' })).toBe(false)
     expect(emailConfigurado({ ...CFG, EMAIL_REMETENTE: 'Norte <a@b.co>\r\nBcc: x@y.z' })).toBe(false)
     expect(emailConfigurado(CFG)).toBe(true)
-    expect(emailConfigurado({ ...CFG, EMAIL_REMETENTE: 'nao-responda@usenorte.com.br' })).toBe(true)
+    expect(emailConfigurado({ ...CFG, EMAIL_REMETENTE: 'nao-responda@gestornorte.com' })).toBe(true)
   })
 
   it('mascara o endereço: dá para reconhecer, não dá para colher', () => {
@@ -108,7 +108,7 @@ describe('enviar', () => {
 })
 
 describe('os modelos', () => {
-  const link = 'https://usenorte.com.br/loja/redefinir-senha?t=abc'
+  const link = 'https://gestornorte.com/loja/redefinir-senha?t=abc'
 
   it('nome digitado sai escapado no HTML; o link vai no HTML e no texto', () => {
     const m = emailRedefinirSenha({
