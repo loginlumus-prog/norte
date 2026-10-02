@@ -20,6 +20,30 @@ import { guardarSenha } from './senha'
 import { normalizar } from './autenticacao'
 import { exigir, podeConcederAcesso, unidadesQuePodem, type Papel, type Sessao } from './permissao'
 import { DONO_SO_DA_EMPRESA, recadoNaoConcede } from './equipe'
+import { gravarPinDoConvite, pinDoConviteServe } from './autorizacao'
+
+// ── o convite só pelo WhatsApp ───────────────────────────────
+// A dona muitas vezes tem o WhatsApp da vendedora, e não o e-mail. O convite
+// então nasce sem e-mail: no lugar dele fica `whatsapp:<número>` — a mesma
+// regra de "um link vivo por vez" passa a valer por número — e quem aceita
+// digita o próprio e-mail (é com ele que entra depois). Nada disso é e-mail
+// de verdade: nunca vai para envio, e a tela mostra o número.
+const SEM_EMAIL = 'whatsapp:'
+
+/** O e-mail de verdade do convite, ou nulo quando ele nasceu só com o WhatsApp. */
+export const emailDoConvite = (guardado: string) => (guardado.startsWith(SEM_EMAIL) ? null : guardado)
+/** O número do convite que nasceu só com o WhatsApp. */
+export const whatsappDoConvite = (guardado: string) => (guardado.startsWith(SEM_EMAIL) ? guardado.slice(SEM_EMAIL.length) : null)
+
+/** Celular com DDD (10 ou 11 números, com ou sem o 55): só os números, sem o 55. */
+export function telefoneDoConvite(bruto: string | null | undefined): string | null {
+  let d = String(bruto ?? '').replace(/\D/g, '')
+  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2)
+  return d.length === 10 || d.length === 11 ? d : null
+}
+
+/** Quem não opera (o contador, que só lê) não precisa de PIN. */
+const pedePinPara = (papel: Papel) => papel !== 'CONTADOR'
 
 export const VALE_DIAS = 7
 
@@ -39,6 +63,7 @@ const resumir = resumirToken
 
 export type ConviteCriado = {
   id: string
+  /** Vazio quando o convite nasceu só com o WhatsApp. */
   email: string
   papel: Papel
   expiraEm: Date
@@ -48,10 +73,15 @@ export type ConviteCriado = {
 
 export async function convidar(
   sessao: Sessao,
-  dados: { email: string; papel: Papel; unidadeId?: string | null; cargoId?: string | null },
+  dados: { email?: string | null; telefone?: string | null; papel: Papel; unidadeId?: string | null; cargoId?: string | null },
   baseDoLink: string,
 ): Promise<ConviteCriado> {
-  const email = normalizar(dados.email)
+  const emailDigitado = normalizar(dados.email ?? '')
+  const telefone = telefoneDoConvite(dados.telefone)
+  if (!emailDigitado && !telefone) throw new Error('Informe o e-mail ou o WhatsApp (com DDD) da pessoa.')
+  if (emailDigitado && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDigitado)) throw new Error('Esse e-mail não parece certo.')
+  // Sem e-mail, o número ocupa o lugar dele (ver SEM_EMAIL, no topo).
+  const email = emailDigitado || `${SEM_EMAIL}${telefone}`
   const unidadeId = dados.unidadeId ?? null
   const cargoId = dados.papel === 'CARGO' ? (dados.cargoId ?? null) : null
   if (dados.papel === 'CARGO' && !cargoId) throw new Error('Escolha qual cargo.')
@@ -83,7 +113,7 @@ export async function convidar(
       select: { papel: true, unidadeId: true },
     }),
   }))
-  if (jaTem) throw new EmailJaUsado(email)
+  if (jaTem) throw new EmailJaUsado(emailDigitado)
   if (!lojaExiste) throw new Error('Loja não encontrada nesta empresa.')
   if (!cargoExiste) throw new Error('Cargo não encontrado nesta empresa.')
   // Convidar de novo o mesmo e-mail apaga o convite anterior. Se o anterior
@@ -140,7 +170,7 @@ export async function convidar(
 
   return {
     id: convite.id,
-    email,
+    email: emailDigitado,
     papel: dados.papel,
     expiraEm,
     link: `${baseDoLink.replace(/\/$/, '')}/convite/${token}`,
@@ -150,8 +180,10 @@ export async function convidar(
 // ─────────────────────────────────────────────────────────────
 
 export type Aceite =
-  | { ok: true; email: string; papel: Papel }
+  | { ok: true; email: string; papel: Papel; usuarioId: string }
   | { ok: false; motivo: 'invalido' | 'vencido' | 'ja_usado' | 'empresa_nao_existe' }
+  /** O que a pessoa digitou não serve (o PIN, o e-mail): a frase diz o quê. Nada foi criado. */
+  | { ok: false; motivo: 'dados'; erro: string }
 
 /**
  * O convite ainda serve? Para a TELA do convite, antes de mostrar o formulário.
@@ -174,7 +206,26 @@ export async function conviteServe(slugEmpresa: string, token: string): Promise<
 }
 
 /**
- * Aceitar o convite: a pessoa escolhe o nome e a senha, e a conta nasce ali.
+ * O que a tela do convite precisa saber para montar o formulário: se o link
+ * serve, se falta o e-mail (convite só pelo WhatsApp) e se pede o PIN.
+ * Nunca o e-mail convidado — o mesmo cuidado de `conviteServe`.
+ */
+export async function conviteParaTela(
+  slugEmpresa: string,
+  token: string,
+): Promise<{ serve: false } | { serve: true; pedeEmail: boolean; pedePin: boolean }> {
+  const org = await acharOrgPorSlug(slugEmpresa)
+  if (!org || !token) return { serve: false }
+  const c = await comoOrg(org.id, (db) =>
+    db.convite.findUnique({ where: { token: resumir(token) }, select: { email: true, papel: true, expiraEm: true, aceitoEm: true } }),
+  )
+  if (!c || c.aceitoEm || c.expiraEm <= new Date()) return { serve: false }
+  return { serve: true, pedeEmail: !emailDoConvite(c.email), pedePin: pedePinPara(c.papel as Papel) }
+}
+
+/**
+ * Aceitar o convite: a pessoa escolhe o nome, a senha e o PIN, e a conta
+ * nasce ali — pronta para vender, sem passar por Minha conta.
  *
  * `invalido` cobre token errado E token de outra empresa de propósito — quem
  * está tentando não descobre qual dos dois é.
@@ -182,14 +233,46 @@ export async function conviteServe(slugEmpresa: string, token: string): Promise<
 export async function aceitarConvite(
   slugEmpresa: string,
   token: string,
-  dados: { nome: string; senha: string },
+  dados: { nome: string; senha: string; pin?: string | null; email?: string | null },
 ): Promise<Aceite> {
   const org = await acharOrgPorSlug(slugEmpresa)
   if (!org) return { ok: false, motivo: 'empresa_nao_existe' }
 
-  const senhaHash = await guardarSenha(dados.senha)
+  // O que se confere ANTES de a conta nascer: o e-mail (convite só pelo
+  // WhatsApp) e o PIN. Recusa aqui não gasta o convite.
+  const antes = await comoOrg(org.id, (db) =>
+    db.convite.findUnique({
+      where: { token: resumir(token) },
+      select: { email: true, unidadeId: true, expiraEm: true, aceitoEm: true },
+    }),
+  )
+  if (!antes) return { ok: false, motivo: 'invalido' }
+  if (antes.aceitoEm) return { ok: false, motivo: 'ja_usado' }
+  if (antes.expiraEm <= new Date()) return { ok: false, motivo: 'vencido' }
 
-  return comoOrg(org.id, async (db) => {
+  let emailFinal = emailDoConvite(antes.email)
+  if (!emailFinal) {
+    const digitado = normalizar(dados.email ?? '')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(digitado)) {
+      return { ok: false, motivo: 'dados', erro: 'Digite o seu e-mail: é com ele que você entra depois.' }
+    }
+    const ja = await comoOrg(org.id, (db) =>
+      db.usuario.findUnique({ where: { orgId_email: { orgId: org.id, email: digitado } }, select: { id: true } }),
+    )
+    if (ja) return { ok: false, motivo: 'dados', erro: 'Esse e-mail já tem conta nesta empresa. Entre com ele, ou use outro.' }
+    emailFinal = digitado
+  }
+
+  const pin = String(dados.pin ?? '').trim()
+  if (pin) {
+    const r = await pinDoConviteServe(org.id, resumir(token), antes.unidadeId, pin)
+    if (!r.ok) return { ok: false, motivo: 'dados', erro: r.erro }
+  }
+
+  const senhaHash = await guardarSenha(dados.senha)
+  const emailDaConta = emailFinal
+
+  const aceite: Aceite = await comoOrg(org.id, async (db) => {
     const convite = await db.convite.findUnique({
       where: { token: resumir(token) },
       select: { id: true, email: true, papel: true, unidadeId: true, cargoId: true, expiraEm: true, aceitoEm: true },
@@ -202,7 +285,7 @@ export async function aceitarConvite(
       data: {
         orgId: org.id,
         nome: dados.nome.trim(),
-        email: convite.email,
+        email: emailDaConta,
         senhaHash,
       },
       select: { id: true },
@@ -232,13 +315,17 @@ export async function aceitarConvite(
         acao: 'convite.aceitou',
         alvoTipo: 'usuario',
         alvoId: usuario.id,
-        alvoNome: convite.email,
+        alvoNome: emailDaConta,
         depois: { papel: convite.papel, unidadeId: convite.unidadeId },
       },
     })
 
-    return { ok: true as const, email: convite.email, papel: convite.papel as Papel }
+    return { ok: true as const, email: emailDaConta, papel: convite.papel as Papel, usuarioId: usuario.id }
   })
+  // O PIN, já conferido lá em cima, depois de a conta existir (ele é amarrado
+  // à pessoa). Fora da transação: o scrypt é lento de propósito.
+  if (aceite.ok && pin) await gravarPinDoConvite(org.id, aceite.usuarioId, dados.nome.trim(), pin)
+  return aceite
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -14,8 +14,9 @@
 // (PRECOS.diasDeTeste). Não há mais plano grátis à venda. Quando o prazo
 // vence, `vencerTesteSeAcabou` (assinatura.ts) desce a empresa para o Grátis
 // na primeira tela que alguém abrir — os dados ficam, o básico continua, e o
-// resto volta ao assinar. No teste o crédito de IA é o de conhecer
-// (PRECOS.creditoDoTeste), não o do plano: o cadastro é aberto.
+// resto volta ao assinar. No teste as respostas do assistente são as de
+// conhecer (PRECOS.respostasDoTeste, para o teste inteiro), não as do mês: o
+// cadastro é aberto.
 //
 // ── as três travas contra robô ───────────────────────────────
 //   1. O freio do banco: 3 empresas por hora por endereço de rede, 60 no

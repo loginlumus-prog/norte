@@ -39,7 +39,7 @@ import { emailConfigurado, enviarEmail } from './email'
 import { emailConfirmarCadastro, emailRedefinirSenha, emailSenhaAlterada } from './email-modelos'
 import { liberarVaga } from './presenca'
 import { podeMexerEm } from './equipe'
-import { exigir, type Papel, type Sessao } from './permissao'
+import { exigir, exigirQueNaoSejaSuporte, type Papel, type Sessao } from './permissao'
 
 export const VALE_SENHA_MIN = 30
 export const VALE_LINK_EQUIPE_H = 24
@@ -272,6 +272,9 @@ export type LinkGerado = { ok: true; link: string; nome: string; expiraEm: Date 
  */
 export async function gerarLinkDeSenha(sessao: Sessao, usuarioId: string, baseDaEmpresa: string): Promise<LinkGerado> {
   exigir(sessao, 'equipe.gerir')
+  // Link de senha é entrar como a pessoa: o suporte vendendo com o login da
+  // vendedora é justamente o que o modo edição não deixa.
+  exigirQueNaoSejaSuporte(sessao, 'gera link de senha de outra pessoa')
   if (usuarioId === sessao.usuarioId) {
     return { ok: false, motivo: 'A sua própria senha você troca em "Minha conta" — clique no seu nome, no rodapé do menu.' }
   }

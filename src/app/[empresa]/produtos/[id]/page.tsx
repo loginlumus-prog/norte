@@ -235,7 +235,7 @@ export default async function FichaProduto({
       </Secao>
 
       {lojas.length > 1 && (
-        <Secao titulo="Onde está" resumo="O saldo de cada item em cada loja. Transferir é na tela de estoque.">
+        <Secao titulo="Onde está" resumo="Saldo de cada item por loja.">
           <Cartao caixa>
             <Tabela
               colunas={[
@@ -342,7 +342,7 @@ export default async function FichaProduto({
       </Secao>
 
       {movimentos.length > 0 && (
-        <Secao titulo="Últimos movimentos" resumo="Os 90 dias deste produto no estoque: o que entrou, saiu e foi corrigido.">
+        <Secao titulo="Últimos movimentos" resumo="Últimos 90 dias.">
           <Cartao caixa>
             <ul className="flex flex-col divide-y divide-borda-suave text-sm">
               {movimentos.slice(0, 20).map((m) => (

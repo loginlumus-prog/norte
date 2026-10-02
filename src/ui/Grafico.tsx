@@ -73,7 +73,7 @@ export function GraficoDias({ dados }: { dados: DiaDoGrafico[] }) {
           </div>
         ) : (
           <span className="text-xs text-tinta-3">
-            Toque ou passe o mouse num dia para ver o movimento dele.
+            Toque num dia para ver o movimento.
           </span>
         )}
       </div>

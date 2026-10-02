@@ -53,7 +53,7 @@ import { grade, type Grade, type InicialDoBalcao } from './acoes'
 import { brl, precoDe, linhaCent } from './conta'
 import { FilaSemInternet } from './FilaSemInternet'
 import { useVenda, FORMAS, TECLA_DA_FORMA, tituloDaForma, type ConfigDoBalcao, type EncomendaNoPedido, type Linha } from './useVenda'
-import { PedirPin, PerguntaSemEstoque } from './Autorizar'
+import { AssinarVenda, PedirPin, PerguntaSemEstoque } from './Autorizar'
 import { DadosDoCartao, DadosDoCrediario } from './Pedido'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
@@ -169,6 +169,7 @@ export function Balcao({
 
   return (
     <div ref={raiz} className="flex flex-col gap-3">
+      <AssinarVenda v={v} slug={slug} />
       <PedirPin v={v} />
       <FichaDaCliente v={v} slug={slug} unidadeId={unidadeId} />
       {/* Recuperar em silêncio seria pior que perder: a pessoa veria itens

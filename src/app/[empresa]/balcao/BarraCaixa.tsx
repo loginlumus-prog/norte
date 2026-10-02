@@ -124,7 +124,16 @@ export function BarraCaixa({
         )}
 
         {podeOperar && gestos && (
-          <div className={cx('flex flex-wrap items-center gap-1.5', compacta ? 'w-full justify-end' : 'ml-auto')}>
+          // No telefone, os quatro gestos em grade 2×2: soltos, eles
+          // quebravam em três numa linha e o "Fechar caixa" sozinho na outra.
+          <div
+            className={cx(
+              'items-center gap-1.5',
+              compacta
+                ? 'flex w-full flex-wrap justify-end'
+                : 'grid w-full grid-cols-2 text-center sm:ml-auto sm:flex sm:w-auto sm:flex-wrap',
+            )}
+          >
             <button
               type="button"
               onClick={() => setPainel((p) => (p === 'SANGRIA' ? null : 'SANGRIA'))}

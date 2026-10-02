@@ -9,7 +9,7 @@ import { janela, lerPeriodo } from '@/servidor/periodo'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, Vazio } from '@/ui/base'
-import { Tira, Numero, brl } from '@/ui/painel'
+import { Numero, brl } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
 import { SeletorPeriodo } from '@/ui/Periodo'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
@@ -222,20 +222,27 @@ export default async function Vendas({
       // imprimindo, e a lista fica onde estava.
       chave: 'acoes',
       titulo: '',
-      largura: simples ? '6.5rem' : '9rem',
-      celula: (v: (typeof vendas)[number]) =>
-        v.situacao === 'CANCELADA' ? null : (
-          <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs font-semibold whitespace-nowrap">
-            <a
-              href={`/${slug}/vendas/${v.id}/comprovante?imprimir=1`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-marca underline-offset-2 hover:underline"
-              aria-label={`Reimprimir o comprovante ${palavras.daVenda} ${v.numero}`}
-            >
-              Reimprimir
-            </a>
-            {v.formas.includes('CREDIARIO') && (
+      largura: simples ? '6.5rem' : '11rem',
+      // O "abrir" mora junto, no fim da mesma fila: em coluna própria ele
+      // ficava 2px abaixo dos outros links e a linha lia torta. `leading-5` é
+      // a altura da linha de texto da tabela, para os links assentarem na
+      // mesma base que o total ao lado.
+      celula: (v: (typeof vendas)[number]) => {
+        const valendo = v.situacao !== 'CANCELADA'
+        return (
+          <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs leading-5 font-semibold whitespace-nowrap">
+            {valendo && (
+              <a
+                href={`/${slug}/vendas/${v.id}/comprovante?imprimir=1`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-marca underline-offset-2 hover:underline"
+                aria-label={`Reimprimir o comprovante ${palavras.daVenda} ${v.numero}`}
+              >
+                Reimprimir
+              </a>
+            )}
+            {valendo && v.formas.includes('CREDIARIO') && (
               <a
                 href={`/${slug}/vendas/${v.id}/carne?imprimir=1`}
                 target="_blank"
@@ -256,24 +263,17 @@ export default async function Vendas({
                 Trocar
               </Link>
             )}
+            {!simples && (
+              <Link href={`/${slug}/vendas/${v.id}`} className="text-marca underline-offset-2 hover:underline">
+                abrir
+              </Link>
+            )}
           </span>
-        ),
-    },
-    {
-      chave: 'abrir',
-      titulo: '',
-      largura: '4rem',
-      celula: (v: (typeof vendas)[number]) => (
-        <Link
-          href={`/${slug}/vendas/${v.id}`}
-          className="text-xs font-semibold text-marca hover:underline"
-        >
-          abrir
-        </Link>
-      ),
+        )
+      },
     },
   ]
-  const SO_NO_AVANCADO = ['itens', 'forma', 'quem', 'abrir']
+  const SO_NO_AVANCADO = ['itens', 'forma', 'quem']
   const colunas = simples ? todasAsColunas.filter((c) => !SO_NO_AVANCADO.includes(c.chave)) : todasAsColunas
 
   return (
@@ -361,18 +361,6 @@ export default async function Vendas({
           </Link>
         )}
       </form>
-
-      <Tira
-        itens={[
-          { rotulo: g('concluídas', 'concluídos'), um: g('concluída', 'concluído'), quantos: resumo.concluidas, nivel: 'bom' },
-          {
-            rotulo: g('canceladas', 'cancelados'),
-            um: g('cancelada', 'cancelado'),
-            quantos: resumo.canceladas,
-            nivel: resumo.canceladas ? 'critico' : 'neutro',
-          },
-        ]}
-      />
 
       {/* Quem vendeu e como receberam: os dois recortes que a pergunta do dia
           usa ("o que a Maria vendeu no sábado", "quanto entrou no Pix"). */}

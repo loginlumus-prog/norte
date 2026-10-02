@@ -195,6 +195,12 @@ model Org {
   /// desta empresa, não do papel: desligado, o Balcão é o de sempre. Ver
   /// `EXTRAS_DO_BALCAO` em src/servidor/permissao.ts.
   balcaoAmpliado Boolean @default(false) @map("balcao_ampliado")
+  /// Toda venda do balcão se confirma com o PIN de quem vendeu, antes de
+  /// gravar: nada de venda por toque sem querer, e a venda vai para o nome de
+  /// quem digitou (o tablet logado numa conta só). Nasce LIGADO, inclusive nas
+  /// empresas que já existiam — quem ainda não tem PIN confirma sem ele, então
+  /// ninguém fica preso. Ver "ASSINAR A VENDA" em src/servidor/autorizacao.ts.
+  pinEmTodaVenda Boolean @default(true) @map("pin_em_toda_venda")
 
   // ── mensalidades (Escola) ────────────────────────────────
   /// Multa de atraso, em porcento do que venceu, cobrada UMA vez por
@@ -570,6 +576,11 @@ model Acesso {
   /// Acesso de suporte (nosso) é temporário e precisa de motivo.
   expiraEm DateTime? @map("expira_em")
   motivo   String?
+
+  /// Só no papel SUPORTE: o modo escolhido ao conceder. false = só leitura
+  /// (o de sempre); true = edição (ver SUPORTE_EDICAO em permissao.ts). Lido
+  /// do banco a cada requisição, nunca do cookie.
+  suporteEdita Boolean @default(false) @map("suporte_edita")
 
   criadoEm DateTime @default(now()) @map("criado_em")
 
@@ -2434,10 +2445,16 @@ model MensagemAgente {
   texto String
   /// Áudio transcrito, imagem descrita: guarda o que chegou de verdade.
   midia String?
+  /// Esta mensagem é UMA RESPOSTA do assistente escrita pela IA — a unidade
+  /// que o plano vende (1.000 por mês; ver "o assistente, em respostas" em
+  /// src/servidor/planos.ts). Relatório, aviso, recado, campanha e atalho
+  /// ("sim", CONFIRMAR) são texto fixo e ficam `false`.
+  respostaIa Boolean @default(false) @map("resposta_ia")
 
   criadaEm DateTime @default(now()) @map("criada_em")
 
   @@index([orgId, conversaId, criadaEm])
+  @@index([orgId, respostaIa, criadaEm])
   @@map("mensagens_agente")
 }
 

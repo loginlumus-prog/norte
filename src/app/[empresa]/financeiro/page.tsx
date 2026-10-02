@@ -251,7 +251,8 @@ export default async function Financeiro({
       <Secao titulo="Contas a pagar">
         <Tira
           itens={[
-            { rotulo: 'vencidas', um: 'vencida', quantos: contas.vencidas.length, nivel: 'critico' },
+            // As vencidas não entram: o aviso vermelho logo abaixo já conta
+            // quantas são e quanto somam — na tira, era o mesmo número duas vezes.
             { rotulo: 'vencem hoje', um: 'vence hoje', quantos: contas.hoje.length, nivel: 'atencao' },
             { rotulo: 'vencem nos próximos 15 dias', um: 'vence nos próximos 15 dias', quantos: contas.proximas.length, nivel: 'neutro' },
           ]}
@@ -312,7 +313,7 @@ export default async function Financeiro({
           depois das contas a pagar porque é de onde boa parte delas vem. */}
       <Secao
         titulo="Contas que se repetem"
-        resumo="Cadastre uma vez; o lançamento de cada mês nasce sozinho, em aberto, com o vencimento certo."
+        resumo="Cadastre uma vez; o lançamento de cada mês nasce sozinho."
       >
         <Recorrentes
           slug={slug}
@@ -334,7 +335,7 @@ export default async function Financeiro({
           agosto" e "esse R$ 1.200 é o quê" não tinham onde ser olhados. */}
       <Secao
         titulo={`Lançamentos de ${nomeDoMes}`}
-        resumo="Tudo que vence neste mês, pago ou não. O resultado logo abaixo conta pelo dia em que foi pago: a conta deste mês paga no seguinte entra no resultado do seguinte."
+        resumo="Tudo que vence neste mês, pago ou não."
         acao={
           <Fichas
             opcoes={[
@@ -502,7 +503,7 @@ export default async function Financeiro({
       </Secao>
 
       {/* ── DRE ── */}
-      <Secao titulo="Resultado do mês">
+      <Secao titulo="Resultado do mês" resumo="Pelo dia em que foi pago: a conta paga no mês seguinte entra no seguinte.">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
             <a href={link(outroMes(mesOlhado, -1))} className="rounded px-2 py-1 text-tinta-2 hover:bg-superficie-2">
@@ -527,7 +528,7 @@ export default async function Financeiro({
           <Numero
             rotulo="Margem líquida"
             valor={pct(dre.margem)}
-            detalhe="do que entrou, quanto sobrou depois de tudo"
+            detalhe="sobra sobre o que entrou"
             nivel={dre.margem >= 15 ? 'bom' : dre.margem >= 5 ? 'atencao' : 'critico'}
           />
         </div>

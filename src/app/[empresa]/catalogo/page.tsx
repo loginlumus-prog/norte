@@ -34,6 +34,7 @@ export default async function TelaCatalogo({ params }: { params: Promise<{ empre
         lojas={lojas}
         encomendaLigada={encomendaLigada}
         podeMudar={pode(sessao, 'empresa.configurar')}
+        podeFoto={pode(sessao, 'produto.editar')}
         empresaNome={empresa.nome}
       />
     </Estrutura>

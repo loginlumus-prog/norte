@@ -54,9 +54,14 @@ export function EtiquetasEmLote({ acao, unidade }: { acao: string; unidade: stri
       >
         Imprimir etiquetas{quantos > 0 ? ` (${quantos})` : ''}
       </button>
-      <button type="button" onClick={() => marcarTodas(quantos < naPagina)} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
-        {quantos < naPagina ? `marcar os ${naPagina} desta página` : 'desmarcar'}
-      </button>
+      {/* "Marcar todos" aparece depois da primeira caixa marcada: antes
+          disso ele era um link solto no cabeçalho, e é ao começar a marcar
+          que a pessoa quer marcar o resto. */}
+      {quantos > 0 && (
+        <button type="button" onClick={() => marcarTodas(quantos < naPagina)} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
+          {quantos < naPagina ? 'marcar todos' : 'desmarcar'}
+        </button>
+      )}
     </form>
   )
 }

@@ -59,9 +59,9 @@ export function Itens({
           <span className="flex flex-col">
             <span className="text-base font-semibold text-tinta">{p.Pedido} vazio</span>
             <span className="text-sm text-tinta-2">
+              {/* O "botão direito tira um" saiu daqui: é atalho de quem já
+                  sabe, e está na Ajuda. O pedido vazio diz só o primeiro passo. */}
               Toque num {p.produto} ou bipe a etiqueta.
-              {/* Só para quem tem mouse: no toque, o "−" do cartão é que tira. */}
-              <span className="hidden [@media(pointer:fine)]:inline"> O botão direito no cartão tira um.</span>
             </span>
           </span>
         </div>

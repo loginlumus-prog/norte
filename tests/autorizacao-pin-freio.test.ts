@@ -5,8 +5,9 @@
 // a recusa "duas pessoas usam esse PIN" contava que aquele número é o PIN de
 // alguém; e o PIN de quatro números (10 mil combinações) se criava à vontade.
 // Agora: conta por quem pede além da conta da loja, o acerto não zera a da
-// loja, uma recusa só, o PIN repetido é barrado ao criar, e o PIN novo tem
-// seis números (o de quatro que já existe continua valendo).
+// loja, uma recusa só e o PIN repetido é barrado ao criar. O tamanho voltou a
+// ser de 4 a 6 (decisão do dono: o PIN é digitado em toda venda) — quem segura
+// o chute é o freio, e o PIN que todo mundo chuta (1234, 0000) é recusado.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import type { PGlite } from '@electric-sql/pglite'
@@ -92,8 +93,14 @@ const pedir = (pin: string, quem = 'usr-b1', unidadeId = 'u-1') =>
   })
 
 describe('criar o PIN', () => {
-  it('o PIN novo tem seis números', async () => {
-    expect(await m.autorizacao.definirMeuPin(GER3, SENHA, '5829')).toEqual({ ok: false, erro: 'O PIN novo tem 6 números.' })
+  it('o PIN novo pode ter 4 números — mas não o que todo mundo chuta, nem fora de 4 a 6', async () => {
+    expect(await m.autorizacao.definirMeuPin(GER3, SENHA, '1234')).toMatchObject({ ok: false, erro: /Sequência/ })
+    expect(await m.autorizacao.definirMeuPin(GER3, SENHA, '0000')).toMatchObject({ ok: false, erro: /repetido/ })
+    expect(await m.autorizacao.definirMeuPin(GER3, SENHA, '582')).toMatchObject({ ok: false, erro: /de 4 a 6/ })
+    expect(await m.autorizacao.definirMeuPin(GER3, SENHA, '5829461')).toMatchObject({ ok: false, erro: /de 4 a 6/ })
+    expect(await m.autorizacao.definirMeuPin(GER3, SENHA, '5829')).toEqual({ ok: true })
+    // Volta ao estado do resto do arquivo: a GER3 sem PIN.
+    await db.query(`update usuarios set pin_hash = null where id = 'usr-g3'`)
   })
 
   it('o mesmo PIN de outra pessoa da mesma loja é recusado — sem dizer de quem', async () => {

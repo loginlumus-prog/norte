@@ -18,7 +18,7 @@
 //    a alguém segue a régua de `podeConcederAcesso` (só o dono concede CARGO).
 
 import { comoOrg } from './banco'
-import { CAPACIDADES_DE_CARGO, exigir, type Acesso, type Capacidade, type Papel, type Sessao } from './permissao'
+import { CAPACIDADES_DE_CARGO, exigir, exigirQueNaoSejaSuporte, type Acesso, type Capacidade, type Papel, type Sessao } from './permissao'
 import type { Modulo } from './modulos'
 
 /** As caixas da tela, em grupos, com o nome que o dono entende. */
@@ -209,6 +209,8 @@ export async function salvarCargo(
   dados: { id?: string | null; nome: string; capacidades: readonly string[] },
 ): Promise<ResultadoCargo> {
   exigir(sessao, 'empresa.configurar')
+  // Cargo é o desenho de quem pode o quê: mexer nele é dar poder a alguém.
+  exigirQueNaoSejaSuporte(sessao, 'cria nem muda cargo')
   const nome = String(dados.nome ?? '').replace(/\s+/g, ' ').trim()
   if (nome.length < 2) return { ok: false, motivo: 'Dê um nome ao cargo.' }
   if (nome.length > NOME_DO_CARGO_MAX) return { ok: false, motivo: `Nome longo demais: até ${NOME_DO_CARGO_MAX} letras.` }
@@ -249,6 +251,7 @@ export async function salvarCargo(
 
 export async function apagarCargo(sessao: Sessao, id: string): Promise<ResultadoCargo> {
   exigir(sessao, 'empresa.configurar')
+  exigirQueNaoSejaSuporte(sessao, 'apaga cargo')
   return comoOrg(sessao.orgId, async (db): Promise<ResultadoCargo> => {
     const c = await db.cargo.findUnique({
       where: { id },

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { listarEquipe, podeMexerEm, soLeitura } from '@/servidor/equipe'
-import { listarConvites } from '@/servidor/convite'
+import { emailDoConvite, listarConvites, whatsappDoConvite } from '@/servidor/convite'
 import { comoOrg } from '@/servidor/banco'
 import { pode, podeConceder, podeConcederAcesso, podeVerPlanos, unidadesQuePodem, type Papel } from '@/servidor/permissao'
 import { planoDaEmpresa } from '@/servidor/relatorios'
@@ -30,6 +30,10 @@ import { Cargos } from './Cargos'
 import { GRUPOS_DE_CARGO, MODELOS_DE_CARGO, listarCargos } from '@/servidor/cargos'
 
 export const metadata: Metadata = { title: 'Equipe' }
+
+/** "71988881234" → "(71) 98888-1234". */
+const celular = (d: string) =>
+  d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : d
 
 const TODOS_PAPEIS: Papel[] = ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR']
 
@@ -120,7 +124,7 @@ export default async function TelaEquipe({
   // o botão que a dona precisa — cortar.
   const suportes: SuporteNaTela[] = pessoas.flatMap((p) => {
     const s = p.acessos.find((a) => a.papel === 'SUPORTE' && vale(a))
-    return s && p.ativo ? [{ id: p.id, nome: p.nome, ate: s.expiraEm ? diaEHora(s.expiraEm) : null, motivo: s.motivo }] : []
+    return s && p.ativo ? [{ id: p.id, nome: p.nome, ate: s.expiraEm ? diaEHora(s.expiraEm) : null, motivo: s.motivo, edicao: s.suporteEdita }] : []
   })
   const podeCortarSuporte = podeGerir && podeConcederAcesso(sessao, 'DONO', null)
   const euSoLeio = soLeitura(sessao)
@@ -148,6 +152,7 @@ export default async function TelaEquipe({
         souEu,
         telefone: p.telefone ?? null,
         telefoneEstado: p.telefoneEstado,
+        temPin: p.temPin,
         podeMexer,
         podeTelefone: souEu ? !euSoLeio : podeMexer,
       }
@@ -155,7 +160,8 @@ export default async function TelaEquipe({
 
   const convitesNaTela: ConviteNaTela[] = convites.map((c) => ({
     id: c.id,
-    email: c.email,
+    // O convite que nasceu só com o WhatsApp mostra o número (ver convite.ts).
+    email: emailDoConvite(c.email) ?? `WhatsApp ${celular(whatsappDoConvite(c.email) ?? '')}`,
     papel: c.papel,
     cargoNome: c.cargo?.nome ?? null,
     expiraEm: dia(c.expiraEm),

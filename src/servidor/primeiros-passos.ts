@@ -44,7 +44,7 @@ export function montarPassos(e: EstadoDosPassos, slug: string): PrimeiroPasso[] 
     {
       chave: 'produtos',
       titulo: 'Produtos cadastrados',
-      detalhe: 'Traga o catálogo da planilha ou do sistema antigo de uma vez — sem digitar de novo.',
+      detalhe: 'Da planilha ou do sistema antigo, sem digitar de novo.',
       feito: e.produtos,
       href: `/${slug}/produtos/importar`,
       acao: 'Trazer',
@@ -52,7 +52,7 @@ export function montarPassos(e: EstadoDosPassos, slug: string): PrimeiroPasso[] 
     {
       chave: 'estoque',
       titulo: 'Estoque lançado',
-      detalhe: 'O saldo de cada loja: entra junto com a planilha, ou pela contagem na tela de Estoque.',
+      detalhe: 'O saldo de cada loja, pela planilha ou pela contagem.',
       feito: e.estoque,
       href: `/${slug}/estoque`,
       acao: 'Lançar',
@@ -62,7 +62,7 @@ export function montarPassos(e: EstadoDosPassos, slug: string): PrimeiroPasso[] 
       : {
           chave: 'catalogo',
           titulo: 'Catálogo da loja aberto',
-          detalhe: 'O link que a cliente abre no celular para ver o que tem e pedir pelo WhatsApp.',
+          detalhe: 'O link para a cliente ver o que tem e pedir pelo WhatsApp.',
           feito: e.catalogo,
           href: `/${slug}/catalogo`,
           acao: 'Abrir',
@@ -72,7 +72,7 @@ export function montarPassos(e: EstadoDosPassos, slug: string): PrimeiroPasso[] 
       : {
           chave: 'whatsapp',
           titulo: 'WhatsApp do assistente conectado',
-          detalhe: 'Leia o QR Code com o celular da loja e o assistente passa a responder e avisar.',
+          detalhe: 'Leia o QR Code e o assistente passa a responder.',
           feito: e.whatsapp,
           href: `/${slug}/agente`,
           acao: 'Conectar',
@@ -80,7 +80,7 @@ export function montarPassos(e: EstadoDosPassos, slug: string): PrimeiroPasso[] 
     {
       chave: 'equipe',
       titulo: 'Equipe convidada',
-      detalhe: 'Cada pessoa com o próprio acesso: o livro de auditoria diz quem fez o quê.',
+      detalhe: 'Cada pessoa com o próprio acesso.',
       feito: e.equipe,
       href: `/${slug}/equipe`,
       acao: 'Convidar',

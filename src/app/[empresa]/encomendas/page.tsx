@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { semAcesso } from '@/servidor/sem-acesso'
 import { moduloLigado } from '@/servidor/modulos'
-import { pode } from '@/servidor/permissao'
+import { pode, suporteEdita } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { escolherUnidade } from '@/servidor/unidade'
 import { lerModo } from '@/servidor/modo'
@@ -200,7 +200,7 @@ export default async function Encomendas({
       falta={e.falta}
       sinal={e.sinal}
       sinalForma={formaSinalValida(e.sinalForma) ? e.sinalForma : null}
-      podeMexer={pode(sessao, 'venda.criar', e.unidadeId)}
+      podeMexer={pode(sessao, 'venda.criar', e.unidadeId) || suporteEdita(sessao)}
       podeCancelar={pode(sessao, 'venda.cancelar', e.unidadeId)}
       podeVender={pode(sessao, 'venda.criar', e.unidadeId)}
       editarEm={link({ editar: e.id })}
@@ -335,7 +335,9 @@ export default async function Encomendas({
       acao={onde.mostrarSeletor ? <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} /> : undefined}
     >
       {/* ── o tamanho do dia ── */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      {/* `empty:hidden`: num dia sem nada, a linha vazia ainda ocupava o
+          espaço de uma peça e empurrava o resto para baixo. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 empty:hidden">
         <Tira
           itens={[
             { rotulo: resumo.atrasadas === 1 ? 'atrasada' : 'atrasadas', quantos: resumo.atrasadas, nivel: 'critico' },
@@ -365,7 +367,7 @@ export default async function Encomendas({
         </Aviso>
       )}
 
-      {editando && !ehFinal(editando.situacao) && pode(sessao, 'venda.criar', editando.unidadeId) ? (
+      {editando && !ehFinal(editando.situacao) && (pode(sessao, 'venda.criar', editando.unidadeId) || suporteEdita(sessao)) ? (
         <Formulario
           key={editando.id}
           slug={slug}
@@ -443,7 +445,7 @@ export default async function Encomendas({
         >
           {q || chaveFiltro
             ? 'Nenhuma encomenda com esse filtro.'
-            : 'Nenhuma encomenda em aberto. Quando alguém pedir algo para depois, anote em “Nova encomenda” — com dia, hora e sinal.'}
+            : 'Nenhuma encomenda em aberto.'}
         </Vazio>
       ) : (
         grupos.map((g) => (
@@ -475,8 +477,7 @@ export default async function Encomendas({
       )}
 
       <p className="text-xs text-tinta-3">
-        O sinal entra no Financeiro no dia em que é recebido, como receita. Na entrega, o que falta é recebido no
-        Balcão, como venda — lance lá só o que falta.
+        O sinal entra como receita no dia em que é recebido. Na entrega, lance no Balcão só o que falta.
       </p>
     </Estrutura>
   )

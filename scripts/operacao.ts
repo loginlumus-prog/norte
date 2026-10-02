@@ -1,11 +1,12 @@
 // A operação do dia a dia da equipe do Norte, do laptop.
 //
 //   npm run operacao -- empresas                       quem são, em que plano, como vão
-//   npm run operacao -- pedidos                        pedidos de plano e crédito esperando resposta
+//   npm run operacao -- pedidos                        pedidos de plano e de respostas esperando resposta
 //   npm run operacao -- plano    <slug> <PLANO>        atende (ou faz) uma troca de plano
-//   npm run operacao -- credito  <slug> <reais> --motivo "..."
-//   npm run operacao -- recusar  <slug> plano|credito --motivo "..."
-//   npm run operacao -- suporte  <slug> --email <quem> --horas <1..72> --motivo "..."
+//   npm run operacao -- respostas <slug> --motivo "..." atende (ou dá) um pacote de +500 respostas
+//   npm run operacao -- credito  <slug> <reais> --motivo "..."   (cofre de IA, modelo antigo)
+//   npm run operacao -- recusar  <slug> plano|respostas|credito --motivo "..."
+//   npm run operacao -- suporte-conceder <slug> --email <quem> --horas <1..72> --motivo "..." [--edicao]
 //   npm run operacao -- suporte-revogar <slug> --email <quem>
 //   npm run operacao -- situacao <slug> ATIVA|SUSPENSA|CANCELADA --motivo "..."
 //   npm run operacao -- farol-marcas <slug> <quantas> --motivo "..."
@@ -71,15 +72,15 @@ for (const saida of [process.stdout, process.stderr]) {
 }
 
 const { acharOrgPorSlug, fechar } = await import('../src/servidor/banco')
-const { PLANOS, precoDoFarol } = await import('../src/servidor/planos')
+const { PLANOS, PRECOS, milhar, precoDoFarol } = await import('../src/servidor/planos')
 const { mostrar } = await import('../src/servidor/dinheiro')
-const { previaDeTroca, trocarPlanoComoEquipe, quemDaEquipe, SemCota } = await import('../src/servidor/assinatura')
+const { previaDeTroca, trocarPlanoComoEquipe, quemDaEquipe, respostasDoMes, SemCota } = await import('../src/servidor/assinatura')
 const ped = await import('../src/servidor/pedidos')
 const op = await import('../src/servidor/operacao')
 type Plano = keyof typeof PLANOS
 type PrismaAdmin = import('@prisma/client').PrismaClient
 
-const SEM_VALOR = ['confirmar', 'producao', 'sem-pedido']
+const SEM_VALOR = ['confirmar', 'producao', 'sem-pedido', 'edicao']
 const { posicionais, opcoes } = lerArgumentos(process.argv.slice(2), SEM_VALOR)
 const [comando, ...resto] = posicionais
 const confirmar = opcoes.confirmar === true
@@ -243,8 +244,9 @@ async function pedidos() {
     where: { acao: { in: [...ped.ACOES_DE_PEDIDO] }, criadoEm: { gte: desde } },
     select: { id: true, orgId: true, acao: true, criadoEm: true, alvoNome: true, motivo: true, depois: true },
   })
+  // O pacote de respostas fecha o pedido DELE, não um de crédito (pedidos.ts).
   const recargas = await db.recargaIA.findMany({
-    where: { tipo: 'COMPRA', centavos: { gt: 0 }, criadoEm: { gte: desde } },
+    where: { tipo: 'COMPRA', centavos: { gt: 0 }, criadoEm: { gte: desde }, origem: { not: 'pacote' } },
     select: { id: true, orgId: true, criadoEm: true },
   })
 
@@ -283,8 +285,9 @@ async function pedidos() {
   )
   console.log(
     '\n  Para atender:  npm run operacao -- plano <endereço> <PLANO> --quem "Seu nome" --confirmar' +
+      '\n                 npm run operacao -- respostas <endereço> --motivo "..." --quem "Seu nome" --confirmar' +
       '\n                 npm run operacao -- credito <endereço> <reais> --motivo "..." --quem "Seu nome" --confirmar' +
-      '\n  Para recusar:  npm run operacao -- recusar <endereço> plano|credito --motivo "..." --quem "Seu nome" --confirmar' +
+      '\n  Para recusar:  npm run operacao -- recusar <endereço> plano|respostas|credito --motivo "..." --quem "Seu nome" --confirmar' +
       `\n\n  Planos: ${(Object.keys(PLANOS) as Plano[]).map((k) => `${k} (${PLANOS[k].titulo})`).join(', ')}\n`,
   )
 }
@@ -354,13 +357,37 @@ async function credito() {
   console.log(`  Feito. Saldo de crédito de IA de /${org.slug}: ${mostrar(r.saldoDepois)}.\n`)
 }
 
+async function respostas() {
+  const [slug] = resto
+  const motivo = op.validarMotivo(texto('motivo'))
+  const org = await empresaDo(slug)
+  const agora = await respostasDoMes(org.id)
+  const pedido = opcoes['sem-pedido'] ? null : ped.pedidoAberto(await ped.eventosDePedido(org.id), 'respostas')
+
+  titulo(`Pacote de respostas em /${org.slug}`)
+  resumo([
+    ['Empresa', `${org.nome} (${org.situacao.toLowerCase()})`],
+    ['Pacote', `+${milhar(PRECOS.pacoteRespostas)} respostas neste mês (${mostrar(PRECOS.pacotePreco * 100)})`],
+    ['Respostas', agora.total === null ? 'sob contrato' : `${milhar(agora.usadas)} usadas de ${milhar(agora.total)} → de ${milhar(agora.total + PRECOS.pacoteRespostas)}`],
+    ['Motivo', `"${motivo}" — vai para o livro da loja`],
+    ['Pedido', pedido ? `atende o pedido de ${pedido.oQue}, de ${dataHora(pedido.criadoEm)}` : 'nenhum aberto — pacote por decisão da equipe'],
+  ])
+  if (agora.total === null) parar('Plano sob contrato: as respostas são as do contrato, não de pacote.')
+  if (agora.total === 0 && agora.incluidas === 0) parar('O plano desta empresa não tem o assistente: pacote não entra.')
+
+  const quem = confirmar ? operador() : null
+  if (!(await porta(org.slug))) return
+  const r = await op.atenderPacoteDeRespostas(org.id, { motivo, quem: quem!, pedidoId: pedido?.id })
+  console.log(`  Feito. /${org.slug}: ${milhar(r.usadas)} usadas de ${r.total === null ? '—' : milhar(r.total)} no mês. No livro da loja: ${quem}.\n`)
+}
+
 async function recusar() {
   const [slug, tipoBruto] = resto
-  const tipo = tipoBruto === 'plano' || tipoBruto === 'credito' ? tipoBruto : parar('Diga o que recusar: plano ou credito.')
+  const tipo = op.lerTipoPedido(tipoBruto) ?? parar('Diga o que recusar: plano, respostas ou credito.')
   const motivo = op.validarMotivo(texto('motivo'))
   const org = await empresaDo(slug)
   const pedido = ped.pedidoAberto(await ped.eventosDePedido(org.id), tipo)
-  if (!pedido) parar(`/${org.slug} não tem pedido de ${tipo === 'plano' ? 'plano' : 'crédito'} aberto.`)
+  if (!pedido) parar(`/${org.slug} não tem pedido de ${op.NOME_DO_TIPO[tipo]} aberto.`)
 
   titulo(`Recusar um pedido de /${org.slug}`)
   resumo([
@@ -389,6 +416,7 @@ async function suporte() {
   const email = op.validarEmail(texto('email'))
   const horas = op.validarHoras(texto('horas') ?? '')
   const motivo = op.validarMotivo(texto('motivo'))
+  const edicao = opcoes.edicao === true
   const org = await empresaDo(slug)
   const e = await op.estadoDoSuporte(org.id, email)
   const dominio = process.env.NORTE_EQUIPE_DOMINIO ?? null
@@ -403,7 +431,10 @@ async function suporte() {
     ['Conta', e.usuario ? `já existe nesta empresa${e.usuario.temSenha ? '' : ' (ainda sem senha)'}` : 'será criada agora, sem senha'],
     ...(e.usuario?.temSenha ? [] : [['Senha', `ninguém daqui escolhe: o link de "Esqueci a senha" vai para ${email}`] as [string, string]]),
     ['Prazo', `${e.suporte?.expiraEm ? (e.suporte.expiraEm > agora ? `vale até ${dataHora(e.suporte.expiraEm)}` : `venceu em ${dataHora(e.suporte.expiraEm)}`) + ' → ' : ''}até ${dataHora(ate)} (${horas} h)`],
-    ['Poder', 'só leitura (papel SUPORTE); cada tela aberta vira linha no livro da loja'],
+    ['Modo', `${e.suporte && e.suporte.edicao !== edicao ? `${e.suporte.edicao ? 'edição' : 'só leitura'} → ` : ''}${edicao
+      ? 'EDIÇÃO — arruma produto, preço, estoque, catálogo, Configurações, convites, encomendas; nunca vende, nem caixa, dinheiro ou Assinatura'
+      : 'só leitura (para editar, rode com --edicao)'}`],
+    ['Livro', 'cada tela aberta vira linha no livro da loja; cada mudança sai assinada "Equipe Norte (nome)"'],
     ['Motivo', `"${motivo}" — a loja lê isto em cada linha do livro`],
   ])
   if (org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA') {
@@ -414,10 +445,10 @@ async function suporte() {
   if (!(await porta(org.slug))) return
   const r = await op.concederSuporte(
     org.id,
-    { email, nome: texto('nome'), horas, motivo, quem: quem! },
+    { email, nome: texto('nome'), horas, motivo, quem: quem!, edicao },
     { dominioDaEquipe: dominio },
   )
-  console.log(`  Feito. Acesso de suporte até ${dataHora(r.expiraEm)}.${r.criouConta ? ' A conta foi criada.' : ''}`)
+  console.log(`  Feito. Acesso de suporte (${r.edicao ? 'edição' : 'só leitura'}) até ${dataHora(r.expiraEm)}.${r.criouConta ? ' A conta foi criada.' : ''}`)
   if (r.sessoesCortadas) console.log('  O prazo encurtou: as sessões abertas desta conta foram cortadas.')
   console.log(`\n  Como entrar: ${enderecoDeEntrada(org.slug)} — com o e-mail ${email} e a SENHA DA PRÓPRIA PESSOA.`)
   if (!r.temSenha) console.log(await linkDeSenha(org.id, org.slug, email))
@@ -546,9 +577,11 @@ function ajuda() {
     npm run operacao -- empresas
     npm run operacao -- pedidos
     npm run operacao -- plano    <endereço> <PLANO>
+    npm run operacao -- respostas <endereço> --motivo "..." [--sem-pedido]
     npm run operacao -- credito  <endereço> <reais> --motivo "..." [--tipo COMPRA|AJUSTE] [--sem-pedido]
-    npm run operacao -- recusar  <endereço> plano|credito --motivo "..."
-    npm run operacao -- suporte  <endereço> --email <e-mail> --horas <1..72> --motivo "..." [--nome "..."]
+    npm run operacao -- recusar  <endereço> plano|respostas|credito --motivo "..."
+    npm run operacao -- suporte-conceder <endereço> --email <e-mail> --horas <1..72> --motivo "..." [--edicao] [--nome "..."]
+                        (o mesmo que "suporte"; sem --edicao é só leitura)
     npm run operacao -- suporte-revogar <endereço> --email <e-mail> [--motivo "..."]
     npm run operacao -- situacao <endereço> ATIVA|SUSPENSA|CANCELADA --motivo "..."
     npm run operacao -- farol-marcas <endereço> <quantas> --motivo "..."
@@ -565,9 +598,11 @@ const COMANDOS: Record<string, () => Promise<void> | void> = {
   empresas,
   pedidos,
   plano,
+  respostas,
   credito,
   recusar,
   suporte,
+  'suporte-conceder': suporte,
   'suporte-revogar': suporteRevogar,
   situacao,
   'farol-marcas': farolMarcas,

@@ -310,6 +310,12 @@ export async function enviarEGravar(
   conversa: { id: string; telefone: string },
   texto: string,
   modelo?: ModeloParaEnvio | null,
+  /**
+   * `respostaIa`: esta mensagem é uma resposta escrita pela IA — conta uma
+   * das respostas do mês (planos.ts). Marcada aqui, na mesma linha que grava
+   * o que saiu: o que não saiu não conta.
+   */
+  opcoes: { respostaIa?: boolean } = {},
 ): Promise<Saida> {
   const jaForam = await mensagensEnviadasHoje(agente.orgId)
   if (jaForam >= agente.mensagensDia) {
@@ -324,7 +330,7 @@ export async function enviarEGravar(
 
   await comoOrg(agente.orgId, async (db) => {
     await db.mensagemAgente.create({
-      data: { orgId: agente.orgId, conversaId: conversa.id, de: 'AGENTE', texto },
+      data: { orgId: agente.orgId, conversaId: conversa.id, de: 'AGENTE', texto, respostaIa: !!opcoes.respostaIa },
     })
     await db.conversaAgente.update({ where: { id: conversa.id }, data: { ultimaEm: new Date() } })
   })

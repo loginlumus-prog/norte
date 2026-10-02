@@ -515,6 +515,11 @@ export async function fecharVenda(
      * de o servidor pedir, e não fica guardado em lugar nenhum da tela.
      */
     pin?: string | null
+    /**
+     * A assinatura de quem vendeu (a empresa pede o PIN em toda venda — ver
+     * venda.ts). Também só vai nesta chamada; a tela não guarda.
+     */
+    assinatura?: { pin?: string | null; travado?: boolean } | null
     /** O CPF que a cliente ditou no crediário, para a ficha sem CPF. */
     clienteCpf?: string | null
     clienteId?: string | null
@@ -600,6 +605,12 @@ async function registrarVendaDoBalcao(
     desconto: dados.desconto,
     acrescimo: Number(dados.acrescimo) || 0,
     autorizacao: typeof dados.pin === 'string' && dados.pin.trim() ? { pin: dados.pin.trim().slice(0, 12) } : null,
+    assinatura: dados.assinatura
+      ? {
+          pin: typeof dados.assinatura.pin === 'string' && dados.assinatura.pin.trim() ? dados.assinatura.pin.trim().slice(0, 12) : null,
+          travado: dados.assinatura.travado === true,
+        }
+      : null,
     clienteCpf: typeof dados.clienteCpf === 'string' && dados.clienteCpf.trim() ? dados.clienteCpf.trim().slice(0, 20) : null,
     clienteId: dados.clienteId ?? null,
     vendedorId: dados.vendedorId ?? null,

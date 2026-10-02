@@ -156,18 +156,20 @@ horas); sem, entra na hora.
 ## Operação do dia a dia
 
 A equipe do Norte opera as empresas por **uma ferramenta de linha de comando,
-rodada do laptop** — `scripts/operacao.ts`. Não existe console de
-administração na web, de propósito: ele precisaria, no servidor, de uma chave
+rodada do laptop** — `scripts/operacao.ts` — e pelo console local
+(`npm run console`, abaixo). Não existe console de administração no sistema
+hospedado, de propósito: ele precisaria, no servidor, de uma chave
 que atravessa empresas, e aí um furo em qualquer tela viraria acesso a todas
 as lojas.
 
 ```bash
 npm run operacao -- empresas                    # quem são, plano, lojas, crédito, WhatsApp, suporte
-npm run operacao -- pedidos                     # pedidos de plano e de crédito esperando resposta
+npm run operacao -- pedidos                     # pedidos de plano e de respostas esperando resposta
 npm run operacao -- plano    <endereço> <PLANO>
+npm run operacao -- respostas <endereço> --motivo "..." [--sem-pedido]   # pacote de +500 respostas
 npm run operacao -- credito  <endereço> <reais> --motivo "..." [--tipo COMPRA|AJUSTE] [--sem-pedido]
-npm run operacao -- recusar  <endereço> plano|credito --motivo "..."
-npm run operacao -- suporte  <endereço> --email <e-mail> --horas <1..72> --motivo "..." [--nome "..."]
+npm run operacao -- recusar  <endereço> plano|respostas|credito --motivo "..."
+npm run operacao -- suporte-conceder <endereço> --email <e-mail> --horas <1..72> --motivo "..." [--edicao] [--nome "..."]
 npm run operacao -- suporte-revogar <endereço> --email <e-mail> [--motivo "..."]
 npm run operacao -- situacao <endereço> ATIVA|SUSPENSA|CANCELADA --motivo "..."
 ```
@@ -249,10 +251,24 @@ acima de R$ 5.000 numa recarga só, não.
 
 ### O acesso de suporte
 
-Para olhar a conta de uma loja, alguém da equipe recebe um acesso **SUPORTE**:
-só leitura (`permissao.ts`), com prazo (1 a 72 horas) e motivo. Cada tela que
-ele abre vira linha no livro da loja com esse motivo (`suporte.acessou`, em
-`pagina.ts`).
+Para olhar a conta de uma loja, alguém da equipe recebe um acesso **SUPORTE**
+com prazo (1 a 72 horas), motivo e um **modo** (`suporte-conceder`; `suporte`
+é o mesmo comando):
+
+- **só leitura** (o padrão): olha, não muda nada;
+- **edição** (`--edicao`, ou "Modo" no console): arruma a operação da empresa
+  inteira — produto, preço, estoque, catálogo, Configurações, convite de
+  balcão, encomenda (texto, data, "pronta"; nunca valor nem sinal). Nunca
+  vende, cancela venda, mexe no caixa, recebe, estorna, lança no financeiro,
+  mexe na Assinatura, abre ou fecha loja, cria cargo, muda as regras do PIN,
+  gera link de senha de outra pessoa, anonimiza cliente nem troca o dono
+  (`SUPORTE_EDICAO` e `exigirQueNaoSejaSuporte` em `permissao.ts`).
+
+Cada tela que ele abre vira linha no livro da loja com esse motivo
+(`suporte.acessou`, em `pagina.ts`), e tudo o que ele faz sai assinado
+**"Equipe Norte (nome)"**. A dona vê "Suporte do Norte · edição · até ..." na
+tela Equipe e corta quando quiser. O modo é lido do banco a cada tela:
+conceder de novo com outro modo vale na próxima tela.
 
 ```
 $ npm run operacao -- suporte exemplo --email suporte.teste@usenorte.com.br --horas 4 \
@@ -261,7 +277,8 @@ $ npm run operacao -- suporte exemplo --email suporte.teste@usenorte.com.br --ho
     Conta     será criada agora, sem senha
     Senha     ninguém daqui escolhe: o link de "Esqueci a senha" vai para suporte.teste@usenorte.com.br
     Prazo     até 27/09/26, 01:35 (4 h)
-    Poder     só leitura (papel SUPORTE); cada tela aberta vira linha no livro da loja
+    Modo      só leitura (para editar, rode com --edicao)
+    Livro     cada tela aberta vira linha no livro da loja; cada mudança sai assinada "Equipe Norte (nome)"
 
   Feito. Acesso de suporte até 27/09/26, 01:35. A conta foi criada.
   Como entrar: http://localhost:3000/exemplo/entrar — com o e-mail suporte.teste@usenorte.com.br e a SENHA DA PRÓPRIA PESSOA.
@@ -291,6 +308,46 @@ o assistente e as campanhas, não deposita o crédito do mês — e **corta a
 sessão de todo mundo da empresa**, porque uma Server Action de tela já aberta
 confere a sessão, não a empresa. `ATIVA` devolve tudo. Criar empresa continua
 sendo `npm run empresa`; atender pedido de titular (LGPD), `npm run anonimizar`.
+
+### Console do Norte (só no seu computador)
+
+O mesmo trabalho da ferramenta de operação, numa página: todas as empresas,
+o dono, plano e situação, teste até / próxima cobrança, lojas, pessoas,
+módulos à parte, mensalidade pela tabela, crédito de IA (saldo e gasto no
+mês), última atividade e pedidos abertos — e as ações: situação, plano,
+Fábrica/Farol e marcas do Farol, crédito, atender/recusar pedidos, acesso de
+suporte (e revogar) e refazer o convite do dono.
+
+```bash
+npm run console                    # banco local (.env)
+npm run console -- --producao      # produção (.env.producao) — as mesmas variáveis do npm run operacao
+npm run console -- --porta 4646    # outra porta (padrão 4545)
+```
+
+O terminal imprime um link `http://127.0.0.1:4545/?t=...`. Abra-o no
+navegador; o console fica de pé até o Ctrl+C.
+
+- **Não é tela do sistema hospedado.** É um servidor que roda no laptop de
+  quem opera, só em `127.0.0.1`. A `DATABASE_URL_ADMIN` continua morando só
+  ali — nunca vá colocá-la na hospedagem.
+- **A chave** nasce aleatória cada vez que o console sobe e morre quando ele
+  fecha. A primeira visita troca a chave do link por um cookie HttpOnly,
+  SameSite=Strict, e tira a chave do endereço. Sem o cookie, 401. Host que
+  não seja `127.0.0.1`/`localhost` na porta do console, 403.
+- **Todo formulário** leva um segredo próprio (CSRF) e precisa vir com o
+  `Origin` do console. A página não carrega nada de fora (CSP), não abre em
+  moldura e não manda Referer.
+- **Lê** com a credencial de admin, só dado de conta: nada de venda, cliente
+  da loja ou caixa. **Escreve** pelas funções de `src/servidor/operacao.ts`
+  (comoOrg, RLS, linha no livro da loja assinada `Equipe Norte (nome)`).
+- Toda ação pede **motivo** e um "tem certeza?". Em produção, pede também que
+  se **digite o endereço da empresa**, e a página fica com a faixa vermelha.
+- Quem assina: `NORTE_OPERADOR` no arquivo de ambiente, ou o nome que a página
+  pergunta antes da primeira ação.
+- Depois de dar suporte, a página mostra a entrada da empresa
+  (`/<endereço>/entrar`); a pessoa entra com a senha dela (só leitura, com
+  prazo). O link do convite refeito do dono aparece uma vez só, na página.
+- Saída do terminal passa pelo mesmo filtro de segredos da operação.
 
 ## Conector do WhatsApp (QR Code)
 
@@ -710,6 +767,7 @@ gatilhos que fazem ele agir sozinho.
 | `src/servidor/pedidos.ts` | O estado de um pedido de plano/crédito, lido do livro. A regra é **pura** |
 | `src/servidor/operacao.ts` | O que a equipe do Norte faz nas empresas (crédito, recusa, suporte, situação) |
 | `scripts/operacao.ts` | A ferramenta de operação, do laptop — ver "Operação do dia a dia" |
+| `scripts/console.ts`, `src/console/` | O console do Norte, local (127.0.0.1) — ver "Console do Norte" |
 | `src/servidor/limite.ts` | O freio do login: quantas tentativas, por e-mail e por IP |
 | `src/servidor/produto.ts` | Cadastrar produto e mexer na grade sem apagar história |
 | `src/servidor/entrada.ts` | Entrada de mercadoria: saldo, custo e conta do fornecedor |

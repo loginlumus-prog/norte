@@ -13,6 +13,7 @@
 
 import type { Plano } from '@prisma/client'
 import type { Modulo } from './modulos'
+import { MARGEM } from './custo-ia'
 
 export type Limite = {
   titulo: string
@@ -72,20 +73,19 @@ export type Limite = {
   /** Os módulos que o plano LIGA. Fora daqui, a chave nem aparece. */
   modulos: Modulo[]
   /**
-   * Crédito de IA que já vem no plano, por mês, em reais.
+   * Quantas RESPOSTAS do assistente vêm no mês (ver "o assistente, em
+   * respostas" mais abaixo). 0 = o plano não tem assistente.
    *
-   * Existe separado da mensalidade porque o custo de IA é o único que varia
-   * com o uso de CADA cliente: uma loja que conversa o dia inteiro no
-   * WhatsApp gasta dez vezes o de outra do mesmo tamanho. Embutir tudo na
-   * mensalidade obrigaria a cobrar do cliente pequeno o risco do grande.
-   *
-   * O que passa disso é recarga, e a recarga é o cliente que decide.
+   * É a unidade que o cliente entende. "R$ 100 de crédito de IA" não dizia a
+   * ninguém quanto dava para conversar; "1.000 respostas por mês" diz. O
+   * dinheiro continua existindo por baixo (a carteira, `creditoIaCent`), mas
+   * como trava NOSSA, não como conta que o lojista precisa fazer.
    *
    * `null` = definido em contrato. Só o Corporativo: lá o volume de conversa
    * varia demais entre um cliente e outro para caber num número de tabela, e
    * um número de tabela viraria promessa antes de alguém olhar a operação.
    */
-  creditoMensal: number | null
+  respostasMes: number | null
   /**
    * Ordem comercial. É ela que define o que é SUBIR e o que é DESCER — e
    * comparar por preço não serviria, porque o Corporativo não tem preço.
@@ -102,34 +102,134 @@ export type Limite = {
 /**
  * Os preços da tabela de outubro de 2026, num lugar só.
  *
- * O modelo: a LOJA é o que se paga. Tudo o que a loja usa (balcão, estoque,
- * crediário, financeiro, equipe, relatórios) vem junto; à parte só o que tem
- * custo que varia de cliente para cliente (o assistente e a IA dele) e o que é
- * trabalho nosso (a implantação, o Farol). A conta: 219 a primeira loja, 139
- * cada loja a mais, 149 o assistente, com 100 de crédito de IA por mês.
+ * O modelo (aprovado em 02/10/2026): UM plano, o Norte, cobrado por loja de
+ * venda — 219 a primeira, 139 cada loja a mais, depósito fora, equipe sem
+ * limite, tudo o que a loja usa dentro. Por cima, chaves que valem para a
+ * empresa inteira: o assistente (149, com 1.000 respostas por mês; pacote de
+ * +500 por 49), a fábrica (379, uma vez, quantas unidades de fábrica houver)
+ * e o Farol (497 a marca, 297 cada marca a mais). A implantação é à parte, uma
+ * vez, quando houver.
+ *
+ * Toda página que fala de preço lê daqui: a de venda, a calculadora, os
+ * termos, a tela de Assinatura, o guia. Número repetido em dois lugares é
+ * número que diverge.
  */
 export const PRECOS = {
   primeiraLoja: 219,
   lojaExtra: 139,
+  /** O assistente: uma chave para a empresa inteira, não por loja. */
   assistente: 149,
-  creditoDoAssistente: 100,
-  /** A fábrica (ficha técnica, produção, lote). Entra quando o módulo existir. */
+  /** Respostas do assistente que vêm no mês, com ele ligado. */
+  respostasDoAssistente: 1000,
+  /** O pacote avulso: +`pacoteRespostas` respostas por `pacotePreco`, somadas ao mês em que entra. */
+  pacoteRespostas: 500,
+  pacotePreco: 49,
+  /**
+   * A fábrica (ficha técnica, produção, lote): UMA vez por empresa, com
+   * quantas unidades de fábrica ela tiver. Por unidade, a segunda cozinha
+   * custava mais que uma loja — e ninguém abre a segunda por causa disso.
+   */
   fabrica: 379,
   /** O Farol, por marca (perfil). A segunda marca do mesmo dono sai mais barata. */
   farolMarca: 497,
   farolMarcaExtra: 297,
-  /** Crédito de IA que vem com cada marca do Farol, por mês (escrever conteúdo gasta IA). */
+  /**
+   * O teto de IA que vem com cada marca do Farol, por mês, em reais da
+   * carteira (escrever conteúdo gasta IA). O Farol é produto à parte, com a
+   * franquia dele — ver farol.ts.
+   */
   creditoDoFarol: 200,
   /** A implantação, uma vez: trazer dados de outro sistema; fábrica com fichas e várias unidades. */
   implantacaoMigracao: [1500, 2500] as const,
   implantacaoFabrica: [3000, 3500] as const,
-  /** No anual, 12 meses pelo preço de tantos. */
+  /**
+   * Quem prefere pagar o ano: 12 meses pelo preço de tantos. Não é botão da
+   * calculadora — é conversa (a página de venda diz "fale com a gente"), porque
+   * sem gateway o anual é cobrança feita à mão.
+   */
   anualPagaMeses: 10,
   /** Dias de teste com tudo, para quem se cadastra pelo site. */
   diasDeTeste: 30,
-  /** Crédito de IA de quem está em teste: o bastante para conhecer, não para gastar o nosso. */
-  creditoDoTeste: 20,
+  /** Respostas do assistente durante o teste inteiro: o bastante para conhecer, não para gastar o nosso. */
+  respostasDoTeste: 200,
 } as const
+
+/** "1.000" — o número de respostas como a tela escreve. */
+export const milhar = (n: number) => n.toLocaleString('pt-BR')
+
+// ─────────────────────────────────────────────────────────────
+// O ASSISTENTE, EM RESPOSTAS — e o dinheiro que fica por baixo
+// ─────────────────────────────────────────────────────────────
+//
+// ── o que é UMA resposta ─────────────────────────────────────
+// Uma mensagem do assistente que saiu para alguém e foi escrita pela IA: a
+// pessoa da equipe pergunta, o modelo pensa (com quantas idas às ferramentas
+// precisar) e UMA mensagem volta. Isso conta 1. Não contam: o relatório da
+// manhã e da noite, os avisos de encomenda, o recado automático ao cliente, as
+// campanhas, o "sim"/"não" das propostas e o CONFIRMAR — tudo isso é texto
+// fixo, sem IA, e não gasta nada nosso. A marca fica na própria mensagem
+// (`mensagens_agente.resposta_ia`), gravada na mesma porta de saída
+// (`enviarEGravar`); contar é contar essas linhas no mês.
+//
+// ── o mês ────────────────────────────────────────────────────
+// Mês de calendário no fuso da loja (America/Sao_Paulo): vira à meia-noite do
+// dia 1º, sem agendador — a conta é sempre "respostas marcadas desde o dia 1º".
+// O pacote comprado entra no mês em que caiu e acaba com ele: é franquia, não
+// poupança. No TESTE a franquia é uma só para o teste inteiro
+// (`respostasDoTeste`, contadas desde a criação da empresa), e não por mês —
+// senão o teste que atravessa a virada ganhava duas.
+//
+// ── a conta da margem ────────────────────────────────────────
+// Custo de UMA resposta, pela tabela de custo-ia.ts (claude-sonnet-5, o modelo
+// padrão do assistente; R$ 18/M de entrada, R$ 90/M de saída, cache lido a
+// 10% e gravado a 125%), numa conversa de WhatsApp típica:
+//   • o prefixo que se repete (instrução, ferramentas, histórico) relido do
+//     cache: ~10 mil tokens × R$ 1,80/M ............................ R$ 0,018
+//   • o que é novo no turno, gravado no cache: ~1,5 mil × R$ 22,50/M .. R$ 0,034
+//   • a resposta: ~300 tokens × R$ 90/M ............................. R$ 0,027
+//   → ~R$ 0,08 por chamada ao modelo; com ~1,3 chamada por resposta (as
+//     idas às ferramentas), ~R$ 0,10 de custo por resposta.
+// Medido no piloto: uma loja de movimento normal gastava ~R$ 36/mês de custo
+// bruto (comentário antigo deste plano) — algo como 300 a 450 respostas.
+//
+// Então, por mês, contra os R$ 149 do assistente:
+//   • a loja típica (~400 respostas): ~R$ 40 de custo → sobra ~R$ 109
+//   • quem usa as 1.000 inteiras:      ~R$ 100 de custo → sobra ~R$ 49, antes
+//     de imposto e taxa de cobrança — fino, mas positivo
+//   • o pacote (500 por R$ 49):        ~R$ 50 de custo → empata sozinho; ele
+//     existe para não travar quem está vendendo, não para lucrar.
+// Se a média medida (consumo_ia.custo_cent ÷ respostas marcadas no mês) passar
+// de R$ 0,10, quem tem que mudar é o modelo, o cache ou a franquia — e isto é
+// número para olhar todo mês.
+//
+// ── a trava de dinheiro (o cliente não vê) ───────────────────
+// As respostas são a franquia que a gente promete. A carteira (`creditoIaCent`,
+// debitada a cada chamada pelo COBRADO = custo × MARGEM) continua por baixo
+// como trava dura, com uma régua POR RESPOSTA: 70% dos R$ 149 divididos pelas
+// 1.000 respostas = R$ 0,104 de custo por resposta prometida. No começo de
+// cada mês a carteira é COMPLETADA até 1.000 × essa régua (R$ 104 de custo) —
+// não somada: sobra de mês não vira poupança —, e cada pacote soma 500 × a
+// régua (R$ 52). Na média de R$ 0,10 a trava cobre a franquia inteira; quem
+// gasta muito mais por resposta (áudio longo, laço de ferramenta) para na
+// trava antes, e no pior caso a IA do mês custa R$ 104 + R$ 52 por pacote —
+// sempre menos do que o assistente e os pacotes cobram juntos.
+
+/** Quanto do preço do assistente pode virar custo de IA, no pior caso. */
+export const PARCELA_MAX_DE_IA = 0.7
+
+/** A trava por resposta prometida, na escala da carteira (cobrado = custo × MARGEM), em centavos. Fracionária de propósito. */
+export const TETO_IA_POR_RESPOSTA_CENT =
+  (PRECOS.assistente * PARCELA_MAX_DE_IA * MARGEM * 100) / PRECOS.respostasDoAssistente
+
+/** O teto da carteira para N respostas prometidas, em centavos inteiros. */
+export const tetoDeIaCent = (respostas: number) => Math.round(respostas * TETO_IA_POR_RESPOSTA_CENT)
+
+/** O teto do mês com o assistente ligado (R$ 312,90 na carteira = R$ 104,30 de custo). */
+export const TETO_IA_DO_MES_CENT = tetoDeIaCent(PRECOS.respostasDoAssistente)
+/** O que cada pacote soma à carteira. */
+export const TETO_IA_DO_PACOTE_CENT = tetoDeIaCent(PRECOS.pacoteRespostas)
+/** O teto do teste inteiro. */
+export const TETO_IA_DO_TESTE_CENT = tetoDeIaCent(PRECOS.respostasDoTeste)
 
 /** Os módulos da loja: tudo, menos o assistente — que é o que custa à parte. */
 // O Farol entra aqui para o plano PERMITIR (trocar entre planos pagos não o
@@ -151,7 +251,7 @@ export const PLANOS: Record<Plano, Limite> = {
     porUnidadeExtra: null,
     porVagaExtra: null,
     modulos: [],
-    creditoMensal: 0,
+    respostasMes: 0,
     tetoVendasMes: 300,
     degrau: 0,
     aVenda: false,
@@ -160,7 +260,7 @@ export const PLANOS: Record<Plano, Limite> = {
     titulo: 'Norte',
     artigo: 'o',
     resumo:
-      `Tudo da loja: balcão, estoque, crediário, financeiro, equipe e relatórios. R$ ${PRECOS.primeiraLoja} a primeira loja, R$ ${PRECOS.lojaExtra} cada loja a mais.`,
+      `Tudo da loja: balcão, estoque, crediário, financeiro, equipe e relatórios. R$ ${PRECOS.primeiraLoja} a primeira loja, R$ ${PRECOS.lojaExtra} cada loja a mais, equipe sem limite.`,
     // Uma loja vem na base; cada loja a mais custa `porUnidadeExtra`, e a tela
     // diz o valor ANTES de abrir (ver `podeCriarUnidade`). Depósito não conta.
     unidades: 1,
@@ -171,34 +271,39 @@ export const PLANOS: Record<Plano, Limite> = {
     porUnidadeExtra: PRECOS.lojaExtra,
     porVagaExtra: null,
     modulos: DA_LOJA,
-    creditoMensal: 0,
+    respostasMes: 0,
     tetoVendasMes: null,
     degrau: 1,
     aVenda: true,
   },
   BALCAO_AGENTE: {
+    // É o MESMO Norte com a chave do assistente ligada — a tabela vende um
+    // plano só, e o assistente é chave da empresa inteira. O valor do enum
+    // fica (BALCAO_AGENTE) para não mexer no banco: trocar de "sem" para "com"
+    // assistente continua sendo trocar de plano por baixo, com tudo o que a
+    // troca já faz (pedido, módulo que liga e desliga, linha no livro).
     titulo: 'Norte + Assistente',
     artigo: 'o',
     resumo:
-      `Tudo do Norte, mais o assistente no WhatsApp: relatório, avisos e perguntas sobre o negócio, com R$ ${PRECOS.creditoDoAssistente} de crédito de IA por mês.`,
+      `Tudo do Norte, mais o assistente no WhatsApp para você e a equipe: ${milhar(PRECOS.respostasDoAssistente)} respostas por mês.`,
     unidades: 1,
     vagas: null,
     mensal: PRECOS.primeiraLoja + PRECOS.assistente,
     porUnidadeExtra: PRECOS.lojaExtra,
     porVagaExtra: null,
     modulos: [...DA_LOJA, 'agente'],
-    // Uma loja de movimento normal gasta uns R$ 36 de custo bruto por mês, o
-    // que dá ~R$ 108 cobrados (margem 3, custo-ia.ts): o crédito incluso cobre
-    // quase o mês inteiro; quem conversa mais recarrega, e a tela avisa antes.
-    creditoMensal: PRECOS.creditoDoAssistente,
+    // A conta da margem está em "o assistente, em respostas", lá em cima.
+    respostasMes: PRECOS.respostasDoAssistente,
     tetoVendasMes: null,
     degrau: 2,
     aVenda: true,
   },
   REDE: {
     // Os primeiros clientes: tudo ligado, valor combinado por fora. A conta que
-    // a tela mostra é a da tabela (Norte + Assistente, por loja) — é a
-    // referência para a conversa. Não se vende mais com este nome.
+    // a tela mostra é a da tabela (Norte com o assistente, por loja) — é a
+    // referência para a conversa. Não se vende mais com este nome. As
+    // respostas são as da tabela: contrato que quiser outro número, a equipe
+    // põe pacote.
     titulo: 'Norte sob contrato',
     artigo: 'o',
     resumo: 'Tudo do Norte e o assistente, com o valor combinado em contrato.',
@@ -208,7 +313,7 @@ export const PLANOS: Record<Plano, Limite> = {
     porUnidadeExtra: PRECOS.lojaExtra,
     porVagaExtra: null,
     modulos: [...DA_LOJA, 'agente'],
-    creditoMensal: PRECOS.creditoDoAssistente,
+    respostasMes: PRECOS.respostasDoAssistente,
     tetoVendasMes: null,
     degrau: 3,
     aVenda: false,
@@ -228,8 +333,9 @@ export const PLANOS: Record<Plano, Limite> = {
     porVagaExtra: null,
     modulos: [...DA_LOJA, 'agente'],
     // Sem numero de tabela, pelo mesmo motivo do preco: o volume de conversa
-    // de um cliente Corporativo nao se parece com o de outro.
-    creditoMensal: null,
+    // de um cliente Corporativo nao se parece com o de outro. A trava dele é
+    // só a carteira, posta pela equipe conforme o contrato.
+    respostasMes: null,
     tetoVendasMes: null,
     degrau: 4,
     aVenda: false,
@@ -344,36 +450,49 @@ export function precoDoFarol(marcas: number): number {
 }
 
 /**
- * O que esta empresa deve pagar hoje, com as unidades que ela tem, as
- * fábricas e as marcas do Farol CONTRATADAS (`Org.farolMarcas`, só com o
- * módulo ligado — quem chama decide; ver `assinaturaDaEmpresa`).
+ * O que esta empresa deve pagar hoje, com as lojas de venda que ela tem, as
+ * unidades de fábrica e as marcas do Farol CONTRATADAS (`Org.farolMarcas`, só
+ * com o módulo ligado — quem chama decide; ver `assinaturaDaEmpresa`).
+ *
+ * Devolve as parcelas além do total, porque a tela e a calculadora mostram a
+ * conta ABERTA (regra de ouro, lá em cima).
  */
 export function mensalidade(plano: Plano, unidades: number, fabricas = 0, farolMarcas = 0) {
   const p = PLANOS[plano]
   if (p.mensal === null) {
-    return { base: null, extras: 0, porExtra: null, fabricas: 0, porFabrica: null, farolMarcas: 0, farol: 0, total: null }
+    return { base: null, extras: 0, porExtra: null, assistente: 0, fabricas: 0, fabrica: 0, farolMarcas: 0, farol: 0, total: null }
   }
 
   const cota = p.unidades ?? unidades
   const extras = p.porUnidadeExtra !== null ? Math.max(0, unidades - cota) : 0
-  // A fábrica (unidade marcada como fábrica) é cobrada à parte, por fábrica,
-  // nos planos que cobram por unidade. No Grátis ela nem existe.
+  // A fábrica é UMA chave para a empresa: com uma ou com quatro unidades de
+  // fábrica, `PRECOS.fabrica` uma vez. Só nos planos que cobram por loja — no
+  // Grátis ela nem existe.
   const fab = p.porUnidadeExtra !== null ? Math.max(0, fabricas) : 0
+  const fabrica = fab > 0 ? PRECOS.fabrica : 0
+  // O assistente já está dentro de `mensal` (é o que separa os dois valores do
+  // enum); aqui ele sai como parcela para a conta aberta.
+  const assistente = p.mensal > 0 && p.modulos.includes('agente') ? PRECOS.assistente : 0
   // O Farol é contratado à parte e só existe onde o plano deixa ligar o
   // módulo (no Grátis, não). Sem esta linha a tela de Assinatura mostrava a
   // conta sem o Farol — que é a maior parcela de quem o contrata.
   const marcas = planoLibera(plano, 'farol') ? Math.max(0, Math.floor(farolMarcas)) : 0
   const farol = precoDoFarol(marcas)
   return {
+    /** O plano, com o assistente quando ligado: a primeira loja (+ o assistente). */
     base: p.mensal,
     extras,
     porExtra: p.porUnidadeExtra,
+    /** A parcela do assistente, já contida em `base`. */
+    assistente,
+    /** Unidades de fábrica ativas (só para a tela dizer quantas). */
     fabricas: fab,
-    porFabrica: fab > 0 ? PRECOS.fabrica : null,
+    /** A fábrica, em reais por mês: uma vez, ou zero. */
+    fabrica,
     farolMarcas: marcas,
     /** O Farol inteiro, em reais por mês (todas as marcas). */
     farol,
-    total: p.mensal + extras * (p.porUnidadeExtra ?? 0) + fab * PRECOS.fabrica + farol,
+    total: p.mensal + extras * (p.porUnidadeExtra ?? 0) + fabrica + farol,
   }
 }
 
@@ -393,8 +512,8 @@ export type Mudanca = {
   ganha: Modulo[]
   /** Módulos que somem — e ISSO precisa estar na tela antes do clique. */
   perde: Modulo[]
-  /** Crédito de IA mensal que passa a vir incluso. `null` = sai no contrato. */
-  creditoMensal: number | null
+  /** Respostas do assistente por mês no destino. 0 = sem assistente; `null` = sai no contrato. */
+  respostasMes: number | null
   /**
    * Impedimentos concretos. Vazio = pode trocar.
    *
@@ -416,8 +535,9 @@ export function mudanca(
   de: Plano,
   para: Plano,
   /**
-   * As lojas, e o que também entra na conta: as fábricas e as marcas do
-   * Farol. Sem elas a prévia mostrava R$ 368 a quem ia pagar R$ 747. Gente
+   * As lojas, e o que também entra na conta: as unidades de fábrica (a
+   * fábrica é uma parcela só, com qualquer número delas) e as marcas do Farol.
+   * Sem elas a prévia mostrava R$ 368 a quem ia pagar R$ 747. Gente
    * cadastrada deixou de ser cota — ver `vagas`.
    */
   uso: { unidades: number; fabricas?: number; farolMarcas?: number },
@@ -455,7 +575,7 @@ export function mudanca(
     diferenca: mensalNovo !== null && mensalAtual !== null ? mensalNovo - mensalAtual : null,
     ganha: alvo.modulos.filter((m) => !atual.modulos.includes(m)),
     perde: atual.modulos.filter((m) => !alvo.modulos.includes(m)),
-    creditoMensal: alvo.creditoMensal,
+    respostasMes: alvo.respostasMes,
     impedimentos,
   }
 }
@@ -520,8 +640,8 @@ const COM_AGENTE: Plano[] = ['BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
 const DE_REDE: Plano[] = PAGOS
 
 // ── os numeros da tabela saem do PLANO, nunca da mao ────────
-// Aqui havia "R$ 120/mes" escrito a mao na linha do credito, e ele continuou
-// dizendo 120 depois de o plano virar 100. Nao foi descuido: e o que SEMPRE
+// Aqui havia "R$ 120/mes" escrito a mao na linha do credito (hoje, a das
+// respostas), e ele continuou dizendo 120 depois de o plano virar 100. Nao foi descuido: e o que SEMPRE
 // acontece com numero repetido em dois lugares — um muda, o outro fica.
 //
 // O comentario no topo deste arquivo ja avisava disso para a pagina de venda.
@@ -663,11 +783,11 @@ export const RECURSOS: Recurso[] = [
     destaque: true,
   },
   {
-    titulo: 'Crédito de IA incluso',
+    titulo: 'Respostas do assistente',
     grupo: 'Assistente',
     em: COM_AGENTE,
     detalhe: porPlano(COM_AGENTE, (l) =>
-      l.creditoMensal === null ? 'no contrato' : `R$ ${l.creditoMensal}/mês`,
+      l.respostasMes === null ? 'no contrato' : `${milhar(l.respostasMes)}/mês`,
     ),
     destaque: true,
   },

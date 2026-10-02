@@ -136,6 +136,27 @@ describe('a conta do mês', () => {
     expect(mensalidade('REDE', 2).total).toBe(mensalidade('BALCAO_AGENTE', 2).total)
   })
 
+  // A fábrica é UMA chave da empresa: com uma ou com três cozinhas, 379.
+  it('a fábrica entra uma vez, com qualquer número de unidades de fábrica', () => {
+    const uma = mensalidade('BALCAO', 1, 1)
+    const tres = mensalidade('BALCAO', 1, 3)
+    expect(uma.fabrica).toBe(PRECOS.fabrica)
+    expect(tres.fabrica).toBe(PRECOS.fabrica)
+    expect(tres.fabricas).toBe(3)
+    expect(tres.total).toBe(PRECOS.primeiraLoja + PRECOS.fabrica)
+    expect(mensalidade('BALCAO', 1, 0).fabrica).toBe(0)
+    // No Grátis ela nem existe.
+    expect(mensalidade('GRATIS', 1, 2).fabrica).toBe(0)
+  })
+
+  it('a conta aberta fecha com o total: lojas, assistente, fábrica e Farol', () => {
+    const m = mensalidade('BALCAO_AGENTE', 3, 2, 2)
+    expect(m.assistente).toBe(PRECOS.assistente)
+    expect(PRECOS.primeiraLoja + m.extras * PRECOS.lojaExtra + m.assistente + m.fabrica + m.farol).toBe(m.total)
+    expect(m.total).toBe(219 + 2 * 139 + 149 + 379 + 497 + 297)
+    expect(mensalidade('BALCAO', 3).assistente).toBe(0)
+  })
+
   it('só o Norte e o Norte + Assistente estão à venda', () => {
     expect(PLANOS_COM_PRECO).toEqual(['BALCAO', 'BALCAO_AGENTE'])
   })
@@ -245,23 +266,35 @@ describe('o plano decide quais módulos existem', () => {
     for (const m of TODOS) expect(planoLibera('BALCAO_AGENTE', m), m).toBe(true)
   })
 
-  // A regra é: quem tem assistente tem crédito, quem não tem não tem. O
-  // Corporativo cumpre por outro caminho — o crédito dele existe e sai no
+  // A regra é: quem tem assistente tem respostas, quem não tem não tem. O
+  // Corporativo cumpre por outro caminho — as respostas dele saem no
   // contrato, e é isso que `null` quer dizer. Zero seria outra coisa: seria
-  // "tem assistente e não tem com que rodar", que não é plano nenhum.
-  it('todo plano com agente tem crédito, e sem agente tem zero', () => {
+  // "tem assistente e não pode responder nada", que não é plano nenhum.
+  it('todo plano com agente tem respostas, e sem agente tem zero', () => {
     for (const p of ORDEM) {
-      const c = PLANOS[p].creditoMensal
-      if (planoLibera(p, 'agente')) expect(c === null || c > 0, `${p} tem agente sem crédito`).toBe(true)
-      else expect(c, `${p} não tem agente mas tem crédito`).toBe(0)
+      const r = PLANOS[p].respostasMes
+      if (planoLibera(p, 'agente')) expect(r === null || r > 0, `${p} tem agente sem respostas`).toBe(true)
+      else expect(r, `${p} não tem agente mas tem respostas`).toBe(0)
     }
   })
 
-  it('e só o Corporativo deixa o crédito para o contrato', () => {
+  it('e só o Corporativo deixa as respostas para o contrato', () => {
     for (const p of ORDEM) {
-      if (p !== 'CORPORATIVO') expect(PLANOS[p].creditoMensal, p).not.toBeNull()
+      if (p !== 'CORPORATIVO') expect(PLANOS[p].respostasMes, p).not.toBeNull()
     }
-    expect(PLANOS.CORPORATIVO.creditoMensal).toBeNull()
+    expect(PLANOS.CORPORATIVO.respostasMes).toBeNull()
+  })
+
+  // O modelo antigo, nos clientes que já existem: quem tinha o Norte +
+  // Assistente segue com o assistente ligado e 1.000 respostas; quem tinha o
+  // Norte segue sem; o contrato segue igual. Nenhum valor do enum mudou.
+  it('os planos antigos caem no modelo novo sem migração', () => {
+    expect(PLANOS.BALCAO_AGENTE.respostasMes).toBe(PRECOS.respostasDoAssistente)
+    expect(planoLibera('BALCAO_AGENTE', 'agente')).toBe(true)
+    expect(PLANOS.BALCAO.respostasMes).toBe(0)
+    expect(planoLibera('BALCAO', 'agente')).toBe(false)
+    expect(PLANOS.REDE.aVenda).toBe(false)
+    expect(PLANOS.REDE.respostasMes).toBe(PRECOS.respostasDoAssistente)
   })
 
   it('nenhum plano libera módulo que não existe', () => {
@@ -306,14 +339,14 @@ describe('a tabela de comparação não pode divergir dos planos', () => {
     return r
   }
 
-  it('o crédito na tabela é o crédito do plano', () => {
-    const r = acha('Crédito de IA incluso')
+  it('as respostas na tabela são as do plano', () => {
+    const r = acha('Respostas do assistente')
     for (const p of ORDEM) {
-      const c = PLANOS[p].creditoMensal
+      const c = PLANOS[p].respostasMes
       if (!planoLibera(p, 'agente')) continue
       const dito = r.detalhe?.[p] ?? ''
       if (c === null) expect(dito, p).toBe('no contrato')
-      else expect(dito, p).toContain(String(c))
+      else expect(dito, p).toBe(`${c.toLocaleString('pt-BR')}/mês`)
     }
   })
 
@@ -405,6 +438,7 @@ describe('a escada do que cada plano abre', () => {
   it('a frase do cadeado sai com o artigo do plano', () => {
     expect(doPlano('BALCAO')).toBe('do Norte')
     expect(doPlano('BALCAO_AGENTE')).toBe('do Norte + Assistente')
+    expect(planoQueAbre('campanhas').codigo).toBe('BALCAO_AGENTE')
     expect(planoQueAbre('tarefas.rede').codigo).toBe('BALCAO')
   })
 

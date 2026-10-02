@@ -129,6 +129,8 @@ export const ACOES: Record<string, string> = {
   'plano.trocou': 'trocou de plano',
   'plano.pediu': 'pediu outro plano',
   'credito.pediu': 'pediu crédito de IA',
+  'respostas.pediu': 'pediu um pacote de respostas do assistente',
+  'respostas.adicionou': 'entrou um pacote de respostas do assistente',
   // O que a equipe do Norte faz pela ferramenta de operação
   // (scripts/operacao.ts) — sempre assinado "Equipe Norte (<quem>)".
   'credito.recarregou': 'o Norte pôs crédito de IA',
@@ -136,6 +138,10 @@ export const ACOES: Record<string, string> = {
   'empresa.situacao': 'o Norte mudou a situação da conta',
   'suporte.concedeu': 'o Norte liberou acesso de suporte',
   'suporte.revogou': 'o Norte encerrou o acesso de suporte',
+  // O porquê de uma decisão da equipe (o motivo de quem decidiu), logo
+  // depois da linha do fato — ver `trocarPlanoPelaEquipe` em operacao.ts.
+  'equipe.anotou': 'o Norte anotou o motivo de uma decisão',
+  'empresa.modulo': 'o Norte ligou ou desligou um módulo contratado',
   'agente.proposta.confirmou': 'confirmou uma proposta do assistente',
   'financeiro.despesa': 'lançou uma conta a pagar',
   'financeiro.receita': 'lançou uma receita',

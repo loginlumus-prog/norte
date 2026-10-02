@@ -49,7 +49,14 @@ import { centavos, reais, multiplicar, mostrar } from './dinheiro'
 import { tabelaDe, precoNaTabela, ROTULO_TABELA, type Tabela } from './preco'
 import { normalizarCodigo, pedeInteiro, travarVenda, venceu } from './devolucao'
 import { agendaDoCrediario, primeiroVencimentoPadrao, problemaDoPrimeiroVencimento } from './crediario-agenda'
-import { assinarExcecao, autorizarComPin } from './autorizacao'
+import {
+  assinarExcecao,
+  autorizarComPin,
+  identificarQuemVendeu,
+  pedePinNaVenda,
+  pinTravadoNaVenda,
+  temPin,
+} from './autorizacao'
 import { maquininhaDoPagamento, maquininhasNoBanco } from './maquininhas'
 import { cpfValido } from './cliente'
 import { travarCaixaAberto } from './caixa'
@@ -127,6 +134,23 @@ export type NovaVenda = {
    */
   autorizacao?: { pin: string } | null
   /**
+   * A assinatura de quem vendeu, com a empresa pedindo o PIN em toda venda
+   * (`Org.pinEmTodaVenda`; ver "ASSINAR A VENDA" em autorizacao.ts). O PIN
+   * decide QUEM vendeu — o `vendedorId` que vier é ignorado. Conferido aqui,
+   * nunca guardado. `travado`: o freio do PIN travou e a pessoa escolheu
+   * registrar no nome da conta aberta (só passa com a trava de verdade).
+   *
+   * SEM INTERNET o PIN não tem com quem conferir na hora. A tela pede mesmo
+   * assim e guarda o número SÓ NA MEMÓRIA da página (nunca no aparelho): a
+   * venda sobe com ele e é conferida aqui. Se a página fechou no meio (o PIN
+   * se perdeu) ou o PIN não confere, a venda — que já aconteceu, o dinheiro
+   * está na gaveta — entra no nome da conta aberta, marcada "conferir
+   * assinatura" no livro. Guardar o resumo dos PINs no aparelho para
+   * conferir offline foi descartado: PIN de 4 números se acha em segundos a
+   * partir do resumo, e o mesmo PIN autoriza desconto.
+   */
+  assinatura?: { pin?: string | null; travado?: boolean } | null
+  /**
    * O CPF que a cliente ditou no crediário, quando a ficha não tem. Vai para
    * a ficha na mesma transação da venda (só se a ficha estiver sem CPF).
    */
@@ -180,6 +204,8 @@ export type ResultadoVenda =
       semEstoque: string[]
       /** Quem autorizou com o PIN, quando foi preciso. */
       autorizadoPor: string | null
+      /** Em nome de quem a venda ficou (com o PIN na venda, é quem assinou). */
+      vendedor?: string
     }
   | { ok: false; motivo: 'sem_itens' }
   | { ok: false; motivo: 'sem_estoque'; faltando: { descricao: string; pedido: number; tem: number }[] }
@@ -189,6 +215,12 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'desconto_acima_do_teto'; percentual: number; teto: number }
   /** O PIN digitado não autorizou (errado, de quem não pode, ou freio). Nada foi gravado. */
   | { ok: false; motivo: 'autorizacao_recusada'; recado: string }
+  /**
+   * A empresa pede o PIN de quem vendeu e ele não veio, ou não conferiu.
+   * Nada foi gravado. `travado`: o freio travou — a tela oferece registrar
+   * no nome da conta aberta, marcada para conferir.
+   */
+  | { ok: false; motivo: 'assinatura_pedida'; recado: string; travado?: boolean }
   /** Parcelas do crédito, maquininha ou acréscimo fora do que a loja aceita. */
   | { ok: false; motivo: 'pagamento_recusado'; recado: string }
   | { ok: false; motivo: 'pontos_recusados'; recado: string }
@@ -351,6 +383,33 @@ export async function registrarVenda(
   }
   const podeDesconto = temPoder || !!autorizador
   if (avulsos.length > 0 && !podeDesconto) return { ok: false, motivo: 'avulso_negado' }
+
+  // ── 0.0' quem vendeu, pelo PIN ──
+  // Com a empresa pedindo o PIN em toda venda: nada é gravado sem ele, e é
+  // ele quem diz em nome de quem a venda fica. Também ANTES da transação (o
+  // freio abre as próprias). A troca (`dentro`) não pede: a venda dela nasce
+  // dentro da devolução, que já tem quem a fez.
+  let assinatura: { como: ComoAssinou; vendedor: { usuarioId: string; nome: string } | null } | null = null
+  if (!dentro && (await pedePinNaVenda(sessao.orgId))) {
+    const pinDaVenda = String(v.assinatura?.pin ?? '').trim()
+    if (pinDaVenda) {
+      const r = await identificarQuemVendeu({ sessao, unidadeId: v.unidadeId, pin: pinDaVenda })
+      if (r.ok) assinatura = { como: 'pin', vendedor: r.vendedor }
+      // A venda sem internet já aconteceu: não se recusa, marca para conferir.
+      else if (v.offline) assinatura = { como: 'pin_nao_conferiu', vendedor: null }
+      else return { ok: false, motivo: 'assinatura_pedida', recado: r.erro, ...(r.travado ? { travado: true } : {}) }
+    } else if (v.offline) {
+      assinatura = { como: 'sem_internet', vendedor: null }
+    } else if (!(await temPin(sessao.orgId, sessao.usuarioId))) {
+      // Quem está na conta aberta ainda não criou o PIN: confirma sem ele,
+      // no próprio nome. Ninguém fica preso na transição.
+      assinatura = { como: 'sem_pin', vendedor: null }
+    } else if (v.assinatura?.travado && (await pinTravadoNaVenda(sessao, v.unidadeId))) {
+      assinatura = { como: 'travado', vendedor: null }
+    } else {
+      return { ok: false, motivo: 'assinatura_pedida', recado: 'Confirme a venda com o PIN de quem vendeu.' }
+    }
+  }
 
   const corpo = async (db: BancoDaOrg): Promise<ResultadoVenda> => {
     // ── 0.0 a mesma venda de novo ──
@@ -625,7 +684,11 @@ export async function registrarVenda(
     // acesso de venda nesta unidade — senão a comissão do mês vai para um
     // nome que ninguém escolheu, ou para alguém que já saiu.
     let vendedor = { id: sessao.usuarioId, nome: sessao.nome }
-    if (v.vendedorId && v.vendedorId !== sessao.usuarioId) {
+    if (assinatura) {
+      // Com o PIN na venda, quem vendeu é quem assinou (já conferido: ativa,
+      // vende nesta loja). Sem assinatura que valha, a conta aberta.
+      if (assinatura.vendedor) vendedor = { id: assinatura.vendedor.usuarioId, nome: assinatura.vendedor.nome }
+    } else if (v.vendedorId && v.vendedorId !== sessao.usuarioId) {
       const agora = new Date()
       const pessoa = await db.usuario.findUnique({
         where: { id: v.vendedorId },
@@ -1325,7 +1388,7 @@ export async function registrarVenda(
         alvoId: venda.id,
         alvoNome: `Venda ${numero}`,
         valor: total,
-        ...((trocoCent > 0 && trocoCent <= TETO_DO_TROCO_CENT) || v.offline
+        ...((trocoCent > 0 && trocoCent <= TETO_DO_TROCO_CENT) || v.offline || assinatura
           ? {
               depois: {
                 ...(trocoCent > 0 && trocoCent <= TETO_DO_TROCO_CENT ? { troco: reais(trocoCent) } : {}),
@@ -1333,6 +1396,10 @@ export async function registrarVenda(
                 // aparelho disse e a que valeu.
                 ...(v.offline && quandoDaVenda
                   ? { semInternet: { horaDoAparelho: v.offline.quando.toISOString(), horaGravada: quandoDaVenda.toISOString() } }
+                  : {}),
+                // A assinatura: como a venda foi confirmada e em nome de quem.
+                ...(assinatura
+                  ? { assinatura: { como: assinatura.como, por: vendedor.nome, porId: vendedor.id, conferir: CONFERIR.has(assinatura.como) } }
                   : {}),
               },
             }
@@ -1349,6 +1416,8 @@ export async function registrarVenda(
             semEstoque.size > 0 ? `${plural(semEstoque.size, 'item', 'itens')} sem estoque no sistema` : null,
             jurosCent > 0 ? `juro do crédito ${mostrar(jurosCent)}` : null,
             vendedor.id !== sessao.usuarioId ? `vendedor: ${vendedor.nome}` : null,
+            assinatura?.como === 'pin' ? `assinada com o PIN de ${vendedor.nome}` : null,
+            assinatura && CONFERIR.has(assinatura.como) ? `conferir assinatura: ${ROTULO_ASSINATURA[assinatura.como]}` : null,
             tabela !== 'vista' ? `preço ${ROTULO_TABELA[tabela]}` : null,
             fiado.length > 0 ? `crediário em ${fiado[0]!.parcelas ?? 1}×` : null,
             crediarioForaDaRegra,
@@ -1369,9 +1438,27 @@ export async function registrarVenda(
       pontosGanhos: ganhos,
       semEstoque: [...semEstoque],
       autorizadoPor: autorizou?.nome ?? null,
+      vendedor: vendedor.nome,
     }
   }
   return dentro ? corpo(dentro.db) : comoOrg(sessao.orgId, corpo)
+}
+
+/** Como a venda foi confirmada, com a empresa pedindo o PIN em toda venda. */
+export type ComoAssinou = 'pin' | 'sem_pin' | 'sem_internet' | 'pin_nao_conferiu' | 'travado'
+
+/**
+ * As que ficam no livro para o dono conferir: a venda entrou no nome da conta
+ * aberta sem o PIN dizer quem foi. "sem_pin" não entra: é a própria conta
+ * aberta, que ainda não criou o PIN — a Equipe mostra quem falta.
+ */
+const CONFERIR = new Set<ComoAssinou>(['sem_internet', 'pin_nao_conferiu', 'travado'])
+const ROTULO_ASSINATURA: Record<ComoAssinou, string> = {
+  pin: 'assinada com PIN',
+  sem_pin: 'quem estava na conta ainda não tem PIN',
+  sem_internet: 'feita sem internet, subiu sem o PIN para conferir',
+  pin_nao_conferiu: 'feita sem internet, e o PIN digitado não conferiu',
+  travado: 'o PIN travou por erros, ficou no nome da conta aberta',
 }
 
 /**
@@ -1889,7 +1976,7 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
     // CONCLUIDA, e o estoque voltava DUAS vezes. Com a trava, o segundo
     // espera o primeiro terminar e já lê CANCELADA.
     await travarVenda(db, vendaId)
-    const v = await db.venda.findUnique({
+    const cabeca = await db.venda.findUnique({
       where: { id: vendaId },
       select: {
         id: true,
@@ -1902,15 +1989,19 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
         total: true,
         caixaId: true,
         encomendaId: true,
-        itens: { select: { variacaoId: true, quantidade: true } },
-        devolucoes: { select: { id: true } },
-        pagamentos: { select: { forma: true, valor: true, valeId: true } },
-        parcelas: {
-          select: { id: true, pago: true, juros: true, multa: true, desconto: true, _count: { select: { recebimentos: true } } },
-        },
       },
     })
-    if (!v) return { ok: false as const, motivo: 'nao_achada' as const }
+    if (!cabeca) return { ok: false as const, motivo: 'nao_achada' as const }
+    // Uma relação por consulta: quatro listas no mesmo select viravam quatro
+    // consultas em paralelo na conexão da transação (ver pg-query-paralelo).
+    const itens = await db.vendaItem.findMany({ where: { vendaId }, select: { variacaoId: true, quantidade: true } })
+    const devolucoes = await db.devolucao.findMany({ where: { vendaId }, select: { id: true } })
+    const pagamentos = await db.pagamento.findMany({ where: { vendaId }, select: { forma: true, valor: true, valeId: true } })
+    const parcelas = await db.parcela.findMany({
+      where: { vendaId },
+      select: { id: true, pago: true, juros: true, multa: true, desconto: true, _count: { select: { recebimentos: true } } },
+    })
+    const v = { ...cabeca, itens, devolucoes, pagamentos, parcelas }
 
     // Conferido DEPOIS de achar, porque a unidade da venda é o que decide.
     exigir(sessao, 'venda.cancelar', v.unidadeId)

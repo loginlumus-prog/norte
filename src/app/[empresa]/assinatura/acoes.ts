@@ -6,19 +6,21 @@
 import { revalidatePath } from 'next/cache'
 import type { Plano } from '@prisma/client'
 import { exigirSessao } from '@/servidor/pagina'
-import { exigir, podeVerPlanos, SemPermissao } from '@/servidor/permissao'
+import { exigir, exigirQueNaoSejaSuporte, podeVerPlanos, SemPermissao } from '@/servidor/permissao'
 import { MODULOS, type Modulo } from '@/servidor/modulos'
 import {
   trocarPlano,
-  recarregarCredito,
+  adicionarPacoteDeRespostas,
   SemCota,
   assinaturaDe,
   assinaturaLivre,
   registrarPedido,
 } from '@/servidor/assinatura'
-import { PLANOS, mudanca } from '@/servidor/planos'
+import { PLANOS, PRECOS, milhar, mudanca } from '@/servidor/planos'
 import { EMPRESA } from '@/servidor/legal'
-import { centavos, mostrar, DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
+
+const reais = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
 
 export type EstadoAssinatura = { erro?: string; ok?: string }
 
@@ -75,8 +77,11 @@ export async function trocar(
           a.situacao === 'TESTE'
             ? `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você e o ` +
               `teste vira assinatura, com tudo o que já foi lançado — ou fale direto em ${EMPRESA.email}.`
-            : `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você ` +
-              `e libera no mesmo dia — ou fale direto em ${EMPRESA.email}. Até lá, nada muda.`,
+            : a.plano === 'BALCAO' && alvo === 'BALCAO_AGENTE'
+              ? `Pedido para ligar o assistente registrado. A gente confirma o pagamento com você e liga ` +
+                `no mesmo dia — ou fale direto em ${EMPRESA.email}. Até lá, nada muda.`
+              : `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você ` +
+                `e libera no mesmo dia — ou fale direto em ${EMPRESA.email}. Até lá, nada muda.`,
       }
     }
   }
@@ -84,6 +89,14 @@ export async function trocar(
   try {
     const m = await trocarPlano(s, alvo)
     revalidatePath(`/${slug}/assinatura`)
+    if (m.de === 'BALCAO_AGENTE' && alvo === 'BALCAO') {
+      return {
+        ok:
+          'Assistente desligado.' +
+          (m.novoMensal !== null ? ` A conta passa a ${reais(m.novoMensal)} por mês.` : '') +
+          ' Os dados e as conversas ficam guardados para quando religar.',
+      }
+    }
     return {
       ok:
         m.sentido === 'descer'
@@ -100,52 +113,46 @@ export async function trocar(
 }
 
 /**
- * Recarga de crédito de IA.
+ * Mais respostas no mês: o pacote de +`PRECOS.pacoteRespostas`.
  *
- * Hoje ela credita direto: não há gateway ainda, e quem opera é quem responde
- * pela empresa. Quando o gateway entrar, esta função passa a criar a cobrança
- * e o crédito só cai no retorno do pagamento — o resto do sistema não muda,
- * porque ninguém além daqui sabe de onde o crédito veio.
+ * Sem gateway, é PEDIDO — a equipe confirma o pagamento e o pacote entra no
+ * mesmo dia (`adicionarPacoteDeRespostas`, pela ferramenta de operação). No
+ * modo livre (banco local) entra na hora. Quando o gateway existir, esta
+ * função cria a cobrança e o pacote cai no retorno do pagamento.
  */
-export async function recarregar(
+export async function comprarPacote(
   slug: string,
   _antes: EstadoAssinatura,
-  form: FormData,
+  _form: FormData,
 ): Promise<EstadoAssinatura> {
   const s = await exigirSessao(slug)
   exigir(s, 'empresa.configurar')
+  // No modo livre o pacote entra sem pedido: a trava tem de estar aqui, e
+  // não só em `registrarPedido`.
+  exigirQueNaoSejaSuporte(s, 'mexe na Assinatura')
+  const a = await assinaturaDe(s)
+  const pacote = `+${milhar(PRECOS.pacoteRespostas)} respostas`
 
-  // `lerDinheiro`: "1.000,00" é mil. O `centavos` direto quebrava nele (dois
-  // pontos depois de trocar a vírgula) e a tela dava "deu problema".
-  const bruto = String(form.get('valor') ?? '').trim()
-  const lido = bruto ? lerDinheiro(bruto) : 0
-  if (lido === null) return { erro: DINHEIRO_ILEGIVEL }
-  const cent = centavos(lido)
-
-  if (cent <= 0) return { erro: 'Diga quanto quer colocar de crédito.' }
-  // Teto de segurança: um zero a mais numa recarga manual é dinheiro que
-  // ninguém consegue explicar depois.
-  if (cent > 500_000) return { erro: 'Recarga acima de R$ 5.000 precisa passar pelo suporte.' }
+  if (!a.respostas.total) {
+    return { erro: 'O pacote é para quem tem o assistente ligado. Ligue o assistente primeiro.' }
+  }
+  if (a.situacao === 'TESTE') {
+    return { erro: 'No teste, o caminho é assinar: com o assistente ligado, o mês vem com 1.000 respostas.' }
+  }
 
   if (!assinaturaLivre()) {
-    await registrarPedido(s, { tipo: 'credito', centavos: cent })
+    await registrarPedido(s, { tipo: 'respostas' })
     revalidatePath(`/${slug}/assinatura`)
     return {
       ok:
-        `Pedido de ${mostrar(cent)} de crédito registrado. A gente confirma o pagamento com você ` +
-        `e o crédito cai no mesmo dia — ou fale direto em ${EMPRESA.email}.`,
+        `Pedido do pacote de ${pacote} (${reais(PRECOS.pacotePreco)}) registrado. A gente confirma o ` +
+        `pagamento com você e o pacote entra no mesmo dia — ou fale direto em ${EMPRESA.email}.`,
     }
   }
 
-  const saldo = await recarregarCredito(s.orgId, cent, {
-    tipo: 'COMPRA',
-    quem: s.nome,
-    origem: 'manual',
-    motivo: 'Recarga pela tela',
-  })
-
+  const r = await adicionarPacoteDeRespostas(s.orgId, { quem: s.nome, autor: 'PESSOA', usuarioId: s.usuarioId })
   revalidatePath(`/${slug}/assinatura`)
-  return { ok: `Crédito adicionado. Saldo agora: ${mostrar(saldo)}.` }
+  return { ok: `Pacote de ${pacote} adicionado. Faltam ${milhar(r.restam ?? 0)} respostas este mês.` }
 }
 
 /**

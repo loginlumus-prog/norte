@@ -42,7 +42,7 @@ import { comoOrg, type BancoDaOrg } from './banco'
 import { chaveTelefone, chavesParaBuscar } from './assistente/telefone'
 import { ehPedidoDeVolta as voltaNaRegua, lerParada } from './campanhas/casar'
 import { STATUS_VIVOS } from './campanhas/tipos'
-import { exigir, type Sessao } from './permissao'
+import { exigir, exigirQueNaoSejaSuporte, type Sessao } from './permissao'
 
 // ─────────────────────────────────────────────────────────────
 // OS TEXTOS
@@ -501,6 +501,7 @@ export async function anotarSemOfertas(sessao: Sessao, telefone: string, agora =
 /** Tira da lista o que a LOJA pôs. O "PARAR" da pessoa só sai com o VOLTAR dela. */
 export async function tirarSemOfertas(sessao: Sessao, id: string, agora = new Date()): Promise<{ ok: true } | { ok: false; erro: string }> {
   exigir(sessao, 'cliente.editar')
+  exigirQueNaoSejaSuporte(sessao, 'tira número da lista de quem não quer ofertas')
   return comoOrg(sessao.orgId, async (db) => {
     const l = await db.optOutWhatsapp.findUnique({ where: { id }, select: { id: true, telefone: true, origem: true } })
     if (!l) return { ok: false as const, erro: 'Esse número não está mais na lista.' }

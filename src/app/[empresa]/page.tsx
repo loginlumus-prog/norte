@@ -529,15 +529,16 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
       }
     >
       <div className="flex flex-col gap-10">
-        {(onde.opcoes.length === 0 || pendencias.length > 0) && (
-          <div className="flex flex-col gap-3">
-            {onde.opcoes.length === 0 && <SemUnidade />}
-            <PendenciasCurtas itens={pendencias} />
-          </div>
-        )}
-
-        {/* A empresa nova: o que falta para o sistema trabalhar. Só o dono vê. */}
-        <Passos passos={passos} sessao={sessao} />
+        {/* O aviso e os primeiros passos andam juntos, com o respiro curto
+            entre eles: separados pelo espaço de SEÇÃO (40px), as etiquetas
+            do "Precisa de você" ficavam boiando sozinhas no topo. Vazio, o
+            grupo some e não deixa buraco. */}
+        <div className="flex flex-col gap-4 empty:hidden">
+          {onde.opcoes.length === 0 && <SemUnidade />}
+          <PendenciasCurtas itens={pendencias} />
+          {/* A empresa nova: o que falta para o sistema trabalhar. Só o dono vê. */}
+          <Passos passos={passos} sessao={sessao} />
+        </div>
 
         {/* ── VENDAS ── */}
         <Secao titulo={`${j.rotulo} · ${onde.titulo}`}>
@@ -648,7 +649,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
         {completo && j.dias >= 7 && r.atual.vendas > 0 && (
           <Secao
             titulo={v.quandoVende}
-            resumo="Dia da semana contra hora do dia. É o que decide a escala da equipe e o horário de abrir."
+            resumo="Dia da semana × hora do dia: a escala da equipe e o horário de abrir."
           >
             <Bloco>
               <Calor
@@ -1331,7 +1332,7 @@ function GradeDoRamo({ dados, noEstoque, varias }: { dados: DadosGrade; noEstoqu
   return (
     <div className={cx('grid gap-6', dados.quebradas && 'md:grid-cols-2')}>
       {dados.quebradas && (
-        <Peca titulo="Grade quebrada" detalhe="O que vende acabou, e o resto da grade sobrou" icone="/x/estoque">
+        <Peca titulo="Grade quebrada" detalhe="Acabou o que vende, sobrou o resto" icone="/x/estoque">
           {dados.quebradas.length === 0 ? (
             <Calmo>Nenhuma grade quebrada: o que vende está na prateleira.</Calmo>
           ) : (
@@ -1448,7 +1449,7 @@ function SaboresDoRamo({
 
       <div className={cx('grid gap-6', dados.acabando && 'md:grid-cols-2')}>
         {dados.acabando && (
-          <Peca titulo="O que está acabando" detalhe="Pelo que sai num dia e pelo mínimo da loja" icone="/x/estoque">
+          <Peca titulo="O que está acabando" detalhe="Pelo ritmo do dia e pelo mínimo" icone="/x/estoque">
             {/* A lista usa a régua do "Precisa de você" (saboresAcabando). Vazia
                 com "N acabaram" lá do lado, o que acabou está FORA destas
                 lojas — o depósito, a fábrica — e a tela diz isso, em vez de
@@ -1456,8 +1457,7 @@ function SaboresDoRamo({
             {dados.acabando.length === 0 && acabaram > 0 ? (
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-norte bg-atencao-fundo px-3 py-2.5 text-sm text-atencao">
                 <span>
-                  Nada acabando nestas lojas — {palavra(acabaram, 'o item que acabou está', `os ${acabaram} que acabaram estão`)} em
-                  outra unidade (depósito ou fábrica).
+                  Nada acabando nestas lojas — {palavra(acabaram, 'o que acabou está', `os ${acabaram} que acabaram estão`)} no depósito ou na fábrica.
                 </span>
                 {verAcabaram && (
                   <Link href={verAcabaram} className="font-semibold underline-offset-2 hover:underline">
@@ -1499,7 +1499,7 @@ function SaboresDoRamo({
           </Peca>
         )}
 
-        <Peca titulo="Mais saíram hoje" detalhe="Pela quantidade, sabor por sabor">
+        <Peca titulo="Mais saíram hoje" detalhe="Sabor por sabor">
           {dados.doDia.length === 0 ? (
             <SemDado>Nenhum sabor vendido hoje ainda.</SemDado>
           ) : (

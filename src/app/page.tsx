@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import type { CSSProperties, ComponentType, ReactNode } from 'react'
 import type { Plano } from '@prisma/client'
 import './site.css'
-import { PLANOS as LIMITES, PLANOS_COM_PRECO, PRECOS, RECURSOS } from '@/servidor/planos'
+import { PLANOS as LIMITES, PLANOS_COM_PRECO, PRECOS, RECURSOS, milhar } from '@/servidor/planos'
 import { PODERES, TODOS_PODERES } from '@/servidor/poderes'
 import { MODULOS, RAMOS, type Ramo } from '@/servidor/modulos'
 import { EMPRESA } from '@/servidor/legal'
@@ -186,7 +186,7 @@ const TEXTOS: Record<TelaId, TextoTela> = {
       'Para agir — lançar uma compra, uma conta, aceitar um pedido — ele monta a proposta com o número e espera o seu SIM, ali mesmo na conversa.',
       'Os tetos moram no banco: valor máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
     ],
-    plano: `No ${LIMITES[COM_ASSISTENTE].titulo}: ${reais(PRECOS.assistente)} a mais por mês, com ${reais(PRECOS.creditoDoAssistente)} de crédito de IA.`,
+    plano: `Assistente: ${reais(PRECOS.assistente)} a mais por mês para a empresa inteira, com ${milhar(PRECOS.respostasDoAssistente)} respostas.`,
   },
 }
 
@@ -216,64 +216,45 @@ const SEGURANCA: { Icone: ComponentType<{ tamanho?: number; className?: string }
   { Icone: IconeTranca, t: 'A tela que tranca', d: 'Parada por meia hora, ela pede a senha de novo — sem perder a venda do balcão.' },
 ]
 
-const PLANOS_TEXTO: { plano: Plano; nome: string; preco: string; sub: string; destaque: boolean; itens: string[] }[] = [
-  {
-    plano: BASE,
-    nome: LIMITES[BASE].titulo,
-    preco: reais(PRECOS.primeiraLoja),
-    sub: `por mês, a primeira loja · ${reais(PRECOS.lojaExtra)} cada loja a mais`,
-    destaque: false,
-    itens: [
-      'Frente de caixa (PDV) que funciona sem internet',
-      'Estoque por loja, com grade de cor e tamanho',
-      'Catálogo online de cada loja, para mandar no WhatsApp',
-      'Encomendas, agenda, compras e fornecedores',
-      'Clientes, programa de pontos e crediário com carnê',
-      'Financeiro com DRE do mês e fechamento guiado',
-      'Metas, comissão e equipe sem limite de usuários',
-      'Trazer produtos de planilha ou de outro sistema',
-      'Nota fiscal no balcão · em breve',
-    ],
-  },
-  {
-    plano: COM_ASSISTENTE,
-    nome: LIMITES[COM_ASSISTENTE].titulo,
-    preco: reais(PRECOS.primeiraLoja + PRECOS.assistente),
-    sub: `por mês, a primeira loja · ${reais(PRECOS.creditoDoAssistente)} de crédito de IA todo mês`,
-    destaque: true,
-    itens: [
-      'Tudo do Norte, e:',
-      'Assistente com IA no WhatsApp, para você e a equipe',
-      'Lançar compra e estoque por texto ou por áudio',
-      'Relatório de manhã e à noite, e aviso do que vai faltar',
-      'Pedido do catálogo avisado na hora: ACEITAR ou PRONTO',
-      'Perguntas do negócio respondidas com os seus números',
-      'Nada acontece sem o seu SIM, com tetos que você define',
-    ],
-  },
-]
+/** O plano que se vende: um só, por loja. Tudo o que a loja usa vem dentro. */
+const O_PLANO = {
+  nome: LIMITES[BASE].titulo,
+  preco: reais(PRECOS.primeiraLoja),
+  sub: `por mês, a primeira loja · ${reais(PRECOS.lojaExtra)} cada loja a mais · depósito não conta`,
+  itens: [
+    'Frente de caixa (PDV) que funciona sem internet',
+    'Estoque por loja, com grade de cor e tamanho',
+    'Catálogo online de cada loja, para mandar no WhatsApp',
+    'Encomendas, agenda, compras e fornecedores',
+    'Clientes, programa de pontos e crediário com carnê',
+    'Financeiro com DRE do mês e fechamento guiado',
+    'Metas, comissão e equipe sem limite de usuários',
+    'Nota fiscal no balcão · em breve',
+  ],
+}
 
-const A_PARTE: { t: string; cor: string; d: string; preco: string; sub: string }[] = [
+/** O que liga por cima, para a empresa inteira. Os números saem de PRECOS. */
+const POR_CIMA: { t: string; cor: string; d: string; preco: string; sub: string }[] = [
   {
-    t: 'Farol',
-    cor: 'var(--s-sol)',
-    d: 'Marketing com IA para o Instagram e o TikTok da marca, e campanhas no WhatsApp.',
-    preco: `${reais(PRECOS.farolMarca)}/mês`,
-    sub: `por marca · ${reais(PRECOS.farolMarcaExtra)} cada marca a mais · ${reais(PRECOS.creditoDoFarol)} de crédito de IA`,
+    t: 'Assistente',
+    cor: 'var(--s-verde)',
+    d: 'IA no WhatsApp para você e a equipe: relatório, avisos, perguntas e lançamentos por áudio.',
+    preco: `${reais(PRECOS.assistente)}/mês`,
+    sub: `${milhar(PRECOS.respostasDoAssistente)} respostas por mês · +${milhar(PRECOS.pacoteRespostas)} por ${reais(PRECOS.pacotePreco)} se precisar`,
   },
   {
     t: 'Fábrica',
     cor: 'var(--s-violeta)',
-    d: 'Ficha técnica, ordem de produção com lote e validade, e o pedido das lojas.',
+    d: 'Ficha técnica, produção com lote e validade, e o pedido das lojas.',
     preco: `${reais(PRECOS.fabrica)}/mês`,
-    sub: 'por fábrica',
+    sub: 'uma vez, com quantas cozinhas você tiver',
   },
   {
-    t: 'Implantação',
-    cor: 'var(--s-azul)',
-    d: 'A gente traz os dados do sistema antigo e treina a equipe. Cadastro simples não paga nada.',
-    preco: 'Grátis',
-    sub: `no cadastro simples · trazer de outro sistema ou montar a fábrica: de ${reais(IMPLANTACAO.de)} a ${reais(IMPLANTACAO.ate)}, uma vez, com orçamento antes`,
+    t: 'Farol',
+    cor: 'var(--s-sol)',
+    d: 'Marketing com IA para o Instagram e o TikTok da marca.',
+    preco: `${reais(PRECOS.farolMarca)}/mês`,
+    sub: `por marca · ${reais(PRECOS.farolMarcaExtra)} cada marca a mais`,
   },
 ]
 
@@ -308,7 +289,11 @@ const PERGUNTAS: { p: string; r: string }[] = [
   },
   {
     p: 'Como funciona o teste?',
-    r: `São ${PRECOS.diasDeTeste} dias com tudo ligado — o assistente também, com ${reais(PRECOS.creditoDoTeste)} de crédito de IA para conhecer —, sem cartão. Assinando, nada muda: o que você lançou continua. Sem assinar, a conta não vira cobrança: fica no básico, com os dados guardados.`,
+    r: `São ${PRECOS.diasDeTeste} dias com tudo ligado — o assistente também, com ${milhar(PRECOS.respostasDoTeste)} respostas para conhecer —, sem cartão. Assinando, nada muda: o que você lançou continua. Sem assinar, a conta não vira cobrança: fica no básico, com os dados guardados.`,
+  },
+  {
+    p: 'O que conta como resposta do assistente?',
+    r: `Cada mensagem que ele escreve com IA para você ou a equipe. Relatório, avisos e campanhas não contam. O mês vem com ${milhar(PRECOS.respostasDoAssistente)}; acabou, ele avisa antes, e você compra +${milhar(PRECOS.pacoteRespostas)} por ${reais(PRECOS.pacotePreco)} ou espera o dia 1º.`,
   },
   {
     p: 'Meus dados ficam misturados com os de outra empresa?',
@@ -846,7 +831,7 @@ export default function Inicio() {
             invertido
             rodape={
               <p className="site-revela text-[14px] text-[var(--s-tinta-2)]">
-                No {LIMITES[COM_ASSISTENTE].titulo}: {reais(PRECOS.assistente)} a mais por mês para a empresa inteira, com {reais(PRECOS.creditoDoAssistente)} de crédito de IA.
+                Assistente: {reais(PRECOS.assistente)} a mais por mês para a empresa inteira, com {milhar(PRECOS.respostasDoAssistente)} respostas.
               </p>
             }
           />
@@ -991,59 +976,69 @@ export default function Inicio() {
               <Calculadora comecar={COMECAR} />
             </div>
 
-            <div className="mt-10 grid gap-4 lg:grid-cols-2">
-              {PLANOS_TEXTO.map((p) => (
-                <article
-                  key={p.plano}
-                  className={`site-revela relative flex flex-col gap-5 rounded-[28px] p-7 ${p.destaque ? 'border-2 border-[var(--s-verde)] bg-[var(--s-cartao)] shadow-[var(--s-sombra-alta)]' : 'site-cartao'}`}
-                >
-                  {p.destaque ? (
-                    <span className="absolute -top-3 left-7 rounded-full bg-[var(--s-verde)] px-3 py-1 text-[12px] font-extrabold text-white">O que a gente recomenda</span>
-                  ) : null}
-                  <div>
-                    <h3 className="text-2xl font-extrabold">{p.nome}</h3>
-                    <p className="mt-2">
-                      <span className="font-[family-name:var(--font-display)] text-4xl font-extrabold tabular-nums">{p.preco}</span>
-                    </p>
-                    <p className="text-[14px] text-[var(--s-tinta-2)]">{p.sub}</p>
+            {/* Um plano, por loja — e, ao lado, o que liga por cima para a
+                empresa inteira. Antes eram dois cartões de plano ("Norte" e
+                "Norte + Assistente") e a pergunta "qual é a diferença?"; o
+                assistente é uma chave, e a página passou a dizer isso. */}
+            <div className="mt-10 grid gap-4 lg:grid-cols-[1.05fr_1fr]">
+              <article className="site-revela relative flex flex-col gap-5 rounded-[28px] border-2 border-[var(--s-verde)] bg-[var(--s-cartao)] p-7 shadow-[var(--s-sombra-alta)]">
+                <div>
+                  <h3 className="text-2xl font-extrabold">{O_PLANO.nome}</h3>
+                  <p className="mt-2">
+                    <span className="font-[family-name:var(--font-display)] text-4xl font-extrabold tabular-nums">{O_PLANO.preco}</span>
+                  </p>
+                  <p className="text-[14px] text-[var(--s-tinta-2)]">{O_PLANO.sub}</p>
+                </div>
+                <ul className="flex flex-col gap-2.5">
+                  {O_PLANO.itens.map((i) => {
+                    const breve = i.endsWith(' · em breve')
+                    return (
+                      <li key={i} className="flex gap-2.5 text-[15px]">
+                        <Visto cor="var(--s-verde)" />
+                        <span>
+                          {breve ? i.replace(' · em breve', '') : i}
+                          {breve ? <span className="ml-2 rounded-full bg-[var(--s-sol-claro)] px-2 py-0.5 text-[11px] font-bold text-[var(--s-sol)]">em breve</span> : null}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+                <a href={COMECAR} className="site-botao site-botao-principal mt-auto px-6 py-3.5 text-[15px]">
+                  Testar {PRECOS.diasDeTeste} dias grátis
+                </a>
+              </article>
+
+              <div className="flex flex-col gap-3">
+                <p className="site-olho px-1 text-[var(--s-tinta-2)]">Liga se quiser, para a empresa inteira</p>
+                {POR_CIMA.map((a) => (
+                  <div key={a.t} className="site-revela site-cartao flex items-start justify-between gap-4 rounded-[24px] p-5">
+                    <div className="min-w-0">
+                      <Olho cor={a.cor}>{a.t}</Olho>
+                      <p className="mt-2 text-[14px] text-[var(--s-tinta-2)]">{a.d}</p>
+                      <p className="mt-1 text-[13px] text-[var(--s-tinta-2)]">{a.sub}</p>
+                    </div>
+                    <p className="shrink-0 text-right text-xl font-extrabold tabular-nums">{a.preco}</p>
                   </div>
-                  <ul className="flex flex-col gap-2.5">
-                    {p.itens.map((i) => {
-                      const breve = i.endsWith(' · em breve')
-                      return (
-                        <li key={i} className={`flex gap-2.5 text-[15px] ${i.endsWith(':') ? 'font-bold' : ''}`}>
-                          {i.endsWith(':') ? null : <Visto cor={p.destaque ? 'var(--s-verde)' : 'var(--s-azul)'} />}
-                          <span>
-                            {breve ? i.replace(' · em breve', '') : i}
-                            {breve ? <span className="ml-2 rounded-full bg-[var(--s-sol-claro)] px-2 py-0.5 text-[11px] font-bold text-[var(--s-sol)]">em breve</span> : null}
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                  <a href={COMECAR} className={`site-botao mt-auto px-6 py-3.5 text-[15px] ${p.destaque ? 'site-botao-principal' : 'site-botao-claro'}`}>
-                    Testar {PRECOS.diasDeTeste} dias grátis
-                  </a>
-                </article>
-              ))}
+                ))}
+                <div className="site-revela flex items-start justify-between gap-4 rounded-[24px] border border-dashed border-[var(--s-borda)] p-5">
+                  <div className="min-w-0">
+                    <Olho cor="var(--s-azul)">Implantação</Olho>
+                    <p className="mt-2 text-[13px] text-[var(--s-tinta-2)]">
+                      Cadastro simples não paga nada. Trazer de outro sistema ou montar a fábrica: de {reais(IMPLANTACAO.de)} a{' '}
+                      {reais(IMPLANTACAO.ate)}, uma vez, com orçamento antes.
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-right text-xl font-extrabold">Grátis</p>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-10 grid gap-4 md:grid-cols-3">
-              {A_PARTE.map((a) => (
-                <div key={a.t} className="site-revela site-cartao rounded-[24px] p-6">
-                  <Olho cor={a.cor}>{a.t}</Olho>
-                  <p className="mt-3 text-[15px] text-[var(--s-tinta-2)]">{a.d}</p>
-                  <p className="mt-4 text-2xl font-extrabold tabular-nums">{a.preco}</p>
-                  <p className="text-[13px] text-[var(--s-tinta-2)]">{a.sub}</p>
-                </div>
-              ))}
-            </div>
             <p className="site-revela mt-8 text-center text-[15px] text-[var(--s-tinta-2)]">
-              Rede grande, várias marcas ou operação especial?{' '}
-              <a href={mailto('Norte para a minha rede')} className="font-bold text-[var(--s-azul)] underline-offset-4 hover:underline">
-                Fale com a gente
-              </a>{' '}
-              e montamos o plano com você.
+              Prefere pagar o ano? {12 - PRECOS.anualPagaMeses} meses grátis —{' '}
+              <a href={mailto('Norte no anual')} className="font-bold text-[var(--s-azul)] underline-offset-4 hover:underline">
+                fale com a gente
+              </a>
+              . Rede grande ou operação especial? A gente monta com você.
             </p>
           </div>
         </section>

@@ -34,6 +34,8 @@ export type PessoaDaEquipe = {
   telefone: string | null
   /** Só 'confirmado' faz o assistente reconhecer a pessoa (ver assistente/confirmacao.ts). */
   telefoneEstado: EstadoTelefone
+  /** Já criou o PIN (o de confirmar a venda e autorizar)? Nunca o resumo dele. */
+  temPin: boolean
   acessos: {
     id: string
     papel: Papel
@@ -42,6 +44,8 @@ export type PessoaDaEquipe = {
     expiraEm: Date | null
     /** Só o SUPORTE tem: por que o acesso foi aberto. A dona lê na tela. */
     motivo: string | null
+    /** Só o SUPORTE: o modo edição (o resto é só leitura). */
+    suporteEdita: boolean
     /** Só no papel CARGO: qual cargo. */
     cargoId: string | null
     cargoNome: string | null
@@ -67,16 +71,18 @@ export async function listarEquipe(sessao: Sessao): Promise<PessoaDaEquipe[]> {
         : { where: { acessos: { some: { OR: [{ unidadeId: { in: alcance } }, { unidadeId: null }] } } } }),
       orderBy: [{ ativo: 'desc' }, { nome: 'asc' }],
       select: {
-        id: true, nome: true, email: true, ativo: true, ultimoLogin: true, ...SELECT_TELEFONE,
-        acessos: { select: { id: true, papel: true, unidadeId: true, expiraEm: true, motivo: true, cargoId: true, cargo: { select: { nome: true } } } },
+        id: true, nome: true, email: true, ativo: true, ultimoLogin: true, pinHash: true, ...SELECT_TELEFONE,
+        acessos: { select: { id: true, papel: true, unidadeId: true, expiraEm: true, motivo: true, suporteEdita: true, cargoId: true, cargo: { select: { nome: true } } } },
       },
     })
     const unidades = await db.unidade.findMany({ select: { id: true, nome: true } })
 
     const nomeDa = new Map(unidades.map((u) => [u.id, u.nome]))
     const agora = new Date()
-    return pessoas.map(({ telefoneConfirmado: _c, telefoneConfirmadoEm: _e, telefoneVistoEm: _v, ...p }) => ({
+    // O resumo do PIN não sai daqui: a tela só precisa saber se existe.
+    return pessoas.map(({ telefoneConfirmado: _c, telefoneConfirmadoEm: _e, telefoneVistoEm: _v, pinHash, ...p }) => ({
       ...p,
+      temPin: !!pinHash,
       telefoneEstado: estadoDoTelefone({ telefone: p.telefone, telefoneConfirmado: _c, telefoneConfirmadoEm: _e, telefoneVistoEm: _v }, agora),
       acessos: p.acessos.map(({ cargo, ...a }) => ({
         ...a,
@@ -408,10 +414,10 @@ export async function mudarTelefone(
   })
 }
 
-/** Só SUPORTE e CONTADOR: acessos de quem olha e não escreve. */
+/** Só SUPORTE (no modo leitura) e CONTADOR: acessos de quem olha e não escreve. */
 export function soLeitura(sessao: Sessao, agora = new Date()): boolean {
   const vivos = sessao.acessos.filter((a) => !a.expiraEm || a.expiraEm > agora)
-  return vivos.every((a) => a.papel === 'SUPORTE' || a.papel === 'CONTADOR')
+  return vivos.every((a) => (a.papel === 'SUPORTE' && !a.suporteEdita) || a.papel === 'CONTADOR')
 }
 
 /**

@@ -1,17 +1,20 @@
-// Os pedidos de assinatura: "quero o plano Direção", "quero R$ 200 de crédito".
+// Os pedidos de assinatura: "quero o plano Norte", "quero +500 respostas" (e
+// o "quero R$ 200 de crédito" do modelo antigo, que ainda está no livro).
 //
 // ── por que não existe uma tabela de pedidos ─────────────────
 // Enquanto não há gateway, subir de plano e pôr crédito viram PEDIDO (ver
 // `assinaturaLivre` em assinatura.ts), e o pedido já nasce como linha no livro
-// de auditoria da empresa — `plano.pediu` / `credito.pediu`. O livro é
-// imutável, datado e já é lido pela loja. Uma tabela à parte seria uma
+// de auditoria da empresa — `plano.pediu` / `respostas.pediu` (e o antigo
+// `credito.pediu`). O livro é imutável, datado e já é lido pela loja. Uma
+// tabela à parte seria uma
 // segunda verdade sobre a mesma coisa, e mexer no schema agora não vale o que
 // custa: o volume é de dezenas de pedidos, não de milhares.
 //
 // Então o ESTADO de um pedido é deduzido do que veio depois dele no livro:
 //
 //   aberto       nada respondeu ainda
-//   atendido     o plano pedido entrou (`plano.trocou`), ou o crédito caiu
+//   atendido     o plano pedido entrou (`plano.trocou`), o pacote entrou
+//                (`respostas.adicionou`), ou o crédito caiu
 //                (`credito.recarregou` apontando para o pedido, ou uma
 //                recarga COMPRA depois dele — é o que o gateway vai gravar)
 //   recusado     a equipe recusou (`pedido.recusou`), com o motivo que a loja lê
@@ -25,19 +28,22 @@
 
 import type { Plano } from '@prisma/client'
 import { comoOrg } from './banco'
-import { PLANOS } from './planos'
+import { PLANOS, PRECOS, milhar } from './planos'
 import { mostrar } from './dinheiro'
 
 /** As ações do livro que contam a história de um pedido. */
 export const ACOES_DE_PEDIDO = [
   'plano.pediu',
   'credito.pediu',
+  'respostas.pediu',
   'plano.trocou',
   'credito.recarregou',
+  'respostas.adicionou',
   'pedido.recusou',
 ] as const
 
-export type TipoPedido = 'plano' | 'credito'
+/** `credito` é do modelo antigo (dinheiro de IA): só aparece em pedido que já estava no livro. */
+export type TipoPedido = 'plano' | 'credito' | 'respostas'
 
 /** Uma linha do livro (ou uma recarga) que pode abrir ou fechar um pedido. */
 export type EventoPedido = {
@@ -59,7 +65,7 @@ export type Pedido = {
   plano: Plano | null
   /** O valor pedido, em centavos, quando o pedido é de crédito. */
   centavos: number | null
-  /** "plano Direção" / "R$ 200,00 de crédito de IA" */
+  /** "plano Norte" / "pacote de +500 respostas" / "R$ 200,00 de crédito de IA" */
   oQue: string
   estado: 'aberto' | 'atendido' | 'recusado' | 'substituido'
   fechadoEm: Date | null
@@ -116,6 +122,14 @@ function abrir(e: EventoPedido): Pedido {
       estado: 'aberto', fechadoEm: null, motivoRecusa: null,
     }
   }
+  if (e.acao === 'respostas.pediu') {
+    const n = typeof d.respostas === 'number' ? d.respostas : PRECOS.pacoteRespostas
+    return {
+      id: e.id, tipo: 'respostas', criadoEm: e.criadoEm, plano: null, centavos: null,
+      oQue: `pacote de +${milhar(n)} respostas`,
+      estado: 'aberto', fechadoEm: null, motivoRecusa: null,
+    }
+  }
   const centavos = typeof d.centavos === 'number' ? d.centavos : centavosDoTexto(e.alvoNome)
   return {
     id: e.id, tipo: 'credito', criadoEm: e.criadoEm, plano: null, centavos,
@@ -149,7 +163,7 @@ export function lerPedidos(eventos: readonly EventoPedido[]): Pedido[] {
     const d = objeto(e.depois)
     const apontaPara = typeof d.pedidoId === 'string' ? d.pedidoId : null
 
-    if (e.acao === 'plano.pediu' || e.acao === 'credito.pediu') {
+    if (e.acao === 'plano.pediu' || e.acao === 'credito.pediu' || e.acao === 'respostas.pediu') {
       const novo = abrir(e)
       const velho = aberto[novo.tipo]
       if (velho) fechar(velho, 'substituido', e.criadoEm)
@@ -176,6 +190,14 @@ export function lerPedidos(eventos: readonly EventoPedido[]): Pedido[] {
       continue
     }
 
+    if (e.acao === 'respostas.adicionou') {
+      // Pacote que entrou depois do pedido atende — apontando para ele, ou
+      // não (o gateway e a tela no modo livre não sabem do pedido).
+      const p = aberto.respostas
+      if (p && (apontaPara === null || apontaPara === p.id)) fechar(p, 'atendido', e.criadoEm)
+      continue
+    }
+
     if (e.acao === 'recarga') {
       // Recarga COMPRA depois do pedido: o dinheiro entrou, por onde for.
       const p = aberto.credito
@@ -184,7 +206,7 @@ export function lerPedidos(eventos: readonly EventoPedido[]): Pedido[] {
     }
 
     if (e.acao === 'pedido.recusou') {
-      const tipo = d.tipo === 'plano' || d.tipo === 'credito' ? d.tipo : null
+      const tipo = d.tipo === 'plano' || d.tipo === 'credito' || d.tipo === 'respostas' ? d.tipo : null
       const p = tipo ? aberto[tipo] : undefined
       if (p && (apontaPara === null || apontaPara === p.id)) {
         fechar(p, 'recusado', e.criadoEm, e.motivo)
@@ -242,8 +264,10 @@ export async function eventosDePedido(orgId: string, agora = new Date()): Promis
       orderBy: { criadoEm: 'asc' },
       take: 500,
     })
+    // O pacote de respostas também é recarga COMPRA, mas fecha o pedido DELE
+    // (pela linha `respostas.adicionou`), não um pedido antigo de crédito.
     const recargas = await db.recargaIA.findMany({
-      where: { tipo: 'COMPRA', centavos: { gt: 0 }, criadoEm: { gte: desde } },
+      where: { tipo: 'COMPRA', centavos: { gt: 0 }, criadoEm: { gte: desde }, origem: { not: 'pacote' } },
       select: { id: true, criadoEm: true },
       take: 500,
     })

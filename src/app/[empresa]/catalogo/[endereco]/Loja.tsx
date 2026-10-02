@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import type { FormaPagamento } from '@prisma/client'
 import type { ProdutoNoCatalogo, OpcaoNoCatalogo, VitrinePublica } from '@/servidor/catalogo'
 import { maisProdutos, pedir } from './acoes'
+import { iconeDoProduto, linkPedirFoto, type IconeDoProduto } from './icone'
 import { estiloDaMarca } from './marca'
 import { Adiante, Alvo, Etiqueta, Fechar, Foto, Lixo, Lupa, MarcaDaLoja, Mais, Menos, Moto, Relogio, Sacola, Visto, Vitrine, Voltar, Zap } from './Pecas'
 
@@ -453,13 +454,17 @@ export function Loja({
   const produtos = lista.produtos
   const valorItemAberto = opcao ? Math.round(opcao.preco * 100 * quantidade) / 100 : 0
   const buscando = busca.trim().length >= 2
-  // Com foto na maioria, grade de fotos. Com pouca foto, a lista (como
-  // cardápio de delivery): o azulejo fica pequeno ao lado do nome e ninguém
-  // vê uma parede de quadrados vazios.
+  // Com foto na maioria, grade de fotos (o produto sem foto entra nela com o
+  // desenho dele). Com pouca foto, a lista (como cardápio de delivery): o
+  // desenho fica pequeno ao lado do nome, sem uma parede de azulejos.
   const comFoto = produtos.filter((p) => p.foto).length
   const emGrade = comFoto > 0 && comFoto * 2 >= produtos.length
   // Em "Tudo", sem busca, a lista vem por categoria: um título para cada uma.
   const nomeCategoria = new Map(categorias.map((c) => [c.id, c.nome]))
+  const iconeDe = (nome: string, categoriaId: string | null | undefined): IconeDoProduto =>
+    iconeDoProduto(nome, categoriaId ? nomeCategoria.get(categoriaId) : null)
+  // Sem foto, a cliente pede a foto à loja: o WhatsApp DA LOJA, com o produto e o preço.
+  const pedirFoto = (p: ProdutoNoCatalogo) => (p.foto ? null : linkPedirFoto(loja.whatsapp, p.nome, brl(p.preco)))
   const secoes: { id: string; nome: string | null; itens: ProdutoNoCatalogo[] }[] = []
   for (const p of produtos) {
     const agrupar = categoria === null && !buscando && categorias.length > 1
@@ -637,6 +642,8 @@ export function Loja({
                       key={p.id}
                       p={p}
                       grade={emGrade}
+                      icone={iconeDe(p.nome, p.categoriaId)}
+                      pedirFoto={pedirFoto(p)}
                       naSacola={porProduto.get(p.id) ?? 0}
                       abrir={() => abrirProduto(p)}
                       mais={() => maisUm(p)}
@@ -722,17 +729,22 @@ export function Loja({
       >
         {aberto ? (
           <div className="flex flex-col gap-5">
-            {aberto.foto ? (
-              <div className="aspect-[4/3] w-full overflow-hidden rounded-2xl bg-superficie-2">
-                <Foto src={aberto.foto} nome={aberto.nome} />
+            <div className="flex flex-col gap-2.5">
+              <div className={`w-full overflow-hidden rounded-2xl bg-superficie-2 ${aberto.foto ? 'aspect-[4/3]' : 'aspect-[16/9]'}`}>
+                <Foto src={aberto.foto} icone={iconeDe(aberto.nome, aberto.categoriaId)} tom={aberto.categoriaId} desenho={72} />
               </div>
-            ) : null}
-            <div className="flex items-center gap-3.5">
-              {!aberto.foto ? (
-                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl">
-                  <Foto src={null} nome={aberto.nome} tom={aberto.categoriaId} letra="text-xl" />
-                </div>
+              {pedirFoto(aberto) ? (
+                <a
+                  href={pedirFoto(aberto)!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border border-borda bg-superficie px-4 text-sm font-semibold vt-zap hover:bg-superficie-2 ${FOCO}`}
+                >
+                  <Zap tamanho={18} /> Pedir foto no WhatsApp
+                </a>
               ) : null}
+            </div>
+            <div className="flex items-center gap-3.5">
               <p className="text-2xl font-extrabold tracking-tight text-titulo tabular-nums">
                 {aberto.variavel ? <span className="mr-1 text-sm font-semibold text-tinta-3">a partir de</span> : null}
                 {brl(aberto.preco)}
@@ -831,7 +843,12 @@ export function Loja({
             {sacola.map((i) => (
               <li key={i.variacaoId} className="flex gap-3 py-3.5 first:pt-1">
                 <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl">
-                  <Foto src={i.foto} nome={i.nome} tom={produtos.find((p) => p.id === i.produtoId)?.categoriaId ?? null} letra="text-lg" />
+                  <Foto
+                    src={i.foto}
+                    icone={iconeDe(i.nome, produtos.find((p) => p.id === i.produtoId)?.categoriaId)}
+                    tom={produtos.find((p) => p.id === i.produtoId)?.categoriaId ?? null}
+                    desenho={28}
+                  />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
@@ -1019,10 +1036,12 @@ export function Loja({
   )
 }
 
-/** Um produto na vitrine: em grade (foto em cima) ou em lista (azulejo ao lado). */
+/** Um produto na vitrine: em grade (foto em cima) ou em lista (foto ao lado). Sem foto, o desenho e o "Pedir foto". */
 function Cartao({
   p,
   grade,
+  icone,
+  pedirFoto,
   naSacola,
   abrir,
   mais,
@@ -1030,6 +1049,9 @@ function Cartao({
 }: {
   p: ProdutoNoCatalogo
   grade: boolean
+  icone: IconeDoProduto
+  /** O link do WhatsApp da loja pedindo a foto; nulo quando tem foto (ou a loja não tem WhatsApp). */
+  pedirFoto: string | null
   naSacola: number
   abrir: () => void
   mais: () => void
@@ -1078,7 +1100,7 @@ function Cartao({
         <article className={`group flex h-full flex-col overflow-hidden rounded-[20px] border border-borda-suave bg-superficie shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-shadow hover:shadow-[0_10px_28px_-14px_rgb(0_0_0/0.25)] ${!p.disponivel ? 'opacity-70' : ''}`}>
           <button type="button" onClick={abrir} disabled={!p.disponivel} className={`flex flex-1 flex-col text-left ${FOCO} focus-visible:-outline-offset-2`}>
             <div className={`relative aspect-square w-full overflow-hidden ${!p.disponivel ? 'grayscale' : ''}`}>
-              <Foto src={p.foto} nome={p.nome} tom={p.categoriaId} letra="text-4xl" className="transition-transform duration-500 group-hover:scale-[1.03] motion-reduce:transition-none" />
+              <Foto src={p.foto} icone={icone} tom={p.categoriaId} desenho={52} className="transition-transform duration-500 group-hover:scale-[1.03] motion-reduce:transition-none" />
               {esgotado ? <span className="absolute top-2 left-2">{esgotado}</span> : null}
             </div>
             <div className="flex flex-1 flex-col gap-1.5 p-3 pr-3">
@@ -1086,6 +1108,7 @@ function Cartao({
               <span className="mt-auto">{preco}</span>
             </div>
           </button>
+          {pedirFoto ? <PedirFoto href={pedirFoto} className="mx-3 mb-3" /> : null}
         </article>
         {controle ? <div className="pointer-events-none absolute inset-x-0 top-0 aspect-square"><div className="pointer-events-auto absolute right-2 bottom-2">{controle}</div></div> : null}
       </li>
@@ -1095,11 +1118,11 @@ function Cartao({
   return (
     <li className="relative">
       <article
-        className={`flex h-full items-stretch overflow-hidden rounded-[20px] border border-borda-suave bg-superficie shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-shadow hover:shadow-[0_10px_28px_-16px_rgb(0_0_0/0.25)] ${!p.disponivel ? 'opacity-70' : ''}`}
+        className={`flex h-full flex-col overflow-hidden rounded-[20px] border border-borda-suave bg-superficie shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-shadow hover:shadow-[0_10px_28px_-16px_rgb(0_0_0/0.25)] ${!p.disponivel ? 'opacity-70' : ''}`}
       >
         <button type="button" onClick={abrir} disabled={!p.disponivel} className={`flex min-w-0 flex-1 items-center gap-3.5 p-3 text-left ${FOCO} focus-visible:-outline-offset-2`}>
           <span className={`relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-2xl ${!p.disponivel ? 'grayscale' : ''}`}>
-            <Foto src={p.foto} nome={p.nome} tom={p.categoriaId} letra="text-2xl" />
+            <Foto src={p.foto} icone={icone} tom={p.categoriaId} desenho={42} />
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-1 pr-12">
             <span className="line-clamp-2 text-[15px] leading-snug font-semibold text-tinta">{p.nome}</span>
@@ -1110,9 +1133,25 @@ function Cartao({
             </span>
           </span>
         </button>
+        {pedirFoto ? <PedirFoto href={pedirFoto} className="mb-3 ml-[101px] mr-14 self-start" /> : null}
       </article>
-      {controle ? <div className="absolute right-3 bottom-3">{controle}</div> : null}
+      {controle ? <div className={`absolute right-3 ${pedirFoto ? 'top-[52px]' : 'bottom-3'}`}>{controle}</div> : null}
     </li>
+  )
+}
+
+/** "Pedir foto no WhatsApp": fora do botão do cartão (link dentro de botão não vale). */
+function PedirFoto({ href, className = '' }: { href: string; className?: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-borda-suave bg-superficie px-2.5 py-1 text-[12px] leading-tight font-semibold vt-zap hover:bg-superficie-2 ${FOCO} ${className}`}
+    >
+      <Zap tamanho={14} className="shrink-0" />
+      Pedir foto no WhatsApp
+    </a>
   )
 }
 

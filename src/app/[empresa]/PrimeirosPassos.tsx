@@ -7,7 +7,6 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { cx } from '@/ui/base'
 import type { PrimeiroPasso } from '@/servidor/primeiros-passos'
 
 export function PrimeirosPassos({ passos, chave }: { passos: PrimeiroPasso[]; chave: string }) {
@@ -38,53 +37,63 @@ export function PrimeirosPassos({ passos, chave }: { passos: PrimeiroPasso[]; ch
     setEscondido(true)
   }
 
+  // O que já foi feito vira UMA linha de etiquetas: riscado, em fila, cada
+  // passo pronto ocupava uma linha inteira e empurrava os números do dia
+  // para baixo. A lista fica só com o que falta.
+  const prontos = passos.filter((p) => p.feito)
+  const faltam = passos.map((p, i) => ({ p, n: i + 1 })).filter(({ p }) => !p.feito)
+
   return (
     <section aria-label="Primeiros passos" className="realce flex flex-col gap-3 rounded-norte border border-marca/40 bg-superficie p-4 sm:p-5">
-      <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <h3 className="text-[15px] leading-snug font-bold tracking-tight">Primeiros passos</h3>
-          <p className="text-xs text-tinta-3">
-            {feitos} de {passos.length} feitos — o que falta para o Norte trabalhar por você.
-          </p>
+      <header className="flex items-center gap-3">
+        <h3 className="shrink-0 text-[15px] leading-snug font-bold tracking-tight">Primeiros passos</h3>
+        <span className="numero shrink-0 text-xs font-semibold text-tinta-2">
+          {feitos} de {passos.length}
+        </span>
+        <div className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-superficie-2" aria-hidden>
+          <div className="h-full rounded-full bg-bom-vivo" style={{ width: `${Math.round((feitos / passos.length) * 100)}%` }} />
         </div>
-        <button type="button" onClick={esconder} className="rounded-norte border border-borda px-2 py-1 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta">
+        <button type="button" onClick={esconder} className="shrink-0 rounded-norte border border-borda px-2 py-1 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta">
           Esconder
         </button>
       </header>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-superficie-2" aria-hidden>
-        <div className="h-full rounded-full bg-bom-vivo" style={{ width: `${Math.round((feitos / passos.length) * 100)}%` }} />
-      </div>
+      {prontos.length > 0 && (
+        <ul aria-label="Feitos" className="flex flex-wrap gap-1.5">
+          {prontos.map((p) => (
+            <li key={p.chave} className="inline-flex items-center gap-1.5 rounded-full bg-bom-fundo px-2.5 py-1 text-xs font-semibold text-bom">
+              <span aria-hidden>✓</span>
+              {p.titulo}
+              <span className="sr-only"> — feito</span>
+            </li>
+          ))}
+        </ul>
+      )}
       <ol className="-mx-2 flex flex-col">
-        {passos.map((p, i) => (
+        {faltam.map(({ p, n }) => (
           <li key={p.chave} className="border-b border-borda-suave last:border-b-0">
             <Link
               href={p.href}
-              className={cx('group flex items-center gap-3 rounded-norte px-2 py-2 transition-colors hover:bg-superficie-2', p.feito && 'opacity-70')}
+              className="group flex items-center gap-3 rounded-norte px-2 py-2 transition-colors hover:bg-superficie-2"
             >
               <span
                 aria-hidden
-                className={cx(
-                  'numero flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                  p.feito ? 'bg-bom-vivo text-white' : 'border border-borda text-tinta-2',
-                )}
+                className="numero flex size-6 shrink-0 items-center justify-center rounded-full border border-borda text-xs font-bold text-tinta-2"
               >
-                {p.feito ? '✓' : i + 1}
+                {n}
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className={cx('text-sm leading-snug font-semibold', p.feito ? 'text-tinta-2 line-through decoration-tinta-3' : 'text-tinta')}>
+                <span className="text-sm leading-snug font-semibold text-tinta">
                   {p.titulo}
-                  <span className="sr-only">{p.feito ? ' — feito' : ' — falta'}</span>
+                  <span className="sr-only"> — falta</span>
                 </span>
-                {!p.feito && <span className="text-xs leading-snug text-tinta-2">{p.detalhe}</span>}
+                <span className="text-xs leading-snug text-tinta-2">{p.detalhe}</span>
               </span>
-              {!p.feito && (
-                <span
-                  aria-hidden
-                  className="shrink-0 rounded-norte border border-borda bg-superficie px-2.5 py-1 text-xs font-semibold text-marca transition-colors group-hover:border-marca/40 group-hover:bg-marca-suave"
-                >
-                  {p.acao} →
-                </span>
-              )}
+              <span
+                aria-hidden
+                className="shrink-0 rounded-norte border border-borda bg-superficie px-2.5 py-1 text-xs font-semibold text-marca transition-colors group-hover:border-marca/40 group-hover:bg-marca-suave"
+              >
+                {p.acao} →
+              </span>
             </Link>
           </li>
         ))}

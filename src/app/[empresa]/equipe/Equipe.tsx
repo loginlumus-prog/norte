@@ -46,6 +46,8 @@ export type PessoaNaTela = {
    * como de cliente. Quem confirma é a própria pessoa, em Minha conta.
    */
   telefoneEstado: 'sem_telefone' | 'falta_confirmar' | 'confirmado' | 'vencido'
+  /** Já criou o PIN pessoal (confirmar a venda, autorizar)? */
+  temPin: boolean
   /**
    * Quem está vendo pode mexer no acesso desta pessoa? Vem do servidor
    * (`podeMexerEm`): o gerente não mexe na linha da dona, e mostrar o botão
@@ -63,6 +65,8 @@ export type SuporteNaTela = {
   /** "28/09, 14:00" — o acesso de suporte sempre tem prazo. */
   ate: string | null
   motivo: string | null
+  /** Modo edição: o suporte arruma (produto, estoque, Configurações...), não só olha. */
+  edicao: boolean
 }
 
 /** "71999990000" → "(71) 99999-0000". O que não tiver forma de celular fica como veio. */
@@ -196,6 +200,57 @@ const RESUMO: Record<string, string> = {
   BALCAO: 'Vende e opera o caixa',
   FINANCEIRO: 'O dinheiro, sem mexer em produto',
   CONTADOR: 'Só olha o financeiro',
+}
+
+/**
+ * O convite pronto: os dois jeitos de mandar. O WhatsApp abre com a mensagem
+ * escrita (e o número, quando veio); copiar serve para qualquer outro lugar.
+ * O link aparece UMA vez — o banco só guarda o resumo dele.
+ */
+function ConvitePronto({ estado }: { estado: EstadoEquipe }) {
+  const [copiado, setCopiado] = useState<'link' | 'mensagem' | null>(null)
+  const copiar = async (qual: 'link' | 'mensagem') => {
+    try {
+      await navigator.clipboard.writeText((qual === 'link' ? estado.link : estado.mensagem) ?? '')
+      setCopiado(qual)
+    } catch {
+      // Sem permissão de copiar: o link continua à vista, para selecionar na mão.
+      setCopiado(null)
+    }
+  }
+  return (
+    <Aviso nivel="bom">
+      <span className="flex flex-col gap-2">
+        <span>{estado.ok}</span>
+        <span className="flex flex-wrap gap-2">
+          {estado.whatsapp && (
+            <a
+              href={estado.whatsapp}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-10 items-center rounded-norte border border-transparent bg-marca px-3 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Enviar pelo WhatsApp
+            </a>
+          )}
+          <Botao tom="secundario" className="min-h-10" onClick={() => copiar('link')}>
+            {copiado === 'link' ? 'Link copiado' : 'Copiar link'}
+          </Botao>
+          {estado.mensagem && (
+            <Botao tom="discreto" className="min-h-10" onClick={() => copiar('mensagem')}>
+              {copiado === 'mensagem' ? 'Mensagem copiada' : 'Copiar a mensagem inteira'}
+            </Botao>
+          )}
+        </span>
+        <code className="block overflow-x-auto rounded bg-superficie px-2 py-1.5 font-mono text-xs break-all text-tinta">
+          {estado.link}
+        </code>
+        <span className="text-xs">
+          Mande agora: este link não aparece de novo (o sistema guarda só o resumo dele). Vale por 7 dias e serve uma vez.
+        </span>
+      </span>
+    </Aviso>
+  )
 }
 
 /** O valor da lista: o papel fixo, ou "CARGO:<id>" para um cargo da empresa. */
@@ -367,11 +422,17 @@ export function Equipe({
               onClick={() => setAbrindo(true)}
               className="text-xs font-semibold text-marca hover:underline"
             >
-              + Convidar
+              + Adicionar pessoa
             </button>
           ) : undefined
         }
       >
+        {/* Como a equipe entra — curto, onde a dona decide. */}
+        <p className="mb-2 text-[13px] leading-relaxed text-tinta-2">
+          <b className="text-tinta">Como a equipe entra:</b> em “Adicionar pessoa” você escolhe o papel e a loja e manda o
+          link pelo WhatsApp. A pessoa abre, cria a senha e o PIN de 4 números e já cai na tela dela — quem é do balcão,
+          direto no balcão. O PIN é o que confirma cada venda no nome dela.
+        </p>
         <ul className="flex flex-col">
           {pessoas.map((p) => (
             <li
@@ -405,6 +466,20 @@ export function Equipe({
                   </Situacao>
                 ) : (
                   <Situacao nivel="atencao">sem acesso</Situacao>
+                )}
+                {/* O PIN só importa para quem opera: o contador só lê. */}
+                {p.ativo && p.papel && p.papel !== 'CONTADOR' && (
+                  <span
+                    title={
+                      p.temPin
+                        ? 'Confirma as vendas com o PIN dela.'
+                        : p.souEu
+                          ? 'Crie o seu em Minha conta: é com ele que você confirma as vendas.'
+                          : 'Até criar o PIN (em Minha conta), confirma a venda sem ele, no próprio nome.'
+                    }
+                  >
+                    <Situacao nivel={p.temPin ? 'bom' : 'atencao'}>{p.temPin ? 'PIN criado' : 'sem PIN'}</Situacao>
+                  </span>
                 )}
 
                 {p.podeMexer && (
@@ -465,7 +540,7 @@ export function Equipe({
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-semibold text-tinta">
-                    Suporte do Norte{s.ate ? `, até ${s.ate}` : ''}
+                    Suporte do Norte · {s.edicao ? 'edição' : 'só leitura'}{s.ate ? ` · até ${s.ate}` : ''}
                   </span>
                   <span className="text-xs text-tinta-3">
                     {s.nome} · motivo: {s.motivo?.trim() || 'não informado'}
@@ -486,8 +561,12 @@ export function Equipe({
             ))}
           </ul>
           <p className="mt-3 text-xs text-tinta-3">
-            É a nossa equipe, olhando o sistema para resolver o que você pediu. Só lê, não ocupa vaga e tudo
-            o que abre fica na tela Auditoria. O acesso vence sozinho no prazo; cortar antes é com você.
+            É a nossa equipe, olhando o sistema para resolver o que você pediu. Não ocupa vaga e tudo o que
+            abre ou muda fica na tela Auditoria, assinado &ldquo;Equipe Norte&rdquo;.{' '}
+            {suportes.some((s) => s.edicao)
+              ? 'No modo edição ela arruma produto, preço, estoque, catálogo, Configurações, convites e encomendas — nunca vende, nunca mexe no caixa, no dinheiro nem na Assinatura.'
+              : 'No modo só leitura ela olha e não muda nada.'}{' '}
+            O acesso vence sozinho no prazo; cortar antes é com você.
           </p>
         </Cartao>
       )}
@@ -495,7 +574,7 @@ export function Equipe({
       {/* ── convidar ── */}
       {podeGerir && abrindo && (
         <Cartao
-          titulo="Convidar alguém"
+          titulo="Adicionar pessoa"
           acao={
             <button
               type="button"
@@ -508,23 +587,27 @@ export function Equipe({
         >
           <form action={agir} className="flex flex-col gap-4">
             {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
-            {estado.ok && (
-              <Aviso nivel="bom">
-                <span className="flex flex-col gap-1.5">
-                  <span>{estado.ok}</span>
-                  <code className="block overflow-x-auto rounded bg-superficie px-2 py-1.5 font-mono text-xs break-all text-tinta">
-                    {estado.link}
-                  </code>
-                  <span className="text-xs">
-                    Copie agora. Este link não aparece de novo — o sistema guarda só o
-                    resumo dele, então nem nós conseguimos recuperar.
-                  </span>
-                </span>
-              </Aviso>
-            )}
+            {estado.ok && estado.link && <ConvitePronto estado={estado} />}
 
             <div className="grid gap-4 sm:grid-cols-3">
-              <Campo rotulo="E-mail" name="email" type="email" required placeholder="pessoa@loja.com" />
+              <Campo rotulo="Nome" name="nome" placeholder="Como a equipe chama" autoComplete="off" />
+              <Campo
+                rotulo="WhatsApp"
+                name="telefone"
+                type="tel"
+                inputMode="tel"
+                placeholder="(71) 99999-0000"
+                dica="Para mandar o convite por lá."
+              />
+              <Campo
+                rotulo="E-mail (se tiver)"
+                name="email"
+                type="email"
+                placeholder="pessoa@loja.com"
+                dica="Sem e-mail, a pessoa digita o dela ao entrar."
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <Selecao
                 rotulo="Papel"
                 name="papel"
@@ -548,7 +631,7 @@ export function Equipe({
 
             <div className="flex justify-end">
               <Botao type="submit" tom="confirmar" carregando={pendente}>
-                {pendente ? 'Criando...' : 'Criar convite'}
+                {pendente ? 'Criando...' : 'Criar o convite'}
               </Botao>
             </div>
           </form>

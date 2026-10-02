@@ -1,11 +1,14 @@
 // O que a EQUIPE DO NORTE faz nas empresas: atender pedido de plano e de
 // crédito, recusar, dar e tirar acesso de suporte, suspender e reativar.
 //
-// Quem chama é scripts/operacao.ts, do laptop de quem opera. Nenhuma tela
-// chama isto, e é de propósito: um console de administração na web precisaria
-// da credencial que atravessa empresas NO SERVIDOR, e aí um furo numa tela
-// qualquer vira acesso a todas as lojas. No laptop, o estrago máximo de um
-// descuido é o de quem já tem a chave.
+// Quem chama é scripts/operacao.ts e o console do Norte (scripts/console.ts,
+// src/console/**) — os dois do laptop de quem opera. Nenhuma tela do sistema
+// hospedado chama isto, e é de propósito: um console de administração no
+// servidor precisaria da credencial que atravessa empresas LÁ, e aí um furo
+// numa tela qualquer vira acesso a todas as lojas. O console é uma página,
+// mas servida pelo próprio laptop, só em 127.0.0.1 e com chave de uso único
+// (ver src/console/guarda.ts). No laptop, o estrago máximo de um descuido é o
+// de quem já tem a chave.
 //
 // ── por que pelo comoOrg, e não pela credencial de admin ─────
 // Toda ESCRITA daqui passa pelo mesmo caminho da aplicação (papel sem
@@ -19,9 +22,13 @@
 // "Equipe Norte (<nome de quem rodou>)", autor SISTEMA, no livro DA LOJA —
 // que ela lê na tela Auditoria. Ver `quemDaEquipe` em assinatura.ts.
 
+import { randomBytes } from 'node:crypto'
+import type { Plano } from '@prisma/client'
 import { comoOrg } from './banco'
 import { normalizar } from './autenticacao'
-import { creditarNaTransacao, quemDaEquipe } from './assinatura'
+import { adicionarPacoteDeRespostas, creditarNaTransacao, quemDaEquipe, trocarPlanoComoEquipe, type Respostas } from './assinatura'
+import { PLANOS, PRECOS, milhar, planoLibera } from './planos'
+import { MODULOS } from './modulos'
 import { eventosDePedido, pedidoAberto, type Pedido, type TipoPedido } from './pedidos'
 import { lerDinheiro, centavos as paraCentavos, mostrar } from './dinheiro'
 
@@ -222,6 +229,55 @@ export async function recarregarComoEquipe(
 // RECUSAR PEDIDO
 // ─────────────────────────────────────────────────────────────
 
+/** Como a equipe chama cada tipo de pedido, nas frases e nas pílulas. */
+export const NOME_DO_TIPO: Record<TipoPedido, string> = {
+  plano: 'plano',
+  respostas: 'pacote de respostas',
+  credito: 'crédito',
+}
+
+/** O tipo de pedido que veio de formulário ou linha de comando, conferido. */
+export function lerTipoPedido(v: unknown): TipoPedido | null {
+  return v === 'plano' || v === 'respostas' || v === 'credito' ? v : null
+}
+
+// ─────────────────────────────────────────────────────────────
+// PACOTE DE RESPOSTAS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Atende o pedido de "+500 respostas" (ou dá o pacote por decisão da equipe):
+ * o pacote entra pelo mesmo caminho do gateway (`adicionarPacoteDeRespostas`,
+ * que grava `respostas.adicionou` e fecha o pedido), e o porquê de quem
+ * decidiu vai numa segunda linha, `equipe.anotou` — como na troca de plano.
+ * O motivo é conferido ANTES: pacote sem motivo não entra por erro de digitação.
+ */
+export async function atenderPacoteDeRespostas(
+  orgId: string,
+  dados: { motivo: string; quem: string; pedidoId?: string | null },
+  agora = new Date(),
+): Promise<Respostas> {
+  const quem = quemDaEquipe(dados.quem)
+  const motivo = validarMotivo(dados.motivo)
+  const r = await adicionarPacoteDeRespostas(orgId, { quem, autor: 'SISTEMA', pedidoId: dados.pedidoId ?? null }, agora)
+  await comoOrg(orgId, (db) =>
+    db.auditoria.create({
+      data: {
+        orgId,
+        quem,
+        autor: 'SISTEMA',
+        acao: 'equipe.anotou',
+        alvoTipo: 'empresa',
+        alvoId: orgId,
+        alvoNome: `+${milhar(PRECOS.pacoteRespostas)} respostas`,
+        motivo,
+        depois: { sobre: 'respostas.adicionou', ...(dados.pedidoId ? { pedidoId: dados.pedidoId } : {}) },
+      },
+    }),
+  )
+  return r
+}
+
 /**
  * "Não deu" — com o motivo, que a loja lê na tela da Assinatura. Sem isto, o
  * pedido fica aberto para sempre e a loja fica esperando uma resposta que
@@ -235,7 +291,7 @@ export async function recusarPedido(
   const quem = quemDaEquipe(dados.quem)
   const motivo = validarMotivo(dados.motivo)
   const pedido = pedidoAberto(await eventosDePedido(orgId), tipo)
-  if (!pedido) throw new Error(`Não há pedido de ${tipo === 'plano' ? 'plano' : 'crédito'} aberto nesta empresa.`)
+  if (!pedido) throw new Error(`Não há pedido de ${NOME_DO_TIPO[tipo]} aberto nesta empresa.`)
 
   await comoOrg(orgId, (db) =>
     db.auditoria.create({
@@ -378,10 +434,14 @@ export async function definirMarcasDoFarol(
 //   empresa só (schema.prisma, `Usuario`), e é isso que faz o livro dizer
 //   quem olhou. Quem do Norte atende três lojas tem três contas, cada uma com
 //   a sua senha.
-// • O poder vem de um `Acesso` com papel SUPORTE: só leitura (permissao.ts),
-//   com `expiraEm` e `motivo`. Passou do prazo, o login responde "sem acesso"
-//   (autenticacao.ts filtra acesso vencido) — a conta continua lá, sem poder
-//   nenhum, até o próximo pedido.
+// • O poder vem de um `Acesso` com papel SUPORTE, com `expiraEm` e `motivo`,
+//   em um de dois modos escolhidos ao conceder: só leitura (o padrão) ou
+//   edição (`suporteEdita`; ver SUPORTE_EDICAO em permissao.ts) — arruma a
+//   operação, nunca vende, nunca mexe em dinheiro nem na Assinatura. No livro
+//   da loja, o suporte assina "Equipe Norte (nome)" (ver `conferirSessao`).
+//   Passou do prazo, o login responde "sem acesso" (autenticacao.ts filtra
+//   acesso vencido) — a conta continua lá, sem poder nenhum, até o próximo
+//   pedido.
 // • Toda tela que ele abre vira linha no livro da loja (`suporte.acessou`,
 //   pagina.ts), com o motivo escrito aqui. O motivo, então, a LOJA lê.
 // • A conta nasce SEM senha: ninguém daqui escolhe nem vê a senha de
@@ -393,8 +453,8 @@ export type EstadoDoSuporte = {
   usuario: { id: string; nome: string; ativo: boolean; temSenha: boolean } | null
   /** O e-mail é de alguém da empresa cliente (tem acesso que não é SUPORTE). */
   ehDaLoja: boolean
-  /** O acesso de suporte mais recente, vencido ou não. */
-  suporte: { expiraEm: Date | null; motivo: string | null } | null
+  /** O acesso de suporte mais recente, vencido ou não. `edicao` = o modo edição. */
+  suporte: { expiraEm: Date | null; motivo: string | null; edicao: boolean } | null
 }
 
 /** Só lê. É o que o script mostra antes do `--confirmar`. */
@@ -408,14 +468,14 @@ export async function estadoDoSuporte(orgId: string, emailBruto: string): Promis
     if (!u) return { usuario: null, ehDaLoja: false, suporte: null }
     const acessos = await db.acesso.findMany({
       where: { usuarioId: u.id },
-      select: { papel: true, expiraEm: true, motivo: true, criadoEm: true },
+      select: { papel: true, expiraEm: true, motivo: true, suporteEdita: true, criadoEm: true },
       orderBy: { criadoEm: 'desc' },
     })
     const sup = acessos.find((a) => a.papel === 'SUPORTE') ?? null
     return {
       usuario: { id: u.id, nome: u.nome, ativo: u.ativo, temSenha: !!u.senhaHash },
       ehDaLoja: acessos.some((a) => a.papel !== 'SUPORTE'),
-      suporte: sup ? { expiraEm: sup.expiraEm, motivo: sup.motivo } : null,
+      suporte: sup ? { expiraEm: sup.expiraEm, motivo: sup.motivo, edicao: sup.suporteEdita } : null,
     }
   })
 }
@@ -441,11 +501,16 @@ export type SuporteConcedido = {
   expiraEm: Date
   /** O prazo anterior, quando já havia acesso de suporte (vencido ou não). */
   expiravaEm: Date | null
+  /** O modo dado agora: edição (true) ou só leitura. */
+  edicao: boolean
   sessoesCortadas: boolean
 }
 
 /**
- * Dá (ou estende) o acesso de SUPORTE: `horas` a partir de agora, com motivo.
+ * Dá (ou estende) o acesso de SUPORTE: `horas` a partir de agora, com motivo
+ * e o MODO — só leitura (o padrão) ou edição (`edicao: true`; o que ele
+ * deixa e o que não deixa está em SUPORTE_EDICAO, permissao.ts). Conceder de
+ * novo troca o modo; a sessão aberta lê o modo do banco na próxima tela.
  *
  * Encurtar um prazo que ainda vale CORTA as sessões da conta: o cookie de
  * sessão carrega a fotografia dos acessos com o prazo antigo, e sem o corte o
@@ -453,7 +518,7 @@ export type SuporteConcedido = {
  */
 export async function concederSuporte(
   orgId: string,
-  dados: { email: string; nome?: string | null; horas: number; motivo: string; quem: string },
+  dados: { email: string; nome?: string | null; horas: number; motivo: string; quem: string; edicao?: boolean },
   opcoes: { dominioDaEquipe?: string | null } = {},
   agora = new Date(),
 ): Promise<SuporteConcedido> {
@@ -461,6 +526,7 @@ export async function concederSuporte(
   const horas = validarHoras(String(dados.horas))
   const motivo = validarMotivo(dados.motivo)
   const quem = quemDaEquipe(dados.quem)
+  const edicao = dados.edicao === true
 
   const e = await estadoDoSuporte(orgId, email)
   const impede = impedimentoDoSuporte(e, opcoes.dominioDaEquipe, email)
@@ -488,11 +554,11 @@ export async function concederSuporte(
     // conta" é daqui: atualiza o que existe, cria só se não houver.
     const mexidos = await db.acesso.updateMany({
       where: { usuarioId, papel: 'SUPORTE' },
-      data: { expiraEm, motivo, unidadeId: null },
+      data: { expiraEm, motivo, unidadeId: null, suporteEdita: edicao },
     })
     if (mexidos.count === 0) {
       await db.acesso.create({
-        data: { orgId, usuarioId, unidadeId: null, papel: 'SUPORTE', expiraEm, motivo },
+        data: { orgId, usuarioId, unidadeId: null, papel: 'SUPORTE', expiraEm, motivo, suporteEdita: edicao },
       })
     }
     if (encurta) {
@@ -509,8 +575,8 @@ export async function concederSuporte(
         alvoId: usuarioId,
         alvoNome: e.usuario?.nome ?? nome,
         motivo,
-        antes: e.suporte ? { expiraEm: expiravaEm?.toISOString() ?? null } : undefined,
-        depois: { expiraEm: expiraEm.toISOString(), horas, criouConta },
+        antes: e.suporte ? { expiraEm: expiravaEm?.toISOString() ?? null, modo: e.suporte.edicao ? 'edicao' : 'leitura' } : undefined,
+        depois: { expiraEm: expiraEm.toISOString(), horas, criouConta, modo: edicao ? 'edicao' : 'leitura' },
       },
     })
 
@@ -520,6 +586,7 @@ export async function concederSuporte(
       temSenha: e.usuario?.temSenha ?? false,
       expiraEm,
       expiravaEm,
+      edicao,
       sessoesCortadas: encurta,
     }
   })
@@ -567,4 +634,184 @@ export async function revogarSuporte(
     })
   })
   return { revogou: true }
+}
+
+// ─────────────────────────────────────────────────────────────
+// TROCA DE PLANO COM MOTIVO (o console do Norte)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * A troca da equipe, com o motivo escrito por quem fez.
+ *
+ * `trocarPlanoComoEquipe` grava a linha `plano.trocou` com o motivo automático
+ * ("Norte → Norte + Assistente") — é ela que fecha o pedido, e a tela da loja
+ * lê dela. O motivo de quem decidiu ("Pix de março confirmado") vai numa
+ * segunda linha, `equipe.anotou`, logo depois: a primeira é o fato, a
+ * segunda é o porquê. O motivo é conferido ANTES de trocar, então troca sem
+ * motivo não acontece por erro de digitação.
+ */
+export async function trocarPlanoPelaEquipe(
+  orgId: string,
+  para: Plano,
+  dados: { motivo: string; quem: string; pedidoId?: string | null },
+) {
+  if (!(para in PLANOS)) throw new Error(`Plano "${para}" não existe.`)
+  const quem = quemDaEquipe(dados.quem)
+  const motivo = validarMotivo(dados.motivo)
+  const m = await trocarPlanoComoEquipe(orgId, para, quem, { pedidoId: dados.pedidoId ?? null })
+  await comoOrg(orgId, (db) =>
+    db.auditoria.create({
+      data: {
+        orgId,
+        quem,
+        autor: 'SISTEMA',
+        acao: 'equipe.anotou',
+        alvoTipo: 'empresa',
+        alvoId: orgId,
+        alvoNome: `plano ${PLANOS[para].titulo}`,
+        motivo,
+        depois: { sobre: 'plano.trocou', de: m.de, para, ...(dados.pedidoId ? { pedidoId: dados.pedidoId } : {}) },
+      },
+    }),
+  )
+  return m
+}
+
+// ─────────────────────────────────────────────────────────────
+// MÓDULOS CONTRATADOS À PARTE
+// ─────────────────────────────────────────────────────────────
+
+/** Os módulos que a equipe liga e desliga por contrato. */
+export const MODULOS_DA_EQUIPE = ['fabrica', 'farol'] as const
+export type ModuloDaEquipe = (typeof MODULOS_DA_EQUIPE)[number]
+
+/**
+ * Liga ou desliga um módulo vendido à parte (a Fábrica, o Farol).
+ *
+ * O Farol a empresa não liga sozinha (`ehContratado`); a Fábrica ela até
+ * liga em Configurações, mas a venda dela é nossa — com implantação — e
+ * quem fecha o contrato precisa conseguir ligar sem pedir ao dono. Ligar só
+ * onde o plano deixa: módulo fora do plano seria tela que a assinatura não
+ * cobre (a mesma regra da troca de plano, `aplicarTroca`).
+ */
+export async function definirModuloDaEquipe(
+  orgId: string,
+  modulo: ModuloDaEquipe,
+  ligar: boolean,
+  dados: { motivo: string; quem: string },
+): Promise<{ mudou: boolean; modulos: string[] }> {
+  if (!MODULOS_DA_EQUIPE.includes(modulo)) throw new Error(`Módulo "${modulo}" não é contratado à parte.`)
+  const quem = quemDaEquipe(dados.quem)
+  const motivo = validarMotivo(dados.motivo)
+
+  // Ler e decidir FORA da transação de escrita (ver `recarregarComoEquipe`).
+  const antes = await comoOrg(orgId, (db) =>
+    db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true, modulos: true } }),
+  )
+  const ligado = antes.modulos.includes(modulo)
+  if (ligado === ligar) return { mudou: false, modulos: antes.modulos }
+  if (ligar && !planoLibera(antes.plano, modulo)) {
+    throw new Error(`O plano ${PLANOS[antes.plano].titulo} não tem ${MODULOS[modulo].titulo}. Troque o plano antes.`)
+  }
+  const modulos = ligar ? [...antes.modulos, modulo] : antes.modulos.filter((m) => m !== modulo)
+
+  await comoOrg(orgId, async (db) => {
+    await db.org.update({ where: { id: orgId }, data: { modulos } })
+    await db.auditoria.create({
+      data: {
+        orgId,
+        quem,
+        autor: 'SISTEMA',
+        acao: 'empresa.modulo',
+        alvoTipo: 'empresa',
+        alvoId: orgId,
+        alvoNome: `${MODULOS[modulo].titulo} ${ligar ? 'ligado' : 'desligado'}`,
+        motivo,
+        antes: { modulos: antes.modulos },
+        depois: { modulos, modulo, ligado: ligar },
+      },
+    })
+  })
+  return { mudou: true, modulos }
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONVITE DO DONO, DE NOVO
+// ─────────────────────────────────────────────────────────────
+
+export type ConviteDoDono = {
+  email: string
+  expiraEm: Date
+  /** Só existe neste retorno: o banco guarda o resumo (`resumirToken`). */
+  link: string
+}
+
+/**
+ * Refaz o convite do DONO — o link venceu, o dono perdeu o e-mail.
+ *
+ * O mesmo que `npm run empresa -- --reconvidar` (scripts/criar-empresa.ts),
+ * pelo caminho da aplicação: comoOrg, RLS, linha no livro assinada pela
+ * equipe, com motivo. E a mesma trava: só enquanto NINGUÉM da loja entrou.
+ * Depois disso convite se manda pela tela de Equipe, por quem tem papel — e
+ * não por fora, passando por cima de toda permissão. A conta do nosso
+ * suporte não conta como gente da loja.
+ *
+ * `email` troca o e-mail do dono (digitado errado na venda); vazio = o de antes.
+ */
+export async function reconvidarDono(
+  orgId: string,
+  dados: { motivo: string; quem: string; email?: string | null },
+  base: string,
+  agora = new Date(),
+): Promise<ConviteDoDono> {
+  const quem = quemDaEquipe(dados.quem)
+  const motivo = validarMotivo(dados.motivo)
+  const baseLimpa = base.trim().replace(/\/+$/, '')
+  if (!/^https?:\/\/\S+$/.test(baseLimpa)) {
+    throw new Error('Não sei o endereço público do sistema (NORTE_URL), então não sei montar o link.')
+  }
+
+  const antes = await comoOrg(orgId, async (db) => {
+    const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { slug: true, email: true } })
+    const daLoja = await db.usuario.count({ where: { acessos: { some: { papel: { not: 'SUPORTE' } } } } })
+    return { ...org, daLoja }
+  })
+  if (antes.daLoja > 0) {
+    throw new Error(
+      `A empresa já tem ${antes.daLoja} pessoa(s) dentro. Convite novo se manda pela tela de Equipe, por quem tem papel para isso.`,
+    )
+  }
+  const email = dados.email?.trim() ? validarEmail(dados.email) : antes.email ? validarEmail(antes.email) : null
+  if (!email) throw new Error('A empresa não tem e-mail do dono. Informe o e-mail.')
+
+  // Import na hora: convite.ts puxa a tela de Equipe inteira, e as regras
+  // puras deste arquivo são importadas por testes que não precisam dela.
+  const { resumirToken, VALE_DIAS } = await import('./convite')
+  const token = randomBytes(32).toString('base64url')
+  const expiraEm = new Date(agora.getTime() + VALE_DIAS * 864e5)
+
+  await comoOrg(orgId, async (db) => {
+    // Um convite de dono vivo por vez: o link velho para de abrir agora.
+    await db.convite.deleteMany({ where: { papel: 'DONO', aceitoEm: null } })
+    await db.convite.create({
+      data: { orgId, email, papel: 'DONO', token: resumirToken(token), expiraEm },
+    })
+    if (email !== antes.email) await db.org.update({ where: { id: orgId }, data: { email } })
+    await db.auditoria.create({
+      data: {
+        orgId,
+        quem,
+        autor: 'SISTEMA',
+        acao: 'empresa.reconvidou',
+        alvoTipo: 'org',
+        alvoId: orgId,
+        alvoNome: 'convite do dono',
+        motivo,
+        antes: email !== antes.email ? { email: antes.email } : undefined,
+        depois: { email, expiraEm: expiraEm.toISOString() },
+      },
+    })
+  })
+
+  return { email, expiraEm, link: `${baseLimpa}/${antes.slug}/convite/${token}` }
 }

@@ -13,7 +13,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
 import { subirBanco } from './banco'
 import type { Sessao } from '../src/servidor/permissao'
-import { PRECOS, mensalidade, mudanca } from '../src/servidor/planos'
+import { PRECOS, TETO_IA_DO_MES_CENT, TETO_IA_DO_TESTE_CENT, mensalidade, mudanca } from '../src/servidor/planos'
 import type { DadosLoja } from '../src/servidor/lojas'
 
 vi.mock('../src/servidor/ia', async (original) => {
@@ -113,27 +113,31 @@ describe('Farol: cobrado por marca na tabela, e a marca respeita o contratado', 
   })
 })
 
-describe('Teste de 30 dias e o crédito de IA', () => {
-  it('CORRIGIDO: o teste que atravessa a virada do mês recebe o crédito de conhecer UMA vez (R$ 20)', async () => {
+describe('Teste de 30 dias e a trava de IA', () => {
+  it('CORRIGIDO: o teste que atravessa a virada do mês recebe o teto do teste UMA vez', async () => {
     const set = await m.assinatura.garantirCreditoDoMes('org-teste', new Date('2026-09-20T12:00:00-03:00'))
     const out = await m.assinatura.garantirCreditoDoMes('org-teste', new Date('2026-10-05T12:00:00-03:00'))
-    expect(set).toBe(PRECOS.creditoDoTeste * 100)
+    expect(set).toBe(TETO_IA_DO_TESTE_CENT)
     expect(out).toBe(0)
-    expect(await saldo('org-teste')).toBe(PRECOS.creditoDoTeste * 100)
+    expect(await saldo('org-teste')).toBe(TETO_IA_DO_TESTE_CENT)
   })
 
-  it('CORRIGIDO: quem assina no mês em que testou tem o crédito completado até os R$ 100 do plano', async () => {
-    // O teste já recebeu o crédito de conhecer deste mês.
-    expect(await m.assinatura.garantirCreditoDoMes('org-paga')).toBe(PRECOS.creditoDoTeste * 100)
+  it('CORRIGIDO: quem assina no mês em que testou tem a carteira completada até o teto do mês', async () => {
+    // O teste já recebeu o teto do teste neste mês.
+    expect(await m.assinatura.garantirCreditoDoMes('org-paga')).toBe(TETO_IA_DO_TESTE_CENT)
     // A equipe confirma o pagamento: mesmo plano, sai do TESTE para ATIVA.
     await m.assinatura.trocarPlanoComoEquipe('org-paga', 'BALCAO_AGENTE', 'Auditor')
     const [o] = (await db.query<{ situacao: string }>(`select situacao from orgs where id = 'org-paga'`)).rows
     expect(o!.situacao).toBe('ATIVA')
-    expect(await saldo('org-paga')).toBe(PRECOS.creditoDoAssistente * 100)
+    expect(await saldo('org-paga')).toBe(TETO_IA_DO_MES_CENT)
     // E uma vez só: nem o depósito do mês nem a conversão caem de novo.
     expect(await m.assinatura.garantirCreditoDoMes('org-paga')).toBe(0)
     expect(await m.assinatura.completarCreditoDaConversao('org-paga')).toBe(0)
-    expect(await saldo('org-paga')).toBe(PRECOS.creditoDoAssistente * 100)
+    expect(await saldo('org-paga')).toBe(TETO_IA_DO_MES_CENT)
+    // E as respostas viram as do mês: 1.000, não as 200 do teste.
+    const a = await m.assinatura.assinaturaDaEmpresa('org-paga')
+    expect(a.respostas.total).toBe(PRECOS.respostasDoAssistente)
+    expect(a.respostas.periodo).toBe('mes')
   })
 
   // O script (scripts/criar-empresa.ts) não cria mais teste sem fim: --dias
@@ -144,9 +148,10 @@ describe('Teste de 30 dias e o crédito de IA', () => {
     const a = await m.assinatura.assinaturaDaEmpresa('org-eterno')
     expect(a.plano).toBe('BALCAO_AGENTE')
     expect(a.situacao).toBe('TESTE')
-    // o crédito de conhecer já não cai todo mês: o de agora (posto pela
+    // o teto do teste já não cai todo mês: o de agora (posto pela
     // assinatura acima) é o único do teste
-    expect(await saldo('org-eterno')).toBe(PRECOS.creditoDoTeste * 100)
+    expect(await saldo('org-eterno')).toBe(TETO_IA_DO_TESTE_CENT)
+    expect(a.respostas).toMatchObject({ total: PRECOS.respostasDoTeste, periodo: 'teste' })
     expect(await m.assinatura.garantirCreditoDoMes('org-eterno', new Date('2027-03-10T12:00:00-03:00'))).toBe(0)
   })
 })
@@ -177,6 +182,14 @@ describe('Lojas: a regra de ouro ("a tela diz o valor ANTES") tem porta lateral'
     expect(a.mensal.total).toBe(PRECOS.primeiraLoja + PRECOS.lojaExtra + PRECOS.fabrica)
   })
 
+  it('a segunda unidade de fábrica não soma nada: a fábrica é uma parcela da empresa', async () => {
+    const r = await m.lojas.criarLoja(dono('org-loja'), { nome: 'Fábrica 2', ehFabrica: true } as DadosLoja)
+    expect(r.custoExtra).toBe(0)
+    const a = await m.assinatura.assinaturaDaEmpresa('org-loja')
+    expect(a.mensal.fabricas).toBe(2)
+    expect(a.mensal.total).toBe(PRECOS.primeiraLoja + PRECOS.lojaExtra + PRECOS.fabrica)
+  })
+
   it('CORRIGIDO: a loja que vira depósito sai do catálogo da internet', async () => {
     await db.exec(`insert into catalogos (id, org_id, unidade_id, ativo, endereco, atualizado_em) values ('cat-dep', 'org-loja', '${depositoId}', true, 'roupas-deposito', now())`)
     await m.lojas.editarLoja(dono('org-loja'), depositoId, { nome: 'Depósito', ehDeposito: true } as DadosLoja)
@@ -196,12 +209,11 @@ describe('Contas puras que divergem', () => {
     expect(m3.novoMensal).toBe(PRECOS.primeiraLoja + PRECOS.assistente + PRECOS.fabrica + PRECOS.farolMarca + PRECOS.farolMarcaExtra)
   })
 
-  it('BUG: a calculadora arredonda o mês do anual e o total do ano deixa de ser "10 mensalidades"', () => {
-    // A mesma conta de src/ui/site/Calculadora.tsx:77-78 e :119, no estado inicial (2 lojas + assistente).
-    const mes = PRECOS.primeiraLoja + PRECOS.lojaExtra + PRECOS.assistente // 507
-    const noAnual = Math.round((mes * PRECOS.anualPagaMeses) / 12) // 422,5 -> 423
-    expect(noAnual * 12).toBe(5076)
-    expect(mes * PRECOS.anualPagaMeses).toBe(5070)
-    expect(mes * 12 - noAnual * 12).toBe(1008) // "economia" mostrada; a prometida é 1014
+  // A chave "Pagar no anual" saiu da calculadora (02/10/2026): o anual é
+  // conversa, e a página diz só "2 meses grátis — fale com a gente", com o
+  // número tirado de PRECOS. Sem conta de "por mês no anual", não há mais o
+  // arredondamento que inventava reais.
+  it('CORRIGIDO: o anual é "12 pelo preço de 10" — os 2 meses grátis que a página diz', () => {
+    expect(12 - PRECOS.anualPagaMeses).toBe(2)
   })
 })

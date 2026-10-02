@@ -242,7 +242,23 @@ export type CatalogoDaLoja = {
   mostrarEsgotado: boolean
   /** Pedidos do catálogo nos últimos 30 dias, para a tela mostrar que funciona. */
   pedidos30d: number
+  /** Quantos produtos a cliente vê agora no link desta loja (com foto ou sem). */
+  aparecendo: number
+  /** Os que aparecem SEM foto — com o ícone e o "Pedir foto" no lugar dela. */
+  semFoto: FotosQueFaltam
 }
+
+export type ProdutoSemFoto = {
+  id: string
+  nome: string
+  preco: number
+  /** Saldo somado das opções NESTA loja; nulo quando a loja não conta o estoque dele. */
+  estoque: number | null
+}
+
+export type FotosQueFaltam = { total: number; produtos: ProdutoSemFoto[]; mais: boolean }
+
+const SEM_FOTO_POR_PAGINA = 30
 
 /** As lojas que podem ter catálogo (depósito e fábrica não vendem). */
 export async function listarCatalogos(sessao: Sessao): Promise<{ lojas: CatalogoDaLoja[]; encomendaLigada: boolean }> {
@@ -262,6 +278,17 @@ export async function listarCatalogos(sessao: Sessao): Promise<{ lojas: Catalogo
     })
     const porLoja = new Map(contagem.map((c) => [c.unidadeId, c._count._all]))
     const usados = new Set(unidades.map((u) => u.catalogo?.endereco).filter(Boolean))
+    const vendeSemEstoque = (await db.org.findUnique({ where: { id: sessao.orgId }, select: { vendeSemEstoque: true } }))?.vendeSemEstoque ?? false
+    // Uma loja por vez: dentro de comoOrg nada corre em paralelo.
+    const vitrines = new Map<string, { aparecendo: number; semFoto: FotosQueFaltam }>()
+    for (const u of unidades) {
+      if (!pode(sessao, 'venda.ver', u.id)) continue
+      const esgotadoAparece = u.catalogo?.mostrarEsgotado ?? false
+      const aparecendo = await db.produto.count({
+        where: { AND: [filtroDaVitrine(u.id), esgotadoAparece ? {} : filtroDisponivel(u.id, vendeSemEstoque)] },
+      })
+      vitrines.set(u.id, { aparecendo, semFoto: await lerFotosQueFaltam(db, u.id, esgotadoAparece, vendeSemEstoque, 0) })
+    }
     const lojas = unidades
       .filter((u) => pode(sessao, 'venda.ver', u.id))
       .map((u): CatalogoDaLoja => {
@@ -284,9 +311,64 @@ export async function listarCatalogos(sessao: Sessao): Promise<{ lojas: Catalogo
           chavePix: c?.chavePix ?? null,
           mostrarEsgotado: c?.mostrarEsgotado ?? false,
           pedidos30d: porLoja.get(u.id) ?? 0,
+          aparecendo: vitrines.get(u.id)?.aparecendo ?? 0,
+          semFoto: vitrines.get(u.id)?.semFoto ?? { total: 0, produtos: [], mais: false },
         }
       })
     return { lojas, encomendaLigada: !!org && moduloLigado(org, 'encomenda') }
+  })
+}
+
+/**
+ * Os produtos que aparecem no catálogo desta loja SEM foto (com o ícone no
+ * lugar): a lista que a tela mostra com o botão de tirar a foto ali mesmo.
+ * Mesma régua da vitrine (ativo, vendido aqui, com preço, e — se a loja
+ * esconde o esgotado — com estoque), para a conta bater com o link.
+ */
+async function lerFotosQueFaltam(
+  db: BancoDaOrg,
+  unidadeId: string,
+  esgotadoAparece: boolean,
+  vendeSemEstoque: boolean,
+  pular: number,
+): Promise<FotosQueFaltam> {
+  const where: Prisma.ProdutoWhereInput = {
+    AND: [filtroDaVitrine(unidadeId), { fotoId: null }, esgotadoAparece ? {} : filtroDisponivel(unidadeId, vendeSemEstoque)],
+  }
+  const total = await db.produto.count({ where })
+  const lidos = await db.produto.findMany({
+    where,
+    orderBy: [{ nome: 'asc' }, { id: 'asc' }],
+    skip: pular,
+    take: SEM_FOTO_POR_PAGINA,
+    select: { id: true, nome: true, precoVista: true },
+  })
+  // O saldo à parte (lista aninhada na mesma consulta corre em paralelo na
+  // conexão da transação).
+  const saldos = lidos.length
+    ? await db.estoque.findMany({
+        where: { unidadeId, variacao: { ativa: true, produtoId: { in: lidos.map((p) => p.id) } } },
+        select: { quantidade: true, variacao: { select: { produtoId: true } } },
+      })
+    : []
+  const estoque = new Map<string, number>()
+  for (const s of saldos) estoque.set(s.variacao.produtoId, (estoque.get(s.variacao.produtoId) ?? 0) + Number(s.quantidade))
+  return {
+    total,
+    produtos: lidos.map((p) => ({ id: p.id, nome: p.nome, preco: Number(p.precoVista ?? 0), estoque: estoque.has(p.id) ? Math.round(estoque.get(p.id)! * 1000) / 1000 : null })),
+    mais: pular + lidos.length < total,
+  }
+}
+
+/** A próxima página da lista "sem foto" de uma loja (o "mostrar mais" da tela). */
+export async function fotosQueFaltam(sessao: Sessao, unidadeId: string, pular: number): Promise<FotosQueFaltam> {
+  exigir(sessao, 'venda.ver', unidadeId)
+  const p = Math.max(0, Math.min(Math.floor(Number(pular) || 0), 50_000))
+  return comoOrg(sessao.orgId, async (db) => {
+    const loja = await db.unidade.findFirst({ where: { id: unidadeId, ativa: true }, select: { catalogo: { select: { mostrarEsgotado: true } } } })
+    if (!loja) return { total: 0, produtos: [], mais: false }
+    const org = await db.org.findUnique({ where: { id: sessao.orgId }, select: { vendeSemEstoque: true } })
+    return lerFotosQueFaltam(db, unidadeId, loja.catalogo?.mostrarEsgotado ?? false, org?.vendeSemEstoque ?? false, p)
   })
 }
 
@@ -556,6 +638,30 @@ function filtroDaVitrine(unidadeId: string, extra: Prisma.ProdutoWhereInput = {}
     precoVista: { gt: 0 },
     variacoes: { some: { ativa: true } },
     ...extra,
+  }
+}
+
+/**
+ * O pedaço de `where` de "tem para vender", a mesma régua de
+ * `disponivelNoCatalogo` no banco: serviço, feito no dia ou alguma opção ativa
+ * sem saldo lançado nesta loja ou com saldo positivo. Serve para CONTAR (a
+ * vitrine pública decide item a item, com `montarProduto`).
+ */
+function filtroDisponivel(unidadeId: string, vendeSemEstoque: boolean): Prisma.ProdutoWhereInput {
+  if (vendeSemEstoque) return {}
+  return {
+    OR: [
+      { servico: true },
+      { feitoNoDia: true },
+      {
+        variacoes: {
+          some: {
+            ativa: true,
+            OR: [{ estoques: { none: { unidadeId } } }, { estoques: { some: { unidadeId, quantidade: { gt: 0 } } } }],
+          },
+        },
+      },
+    ],
   }
 }
 

@@ -187,7 +187,7 @@ export async function definirPinAcao(slug: string, _anterior: EstadoPin, form: F
     const r = await definirMeuPin(sessao, String(form.get('senha') ?? ''), pin)
     if (!r.ok) return { erro: r.erro }
     revalidatePath(`/${slug}/conta`)
-    return { ok: 'PIN salvo. Use no balcão quando pedirem a sua autorização.' }
+    return { ok: 'PIN salvo. Use no balcão para confirmar as suas vendas (e autorizar, se o seu papel permite).' }
   } catch (e) {
     return { erro: recadoDoErro(e, 'Não deu para salvar o PIN agora.') }
   }

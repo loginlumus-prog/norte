@@ -159,6 +159,7 @@ CREATE TABLE "orgs" (
     "crediario_atraso_dias" INTEGER,
     "pin_nas_excecoes" BOOLEAN NOT NULL DEFAULT false,
     "balcao_ampliado" BOOLEAN NOT NULL DEFAULT false,
+    "pin_em_toda_venda" BOOLEAN NOT NULL DEFAULT true,
     "mensalidade_multa_pct" DECIMAL(5,2) NOT NULL DEFAULT 2,
     "mensalidade_juros_mes" DECIMAL(5,2) NOT NULL DEFAULT 1,
     "mensalidade_pontualidade_pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
@@ -268,6 +269,7 @@ CREATE TABLE "acessos" (
     "cargo_id" TEXT,
     "expira_em" TIMESTAMP(3),
     "motivo" TEXT,
+    "suporte_edita" BOOLEAN NOT NULL DEFAULT false,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "acessos_pkey" PRIMARY KEY ("id")
@@ -1012,6 +1014,7 @@ CREATE TABLE "mensagens_agente" (
     "de" "Autor" NOT NULL,
     "texto" TEXT NOT NULL,
     "midia" TEXT,
+    "resposta_ia" BOOLEAN NOT NULL DEFAULT false,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "mensagens_agente_pkey" PRIMARY KEY ("id")
@@ -1915,6 +1918,9 @@ CREATE UNIQUE INDEX "conversas_agente_agente_id_telefone_key" ON "conversas_agen
 
 -- CreateIndex
 CREATE INDEX "mensagens_agente_org_id_conversa_id_criada_em_idx" ON "mensagens_agente"("org_id", "conversa_id", "criada_em");
+
+-- CreateIndex
+CREATE INDEX "mensagens_agente_org_id_resposta_ia_criada_em_idx" ON "mensagens_agente"("org_id", "resposta_ia", "criada_em");
 
 -- CreateIndex
 CREATE INDEX "movimentos_pontos_org_id_cliente_id_criado_em_idx" ON "movimentos_pontos"("org_id", "cliente_id", "criado_em");

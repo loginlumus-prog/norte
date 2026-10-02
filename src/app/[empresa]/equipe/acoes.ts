@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { after } from 'next/server'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { convidar, revogarConvite, EmailJaUsado, VALE_DIAS } from '@/servidor/convite'
+import { convidar, revogarConvite, telefoneDoConvite, EmailJaUsado, VALE_DIAS } from '@/servidor/convite'
 import { gerarLinkDeSenha } from '@/servidor/conta'
 import { emailConfigurado, enviarEmail } from '@/servidor/email'
 import { emailConvite } from '@/servidor/email-modelos'
@@ -40,7 +40,15 @@ export async function salvarMetaAcao(
   }
 }
 
-export type EstadoEquipe = { erro?: string; ok?: string; link?: string }
+export type EstadoEquipe = {
+  erro?: string
+  ok?: string
+  link?: string
+  /** O convite pronto para o WhatsApp: o endereço wa.me com a mensagem (e o número, quando veio). */
+  whatsapp?: string
+  /** A mesma mensagem, para quem prefere copiar e colar. */
+  mensagem?: string
+}
 
 const PAPEIS: Papel[] = ['DONO', 'GERENTE', 'BALCAO', 'FINANCEIRO', 'CONTADOR']
 
@@ -75,8 +83,13 @@ export async function convidarPessoa(
 ): Promise<EstadoEquipe> {
   const sessao = await exigirSessao(slug)
 
+  const nome = String(form.get('nome') ?? '').trim().slice(0, 80)
   const email = String(form.get('email') ?? '').trim()
-  if (!email.includes('@')) return { erro: 'Informe um e-mail válido.' }
+  const telefoneBruto = String(form.get('telefone') ?? '').trim()
+  const telefone = telefoneDoConvite(telefoneBruto)
+  if (telefoneBruto && !telefone) return { erro: 'O WhatsApp vai com DDD: (71) 99999-0000.' }
+  if (!email && !telefone) return { erro: 'Informe o WhatsApp (com DDD) ou o e-mail da pessoa.' }
+  if (email && !email.includes('@')) return { erro: 'Esse e-mail não parece certo.' }
 
   const escolhido = lerPapel(String(form.get('papel') ?? ''))
   if (!escolhido) return { erro: 'Escolha um papel.' }
@@ -89,13 +102,28 @@ export async function convidarPessoa(
   const publico = emailConfigurado() ? await enderecoPublico() : null
 
   try {
-    const c = await convidar(sessao, { email, ...escolhido, unidadeId }, publico ? `${publico}/${slug}` : await baseDoSite(slug))
+    const c = await convidar(
+      sessao,
+      { email: email || null, telefone, ...escolhido, unidadeId },
+      publico ? `${publico}/${slug}` : await baseDoSite(slug),
+    )
     revalidatePath(`/${slug}/equipe`)
-    // O link aparece UMA vez. Ele não fica guardado em lugar nenhum que dê
-    // para recuperar — o banco só tem o resumo dele.
-    if (publico) {
-      const org = await acharOrgPorSlug(slug)
-      const mensagem = emailConvite({
+    const org = await acharOrgPorSlug(slug)
+    const empresa = org?.nome ?? slug
+    // A mensagem pronta para o WhatsApp: é por lá que a equipe de loja
+    // conversa. O link vai dentro — ele aparece UMA vez, e não fica guardado
+    // em lugar nenhum que dê para recuperar (o banco só tem o resumo dele).
+    const pedePin = escolhido.papel !== 'CONTADOR'
+    const mensagem = [
+      `Oi${nome ? `, ${nome.split(/\s+/)[0]}` : ''}! ${sessao.nome} convidou você para a equipe da ${empresa}.`,
+      `Abra o link e crie a sua senha${pedePin ? ' e o seu PIN de 4 números (é com ele que você confirma as vendas)' : ''}:`,
+      c.link,
+      `O link vale por ${VALE_DIAS} dias e serve uma vez só.`,
+    ].join('\n')
+    const whatsapp = `https://wa.me/${telefone ? `55${telefone}` : ''}?text=${encodeURIComponent(mensagem)}`
+    const para = nome || c.email || 'a pessoa'
+    if (publico && c.email) {
+      const mensagemEmail = emailConvite({
         para: c.email,
         empresa: org?.nome ?? slug,
         quemConvidou: sessao.nome,
@@ -105,11 +133,11 @@ export async function convidarPessoa(
       })
       // Depois da resposta: o fornecedor de e-mail lento não segura a tela.
       after(async () => {
-        await enviarEmail(mensagem)
+        await enviarEmail(mensagemEmail)
       })
-      return { ok: `Convite criado e enviado por e-mail para ${c.email}. Se preferir, mande você mesmo este link:`, link: c.link }
+      return { ok: `Convite criado para ${para} e enviado por e-mail para ${c.email}. Mande também pelo WhatsApp:`, link: c.link, whatsapp, mensagem }
     }
-    return { ok: `Convite criado para ${c.email}. Mande este link para ela:`, link: c.link }
+    return { ok: `Convite criado para ${para}. Agora mande o link:`, link: c.link, whatsapp, mensagem }
   } catch (e) {
     if (e instanceof EmailJaUsado) return { erro: e.message }
     if (e instanceof SemPermissao) return { erro: 'Você não pode convidar para esse papel.' }

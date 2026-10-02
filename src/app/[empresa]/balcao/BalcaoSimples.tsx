@@ -31,7 +31,7 @@ import { VendaIncerta, AvisoFixo } from './VendaIncerta'
 import { brl } from './conta'
 import { FilaSemInternet } from './FilaSemInternet'
 import { useVenda, type ConfigDoBalcao, type EncomendaNoPedido, type Venda } from './useVenda'
-import { PedirPin } from './Autorizar'
+import { AssinarVenda, PedirPin } from './Autorizar'
 import { Produtos } from './Produtos'
 import { Itens, Total, Pagamento, Concluir, Sucesso } from './Pedido'
 import { MaisOpcoes, opcoesEmUso } from './MaisOpcoes'
@@ -344,6 +344,7 @@ export function BalcaoSimples({
         </Folha>
       </div>
 
+      <AssinarVenda v={v} slug={slug} />
       <PedirPin v={v} />
       <FichaDaCliente v={v} slug={slug} unidadeId={unidadeId} />
       <MaisOpcoes

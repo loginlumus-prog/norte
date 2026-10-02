@@ -29,7 +29,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, pode, SemPermissao, soPelaEmpresa, unidadesQuePodem, type Sessao } from './permissao'
+import { exigir, exigirQueNaoSejaSuporte, pode, SemPermissao, soPelaEmpresa, unidadesQuePodem, type Sessao } from './permissao'
 import { assinarExcecao } from './autorizacao'
 import { mexerEstoqueEm } from './estoque'
 import { alcancaOProduto, vendidoNaLoja } from './catalogo-loja'
@@ -204,6 +204,7 @@ export async function salvarReceita(
 
 export async function apagarReceita(sessao: Sessao, receitaId: string) {
   await exigirAlcanceDaFabrica(sessao)
+  exigirQueNaoSejaSuporte(sessao, 'apaga ficha técnica')
   await comoOrg(sessao.orgId, async (db) => {
     const r = await db.receita.findUnique({ where: { id: receitaId }, select: { variacaoId: true, variacao: { select: { produto: { select: { nome: true } } } } } })
     if (!r) return

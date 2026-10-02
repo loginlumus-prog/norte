@@ -3,7 +3,7 @@ import { cadastroAberto, carimbar } from '@/servidor/autocadastro'
 import { emailConfigurado } from '@/servidor/email'
 import { enderecoPublico } from '@/servidor/requisicao'
 import { EMPRESA } from '@/servidor/legal'
-import { PLANOS, PRECOS } from '@/servidor/planos'
+import { PLANOS, PRECOS, milhar } from '@/servidor/planos'
 import { RAMOS } from '@/servidor/modulos'
 import { Marca } from '@/ui/Marca'
 import { TrocaTema } from '@/ui/TrocaTema'
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
 const INCLUI = [
   'Balcão e caixa, produto com grade, estoque e clientes',
   'Crediário com carnê, financeiro com DRE e fechamento do mês',
-  `O assistente no WhatsApp, com ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(PRECOS.creditoDoTeste)} de crédito de IA para conhecer`,
+  `O assistente no WhatsApp, com ${milhar(PRECOS.respostasDoTeste)} respostas para conhecer`,
   'Sem cartão de crédito. Não vira cobrança sozinho',
 ]
 

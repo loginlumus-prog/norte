@@ -92,9 +92,9 @@ export default async function CaixaPagina({
     >
       {esquecidos.map((t) => (
         <Aviso key={t.id} nivel="atencao">
-          O caixa de <b>{t.unidade}</b> está aberto desde {quando(t.abertoEm)}, por {t.abertoPor} — há{' '}
-          {duracao(t.horasAberto * 60)}. Caixa aberto de
-          um dia para o outro mistura o dinheiro de dois turnos.
+          {/* O porquê (dois turnos misturados na mesma gaveta) está na Ajuda;
+              aqui fica o fato e o botão. */}
+          Caixa de <b>{t.unidade}</b> aberto há {duracao(t.horasAberto * 60)} — desde {quando(t.abertoEm)}, por {t.abertoPor}.
           {pode(sessao, 'caixa.operar', t.unidadeId) && (
             <>
               {' '}

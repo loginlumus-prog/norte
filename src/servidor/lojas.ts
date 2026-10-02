@@ -25,7 +25,7 @@
 //    mais na tela). A recusa diz o que resolver, tudo de uma vez.
 
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, exigirQueNaoSejaSuporte, type Sessao } from './permissao'
 import { SemCota } from './assinatura'
 import { PLANOS, PRECOS, podeCriarUnidade } from './planos'
 import { RAMOS, type Ramo } from './modulos'
@@ -221,14 +221,21 @@ async function travarCota(db: BancoDaOrg, orgId: string, deposito = false) {
  * cobram por unidade (a mesma regra de `mensalidade`). Abrir a fábrica
  * devolvia custo zero — ela é depósito na cota — e a conta subia R$ 379 sem a
  * tela dizer.
+ *
+ * Desde 02/10/2026 a fábrica é UMA parcela para a empresa: só a primeira
+ * unidade de fábrica aberta soma; a segunda e as outras vêm de graça.
  */
 async function custoDaFabrica(db: BancoDaOrg, orgId: string): Promise<number> {
   const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } })
-  return PLANOS[org.plano].porUnidadeExtra !== null ? PRECOS.fabrica : 0
+  if (PLANOS[org.plano].porUnidadeExtra === null) return 0
+  const jaTem = await db.unidade.count({ where: { ativa: true, ehFabrica: true } })
+  return jaTem > 0 ? 0 : PRECOS.fabrica
 }
 
 export async function criarLoja(sessao: Sessao, dados: DadosLoja) {
   exigir(sessao, 'empresa.configurar')
+  // Loja nova muda a conta do mês: é decisão de quem paga.
+  exigirQueNaoSejaSuporte(sessao, 'abre loja (muda a conta do mês)')
   const d = limparLoja(dados)
 
   return comoOrg(sessao.orgId, async (db) => {
@@ -381,6 +388,7 @@ export async function pendenciasParaFechar(db: BancoDaOrg, unidadeId: string): P
 
 export async function mudarSituacaoLoja(sessao: Sessao, id: string, ativa: boolean) {
   exigir(sessao, 'empresa.configurar')
+  exigirQueNaoSejaSuporte(sessao, 'fecha nem reabre loja')
 
   return comoOrg(sessao.orgId, async (db) => {
     const loja = await db.unidade.findUnique({ where: { id } })

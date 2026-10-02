@@ -53,7 +53,7 @@
 
 import { comoOrg, type BancoDaOrg } from './banco'
 import { chaveTelefone } from './assistente/telefone'
-import { exigir, type Sessao } from './permissao'
+import { exigir, exigirQueNaoSejaSuporte, type Sessao } from './permissao'
 import { codigoEncomenda } from './encomenda'
 import { gravarSaida } from './ofertas'
 
@@ -100,6 +100,7 @@ export async function anonimizarCliente(
 ): Promise<ResultadoAnonimizacao> {
   // Irreversível, e apaga conversa: é de quem configura a empresa.
   exigir(sessao, 'empresa.configurar')
+  exigirQueNaoSejaSuporte(sessao, 'anonimiza cliente (é apagar dado)')
   if (confirmacao.trim().toUpperCase() !== PALAVRA_CONFIRMA) {
     return { ok: false, erro: `Para anonimizar, digite ${PALAVRA_CONFIRMA}.` }
   }

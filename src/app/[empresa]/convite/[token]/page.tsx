@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { acharOrgPorSlug } from '@/servidor/banco'
-import { conviteServe } from '@/servidor/convite'
+import { conviteParaTela } from '@/servidor/convite'
 import { Marca } from '@/ui/Marca'
 import { Formulario } from './Formulario'
 
@@ -33,7 +33,8 @@ export default async function AceitarConvite({
   const org = await acharOrgPorSlug(slug)
   if (!org) notFound()
 
-  const serve = await conviteServe(slug, token)
+  const tela = await conviteParaTela(slug, token)
+  const serve = tela.serve
 
   // A cor gravada antes da conferência (comecar/acoes.ts) pode ser texto
   // qualquer: no `style`, só "#rrggbb".
@@ -69,14 +70,18 @@ export default async function AceitarConvite({
                 {org.nome}
               </span>
               <span className="text-sm text-tinta-2">
-                {serve ? 'Você foi convidado. Crie a sua conta.' : 'Este convite não serve mais.'}
+                {serve
+                  ? tela.serve && tela.pedePin
+                    ? 'Você foi convidado. Crie a sua senha e o seu PIN.'
+                    : 'Você foi convidado. Crie a sua conta.'
+                  : 'Este convite não serve mais.'}
               </span>
             </span>
           </header>
 
           {serve ? (
             <>
-              <Formulario slug={slug} token={token} />
+              <Formulario slug={slug} token={token} pedeEmail={tela.serve && tela.pedeEmail} pedePin={tela.serve && tela.pedePin} />
               {/* Quem já tem conta (aceitou antes, ou abriu o link de novo)
                   não precisa de outra: a porta de entrar é esta. */}
               <p className="text-center text-sm text-tinta-3">Já tem acesso? {entrar}</p>

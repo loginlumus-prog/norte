@@ -101,14 +101,17 @@ export default async function MinhaConta({ params }: { params: Promise<{ empresa
       )}
 
       {pin && (
-        <Secao
-          titulo="Meu PIN para autorizar"
-          resumo="Quando o balcão pede autorização (desconto acima do teto, item fora do cadastro), quem pode autorizar digita o PIN no aparelho de quem está vendendo — sem sair da conta dela. Só vale para o que o seu papel permite."
-        >
-          <Cartao caixa>
-            <MeuPin slug={slug} tem={pin.tem} desde={pin.desde ? dia(pin.desde) : null} />
-          </Cartao>
-        </Secao>
+        // `#pin`: o balcão leva direto para cá quem ainda não criou o seu.
+        <div id="pin" className="scroll-mt-20">
+          <Secao
+            titulo="Meu PIN"
+            resumo="O seu número pessoal de 4 a 6 dígitos. Com ele você confirma cada venda no balcão (a venda fica no seu nome, mesmo no aparelho de outra pessoa) e, se o seu papel permite, autoriza desconto acima do teto no balcão de quem está vendendo."
+          >
+            <Cartao caixa>
+              <MeuPin slug={slug} tem={pin.tem} desde={pin.desde ? dia(pin.desde) : null} />
+            </Cartao>
+          </Secao>
+        </div>
       )}
 
       <Secao

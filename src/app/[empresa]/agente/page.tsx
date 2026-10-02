@@ -221,19 +221,31 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
           {/* "Trouxe de volta" só aparece quando trouxe alguma coisa. Com ele
               em zero, a tela dizia todo mês "saldo contra" — que é a conta
               certa de um recibo que ainda não é emitido, e a leitura errada
-              do que o assistente faz. Aí o que importa é o crédito. */}
+              do que o assistente faz. Aí o que importa são as respostas. */}
           {bal.trouxe <= 0 ? (
             <div className="grid gap-2 sm:grid-cols-2">
               <Numero
                 rotulo="Custou de IA"
                 valor={brl(bal.custou)}
-                detalhe="neste mês, do seu crédito"
+                detalhe="neste mês"
               />
+              {/* Respostas, e não reais: é a unidade que o plano vende (ver
+                  planos.ts). A carteira em reais virou trava nossa de custo. */}
               <Numero
-                rotulo="Crédito disponível"
-                valor={brl(reais(gasto.saldoCent))}
-                detalhe="recarga e extrato em Assinatura"
-                nivel={gasto.saldoCent <= 0 ? 'critico' : undefined}
+                rotulo="Respostas que faltam"
+                valor={
+                  gasto.respostas?.restam != null
+                    ? gasto.respostas.restam.toLocaleString('pt-BR')
+                    : gasto.respostas
+                      ? 'no contrato'
+                      : '—'
+                }
+                detalhe={
+                  gasto.respostas?.total
+                    ? `de ${gasto.respostas.total.toLocaleString('pt-BR')} ${gasto.respostas.periodo === 'teste' ? 'no teste' : 'este mês'} · pacote em Assinatura`
+                    : 'em Assinatura'
+                }
+                nivel={gasto.respostas?.acabou || gasto.motivo === 'sem_credito' ? 'critico' : gasto.respostas?.baixo ? 'atencao' : undefined}
               />
             </div>
           ) : (
@@ -289,7 +301,7 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
             <span>
               Hoje o assistente gastou <b className="numero text-tinta">{brl(reais(gasto.gastoCent))}</b> de
               IA, de um teto de <b className="numero text-tinta">{brl(reais(gasto.tetoCent))}</b>.
-              {!gasto.pode && ' Ele parou de responder até amanhã.'}
+              {!gasto.pode && ` ${gasto.motivo === 'teto_do_dia' ? 'Ele parou de responder até amanhã.' : gasto.recado}`}
             </span>
           </p>
         </Secao>

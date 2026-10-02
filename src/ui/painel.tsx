@@ -68,6 +68,11 @@ export function Numero({
 }) {
   const c = comparacao
   const subiu = c ? c.pct >= 0 : false
+  // Nem todo "valor" é número: o plano ("Norte sob contrato"), quem vendeu,
+  // "há 6 dias". Texto não pode ficar preso numa linha só como dinheiro — no
+  // principal ele passava da borda da ficha e o fim sumia. Texto quebra e
+  // desce um tamanho; número continua inteiro e com dígitos alinhados.
+  const ehTexto = !/^[-−+]?\s*(R\$|\d)/.test(valor)
   const tom = nivel ?? (c && Number.isFinite(c.pct) ? (subiu ? 'bom' : 'critico') : undefined)
   const faixa =
     tom === 'bom' ? 'border-l-[3px] border-l-bom-vivo'
@@ -96,7 +101,12 @@ export function Numero({
       <div className="realce @container relative flex min-w-0 flex-col justify-center gap-1 overflow-hidden rounded-norte border border-marca/30 bg-superficie bg-linear-to-b from-marca/8 to-transparent px-4 pt-4 pb-3.5">
         <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-marca" />
         <span className="text-xs font-semibold text-marca">{rotulo}</span>
-        <span className="numero text-[min(32px,19cqi)] leading-none font-bold tracking-[-0.03em] text-titulo">
+        <span
+          className={cx(
+            'font-bold tracking-[-0.03em] text-titulo',
+            ehTexto ? 'text-[min(26px,14cqi)] leading-tight text-balance' : 'numero text-[min(32px,19cqi)] leading-none',
+          )}
+        >
           {valor}
         </span>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -154,7 +164,12 @@ export function Numero({
         'min-w-0',
         celula
           ? 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 bg-superficie px-4 py-3 sm:flex sm:flex-col sm:items-stretch sm:justify-center sm:py-3.5'
-          : 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-t border-borda px-1 pt-2.5 sm:flex sm:flex-col sm:items-stretch sm:gap-0.5 sm:border-t-0 sm:border-l sm:px-4 sm:py-1',
+          // Do `sm` para cima, a ficha solta segue a GRADE do principal ao
+          // lado: mesmo respiro em cima (o do principal + a borda dele) e o
+          // rótulo, o valor e o detalhe nas mesmas alturas. Centralizada, o
+          // número de 26px caía 15px acima do de 32px do principal, e a
+          // fileira lia torta.
+          : 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-t border-borda px-1 pt-2.5 sm:flex sm:flex-col sm:items-stretch sm:justify-start sm:gap-1 sm:border-t-0 sm:border-l sm:px-4 sm:pt-[17px] sm:pb-1',
       )}
     >
       <span className="flex items-center gap-1.5 text-xs font-medium text-tinta-3">
@@ -163,8 +178,12 @@ export function Numero({
       </span>
       <span
         className={cx(
-          'numero leading-tight font-bold tracking-tight text-tinta',
+          'leading-tight font-bold tracking-tight text-tinta',
           'row-span-2 text-right text-[22px] sm:text-left sm:text-[26px]',
+          // A caixa do valor tem a altura do número do principal (32px), com
+          // o texto assentado embaixo: as linhas de base se encontram.
+          !celula && (ehTexto ? 'sm:leading-8' : 'sm:flex sm:h-8 sm:items-end sm:leading-none'),
+          ehTexto ? 'min-w-0 text-balance' : 'numero',
         )}
       >
         {valor}

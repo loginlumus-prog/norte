@@ -532,6 +532,17 @@ export default async function TelaEstoque({
         </span>
       }
     >
+      {divergencia && divergencia.length > 0 && (
+        <Aviso nivel="critico">
+          {divergencia.length} {divergencia.length === 1 ? 'item' : 'itens'} com saldo diferente da soma do histórico. Isso é
+          defeito, não erro de contagem — o saldo foi mexido por fora do sistema.
+        </Aviso>
+      )}
+
+      {/* As contagens e o "Dar entrada" na mesma linha: o botão sozinho numa
+          linha, entre a tira e a primeira seção, era um bloco azul solto. A
+          entrada aberta (um formulário) ocupa a linha inteira. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 [&>section]:basis-full">
       <Tira
         itens={[
           { rotulo: 'acabaram', um: 'acabou', quantos: acabaram.length, nivel: 'critico' },
@@ -540,13 +551,6 @@ export default async function TelaEstoque({
           { rotulo: 'sem estoque lançado', quantos: semLancamento.length, nivel: 'neutro' },
         ]}
       />
-
-      {divergencia && divergencia.length > 0 && (
-        <Aviso nivel="critico">
-          {divergencia.length} {divergencia.length === 1 ? 'item' : 'itens'} com saldo diferente da soma do histórico. Isso é
-          defeito, não erro de contagem — o saldo foi mexido por fora do sistema.
-        </Aviso>
-      )}
 
       {lojasDaEntrada.length > 0 && (
         <Entrada
@@ -560,6 +564,7 @@ export default async function TelaEstoque({
           aMercadoria={vocab.aMercadoria}
         />
       )}
+      </div>
 
       {/* O que o balcão vendeu sem o sistema ter: pendência da gerente,
           antes da lista de compras (o saldo errado engana as duas). */}
@@ -608,7 +613,7 @@ export default async function TelaEstoque({
           fornecedor, até quando dá para pedir. */}
       <Secao
         titulo="Vai faltar"
-        resumo={`No ritmo dos últimos ${JANELA_DIAS} dias, quantos dias cada saldo aguenta, e até quando pedir para a peça chegar antes de acabar.`}
+        resumo={`Quantos dias cada saldo aguenta no ritmo dos últimos ${JANELA_DIAS} dias.`}
         acao={
           temPrevisao && resumoRuptura ? <span className="text-xs text-tinta-3">{resumoRuptura}</span> : undefined
         }
@@ -622,8 +627,7 @@ export default async function TelaEstoque({
         >
           {vaiFaltar.length === 0 ? (
             <Vazio>
-              Nada vai faltar por enquanto: no ritmo atual, todo item que gira dura mais que o
-              dobro do prazo de reposição.
+              Nada vai faltar por enquanto.
             </Vazio>
           ) : (
             <Tabela colunas={colunasRuptura} linhas={vaiFaltar} chave={(l) => l.variacaoId} />
@@ -666,7 +670,7 @@ export default async function TelaEstoque({
                 <b className="numero text-tinta-2">
                   {valorParado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </b>{' '}
-                parados na prateleira, a preço de custo
+                parados, a preço de custo
               </span>
             ) : undefined
           }
@@ -707,7 +711,7 @@ export default async function TelaEstoque({
       <span id="movimentos" />
       <Secao
         titulo="Movimentos"
-        resumo="Tudo que entrou, saiu, foi corrigido ou transferido — com quem e quando."
+        resumo="O que entrou, saiu, foi corrigido ou transferido."
         acao={<SeletorPeriodo atual={j.chave} />}
       >
         <Fichas

@@ -1,8 +1,11 @@
 // Peças da vitrine pública que não guardam estado: os desenhos pequenos, a
-// marca da loja e a foto do produto (ou o azulejo, quando não tem foto).
+// marca da loja e a foto do produto (ou o azulejo com o desenho do produto,
+// quando não há foto).
 // Servem ao catálogo e à página de acompanhar o pedido — sem hook aqui, para
 // a página do servidor poder usar também.
 
+import type { ReactNode } from 'react'
+import type { IconeDoProduto } from './icone'
 import { sigla, tomDe } from './marca'
 
 /* ── desenhos pequenos (grade 24, traço 1.8, cor de quem chama) ── */
@@ -121,30 +124,146 @@ export function MarcaDaLoja({ nome, logo, className = 'h-14 w-14 rounded-2xl tex
   )
 }
 
+/** Os desenhos do produto sem foto (ver icone.ts): traço fino, na cor de quem chama. */
+const DESENHOS: Record<IconeDoProduto, ReactNode> = {
+  roupa: (
+    <>
+      <path d="M10 5.6a2 2 0 1 1 2 2V9" />
+      <path d="M12 9 3.6 15.4a1 1 0 0 0 .6 1.8h15.6a1 1 0 0 0 .6-1.8z" />
+    </>
+  ),
+  calcado: (
+    <>
+      <path d="M3 7.5v9h18v-1.2a3 3 0 0 0-2.4-2.9l-5-1-3.4-3.6-3 1.4z" />
+      <path d="M3 19.5h18" />
+      <path d="m10.4 10.6-1.6 1.2M12.2 12.3l-1.6 1.2" />
+    </>
+  ),
+  acessorio: (
+    <>
+      <circle cx="12" cy="14.5" r="5.5" />
+      <path d="m10 7 2-2.6L14 7l-2 1.6z" />
+    </>
+  ),
+  bebida: (
+    <>
+      <path d="M10 3h4v3l1.6 2.6V20a1 1 0 0 1-1 1H9.4a1 1 0 0 1-1-1V8.6L10 6z" />
+      <path d="M8.4 12.5h7.2" />
+    </>
+  ),
+  sorvete: (
+    <>
+      <path d="m8 11.5 4 9.5 4-9.5" />
+      <path d="M7 11.5a5 5 0 1 1 10 0z" />
+    </>
+  ),
+  doce: (
+    <>
+      <path d="M4 20.5h16v-7H4z" />
+      <path d="M4 16c2 1.2 4 1.2 6 0s4-1.2 6 0 3 1 4 0" />
+      <path d="M12 13.5v-3" />
+      <path d="M12 8c.9-.7.9-1.8 0-2.8-.9 1-.9 2.1 0 2.8z" />
+    </>
+  ),
+  mercearia: (
+    <>
+      <path d="M3.5 10h17l-1.8 9.2a1 1 0 0 1-1 .8H6.3a1 1 0 0 1-1-.8z" />
+      <path d="m8 10 3-6M16 10l-3-6M9 13.5v3.5M12 13.5v3.5M15 13.5v3.5" />
+    </>
+  ),
+  beleza: (
+    <>
+      <path d="M8 11h8v9a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1z" />
+      <path d="M10 11V3.5h4V11" />
+    </>
+  ),
+  pet: (
+    <>
+      <path d="M12 12.5c-3 0-5 2.7-5 4.7S8.6 20.5 12 20.5s5-1.3 5-3.3-2-4.7-5-4.7z" />
+      <circle cx="5.8" cy="10" r="1.7" />
+      <circle cx="9.4" cy="6" r="1.7" />
+      <circle cx="14.6" cy="6" r="1.7" />
+      <circle cx="18.2" cy="10" r="1.7" />
+    </>
+  ),
+  papelaria: (
+    <>
+      <path d="m4 20 1-4L16 5l3 3L8 19z" />
+      <path d="m14 7 3 3" />
+    </>
+  ),
+  brinquedo: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M4 12h16M12 4c2.5 2.2 2.5 13.8 0 16" />
+    </>
+  ),
+  flor: (
+    <>
+      <circle cx="12" cy="8.5" r="1.8" />
+      <path d="M12 6.7a2.4 2.4 0 1 1 0-4.6 2.4 2.4 0 1 1 0 4.6zM13.8 8.5a2.4 2.4 0 1 1 4.6 0 2.4 2.4 0 1 1-4.6 0zM12 10.3a2.4 2.4 0 1 1 0 4.6 2.4 2.4 0 1 1 0-4.6zM10.2 8.5a2.4 2.4 0 1 1-4.6 0 2.4 2.4 0 1 1 4.6 0z" />
+      <path d="M12 15v6.5M12 18.5c-1.6-2-3.6-2.4-5-1.8 1 2 3 2.6 5 1.8z" />
+    </>
+  ),
+  etiqueta: (
+    <>
+      <path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3-8.7 8.7z" />
+      <circle cx="8" cy="8" r="1.4" />
+    </>
+  ),
+}
+
+export function DesenhoDoProduto({ icone, tamanho = 40, className }: { icone: IconeDoProduto; tamanho?: number; className?: string }) {
+  return (
+    <svg {...svg(tamanho, className)} strokeWidth={1.5}>
+      {DESENHOS[icone] ?? DESENHOS.etiqueta}
+    </svg>
+  )
+}
+
 /**
- * A foto do produto. Sem foto, o azulejo: a sigla do produto num fundo da cor
- * da loja (o tom muda pela categoria). Nunca um quadrado vazio.
+ * A foto do produto. Sem foto — ou quando a foto não carrega (internet fraca,
+ * foto trocada depois que a página abriu) —, o azulejo: o desenho do que o
+ * produto é (cabide, sapato, picolé…) na cor da loja, num fundo tingido dela
+ * (o tom muda pela categoria). Nunca um quadrado vazio nem a imagem quebrada.
+ *
+ * O `onError` faz desta a única peça daqui que só serve a componente de
+ * cliente (a Loja); a página do servidor não a usa.
  */
 export function Foto({
   src,
-  nome,
+  icone,
   tom,
   className = '',
-  letra = 'text-2xl',
+  desenho = 40,
 }: {
   src: string | null
-  nome: string
+  icone: IconeDoProduto
   tom?: string | null
   className?: string
-  letra?: string
+  /** Tamanho do desenho, em px, quando não há foto. */
+  desenho?: number
 }) {
-  if (src) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" loading="lazy" decoding="async" className={`h-full w-full bg-superficie-2 object-cover ${className}`} />
-  }
+  const azulejo = (
+    <div aria-hidden data-tom={tomDe(tom ?? null)} className="vt-azulejo flex h-full w-full items-center justify-center">
+      <DesenhoDoProduto icone={icone} tamanho={desenho} className="opacity-90" />
+    </div>
+  )
+  if (!src) return azulejo
   return (
-    <div aria-hidden data-tom={tomDe(tom ?? null)} className={`vt-azulejo flex h-full w-full items-center justify-center ${className}`}>
-      <span className={`font-extrabold tracking-tight opacity-90 ${letra}`}>{sigla(nome)}</span>
+    <div className="relative h-full w-full">
+      {azulejo}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onError={(e) => {
+          e.currentTarget.style.display = 'none'
+        }}
+        className={`absolute inset-0 h-full w-full bg-superficie-2 object-cover ${className}`}
+      />
     </div>
   )
 }

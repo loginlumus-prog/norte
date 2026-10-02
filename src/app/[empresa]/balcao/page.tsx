@@ -28,6 +28,7 @@ import { ComPalavras } from './palavras'
 import { AvisoVersao } from './AvisoVersao'
 import { versaoDoBuild } from './versaoDoBuild'
 import { lerMaquininhas } from '@/servidor/maquininhas'
+import { meuPin } from '@/servidor/autorizacao'
 import type { ConfigDoBalcao } from './useVenda'
 
 // "Recepção" na clínica e no salão, "Secretaria" na escola (vocabulario.ts).
@@ -97,7 +98,7 @@ export default async function BalcaoPagina({
       where: { id: sessao.orgId },
       select: {
         pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true, balcaoGrade: true, plano: true, ramo: true,
-        vendeSemEstoque: true, creditoMaxParcelas: true, creditoJurosPct: true,
+        vendeSemEstoque: true, creditoMaxParcelas: true, creditoJurosPct: true, pinEmTodaVenda: true,
       },
     }),
   )
@@ -149,10 +150,18 @@ export default async function BalcaoPagina({
       }
     : null
 
+  // O PIN de quem vendeu, em toda venda (Configurações → Assinaturas): é ele
+  // quem diz em nome de quem a venda fica. A tela precisa saber se quem está
+  // na conta aberta já criou o dela — sem, ela oferece confirmar sem PIN.
+  const assinatura = conf?.pinEmTodaVenda
+    ? { tenhoPin: (await meuPin(sessao)).tem, meuNome: sessao.nome }
+    : null
+
   // "Quem vendeu" só existe com o módulo de metas: sem meta e sem comissão,
-  // a pergunta não tem para que servir, e o seletor seria mais um campo.
+  // a pergunta não tem para que servir, e o seletor seria mais um campo. Com
+  // o PIN na venda, o seletor sai: quem vendeu é quem digita o PIN.
   const vendedores =
-    unidadeId && moduloLigado(empresa, 'metas') ? await listarVendedores(sessao, unidadeId) : null
+    unidadeId && moduloLigado(empresa, 'metas') && !assinatura ? await listarVendedores(sessao, unidadeId) : null
 
   // O avulso é de todo mundo que vende: quem não pode passar do teto lança
   // e, ao concluir, a venda pede o PIN de quem pode (ver autorizacao.ts).
@@ -179,6 +188,7 @@ export default async function BalcaoPagina({
     vendeSemEstoque: !!conf?.vendeSemEstoque,
     maquininhas: lerMaquininhas(loja?.maquininhas),
     credito: { maxParcelas: conf?.creditoMaxParcelas ?? 1, jurosPct: Number(conf?.creditoJurosPct ?? 0) },
+    assinatura,
   }
 
   // A meta de quem está no caixa, na barra: "faltam R$ 800" é o que faz a

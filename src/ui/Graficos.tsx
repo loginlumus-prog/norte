@@ -262,7 +262,7 @@ export function BarrasMeses({
           </ul>
         ) : (
           // Uma série só não tem legenda — o título já diz o que é.
-          <span className="text-xs text-tinta-3">Toque ou passe o mouse numa barra para ver o valor.</span>
+          <span className="text-xs text-tinta-3">Toque numa barra para ver o valor.</span>
         )}
       </div>
 
@@ -468,7 +468,7 @@ export function Calor({
             <b className="numero text-tinta">{formatar(formato)(v)}</b>
           </span>
         ) : (
-          <span className="text-tinta-3">Toque ou passe o mouse numa casa para ver o valor.</span>
+          <span className="text-tinta-3">Toque numa casa para ver o valor.</span>
         )}
         {/* A escala, que antes era uma frase ("mais escuro, mais
             movimento") — e no tema escuro a casa cheia é a mais CLARA. */}
@@ -584,7 +584,9 @@ function Grade({ linhas, topo }: { linhas: number[]; topo: number }) {
 function curto(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace('.', ',')}M`
   if (v >= 1000) return `${(v / 1000).toFixed(v >= 10000 ? 0 : 1).replace('.', ',')}k`
-  return String(Math.round(v))
+  // Passo fracionário (maior valor 1 → linhas 0; 0,5; 1): arredondado, o
+  // eixo dizia "0, 1, 1" e parecia defeito.
+  return v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
 }
 
 /** Um passo redondo (1, 2, 5 × 10^n) perto do pedido. */

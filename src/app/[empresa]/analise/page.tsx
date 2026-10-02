@@ -302,7 +302,7 @@ export default async function Analise({
           {/* ── entre as lojas ── */}
           <Secao
             titulo={`Entre as lojas · ${j.rotulo.toLowerCase()}`}
-            resumo={`A mesma régua para todas: o que entrou (já sem as devoluções), o que sobrou depois do custo da mercadoria, e quanto de estoque ficou sem saída no período em cada uma.${onde.unidadeId ? ' Aqui aparecem sempre todas as lojas que você acompanha, mesmo com uma escolhida lá em cima: o resto da tela é só dela.' : ''}`}
+            resumo={`Entrou (sem devoluções), margem e estoque sem saída, loja por loja.${onde.unidadeId ? ' Aqui aparecem todas as lojas; o resto da tela é só da escolhida.' : ''}`}
           >
             {unidades.length < 2 ? (
               <Cartao>
@@ -354,7 +354,7 @@ export default async function Analise({
           {/* ── curva ABC ── */}
           <Secao
             titulo={`Curva ABC · ${j.rotulo.toLowerCase()}`}
-            resumo="Os produtos ordenados pelo que trouxeram. A é o que forma os primeiros 80% do faturamento e nunca pode faltar. C é a cauda: cada um sozinho não paga a prateleira que ocupa."
+            resumo="A: os 80% do faturamento, nunca pode faltar. C: a cauda."
           >
             {abc.length === 0 ? (
               <Vazio>
@@ -380,7 +380,7 @@ export default async function Analise({
               aqui é só o que não vende há um mês ou mais. */}
           <Secao
             titulo={`Parado sem vender há ${PARADO_DIAS}+ dias`}
-            resumo={`Peças com estoque que não vendem há ${PARADO_DIAS} dias ou mais, a preço de custo. Não é o estoque inteiro (esse está no Painel), só o que não gira. Aqui o tempo não segue o filtro de cima de propósito: parado é uma característica do produto, não do recorte que você escolheu para ler.`}
+            resumo={`Com estoque e sem venda há ${PARADO_DIAS}+ dias, a preço de custo. Não segue o período de cima.`}
           >
             <div className="grid gap-2 sm:grid-cols-2">
               <Numero
@@ -413,7 +413,7 @@ export default async function Analise({
           {verEscala && (
             <Secao
               titulo={`Turnos de caixa · ${j.rotulo.toLowerCase()}`}
-              resumo="Cada turno de caixa: quem abriu, quanto tempo ficou, quanto saiu naquele turno e o que faltou ou sobrou na gaveta no fechamento."
+              resumo="Cada turno: quem abriu, quanto vendeu e o que faltou ou sobrou na gaveta."
             >
               {turnos.length === 0 ? (
                 <Vazio>Nenhum caixa aberto no período.</Vazio>

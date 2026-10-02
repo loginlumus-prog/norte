@@ -105,7 +105,7 @@ function Formulario({
         name="ehFabrica"
         id={`fab-${d?.id ?? 'nova'}`}
         titulo="É fábrica (produz o que as lojas vendem)"
-        resumo={`Faz a produção com ficha técnica e lote, e as lojas pedem a ela. Não vende no balcão. Cobrada à parte: R$ ${PRECOS.fabrica} por mês.`}
+        resumo={`Faz a produção com ficha técnica e lote, e as lojas pedem a ela. Não vende no balcão. Cobrada à parte: R$ ${PRECOS.fabrica} por mês, uma vez para a empresa — a segunda fábrica não soma.`}
         defaultChecked={d?.ehFabrica ?? false}
         onChange={(e) => {
           // E marcar a fábrica marca o depósito, como o servidor grava.

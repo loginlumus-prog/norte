@@ -10,7 +10,7 @@ import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, Vazio } from '@/ui/base'
-import { Tira, brl } from '@/ui/painel'
+import { brl } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import type { Tema } from '@/ui/TrocaTema'
@@ -169,15 +169,8 @@ export default async function Clientes({
         </span>
       }
     >
-      <Tira
-        itens={[
-          { rotulo: vocab.naFicha.compraram, um: vocab.naFicha.comprou, quantos: clientes.length - semCompra.length, nivel: 'bom' },
-          { rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, um: `sumido há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length, nivel: 'atencao' },
-          { rotulo: 'devendo no crediário', quantos: devendo.length, nivel: devendo.some((c) => c.vencido > 0) ? 'critico' : 'atencao' },
-          { rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length, nivel: 'bom' },
-          { rotulo: vocab.naFicha.nuncaPlural, um: vocab.naFicha.nunca, quantos: semCompra.length, nivel: 'neutro' },
-        ]}
-      />
+      {/* Sem tira de contagens: cada uma delas já é uma ficha do filtro
+          logo abaixo, com o número ao lado. */}
 
       <div className="flex flex-col gap-2">
         <Busca
@@ -314,6 +307,9 @@ export default async function Clientes({
                       chave: 'extra',
                       // A coluna sem título deixava "120 pontos" solto na linha.
                       titulo: devendo.length > 0 && comPontos.length > 0 ? 'Deve · pontos' : devendo.length > 0 ? 'Deve' : 'Pontos',
+                      // Número: o título vai para a direita, em cima dos
+                      // valores — à esquerda, ele ficava longe da coluna.
+                      numero: true,
                       largura: '9rem',
                       celula: (c: (typeof clientes)[number]) => (
                         <span className="flex flex-col items-end gap-0.5">
@@ -322,7 +318,7 @@ export default async function Clientes({
                               deve {brl(c.devendo)}
                             </Situacao>
                           )}
-                          {c.pontos > 0 && <span className="numero text-xs text-tinta-3">{plural(c.pontos, 'ponto', 'pontos')}</span>}
+                          {c.pontos > 0 && <span className="numero text-sm text-tinta-2">{plural(c.pontos, 'ponto', 'pontos')}</span>}
                         </span>
                       ),
                     },

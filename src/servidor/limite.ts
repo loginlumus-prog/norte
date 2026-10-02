@@ -70,6 +70,12 @@ export async function reservarTentativa(
   orgId: string,
   email: string,
   ip: string | null,
+  /**
+   * Quantos erros a chave aguenta na janela. O login usa o de sempre; o PIN
+   * de assinar a venda, na conta da LOJA, aguenta mais (ver autorizacao.ts):
+   * ali o erro de dedo de três caixas no pico soma na mesma conta.
+   */
+  max = MAX_POR_EMAIL,
 ): Promise<Reserva> {
   const limite = desde()
 
@@ -95,7 +101,7 @@ export async function reservarTentativa(
       orderBy: { criadaEm: 'asc' },
       select: { criadaEm: true },
     })
-    if (doEmail.length >= MAX_POR_EMAIL) {
+    if (doEmail.length >= max) {
       return { bloqueado: true as const, esperarMin: faltam(doEmail[0]!.criadaEm), motivo: 'email' as const }
     }
 
@@ -114,6 +120,25 @@ export async function reservarTentativa(
     // que a próxima tentativa simultânea vai enxergar quando a trava soltar.
     const t = await db.tentativaLogin.create({ data: { orgId, email, ip, sucesso: false }, select: { id: true } })
     return { bloqueado: false as const, tentativaId: t.id }
+  })
+}
+
+/**
+ * A chave está travada agora? Só olha — não conta tentativa nenhuma. É o
+ * que deixa o balcão travado pelo freio do PIN registrar a venda no nome da
+ * conta aberta (marcada para conferir) só quando a trava é de verdade.
+ */
+export async function estaTravada(orgId: string, chave: string, max = MAX_POR_EMAIL): Promise<boolean> {
+  const limite = desde()
+  return comoOrg(orgId, async (db) => {
+    const ultimoAcerto = await db.tentativaLogin.findFirst({
+      where: { email: chave, sucesso: true },
+      orderBy: { criadaEm: 'desc' },
+      select: { criadaEm: true },
+    })
+    const corte = ultimoAcerto && ultimoAcerto.criadaEm > limite ? ultimoAcerto.criadaEm : limite
+    const erros = await db.tentativaLogin.count({ where: { email: chave, sucesso: false, criadaEm: { gt: corte } } })
+    return erros >= max
   })
 }
 

@@ -296,10 +296,42 @@ export function Cartao({
 /** Lista sem nada dentro. Diz o que fazer, não só que está vazio. */
 export function Vazio({ children, acao }: { children: ReactNode; acao?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+    <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
       <p className="max-w-sm text-sm text-tinta-2">{children}</p>
       {acao}
     </div>
+  )
+}
+
+/* ── Dica ─────────────────────────────────────────────────── */
+
+/**
+ * O "?" ao lado de um título: a explicação longa, guardada.
+ *
+ * O porquê de cada coisa é bom de ter e ruim de ler toda vez — três linhas
+ * de explicação embaixo de cada item faziam a tela parecer manual. Fica a
+ * um toque: o balão abre ao passar o mouse e ao focar (que é o que o toque
+ * no celular faz), sem JavaScript. O leitor de tela lê o texto inteiro pelo
+ * `aria-label`, sem precisar abrir.
+ */
+export function Dica({ children }: { children: string }) {
+  return (
+    <span className="group/dica relative inline-flex align-middle">
+      <span
+        tabIndex={0}
+        role="img"
+        aria-label={children}
+        className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-borda text-[10px] leading-none font-bold text-tinta-3 outline-none hover:border-marca/40 hover:text-marca focus-visible:ring-2 focus-visible:ring-marca/40"
+      >
+        ?
+      </span>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-full left-0 z-30 mt-1.5 hidden w-64 max-w-[calc(100vw-4rem)] rounded-norte border border-borda bg-superficie px-3 py-2 text-xs leading-snug font-normal text-tinta-2 shadow-lg group-focus-within/dica:block group-hover/dica:block"
+      >
+        {children}
+      </span>
+    </span>
   )
 }
 

@@ -14,7 +14,7 @@ import { BotaoReceber } from '../../crediario/BotaoReceber'
 import { ListaDeRecibos } from '../../crediario/Recibos'
 import { moduloLigado } from '@/servidor/modulos'
 import { unidadesVisiveis } from '@/servidor/unidade'
-import { pode } from '@/servidor/permissao'
+import { ehSuporteDoNorte, pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Aviso, Cartao, Situacao, Vazio, cx } from '@/ui/base'
@@ -109,7 +109,7 @@ export default async function FichaCliente({
   // Anonimizada não se edita (ver editarCliente): o formulário nem aparece.
   const podeEditar = pode(sessao, 'cliente.editar') && !anonimizado
   // Irreversível e apaga conversa: é de quem configura a empresa (o dono).
-  const podeAnonimizar = pode(sessao, 'empresa.configurar') && !anonimizado
+  const podeAnonimizar = pode(sessao, 'empresa.configurar') && !ehSuporteDoNorte(sessao) && !anonimizado
   const ofertas = podeEditar ? await ofertasNaTela(sessao, empresa.nome, cliente) : null
 
   const gastou = cliente.vendas.reduce((s, v) => s + Number(v.total), 0)

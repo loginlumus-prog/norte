@@ -89,6 +89,7 @@ export default async function FichaVenda({
     (lojasDevolucao.some((u) => u.id === v.unidadeId) ? v.unidadeId : null) ??
     lojasDevolucao[0]?.id ??
     null
+  const podeCorrigirData = v.situacao === 'CONCLUIDA' && pode(sessao, 'venda.cancelar', v.unidadeId)
   const podeDevolver = !cancelada && !importado && lojaDevolucao !== null
 
   const subtotal = Number(v.subtotal)
@@ -280,15 +281,16 @@ export default async function FichaVenda({
           {v.dataCorrigidaMotivo ? `. Motivo: ${v.dataCorrigidaMotivo}` : ''}.
         </p>
       )}
-      {v.situacao === 'CONCLUIDA' && pode(sessao, 'venda.cancelar', v.unidadeId) && (
-        <CorrigirData slug={slug} vendaId={v.id} dia={diaEmSP(v.criadaEm)} hoje={diaEmSP()} />
-      )}
 
       <Cartao titulo={`${v.itens.length} ${v.itens.length === 1 ? 'item' : 'itens'}`}>
         <Tabela colunas={colunas} linhas={v.itens} chave={(i) => i.id} />
 
         {/* A conta de baixo para cima, como no comprovante. Cada linha só
             aparece se mexeu no total — subtotal igual ao total é ruído. */}
+        {/* Sem desconto, ponto, juro nem devolução, a conta é uma linha só —
+            "Total" — que já está na ficha grande lá em cima. Repetida aqui,
+            era uma linha solta no meio da tela. */}
+        {(desconto > 0 || pontosCent > 0 || acrescimo > 0 || juros > 0 || devolvido > 0 || v.pontosGanhos > 0) && (
         <dl className="ml-auto mt-3 flex w-full max-w-xs flex-col gap-1 text-sm">
           {(desconto > 0 || pontosCent > 0 || acrescimo > 0 || juros > 0) && (
             <div className="flex justify-between text-tinta-2">
@@ -343,6 +345,7 @@ export default async function FichaVenda({
             </div>
           )}
         </dl>
+        )}
       </Cartao>
 
       <Cartao titulo="Pagamento">
@@ -485,7 +488,9 @@ export default async function FichaVenda({
 
       {/* Devolver primeiro, cancelar por último: devolver é o gesto do dia
           seguinte, cancelar é o do engano — e o do engano fica mais longe. */}
-      {(podeDevolver && devolviveis.length > 0) || podeCancelar ? (
+      {/* Corrigir a data mora aqui, com os outros consertos da venda: solto
+          logo abaixo dos números, era um link órfão no meio da tela. */}
+      {(podeDevolver && devolviveis.length > 0) || podeCancelar || podeCorrigirData ? (
         <div className="flex flex-col gap-3 pt-2">
           {podeDevolver && devolviveis.length > 0 && (
             <Devolver
@@ -500,6 +505,11 @@ export default async function FichaVenda({
               escolherLoja={escolha.mostrarSeletor && lojasDevolucao.length > 1}
               palavras={{ destaVenda: palavras.destaVenda, daVenda: palavras.daVenda }}
             />
+          )}
+          {podeCorrigirData && (
+            <div className="flex justify-center">
+              <CorrigirData slug={slug} vendaId={v.id} dia={diaEmSP(v.criadaEm)} hoje={diaEmSP()} />
+            </div>
           )}
           {podeCancelar && (
             <Cancelar

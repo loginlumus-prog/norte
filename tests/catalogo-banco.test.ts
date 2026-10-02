@@ -31,11 +31,19 @@ const SEMENTE = `
   insert into produtos (id, org_id, nome, medida, preco_vista, categoria_id, ativo, uso_interno, atualizado_em) values
     ('p-pic', 'org-c', 'Picolé de morango', 'UN', 2.00, 'cat-pic', true, false, now()),
     ('p-esg', 'org-c', 'Picolé de uva', 'UN', 2.50, 'cat-pic', true, false, now()),
-    ('p-uso', 'org-c', 'Palito', 'UN', 0.10, null, true, true, now());
+    ('p-uso', 'org-c', 'Palito', 'UN', 0.10, null, true, true, now()),
+    ('p-sem', 'org-c', 'Picolé de coco', 'UN', 3.00, 'cat-pic', true, false, now()),
+    ('p-sem-esg', 'org-c', 'Picolé de limão', 'UN', 3.00, 'cat-pic', true, false, now());
   insert into variacoes (id, org_id, produto_id, codigo, ativa) values
-    ('v-pic', 'org-c', 'p-pic', 'PIC1', true), ('v-esg', 'org-c', 'p-esg', 'PIC2', true), ('v-uso', 'org-c', 'p-uso', 'PAL', true);
+    ('v-pic', 'org-c', 'p-pic', 'PIC1', true), ('v-esg', 'org-c', 'p-esg', 'PIC2', true), ('v-uso', 'org-c', 'p-uso', 'PAL', true),
+    ('v-sem', 'org-c', 'p-sem', 'PIC3', true), ('v-sem-esg', 'org-c', 'p-sem-esg', 'PIC4', true);
   insert into estoque (id, org_id, variacao_id, unidade_id, quantidade, atualizado_em) values
-    ('e-pic', 'org-c', 'v-pic', 'uni-c', 10, now()), ('e-esg', 'org-c', 'v-esg', 'uni-c', 0, now());
+    ('e-pic', 'org-c', 'v-pic', 'uni-c', 10, now()), ('e-esg', 'org-c', 'v-esg', 'uni-c', 0, now()),
+    ('e-sem', 'org-c', 'v-sem', 'uni-c', 4, now()), ('e-sem-esg', 'org-c', 'v-sem-esg', 'uni-c', 0, now());
+  -- Morango, uva e palito com foto; coco e limão sem (aparecem com o ícone).
+  insert into midias (id, org_id, nome, mime, tipo, tamanho, sha256, dados) values
+    ('mid-1', 'org-c', 'foto', 'image/webp', 'imagem', 4, 'sha-1', decode('52494646', 'hex'));
+  update produtos set foto_id = 'mid-1' where id in ('p-pic', 'p-esg', 'p-uso');
   insert into caixas (id, org_id, unidade_id, aberto_por, saldo_abertura) values ('cx-c', 'org-c', 'uni-c', 'Caixa', 0);
 `
 
@@ -110,13 +118,51 @@ describe('a vitrine pública', () => {
     expect(v?.loja.nome).toBe('Centro')
     expect(v?.categorias.map((c) => c.nome)).toEqual(['Picolés'])
     const p = await m.cat.produtosDoCatalogo('sorveteria-c', 'centro', {})
-    expect(p?.produtos.map((x) => x.nome)).toEqual(['Picolé de morango'])
+    // o coco não tem foto e aparece do mesmo jeito (com o ícone, na tela)
+    expect(p?.produtos.map((x) => x.nome)).toEqual(['Picolé de coco', 'Picolé de morango'])
     // nada de saldo exato nem custo no que sai
     expect(JSON.stringify(p)).not.toMatch(/custo|quantidade|saldo/)
   })
   it('link errado ou empresa errada não abre', async () => {
     expect(await m.cat.lerVitrinePublica('sorveteria-c', 'outra')).toBeNull()
     expect(await m.cat.lerVitrinePublica('nao-existe', 'centro')).toBeNull()
+  })
+})
+
+describe('produto sem foto continua no catálogo', () => {
+  it('aparece na lista e na contagem das categorias, sem foto', async () => {
+    const v = await m.cat.lerVitrinePublica('sorveteria-c', 'centro')
+    // morango, uva, coco e limão (esgotado conta na categoria; a lista é que o esconde)
+    expect(v?.categorias).toEqual([{ id: 'cat-pic', nome: 'Picolés', total: 4 }])
+    const p = await m.cat.produtosDoCatalogo('sorveteria-c', 'centro', { busca: 'coco' })
+    expect(p?.produtos).toMatchObject([{ nome: 'Picolé de coco', foto: null, disponivel: true }])
+  })
+
+  it('o pedido com produto sem foto passa', async () => {
+    const r = await m.cat.fazerPedidoPeloCatalogo('sorveteria-c', 'centro', pedido({ itens: [{ variacaoId: 'v-sem', quantidade: 1 }], telefone: '71955554444' }), '10.0.0.5', '')
+    expect(r.ok).toBe(true)
+    expect(r.ok && r.totalC).toBe(300)
+  })
+
+  it('a tela do catálogo conta quem aparece e lista quem está sem foto (com a régua do estoque)', async () => {
+    const { lojas } = await m.cat.listarCatalogos(DONO)
+    const l = lojas.find((x) => x.unidadeId === 'uni-c')!
+    // morango (com foto) e coco (sem): uva e limão estão esgotados e a loja esconde o esgotado
+    expect(l.aparecendo).toBe(2)
+    expect(l.semFoto).toEqual({ total: 1, mais: false, produtos: [{ id: 'p-sem', nome: 'Picolé de coco', preco: 3, estoque: 4 }] })
+    expect(await m.cat.fotosQueFaltam(DONO, 'uni-c', 0)).toEqual(l.semFoto)
+  })
+
+  it('com a foto, o produto sai da lista "sem foto" e a vitrine mostra a foto', async () => {
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 8, 7, 6, 5, 4])
+    expect((await m.cat.guardarFotoDoProduto(DONO, 'p-sem', jpeg)).ok).toBe(true)
+    const { lojas } = await m.cat.listarCatalogos(DONO)
+    const l = lojas.find((x) => x.unidadeId === 'uni-c')!
+    expect(l.aparecendo).toBe(2)
+    expect(l.semFoto.total).toBe(0)
+    const p = await m.cat.produtosDoCatalogo('sorveteria-c', 'centro', {})
+    expect(p?.produtos.map((x) => x.nome)).toEqual(['Picolé de coco', 'Picolé de morango'])
+    expect(p?.produtos.every((x) => x.foto?.startsWith('/sorveteria-c/foto/'))).toBe(true)
   })
 })
 

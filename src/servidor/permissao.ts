@@ -170,6 +170,8 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
 
   // Suporte (nós): só leitura, com prazo e motivo obrigatórios, e tudo o que
   // fizer aparece no livro de auditoria do cliente, igual a qualquer pessoa.
+  // O modo EDIÇÃO (escolhido ao conceder, `Acesso.suporteEdita`) troca isto
+  // por SUPORTE_EDICAO — ver `concede`.
   SUPORTE: SO_LEITURA,
 
   // Cargo criado pela empresa ("Subgerente"): por si só, NADA. O que ele pode
@@ -179,6 +181,41 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
   // o poder de um gerente — falha fechada.
   CARGO: [],
 }
+
+/**
+ * O suporte do Norte no modo EDIÇÃO: o cliente travou e pediu que a gente
+ * arrumasse. É a leitura de sempre mais o que arruma a OPERAÇÃO — produto,
+ * preço, estoque, catálogo, Configurações, convidar gente, encomenda — com
+ * alcance da empresa inteira (o acesso de suporte é sempre sem loja).
+ *
+ * O que fica de fora é de propósito, e não por esquecimento:
+ *   • vender, cancelar venda, dar desconto acima do teto, mexer no caixa —
+ *     dinheiro na mão é de quem está na loja;
+ *   • receber parcela ou mensalidade, dispensar mensalidade, cobrar,
+ *     lançar no financeiro, estornar — dinheiro também;
+ *   • compra ao fornecedor (é compromisso de pagar), ponto (é folha),
+ *     matrícula e turma (geram mensalidade), quadro de tarefas, assistente.
+ * E mesmo com `empresa.configurar`, algumas portas recusam o suporte pelo
+ * nome (`exigirQueNaoSejaSuporte`): a Assinatura, apagar ou anonimizar
+ * dados, abrir e fechar loja, cargos, as regras do PIN e o link de senha de
+ * outra pessoa.
+ */
+export const SUPORTE_EDICAO: readonly Capacidade[] = [
+  ...SO_LEITURA,
+  'produto.editar', 'produto.preco', 'produto.cadastrar',
+  'estoque.ajustar', 'estoque.consumir',
+  'cliente.editar',
+  'agenda.marcar',
+  'equipe.gerir',
+  'empresa.configurar',
+]
+
+/**
+ * Os papéis que o suporte no modo edição pode convidar ou mexer: os mesmos
+ * do gerente. Dono e gerente são da loja decidir — e é assim que "trocar o
+ * dono" nunca passa pelo suporte.
+ */
+const SUPORTE_EDICAO_CONCEDE: readonly Papel[] = ['BALCAO']
 
 /**
  * O que um cargo criado pela empresa PODE ter. É o teto: o que o Gerente pode,
@@ -231,10 +268,14 @@ export function podeConceder(
   return sessao.acessos.some(
     (a) =>
       valeAgora(a, agora) &&
-      PODE_CONCEDER[a.papel].includes(papel) &&
+      concedeveis(a).includes(papel) &&
       (unidadeId === undefined || a.unidadeId === null || a.unidadeId === unidadeId),
   )
 }
+
+/** O que este acesso pode conceder — o suporte no modo edição, o do gerente. */
+const concedeveis = (a: Acesso): readonly Papel[] =>
+  a.papel === 'SUPORTE' && a.suporteEdita ? SUPORTE_EDICAO_CONCEDE : PODE_CONCEDER[a.papel]
 
 /**
  * Pode dar (ou mexer em) ESTE acesso — este papel, nesta loja ou na empresa
@@ -262,7 +303,7 @@ export function podeConcederAcesso(
       valeAgora(a, agora) &&
       a.unidadeId === null &&
       concede(a, 'equipe.gerir') &&
-      PODE_CONCEDER[a.papel].includes(papel),
+      concedeveis(a).includes(papel),
   )
 }
 
@@ -278,6 +319,12 @@ export type Acesso = {
    * (ver `conferirSessao`), nunca do cookie. Ausente = nada.
    */
   capacidades?: readonly string[] | null
+  /**
+   * Só no papel SUPORTE: o modo edição (`Acesso.suporteEdita`). Lido do banco
+   * a cada requisição (ver `conferirSessao`), nunca do cookie. Ausente = só
+   * leitura — falha fechada.
+   */
+  suporteEdita?: boolean | null
 }
 
 export type Sessao = {
@@ -318,7 +365,7 @@ export const sessaoAindaVale = (
 const valeAgora = (a: Acesso, agora: Date) => !a.expiraEm || a.expiraEm > agora
 
 const concede = (a: Acesso, c: Capacidade, s?: Pick<Sessao, 'balcaoAmpliado'>) =>
-  (PODERES[a.papel].includes(c) ||
+  ((a.papel === 'SUPORTE' && a.suporteEdita ? SUPORTE_EDICAO : PODERES[a.papel]).includes(c) ||
     (a.papel === 'BALCAO' && !!s?.balcaoAmpliado && EXTRAS_DO_BALCAO.includes(c)) ||
     (a.papel === 'CARGO' && CAPACIDADES_DE_CARGO.includes(c) && !!a.capacidades?.includes(c))) &&
   (a.unidadeId === null || !SO_DA_EMPRESA_INTEIRA.includes(c))
@@ -402,6 +449,32 @@ export function podeVerPlanos(sessao: Sessao, agora = new Date()): boolean {
   return pode(sessao, 'empresa.configurar', undefined, agora) || pode(sessao, 'financeiro.ver', undefined, agora)
 }
 
+/**
+ * A sessão é do NOSSO suporte — só acesso de SUPORTE valendo, nenhum papel da
+ * loja? (Quem tem SUPORTE e mais um papel da loja não existe: ver
+ * `impedimentoDoSuporte` em operacao.ts.)
+ */
+export function ehSuporteDoNorte(sessao: Sessao, agora = new Date()): boolean {
+  const vivos = sessao.acessos.filter((a) => valeAgora(a, agora))
+  return vivos.length > 0 && vivos.every((a) => a.papel === 'SUPORTE')
+}
+
+/** O suporte no modo edição — o que a Equipe mostra como "edição". */
+export function suporteEdita(sessao: Sessao, agora = new Date()): boolean {
+  return sessao.acessos.some((a) => a.papel === 'SUPORTE' && !!a.suporteEdita && valeAgora(a, agora))
+}
+
+/**
+ * As portas que o suporte do Norte não atravessa, nem no modo edição, mesmo
+ * tendo a capacidade que elas pedem (`empresa.configurar`, `equipe.gerir`):
+ * a Assinatura, apagar ou anonimizar dado, abrir e fechar loja, cargos, as
+ * regras do PIN, o link de senha de outra pessoa. Chamar DEPOIS do `exigir`
+ * da capacidade, no começo da ação.
+ */
+export function exigirQueNaoSejaSuporte(sessao: Sessao, oQue: string, agora = new Date()): void {
+  if (ehSuporteDoNorte(sessao, agora)) throw new SoDaLoja(oQue)
+}
+
 /** Levanta erro em vez de devolver false. Para usar no começo de uma ação. */
 export function exigir(
   sessao: Sessao,
@@ -423,6 +496,18 @@ export class SemPermissao extends Error {
       `Sem permissão para "${capacidade}"` +
         (unidadeId ? ` nesta unidade.` : '.'),
     )
+    this.name = 'SemPermissao'
+  }
+}
+
+/**
+ * É `SemPermissao` (quem já trata a recusa de permissão trata esta), com a
+ * frase de gente: o suporte entende por que parou, e a loja, se ler, também.
+ */
+export class SoDaLoja extends SemPermissao {
+  constructor(oQue: string) {
+    super('empresa.configurar')
+    this.message = `O suporte do Norte não ${oQue}: isso é com quem é da empresa.`
     this.name = 'SemPermissao'
   }
 }

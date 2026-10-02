@@ -9,7 +9,7 @@ import { moduloLigado } from '@/servidor/modulos'
 import { Estrutura } from '@/ui/Estrutura'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { MENU } from '@/ui/menu'
-import { Cartao, Situacao, cx } from '@/ui/base'
+import { Cartao, Dica, Situacao, cx } from '@/ui/base'
 import { Numero, Secao, brl } from '@/ui/painel'
 import { plural } from '@/ui/texto'
 import type { Tema } from '@/ui/TrocaTema'
@@ -145,7 +145,7 @@ export default async function FechamentoDoMes({
 
       <Secao
         titulo="O que conferir antes de dar o mês por fechado"
-        resumo="Cada linha erra o resultado para cima quando fica em aberto. É por isso que elas vêm antes do número."
+        resumo="Cada linha em aberto deixa o resultado melhor do que é."
       >
         <Cartao caixa>
           <ul className="flex flex-col">
@@ -160,13 +160,16 @@ export default async function FechamentoDoMes({
                     <span className="flex items-baseline gap-2">
                       <span aria-hidden className={cx('size-2 shrink-0 translate-y-[-1px] rounded-full', c.ponto)} />
                       <span className="text-sm font-semibold text-tinta">{i.titulo}</span>
+                      {/* O porquê de cada conferência fica no "?": três
+                          linhas de explicação por item faziam da lista um
+                          manual. */}
+                      <Dica>{i.porque}</Dica>
                     </span>
                     <span className="flex items-baseline gap-3">
                       <span className="text-sm text-tinta-2">{i.detalhe}</span>
                       <Situacao nivel={c.nivel}>{ROTULO[i.situacao]}</Situacao>
                     </span>
                   </div>
-                  <p className="max-w-prose pl-4 text-xs text-tinta-3">{i.porque}</p>
                   {i.onde &&
                     (i.onde.href ? (
                       <Link
@@ -207,9 +210,7 @@ export default async function FechamentoDoMes({
           </table>
         </Cartao>
         <p className="text-xs text-tinta-3">
-          Fechar o mês aqui não tranca nada: lançamento atrasado continua entrando, e o número
-          se refaz sozinho. A lista de cima diz o que ainda pode mudar o resultado — não impede
-          ninguém de lançar.
+          Fechar o mês não tranca nada: lançamento atrasado continua entrando e o número se refaz sozinho.
         </p>
       </Secao>
     </Estrutura>

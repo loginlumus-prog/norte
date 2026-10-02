@@ -61,6 +61,7 @@ import type { Agente } from '@prisma/client'
 import { comoOrg } from '../banco'
 import { inicioDeHojeEmSP } from '../dia'
 import { podeGastarHoje, paraConfig } from '../agente'
+import { avisoDeRespostas } from '../assinatura'
 import {
   conversarComFerramentas,
   FalhaIA,
@@ -158,7 +159,7 @@ export type Desfecho =
   | { tipo: 'recado'; enviada: boolean }
   | { tipo: 'silencio'; motivo: MotivoSilencio }
   // ── equipe ──
-  | { tipo: 'recusada'; motivo: 'sem_chave' | 'sem_credito' | 'teto_do_dia' | 'sem_agente' }
+  | { tipo: 'recusada'; motivo: 'sem_chave' | 'sem_credito' | 'sem_respostas' | 'teto_do_dia' | 'sem_agente' }
   | { tipo: 'respondida'; texto: string; enviada: boolean; propostas: string[] }
   /** A resposta a uma proposta ("sim", "não 2") ou o ACEITAR/PRONTO — sem modelo. */
   | { tipo: 'atalho'; texto: string; enviada: boolean }
@@ -424,7 +425,7 @@ async function conversarComEquipe(
   const veredito = await podeGastarHoje(orgId)
   const semChave = !temChaveIA()
   if (semChave || !veredito.pode) {
-    const motivo = semChave ? 'sem_chave' : (veredito.motivo as 'sem_credito' | 'teto_do_dia' | 'sem_agente')
+    const motivo = semChave ? 'sem_chave' : (veredito.motivo as 'sem_credito' | 'sem_respostas' | 'teto_do_dia' | 'sem_agente')
     const recado = semChave
       ? 'O assistente está sem a chave de IA configurada no servidor. Fale com o suporte do Norte.'
       : veredito.recado
@@ -440,6 +441,9 @@ async function conversarComEquipe(
 
   const propostas: string[] = []
   let resposta = ''
+  // A resposta só conta como uma das respostas do mês se a IA foi chamada
+  // de fato: falha antes da primeira chamada não gastou nada nosso.
+  let chamouModelo = false
   try {
     for (let volta = 0; ; volta++) {
       if (volta >= MAXIMO_VOLTAS) {
@@ -464,6 +468,7 @@ async function conversarComEquipe(
         buscar: deps.buscar,
       })
       await registrarConsumoIA(orgId, agente.id, r.modelo, r.uso)
+      chamouModelo = true
 
       if (r.parada === 'refusal') {
         resposta = RECADO_RECUSA
@@ -526,7 +531,15 @@ async function conversarComEquipe(
     }
   }
 
-  const saida = await enviarEGravar(deps.canal, agente, conversa, eco ? `${eco}\n\n${resposta}` : resposta)
+  // Quando esta resposta cruza uma marca da franquia (sobram 10%, ou foi a
+  // última), a pessoa fica sabendo ali mesmo, no fim da mensagem — e não
+  // quando o assistente parar de responder.
+  const restam = veredito.respostas?.restam ?? null
+  const aviso = chamouModelo && restam !== null && veredito.respostas
+    ? avisoDeRespostas(restam - 1, veredito.respostas.total, veredito.respostas.periodo)
+    : null
+  const mensagem = [eco, resposta, aviso ? `_${aviso}_` : null].filter(Boolean).join('\n\n')
+  const saida = await enviarEGravar(deps.canal, agente, conversa, mensagem, null, { respostaIa: chamouModelo })
   return { tipo: 'respondida', texto: resposta, enviada: saida.enviada, propostas }
 }
 

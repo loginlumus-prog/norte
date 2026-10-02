@@ -12,7 +12,6 @@ import { VoltarAVenda } from './VoltarAVenda'
 import { EtiquetasEmLote } from './etiquetas/EmLote'
 import { Estrutura } from '@/ui/Estrutura'
 import { Cartao, Situacao, Vazio, Ponto, cx } from '@/ui/base'
-import { Tira } from '@/ui/painel'
 import { Tabela } from '@/ui/Tabela'
 import { MENU } from '@/ui/menu'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -329,7 +328,7 @@ export default async function Produtos({
               className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
               title="Trazer o catálogo de uma planilha (Excel, CSV) ou do sistema antigo"
             >
-              Trazer de outra planilha ou sistema
+              Importar
             </Link>
           )}
           {pode(sessao, 'produto.cadastrar') && (
@@ -343,16 +342,8 @@ export default async function Produtos({
         </span>
       }
     >
-      {!fora && comSaldo.length > 0 && (
-        <Tira
-          itens={[
-            { rotulo: 'com estoque', quantos: conta.bom, nivel: 'bom' },
-            { rotulo: 'sem estoque lançado', quantos: conta.semLancamento, nivel: 'neutro' },
-            { rotulo: 'no mínimo', quantos: conta.atencao, nivel: 'atencao' },
-            { rotulo: 'acabaram', um: 'acabou', quantos: conta.critico, nivel: 'critico' },
-          ]}
-        />
-      )}
+      {/* Sem a tira de contagens no topo: as mesmas contas já estão nas
+          fichas do filtro logo abaixo (acabaram, no mínimo, com estoque). */}
 
       {/* ── busca e filtros ── */}
       <div className="flex flex-col gap-2">
@@ -393,8 +384,17 @@ export default async function Produtos({
             />
           )}
         </div>
+        {/* Marca, pendência e ordem ficam atrás de "Mais filtros", como as
+            categorias do Financeiro: abertas, eram três fileiras de fichas
+            antes do primeiro produto (meia tela no celular). Com um deles
+            escolhido, nasce aberto — filtro ativo não se esconde. */}
         {(!simples || marca || pendencia || ordem !== 'nome') && (
-        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+        <details open={!!(marca || pendencia || ordem !== 'nome')} className="group">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-borda px-3 py-1.5 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta [&::-webkit-details-marker]:hidden">
+            Mais filtros
+            <span aria-hidden className="text-tinta-3 transition-transform group-open:rotate-180">▾</span>
+          </summary>
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3 pt-2">
           {/* Marca só vira filtro com poucas marcas: quarenta fichas de marca
               é uma parede, e aí a busca por nome resolve melhor. */}
           {marcas.length > 1 && marcas.length <= 12 && (
@@ -429,14 +429,14 @@ export default async function Produtos({
             linkDe={(v) => link({ ordem: v })}
           />
         </div>
+        </details>
         )}
       </div>
 
       {fora && (
         <p className="text-sm text-tinta-2">
-          Fora de venda: não aparecem no balcão nem nas listas, e continuam em todo relatório
-          antigo. &ldquo;Voltar à venda&rdquo; põe o produto de novo no balcão, com a grade e o
-          saldo que ele tem.
+          Fora de venda: somem do balcão e continuam nos relatórios. &ldquo;Voltar à venda&rdquo; devolve
+          com a grade e o saldo.
         </p>
       )}
 
@@ -470,8 +470,7 @@ export default async function Produtos({
               ) : undefined
             }
           >
-            Nenhum {vocab.produto} cadastrado ainda. Já tem o catálogo numa planilha do Excel ou no sistema antigo? Traga
-            tudo de uma vez — o Norte entende as colunas e mostra antes de gravar.
+            Nenhum {vocab.produto} cadastrado ainda. Tem o catálogo numa planilha ou no sistema antigo? Traga tudo de uma vez.
           </Vazio>
         </Cartao>
       )}

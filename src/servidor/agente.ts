@@ -26,8 +26,8 @@ import {
   type ChavePoder,
   type Poder,
 } from './poderes'
-import { garantirCreditoDoMes, vencerTesteSeAcabou } from './assinatura'
-import { PLANOS, planoLibera } from './planos'
+import { garantirCreditoDoMes, recadoSemRespostas, respostasDoMes, vencerTesteSeAcabou, type Respostas } from './assinatura'
+import { PLANOS, PRECOS, milhar, planoLibera } from './planos'
 import { inicioDeHojeEmSP } from './dia'
 import { MAXIMO_RECADO } from './assistente/recado'
 
@@ -914,10 +914,17 @@ export async function registrarConsumo(
  */
 export type VeredictoIA = {
   pode: boolean
-  motivo: 'ok' | 'sem_agente' | 'teto_do_dia' | 'sem_credito'
+  /**
+   * `sem_respostas`: a franquia do mês (ou do teste) acabou — é o que o
+   * cliente lê. `sem_credito`: a trava de custo por baixo dela segurou antes
+   * (ver "a trava de dinheiro" em planos.ts).
+   */
+  motivo: 'ok' | 'sem_agente' | 'teto_do_dia' | 'sem_credito' | 'sem_respostas'
   gastoCent: number
   tetoCent: number
   saldoCent: number
+  /** As respostas do período, quando o plano tem assistente. */
+  respostas: Respostas | null
   /** Frase pronta para a tela e para o log. */
   recado: string
 }
@@ -926,25 +933,25 @@ export async function podeGastarHoje(orgId: string, agora: Date = new Date()): P
   const agente = await acharAgente(orgId)
   if (!agente) {
     return {
-      pode: false, motivo: 'sem_agente', gastoCent: 0, tetoCent: 0, saldoCent: 0,
+      pode: false, motivo: 'sem_agente', gastoCent: 0, tetoCent: 0, saldoCent: 0, respostas: null,
       recado: 'Esta empresa não tem assistente configurado.',
     }
   }
 
   // O plano antes do crédito: o teste que venceu desce para o Grátis aqui
   // (ver `planoTemAssistente`) — e antes de `garantirCreditoDoMes`, que
-  // senão depositaria o crédito do plano pago numa empresa que não o tem.
+  // senão completaria a carteira do assistente numa empresa que não o tem.
   if (!(await planoTemAssistente(orgId))) {
     return {
-      pode: false, motivo: 'sem_agente', gastoCent: 0, tetoCent: agente.gastoDiaCent, saldoCent: 0,
-      recado: 'O plano desta empresa não tem o assistente. Veja os planos em Assinatura.',
+      pode: false, motivo: 'sem_agente', gastoCent: 0, tetoCent: agente.gastoDiaCent, saldoCent: 0, respostas: null,
+      recado: `O assistente está desligado no plano desta empresa. Ligue em Assinatura (+R$ ${PRECOS.assistente} por mês, ${milhar(PRECOS.respostasDoAssistente)} respostas).`,
     }
   }
 
-  // O crédito incluso do mês cai antes de conferir o saldo: no dia 1º, a
-  // primeira mensagem do mês não pode ser recusada por falta de um crédito
-  // que o plano já garante.
-  await garantirCreditoDoMes(orgId)
+  // O teto do mês cai antes de conferir o saldo: no dia 1º, a primeira
+  // mensagem do mês não pode ser recusada por uma trava que o mês já repôs.
+  await garantirCreditoDoMes(orgId, agora)
+  const respostas = await respostasDoMes(orgId, agora)
 
   // "Hoje" é o dia de São Paulo. Com `setHours(0)`, num servidor em UTC o
   // teto virava à meia-noite de Greenwich — 21h da loja — e o gasto das 22h30
@@ -966,15 +973,30 @@ export async function podeGastarHoje(orgId: string, agora: Date = new Date()): P
     })
     return { gastoCent: hoje._sum.cobradoCent ?? 0, saldoCent: org.creditoIaCent }
   })
+  const base = { gastoCent, tetoCent: agente.gastoDiaCent, saldoCent, respostas }
 
-  // Duas travas, e elas respondem perguntas diferentes.
+  // Três travas, e elas respondem perguntas diferentes.
   //
-  // O SALDO é comercial: acabou o crédito, o assistente para até recarregar.
-  // Ele vem primeiro porque é o que o cliente resolve sozinho.
+  // As RESPOSTAS são o comercial: é o que o plano promete e o que o cliente
+  // lê. Acabou a franquia, o assistente para até o dia 1º ou um pacote. Vêm
+  // primeiro porque são o que o cliente entende e resolve sozinho.
+  if (respostas.acabou) {
+    return { pode: false, motivo: 'sem_respostas', ...base, recado: recadoSemRespostas(respostas.periodo) }
+  }
+
+  // O SALDO é a trava de custo por baixo da franquia: quem gasta muito mais
+  // que a média por resposta (áudio longo, laço de ferramenta) para aqui
+  // antes de as respostas acabarem. No Corporativo, sem franquia de tabela, é
+  // a única trava comercial — a carteira do contrato.
   if (saldoCent <= 0) {
     return {
-      pode: false, motivo: 'sem_credito', gastoCent, tetoCent: agente.gastoDiaCent, saldoCent,
-      recado: 'O crédito de IA acabou. Recarregue para o assistente voltar a responder.',
+      pode: false, motivo: 'sem_credito', ...base,
+      recado:
+        respostas.total === null
+          ? 'O crédito de IA do contrato acabou. Fale com a gente para repor.'
+          : respostas.periodo === 'teste'
+            ? 'O assistente chegou ao limite de uso do teste. Para continuar, assine em Assinatura.'
+            : `O assistente chegou ao limite de uso deste mês. Compre um pacote de +${milhar(PRECOS.pacoteRespostas)} respostas em Assinatura ou espere o dia 1º.`,
     }
   }
 
@@ -983,15 +1005,12 @@ export async function podeGastarHoje(orgId: string, agora: Date = new Date()): P
   // noite, e ninguém está olhando às três da manhã.
   if (gastoCent >= agente.gastoDiaCent) {
     return {
-      pode: false, motivo: 'teto_do_dia', gastoCent, tetoCent: agente.gastoDiaCent, saldoCent,
+      pode: false, motivo: 'teto_do_dia', ...base,
       recado: 'O assistente já usou o teto de hoje. Ele volta amanhã.',
     }
   }
 
-  return {
-    pode: true, motivo: 'ok', gastoCent, tetoCent: agente.gastoDiaCent, saldoCent,
-    recado: 'ok',
-  }
+  return { pode: true, motivo: 'ok', ...base, recado: 'ok' }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1032,12 +1051,12 @@ export async function planoTemAssistente(orgId: string): Promise<boolean> {
  */
 export async function exigirPlanoComAssistente(orgId: string): Promise<void> {
   if (await planoTemAssistente(orgId)) return
-  const desde = Object.values(PLANOS)
-    .filter((p) => (p.modulos as readonly string[]).includes('agente'))
-    .sort((a, b) => a.degrau - b.degrau)[0]
+  // Desde 02/10/2026 o assistente é uma chave do Norte (+R$ 149 por mês), não
+  // um plano "de cima": a frase diz onde ligar e quanto custa.
+  const comAssistente = Object.values(PLANOS).some((p) => p.aVenda && (p.modulos as readonly string[]).includes('agente'))
   throw new Error(
-    desde
-      ? `O assistente é do plano ${desde.titulo} para cima. Veja os planos em Assinatura.`
+    comAssistente
+      ? `O assistente está desligado no plano desta empresa. Ligue em Assinatura: +R$ ${PRECOS.assistente} por mês, com ${milhar(PRECOS.respostasDoAssistente)} respostas.`
       : 'O plano desta empresa não tem o assistente.',
   )
 }

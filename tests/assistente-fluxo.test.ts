@@ -476,11 +476,13 @@ describe('sem crédito', () => {
 
       const aoBeto = canal.enviadas.filter((e) => e.numero === BETO)
       expect(aoBeto).toHaveLength(2)
-      expect(aoBeto[0]!.texto).toMatch(/crédito/)
+      // A carteira é a trava de custo por baixo das respostas: o recado fala
+      // de limite de uso do mês, não de "crédito" em reais (planos.ts).
+      expect(aoBeto[0]!.texto).toMatch(/limite de uso/)
       const aDona = canal.enviadas.filter((e) => e.numero === ANA)
       expect(aDona).toHaveLength(1)
       expect(aDona[0]!.texto.startsWith(PREFIXO_AVISO_DONO)).toBe(true)
-      expect(aDona[0]!.texto).toMatch(/crédito/)
+      expect(aDona[0]!.texto).toMatch(/limite de uso/)
 
       // Cliente não depende de crédito: ele nunca passou pela IA.
       const r3 = await processarMensagem(msg('org-a', '5571922223333', 'oi, tem blusa?'), { canal, buscar: api.buscar })

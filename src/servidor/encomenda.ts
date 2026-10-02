@@ -58,7 +58,19 @@
 import { Prisma } from '@prisma/client'
 import type { FormaPagamento, Plano, SituacaoEncomenda, TipoCaixa, TipoLancamento } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, pode, SemPermissao, unidadesQuePodem, type Sessao } from './permissao'
+import { exigir, pode, SemPermissao, suporteEdita, unidadesQuePodem, type Sessao } from './permissao'
+
+/**
+ * Anotar na encomenda sem mexer em dinheiro: quem vende na loja, ou o NOSSO
+ * suporte no modo edição (permissao.ts, SUPORTE_EDICAO). O suporte não tem
+ * `venda.criar` — não vende —, então ele passa só pelas portas que não movem
+ * dinheiro: corrigir o texto, a data e a entrega (valor e sinal iguais),
+ * aceitar o pedido do catálogo e marcar como pronta.
+ */
+const podeAnotar = (sessao: Sessao, unidadeId?: string) => pode(sessao, 'venda.criar', unidadeId) || suporteEdita(sessao)
+function exigirAnotar(sessao: Sessao, unidadeId?: string) {
+  if (!podeAnotar(sessao, unidadeId)) throw new SemPermissao('venda.criar', unidadeId)
+}
 import { centavos, mostrar, reais } from './dinheiro'
 import { travarCaixaAberto } from './caixa'
 import { autorizarComPin } from './autorizacao'
@@ -1021,7 +1033,7 @@ export async function editarEncomenda(
   d: Omit<DadosEncomenda, 'unidadeId'>,
   agora = new Date(),
 ): Promise<Resultado> {
-  exigir(sessao, 'venda.criar')
+  exigirAnotar(sessao)
 
   // ── a autorização, quando veio um PIN ──
   // ANTES da transação: a conferência abre as próprias (o freio e o livro), e
@@ -1042,7 +1054,7 @@ export async function editarEncomenda(
       },
     })
     if (!antes) return { ok: false as const, erro: 'Essa encomenda não existe mais.' }
-    if (!pode(sessao, 'venda.criar', antes.unidadeId)) throw new SemPermissao('venda.criar', antes.unidadeId)
+    if (!podeAnotar(sessao, antes.unidadeId)) throw new SemPermissao('venda.criar', antes.unidadeId)
     if (ehFinal(antes.situacao)) {
       return { ok: false as const, erro: `Esta encomenda já está ${ROTULO_ENCOMENDA[antes.situacao].toLowerCase()} e não muda mais.` }
     }
@@ -1050,6 +1062,18 @@ export async function editarEncomenda(
     const v = validarEncomenda({ ...d, unidadeId: antes.unidadeId }, agora, antes.para)
     if (!v.ok) return v
     const e = v.limpo
+
+    // O suporte (sem `venda.criar`) corrige o que foi anotado, nunca o
+    // dinheiro: valor e sinal ficam como estão — inclusive a taxa de entrega
+    // que sairia sozinha ao virar retirada.
+    const soAnota = !pode(sessao, 'venda.criar', antes.unidadeId)
+    if (
+      soAnota &&
+      (e.valorC !== centavos(antes.valor) || e.sinalC !== centavos(antes.sinal) ||
+        (antes.entrega && !e.entrega && antes.taxaEntrega != null && centavos(antes.taxaEntrega) > 0))
+    ) {
+      return { ok: false as const, erro: 'O suporte do Norte não muda valor, sinal nem taxa de entrega: isso é com quem é da loja.' }
+    }
 
     // ── virou retirada: a taxa de entrega sai ──
     // O pedido do catálogo guarda a taxa à parte. Mudou para retirada e a
@@ -1262,7 +1286,11 @@ export async function mudarSituacao(
   agora = new Date(),
 ): Promise<{ ok: true; falta: number } | { ok: false; erro: string; pedePin?: boolean }> {
   const cap = m.para === 'CANCELADA' ? 'venda.cancelar' : 'venda.criar'
-  exigir(sessao, cap)
+  // Marcar como pronta (ou desfazer o "pronta") não move dinheiro: o
+  // suporte no modo edição pode. Entregar (vira venda) e cancelar (devolve
+  // sinal), não.
+  const soAnota = (m.para === 'PRONTA' || m.para === 'ABERTA') && !pode(sessao, cap) && suporteEdita(sessao)
+  if (!soAnota) exigir(sessao, cap)
   const motivo =
     m.para === 'CANCELADA' || m.para === 'ENTREGUE' ? String(m.motivo ?? '').replace(/\s+/g, ' ').trim().slice(0, 300) : ''
   if (m.para === 'CANCELADA' && motivo.length < 3) {
@@ -1284,7 +1312,7 @@ export async function mudarSituacao(
       },
     })
     if (!antes) return { ok: false as const, erro: 'Essa encomenda não existe mais.' }
-    if (!pode(sessao, cap, antes.unidadeId)) throw new SemPermissao(cap, antes.unidadeId)
+    if (!soAnota && !pode(sessao, cap, antes.unidadeId)) throw new SemPermissao(cap, antes.unidadeId)
     if (!transicaoPermitida(antes.situacao, m.para)) {
       return {
         ok: false as const,
@@ -1409,7 +1437,7 @@ export async function marcarVista(
   id: string,
   agora = new Date(),
 ): Promise<{ ok: true; jaEstava: boolean } | { ok: false; erro: string }> {
-  exigir(sessao, 'venda.criar')
+  exigirAnotar(sessao)
   return comoOrg(sessao.orgId, async (db) => {
     const recusa = await recusaDoModulo(db, sessao.orgId)
     if (recusa) return { ok: false as const, erro: recusa }
@@ -1418,7 +1446,7 @@ export async function marcarVista(
       select: { unidadeId: true, situacao: true, vistaEm: true, clienteNome: true, descricao: true, valor: true },
     })
     if (!e) return { ok: false as const, erro: 'Essa encomenda não existe mais.' }
-    if (!pode(sessao, 'venda.criar', e.unidadeId)) throw new SemPermissao('venda.criar', e.unidadeId)
+    exigirAnotar(sessao, e.unidadeId)
     if (e.vistaEm) return { ok: true as const, jaEstava: true }
     if (ehFinal(e.situacao)) {
       return { ok: false as const, erro: `Esta encomenda já está ${ROTULO_ENCOMENDA[e.situacao].toLowerCase()}.` }

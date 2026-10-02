@@ -2,7 +2,7 @@
 //
 // ── a régra que valeu para escrever isto ─────────────────────
 // Cada cláusula descreve uma coisa que o sistema REALMENTE faz. O teto de
-// desconto existe no banco; o crédito de IA é medido consumo a consumo; a
+// desconto existe no banco; as respostas do assistente são contadas uma a uma; a
 // suspensão por falta de pagamento tem estado próprio na tabela. Contrato que
 // promete o que o código não faz é armadilha para o lado que escreveu.
 //
@@ -28,7 +28,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { PaginaLegal, Secao, Itens, Destaque } from '@/ui/PaginaLegal'
 import { EMPRESA } from '@/servidor/legal'
-import { PLANOS, PRECOS } from '@/servidor/planos'
+import { PLANOS, PRECOS, milhar } from '@/servidor/planos'
 
 export const metadata: Metadata = {
   title: 'Termos de uso · Norte',
@@ -91,7 +91,10 @@ export default function Termos() {
         {/* Os números saem de `PRECOS` e `PLANOS` (servidor/planos.ts), a
             mesma fonte da página de venda e da tela de Assinatura: contrato
             com número digitado à mão é contrato que diverge da tabela. */}
-        <p>A tabela, por mês. O que se paga é a loja; tudo o que a loja usa vem junto.</p>
+        <p>
+          A tabela, por mês. Existe um plano, o <b>{PLANOS.BALCAO.titulo}</b>, e o que se paga é a loja;
+          tudo o que a loja usa vem junto. O que vale para a empresa inteira entra por cima, só se você ligar.
+        </p>
         <Itens>
           <li>
             <b>{PLANOS.BALCAO.titulo}</b> — {real(PRECOS.primeiraLoja)}/mês a primeira loja e{' '}
@@ -99,9 +102,18 @@ export default function Termos() {
             equipe inteira não tem custo, e não há limite de pessoas dentro ao mesmo tempo.
           </li>
           <li>
-            <b>{PLANOS.BALCAO_AGENTE.titulo}</b> — o {PLANOS.BALCAO.titulo} e mais{' '}
-            {real(PRECOS.assistente)}/mês pelo assistente no WhatsApp, com{' '}
-            {real(PRECOS.creditoDoAssistente)} de crédito de IA por mês (cláusula 7).
+            <b>Assistente</b> — {real(PRECOS.assistente)}/mês para a empresa inteira, com{' '}
+            {milhar(PRECOS.respostasDoAssistente)} respostas por mês. Pacote avulso de +
+            {milhar(PRECOS.pacoteRespostas)} respostas por {real(PRECOS.pacotePreco)}, que vale para o mês
+            em que entra (cláusula 7).
+          </li>
+          <li>
+            <b>Fábrica</b> — {real(PRECOS.fabrica)}/mês, uma vez para a empresa, com quantas unidades
+            de fábrica ela tiver.
+          </li>
+          <li>
+            <b>Farol</b> — {real(PRECOS.farolMarca)}/mês a primeira marca e{' '}
+            {real(PRECOS.farolMarcaExtra)}/mês cada marca a mais.
           </li>
           <li>
             <b>{PLANOS.CORPORATIVO.titulo}</b> — preço fechado caso a caso, em contrato próprio que
@@ -130,8 +142,9 @@ export default function Termos() {
       <Secao n={4} titulo="Teste">
         <p>
           Empresa criada pelo site começa em teste por <b>{PRECOS.diasDeTeste} dias</b>, com o
-          sistema inteiro — não é versão capada. O assistente vem junto, com um crédito de IA menor,
-          para conhecer. O teste não pede cartão e não vira cobrança sozinho.
+          sistema inteiro — não é versão capada. O assistente vem junto, com{' '}
+          {milhar(PRECOS.respostasDoTeste)} respostas para o teste inteiro. O teste não pede cartão e
+          não vira cobrança sozinho.
         </p>
         <p>
           Acabado o prazo sem contratação, a empresa passa para o plano {PLANOS.GRATIS.titulo}{' '}
@@ -173,18 +186,31 @@ export default function Termos() {
         </p>
       </Secao>
 
-      <Secao n={7} titulo="O assistente e o crédito de IA">
+      <Secao n={7} titulo="O assistente e as respostas">
         <p>
-          O assistente é opcional e vem nos planos que dizem isso. Ele consome <b>crédito de IA</b>,
-          que é medido por uso e não por assinatura — uma loja que conversa o dia inteiro gasta
-          muito mais que outra do mesmo tamanho, e embutir isso na mensalidade faria a loja pequena
-          pagar o risco da grande.
+          O assistente é opcional: você liga e desliga quando quiser, e ele vale para a empresa
+          inteira. Ele é medido em <b>respostas</b> — cada mensagem que ele escreve com
+          inteligência artificial para você ou a sua equipe conta uma. Relatórios, avisos, recado
+          automático e campanhas são texto fixo e não contam.
         </p>
         <Itens>
-          <li>O plano dá um crédito por mês; o que sobra passa para o mês seguinte enquanto a assinatura estiver ativa.</li>
-          <li>Cada conversa desconta o que ela custou, e o sistema mostra isso item a item.</li>
-          <li>Crédito esgotado para o assistente. O resto do sistema continua inteiro.</li>
-          <li>Recarga é avulsa e opcional, sem virar mensalidade nova.</li>
+          <li>
+            Ligado, o mês vem com {milhar(PRECOS.respostasDoAssistente)} respostas. O mês é o de
+            calendário, no horário de Brasília, e a franquia volta no dia 1º; o que sobra não passa
+            para o mês seguinte.
+          </li>
+          <li>
+            Acabaram as respostas, o assistente para de responder até o dia 1º ou até um pacote
+            avulso (+{milhar(PRECOS.pacoteRespostas)} por {real(PRECOS.pacotePreco)}, para o mês em que
+            entra). O resto do sistema continua inteiro, e a tela avisa quando faltam 10%.
+          </li>
+          <li>
+            Para proteger o serviço de uso fora do normal, existe também um limite de uso de
+            inteligência artificial por mês, calculado para cobrir as respostas contratadas em uso
+            comum. Atingido antes do fim das respostas, o assistente para e a tela diz isso, com as
+            mesmas saídas: o dia 1º ou um pacote.
+          </li>
+          <li>Pacote é avulso e opcional, sem virar mensalidade nova.</li>
         </Itens>
         <Destaque>
           <b>O assistente propõe; quem decide é você.</b> Toda ação que mexe em dinheiro, estoque

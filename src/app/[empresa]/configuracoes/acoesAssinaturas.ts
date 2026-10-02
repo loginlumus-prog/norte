@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { SemPermissao } from '@/servidor/permissao'
 import { mudarBalcaoAmpliado, mudarPinNasExcecoes } from '@/servidor/livro-assinaturas'
+import { mudarPinNaVenda } from '@/servidor/autorizacao'
 
 export type EstadoChave = { erro?: string; ok?: string }
 
@@ -37,6 +38,23 @@ export async function mudarBalcaoAmpliadoAcao(slug: string, ligar: boolean): Pro
       ok: ligar
         ? 'Ligado: a vendedora corrige o estoque pelo contado e cadastra produto novo, assinando com o PIN dela. Preço depois de publicado continua com a gerência.'
         : 'Desligado: estoque e cadastro de produto voltam a ser só da gerência.',
+    }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Só quem configura a empresa muda isto.' }
+    return { erro: recadoDoErro(e, 'Não deu para salvar agora.') }
+  }
+}
+
+export async function mudarPinNaVendaAcao(slug: string, ligar: boolean): Promise<EstadoChave> {
+  try {
+    const s = await exigirSessao(slug)
+    await mudarPinNaVenda(s, ligar)
+    revalidatePath(`/${slug}/configuracoes`)
+    revalidatePath(`/${slug}/balcao`)
+    return {
+      ok: ligar
+        ? 'Ligado: toda venda do balcão se confirma com o PIN de quem vendeu, e fica no nome dela.'
+        : 'Desligado: a venda fecha sem PIN, no nome de quem está na conta (ou de quem for escolhido como vendedor).',
     }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Só quem configura a empresa muda isto.' }

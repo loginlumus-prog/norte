@@ -22,6 +22,7 @@ import { Taxas } from './Taxas'
 import { CartoesDoBalcao } from './CartoesDoBalcao'
 import { Assinaturas } from './Assinaturas'
 import { situacaoDasAssinaturas } from '@/servidor/livro-assinaturas'
+import { pedePinNaVenda } from '@/servidor/autorizacao'
 import { configCrediario } from '@/servidor/crediario'
 import { moduloLigado } from '@/servidor/modulos'
 import { taxasDaEmpresa, FORMAS_COM_TAXA } from '@/servidor/taxas'
@@ -159,7 +160,11 @@ export default async function Configuracoes({ params }: { params: Promise<{ empr
 
       {pode(sessao, 'empresa.configurar') && (
         <Cartao titulo="Assinatura com PIN e o que a vendedora pode">
-          <Assinaturas slug={slug} {...(await situacaoDasAssinaturas(sessao))} />
+          <Assinaturas
+            slug={slug}
+            {...(await situacaoDasAssinaturas(sessao))}
+            pinNaVenda={await pedePinNaVenda(sessao.orgId)}
+          />
         </Cartao>
       )}
 

@@ -2,11 +2,13 @@
 
 // "Quanto fica para a MINHA empresa?" — a pergunta que decide a assinatura,
 // respondida na hora. A conta é a mesma da tabela (`PRECOS` em
-// servidor/planos.ts): a primeira loja, cada loja a mais, o assistente, cada
-// fábrica e cada marca do Farol. Nenhum número digitado aqui.
+// servidor/planos.ts): a primeira loja, cada loja a mais, e as chaves da
+// empresa — o assistente, a fábrica (uma vez) e as marcas do Farol. Nenhum
+// número digitado aqui. O anual não é chave daqui: é conversa (a página diz
+// "fale com a gente"), porque sem gateway ele é cobrança feita à mão.
 
 import { useState } from 'react'
-import { PRECOS } from '@/servidor/planos'
+import { PRECOS, milhar, precoDoFarol } from '@/servidor/planos'
 
 const reais = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 
@@ -63,24 +65,17 @@ function Chave({ rotulo, dica, ligado, mudar }: { rotulo: string; dica: string; 
 export function Calculadora({ comecar }: { comecar: string }) {
   const [lojas, setLojas] = useState(2)
   const [assistente, setAssistente] = useState(true)
-  const [fabricas, setFabricas] = useState(0)
+  const [fabrica, setFabrica] = useState(false)
   const [marcas, setMarcas] = useState(0)
-  const [anual, setAnual] = useState(false)
 
   const linhas: [string, number][] = [
     ['Primeira loja', PRECOS.primeiraLoja],
     ...(lojas > 1 ? ([[`${lojas - 1} loja${lojas > 2 ? 's' : ''} a mais`, (lojas - 1) * PRECOS.lojaExtra]] as [string, number][]) : []),
-    ...(assistente ? ([['Assistente no WhatsApp', PRECOS.assistente]] as [string, number][]) : []),
-    ...(fabricas > 0 ? ([[`${fabricas} fábrica${fabricas > 1 ? 's' : ''}`, fabricas * PRECOS.fabrica]] as [string, number][]) : []),
-    ...(marcas > 0 ? ([[`Farol · ${marcas} marca${marcas > 1 ? 's' : ''}`, PRECOS.farolMarca + (marcas - 1) * PRECOS.farolMarcaExtra]] as [string, number][]) : []),
+    ...(assistente ? ([[`Assistente · ${milhar(PRECOS.respostasDoAssistente)} respostas`, PRECOS.assistente]] as [string, number][]) : []),
+    ...(fabrica ? ([['Fábrica', PRECOS.fabrica]] as [string, number][]) : []),
+    ...(marcas > 0 ? ([[`Farol · ${marcas} marca${marcas > 1 ? 's' : ''}`, precoDoFarol(marcas)]] as [string, number][]) : []),
   ]
   const mes = linhas.reduce((s, [, v]) => s + v, 0)
-  // O anual é `anualPagaMeses` mensalidades pagas de uma vez; o "por mês"
-  // é só essa conta dividida por 12 (arredondar o mês e multiplicar por 12
-  // inventava uns reais a mais no total).
-  const ano = mes * PRECOS.anualPagaMeses
-  const noAnual = Math.round(ano / 12)
-  const mostrado = anual ? noAnual : mes
 
   return (
     <div className="grid overflow-hidden rounded-[32px] border border-[var(--s-borda)] bg-[var(--s-cartao)] shadow-[var(--s-sombra-alta)] lg:grid-cols-[1.15fr_1fr]">
@@ -88,11 +83,16 @@ export function Calculadora({ comecar }: { comecar: string }) {
         <Contador rotulo="Lojas" dica={`${reais(PRECOS.primeiraLoja)} a primeira, ${reais(PRECOS.lojaExtra)} cada uma a mais. Depósito não conta.`} valor={lojas} min={1} max={30} mudar={setLojas} />
         <Chave
           rotulo="Assistente no WhatsApp"
-          dica={`${reais(PRECOS.assistente)}/mês para a empresa inteira, com ${reais(PRECOS.creditoDoAssistente)} de crédito de IA.`}
+          dica={`${reais(PRECOS.assistente)}/mês para a empresa inteira, ${milhar(PRECOS.respostasDoAssistente)} respostas por mês.`}
           ligado={assistente}
           mudar={setAssistente}
         />
-        <Contador rotulo="Fábricas" dica={`Produz o que vende? ${reais(PRECOS.fabrica)} por fábrica.`} valor={fabricas} min={0} max={10} mudar={setFabricas} />
+        <Chave
+          rotulo="Fábrica"
+          dica={`Produz o que vende? ${reais(PRECOS.fabrica)}/mês, com quantas cozinhas tiver.`}
+          ligado={fabrica}
+          mudar={setFabrica}
+        />
         <Contador
           rotulo="Farol (marcas)"
           dica={`Marketing com IA: ${reais(PRECOS.farolMarca)} a primeira marca, ${reais(PRECOS.farolMarcaExtra)} cada uma a mais.`}
@@ -101,7 +101,6 @@ export function Calculadora({ comecar }: { comecar: string }) {
           max={10}
           mudar={setMarcas}
         />
-        <Chave rotulo="Pagar no anual" dica={`12 meses pelo preço de ${PRECOS.anualPagaMeses}.`} ligado={anual} mudar={setAnual} />
       </div>
       <div className="relative flex flex-col justify-between gap-6 overflow-hidden bg-[linear-gradient(160deg,#1f4fd8,#6d4cf0)] p-6 text-white sm:p-8">
         <span aria-hidden className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
@@ -117,11 +116,9 @@ export function Calculadora({ comecar }: { comecar: string }) {
           </ul>
         </div>
         <div>
-          <p className="text-[13px] text-white/80">{anual ? 'Por mês, no anual' : 'Por mês'}</p>
-          <p className="font-[family-name:var(--font-display)] text-6xl font-extrabold tracking-tight tabular-nums">{reais(mostrado)}</p>
-          <p className="mt-1 text-[13px] text-white/80">
-            {anual ? `${reais(ano)} por ano, pago de uma vez · economia de ${reais(mes * 12 - ano)}` : `Equipe sem limite · ${reais(Math.round(mostrado / lojas))} por loja`}
-          </p>
+          <p className="text-[13px] text-white/80">Por mês</p>
+          <p className="font-[family-name:var(--font-display)] text-6xl font-extrabold tracking-tight tabular-nums">{reais(mes)}</p>
+          <p className="mt-1 text-[13px] text-white/80">Equipe sem limite · {reais(Math.round(mes / lojas))} por loja</p>
           <a href={comecar} className="site-botao mt-6 w-full bg-white px-6 py-3.5 text-[15px] text-[#0d1b45] hover:-translate-y-0.5">
             Testar {PRECOS.diasDeTeste} dias grátis
           </a>

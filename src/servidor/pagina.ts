@@ -87,7 +87,19 @@ export async function conferirSessao(
           select: { unidadeId: true, cargo: { select: { capacidades: true } } },
         })
       : []
-    return { usuario, presenca, balcaoAmpliado: org?.balcaoAmpliado ?? false, cargos }
+    // O modo do NOSSO suporte (leitura ou edição), daqui e não do cookie: a
+    // equipe troca o modo ao conceder de novo, e vale na próxima tela.
+    const suporte = doCookie.acessos.some((a) => a.papel === 'SUPORTE')
+      ? await db.acesso.findFirst({
+          where: { usuarioId: doCookie.usuarioId, papel: 'SUPORTE' },
+          orderBy: { criadoEm: 'desc' },
+          select: { suporteEdita: true },
+        })
+      : null
+    const nomeAgora = suporte
+      ? (await db.usuario.findUnique({ where: { id: doCookie.usuarioId }, select: { nome: true } }))?.nome ?? null
+      : null
+    return { usuario, presenca, balcaoAmpliado: org?.balcaoAmpliado ?? false, cargos, suporteEdita: !!suporte?.suporteEdita, nomeAgora }
   })
 
   // Usuário apagado, desativado, ou sessão emitida antes do corte.
@@ -109,10 +121,17 @@ export async function conferirSessao(
     acessos: doCookieSemData.acessos.map((a) =>
       a.papel === 'CARGO'
         ? { ...a, capacidades: achado.cargos.find((c) => c.unidadeId === a.unidadeId)?.cargo?.capacidades ?? [] }
-        : a,
+        : a.papel === 'SUPORTE'
+          ? { ...a, suporteEdita: achado.suporteEdita }
+          : a,
     ),
     balcaoAmpliado: achado.balcaoAmpliado,
   }
+  // O nosso suporte assina tudo o que faz como "Equipe Norte (nome)" — a
+  // mesma assinatura das ações da equipe pelo console. Toda linha do livro
+  // usa `sessao.nome`; trocar aqui cobre toda ação, inclusive a que nascer
+  // amanhã.
+  if (semVaga) sessao.nome = nomeDoSuporteNoLivro(achado.nomeAgora ?? sessao.nome)
 
   // ── "ainda estou aqui" ───────────────────────────────────
   // É este toque que segura a vaga. Ele mora aqui porque aqui é o único lugar
@@ -203,6 +222,18 @@ export function enderecoDeEntrar(slugEmpresa: string, motivo?: MotivoDaQueda): s
 // ─────────────────────────────────────────────────────────────
 // O REGISTRO DO SUPORTE
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * "Suporte do Norte (Ana)" → "Equipe Norte (Ana)". A conta de suporte nasce
+ * com o nome "Suporte do Norte (<quem concedeu>)" ou com o `--nome` dado ao
+ * conceder; no livro da loja ela assina como a equipe assina no console.
+ */
+export function nomeDoSuporteNoLivro(nome: string): string {
+  const n = nome.trim().replace(/\s+/g, ' ')
+  if (/^Equipe Norte \(.+\)$/.test(n)) return n
+  const m = /^Suporte do Norte \((.+)\)$/.exec(n)
+  return `Equipe Norte (${(m ? m[1]! : n || 'suporte').slice(0, 60)})`
+}
 
 /** Uma linha por tela (ou ação) a cada tanto, por sessão — senão cada clique vira linha. */
 export const INTERVALO_REGISTRO_SUPORTE_MS = 10 * 60_000

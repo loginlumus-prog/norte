@@ -13,7 +13,8 @@ import { guardarFotoAcao, tirarFotoAcao } from './acoes'
 
 const LADO = 1000
 
-async function reduzir(arquivo: File): Promise<Blob> {
+/** Também usada na lista "sem foto" da tela do catálogo: o mesmo caminho. */
+export async function reduzirFoto(arquivo: File): Promise<Blob> {
   const bitmap = await createImageBitmap(arquivo)
   const escala = Math.min(1, LADO / Math.max(bitmap.width, bitmap.height))
   const largura = Math.round(bitmap.width * escala)
@@ -46,7 +47,7 @@ export function FotoDoProduto({ slug, produtoId, nome, foto }: { slug: string; p
     comecar(async () => {
       let pequena: Blob
       try {
-        pequena = await reduzir(arquivo)
+        pequena = await reduzirFoto(arquivo)
       } catch {
         setErro('Não deu para abrir essa foto. Tente outra (JPG ou PNG).')
         return
@@ -73,7 +74,7 @@ export function FotoDoProduto({ slug, produtoId, nome, foto }: { slug: string; p
         )}
       </div>
       <div className="flex flex-col gap-2">
-        <p className="text-sm text-tinta-2">{foto ? 'É esta foto que aparece no catálogo da loja.' : 'Sem foto: o catálogo mostra a inicial. Uma foto vende mais.'}</p>
+        <p className="text-sm text-tinta-2">{foto ? 'A foto do catálogo da loja.' : 'Sem foto ainda. Com foto vende mais.'}</p>
         <div className="flex flex-wrap gap-2">
           <Botao tom="secundario" carregando={indo} onClick={() => entrada.current?.click()}>
             {foto ? 'Trocar foto' : 'Pôr foto'}

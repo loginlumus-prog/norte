@@ -23,7 +23,7 @@
 
 import type { Plano } from '@prisma/client'
 import type { Capacidade, Papel } from './permissao'
-import { LIBERACOES, PLANOS, PRECOS, doPlano, type Liberacao } from './planos'
+import { LIBERACOES, PLANOS, PRECOS, doPlano, milhar, type Liberacao } from './planos'
 
 export type Passo = {
   titulo: string
@@ -250,7 +250,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Vender no modo simples',
         passos: [
           'Com o aparelho no modo simples, o balcão mostra os produtos em cartões, com as categorias em abas no alto ("Todos" primeiro). A busca e o leitor continuam valendo: bipe a etiqueta ou digite o nome.',
-          'Toque no cartão para pôr no pedido; tocar de novo soma mais um. A bolinha no cartão diz quantos já estão no pedido. "Esta acabou" não lança.',
+          'Toque no cartão para pôr no pedido; tocar de novo soma mais um. Com mouse, o botão direito no cartão tira um. A bolinha no cartão diz quantos já estão no pedido. "Esta acabou" não lança.',
           'Produto com grade (tamanho, cor, sabor) abre a folha para escolher a opção — com tamanho E cor, a grade inteira com o saldo de cada peça. Produto em quilo pergunta "Quanto pesou?" (ver "Vender por peso").',
           'No pedido, − e + mudam a quantidade, e ✕ tira o item. "Limpar" zera o pedido — toque de novo para confirmar.',
           'Em "Como vai pagar?", toque na forma. Em dinheiro, digite o recebido ou toque numa nota pronta ("Exato", 50, 100…). "Concluir venda" (ou F10) mostra "Venda concluída", com o troco para devolver em destaque.',
@@ -1146,7 +1146,7 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Trazer a planilha',
         passos: [
-          'Em Produtos, "Trazer de outra planilha ou sistema" (aparece também na lista vazia e nos Primeiros passos do Painel).',
+          'Em Produtos, "Importar" no alto (na lista vazia e nos Primeiros passos do Painel, "Trazer de outra planilha ou sistema").',
           'Escolha o arquivo — Excel (.xlsx), CSV ou TSV — ou arraste para o quadro. Excel antigo (.xls) precisa ser salvo antes como .xlsx ou CSV.',
           'Ou copie as células no Excel, no Google Planilhas ou no relatório do sistema antigo e cole no quadro "Ou copie e cole".',
           'Não precisa arrumar nada antes: título do relatório em cima, total embaixo, "R$ 1.234,56", "10 kg" e acento estragado ("CalÃ§a") são entendidos.',
@@ -1968,7 +1968,7 @@ export const GUIA: Entrada[] = [
     caminho: '/agente',
     abre: ['agente.configurar'],
     oQueE:
-      `O agente da loja, que conversa pelo WhatsApp com você e a equipe — e nunca solto com cliente: com cliente existem só as campanhas (roteiro com começo e fim, que a pessoa dispara com a palavra-chave ou pelo anúncio) e, se você ligar, um recado fixo; o resto quem responde é a loja, no próprio WhatsApp. Nesta tela: nome, jeito de falar, o manual (o que ele sabe de cor), os poderes (o que pode consultar e o que pode propor), o recado automático, os tetos (valor máximo de uma proposta, desconto máximo, gasto de IA por dia, mensagens por dia) e a chave de ligar. Em cima, o balanço do mês — o que ele trouxe contra o que custou — e as propostas esperando o seu sim. Módulo Agente, plano ${COM_ASSISTENTE}: com o plano sem o assistente, ou com o módulo desligado, a tela diz só isso e o caminho — ligar em Configurações › O que sua empresa usa, ou trocar de plano em Assinatura.`,
+      `O agente da loja, que conversa pelo WhatsApp com você e a equipe — e nunca solto com cliente: com cliente existem só as campanhas (roteiro com começo e fim, que a pessoa dispara com a palavra-chave ou pelo anúncio) e, se você ligar, um recado fixo; o resto quem responde é a loja, no próprio WhatsApp. Nesta tela: nome, jeito de falar, o manual (o que ele sabe de cor), os poderes (o que pode consultar e o que pode propor), o recado automático, os tetos (valor máximo de uma proposta, desconto máximo, gasto de IA por dia, mensagens por dia) e a chave de ligar. Em cima, o balanço do mês — o que ele trouxe contra o que custou — e as propostas esperando o seu sim. Módulo Agente, plano ${COM_ASSISTENTE}: com o plano sem o assistente, ou com o módulo desligado, a tela diz só isso e o caminho — ligar em Configurações › O que sua empresa usa, ou ligar o assistente em Assinatura.`,
     comoFazer: [
       {
         titulo: 'Criar ou ajustar o assistente',
@@ -2036,12 +2036,12 @@ export const GUIA: Entrada[] = [
         capacidade: 'agente.configurar',
       },
       {
-        titulo: 'O crédito de IA',
+        titulo: 'As respostas do mês',
         passos: [
-          `Vem no plano: ${real(PRECOS.creditoDoAssistente)} por mês no ${COM_ASSISTENTE} (${real(PRECOS.creditoDoTeste)} durante o teste), combinado em contrato no Corporativo.`,
-          'Cada conversa dele com a equipe desconta da carteira. Campanha e recado automático não usam IA e não gastam crédito.',
-          'Acabou o crédito, ele para de responder a equipe até recarregar.',
-          'Recarregar e ver o extrato é em Assinatura › Crédito do assistente.',
+          `Com o assistente ligado, o mês vem com ${milhar(PRECOS.respostasDoAssistente)} respostas (${milhar(PRECOS.respostasDoTeste)} no teste inteiro); no Corporativo, o combinado em contrato.`,
+          'Conta como resposta cada mensagem que ele escreve com IA para você ou a equipe. Relatório, avisos, recado automático, campanhas e o "sim"/"não" das propostas não contam.',
+          `Quando faltam 10%, ele avisa no fim da resposta. Acabou, ele para de responder a equipe até o dia 1º — ou até um pacote de +${milhar(PRECOS.pacoteRespostas)} (${real(PRECOS.pacotePreco)}), pedido em Assinatura › Respostas do assistente.`,
+          'O pacote vale para o mês em que entra; o que sobra não passa para o mês seguinte.',
         ],
       },
     ],
@@ -2101,7 +2101,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Cada peça mostra quanto custou. Um roteiro custa centavos; o calendário do mês, um pouco mais.',
           'O crédito do Farol cai todo mês, por marca, na mesma carteira do assistente. O que sobra passa para o mês seguinte.',
-          'Acabou o crédito, o Farol para de escrever até recarregar em Assinatura. O resto do sistema segue normal.',
+          'Acabou o crédito, o Farol para de escrever até o crédito do mês seguinte — ou fale com a gente para repor. O resto do sistema segue normal.',
         ],
       },
     ],
@@ -2130,7 +2130,7 @@ export const GUIA: Entrada[] = [
     abre: ['estoque.ver'],
     modulo: 'fabrica',
     oQueE:
-      `Para quem fabrica o que as lojas vendem (sorvete, pão, doce). A fábrica é uma unidade marcada como fábrica em Lojas (R$ ${PRECOS.fabrica} por mês cada). Os insumos (leite, açúcar, pote, palito) são produtos de "material de uso", com estoque e custo. A ficha técnica diz o que vai numa batelada e quanto rende; a ordem de produção baixa os insumos usados e dá entrada no pronto, com lote, validade e o custo apurado — que passa a ser o custo do produto nas lojas. As lojas pedem à fábrica, a fábrica manda e a loja confere o que chegou.`,
+      `Para quem fabrica o que as lojas vendem (sorvete, pão, doce). A fábrica é uma unidade marcada como fábrica em Lojas (R$ ${PRECOS.fabrica} por mês, uma vez para a empresa, com quantas unidades de fábrica houver). Os insumos (leite, açúcar, pote, palito) são produtos de "material de uso", com estoque e custo. A ficha técnica diz o que vai numa batelada e quanto rende; a ordem de produção baixa os insumos usados e dá entrada no pronto, com lote, validade e o custo apurado — que passa a ser o custo do produto nas lojas. As lojas pedem à fábrica, a fábrica manda e a loja confere o que chegou.`,
     comoFazer: [
       {
         titulo: 'Montar a ficha técnica',
@@ -2374,13 +2374,14 @@ export const GUIA: Entrada[] = [
     caminho: '/assinatura',
     abre: ['empresa.configurar', 'financeiro.ver'],
     oQueE:
-      `O plano da empresa e a conta do mês aberta, linha por linha: a primeira loja, as lojas a mais e o assistente. Em teste, quantos dias faltam e o que acontece depois. O crédito de IA e quanto dura; recarga; trocar de plano vendo antes o preço com as suas lojas, o que ganha e o que perde; e a comparação item por item.`,
+      `O plano da empresa e a conta do mês aberta, linha por linha: a primeira loja, as lojas a mais, o assistente, a fábrica e o Farol. Em teste, quantos dias faltam e o que acontece depois. Quantas respostas do assistente faltam no mês, e o pacote de respostas a mais; ligar ou desligar o assistente vendo antes a conta nova; e o que vem no ${NORTE}, item por item.`,
     comoFazer: [
       {
         titulo: 'Entender a conta do mês',
         passos: [
           `O que se paga é a loja: ${real(PRECOS.primeiraLoja)} a primeira e ${real(PRECOS.lojaExtra)} cada loja a mais, com tudo o que a loja usa dentro. Depósito não entra.`,
-          `O assistente soma ${real(PRECOS.assistente)} por mês, uma vez para a empresa inteira, com ${real(PRECOS.creditoDoAssistente)} de crédito de IA.`,
+          `O assistente soma ${real(PRECOS.assistente)} por mês, uma vez para a empresa inteira, com ${milhar(PRECOS.respostasDoAssistente)} respostas no mês.`,
+          `A fábrica soma ${real(PRECOS.fabrica)} por mês, uma vez, com quantas unidades de fábrica houver. O Farol, ${real(PRECOS.farolMarca)} a marca e ${real(PRECOS.farolMarcaExtra)} cada marca a mais.`,
           'Cadastrar gente é de graça, e nos planos pagos não há limite de gente dentro ao mesmo tempo.',
           '"A conta do mês" mostra a soma aberta. No plano de contrato, ela é a referência da tabela; o que vale é o combinado.',
         ],
@@ -2388,28 +2389,28 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'O teste',
         passos: [
-          `Quem cria a conta pelo site testa por ${PRECOS.diasDeTeste} dias com tudo, inclusive o assistente, com ${real(PRECOS.creditoDoTeste)} de crédito de IA para conhecer.`,
+          `Quem cria a conta pelo site testa por ${PRECOS.diasDeTeste} dias com tudo, inclusive o assistente, com ${milhar(PRECOS.respostasDoTeste)} respostas para conhecer. Sem cartão.`,
           'O quadro no alto diz quantos dias faltam e até quando vai.',
-          `Para assinar, "Assinar este" no plano escolhido: vira pedido, a gente confirma o pagamento e o teste vira assinatura, com tudo o que foi lançado.`,
+          `Para assinar, "Assinar" no ${NORTE} com ou sem o assistente: vira pedido, a gente confirma o pagamento e o teste vira assinatura, com tudo o que foi lançado.`,
           `Sem assinar, a empresa passa para o ${GRATIS}: uma loja, uma pessoa por vez, até ${PLANOS.GRATIS.tetoVendasMes} vendas no mês, sem o assistente. Os dados ficam; o resto volta ao assinar.`,
         ],
       },
       {
-        titulo: 'Trocar de plano',
+        titulo: 'Ligar ou desligar o assistente',
         passos: [
-          'Cada cartão mostra a conta com as suas lojas, a diferença por mês, o que passa a ter e o que deixa de ter — antes do clique.',
-          `Subir para o ${COM_ASSISTENTE} é pedido: a gente confirma o pagamento e libera no mesmo dia. Descer para o ${NORTE} é na hora, e o assistente para de responder.`,
+          'Em "Mudar", a tela diz a conta de hoje e a conta nova com as suas lojas — antes do clique.',
+          `Ligar é pedido: a gente confirma o pagamento e liga no mesmo dia. Desligar é na hora, e o assistente para de responder.`,
           'Só quem configura a empresa troca.',
           'O plano de contrato e o Corporativo mudam por conversa: "Falar com a gente" abre o WhatsApp do Norte.',
         ],
         capacidade: 'empresa.configurar',
       },
       {
-        titulo: 'Recarregar crédito de IA',
+        titulo: 'Comprar mais respostas',
         passos: [
-          'Em "Crédito do assistente": saldo, gasto em 30 dias e quantos dias dura no seu ritmo. A barra compara com o crédito do mês.',
-          'Digite o valor em reais (ou um atalho: R$ 20, 50, 100, 200) e "Adicionar". Até R$ 5.000 por vez.',
-          'A recarga entra no extrato com o seu nome. Enquanto o pagamento automático não existe, ela é lançada aqui.',
+          `Em "Respostas do assistente": quantas faltam, quantas já foram e quando voltam (dia 1º). A barra mostra o mês.`,
+          `"Comprar +${milhar(PRECOS.pacoteRespostas)} respostas" (${real(PRECOS.pacotePreco)}) vira pedido: a gente confirma o pagamento e o pacote entra no mesmo dia, somado a este mês.`,
+          'O que sobrar do pacote não passa para o mês seguinte.',
         ],
         capacidade: 'empresa.configurar',
       },
@@ -2417,25 +2418,25 @@ export const GUIA: Entrada[] = [
         titulo: 'O que cada plano abre',
         passos: [
           `${NORTE} (${real(PRECOS.primeiraLoja)}/mês a primeira loja, ${real(PRECOS.lojaExtra)} cada loja a mais): tudo da loja — balcão, estoque com grade, clientes e pontos, crediário com carnê, financeiro com DRE, fechamento, metas e comissão, desempenho, curva ABC, previsão de ruptura, comparação entre lojas, tarefas, etiquetas e relatórios. Equipe sem limite.`,
-          `${COM_ASSISTENTE} (+${real(PRECOS.assistente)}/mês): tudo do ${NORTE}, mais o assistente no WhatsApp com ${real(PRECOS.creditoDoAssistente)} de crédito de IA por mês.`,
+          `Assistente (+${real(PRECOS.assistente)}/mês, chave da empresa inteira): o assistente no WhatsApp com ${milhar(PRECOS.respostasDoAssistente)} respostas por mês.`,
           `${GRATIS} (não se vende): onde a empresa fica quando o teste acaba sem assinatura — uma loja, uma pessoa por vez, até ${PLANOS.GRATIS.tetoVendasMes} vendas no mês, o essencial do balcão, do estoque e do financeiro.`,
           `${PLANOS.REDE.titulo}: dos primeiros clientes, com tudo ligado e o valor combinado em contrato.`,
-          'Corporativo: sob consulta — a operação inteira com a gente junto, crédito no contrato.',
+          'Corporativo: sob consulta — a operação inteira com a gente junto, respostas no contrato.',
         ],
       },
     ],
     perguntas: [
       {
         p: 'O que perco ao descer de plano?',
-        r: `Do ${COM_ASSISTENTE} para o ${NORTE}, só o assistente e o que sai pelo número dele: os dados ficam guardados. O cartão diz "Deixa de ter" antes do clique.`,
+        r: `Desligando o assistente, sai só ele e o que sai pelo número dele (campanhas, avisos no WhatsApp): os dados e as conversas ficam guardados. A tela pergunta antes, dizendo o que sai.`,
       },
       {
         p: 'Quem vê a Assinatura?',
-        r: 'Quem configura a empresa e quem vê o financeiro. Só quem configura troca de plano e recarrega.',
+        r: 'Quem configura a empresa e quem vê o financeiro. Só quem configura liga o assistente, assina e pede pacote de respostas.',
       },
       {
         p: 'O período de teste acabou. E agora?',
-        r: `A empresa passou para o ${GRATIS}, com os dados todos. O aviso no alto diz quando acabou; para religar o que desligou, escolha um plano em "Mudar de plano".`,
+        r: `A empresa passou para o ${GRATIS}, com os dados todos. O aviso no alto diz quando acabou; para religar o que desligou, assine o ${NORTE} em "Assinar".`,
       },
     ],
     palavras: ['plano', 'planos', 'mensalidade', 'preço do sistema', 'upgrade', 'trocar de plano', 'conta do mês', 'loja a mais', 'limite', 'crédito', 'recarga', 'recarregar', 'teste', 'assinar', 'grátis', 'norte', 'corporativo', 'contrato', 'pagamento do norte', 'quanto custa'],

@@ -11,18 +11,23 @@
 //
 // ── o gateway de pagamento ainda não existe, e tudo bem ──────
 // O que falta é só a cobrança em si. Tudo o que vem ANTES dela já está de pé:
-// quem pode o quê, quanto custa, o que acontece ao trocar, e a carteira de
-// crédito com extrato. Quando o gateway entrar, ele escreve em dois lugares —
-// `Cobranca` (a assinatura) e `RecargaIA` (a compra de crédito) — e nada mais
-// no sistema precisa saber qual gateway é.
+// quem pode o quê, quanto custa, o que acontece ao trocar, as respostas do
+// assistente no mês e a carteira que trava o custo de IA por baixo. Quando o
+// gateway entrar, ele escreve em dois lugares — `Cobranca` (a assinatura) e
+// `adicionarPacoteDeRespostas` (o pacote pago) — e nada mais no sistema
+// precisa saber qual gateway é.
 
 import type { Plano, Situacao } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, exigirQueNaoSejaSuporte, type Sessao } from './permissao'
 import {
   PLANOS,
   PRECOS,
+  TETO_IA_DO_MES_CENT,
+  TETO_IA_DO_PACOTE_CENT,
+  TETO_IA_DO_TESTE_CENT,
   mensalidade,
+  milhar,
   mudanca,
   menorQueCabe,
   podeCriarUnidade,
@@ -30,7 +35,7 @@ import {
 } from './planos'
 import { mostrar } from './dinheiro'
 import { MODULOS, moduloLigado } from './modulos'
-import { diaEmSP } from './dia'
+import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
 
 const mostrarDia = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(d)
@@ -57,76 +62,86 @@ export type Assinatura = {
   uso: Uso
   limite: { unidades: number | null; vagas: number | null }
   mensal: ReturnType<typeof mensalidade>
-  credito: {
-    saldoCent: number
-    avisoCent: number
-    /** Quanto o plano inclui por mês, em reais. */
-    /** `null` = sai no contrato (só o Corporativo). */
-    inclusoMensal: number | null
-    /** Gasto dos últimos 30 dias, para dar noção de quanto dura o saldo. */
-    gasto30Cent: number
-    /** Estimativa de dias que o saldo aguenta no ritmo atual. null = sem gasto. */
-    diasQueDura: number | null
-    acabou: boolean
-    baixo: boolean
-  }
+  /** As respostas do assistente no período — o que o cliente lê. */
+  respostas: Respostas
+  /**
+   * A carteira de IA, que o cliente NÃO lê como dinheiro: é a trava nossa de
+   * custo (ver "a trava de dinheiro" em planos.ts). `travou` = o assistente
+   * parou por ela, antes de as respostas acabarem.
+   */
+  credito: { saldoCent: number; travou: boolean }
   /** Avisos para a tela mostrar sem a pessoa precisar procurar. */
   alertas: { nivel: 'atencao' | 'critico'; texto: string }[]
 }
 
 const DIA = 864e5
 
+/** 'AAAA-MM' do mês de São Paulo. É a chave do mês em tudo daqui. */
+export const mesEmSP = (agora: Date = new Date()) => diaEmSP(agora).slice(0, 7)
+
+/** Meia-noite do dia 1º deste mês, em São Paulo. */
+export const inicioDoMesEmSP = (agora: Date = new Date()) => inicioDoDiaEmSP(`${mesEmSP(agora)}-01`)
+
+/** Meia-noite do dia 1º do mês que vem, em São Paulo: quando as respostas voltam. */
+export const proximoMesEmSP = (agora: Date = new Date()) =>
+  inicioDoDiaEmSP(`${somarDias(`${mesEmSP(agora)}-28`, 4).slice(0, 7)}-01`)
+
 /**
- * Deposita o crédito de IA incluso no plano, uma vez por mês.
+ * Completa a carteira até o teto do mês, uma vez por mês.
  *
- * A tabela de planos promete "R$ 100 de crédito de IA por mês" — e até 25/09
- * nada no código depositava: o crédito só chegava se alguém pusesse à mão.
- * Agora ele cai sozinho na primeira vez que o mês é olhado (a tela da
- * assinatura, ou o assistente antes de gastar), sem precisar de agendador.
+ * A carteira é a trava de CUSTO por baixo das respostas (ver "a trava de
+ * dinheiro" em planos.ts). No começo do mês ela vai ATÉ o teto — não soma:
+ * sobra de um mês não vira crédito acumulado, senão um mês parado bancava um
+ * mês de uso fora da curva e a empresa custava mais do que paga. Saldo acima
+ * do teto (recarga comprada no modelo antigo) fica como está: é do cliente.
  *
- * Uma vez por mês, e não mais: o recibo do depósito leva `plano:AAAA-MM` na
- * referência, e a trava de transação impede que duas conversas chegando ao
- * mesmo tempo depositem duas vezes. Quem sobe de plano no meio do mês recebe
- * o do plano novo se ainda não recebeu nenhum naquele mês. O que sobra de um
- * mês passa para o outro — o crédito é da loja, não vence.
+ * Cai sozinho na primeira vez que o mês é olhado (a tela da assinatura, ou o
+ * assistente antes de gastar), sem agendador. Uma vez por mês, e não mais: o
+ * recibo leva `plano:AAAA-MM` na referência — gravado mesmo quando o saldo já
+ * estava no teto (valor zero), senão o meio do mês completaria de novo — e a
+ * trava de transação impede que duas conversas ao mesmo tempo completem duas
+ * vezes. Quem liga o assistente no meio do mês recebe o teto na próxima
+ * olhada, se o mês ainda não tinha recibo.
  *
- * Empresa suspensa ou cancelada não recebe. Corporativo (`creditoMensal`
- * nulo) tem o crédito no contrato, e o Grátis e o Norte sem assistente não têm.
+ * No TESTE o teto é o das respostas do teste, UMA vez para o teste inteiro (o
+ * teste de 30 dias que atravessa a virada recebia duas). Empresa suspensa ou
+ * cancelada não recebe; plano sem assistente, também não. O Corporativo
+ * (`respostasMes` nulo) tem a carteira posta pela equipe, pelo contrato.
  */
 export async function garantirCreditoDoMes(orgId: string, agora = new Date()): Promise<number> {
-  const mes = diaEmSP(agora).slice(0, 7)
+  const mes = mesEmSP(agora)
   const referencia = `plano:${mes}`
   return comoOrg(orgId, async (db) => {
     await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`credito-do-mes:${orgId}`}))`
     const org = await db.org.findUniqueOrThrow({
       where: { id: orgId },
-      select: { plano: true, situacao: true },
+      select: { plano: true, situacao: true, creditoIaCent: true },
     })
-    const doPlano = PLANOS[org.plano].creditoMensal
-    // Em teste, o crédito é o de conhecer (PRECOS.creditoDoTeste), não o do
-    // plano: o crédito é dinheiro nosso com a IA, e cadastro pelo site é aberto.
-    const incluso = doPlano && org.situacao === 'TESTE' ? Math.min(doPlano, PRECOS.creditoDoTeste) : doPlano
-    if (!incluso || org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA') return 0
+    if (!PLANOS[org.plano].respostasMes || org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA') return 0
+    const emTeste = org.situacao === 'TESTE'
+    const teto = emTeste ? TETO_IA_DO_TESTE_CENT : TETO_IA_DO_MES_CENT
 
     const ja = await db.recargaIA.findFirst({
       where: { tipo: 'PLANO', referencia },
       select: { id: true },
     })
     if (ja) return 0
-    // O crédito de conhecer é um por TESTE, não um por mês: o teste de 30
-    // dias que atravessa a virada recebia duas vezes. Qualquer crédito de
-    // plano já depositado (o teste nasce sem nenhum) é o dele.
-    if (org.situacao === 'TESTE') {
+    // O teto do teste é um por TESTE, não um por mês. Qualquer recibo de
+    // plano já gravado (o teste nasce sem nenhum) é o dele.
+    if (emTeste) {
       const doTeste = await db.recargaIA.findFirst({ where: { tipo: 'PLANO', origem: 'plano' }, select: { id: true } })
       if (doTeste) return 0
     }
 
-    const centavos = incluso * 100
-    const depois = await db.org.update({
-      where: { id: orgId },
-      data: { creditoIaCent: { increment: centavos } },
-      select: { creditoIaCent: true },
-    })
+    const centavos = Math.max(0, teto - org.creditoIaCent)
+    const depois =
+      centavos > 0
+        ? await db.org.update({
+            where: { id: orgId },
+            data: { creditoIaCent: { increment: centavos } },
+            select: { creditoIaCent: true },
+          })
+        : { creditoIaCent: org.creditoIaCent }
     const [ano, m] = mes.split('-')
     await db.recargaIA.create({
       data: {
@@ -136,12 +151,194 @@ export async function garantirCreditoDoMes(orgId: string, agora = new Date()): P
         tipo: 'PLANO',
         origem: 'plano',
         referencia,
-        motivo: `Crédito incluso no plano ${PLANOS[org.plano].titulo} — ${m}/${ano}`,
+        motivo: emTeste
+          ? `Teto de IA do teste (${milhar(PRECOS.respostasDoTeste)} respostas)`
+          : `Teto de IA do mês, ${PLANOS[org.plano].titulo} — ${m}/${ano}`,
         quem: 'Norte',
       },
     })
     return centavos
   })
+}
+
+// ─────────────────────────────────────────────────────────────
+// AS RESPOSTAS DO MÊS — a unidade que o cliente lê
+// ─────────────────────────────────────────────────────────────
+//
+// O que conta como resposta, como o mês vira e o que o pacote faz estão em
+// "o assistente, em respostas" (planos.ts). Aqui é a conta: a franquia do
+// plano mais os pacotes do mês, contra as mensagens marcadas `resposta_ia`
+// desde o dia 1º (no teste, desde que a empresa nasceu).
+
+export type Respostas = {
+  /** O que o plano dá no período. 0 = sem assistente; `null` = no contrato (Corporativo). */
+  incluidas: number | null
+  /** Pacotes que entraram neste mês. */
+  pacotes: number
+  /** Franquia + pacotes. `null` = sem número de tabela. */
+  total: number | null
+  /** Respostas que já saíram no período. */
+  usadas: number
+  /** O que falta. `null` = sem número de tabela. */
+  restam: number | null
+  acabou: boolean
+  /** Perto do fim: 10% ou menos do total. */
+  baixo: boolean
+  /** 'mes' = mês de calendário em São Paulo; 'teste' = o teste inteiro. */
+  periodo: 'mes' | 'teste'
+  desde: Date
+  /** Quando a franquia volta: o dia 1º do mês que vem. `null` no teste. */
+  renovaEm: Date | null
+}
+
+/** A franquia do período, pelo plano e pela situação. Pura. */
+export function franquiaDeRespostas(plano: Plano, situacao: Situacao): number | null {
+  const doPlano = PLANOS[plano].respostasMes
+  if (!doPlano) return doPlano
+  return situacao === 'TESTE' ? Math.min(doPlano, PRECOS.respostasDoTeste) : doPlano
+}
+
+/** A conta, sem banco: franquia, pacotes e o que já foi usado. */
+export function contaDeRespostas(
+  incluidas: number | null,
+  pacotes: number,
+  usadas: number,
+): Pick<Respostas, 'incluidas' | 'pacotes' | 'total' | 'usadas' | 'restam' | 'acabou' | 'baixo'> {
+  if (incluidas === null) {
+    return { incluidas, pacotes, total: null, usadas, restam: null, acabou: false, baixo: false }
+  }
+  const total = incluidas + pacotes * PRECOS.pacoteRespostas
+  const restam = Math.max(0, total - usadas)
+  return {
+    incluidas,
+    pacotes,
+    total,
+    usadas,
+    restam,
+    // Sem assistente (total zero) não "acabou" nada: não havia o que acabar.
+    acabou: total > 0 && restam === 0,
+    baixo: total > 0 && restam > 0 && restam <= Math.ceil(total / 10),
+  }
+}
+
+/**
+ * O aviso que vai no fim da resposta quando ela cruza uma marca: quando
+ * sobram 10% do total, e na última. Uma vez cada — é igualdade, não "menor
+ * que", e a contagem só anda para a frente. `restam` é o que sobra DEPOIS
+ * desta resposta.
+ */
+export function avisoDeRespostas(
+  restam: number | null,
+  total: number | null,
+  periodo: Respostas['periodo'],
+): string | null {
+  if (restam === null || !total) return null
+  if (restam === 0) {
+    return periodo === 'teste'
+      ? 'Esta foi a última resposta do teste. Para continuar, assine em Assinatura.'
+      : `Esta foi a última resposta do mês. Para continuar, compre +${milhar(PRECOS.pacoteRespostas)} respostas em Assinatura — ou espere o dia 1º.`
+  }
+  if (restam === Math.ceil(total / 10)) {
+    return `Faltam ${milhar(restam)} respostas ${periodo === 'teste' ? 'no teste' : 'este mês'}.`
+  }
+  return null
+}
+
+/** O recado de quando as respostas acabaram — o mesmo na tela e no WhatsApp. */
+export function recadoSemRespostas(periodo: Respostas['periodo']): string {
+  return periodo === 'teste'
+    ? 'As respostas do teste acabaram. Para continuar com o assistente, assine em Assinatura.'
+    : `As respostas do mês acabaram — compre um pacote de +${milhar(PRECOS.pacoteRespostas)} em Assinatura ou espere o dia 1º.`
+}
+
+/** As respostas de uma empresa agora. Só lê. */
+export async function respostasDoMes(orgId: string, agora = new Date()): Promise<Respostas> {
+  const mes = mesEmSP(agora)
+  return comoOrg(orgId, async (db) => {
+    // Em sequência: dentro do comoOrg é uma conexão só.
+    const org = await db.org.findUniqueOrThrow({
+      where: { id: orgId },
+      select: { plano: true, situacao: true, criadaEm: true },
+    })
+    const emTeste = org.situacao === 'TESTE'
+    // No teste, desde que a empresa nasceu (o teste começa no cadastro); fora
+    // dele, desde o dia 1º. No mês em que o teste vira assinatura, o que foi
+    // usado no teste naquele mês conta — no máximo as respostas do teste.
+    const desde = emTeste ? org.criadaEm : inicioDoMesEmSP(agora)
+    const usadas = await db.mensagemAgente.count({ where: { respostaIa: true, criadaEm: { gte: desde } } })
+    const pacotes = await db.recargaIA.count({
+      where: { origem: 'pacote', referencia: `respostas:${mes}`, centavos: { gt: 0 } },
+    })
+    return {
+      ...contaDeRespostas(franquiaDeRespostas(org.plano, org.situacao), pacotes, usadas),
+      periodo: emTeste ? 'teste' : 'mes',
+      desde,
+      renovaEm: emTeste ? null : proximoMesEmSP(agora),
+    }
+  })
+}
+
+/**
+ * Soma um pacote de respostas ao mês: +`PRECOS.pacoteRespostas` na franquia
+ * e o teto dele na carteira, na mesma transação, com a linha no livro.
+ *
+ * Quem chama: a equipe atendendo o pedido pago (ferramenta de operação), a
+ * tela no modo livre e, no futuro, o retorno do gateway. O pacote vale para o
+ * mês em que entrou (ver planos.ts). `pedidoId` fecha o pedido da loja
+ * (pedidos.ts).
+ */
+export async function adicionarPacoteDeRespostas(
+  orgId: string,
+  por: { quem: string; autor: 'PESSOA' | 'SISTEMA'; usuarioId?: string | null; pedidoId?: string | null },
+  agora = new Date(),
+): Promise<Respostas> {
+  const mes = mesEmSP(agora)
+  const [ano, m] = mes.split('-')
+  // Ler antes, fora da transação de escrita: estourar DENTRO dela aborta a
+  // transação, e no banco local a conexão fica inutilizável.
+  const org = await comoOrg(orgId, (db) =>
+    db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true, situacao: true } }),
+  )
+  if (!PLANOS[org.plano].respostasMes) {
+    throw new Error('Pacote de respostas é para quem tem o assistente ligado (o Corporativo é pelo contrato).')
+  }
+  if (org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA') {
+    throw new Error('A empresa está suspensa ou cancelada: o pacote não entra.')
+  }
+  // O teto do mês cai ANTES do pacote: senão o primeiro olhar do mês, depois
+  // do pacote, veria a carteira acima do teto e não completaria nada — e o
+  // pacote viraria só a franquia do mês.
+  await garantirCreditoDoMes(orgId, agora)
+  await comoOrg(orgId, async (db) => {
+    const saldo = await creditarNaTransacao(db, orgId, TETO_IA_DO_PACOTE_CENT, {
+      tipo: 'COMPRA',
+      origem: 'pacote',
+      referencia: `respostas:${mes}`,
+      motivo: `Pacote de +${milhar(PRECOS.pacoteRespostas)} respostas — ${m}/${ano}`,
+      quem: por.quem,
+    })
+    await db.auditoria.create({
+      data: {
+        orgId,
+        usuarioId: por.usuarioId ?? null,
+        quem: por.quem,
+        autor: por.autor,
+        acao: 'respostas.adicionou',
+        alvoTipo: 'empresa',
+        alvoId: orgId,
+        alvoNome: `+${milhar(PRECOS.pacoteRespostas)} respostas`,
+        valor: PRECOS.pacotePreco,
+        motivo: `Pacote de +${milhar(PRECOS.pacoteRespostas)} respostas para ${m}/${ano}`,
+        depois: {
+          mes,
+          respostas: PRECOS.pacoteRespostas,
+          saldoDepois: saldo,
+          ...(por.pedidoId ? { pedidoId: por.pedidoId } : {}),
+        },
+      },
+    })
+  })
+  return respostasDoMes(orgId, agora)
 }
 
 export const assinaturaDe = (sessao: Sessao): Promise<Assinatura> => assinaturaDaEmpresa(sessao.orgId)
@@ -184,19 +381,21 @@ export async function vencerTesteSeAcabou(orgId: string, agora = new Date()): Pr
  * Existe para a equipe do Norte (scripts/operacao.ts), que age SOBRE a
  * empresa e não DENTRO dela; quem vem da tela passa por `assinaturaDe`.
  */
-export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
-  await vencerTesteSeAcabou(orgId)
-  await garantirCreditoDoMes(orgId)
+export async function assinaturaDaEmpresa(orgId: string, agora = new Date()): Promise<Assinatura> {
+  await vencerTesteSeAcabou(orgId, agora)
+  await garantirCreditoDoMes(orgId, agora)
+  // Fora do comoOrg de baixo: é outra transação, e transação dentro de
+  // transação não existe aqui.
+  const respostas = await respostasDoMes(orgId, agora)
   return comoOrg(orgId, async (db) => {
     const org = await db.org.findUniqueOrThrow({
       where: { id: orgId },
       select: {
         plano: true, situacao: true, testeAte: true,
-        creditoIaCent: true, creditoAvisoCent: true,
+        creditoIaCent: true, modulos: true, farolMarcas: true,
       },
     })
 
-    const desde30 = new Date(Date.now() - 30 * DIA)
     // Só unidade ATIVA conta cota. Desativar é o caminho legítimo para
     // caber num plano menor, e ele precisa funcionar. E só LOJA: o depósito
     // não vende e não entra na conta (tabela de 02/10/2026) — menos no
@@ -212,46 +411,24 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
     const usuarios = await db.usuario.count({
       where: { ativo: true, acessos: { some: { papel: { not: 'SUPORTE' } } } },
     })
-    // A fábrica é cobrada à parte (PRECOS.fabrica), por unidade marcada.
+    // A fábrica é uma parcela só (PRECOS.fabrica), com qualquer número de
+    // unidades de fábrica; a contagem é para a tela dizer quantas.
     const fabricas = await db.unidade.count({ where: { ativa: true, ehFabrica: true } })
     // E o Farol, pelas marcas CONTRATADAS (não pelas cadastradas: o teto de
     // cadastro é este mesmo número — ver farol.ts).
-    const comFarol = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { modulos: true, farolMarcas: true } })
-    const farolMarcas = moduloLigado(comFarol, 'farol') ? comFarol.farolMarcas : 0
-    // O que a LOJA pagou, nao o que o fornecedor cobrou da gente: e o
-    // consumo dela que a tela dela mostra.
-    const gasto = await db.consumoIA.aggregate({
-      where: { criadoEm: { gte: desde30 } },
-      _sum: { cobradoCent: true },
-    })
+    const farolMarcas = moduloLigado(org, 'farol') ? org.farolMarcas : 0
 
     const p = PLANOS[org.plano]
     const uso: Uso = { unidades, usuarios, fabricas, farolMarcas }
-    const gasto30Cent = gasto._sum.cobradoCent ?? 0
-    const porDia = gasto30Cent / 30
     const saldoCent = org.creditoIaCent
-
-    const credito = {
-      saldoCent,
-      avisoCent: org.creditoAvisoCent,
-      // Em teste, o que cai no mês é o crédito de conhecer, não o do plano —
-      // a mesma regra de `garantirCreditoDoMes`. A barra mede contra isto.
-      inclusoMensal:
-        p.creditoMensal && org.situacao === 'TESTE'
-          ? Math.min(p.creditoMensal, PRECOS.creditoDoTeste)
-          : p.creditoMensal,
-      gasto30Cent,
-      diasQueDura: porDia > 0 ? Math.floor(saldoCent / porDia) : null,
-      // `creditoMensal` nulo é o Corporativo: ele TEM assistente, o crédito
-      // dele existe e sai no contrato. Então o aviso de "acabou" vale igual —
-      // o que não existe é uma cota de tabela para desenhar a régua.
-      acabou: p.creditoMensal !== 0 && saldoCent <= 0,
-      baixo: p.creditoMensal !== 0 && saldoCent > 0 && saldoCent <= org.creditoAvisoCent,
-    }
+    // A trava de custo segurou o assistente antes de as respostas acabarem.
+    // `respostasMes` nulo é o Corporativo: lá a carteira É o limite, posta
+    // pela equipe conforme o contrato.
+    const credito = { saldoCent, travou: p.respostasMes !== 0 && saldoCent <= 0 && !respostas.acabou }
 
     const testeAte = org.testeAte
     const diasDeTeste = testeAte
-      ? Math.ceil((testeAte.getTime() - Date.now()) / DIA)
+      ? Math.ceil((testeAte.getTime() - agora.getTime()) / DIA)
       : null
 
     const alertas: Assinatura['alertas'] = []
@@ -270,12 +447,12 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
       org.situacao !== 'TESTE' &&
       org.plano === 'GRATIS' &&
       testeAte !== null &&
-      testeAte.getTime() <= Date.now() &&
-      Date.now() - testeAte.getTime() < 30 * DIA
+      testeAte.getTime() <= agora.getTime() &&
+      agora.getTime() - testeAte.getTime() < 30 * DIA
     ) {
       alertas.push({
         nivel: 'atencao',
-        texto: `O teste acabou em ${mostrarDia(testeAte)} e a empresa voltou para o plano ${PLANOS.GRATIS.titulo}. Os dados continuam todos aqui; para religar o que desligou, escolha um plano abaixo.`,
+        texto: `O teste acabou em ${mostrarDia(testeAte)} e a empresa voltou para o plano ${PLANOS.GRATIS.titulo}. Os dados continuam todos aqui; para religar o que desligou, assine o ${PLANOS.BALCAO.titulo} abaixo.`,
       })
     }
     if (org.situacao === 'INADIMPLENTE') {
@@ -284,17 +461,20 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
         texto: 'Há uma mensalidade em aberto. O acesso continua enquanto resolvemos.',
       })
     }
-    if (credito.acabou) {
+    if (respostas.acabou) {
+      alertas.push({ nivel: 'critico', texto: `${recadoSemRespostas(respostas.periodo)} O assistente parou de responder.` })
+    } else if (credito.travou) {
       alertas.push({
         nivel: 'critico',
-        texto: 'O crédito de IA acabou — o assistente parou de responder. Recarregue para religar.',
+        texto:
+          p.respostasMes === null
+            ? 'O crédito de IA do contrato acabou e o assistente parou de responder. Fale com a gente para repor.'
+            : `O assistente chegou ao limite de uso deste mês — respostas muito longas gastam mais. Compre um pacote de +${milhar(PRECOS.pacoteRespostas)} respostas abaixo ou espere o dia 1º.`,
       })
-    } else if (credito.baixo) {
+    } else if (respostas.baixo && respostas.restam !== null) {
       alertas.push({
         nivel: 'atencao',
-        texto: `Crédito de IA baixo: ${mostrar(saldoCent)}${
-          credito.diasQueDura !== null ? `, cerca de ${plural(credito.diasQueDura, 'dia', 'dias')}` : ''
-        }.`,
+        texto: `Faltam ${milhar(respostas.restam)} respostas ${respostas.periodo === 'teste' ? 'no teste' : 'este mês'}.`,
       })
     }
     // Uso acima da cota acontece de verdade: o plano pode ter sido rebaixado
@@ -318,6 +498,7 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
       uso,
       limite: { unidades: p.unidades, vagas: p.vagas },
       mensal: mensalidade(org.plano, unidades, fabricas, farolMarcas),
+      respostas,
       credito,
       alertas,
     }
@@ -396,31 +577,43 @@ function avisarLivreIgnorada() {
   console.error('[assinatura] NORTE_ASSINATURA_LIVRE=1 em produção: IGNORADA. Tire a variável do ambiente.')
 }
 
-/** Registra o pedido no livro da empresa e no log do servidor, onde a gente lê. */
+/**
+ * Registra o pedido no livro da empresa e no log do servidor, onde a gente lê.
+ *
+ * Dois pedidos existem: o de plano (assinar, ligar o assistente) e o de
+ * pacote de respostas. O antigo pedido de "R$ X de crédito de IA" saiu com o
+ * modelo de 02/10/2026 — os que já estão no livro continuam legíveis
+ * (pedidos.ts), mas a loja não pede mais dinheiro de IA: pede respostas.
+ */
 export async function registrarPedido(
   sessao: Sessao,
-  pedido: { tipo: 'plano'; para: Plano } | { tipo: 'credito'; centavos: number },
+  pedido: { tipo: 'plano'; para: Plano } | { tipo: 'respostas' },
 ) {
   exigir(sessao, 'empresa.configurar')
+  exigirQueNaoSejaSuporte(sessao, 'mexe na Assinatura')
+  const pacote = `+${milhar(PRECOS.pacoteRespostas)} respostas`
   const texto =
     pedido.tipo === 'plano'
       ? `Pediu o plano ${PLANOS[pedido.para].titulo}`
-      : `Pediu ${mostrar(pedido.centavos)} de crédito de IA`
+      : `Pediu um pacote de ${pacote} (${mostrar(PRECOS.pacotePreco * 100)})`
   await comoOrg(sessao.orgId, (db) =>
     db.auditoria.create({
       data: {
         orgId: sessao.orgId,
         usuarioId: sessao.usuarioId,
         quem: sessao.nome,
-        acao: pedido.tipo === 'plano' ? 'plano.pediu' : 'credito.pediu',
+        acao: pedido.tipo === 'plano' ? 'plano.pediu' : 'respostas.pediu',
         alvoTipo: 'empresa',
         alvoId: sessao.orgId,
-        alvoNome: pedido.tipo === 'plano' ? PLANOS[pedido.para].titulo : mostrar(pedido.centavos),
+        alvoNome: pedido.tipo === 'plano' ? PLANOS[pedido.para].titulo : pacote,
         motivo: texto,
-        // O que foi pedido, em forma de máquina. O título e o "R$ 200,00"
-        // acima são para gente ler; a equipe atende pelo que está aqui
-        // (src/servidor/pedidos.ts) — e título de plano muda de nome.
-        depois: pedido.tipo === 'plano' ? { plano: pedido.para } : { centavos: pedido.centavos },
+        // O que foi pedido, em forma de máquina. O título acima é para gente
+        // ler; a equipe atende pelo que está aqui (src/servidor/pedidos.ts) —
+        // e título de plano muda de nome.
+        depois:
+          pedido.tipo === 'plano'
+            ? { plano: pedido.para }
+            : { respostas: PRECOS.pacoteRespostas, preco: PRECOS.pacotePreco },
       },
     }),
   )
@@ -475,12 +668,12 @@ async function aplicarTroca(
 ): Promise<Mudanca> {
   const m = await previaDeTroca(orgId, para)
   if (m.impedimentos.length > 0 && !opcoes.forcar) throw new SemCota(m.impedimentos.join(' '), m.de)
-  // Subindo (ou de lado), o crédito incluso do mês cai ANTES, no plano de
-  // hoje — era o que a troca já fazia. DESCENDO, não: depositar o crédito do
-  // plano de cima no dia de sair dele dava R$ 100 de IA a quem acabou de
-  // deixar de pagar por ela (Rede → Grátis no dia 1º levava o mês inteiro).
-  // Se o mês ainda não recebeu nada, o plano novo deposita o dele na próxima
-  // vez que a assinatura for olhada.
+  // Subindo (ou de lado), o teto do mês cai ANTES, no plano de hoje — era o
+  // que a troca já fazia. DESCENDO, não: completar a carteira do assistente
+  // no dia de desligá-lo dava o mês inteiro de IA a quem acabou de deixar de
+  // pagar por ela (Rede → Grátis no dia 1º levava o mês inteiro). Se o mês
+  // ainda não recebeu nada, o plano novo completa o dele na próxima vez que a
+  // assinatura for olhada.
   if (m.sentido !== 'descer') await garantirCreditoDoMes(orgId)
 
   await comoOrg(orgId, async (db) => {
@@ -527,6 +720,7 @@ async function aplicarTroca(
  */
 export async function trocarPlano(sessao: Sessao, para: Plano) {
   exigir(sessao, 'empresa.configurar')
+  exigirQueNaoSejaSuporte(sessao, 'mexe na Assinatura')
   return aplicarTroca(sessao.orgId, para, { usuarioId: sessao.usuarioId, quem: sessao.nome, autor: 'PESSOA' })
 }
 
@@ -564,35 +758,38 @@ export async function trocarPlanoComoEquipe(
 }
 
 /**
- * Quem assina no mês em que testou já recebeu, naquele mês, o crédito de
- * conhecer (R$ 20) — e o depósito do mês (`plano:AAAA-MM`) não cai de novo.
- * Pagava o plano cheio e ficava com R$ 20 de IA até o mês seguinte. Aqui
- * completa o que falta para o crédito do plano, uma vez (`:conversao`).
+ * Quem assina no mês em que testou já teve, naquele mês, o teto do TESTE — e
+ * o recibo do mês (`plano:AAAA-MM`) não cai de novo. Pagava o assistente
+ * cheio e ficava com a trava do teste até o mês seguinte (e as respostas
+ * paravam bem antes das 1.000). Aqui completa a carteira até o teto do mês,
+ * uma vez (`:conversao`).
  */
 export async function completarCreditoDaConversao(orgId: string, agora = new Date()): Promise<number> {
-  const mes = diaEmSP(agora).slice(0, 7)
+  const mes = mesEmSP(agora)
   const referencia = `plano:${mes}:conversao`
   return comoOrg(orgId, async (db) => {
     await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`credito-do-mes:${orgId}`}))`
-    const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true, situacao: true } })
-    const incluso = PLANOS[org.plano].creditoMensal
-    if (!incluso || org.situacao !== 'ATIVA') return 0
-    if (await db.recargaIA.findFirst({ where: { tipo: 'PLANO', referencia }, select: { id: true } })) return 0
-    const doMes = await db.recargaIA.aggregate({
-      where: { tipo: 'PLANO', origem: 'plano', referencia: { startsWith: `plano:${mes}` } },
-      _sum: { centavos: true },
+    const org = await db.org.findUniqueOrThrow({
+      where: { id: orgId },
+      select: { plano: true, situacao: true, creditoIaCent: true },
     })
-    const ja = doMes._sum.centavos ?? 0
-    // Nada depositado ainda no mês: o depósito normal (`garantirCreditoDoMes`) cuida.
-    if (ja === 0) return 0
-    const falta = incluso * 100 - ja
+    if (!PLANOS[org.plano].respostasMes || org.situacao !== 'ATIVA') return 0
+    if (await db.recargaIA.findFirst({ where: { tipo: 'PLANO', referencia }, select: { id: true } })) return 0
+    // Sem recibo do mês ainda: o normal (`garantirCreditoDoMes`) cuida, já
+    // com o teto cheio.
+    const doMes = await db.recargaIA.findFirst({
+      where: { tipo: 'PLANO', origem: 'plano', referencia: `plano:${mes}` },
+      select: { id: true },
+    })
+    if (!doMes) return 0
+    const falta = TETO_IA_DO_MES_CENT - org.creditoIaCent
     if (falta <= 0) return 0
     const [ano, m] = mes.split('-')
     await creditarNaTransacao(db, orgId, falta, {
       tipo: 'PLANO',
       origem: 'plano',
       referencia,
-      motivo: `Crédito do plano ${PLANOS[org.plano].titulo}, completando o do teste — ${m}/${ano}`,
+      motivo: `Teto de IA do mês, ${PLANOS[org.plano].titulo}, completando o do teste — ${m}/${ano}`,
       quem: 'Norte',
     })
     return falta
@@ -726,7 +923,10 @@ export async function resumoDaBarra(
   }
   const p = PLANOS[org.plano]
 
-  const semCredito = p.creditoMensal !== 0 && org.creditoIaCent <= org.creditoAvisoCent
+  // A carteira perto do fim é o sinal barato de "o assistente vai parar": a
+  // contagem de respostas é uma consulta a mais, e esta função é uma leitura
+  // só (a tela da Assinatura conta de verdade).
+  const semCredito = p.respostasMes !== 0 && org.creditoIaCent <= org.creditoAvisoCent
   const testeAcabando =
     org.situacao === 'TESTE' &&
     org.testeAte !== null &&

@@ -1,8 +1,9 @@
 'use client'
 
-// O PIN pessoal, para autorizar no balcão de outra pessoa (ver
-// servidor/autorizacao.ts). Pede a senha de entrar: a conta aberta e
-// esquecida no balcão não pode virar "criei um PIN na conta da gerente".
+// O PIN pessoal: confirmar cada venda no balcão e autorizar no balcão de
+// outra pessoa (ver servidor/autorizacao.ts). Pede a senha de entrar: a conta
+// aberta e esquecida no balcão não pode virar "criei um PIN na conta da
+// gerente".
 
 import { useActionState, useEffect, useRef } from 'react'
 import { Aviso, Botao, Campo } from '@/ui/base'
@@ -33,15 +34,15 @@ export function MeuPin({ slug, tem, desde }: { slug: string; tem: boolean; desde
         type="password"
         inputMode="numeric"
         autoComplete="off"
-        // PIN novo tem 6 números (o servidor recusa menos). O de 4 que já
-        // existe continua valendo no balcão até a pessoa trocar.
-        pattern="[0-9]{6}"
-        minLength={6}
+        // De 4 a 6 números (o servidor confere de novo). Quatro é o mais
+        // rápido no balcão; quem segura o chute é o freio, não o tamanho.
+        pattern="[0-9]{4,6}"
+        minLength={4}
         maxLength={6}
         required
-        dica="6 números. Nada de 123456 nem 000000 — é o primeiro que alguém chuta."
+        dica="De 4 a 6 números. Nada de 1234 nem 0000 — é o primeiro que alguém chuta."
       />
-      <Campo rotulo="Repita o PIN" name="repetido" type="password" inputMode="numeric" autoComplete="off" minLength={6} maxLength={6} required />
+      <Campo rotulo="Repita o PIN" name="repetido" type="password" inputMode="numeric" autoComplete="off" minLength={4} maxLength={6} required />
       <Campo
         rotulo="Sua senha de entrar"
         name="senha"

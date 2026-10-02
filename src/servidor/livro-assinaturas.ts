@@ -12,7 +12,7 @@
 // banco a cada requisição.
 
 import { comoOrg } from './banco'
-import { exigir, type Sessao } from './permissao'
+import { exigir, exigirQueNaoSejaSuporte, type Sessao } from './permissao'
 import { quemFaltaPin } from './autorizacao'
 import { plural } from './texto'
 
@@ -33,6 +33,9 @@ export async function situacaoDasAssinaturas(sessao: Sessao): Promise<SituacaoDa
 
 export async function mudarPinNasExcecoes(sessao: Sessao, ligar: boolean): Promise<{ ok: true } | { ok: false; erro: string }> {
   exigir(sessao, 'empresa.configurar')
+  // As regras do PIN são a trava da própria loja contra abuso: quem
+  // está de fora não afrouxa.
+  exigirQueNaoSejaSuporte(sessao, 'muda as regras do PIN')
   if (ligar) {
     const faltam = await quemFaltaPin(sessao.orgId)
     if (faltam.length > 0) {
@@ -66,6 +69,7 @@ export async function mudarPinNasExcecoes(sessao: Sessao, ligar: boolean): Promi
 
 export async function mudarBalcaoAmpliado(sessao: Sessao, ligar: boolean): Promise<{ ok: true }> {
   exigir(sessao, 'empresa.configurar')
+  exigirQueNaoSejaSuporte(sessao, 'muda o que a vendedora pode')
   await comoOrg(sessao.orgId, async (db) => {
     const antes = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { balcaoAmpliado: true } })
     if (antes.balcaoAmpliado === ligar) return

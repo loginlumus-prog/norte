@@ -160,7 +160,9 @@ export function AcoesEncomenda({
             Pronta
           </Botao>
         )}
-        {podeMexer && (
+        {/* Entregar vira venda (ou abre mão do saldo): é de quem vende — o
+            suporte do Norte, que só anota, não vê o botão. */}
+        {podeVender && (
           <Botao tom="confirmar" className={grande} onClick={() => setPainel('entregar')}>
             Entregue
           </Botao>
