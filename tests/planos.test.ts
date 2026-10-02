@@ -25,6 +25,8 @@ import {
   planoQueAbre,
   doPlano,
   GRUPOS,
+  PRECOS,
+  PLANOS_COM_PRECO,
 } from '../src/servidor/planos'
 import { TODOS } from '../src/servidor/modulos'
 
@@ -38,48 +40,34 @@ describe('quantas lojas cabem', () => {
     expect(podeCriarUnidade('GRATIS', 1).pode).toBe(false)
   })
 
-  it('o Balcão vai até três', () => {
-    for (let n = 0; n < 3; n++) {
-      expect(podeCriarUnidade('BALCAO', n), `com ${n} lojas`).toEqual({
-        pode: true,
-        custoExtra: 0,
-      })
-    }
-    expect(podeCriarUnidade('BALCAO', 3).pode).toBe(false)
+  // A tabela de 02/10/2026: a loja é o que se paga. Uma vem na base; cada
+  // loja a mais cabe, e a tela diz quanto passa a custar ANTES de abrir.
+  it('no Norte a primeira loja vem na base e cada loja a mais cabe pagando', () => {
+    expect(podeCriarUnidade('BALCAO', 0)).toEqual({ pode: true, custoExtra: 0 })
+    expect(podeCriarUnidade('BALCAO', 1)).toEqual({
+      pode: true,
+      custoExtra: PRECOS.lojaExtra,
+      novoTotal: PRECOS.primeiraLoja + PRECOS.lojaExtra,
+    })
+    expect(podeCriarUnidade('BALCAO_AGENTE', 5)).toEqual({
+      pode: true,
+      custoExtra: PRECOS.lojaExtra,
+      novoTotal: PRECOS.primeiraLoja + PRECOS.assistente + 5 * PRECOS.lojaExtra,
+    })
   })
 
-  it('o Balcão + Assistente vai até cinco', () => {
-    expect(podeCriarUnidade('BALCAO_AGENTE', 4).pode).toBe(true)
-    expect(podeCriarUnidade('BALCAO_AGENTE', 5).pode).toBe(false)
-  })
-
-  it('a Rede e o Corporativo não têm teto', () => {
-    expect(podeCriarUnidade('REDE', 200)).toEqual({ pode: true, custoExtra: 0 })
+  it('o Corporativo não tem teto nem conta de tabela', () => {
     expect(podeCriarUnidade('CORPORATIVO', 200)).toEqual({ pode: true, custoExtra: 0 })
   })
 
   // Barrar sem dizer para onde ir é barrar duas vezes.
-  it('quando barra, diz o motivo e o caminho', () => {
-    const r = podeCriarUnidade('BALCAO', 3)
+  it('do Grátis, a segunda loja manda para o Norte, com o motivo', () => {
+    const r = podeCriarUnidade('GRATIS', 1)
     expect(r.pode).toBe(false)
     if (!r.pode) {
-      expect(r.motivo).toMatch(/3 unidades/)
-      // A quarta loja cabe no Assistente (até cinco) — não precisa da Direção.
-      expect(r.sugestao).toBe('BALCAO_AGENTE')
+      expect(r.motivo).toMatch(/1 unidade/)
+      expect(r.sugestao).toBe('BALCAO')
     }
-  })
-
-  // O caminho é o MENOR plano que cabe. Mandar quem quer a segunda loja no
-  // Grátis para a Direção (R$ 1.500) era sugerir o topo da tabela quando o
-  // Balcão (R$ 100) atende três lojas.
-  it('a sugestão é o menor plano em que a loja nova cabe', () => {
-    const doGratis = podeCriarUnidade('GRATIS', 1)
-    expect(doGratis.pode).toBe(false)
-    if (!doGratis.pode) expect(doGratis.sugestao).toBe('BALCAO')
-
-    const doAssistente = podeCriarUnidade('BALCAO_AGENTE', 5)
-    expect(doAssistente.pode).toBe(false)
-    if (!doAssistente.pode) expect(doAssistente.sugestao).toBe('REDE')
   })
 })
 
@@ -132,18 +120,24 @@ describe('a conta do mês', () => {
     expect(mensalidade('CORPORATIVO', 40).total).toBeNull()
   })
 
-  it('nenhum plano cobra por loja extra: a cota é a cota', () => {
-    for (const [nome, p] of Object.entries(PLANOS)) {
-      expect(p.porUnidadeExtra, `${nome} cobra por loja extra`).toBeNull()
-    }
+  it('duas lojas com o assistente: 199 + 149 + 129', () => {
+    expect(mensalidade('BALCAO_AGENTE', 2)).toMatchObject({
+      base: PRECOS.primeiraLoja + PRECOS.assistente,
+      extras: 1,
+      total: 477,
+    })
   })
 
-  it('três lojas no Balcão é só a base', () => {
-    expect(mensalidade('BALCAO', 3)).toMatchObject({ base: 100, extras: 0, total: 100 })
+  it('cinco lojas sem o assistente', () => {
+    expect(mensalidade('BALCAO', 5).total).toBe(199 + 4 * 129)
   })
 
-  it('a Rede é a base, com quantas lojas for', () => {
-    expect(mensalidade('REDE', 40)).toMatchObject({ extras: 0, total: 1500 })
+  it('o plano de contrato mostra a conta da tabela', () => {
+    expect(mensalidade('REDE', 2).total).toBe(mensalidade('BALCAO_AGENTE', 2).total)
+  })
+
+  it('só o Norte e o Norte + Assistente estão à venda', () => {
+    expect(PLANOS_COM_PRECO).toEqual(['BALCAO', 'BALCAO_AGENTE'])
   })
 })
 
@@ -154,42 +148,41 @@ describe('a conta do mês', () => {
 describe('o que muda ao trocar de plano', () => {
   const pequeno = { unidades: 1 }
 
-  it('do Grátis para o Balcão: ganha nota fiscal e mais de uma loja', () => {
+  it('do Grátis para o Norte: ganha tudo da loja', () => {
     const m = mudanca('GRATIS', 'BALCAO', pequeno)
     expect(m.sentido).toBe('subir')
-    expect(m.diferenca).toBe(100)
-    expect(m.ganha).toContain('notaFiscal')
+    expect(m.diferenca).toBe(PRECOS.primeiraLoja)
+    expect(m.ganha).toContain('crediario')
     expect(m.ganha).toContain('multiUnidade')
     expect(m.perde).toEqual([])
   })
 
-  it('subir mostra o que ganha, e a diferença de preço', () => {
-    const m = mudanca('BALCAO', 'BALCAO_AGENTE', pequeno)
+  it('pôr o assistente custa o assistente', () => {
+    const m = mudanca('BALCAO', 'BALCAO_AGENTE', { unidades: 3 })
     expect(m.sentido).toBe('subir')
-    expect(m.diferenca).toBe(350 - 100)
-    expect(m.ganha).toContain('agente')
+    expect(m.diferenca).toBe(PRECOS.assistente)
+    expect(m.ganha).toEqual(['agente'])
     expect(m.perde).toEqual([])
   })
 
   // O caso que faz o cliente cancelar quando ninguém avisa.
-  it('descer mostra o que PERDE, e não só o desconto', () => {
-    const m = mudanca('REDE', 'BALCAO', pequeno)
+  it('tirar o assistente mostra o que PERDE', () => {
+    const m = mudanca('BALCAO_AGENTE', 'BALCAO', pequeno)
     expect(m.sentido).toBe('descer')
-    expect(m.diferenca).toBe(100 - 1500)
-    expect(m.perde).toContain('crediario')
-    expect(m.perde).toContain('agente')
+    expect(m.diferenca).toBe(-PRECOS.assistente)
+    expect(m.perde).toEqual(['agente'])
   })
 
   it('descer para o Grátis perde tudo que é módulo', () => {
     const m = mudanca('REDE', 'GRATIS', pequeno)
     expect(m.perde).toContain('notaFiscal')
     expect(m.perde).toContain('agente')
-    expect(m.perde).toContain('multiUnidade')
+    expect(m.perde).toContain('crediario')
     expect(m.ganha).toEqual([])
   })
 
   it('trocar para o mesmo plano não muda nada', () => {
-    const m = mudanca('REDE', 'REDE', pequeno)
+    const m = mudanca('BALCAO', 'BALCAO', pequeno)
     expect(m.sentido).toBe('igual')
     expect(m.diferenca).toBe(0)
     expect(m.ganha).toEqual([])
@@ -204,19 +197,19 @@ describe('o que muda ao trocar de plano', () => {
 })
 
 describe('descer com mais loja do que cabe é recusado', () => {
-  it('oito lojas não cabem no Balcão, e a mensagem diz quantas tirar', () => {
-    const m = mudanca('REDE', 'BALCAO', { unidades: 8 })
+  it('oito lojas não cabem no Grátis, e a mensagem diz quantas tirar', () => {
+    const m = mudanca('BALCAO', 'GRATIS', { unidades: 8 })
     expect(m.impedimentos.length).toBe(1)
     expect(m.impedimentos[0]).toContain('8')
-    expect(m.impedimentos[0]).toContain('Desative 5')
+    expect(m.impedimentos[0]).toContain('Desative 7')
   })
 
-  // Vaga NÃO impede descer: ela é do instante, não é dado que se perde. Quem
-  // ficar de fora simplesmente não entra na próxima vez — e isso a tela avisa,
-  // sem travar a troca.
-  it('mas quantidade de gente não impede: cadastro é livre em todo plano', () => {
-    const m = mudanca('REDE', 'GRATIS', { unidades: 1 })
-    expect(m.impedimentos).toEqual([])
+  it('no Norte qualquer número cabe: a conta é que cresce', () => {
+    expect(mudanca('REDE', 'BALCAO', { unidades: 8 }).impedimentos).toEqual([])
+  })
+
+  it('quantidade de gente não impede: cadastro é livre em todo plano', () => {
+    expect(mudanca('REDE', 'GRATIS', { unidades: 1 }).impedimentos).toEqual([])
   })
 
   it('subir nunca impede', () => {
@@ -228,10 +221,10 @@ describe('descer com mais loja do que cabe é recusado', () => {
 
 describe('o menor plano que cabe', () => {
   it('uma loja cabe no Grátis', () => expect(menorQueCabe({ unidades: 1 })).toBe('GRATIS'))
-  it('duas lojas já pedem o Balcão', () => expect(menorQueCabe({ unidades: 2 })).toBe('BALCAO'))
-  it('quatro lojas pedem o Balcão + Assistente', () =>
-    expect(menorQueCabe({ unidades: 4 })).toBe('BALCAO_AGENTE'))
-  it('seis lojas pedem a Rede', () => expect(menorQueCabe({ unidades: 6 })).toBe('REDE'))
+  it('duas ou vinte lojas: o Norte, com a loja a mais na conta', () => {
+    expect(menorQueCabe({ unidades: 2 })).toBe('BALCAO')
+    expect(menorQueCabe({ unidades: 20 })).toBe('BALCAO')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────
@@ -244,16 +237,12 @@ describe('o plano decide quais módulos existem', () => {
     for (const m of TODOS) expect(planoLibera('GRATIS', m), m).toBe(false)
   })
 
-  it('o Balcão tem nota fiscal e mais de uma loja, mas não agente nem crediário', () => {
-    expect(planoLibera('BALCAO', 'notaFiscal')).toBe(true)
-    expect(planoLibera('BALCAO', 'multiUnidade')).toBe(true)
-    expect(planoLibera('BALCAO', 'agente')).toBe(false)
-    expect(planoLibera('BALCAO', 'crediario')).toBe(false)
+  it('o Norte tem tudo da loja, inclusive crediário, e só não tem o assistente', () => {
+    for (const m of TODOS) expect(planoLibera('BALCAO', m), m).toBe(m !== 'agente')
   })
 
-  it('o Balcão + Assistente tem agente mas não crediário', () => {
-    expect(planoLibera('BALCAO_AGENTE', 'agente')).toBe(true)
-    expect(planoLibera('BALCAO_AGENTE', 'crediario')).toBe(false)
+  it('o Norte + Assistente tem tudo', () => {
+    for (const m of TODOS) expect(planoLibera('BALCAO_AGENTE', m), m).toBe(true)
   })
 
   // A regra é: quem tem assistente tem crédito, quem não tem não tem. O
@@ -407,19 +396,16 @@ describe('a escada do que cada plano abre', () => {
     for (const c of chaves) expect(liberado('CORPORATIVO', c), c).toBe(true)
   })
 
-  it('a linha do tempo e o desempenho são do Assistente; a rede, da Direção', () => {
-    expect(liberado('BALCAO', 'tarefas.linhaDoTempo')).toBe(false)
-    expect(liberado('BALCAO_AGENTE', 'tarefas.linhaDoTempo')).toBe(true)
-    expect(liberado('BALCAO_AGENTE', 'desempenho.basico')).toBe(true)
-    expect(liberado('BALCAO_AGENTE', 'tarefas.rede')).toBe(false)
-    expect(liberado('REDE', 'tarefas.rede')).toBe(true)
-    expect(liberado('REDE', 'ruptura.previsao')).toBe(true)
+  it('tudo o que é da loja abre no Norte; as campanhas, com o assistente', () => {
+    for (const c of chaves.filter((x) => x !== 'campanhas')) expect(liberado('BALCAO', c), c).toBe(true)
+    expect(liberado('BALCAO', 'campanhas')).toBe(false)
+    expect(liberado('BALCAO_AGENTE', 'campanhas')).toBe(true)
   })
 
   it('a frase do cadeado sai com o artigo do plano', () => {
-    expect(doPlano('BALCAO')).toBe('do Balcão')
-    expect(doPlano('REDE')).toBe('da Direção')
-    expect(planoQueAbre('tarefas.rede').codigo).toBe('REDE')
+    expect(doPlano('BALCAO')).toBe('do Norte')
+    expect(doPlano('BALCAO_AGENTE')).toBe('do Norte + Assistente')
+    expect(planoQueAbre('tarefas.rede').codigo).toBe('BALCAO')
   })
 
   // A tabela de comparação promete em texto o que a escada abre em código.

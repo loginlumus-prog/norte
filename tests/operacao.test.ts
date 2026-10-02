@@ -40,7 +40,7 @@ const pediuCredito = (centavos: number, quando: Date) =>
 describe('o estado de um pedido, lido do livro', () => {
   it('pedido sem resposta está aberto', () => {
     const p = pediuPlano('REDE', dia(0))
-    expect(pedidosAbertos([p])).toMatchObject([{ id: p.id, tipo: 'plano', plano: 'REDE', estado: 'aberto', oQue: 'plano Direção' }])
+    expect(pedidosAbertos([p])).toMatchObject([{ id: p.id, tipo: 'plano', plano: 'REDE', estado: 'aberto', oQue: 'plano Norte sob contrato' }])
   })
 
   it('troca PARA o plano pedido atende; troca para outro, sem apontar, não', () => {

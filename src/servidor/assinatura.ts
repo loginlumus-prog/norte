@@ -21,6 +21,7 @@ import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, type Sessao } from './permissao'
 import {
   PLANOS,
+  PRECOS,
   mensalidade,
   mudanca,
   menorQueCabe,
@@ -94,7 +95,10 @@ export async function garantirCreditoDoMes(orgId: string, agora = new Date()): P
       where: { id: orgId },
       select: { plano: true, situacao: true },
     })
-    const incluso = PLANOS[org.plano].creditoMensal
+    const doPlano = PLANOS[org.plano].creditoMensal
+    // Em teste, o crédito é o de conhecer (PRECOS.creditoDoTeste), não o do
+    // plano: o crédito é dinheiro nosso com a IA, e cadastro pelo site é aberto.
+    const incluso = doPlano && org.situacao === 'TESTE' ? Math.min(doPlano, PRECOS.creditoDoTeste) : doPlano
     if (!incluso || org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA') return 0
 
     const ja = await db.recargaIA.findFirst({
@@ -180,8 +184,12 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
 
     const desde30 = new Date(Date.now() - 30 * DIA)
     // Só unidade ATIVA conta cota. Desativar é o caminho legítimo para
-    // caber num plano menor, e ele precisa funcionar.
-    const unidades = await db.unidade.count({ where: { ativa: true } })
+    // caber num plano menor, e ele precisa funcionar. E só LOJA: o depósito
+    // não vende e não entra na conta (tabela de 02/10/2026) — menos no
+    // Grátis, que é de uma unidade só, seja ela qual for.
+    const unidades = await db.unidade.count({
+      where: { ativa: true, ...(org.plano === 'GRATIS' ? {} : { ehDeposito: false }) },
+    })
     // Cota é de ACESSO, não de cadastro: quem saiu da empresa continua no
     // banco por causa do histórico e não pode ocupar vaga.
     // O acesso do NOSSO suporte não é gente da loja: a conta de suporte
@@ -391,8 +399,8 @@ export async function previaDeTroca(orgId: string, para: Plano): Promise<Mudanca
   const { plano, unidades } = await comoOrg(orgId, async (db) => {
     // Em sequência: dentro do comoOrg é uma conexão só.
     const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } })
-    // Só loja ATIVA conta, como em `assinaturaDaEmpresa`.
-    const unidades = await db.unidade.count({ where: { ativa: true } })
+    // Só loja ATIVA conta, e depósito fora — como em `assinaturaDaEmpresa`.
+    const unidades = await db.unidade.count({ where: { ativa: true, ehDeposito: false } })
     return { plano: org.plano, unidades }
   })
   return mudanca(plano, para, { unidades })

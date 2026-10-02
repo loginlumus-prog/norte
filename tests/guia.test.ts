@@ -146,9 +146,9 @@ describe('o manual em texto', () => {
   })
 
   it('o plano vira frase com o artigo certo', () => {
-    expect(rotuloDoPlano('precos.margem')).toBe('do Balcão para cima')
-    expect(rotuloDoPlano('ruptura.previsao')).toBe('da Direção para cima')
-    expect(rotuloDoPlano('REDE')).toBe('da Direção para cima')
+    expect(rotuloDoPlano('precos.margem')).toBe('do Norte para cima')
+    expect(rotuloDoPlano('campanhas')).toBe('do Norte + Assistente para cima')
+    expect(rotuloDoPlano('REDE')).toBe('do Norte sob contrato para cima')
     expect(rotuloDoPlano('GRATIS')).toBe('em todo plano')
   })
 })

@@ -465,8 +465,11 @@ begin
     continue when v_candidato = any(reservados);
     continue when exists (select 1 from public.orgs o where o.slug = v_candidato);
     begin
-      insert into public.orgs (id, nome, slug, email, ramo, plano, situacao, modulos, criada_em, atualizada_em)
-      values (v_org, v_nome, v_candidato, v_email, v_ramo, 'GRATIS', 'ATIVA', '{}', v_agora, v_agora);
+      -- Teste de 30 dias com tudo (tabela de 02/10/2026): sem plano grátis
+      -- para sempre. Quando o prazo vence, `vencerTesteSeAcabou` desce a
+      -- empresa para o Grátis, que guarda os dados e o básico até assinar.
+      insert into public.orgs (id, nome, slug, email, ramo, plano, situacao, teste_ate, modulos, criada_em, atualizada_em)
+      values (v_org, v_nome, v_candidato, v_email, v_ramo, 'BALCAO_AGENTE', 'TESTE', v_agora + interval '30 days', '{}', v_agora, v_agora);
       v_criou := true;
     exception when unique_violation then
       -- outra pessoa levou este endereço no mesmo instante: tenta o próximo
@@ -491,7 +494,7 @@ begin
   insert into public.auditoria (id, org_id, usuario_id, quem, autor, acao, alvo_tipo, alvo_id, alvo_nome, depois, criado_em)
   values (
     replace(gen_random_uuid()::text, '-', ''), v_org, v_usuario, v_dono, 'PESSOA', 'empresa.criou', 'org', v_org, v_nome,
-    jsonb_build_object('origem', 'cadastro', 'plano', 'GRATIS', 'ramo', v_ramo,
+    jsonb_build_object('origem', 'cadastro', 'plano', 'BALCAO_AGENTE', 'teste_dias', 30, 'ramo', v_ramo,
                        'termos', btrim(p_termos), 'emailConfirmado', not p_email_pendente),
     v_agora
   );

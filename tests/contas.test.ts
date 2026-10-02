@@ -415,7 +415,7 @@ describe('o endereço da empresa', () => {
 })
 
 describe('o cadastro pelo site', () => {
-  it('cria empresa, loja, dono com acesso de DONO e a linha do livro — no plano Grátis', async () => {
+  it('cria empresa, loja, dono com acesso de DONO e a linha do livro — em teste de 30 dias', async () => {
     const r = await m.cadastro.criarEmpresaPeloCadastro(
       { empresa: 'Sorveteria da Praça', dono: 'Paula Praça', email: 'Paula@Praca.test', senha: 'senha-da-paula', ramo: 'sorveteria', aceitou: true },
       '172.20.0.1',
@@ -425,7 +425,7 @@ describe('o cadastro pelo site', () => {
     if (!r.ok) return
 
     const [org] = await linhas<Record<string, unknown>>(`select * from orgs where id = $1`, [r.orgId])
-    expect(org).toMatchObject({ nome: 'Sorveteria da Praça', slug: 'sorveteria-da-praca', plano: 'GRATIS', situacao: 'ATIVA', ramo: 'sorveteria', configurada_em: null })
+    expect(org).toMatchObject({ nome: 'Sorveteria da Praça', slug: 'sorveteria-da-praca', plano: 'BALCAO_AGENTE', situacao: 'TESTE', ramo: 'sorveteria', configurada_em: null })
     const unidades = await linhas<Record<string, unknown>>(`select * from unidades where org_id = $1`, [r.orgId])
     expect(unidades).toHaveLength(1)
     expect(unidades[0]).toMatchObject({ nome: 'Sorveteria da Praça', ramo: 'sorveteria', ativa: true })
@@ -434,7 +434,7 @@ describe('o cadastro pelo site', () => {
     expect(await m.senha.conferirSenha('senha-da-paula', u!.senha_hash as string)).toBe(true)
     expect(await linhas(`select papel, unidade_id from acessos where usuario_id = $1`, [r.usuarioId])).toEqual([{ papel: 'DONO', unidade_id: null }])
     const [livro] = await linhas<{ acao: string; depois: Record<string, unknown> }>(`select acao, depois from auditoria where org_id = $1`, [r.orgId])
-    expect(livro).toMatchObject({ acao: 'empresa.criou', depois: { origem: 'cadastro', plano: 'GRATIS', termos: m.cadastro.VERSAO_TERMOS } })
+    expect(livro).toMatchObject({ acao: 'empresa.criou', depois: { origem: 'cadastro', plano: 'BALCAO_AGENTE', termos: m.cadastro.VERSAO_TERMOS } })
     expect(JSON.stringify(livro)).not.toContain('scrypt')
     // e o IP não fica em lugar nenhum — só o resumo, na tabela do freio
     expect(await linhas(`select 1 from cadastros_publicos where ip_resumo = $1`, [sha('172.20.0.1')])).toHaveLength(1)

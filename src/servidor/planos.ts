@@ -91,110 +91,123 @@ export type Limite = {
    * comparar por preço não serviria, porque o Corporativo não tem preço.
    */
   degrau: number
+  /**
+   * Está na tabela que se vende hoje. Fora dela ficam o Grátis (onde a empresa
+   * cai quando o teste acaba sem assinatura), o plano de contrato dos primeiros
+   * clientes e o Corporativo, que é conversa.
+   */
+  aVenda: boolean
 }
+
+/**
+ * Os preços da tabela de outubro de 2026, num lugar só.
+ *
+ * O modelo: a LOJA é o que se paga. Tudo o que a loja usa (balcão, estoque,
+ * crediário, financeiro, equipe, relatórios) vem junto; à parte só o que tem
+ * custo que varia de cliente para cliente (o assistente e a IA dele) e o que é
+ * trabalho nosso (a implantação, o Farol). A conta: 199 a primeira loja, 129
+ * cada loja a mais, 149 o assistente, com 100 de crédito de IA por mês.
+ */
+export const PRECOS = {
+  primeiraLoja: 199,
+  lojaExtra: 129,
+  assistente: 149,
+  creditoDoAssistente: 100,
+  /** A fábrica (ficha técnica, produção, lote). Entra quando o módulo existir. */
+  fabrica: 349,
+  /** O Farol, por marca (perfil). A segunda marca do mesmo dono sai mais barata. */
+  farolMarca: 497,
+  farolMarcaExtra: 297,
+  /** Dias de teste com tudo, para quem se cadastra pelo site. */
+  diasDeTeste: 30,
+  /** Crédito de IA de quem está em teste: o bastante para conhecer, não para gastar o nosso. */
+  creditoDoTeste: 20,
+} as const
+
+/** Os módulos da loja: tudo, menos o assistente — que é o que custa à parte. */
+const DA_LOJA: Modulo[] = ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola', 'metas', 'crediario']
 
 export const PLANOS: Record<Plano, Limite> = {
   GRATIS: {
+    // Não se vende mais (desde 02/10/2026): quem se cadastra ganha o teste de
+    // 30 dias com tudo. Este é o lugar onde a empresa fica quando o teste acaba
+    // sem assinatura — vendendo, mas com o básico, até assinar.
     titulo: 'Grátis',
     artigo: 'o',
-    resumo: 'Uma loja, uma pessoa por vez. Para sair do caderno hoje.',
+    resumo: 'Uma loja, uma pessoa por vez, até 300 vendas no mês. É onde a empresa fica quando o teste acaba sem assinatura.',
     unidades: 1,
     vagas: 1,
     mensal: 0,
     porUnidadeExtra: null,
     porVagaExtra: null,
-    // Nenhum módulo: sem nota fiscal, sem assistente, sem crediário. O que
-    // fica é o miolo — vender no balcão, cadastrar produto, controlar estoque
-    // e cliente. Que já é o dia inteiro de muita loja, e é o ponto.
     modulos: [],
     creditoMensal: 0,
-    // Trezentas vendas por mês é ~10 por dia. Loja que passa disso não é mais
-    // "estou experimentando": é operação, e operação cabe pagar R$ 100.
     tetoVendasMes: 300,
     degrau: 0,
+    aVenda: false,
   },
   BALCAO: {
-    titulo: 'Balcão',
+    titulo: 'Norte',
     artigo: 'o',
     resumo:
-      'Até três lojas, com financeiro, fechamento do mês e tarefas da equipe — sem o assistente.',
-    unidades: 3,
-    vagas: 3,
-    mensal: 100,
-    porUnidadeExtra: null,
-    porVagaExtra: 40,
-    // Agenda, ponto e compras entram já no primeiro plano pago: salão e
-    // consultório pequenos vivem deles, e deixar a agenda para o plano de
-    // R$ 350 seria vender a esse cliente o balcão sem a tela que ele abre o
-    // dia inteiro. O lembrete ao cliente sai pelo WhatsApp do assistente, e
-    // por isso só existe onde o assistente existe.
-    //
-    // A Escola (turmas e mensalidades) entra aqui pelo mesmo motivo: o curso
-    // livre de uma sala só vive da mensalidade, e é a tela que ele abre todo
-    // dia. O aviso da mensalidade ao responsável, como o lembrete, sai pelo
-    // WhatsApp do assistente.
-    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola'],
+      `Tudo da loja: balcão, estoque, crediário, financeiro, equipe e relatórios. R$ ${PRECOS.primeiraLoja} a primeira loja, R$ ${PRECOS.lojaExtra} cada loja a mais.`,
+    // Uma loja vem na base; cada loja a mais custa `porUnidadeExtra`, e a tela
+    // diz o valor ANTES de abrir (ver `podeCriarUnidade`). Depósito não conta.
+    unidades: 1,
+    // Gente dentro ao mesmo tempo: à vontade. Cobrar por vaga era mais uma
+    // conta para o lojista fazer; a loja já é o que se paga.
+    vagas: null,
+    mensal: PRECOS.primeiraLoja,
+    porUnidadeExtra: PRECOS.lojaExtra,
+    porVagaExtra: null,
+    modulos: DA_LOJA,
     creditoMensal: 0,
     tetoVendasMes: null,
     degrau: 1,
+    aVenda: true,
   },
   BALCAO_AGENTE: {
-    // Era "Balcao + Assistente". O "+" fazia o plano ler como ACESSORIO do
-    // anterior — alguma coisa que se acrescenta — em vez de degrau proprio. Sem
-    // ele, o nome diz o que muda: aqui alguem passa a acompanhar a loja por
-    // voce. Nao "atender": com cliente ele so roda campanha com roteiro, e o
-    // resto quem responde e a loja.
-    titulo: 'Assistente',
+    titulo: 'Norte + Assistente',
     artigo: 'o',
-    resumo: 'Até cinco lojas, com o assistente no WhatsApp: relatório, avisos e propostas para você, campanhas para os clientes.',
-    unidades: 5,
-    vagas: 5,
-    mensal: 350,
-    porUnidadeExtra: null,
-    porVagaExtra: 40,
-    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola', 'agente', 'metas'],
-    // ── este numero e apertado, e vale saber por que ────────
-    // O consumo foi MEDIDO, nao estimado: uma loja de movimento normal gasta
-    // ~R$ 36/mes de custo bruto com cache e roteamento de modelo, o que da
-    // ~R$ 108 cobrados no mes cheio.
-    //
-    // R$ 100 cobre uns 27 dias dessa loja. Nos ultimos dias do mes ela fica
-    // sem credito — e sao justamente os dias em que a cobranca de atraso mais
-    // importa, porque e quando as pessoas recebem. Quem quiser o mes inteiro
-    // recarrega, e a recarga e barata; mas a tela precisa avisar ANTES de
-    // acabar, e o aviso ja existe (creditoAvisoCent).
-    creditoMensal: 100,
+    resumo:
+      `Tudo do Norte, mais o assistente no WhatsApp: relatório, avisos e perguntas sobre o negócio, com R$ ${PRECOS.creditoDoAssistente} de crédito de IA por mês.`,
+    unidades: 1,
+    vagas: null,
+    mensal: PRECOS.primeiraLoja + PRECOS.assistente,
+    porUnidadeExtra: PRECOS.lojaExtra,
+    porVagaExtra: null,
+    modulos: [...DA_LOJA, 'agente'],
+    // Uma loja de movimento normal gasta uns R$ 36 de custo bruto por mês, o
+    // que dá ~R$ 108 cobrados (margem 3, custo-ia.ts): o crédito incluso cobre
+    // quase o mês inteiro; quem conversa mais recarrega, e a tela avisa antes.
+    creditoMensal: PRECOS.creditoDoAssistente,
     tetoVendasMes: null,
     degrau: 2,
+    aVenda: true,
   },
   REDE: {
-    // Era "Rede", que descrevia o FORMATO do cliente (varias lojas) e nao o que
-    // ele recebe. Passou a subvender no dia em que o destaque deste plano
-    // deixou de ser loja ilimitada e virou a analise do negocio.
-    //
-    // "Direcao" e o que ele entrega, e e o nome do produto cumprido: o selo
-    // deste plano ja e o mapa inteiro com a rosa dos ventos por tras.
-    titulo: 'Direção',
-    artigo: 'a',
-    resumo:
-      'Lojas e pessoas sem limite, crediário, curva ABC e previsão de ruptura. ' +
-      'Em breve, a análise que diz onde você está perdendo e o que fazer.',
-    unidades: null,
+    // Os primeiros clientes: tudo ligado, valor combinado por fora. A conta que
+    // a tela mostra é a da tabela (Norte + Assistente, por loja) — é a
+    // referência para a conversa. Não se vende mais com este nome.
+    titulo: 'Norte sob contrato',
+    artigo: 'o',
+    resumo: 'Tudo do Norte e o assistente, com o valor combinado em contrato.',
+    unidades: 1,
     vagas: null,
-    mensal: 1500,
-    porUnidadeExtra: null,
+    mensal: PRECOS.primeiraLoja + PRECOS.assistente,
+    porUnidadeExtra: PRECOS.lojaExtra,
     porVagaExtra: null,
-    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola', 'agente', 'metas', 'crediario'],
-    // Rede sao varias lojas conversando ao mesmo tempo.
-    creditoMensal: 300,
+    modulos: [...DA_LOJA, 'agente'],
+    creditoMensal: PRECOS.creditoDoAssistente,
     tetoVendasMes: null,
     degrau: 3,
+    aVenda: false,
   },
   CORPORATIVO: {
     titulo: 'Corporativo',
     artigo: 'o',
     resumo:
-      'A operação inteira com a gente junto: site, tráfego e a condução do negócio. ' +
+      'A operação inteira com a gente junto: implantação, integrações e condução do negócio. ' +
       'Preço fechado caso a caso, depois de entender a operação.',
     unidades: null,
     vagas: null,
@@ -203,13 +216,13 @@ export const PLANOS: Record<Plano, Limite> = {
     // promessa que a gente não sabe se consegue cumprir antes de olhar.
     porUnidadeExtra: null,
     porVagaExtra: null,
-    modulos: ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola', 'agente', 'metas', 'crediario'],
+    modulos: [...DA_LOJA, 'agente'],
     // Sem numero de tabela, pelo mesmo motivo do preco: o volume de conversa
-    // de um cliente Corporativo nao se parece com o de outro, e chutar aqui
-    // seria prometer antes de olhar a operacao. Sai no contrato.
+    // de um cliente Corporativo nao se parece com o de outro.
     creditoMensal: null,
     tetoVendasMes: null,
     degrau: 4,
+    aVenda: false,
   },
 }
 
@@ -220,9 +233,9 @@ export const PLANOS: Record<Plano, Limite> = {
  * os pagos: quem está comparando preço não está escolhendo entre R$ 0 e
  * R$ 1.500, está escolhendo entre os pagos.
  */
-export const PLANOS_COM_PRECO = (Object.keys(PLANOS) as Plano[]).filter(
-  (p) => PLANOS[p].mensal !== null && PLANOS[p].mensal !== 0,
-)
+export const PLANOS_COM_PRECO = (Object.keys(PLANOS) as Plano[])
+  .filter((p) => PLANOS[p].aVenda)
+  .sort((a, b) => PLANOS[a].degrau - PLANOS[b].degrau)
 
 export const ORDEM = (Object.keys(PLANOS) as Plano[]).sort(
   (a, b) => PLANOS[a].degrau - PLANOS[b].degrau,
@@ -374,7 +387,8 @@ export function mudanca(
   const mensalNovo = mensalidade(para, uso.unidades).total
 
   const impedimentos: string[] = []
-  if (alvo.unidades !== null && uso.unidades > alvo.unidades) {
+  // Plano que cobra loja a mais comporta qualquer número: a conta é que cresce.
+  if (alvo.unidades !== null && alvo.porUnidadeExtra === null && uso.unidades > alvo.unidades) {
     impedimentos.push(
       `Você tem ${uso.unidades} unidades e o plano ${alvo.titulo} atende ${alvo.unidades}. ` +
         `Desative ${uso.unidades - alvo.unidades} antes de trocar.`,
@@ -413,10 +427,11 @@ export function mudanca(
  * diferente a cada hora do dia.
  */
 export function menorQueCabe(uso: { unidades: number }): Plano {
-  return (
-    ORDEM.find((p) => PLANOS[p].unidades === null || uso.unidades <= PLANOS[p].unidades!) ??
-    'CORPORATIVO'
-  )
+  // Só o que se vende (e o Grátis, onde a empresa já pode estar). Plano que
+  // cobra loja a mais comporta qualquer número — a conta é que cresce.
+  const cabe = (p: Plano) =>
+    PLANOS[p].unidades === null || PLANOS[p].porUnidadeExtra !== null || uso.unidades <= PLANOS[p].unidades!
+  return ORDEM.find((p) => (p === 'GRATIS' || PLANOS[p].aVenda) && cabe(p)) ?? 'CORPORATIVO'
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -459,7 +474,8 @@ const TODOS_OS_PLANOS: Plano[] = ['GRATIS', 'BALCAO', 'BALCAO_AGENTE', 'REDE', '
 const PAGOS: Plano[] = ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
 const SEM_GRATIS = PAGOS
 const COM_AGENTE: Plano[] = ['BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
-const DE_REDE: Plano[] = ['REDE', 'CORPORATIVO']
+// O que era só da Direção agora vem em todo plano pago: a loja é o que se paga.
+const DE_REDE: Plano[] = PAGOS
 
 // ── os numeros da tabela saem do PLANO, nunca da mao ────────
 // Aqui havia "R$ 120/mes" escrito a mao na linha do credito, e ele continuou
@@ -536,7 +552,7 @@ export const RECURSOS: Recurso[] = [
     titulo: 'Precificação: margem, markup e preço sugerido',
     grupo: 'Operação',
     em: PAGOS,
-    detalhe: { BALCAO: 'margem', BALCAO_AGENTE: 'completa', REDE: 'completa', CORPORATIVO: 'completa' },
+    detalhe: { BALCAO: 'completa', BALCAO_AGENTE: 'completa', REDE: 'completa', CORPORATIVO: 'completa' },
   },
 
   // ── Dinheiro ──
@@ -552,7 +568,7 @@ export const RECURSOS: Recurso[] = [
   // errada (decidido em 25/09, na auditoria de promessas).
   { titulo: 'Financeiro com DRE do mês', grupo: 'Dinheiro', em: TODOS_OS_PLANOS, destaque: true },
   { titulo: 'Contas a pagar e recorrentes', grupo: 'Dinheiro', em: TODOS_OS_PLANOS },
-  { titulo: 'Metas e comissão por vendedor', grupo: 'Equipe', em: COM_AGENTE },
+  { titulo: 'Metas e comissão por vendedor', grupo: 'Equipe', em: PAGOS },
   { titulo: 'Fechamento de mês guiado', grupo: 'Dinheiro', em: TODOS_OS_PLANOS },
   {
     titulo: 'Curva ABC e dinheiro parado',
@@ -579,7 +595,7 @@ export const RECURSOS: Recurso[] = [
     destaque: true,
   },
   { titulo: 'Responsável, prazo e prioridade na tarefa', grupo: 'Equipe', em: PAGOS },
-  { titulo: 'Linha do tempo e modelos de quadro', grupo: 'Equipe', em: COM_AGENTE },
+  { titulo: 'Linha do tempo e modelos de quadro', grupo: 'Equipe', em: PAGOS },
   { titulo: 'Quadro da rede inteira, loja a loja', grupo: 'Equipe', em: DE_REDE },
   {
     // Estrelas por pessoa e por mês: meta batida, tarefa entregue no prazo,
@@ -587,8 +603,8 @@ export const RECURSOS: Recurso[] = [
     // meses para trás.
     titulo: 'Desempenho da equipe em estrelas',
     grupo: 'Equipe',
-    em: COM_AGENTE,
-    detalhe: { BALCAO_AGENTE: 'básico', REDE: 'completo', CORPORATIVO: 'completo' },
+    em: PAGOS,
+    detalhe: porPlano(PAGOS, () => 'completo'),
     destaque: true,
   },
   {
@@ -641,7 +657,9 @@ export const RECURSOS: Recurso[] = [
     grupo: 'Estrutura',
     em: TODOS_OS_PLANOS,
     detalhe: porPlano(TODOS_OS_PLANOS, (l) =>
-      aVontade(l.unidades, (n) => (n === 1 ? '1' : `até ${n}`)),
+      aVontade(l.unidades, (n) =>
+        l.porUnidadeExtra !== null ? `${n} incluída, +R$ ${l.porUnidadeExtra} cada` : n === 1 ? '1' : `até ${n}`,
+      ),
     ),
     destaque: true,
   },
@@ -677,7 +695,7 @@ export const RECURSOS: Recurso[] = [
   },
   { titulo: 'Livro de auditoria de tudo que mexe', grupo: 'Estrutura', em: TODOS_OS_PLANOS },
   {
-    titulo: 'Site, tráfego e condução do negócio',
+    titulo: 'Implantação, integrações e condução do negócio',
     grupo: 'Estrutura',
     em: ['CORPORATIVO'],
     destaque: true,
@@ -686,7 +704,7 @@ export const RECURSOS: Recurso[] = [
 ]
 
 /** Qual plano a gente RECOMENDA. É onde a conta fecha melhor dos dois lados. */
-export const RECOMENDADO: Plano = 'REDE'
+export const RECOMENDADO: Plano = 'BALCAO_AGENTE'
 
 export function temRecurso(r: Recurso, p: Plano): boolean {
   return r.em.includes(p)
@@ -725,26 +743,27 @@ export const GRUPOS: Recurso['grupo'][] = ['Operação', 'Dinheiro', 'Equipe', '
 // lista precisaria ser lembrada.
 
 export const LIBERACOES = {
+  // O Grátis guarda o quadro de tarefas, e só ele: é onde a empresa fica
+  // quando o teste acaba, e é onde ela vê, trancado, o que a assinatura abre.
   'tarefas.quadro': { desde: 'GRATIS', titulo: 'Quadro de tarefas' },
+  // Desde 02/10/2026 tudo o que é da LOJA abre no Norte: a loja é o que se
+  // paga, e trancar pedaço de tela em degraus era fazer o lojista escolher
+  // entre a curva ABC e o crediário. A escada continua existindo para o Grátis.
   'tarefas.varios': { desde: 'BALCAO', titulo: 'Mais de um quadro' },
   'tarefas.responsavel': { desde: 'BALCAO', titulo: 'Responsável pela tarefa' },
   'tarefas.prazo': { desde: 'BALCAO', titulo: 'Prazo da tarefa' },
   'tarefas.prioridade': { desde: 'BALCAO', titulo: 'Prioridade em estrelas' },
-  'tarefas.linhaDoTempo': { desde: 'BALCAO_AGENTE', titulo: 'Linha do tempo' },
-  'tarefas.modelos': { desde: 'BALCAO_AGENTE', titulo: 'Modelos de quadro' },
-  'tarefas.rede': { desde: 'REDE', titulo: 'Quadro da rede inteira' },
-  'desempenho.basico': { desde: 'BALCAO_AGENTE', titulo: 'Desempenho da equipe' },
-  'desempenho.completo': { desde: 'REDE', titulo: 'Desempenho completo' },
+  'tarefas.linhaDoTempo': { desde: 'BALCAO', titulo: 'Linha do tempo' },
+  'tarefas.modelos': { desde: 'BALCAO', titulo: 'Modelos de quadro' },
+  'tarefas.rede': { desde: 'BALCAO', titulo: 'Quadro da rede inteira' },
+  'desempenho.basico': { desde: 'BALCAO', titulo: 'Desempenho da equipe' },
+  'desempenho.completo': { desde: 'BALCAO', titulo: 'Desempenho completo' },
   'precos.margem': { desde: 'BALCAO', titulo: 'Margem e markup' },
-  'precos.sugestao': { desde: 'BALCAO_AGENTE', titulo: 'Preço sugerido' },
-  'ruptura.previsao': { desde: 'REDE', titulo: 'Previsão de ruptura' },
-  // A tabela vende o programa de pontos dos planos pagos (`RECURSOS`). Antes
-  // disto ninguém conferia: o Grátis ligava o programa em Configurações, e o
-  // balcão pontuava.
+  'precos.sugestao': { desde: 'BALCAO', titulo: 'Preço sugerido' },
+  'ruptura.previsao': { desde: 'BALCAO', titulo: 'Previsão de ruptura' },
   'pontos.programa': { desde: 'BALCAO', titulo: 'Programa de pontos' },
   // Campanhas de WhatsApp saem pelo número do assistente: existem onde o
-  // assistente existe. Chave própria para a tela trancar o pedaço com o nome
-  // certo — e para o dia em que o degrau delas for outro.
+  // assistente existe.
   campanhas: { desde: 'BALCAO_AGENTE', titulo: 'Campanhas no WhatsApp' },
 } as const satisfies Record<string, { desde: Plano; titulo: string }>
 

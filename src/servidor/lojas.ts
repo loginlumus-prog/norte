@@ -196,11 +196,15 @@ export async function semearRamo(db: BancoDaOrg, orgId: string, ramo: Ramo) {
  * "Abrir" (ou "Reabrir") espera o primeiro gravar, e aí conta as lojas de
  * novo — já com a do primeiro. É a regra 1 do topo.
  */
-async function travarCota(db: BancoDaOrg, orgId: string) {
+async function travarCota(db: BancoDaOrg, orgId: string, deposito = false) {
   await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`cota:unidades:${orgId}`}))`
   const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } })
-  // Só loja ABERTA ocupa vaga — a mesma conta de `assinaturaDaEmpresa`.
-  const abertas = await db.unidade.count({ where: { ativa: true } })
+  // Depósito não vende e não entra na conta (desde a tabela de 02/10/2026, o
+  // que se paga é a LOJA). No Grátis ele segue a régua de sempre: lá a
+  // empresa é de uma unidade só.
+  if (deposito && org.plano !== 'GRATIS') return { custoExtra: 0 }
+  // Só loja ABERTA, e só loja de vender — a mesma conta de `assinaturaDaEmpresa`.
+  const abertas = await db.unidade.count({ where: { ativa: true, ...(org.plano === 'GRATIS' ? {} : { ehDeposito: false }) } })
   const v = podeCriarUnidade(org.plano, abertas)
   if (!v.pode) throw new SemCota(v.motivo, v.sugestao)
   return { custoExtra: v.custoExtra }
@@ -211,7 +215,7 @@ export async function criarLoja(sessao: Sessao, dados: DadosLoja) {
   const d = limparLoja(dados)
 
   return comoOrg(sessao.orgId, async (db) => {
-    const cota = await travarCota(db, sessao.orgId)
+    const cota = await travarCota(db, sessao.orgId, !!d.ehDeposito)
     const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { ramo: true, modulos: true } })
     const loja = await db.unidade.create({ data: { orgId: sessao.orgId, ...d } })
 
@@ -342,7 +346,7 @@ export async function mudarSituacaoLoja(sessao: Sessao, id: string, ativa: boole
     if (loja.ativa === ativa) return loja
 
     // Reabrir ocupa vaga, igual abrir: a mesma trava e a mesma contagem.
-    if (ativa) await travarCota(db, sessao.orgId)
+    if (ativa) await travarCota(db, sessao.orgId, loja.ehDeposito)
 
     if (!ativa) {
       const outras = await db.unidade.count({ where: { ativa: true, id: { not: id }, ehDeposito: false } })

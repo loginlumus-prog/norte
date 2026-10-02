@@ -75,8 +75,21 @@ const ehPlano = (v: unknown): v is Plano => typeof v === 'string' && v in PLANOS
 /** "Direção" → 'REDE'. Para as linhas antigas, que só guardavam o título. */
 export function planoPeloTitulo(titulo: string | null): Plano | null {
   if (!titulo) return null
-  const achado = (Object.keys(PLANOS) as Plano[]).find((p) => PLANOS[p].titulo === titulo.trim())
-  return achado ?? null
+  const t = titulo.trim()
+  const achado = (Object.keys(PLANOS) as Plano[]).find((p) => PLANOS[p].titulo === t)
+  return achado ?? TITULOS_ANTIGOS[t] ?? null
+}
+
+/**
+ * Os nomes que os planos já tiveram. O livro não se reescreve: um pedido de
+ * setembro diz "Direção", e precisa continuar sendo lido como o plano que era.
+ */
+const TITULOS_ANTIGOS: Record<string, Plano> = {
+  Balcão: 'BALCAO',
+  'Balcão + Assistente': 'BALCAO_AGENTE',
+  Assistente: 'BALCAO_AGENTE',
+  Rede: 'REDE',
+  Direção: 'REDE',
 }
 
 /** "R$ 1234,56" (o formato de `mostrar`) → 123456. Para as linhas antigas. */

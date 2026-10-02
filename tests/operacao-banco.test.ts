@@ -93,7 +93,7 @@ describe('trocarPlanoComoEquipe', () => {
     const [org] = await linhas<{ plano: string }>(`select plano from orgs where id = 'org-a'`)
     expect(org!.plano).toBe('REDE')
     const [l] = await livro('org-a', 'plano.trocou')
-    expect(l).toMatchObject({ quem: 'Equipe Norte (Rafa Teste)', autor: 'SISTEMA', usuario_id: null, alvo_nome: 'Direção' })
+    expect(l).toMatchObject({ quem: 'Equipe Norte (Rafa Teste)', autor: 'SISTEMA', usuario_id: null, alvo_nome: 'Norte sob contrato' })
     expect(l!.depois).toMatchObject({ de: 'BALCAO_AGENTE', para: 'REDE', pedidoId: pedido!.id })
     expect(await aberto('org-a', 'plano')).toBeNull()
 
@@ -106,7 +106,8 @@ describe('trocarPlanoComoEquipe', () => {
   it('descer tira os módulos que o plano novo não cobre', async () => {
     await m.assinatura.trocarPlanoComoEquipe('org-a', 'BALCAO', 'Rafa Teste')
     const [org] = await linhas<{ plano: string; modulos: string[] }>(`select plano, modulos from orgs where id = 'org-a'`)
-    expect(org).toEqual({ plano: 'BALCAO', modulos: ['encomenda'] })
+    // O Norte tem tudo da loja (metas também); só o assistente sai.
+    expect(org).toEqual({ plano: 'BALCAO', modulos: ['metas', 'encomenda'] })
     const todas = await livro('org-a', 'plano.trocou')
     expect(todas.at(-1)!.motivo).toMatch(/perdeu: .*Assistente no WhatsApp/)
     expect(todas.at(-1)!.depois).not.toHaveProperty('pedidoId')
@@ -114,7 +115,8 @@ describe('trocarPlanoComoEquipe', () => {
 
   it('as travas da tela valem: loja demais para o plano novo impede, e nada é gravado', async () => {
     const antes = (await livro('org-b', 'plano.trocou')).length
-    await expect(m.assinatura.trocarPlanoComoEquipe('org-b', 'BALCAO', 'Rafa Teste')).rejects.toThrow(/4 unidades/)
+    // No Norte qualquer número de lojas cabe (a conta cresce); o Grátis é de uma só.
+    await expect(m.assinatura.trocarPlanoComoEquipe('org-b', 'GRATIS', 'Rafa Teste')).rejects.toThrow(/unidades/)
     const [b] = await linhas<{ plano: string }>(`select plano from orgs where id = 'org-b'`)
     expect(b!.plano).toBe('REDE')
     expect((await livro('org-b', 'plano.trocou')).length).toBe(antes)
@@ -157,7 +159,7 @@ describe('crédito e recusa', () => {
     await pedir('org-a', 'plano.pediu', { plano: 'REDE' }, 'Direção')
     const p = await m.operacao.recusarPedido('org-a', 'plano', { motivo: 'O pagamento não foi confirmado.', quem: 'Rafa Teste' })
     const [l] = await livro('org-a', 'pedido.recusou')
-    expect(l).toMatchObject({ quem: 'Equipe Norte (Rafa Teste)', autor: 'SISTEMA', motivo: 'O pagamento não foi confirmado.', alvo_nome: 'plano Direção' })
+    expect(l).toMatchObject({ quem: 'Equipe Norte (Rafa Teste)', autor: 'SISTEMA', motivo: 'O pagamento não foi confirmado.', alvo_nome: 'plano Norte sob contrato' })
     expect(l!.depois).toEqual({ tipo: 'plano', pedidoId: p.id })
     const tela = m.pedidos.pedidosParaTela(await m.pedidos.eventosDePedido('org-a'))
     expect(tela.plano).toMatchObject({ estado: 'recusado', motivoRecusa: 'O pagamento não foi confirmado.' })

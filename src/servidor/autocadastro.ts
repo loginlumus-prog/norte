@@ -10,11 +10,12 @@
 // Daqui só sai o pedido, já validado e com a senha em hash.
 //
 // ── o que nasce ──────────────────────────────────────────────
-// Plano Grátis, situação ATIVA: o Grátis não é teste com prazo — é onde a
-// loja pequena pode ficar (ver src/app/page.tsx e planos.ts). Um teste de
-// plano pago com data para acabar não serviria aqui: nada no sistema rebaixa
-// o plano quando o teste vence, e o cadastro aberto viraria plano pago de
-// graça para sempre. Quem quiser mais sobe em Assinatura.
+// Desde a tabela de 02/10/2026: o Norte + Assistente em TESTE, por 30 dias
+// (PRECOS.diasDeTeste). Não há mais plano grátis à venda. Quando o prazo
+// vence, `vencerTesteSeAcabou` (assinatura.ts) desce a empresa para o Grátis
+// na primeira tela que alguém abrir — os dados ficam, o básico continua, e o
+// resto volta ao assinar. No teste o crédito de IA é o de conhecer
+// (PRECOS.creditoDoTeste), não o do plano: o cadastro é aberto.
 //
 // ── as três travas contra robô ───────────────────────────────
 //   1. O freio do banco: 3 empresas por hora por endereço de rede, 60 no

@@ -95,7 +95,7 @@ beforeAll(async () => {
   // há 50 dias, uma vencida, uma a vencer) e o crediário de hoje na Loja Um.
   await db.query(
     `insert into parcelas (id, org_id, venda_id, cliente_id, unidade_id, numero, de, vencimento, valor, pago, quitada_em) values
-       ('pc1', 'org-f', 'v7', 'cli-ana', 'uni-2', 1, 3, $1, 100, 100, now() - interval '50 days'),
+       ('pc1', 'org-f', 'v7', 'cli-ana', 'uni-2', 1, 3, $1, 100, 100, (now() at time zone 'utc') - interval '50 days'),
        ('pc2', 'org-f', 'v7', 'cli-ana', 'uni-2', 2, 3, $2, 100, 0, null),
        ('pc3', 'org-f', 'v7', 'cli-ana', 'uni-2', 3, 3, $3, 100, 0, null),
        ('pc4', 'org-f', 'v43', 'cli-ana', 'uni-1', 1, 1, $4, 120, 0, null)`,
@@ -103,7 +103,7 @@ beforeAll(async () => {
   )
   await db.exec(`
     insert into recebimentos (id, org_id, parcela_id, forma, valor, quem, criado_em) values
-      ('rc1', 'org-f', 'pc1', 'DINHEIRO', 100, 'Importação', now() - interval '50 days');
+      ('rc1', 'org-f', 'pc1', 'DINHEIRO', 100, 'Importação', (now() at time zone 'utc') - interval '50 days');
   `)
   const porta = 55000 + Math.floor(Math.random() * 3000)
   servidor = new PGLiteSocketServer({ db, port: porta, host: '127.0.0.1', maxConnections: 10 })

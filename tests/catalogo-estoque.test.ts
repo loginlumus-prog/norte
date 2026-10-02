@@ -271,9 +271,13 @@ describe('lojas: a cota conferida dentro, e fechar com pendência', () => {
     expect(lojas.find((l) => l.id === 'uni-a1')!.exclusivos).toBe(0)
   })
 
-  it('com as três do plano abertas, a quarta é recusada', async () => {
-    await expect(m.lojas.criarLoja(DONA, { nome: 'Quarta' })).rejects.toThrow(m.assinatura.SemCota)
-    const [n] = await linha<{ n: number }>(`select count(*)::int n from unidades where org_id = 'org-a'`)
+  // Tabela de 02/10/2026: no Norte a loja a mais cabe, e quem chama recebe o
+  // valor para mostrar ANTES (a tela de Lojas diz "passa a custar").
+  it('no Norte a loja a mais abre, com o custo dela dito', async () => {
+    const r = await m.lojas.criarLoja(DONA, { nome: 'Quarta' })
+    expect(r.custoExtra).toBe(129)
+    await m.lojas.mudarSituacaoLoja(DONA, r.loja.id, false)
+    const [n] = await linha<{ n: number }>(`select count(*)::int n from unidades where org_id = 'org-a' and ativa`)
     expect(n!.n).toBe(3)
   })
 
@@ -285,11 +289,9 @@ describe('lojas: a cota conferida dentro, e fechar com pendência', () => {
     expect(u!.ativa).toBe(true)
   })
 
-  it('fechou o depósito vazio, abriu outra no lugar — e reabrir o depósito passaria do plano', async () => {
+  it('depósito não entra na conta: fechar e reabrir o depósito não custa nada', async () => {
     await m.lojas.mudarSituacaoLoja(DONA, 'uni-a9', false)
-    const r = await m.lojas.criarLoja(DONA, { nome: 'Loja Bairro' })
-    expect(r.loja.nome).toBe('Loja Bairro')
-    await expect(m.lojas.mudarSituacaoLoja(DONA, 'uni-a9', true)).rejects.toThrow(m.assinatura.SemCota)
+    await expect(m.lojas.mudarSituacaoLoja(DONA, 'uni-a9', true)).resolves.toMatchObject({ id: 'uni-a9', ativa: true })
     const [n] = await linha<{ n: number }>(`select count(*)::int n from unidades where org_id = 'org-a' and ativa`)
     expect(n!.n).toBe(3)
   })
