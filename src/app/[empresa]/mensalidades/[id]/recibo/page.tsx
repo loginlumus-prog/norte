@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { comoOrg } from '@/servidor/banco'
 import { moduloLigado } from '@/servidor/modulos'
 import { colunaDoDia, diaEmSP, mostrarDiaDaColuna } from '@/servidor/dia'
@@ -45,7 +46,7 @@ export default async function Recibo({
   const { empresa: slug, id } = await params
   const { imprimir } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'mensalidade.ver' })
-  if (!moduloLigado(empresa, 'escola')) notFound()
+  if (!moduloLigado(empresa, 'escola')) semAcesso(slug, 'modulo-escola')
 
   const m = await acharMensalidade(sessao, id)
   if (!m) notFound()

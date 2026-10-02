@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { eixosDaEmpresa } from '@/servidor/produto'
 import { comoOrg } from '@/servidor/banco'
 import { RAMOS, marcasDaGaveta, type Ramo } from '@/servidor/modulos'
@@ -45,11 +45,9 @@ export default async function NovoProduto({
   // A tela nem abre para quem não pode. O botão que leva até aqui já está
   // escondido, mas endereço colado no navegador não passa pelo botão.
   //
-  // `notFound()` e não `forbidden()`: o segundo é experimental no Next e
-  // exige ligar uma bandeira. E a nossa tela de "este endereço não abre" já
-  // diz as duas possibilidades sem escolher — o que também evita confirmar,
-  // para quem não deveria saber, que a tela existe.
-  if (!pode(sessao, 'produto.cadastrar')) notFound()
+  // Nem `notFound()` nem `forbidden()` (experimental no Next): a tela "Sem
+  // acesso" diz o motivo de verdade, dentro do sistema (ver sem-acesso.ts).
+  if (!pode(sessao, 'produto.cadastrar')) semAcesso(slug, 'cargo')
 
   const [eixos, categorias] = await Promise.all([
     eixosDaEmpresa(sessao),

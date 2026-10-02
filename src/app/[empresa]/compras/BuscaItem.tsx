@@ -41,7 +41,7 @@ export function BuscaItem({
         value={termo}
         onChange={(ev) => setTermo(ev.currentTarget.value)}
         autoComplete="off"
-        placeholder="Nome ou código: esmalte, luva, acetona"
+        placeholder="Nome ou código do produto"
       />
       {achados.length > 0 && (
         <ul

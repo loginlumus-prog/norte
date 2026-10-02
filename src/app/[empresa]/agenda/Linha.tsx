@@ -3,15 +3,19 @@
 // Os botões de cada horário: confirmar, atender e cobrar, atendido, faltou,
 // remarcar, desmarcar.
 //
+// UM botão à mostra — o próximo passo do horário (cobrar, ou confirmar) — e o
+// resto num "Mais". Seis botões por cartão quebravam em três linhas, e o
+// "Desmarcar" tinha a mesma cara dos outros: agora ele fica por último no
+// menu, em vermelho, separado.
+//
 // "Faltou" e "Desmarcar" perguntam antes (não voltam atrás); desmarcar pede o
 // motivo, que fica no livro. "Atender e cobrar" não registra nada aqui: abre o
 // Balcão com o serviço e o cliente já na venda — é a venda que, ao fechar,
 // carimba o horário como atendido. O dinheiro tem um caminho só.
 
-import { useEffect, useState, useTransition, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Aviso, Botao, Campo, cx } from '@/ui/base'
-import { Confirmar } from '@/ui/Confirmar'
 import { mudarHorarioAcao } from './acoes'
 
 type Situacao = 'MARCADO' | 'CONFIRMADO' | 'ATENDIDO' | 'FALTOU' | 'CANCELADO'
@@ -63,10 +67,27 @@ export function AcoesHorario({
   remarcarEm: string
   compacto?: boolean
 }) {
-  const [painel, setPainel] = useState<null | 'desmarcar'>(null)
+  const [painel, setPainel] = useState<null | 'desmarcar' | 'atendido' | 'faltou'>(null)
+  const [menu, setMenu] = useState(false)
   const [motivo, setMotivo] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [indo, comecar] = useTransition()
+  const caixa = useRef<HTMLDivElement>(null)
+
+  // O menu fecha no Esc e no clique fora — como qualquer menu.
+  useEffect(() => {
+    if (!menu) return
+    const tecla = (ev: KeyboardEvent) => ev.key === 'Escape' && setMenu(false)
+    const fora = (ev: MouseEvent) => {
+      if (caixa.current && !caixa.current.contains(ev.target as Node)) setMenu(false)
+    }
+    window.addEventListener('keydown', tecla)
+    window.addEventListener('mousedown', fora)
+    return () => {
+      window.removeEventListener('keydown', tecla)
+      window.removeEventListener('mousedown', fora)
+    }
+  }, [menu])
 
   const vivo = situacao === 'MARCADO' || situacao === 'CONFIRMADO'
   const tam = compacto ? 'px-2 py-1 text-xs' : 'px-2.5 py-1.5 text-xs'
@@ -85,9 +106,44 @@ export function AcoesHorario({
   const podeCobrar = !!cobrarEm && !cobrado && (vivo || situacao === 'ATENDIDO')
   if (!podeMexer && !podeCobrar) return null
 
+  // O botão à mostra é o próximo passo: cobrar; sem cobrar, confirmar.
+  const confirmarAMostra = !podeCobrar && podeMexer && situacao === 'MARCADO'
+  const fechar = () => setMenu(false)
+
+  const itemMenu = 'block w-full rounded-norte px-3 py-2 text-left text-sm font-medium text-tinta hover:bg-superficie-2'
+  const itens: ReactNode[] = []
+  if (podeMexer && situacao === 'MARCADO' && !confirmarAMostra) {
+    itens.push(
+      <button key="confirmar" type="button" role="menuitem" className={itemMenu} title="O cliente disse que vem" onClick={() => { fechar(); mudar({ para: 'CONFIRMADO' }) }}>
+        Confirmar
+      </button>,
+    )
+  }
+  if (podeMexer && vivo) {
+    itens.push(
+      <button key="atendido" type="button" role="menuitem" className={itemMenu} onClick={() => { fechar(); setPainel('atendido') }}>
+        Atendido, sem cobrar agora
+      </button>,
+      <button key="faltou" type="button" role="menuitem" className={itemMenu} onClick={() => { fechar(); setPainel('faltou') }}>
+        Faltou
+      </button>,
+      <Link key="remarcar" href={remarcarEm} role="menuitem" className={itemMenu} onClick={fechar}>
+        Remarcar
+      </Link>,
+    )
+  }
+  if (podeMexer && situacao === 'CONFIRMADO') {
+    itens.push(
+      <button key="desfazer" type="button" role="menuitem" className={itemMenu} title="Confirmou por engano? Volta para marcado." onClick={() => { fechar(); mudar({ para: 'MARCADO' }) }}>
+        Desfazer confirmação
+      </button>,
+    )
+  }
+  const podeDesmarcar = podeMexer && vivo
+
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap gap-1">
+      <div ref={caixa} className="relative flex flex-wrap items-center gap-1">
         {podeCobrar && (
           <Link
             href={cobrarEm!}
@@ -96,53 +152,72 @@ export function AcoesHorario({
             Atender e cobrar
           </Link>
         )}
-        {podeMexer && situacao === 'MARCADO' && (
+        {confirmarAMostra && (
           <Botao tom="secundario" className={tam} carregando={indo} onClick={() => mudar({ para: 'CONFIRMADO' })} title="O cliente disse que vem">
             Confirmar
           </Botao>
         )}
-        {podeMexer && vivo && (
-          <Confirmar
-            className={tam}
+        {(itens.length > 0 || podeDesmarcar) && (
+          <Botao
             tom="discreto"
-            tomSim="confirmar"
-            pergunta="Atendido sem cobrar agora?"
-            sim="Sim, atendido"
-            aoConfirmar={() => mudarHorarioAcao(slug, id, { para: 'ATENDIDO' })}
-          >
-            Atendido
-          </Confirmar>
-        )}
-        {podeMexer && vivo && (
-          <Confirmar
             className={tam}
-            tom="discreto"
-            pergunta="Anotar falta?"
-            sim="Sim, faltou"
-            aoConfirmar={() => mudarHorarioAcao(slug, id, { para: 'FALTOU' })}
+            aria-haspopup="menu"
+            aria-expanded={menu}
+            carregando={indo && !confirmarAMostra && !painel}
+            onClick={() => setMenu((m) => !m)}
           >
-            Faltou
-          </Confirmar>
-        )}
-        {podeMexer && vivo && (
-          <Link
-            href={remarcarEm}
-            className={cx('inline-flex items-center justify-center rounded-norte border border-transparent font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta', tam)}
-          >
-            Remarcar
-          </Link>
-        )}
-        {podeMexer && situacao === 'CONFIRMADO' && (
-          <Botao tom="discreto" className={tam} carregando={indo} onClick={() => mudar({ para: 'MARCADO' })} title="Confirmou por engano? Volta para marcado.">
-            Desfazer confirmação
+            Mais ▾
           </Botao>
         )}
-        {podeMexer && vivo && (
-          <Botao tom="discreto" className={tam} onClick={() => setPainel('desmarcar')}>
-            Desmarcar
-          </Botao>
+        {menu && (
+          <div
+            role="menu"
+            className="absolute top-full left-0 z-30 mt-1 flex min-w-52 flex-col rounded-norte border border-borda bg-superficie p-1 shadow-norte-alta"
+          >
+            {itens}
+            {podeDesmarcar && (
+              <>
+                {itens.length > 0 && <span aria-hidden className="my-1 border-t border-borda-suave" />}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full rounded-norte px-3 py-2 text-left text-sm font-semibold text-critico hover:bg-critico-fundo"
+                  onClick={() => {
+                    fechar()
+                    setPainel('desmarcar')
+                  }}
+                >
+                  Desmarcar…
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
+
+      {(painel === 'atendido' || painel === 'faltou') && (
+        <Janela titulo={painel === 'atendido' ? `Atendido: ${resumo}` : `Faltou: ${resumo}`} aoFechar={() => setPainel(null)}>
+          <p className="text-sm text-tinta-2">
+            {painel === 'atendido'
+              ? 'Marca como atendido sem cobrar agora. Para receber, use "Atender e cobrar".'
+              : 'Anota a falta. Não volta atrás.'}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <Botao
+              tom={painel === 'atendido' ? 'confirmar' : 'perigo'}
+              className="px-3 py-2 text-sm"
+              carregando={indo}
+              onClick={() => mudar({ para: painel === 'atendido' ? 'ATENDIDO' : 'FALTOU' })}
+            >
+              {painel === 'atendido' ? 'Sim, atendido' : 'Sim, faltou'}
+            </Botao>
+            <Botao tom="discreto" className="px-3 py-2 text-sm" onClick={() => setPainel(null)}>
+              Voltar
+            </Botao>
+          </div>
+          {erro && <Aviso nivel="critico">{erro}</Aviso>}
+        </Janela>
+      )}
 
       {painel === 'desmarcar' && (
         <Janela titulo={`Desmarcar: ${resumo}`} aoFechar={() => setPainel(null)}>
@@ -152,7 +227,7 @@ export function AcoesHorario({
             id={`motivo-${id}`}
             value={motivo}
             onChange={(ev) => setMotivo(ev.currentTarget.value)}
-            placeholder="Pediu para remarcar, a profissional adoeceu..."
+            placeholder="Pediu para remarcar, imprevisto..."
             required
           />
           <p className="text-xs text-tinta-3">O horário fica livre na agenda. O desmarcado continua na história do dia.</p>

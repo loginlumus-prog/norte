@@ -22,15 +22,42 @@
 // nada. Aplicar o palpite antes de ler apagaria a escolha da pessoa — o <html>
 // já vem certo do servidor, e o primeiro efeito o desfaria.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { cx } from './base'
 
 export type Tema = 'claro' | 'escuro' | 'sistema'
 
-const OPCOES: { valor: Tema; titulo: string; icone: string }[] = [
-  { valor: 'claro', titulo: 'Claro', icone: '☀' },
-  { valor: 'escuro', titulo: 'Escuro', icone: '☾' },
+// Desenhados, e não "☀"/"☾": o caractere vinha da fonte do aparelho, cada um
+// de um tamanho, e a lua apagada mal se via. Mesma grade (24) e mesmo traço
+// dos ícones de interface (`Icones.tsx`), pintados pela cor de quem chama.
+const traco = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+}
+
+const Sol = () => (
+  <svg aria-hidden focusable="false" width="14" height="14" viewBox="0 0 24 24" {...traco}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
+  </svg>
+)
+
+const Lua = () => (
+  <svg aria-hidden focusable="false" width="14" height="14" viewBox="0 0 24 24" {...traco}>
+    <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />
+  </svg>
+)
+
+const OPCOES: { valor: Tema; titulo: string; icone: ReactNode }[] = [
+  { valor: 'claro', titulo: 'Claro', icone: <Sol /> },
+  { valor: 'escuro', titulo: 'Escuro', icone: <Lua /> },
 ]
+
+/** Avisa as outras chaves da tela (a do cabeçalho e a da gaveta do celular). */
+const EVENTO = 'norte:tema'
 
 /** O que vale de fato: tudo que não for escuro é claro. */
 export const temaDe = (t: string | undefined | null): 'claro' | 'escuro' =>
@@ -46,16 +73,19 @@ const TOM: Record<Tom, { caixa: string; ativo: string; parado: string }> = {
     parado: 'text-nav-tinta-2 hover:bg-nav-3 hover:text-nav-tinta',
   },
   // A barra lateral: branca no claro, azul-noite no escuro. Segue as fichas
-  // dela em vez de fixar um dos dois lados.
+  // dela em vez de fixar um dos dois lados. Igual à chave do modo (`lado`).
   lado: {
     caixa: 'border-lado-borda bg-lado-2',
     ativo: 'bg-lado text-lado-ativo shadow-norte',
     parado: 'text-lado-tinta-2 hover:text-lado-tinta',
   },
+  // O cabeçalho: a mesma chave segmentada do Simples/Avançado (`topo` em
+  // TrocaModo.tsx). Antes o aceso era um bloco preto, e as duas chaves lado a
+  // lado pareciam de sistemas diferentes.
   papel: {
     caixa: 'border-borda bg-superficie-2',
-    ativo: 'bg-tinta text-superficie',
-    parado: 'text-tinta-3 hover:bg-superficie hover:text-tinta',
+    ativo: 'bg-superficie text-marca shadow-norte',
+    parado: 'text-tinta-3 hover:text-tinta',
   },
 }
 
@@ -83,6 +113,20 @@ export function TrocaTema({ inicial, tom = 'nav' }: { inicial?: Tema; tom?: Tom 
     document.cookie = `tema=${tema}; path=/; max-age=31536000; samesite=lax`
   }, [tema, sabe])
 
+  // Duas chaves na mesma tela (cabeçalho e gaveta): a que não foi tocada
+  // acende o lado certo também.
+  useEffect(() => {
+    const ouvir = (e: Event) => setTema(temaDe((e as CustomEvent<string>).detail))
+    window.addEventListener(EVENTO, ouvir)
+    return () => window.removeEventListener(EVENTO, ouvir)
+  }, [])
+
+  function escolher(t: Tema) {
+    setTema(t)
+    setSabe(true)
+    window.dispatchEvent(new CustomEvent(EVENTO, { detail: t }))
+  }
+
   const cores = TOM[tom]
 
   return (
@@ -98,12 +142,14 @@ export function TrocaTema({ inicial, tom = 'nav' }: { inicial?: Tema; tom?: Tom 
         <button
           key={o.valor}
           type="button"
-          onClick={() => setTema(o.valor)}
+          onClick={() => escolher(o.valor)}
           title={o.titulo}
           aria-label={o.titulo}
           aria-pressed={tema === o.valor}
           className={cx(
-            'rounded px-1.5 py-0.5 text-xs transition-colors',
+            // A altura da chave do modo (py-1 + 16px), para as duas
+            // ficarem do mesmo tamanho lado a lado.
+            'grid h-6 w-7 place-items-center rounded transition-colors',
             tema === o.valor ? cores.ativo : cores.parado,
           )}
         >

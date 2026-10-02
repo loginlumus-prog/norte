@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -76,7 +76,7 @@ export default async function Agenda({
   const { empresa: slug } = await params
   const q = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'agenda.ver' })
-  if (!moduloLigado(empresa, 'agenda')) notFound()
+  if (!moduloLigado(empresa, 'agenda')) semAcesso(slug, 'modulo-agenda')
 
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
   const agora = new Date()

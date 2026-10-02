@@ -1719,40 +1719,70 @@ export async function listarItensVendidos(
 /** A venda inteira, para a ficha. */
 export async function acharVenda(sessao: Sessao, vendaId: string) {
   exigir(sessao, 'venda.ver')
-  const v = await comoOrg(sessao.orgId, (db) =>
-    db.venda.findUnique({
-      where: { id: vendaId },
-      include: {
-        itens: {
-          orderBy: { id: 'asc' },
-          // `servico`: a ficha mostra "1×" para a consulta, e não "1 un".
-          include: {
-            devolucoes: { select: { quantidade: true } },
-            variacao: { select: { produto: { select: { servico: true } } } },
-          },
-        },
-        pagamentos: {
-          orderBy: { criadoEm: 'asc' },
-          include: { vale: { select: { codigo: true } } },
-        },
-        devolucoes: {
-          orderBy: { criadaEm: 'asc' },
-          include: {
-            itens: { select: { vendaItemId: true, quantidade: true, valor: true } },
-            vale: { select: { codigo: true, saldo: true, validade: true } },
-          },
-        },
-        parcelas: {
-          orderBy: { numero: 'asc' },
-          select: { id: true, numero: true, de: true, vencimento: true, valor: true, pago: true, desconto: true, quitadaEm: true },
-        },
-        cliente: { select: { id: true, nome: true, telefone: true } },
-        unidade: { select: { id: true, nome: true } },
-        caixa: { select: { id: true, aberto: true } },
-        encomenda: { select: { id: true, descricao: true } },
-      },
-    }),
-  )
+  // Uma consulta por vez, e nenhuma com duas relações lado a lado. O Prisma
+  // busca as relações irmãs de um `include` AO MESMO TEMPO, e dentro do
+  // comoOrg a conexão é uma só: o `pg` avisa ("client.query() when the client
+  // is already executing a query") e no pg@9 isso quebra. Era o que a ficha e
+  // o comprovante da venda faziam a cada abertura.
+  const v = await comoOrg(sessao.orgId, async (db) => {
+    const venda = await db.venda.findUnique({ where: { id: vendaId } })
+    if (!venda) return null
+    const itensBrutos = await db.vendaItem.findMany({
+      where: { vendaId },
+      orderBy: { id: 'asc' },
+      include: { devolucoes: { select: { quantidade: true } } },
+    })
+    // `servico`: a ficha mostra "1×" para a consulta, e não "1 un".
+    const idsVar = [...new Set(itensBrutos.map((i) => i.variacaoId).filter((x): x is string => !!x))]
+    const servicos = idsVar.length
+      ? await db.variacao.findMany({ where: { id: { in: idsVar } }, select: { id: true, produto: { select: { servico: true } } } })
+      : []
+    const servicoDa = new Map(servicos.map((x) => [x.id, x.produto.servico]))
+    const itens = itensBrutos.map((i) => ({
+      ...i,
+      variacao: i.variacaoId && servicoDa.has(i.variacaoId) ? { produto: { servico: servicoDa.get(i.variacaoId)! } } : null,
+    }))
+    const pagamentos = await db.pagamento.findMany({
+      where: { vendaId },
+      orderBy: { criadoEm: 'asc' },
+      include: { vale: { select: { codigo: true } } },
+    })
+    const devolucoesBrutas = await db.devolucao.findMany({
+      where: { vendaId },
+      orderBy: { criadaEm: 'asc' },
+      include: { itens: { select: { vendaItemId: true, quantidade: true, valor: true } } },
+    })
+    const idsVale = devolucoesBrutas.map((d) => d.valeId).filter((x): x is string => !!x)
+    const vales = idsVale.length
+      ? await db.vale.findMany({ where: { id: { in: idsVale } }, select: { id: true, codigo: true, saldo: true, validade: true } })
+      : []
+    const valeDe = new Map(vales.map(({ id, ...x }) => [id, x]))
+    const devolucoes = devolucoesBrutas.map((d) => ({ ...d, vale: (d.valeId && valeDe.get(d.valeId)) || null }))
+    const parcelas = await db.parcela.findMany({
+      where: { vendaId },
+      orderBy: { numero: 'asc' },
+      select: { id: true, numero: true, de: true, vencimento: true, valor: true, pago: true, desconto: true, quitadaEm: true },
+    })
+    const cliente = venda.clienteId
+      ? await db.cliente.findUnique({ where: { id: venda.clienteId }, select: { id: true, nome: true, telefone: true } })
+      : null
+    const unidade = await db.unidade.findUniqueOrThrow({ where: { id: venda.unidadeId }, select: { id: true, nome: true } })
+    const caixa = venda.caixaId
+      ? await db.caixa.findUnique({ where: { id: venda.caixaId }, select: { id: true, aberto: true } })
+      : null
+    const encomenda = venda.encomendaId
+      ? await db.encomenda.findUnique({ where: { id: venda.encomendaId }, select: { id: true, descricao: true } })
+      : null
+    // A linha do ACERTO do pedido do catálogo (entrega, sinal): sem produto,
+    // numa venda que recebeu encomenda com produtos do cadastro. O
+    // comprovante mostra o que ela é, e não "Encomenda ENC-…" como se fosse
+    // uma peça. Ver `SEM_ACERTO_DE_CATALOGO`.
+    const catalogoComItens = venda.encomendaId
+      ? (await db.encomendaItem.count({ where: { encomendaId: venda.encomendaId, variacaoId: { not: null } } })) > 0
+      : false
+    const acertoItemId = catalogoComItens ? (itens.find((i) => !i.variacaoId)?.id ?? null) : null
+    return { ...venda, itens, pagamentos, devolucoes, parcelas, cliente, unidade, caixa, encomenda, acertoItemId }
+  })
   // Achar por id passa pelo RLS (só vem venda desta empresa), mas a unidade
   // ainda precisa ser conferida: gerente de uma loja não abre venda da outra.
   if (!v || !pode(sessao, 'venda.ver', v.unidadeId)) return null

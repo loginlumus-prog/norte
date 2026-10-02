@@ -171,11 +171,11 @@ export default async function Clientes({
     >
       <Tira
         itens={[
-          { rotulo: 'compraram', um: 'comprou', quantos: clientes.length - semCompra.length, nivel: 'bom' },
+          { rotulo: vocab.naFicha.compraram, um: vocab.naFicha.comprou, quantos: clientes.length - semCompra.length, nivel: 'bom' },
           { rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, um: `sumido há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length, nivel: 'atencao' },
           { rotulo: 'devendo no crediário', quantos: devendo.length, nivel: devendo.some((c) => c.vencido > 0) ? 'critico' : 'atencao' },
           { rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length, nivel: 'bom' },
-          { rotulo: 'nunca compraram', um: 'nunca comprou', quantos: semCompra.length, nivel: 'neutro' },
+          { rotulo: vocab.naFicha.nuncaPlural, um: vocab.naFicha.nunca, quantos: semCompra.length, nivel: 'neutro' },
         ]}
       />
 
@@ -198,7 +198,7 @@ export default async function Clientes({
                 { valor: 'aniversario', rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length },
                 { valor: 'pontos', rotulo: 'com pontos', quantos: comPontos.length, avancado: true },
                 { valor: 'devendo', rotulo: 'devendo', quantos: devendo.length },
-                { valor: 'nunca', rotulo: 'nunca compraram', quantos: semCompra.length, avancado: true },
+                { valor: 'nunca', rotulo: vocab.naFicha.nuncaPlural, quantos: semCompra.length, avancado: true },
                 ...(desativados.length > 0 || quem === 'desativados'
                   ? [{ valor: 'desativados' as const, rotulo: 'desativados', quantos: desativados.length, avancado: true }]
                   : []),
@@ -281,15 +281,16 @@ export default async function Clientes({
               },
               {
                 chave: 'compras',
-                titulo: 'Compras',
+                titulo: vocab.naFicha.Contagem,
                 numero: true,
                 largura: '6rem',
                 celula: (c) => <span className="numero text-sm text-tinta-2">{c.compras}</span>,
               },
               {
                 chave: 'gastou',
-                titulo: 'Gastou',
+                titulo: vocab.naFicha.Gastou,
                 numero: true,
+                destaque: true,
                 largura: '8rem',
                 celula: (c) => (
                   <span className="numero text-sm font-semibold text-tinta">{brl(c.gastou)}</span>
@@ -297,12 +298,12 @@ export default async function Clientes({
               },
               {
                 chave: 'quando',
-                titulo: 'Última compra',
+                titulo: vocab.naFicha.Ultima,
                 numero: true,
                 largura: '10rem',
                 celula: (c) => {
                   const d = diasDesde(c.ultimaCompra)
-                  if (d === null) return <Situacao nivel="neutro">{c.anteriores > 0 ? 'no sistema anterior' : 'nunca comprou'}</Situacao>
+                  if (d === null) return <Situacao nivel="neutro">{c.anteriores > 0 ? 'no sistema anterior' : vocab.naFicha.nunca}</Situacao>
                   if (d >= DIAS_SUMIDO) return <Situacao nivel="atencao">há {d} dias</Situacao>
                   return <Situacao nivel="bom">{d === 0 ? 'hoje' : `há ${plural(d, 'dia', 'dias')}`}</Situacao>
                 },
@@ -311,7 +312,8 @@ export default async function Clientes({
                 ? [
                     {
                       chave: 'extra',
-                      titulo: '',
+                      // A coluna sem título deixava "120 pontos" solto na linha.
+                      titulo: devendo.length > 0 && comPontos.length > 0 ? 'Deve · pontos' : devendo.length > 0 ? 'Deve' : 'Pontos',
                       largura: '9rem',
                       celula: (c: (typeof clientes)[number]) => (
                         <span className="flex flex-col items-end gap-0.5">

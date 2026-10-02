@@ -54,6 +54,7 @@ import {
   faixaDePreco,
   fracionado,
   iniciais,
+  iniciaisDistintas,
   possivel,
   rotuloDaVariacao,
   saldoTotal,
@@ -293,6 +294,9 @@ export function Produtos({
   const daLoja = v.achados.filter((a) => !a.foraDaLoja)
   const deFora = v.achados.find((a) => a.foraDaLoja)
   const blocos = agruparAchados(daLoja)
+  // As iniciais da grade, sem repetir: dois "AK" lado a lado não se acham.
+  const siglasDaBusca = iniciaisDistintas(blocos.map((b) => (b.tipo === 'peca' ? b.achado.descricao : b.produto.nome)))
+  const siglasDaPagina = iniciaisDistintas((pagina?.produtos ?? []).map((p) => p.nome))
 
   return (
     <section aria-label={palavras.Produtos} className="flex min-h-0 min-w-0 flex-col gap-3">
@@ -522,6 +526,7 @@ export function Produtos({
                       semEstoqueOk={v.vendeSemEstoque}
                       key={a.id}
                       nome={a.descricao}
+                      sigla={siglasDaBusca[i]}
                       preco={precoDe({ ...a, quantidade: 1 }, v.conta.tabela)}
                       medida={a.medida}
                       estilo={estiloDoTom(tomDe(-1))}
@@ -547,6 +552,7 @@ export function Produtos({
                     semEstoqueOk={v.vendeSemEstoque}
                     key={p.id}
                     nome={p.nome}
+                    sigla={siglasDaBusca[i]}
                     preco={faixa.de}
                     aPartirDe={faixa.de !== faixa.ate}
                     medida={p.medida}
@@ -600,7 +606,7 @@ export function Produtos({
         ) : (
           <>
             <Grade>
-              {pagina?.produtos.map((p) => {
+              {pagina?.produtos.map((p, i) => {
                 const faixa = faixaDePreco(p.variacoes, v.conta.tabela)
                 const saldo = saldoTotal(p.variacoes)
                 const qtd = p.variacoes.reduce((s, x) => s + (noPedido.get(x.id) ?? 0), 0)
@@ -610,6 +616,7 @@ export function Produtos({
                     semEstoqueOk={v.vendeSemEstoque}
                     key={p.id}
                     nome={p.nome}
+                    sigla={siglasDaPagina[i]}
                     preco={unica ? precoDe({ ...unica, quantidade: 1 }, v.conta.tabela) : faixa.de}
                     aPartirDe={!unica && faixa.de !== faixa.ate}
                     medida={p.medida}
@@ -726,6 +733,7 @@ const qtdNaTela = (n: number) => (Number.isInteger(n) ? String(n) : n.toLocaleSt
 
 function Cartao({
   nome,
+  sigla,
   preco,
   aPartirDe = false,
   medida,
@@ -751,6 +759,8 @@ function Cartao({
    */
   semLancamento?: boolean
   nome: string
+  /** As iniciais já sem repetir na grade (`iniciaisDistintas`). Sem elas, as do nome. */
+  sigla?: string
   preco: number
   aPartirDe?: boolean
   medida: string
@@ -811,7 +821,7 @@ function Cartao({
     >
       <span aria-hidden style={estilo} className="flex h-[4.25rem] shrink-0 items-center justify-between gap-2 px-3.5">
         <span className="flex min-w-0 flex-col gap-1">
-          <span className="text-[1.625rem] leading-none font-extrabold tracking-tight">{iniciais(nome)}</span>
+          <span className="text-[1.625rem] leading-none font-extrabold tracking-tight">{sigla ?? iniciais(nome)}</span>
           {codigo && (
             <span className={cx('numero truncate font-mono text-xs leading-none font-bold opacity-85', noPedido > 0 && 'max-w-[5.5rem]')}>
               {codigo}

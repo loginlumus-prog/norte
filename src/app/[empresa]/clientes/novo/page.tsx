@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { pode } from '@/servidor/permissao'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
@@ -22,7 +22,7 @@ export default async function NovoCliente({ params }: { params: Promise<{ empres
 
   // O botão que leva até aqui já está escondido; endereço colado no navegador
   // não passa pelo botão.
-  if (!pode(sessao, 'cliente.editar')) notFound()
+  if (!pode(sessao, 'cliente.editar')) semAcesso(slug, 'cargo')
   const ofertas = await ofertasNaTela(sessao, empresa.nome)
 
   return (

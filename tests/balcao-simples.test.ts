@@ -13,6 +13,7 @@ import {
   faixaDePreco,
   fracionado,
   iniciais,
+  iniciaisDistintas,
   partesDaDescricao,
   possivel,
   rotuloDaVariacao,
@@ -196,6 +197,20 @@ describe('a cara do cartão', () => {
     expect(iniciais('Açaí')).toBe('AÇ')
     expect(iniciais('Picolé de limão')).toBe('PL')
     expect(iniciais('  ')).toBe('?')
+  })
+
+  it('só letras: parêntese, sinal e medida não viram inicial', () => {
+    expect(iniciais('Camiseta (P)')).toBe('CP')
+    expect(iniciais('Cabo + capa')).toBe('CC')
+    expect(iniciais('Copo 800ml')).toBe('CO')
+    expect(iniciais('+ 300')).toBe('?')
+  })
+
+  it('na mesma grade, sem repetir', () => {
+    const r = iniciaisDistintas(['Açaí kids', 'Açaí kiwi', 'Água kefir', 'Copo 300ml', 'Copo 500ml'])
+    expect(new Set(r).size).toBe(r.length)
+    expect(r[0]).toBe('AK')
+    for (const x of r) expect(x).toMatch(/^\p{L}{2}$/u)
   })
 
   it('a mesma categoria tem sempre o mesmo tom, e nunca vermelho nem verde', () => {

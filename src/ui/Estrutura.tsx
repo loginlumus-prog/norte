@@ -18,6 +18,8 @@
 //    cada item (`IconesMenu.tsx`) existe para isso — no trilho ele é o item.
 // 6. O MODO E O TEMA MORAM NO CABEÇALHO, à vista em toda tela. No rodapé da
 //    barra eles ficavam embaixo da rolagem, e quem queria trocar não achava.
+//    No CELULAR eles vão para a gaveta: no cabeçalho estreito a chave do tema
+//    sobrava sozinha numa linha, e a tela começava na terceira.
 // 4. O MESMO MENU VAI PARA O CELULAR. Abaixo de `md` a barra some e entra uma
 //    gaveta com a mesma lista, já filtrada. Antes disso o telefone não tinha
 //    menu NENHUM: quem entrava pelo celular caía no painel e não saía dele.
@@ -40,6 +42,7 @@ import { Gaveta } from './Gaveta'
 import { IconeDoItem } from './IconesMenu'
 import { Tranca } from './Tranca'
 import { Guia } from './Guia'
+import { AcoesDoTopo } from './AcoesDoTopo'
 import { cx, Ponto } from './base'
 
 export type ItemMenu = {
@@ -274,7 +277,7 @@ export async function Estrutura({
   )
 
   const rodape = (
-    <div className="mt-auto flex flex-col gap-2 border-t border-lado-borda px-1.5 pt-3">
+    <div className="mt-auto flex shrink-0 flex-col gap-2 border-t border-lado-borda px-1.5 pt-3">
       {/* O plano fica a vista, no rodape da barra, em toda tela.
           Escondido dentro de Configuracoes, ninguem lembra do que
           contratou — e quando o limite bate, a mensagem chega como
@@ -362,7 +365,11 @@ export async function Estrutura({
     </div>
   )
 
-  const marca = (
+  // Uma função, e não um pedaço pronto: a marca aparece na barra E na gaveta
+  // do celular, e o degradê da chama tem `id` — repetido, o navegador pinta
+  // a segunda pelo primeiro, que está escondido (`hidden md:flex`), e a chama
+  // da gaveta sumia. Cada lugar leva o seu.
+  const marca = (id: string) => (
     <>
       {/* A marca do produto em cima, o nome da empresa embaixo. Nessa ordem:
           quem paga a mensalidade é a empresa, mas quem responde pelo sistema
@@ -371,7 +378,7 @@ export async function Estrutura({
       <div className="flex items-center gap-2 px-1.5 pt-1 pb-1">
         {/* Com o azulejo, e não nu: no claro a barra é branca e o losango
             branco sumiria nela. O azulejo azul-noite serve aos dois temas. */}
-        <Simbolo tamanho={26} id="marca-barra" />
+        <Simbolo tamanho={26} id={id} />
         <span className="text-[15px] font-extrabold tracking-[-0.035em] text-lado-tinta">
           Norte
         </span>
@@ -407,9 +414,13 @@ export async function Estrutura({
           {rodapeTrilho}
         </aside>
       ) : (
-        <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-lado-borda bg-lado p-2.5 md:flex">
-          {marca}
-          {navegacao}
+        // Só a lista rola; a marca em cima e a pessoa embaixo ficam presas.
+        // Antes a barra inteira rolava, e numa tela de 900px o dono (que vê
+        // tudo) perdia Assinatura, Configurações e o "Sair" para baixo da
+        // dobra, sem nenhum sinal de que havia mais.
+        <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-0.5 border-r border-lado-borda bg-lado p-2.5 md:flex">
+          <div className="shrink-0">{marca('marca-barra')}</div>
+          <div className="lista-rola -mx-2.5 min-h-0 flex-1 overflow-y-auto px-2.5 pb-2">{navegacao}</div>
           {rodape}
         </aside>
       )}
@@ -420,8 +431,16 @@ export async function Estrutura({
         <div className="flex items-center gap-2 border-b border-lado-borda bg-lado px-2 py-1.5 md:hidden">
           <Gaveta rotulo={empresa.nome}>
             <div className="flex min-h-full flex-col gap-0.5">
-              {marca}
+              {marca('marca-gaveta')}
               {navegacao}
+              {/* O modo e o tema, que no cabeçalho do celular não cabem. */}
+              <div className="mt-4 flex flex-col gap-2 border-t border-lado-borda px-1.5 pt-3">
+                <span className="text-[10px] font-bold tracking-[0.12em] text-lado-tinta-2/75 uppercase">Tela</span>
+                <div className="flex items-center justify-between gap-2">
+                  <TrocaModo atual={modo} tom="lado" />
+                  <TrocaTema inicial={tema} tom="lado" />
+                </div>
+              </div>
               {rodape}
             </div>
           </Gaveta>
@@ -435,17 +454,17 @@ export async function Estrutura({
             seletores, e numa tela de 1.000px o seletor de período comia o
             nome da tela até sobrar "Pai...". Agora os dois dividem a linha
             enquanto cabem, e os seletores descem para baixo quando não cabem. */}
-        <header
-          className={cx(
-            'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-borda bg-superficie px-4 md:px-6',
-            recolhida ? 'py-2' : 'py-2.5',
-          )}
-        >
-          <h1 className="shrink-0 text-base font-bold tracking-tight">{titulo}</h1>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            {acao}
-            {/* O modo muda o que a pessoa vê; o tema, só a cor. Os dois à
-                vista em toda tela, e não perdidos no pé da barra. */}
+        {/* Uma altura só (`min-h-13`, 52px) em toda tela: com a altura vinda
+            do conteúdo, o cabeçalho tinha 50px numa tela e 54 na outra, e o
+            título pulava ao trocar de menu. No telefone, título e UMA ação —
+            o resto vai para o "Mais" (AcoesDoTopo). */}
+        <header className="flex min-h-13 flex-wrap items-center gap-x-3 gap-y-2 border-b border-borda bg-superficie px-4 py-2 md:px-6">
+          <h1 className="mr-auto shrink-0 text-base font-bold tracking-tight">{titulo}</h1>
+          {acao && <AcoesDoTopo>{acao}</AcoesDoTopo>}
+          {/* O modo muda o que a pessoa vê; o tema, só a cor. Os dois à
+              vista em toda tela, e não perdidos no pé da barra — no
+              celular, na gaveta. */}
+          <div className="hidden items-center gap-2 md:flex">
             <TrocaModo atual={modo} tom="topo" />
             <TrocaTema inicial={tema} tom="papel" />
           </div>
@@ -453,7 +472,9 @@ export async function Estrutura({
         <main
           className={cx(
             'flex flex-1 flex-col',
-            recolhida ? 'min-h-0 overflow-hidden' : 'gap-5 p-4 md:p-6',
+            // `pb-20`: o vão do botão de Ajuda, que fica fixo no canto de
+            // baixo e cobria o último valor e o último botão da página.
+            recolhida ? 'min-h-0 overflow-hidden' : 'gap-5 p-4 pb-20 md:p-6 md:pb-20',
           )}
         >
           {children}

@@ -19,6 +19,7 @@
 
 import { comoOrg, type BancoDaOrg } from './banco'
 import type { Plano } from '@prisma/client'
+import { SEM_ACERTO_DE_CATALOGO } from './acerto-catalogo'
 import { exigir, soAsQuePode, type Sessao } from './permissao'
 import { janela, type Janela } from './periodo'
 import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
@@ -228,6 +229,7 @@ export async function resumoDoPainel(
         left join produtos p on p.id = va.produto_id
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
          and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
+         and ${SEM_ACERTO_DE_CATALOGO}
        group by 1 order by 3 desc limit 8
     `
     // Parado: tem saldo e NÃO vendeu nos 30 dias. É dinheiro na arara.
@@ -267,13 +269,22 @@ export async function resumoDoPainel(
              coalesce(' — ' || (select string_agg(o.valor, ' · ')
                                   from variacao_opcoes vo join opcoes o on o.id = vo.opcao_id
                                  where vo.variacao_id = va.id), '') as descricao,
-             va.codigo, sum(e.quantidade) as saldo, max(e.minimo) as minimo
+             va.codigo, sum(e.quantidade) as saldo, coalesce(max(e.minimo), 0) as minimo
         from estoque e
         join variacoes va on va.id = e.variacao_id
         join produtos p on p.id = va.produto_id
-       where e.unidade_id = any(${uni}) and va.ativa and e.minimo is not null
+        join unidades u on u.id = e.unidade_id
+       where e.unidade_id = any(${uni}) and va.ativa and p.ativo and not p.servico
+         -- O mesmo corte do "Precisa de você" (pendencias.ts): linha zerada de
+         -- loja que não vende o produto não é falta.
+         and (e.quantidade > 0 or u.eh_deposito
+              or cardinality(p.vendido_em) = 0 or e.unidade_id = any(p.vendido_em))
        group by va.id, p.nome, va.codigo
-      having sum(e.quantidade) <= max(e.minimo)
+      -- Acabou (zerado e não feito no dia) OU no mínimo cadastrado: a régua das
+      -- pendências. Antes só entrava quem tinha mínimo, e o bloco dizia "nada
+      -- acabando" com produto zerado avisado como urgente ao lado.
+      having (sum(e.quantidade) <= 0 and not bool_or(p.feito_no_dia))
+          or (max(coalesce(e.minimo, 0)) > 0 and sum(e.quantidade) <= max(e.minimo))
        order by sum(e.quantidade) asc limit 8
     `
     // Peça e quilo não se somam: 800 blusas mais 381 kg de sorvete davam
@@ -497,6 +508,7 @@ export async function resumoDeHoje(
         left join produtos p on p.id = va.produto_id
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
          and v.criada_em >= ${semana.de} and v.criada_em < ${semana.ate}
+         and ${SEM_ACERTO_DE_CATALOGO}
        group by 1 order by 3 desc limit 5
     `
 

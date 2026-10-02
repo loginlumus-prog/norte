@@ -109,14 +109,17 @@ export function Guia({
           escuro da tela branca, e quem nunca usou não tinha como saber que
           aquilo era ajuda. O ponto de interrogação é o sinal que qualquer
           pessoa reconhece, e a palavra tira a última dúvida onde há espaço.
-          No celular fica só o círculo, para cobrir menos da tela. */}
+          No celular fica só o círculo, menor e mais no canto, para cobrir
+          menos da tela; e a moldura (Estrutura) deixa um vão no pé de toda
+          página, para o último valor e o último botão nunca ficarem embaixo
+          dele. */}
       {!aberto && (
         <button
           type="button"
           onClick={() => setAberto(true)}
           aria-label="Abrir a ajuda (Guia do Norte)"
           title="Ajuda — Guia do Norte"
-          className="fixed right-4 bottom-4 z-40 flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full border border-borda bg-superficie px-3 text-sm font-semibold text-titulo shadow-norte-alta transition-colors hover:border-marca hover:text-marca"
+          className="fixed right-3 bottom-3 z-40 flex size-10 items-center justify-center gap-1.5 rounded-full border border-borda bg-superficie text-sm font-semibold text-titulo shadow-norte-alta transition-colors hover:border-marca hover:text-marca sm:right-4 sm:bottom-4 sm:h-11 sm:w-auto sm:min-w-11 sm:px-3"
         >
           <svg aria-hidden width="18" height="18" viewBox="0 0 20 20" fill="none">
             <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" />

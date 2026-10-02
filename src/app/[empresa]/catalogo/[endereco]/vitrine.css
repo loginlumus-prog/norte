@@ -1,0 +1,63 @@
+/* A vitrine pública (catálogo e acompanhar pedido). Só o que o Tailwind não
+   diz numa classe: o desenho do produto sem foto, os poucos movimentos e a
+   faixa de categorias sem barra de rolagem. Tudo com prefixo `vt-` para não
+   encostar no resto do sistema. */
+
+/* O produto sem foto: um azulejo na cor da loja, com uma trama fina de pontos.
+   Quatro tons (pela categoria), para a grade não virar uma parede igual. */
+.vt-azulejo {
+  --vt-a: 9%;
+  --vt-b: 20%;
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--marca) 20%, transparent) 1px, transparent 1.4px) 0 0 / 11px 11px,
+    linear-gradient(140deg, color-mix(in oklab, var(--marca) var(--vt-a), var(--superficie)) 0%, color-mix(in oklab, var(--marca) var(--vt-b), var(--superficie)) 100%);
+  color: var(--marca-texto);
+}
+.vt-azulejo[data-tom='1'] { --vt-a: 14%; --vt-b: 28%; }
+.vt-azulejo[data-tom='2'] { --vt-a: 6%;  --vt-b: 16%; }
+.vt-azulejo[data-tom='3'] { --vt-a: 18%; --vt-b: 32%; }
+
+/* O brilho de cima do cabeçalho: a cor da loja, bem de leve. */
+.vt-halo {
+  background:
+    radial-gradient(70% 120% at 15% -20%, color-mix(in oklab, var(--marca) 22%, transparent) 0%, transparent 70%),
+    radial-gradient(60% 100% at 100% 0%, color-mix(in oklab, var(--marca) 10%, transparent) 0%, transparent 70%);
+}
+
+.vt-sem-barra { scrollbar-width: none; }
+.vt-sem-barra::-webkit-scrollbar { display: none; }
+
+/* Movimentos: curtos, e só para quem não pediu menos movimento. */
+@keyframes vt-subir {
+  from { transform: translateY(24px); opacity: 0; }
+}
+@keyframes vt-aparecer {
+  from { opacity: 0; }
+}
+@keyframes vt-pulo {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+@keyframes vt-entrar {
+  from { transform: translateY(110%); }
+}
+@keyframes vt-pulso {
+  0% { box-shadow: 0 0 0 0 var(--marca-anel); }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .vt-folha { animation: vt-subir .28s cubic-bezier(.2, .8, .25, 1) both; }
+  .vt-fundo { animation: vt-aparecer .2s ease-out both; }
+  .vt-pulo { animation: vt-pulo .32s cubic-bezier(.3, .7, .3, 1); }
+  .vt-barra { animation: vt-entrar .35s cubic-bezier(.2, .8, .25, 1) both; }
+  .vt-agora { animation: vt-pulso 2s ease-out infinite; }
+}
+
+/* O verde do WhatsApp como texto: escuro no tema claro, claro no escuro.
+   O tema do sistema vem de `data-tema` no <html> (sempre carimbado), não da
+   preferência do aparelho — por isso não é a variante `dark:`. */
+.vt-zap { color: #15803d; }
+:root[data-tema='escuro'] .vt-zap { color: #4ade80; }

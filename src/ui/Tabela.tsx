@@ -11,12 +11,14 @@
 // barra horizontal na página inteira é o jeito mais rápido de perder o menu.
 //
 // Rolar de lado, porém, esconde a ÚLTIMA coluna — e é nela que costuma morar
-// o botão. Nas mensalidades era o "Receber": com o menu aberto num notebook,
-// a coluna ficava atrás da rolagem e a secretaria nem sabia que ela existia.
-// Por isso `empilhar`: quando o QUADRO (não a janela) fica estreito, cada
-// linha vira um cartão, com o nome da coluna ao lado de cada valor. É o
-// quadro que decide, e não a tela: o mesmo notebook tem 800px de conteúdo com
-// o menu aberto e 1000px com ele recolhido.
+// o que importa: o TOTAL da venda, o preço, o botão "Pagar". No telefone a
+// pessoa via o número da venda e a loja, e nunca o valor. Por isso, no quadro
+// estreito, cada linha vira um CARTÃO (`empilhar`, ligado por padrão): a
+// primeira coluna (ou a `tituloDoCartao`) é o título, as de `destaque` sobem para o lado dele em letra
+// maior, e as outras viram "rótulo … valor". É o QUADRO que decide, e não a
+// tela: o mesmo notebook tem 800px de conteúdo com o menu aberto e 1000px com
+// ele recolhido. As regras moram em globals.css (`.empilha`), para servir
+// também às tabelas escritas à mão.
 
 import type { ReactNode } from 'react'
 import { cx } from './base'
@@ -33,8 +35,36 @@ export type Coluna<L> = {
    * isto precisa levar o recado da coluna para outra célula no celular.
    */
   escondeNoCelular?: boolean
+  /**
+   * O valor que a linha existe para mostrar (o total, o preço, o botão de
+   * pagar). No cartão do celular ele sobe para o lado do título, maior.
+   * Se nenhuma coluna diz nada, vale a ÚLTIMA coluna de número — quase
+   * sempre o total; `destaque: false` em qualquer coluna desliga o palpite.
+   */
+  destaque?: boolean
+  /**
+   * A coluna que dá nome ao cartão do celular. Sem nenhuma marcada, é a
+   * primeira — mas na lista de contas a primeira é a data, e o cartão tem de
+   * se chamar pelo lançamento.
+   */
+  tituloDoCartao?: boolean
   celula: (linha: L) => ReactNode
 }
+
+/**
+ * Quando a linha vira cartão:
+ * - `'celular'` (padrão): quadro com menos de 32rem — o telefone, e o meio
+ *   quadro de um tablet;
+ * - `true`: quadro com menos de 42rem — para a tabela larga cuja última
+ *   coluna é um botão (as mensalidades);
+ * - `false`: nunca. Para a tabela que se lê comparando colunas, onde rolar de
+ *   lado é melhor que perder o alinhamento.
+ */
+export type Empilhar = boolean | 'celular'
+
+/** A classe do quadro: `empilha`/`empilha-largo` (globals.css) ou nada. */
+export const classeEmpilhar = (e: Empilhar) =>
+  e === 'celular' ? 'empilha' : e ? 'empilha-largo' : undefined
 
 export function Tabela<L>({
   colunas,
@@ -42,15 +72,14 @@ export function Tabela<L>({
   chave,
   vazio = 'Nada por aqui ainda.',
   aoClicar,
-  empilhar = false,
+  empilhar = 'celular',
 }: {
   colunas: Coluna<L>[]
   linhas: L[]
   chave: (linha: L) => string
   vazio?: ReactNode
   aoClicar?: (linha: L) => void
-  /** Quadro estreito (menos de 42rem): cada linha vira um cartão, sem rolar de lado. */
-  empilhar?: boolean
+  empilhar?: Empilhar
 }) {
   if (linhas.length === 0) {
     return (
@@ -60,10 +89,14 @@ export function Tabela<L>({
     )
   }
 
+  const titulo = Math.max(0, colunas.findIndex((c) => c.tituloDoCartao))
+  const palpite = colunas.some((c) => c.destaque !== undefined) ? -1 : colunas.findLastIndex((c, i) => c.numero && i !== titulo)
+  const destaque = (c: Coluna<L>, i: number) => c.destaque === true || i === palpite
+
   return (
-    <div className={cx('relative overflow-x-auto rounded-norte border border-borda bg-superficie', empilhar && '@container')}>
-      <table className={cx('w-full border-collapse text-sm', empilhar && '@max-2xl:block')}>
-        <thead className={cx(empilhar && '@max-2xl:hidden')}>
+    <div className={cx('relative overflow-x-auto rounded-norte border border-borda bg-superficie', classeEmpilhar(empilhar))}>
+      <table className="w-full border-collapse text-sm">
+        <thead>
           <tr>
             {colunas.map((c) => (
               <th
@@ -82,7 +115,7 @@ export function Tabela<L>({
             ))}
           </tr>
         </thead>
-        <tbody className={cx(empilhar && '@max-2xl:block')}>
+        <tbody>
           {linhas.map((l) => (
             <tr
               key={chave(l)}
@@ -90,12 +123,15 @@ export function Tabela<L>({
               className={cx(
                 'border-b border-borda-suave last:border-0',
                 aoClicar && 'cursor-pointer hover:bg-superficie-2',
-                empilhar && '@max-2xl:block @max-2xl:py-2',
               )}
             >
               {colunas.map((c, i) => (
                 <td
                   key={c.chave}
+                  // O cartão do celular lê o nome da coluna daqui.
+                  data-rotulo={c.titulo || undefined}
+                  data-titulo={i === titulo || undefined}
+                  data-destaque={destaque(c, i) || undefined}
                   // 10px de lado no celular, e não 12: quatro colunas
                   // ganham 16px, que é o que separava a lista de Vendas de
                   // caber inteira num telefone sem rolar de lado.
@@ -103,21 +139,9 @@ export function Tabela<L>({
                     'px-2.5 py-2 align-top text-tinta sm:px-3',
                     c.numero && 'numero',
                     c.escondeNoCelular && 'hidden sm:table-cell',
-                    // Empilhada: a primeira coluna é o título do cartão; as
-                    // outras, "rótulo … valor" numa linha, com o valor à
-                    // direita — onde o botão fica ao alcance do polegar.
-                    empilhar &&
-                      (i === 0
-                        ? '@max-2xl:block @max-2xl:pb-1'
-                        : '@max-2xl:flex @max-2xl:items-start @max-2xl:justify-between @max-2xl:gap-3 @max-2xl:py-1'),
                   )}
                 >
-                  {empilhar && i > 0 && c.titulo && (
-                    <span className="hidden shrink-0 pt-0.5 text-left font-sans text-xs font-semibold tracking-wide text-tinta-3 uppercase @max-2xl:block">
-                      {c.titulo}
-                    </span>
-                  )}
-                  {empilhar && i > 0 ? <div className="@max-2xl:ml-auto @max-2xl:text-right">{c.celula(l)}</div> : c.celula(l)}
+                  {c.celula(l)}
                 </td>
               ))}
             </tr>

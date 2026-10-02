@@ -23,6 +23,14 @@ import { ORDEM, doPlano, planoLibera } from '@/servidor/planos'
 import { salvarModulos, type EstadoComeco } from '../comecar/acoes'
 import { semApagar } from '@/ui/formulario'
 
+/**
+ * Módulo que ainda não faz nada: a chave aparece, travada e com "Em breve".
+ * A nota fiscal depende do emissor e do certificado de cada loja (ver
+ * `MODULOS.notaFiscal`): marcar a caixa não emitia nota nenhuma, e a pessoa
+ * achava que tinha ligado.
+ */
+const EM_BREVE: readonly Modulo[] = ['notaFiscal']
+
 /** O plano mais barato que abre o módulo, ou null se nenhum abre ainda. */
 const primeiroQueAbre = (m: Modulo): Plano | null => ORDEM.find((p) => planoLibera(p, m)) ?? null
 
@@ -51,15 +59,33 @@ export function Modulos({
 
       {abertos.length > 0 ? (
         <div className="grid gap-2 sm:grid-cols-2">
-          {abertos.map((m) => (
-            <Marcar
-              key={m}
-              name={`modulo_${m}`}
-              titulo={MODULOS[m].titulo}
-              resumo={MODULOS[m].resumo}
-              defaultChecked={ligados.includes(m)}
-            />
-          ))}
+          {abertos.map((m) =>
+            EM_BREVE.includes(m) ? (
+              <label
+                key={m}
+                className="flex cursor-not-allowed items-start gap-3 rounded-norte border border-dashed border-borda bg-superficie-2/60 p-3"
+              >
+                <input type="checkbox" disabled checked={false} readOnly className="mt-0.5 size-4 shrink-0" />
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-tinta-2">
+                    {MODULOS[m].titulo}
+                    <span className="rounded-full border border-borda px-2 py-0.5 text-[10px] font-semibold tracking-wide text-tinta-3">
+                      Em breve
+                    </span>
+                  </span>
+                  <span className="text-xs text-tinta-3">{MODULOS[m].resumo}</span>
+                </span>
+              </label>
+            ) : (
+              <Marcar
+                key={m}
+                name={`modulo_${m}`}
+                titulo={MODULOS[m].titulo}
+                resumo={MODULOS[m].resumo}
+                defaultChecked={ligados.includes(m)}
+              />
+            ),
+          )}
         </div>
       ) : (
         <p className="text-sm text-tinta-2">

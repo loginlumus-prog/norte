@@ -60,7 +60,7 @@ export async function semearExemplo(cliente: Client, passo: (t: string) => void)
 
       -- Duas recargas, com o saldo andando de verdade.
       insert into recargas_ia (id, org_id, centavos, saldo_depois, tipo, origem, motivo, quem, criado_em) values
-        ('rec-a1', 'org-exemplo-a', 4000, 4000, 'PLANO',  'plano',  'Credito do mes',    'sistema', now() - interval '26 days'),
+        ('rec-a1', 'org-exemplo-a', 4000, 4000, 'PLANO',  'plano',  'Crédito do mês',    'sistema', now() - interval '26 days'),
         ('rec-a2', 'org-exemplo-a', 5000, 9000, 'COMPRA', 'manual', 'Recarga pela tela', 'Ana',     now() - interval '9 days');
 
       insert into unidades (id, org_id, nome, ativa, eh_deposito, criada_em, atualizada_em) values

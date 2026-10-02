@@ -98,7 +98,7 @@ export function Ficha({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Campo rotulo="Nome" name="nome" required defaultValue={inicial?.nome} placeholder="Bia Santos" />
-          <Campo rotulo="Cargo" name="cargo" defaultValue={inicial?.cargo ?? undefined} placeholder="Manicure, recepção, dentista" />
+          <Campo rotulo="Cargo" name="cargo" defaultValue={inicial?.cargo ?? undefined} placeholder="O que a pessoa faz aqui" />
           <Campo rotulo="Telefone" name="telefone" type="tel" inputMode="tel" defaultValue={inicial?.telefone ?? undefined} placeholder="(71) 99999-0000" />
           {opcoesLoja.length > 1 ? (
             <Selecao rotulo="Loja" name="unidadeId" defaultValue={inicial?.unidadeId ?? (podeSemLoja ? '' : lojas[0]?.id)} opcoes={opcoesLoja} />

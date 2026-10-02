@@ -113,7 +113,7 @@ export default async function Analise({
   const colunasLojas: Coluna<(typeof lojas)[number]>[] = [
     { chave: 'nome', titulo: 'Loja', celula: (l) => <span className="font-medium text-tinta">{l.nome}</span> },
     { chave: 'vendas', titulo: 'Vendas', numero: true, celula: (l) => l.vendas },
-    { chave: 'receita', titulo: 'Entrou', numero: true, celula: (l) => brl(l.receita) },
+    { chave: 'receita', titulo: 'Entrou', numero: true, destaque: true, celula: (l) => brl(l.receita) },
     { chave: 'margem', titulo: 'Margem bruta', numero: true, celula: (l) => brl(l.margem) },
     {
       chave: 'pct',
@@ -144,6 +144,9 @@ export default async function Analise({
       chave: 'classe',
       titulo: 'Classe',
       largura: '4.5rem',
+      // No cartão do celular a classe vira selo ao lado do valor, e o nome
+      // do produto é o título.
+      destaque: true,
       celula: (l) => (
         <Situacao nivel={l.classe === 'A' ? 'bom' : l.classe === 'B' ? 'atencao' : 'neutro'}>
           {l.classe}
@@ -153,12 +156,13 @@ export default async function Analise({
     {
       chave: 'nome',
       titulo: 'Produto',
+      tituloDoCartao: true,
       celula: (l) => <NomeDoProduto slug={slug} ficha={abreFicha} produtoId={l.produtoId} nome={l.nome} marca={l.marca} />,
     },
     // Com a medida: o sorvete sai em quilo e a camiseta em peça, e a coluna
     // somava os dois como se fossem a mesma coisa.
     { chave: 'qtd', titulo: 'Saiu', numero: true, celula: (l) => quantidade(l.quantidade, l.medida) },
-    { chave: 'receita', titulo: 'Entrou', numero: true, celula: (l) => brl(l.receita) },
+    { chave: 'receita', titulo: 'Entrou', numero: true, destaque: true, celula: (l) => brl(l.receita) },
     { chave: 'margem', titulo: 'Margem bruta', numero: true, celula: (l) => brl(l.margem) },
     {
       chave: 'fatia',
@@ -181,7 +185,7 @@ export default async function Analise({
       celula: (l) => <NomeDoProduto slug={slug} ficha={abreFicha} produtoId={l.produtoId} nome={l.nome} marca={l.marca} />,
     },
     { chave: 'qtd', titulo: 'Tem', numero: true, celula: (l) => quantidade(l.quantidade, l.medida) },
-    { chave: 'valor', titulo: 'Custou', numero: true, celula: (l) => brl(l.valor) },
+    { chave: 'valor', titulo: 'Custou', numero: true, destaque: true, celula: (l) => brl(l.valor) },
     {
       chave: 'dias',
       titulo: 'Sem vender há',
@@ -213,7 +217,7 @@ export default async function Analise({
         ),
     },
     { chave: 'vendas', titulo: 'Vendas', numero: true, celula: (t) => t.vendas },
-    { chave: 'total', titulo: 'Saiu no turno', numero: true, celula: (t) => brl(t.total) },
+    { chave: 'total', titulo: 'Saiu no turno', numero: true, destaque: true, celula: (t) => brl(t.total) },
     {
       chave: 'dif',
       titulo: 'Faltou/sobrou',

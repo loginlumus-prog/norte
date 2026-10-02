@@ -139,7 +139,7 @@ export default async function Precos({
       largura: '7rem',
       celula: (l) => (l.custoCent === null ? <span className="text-tinta-3">—</span> : mostrar(l.custoCent)),
     },
-    { chave: 'preco', titulo: 'Preço', numero: true, largura: '7rem', celula: (l) => mostrar(l.precoCent) },
+    { chave: 'preco', titulo: 'Preço', numero: true, largura: '7rem', destaque: true, celula: (l) => mostrar(l.precoCent) },
     { chave: 'margem', titulo: 'Margem bruta', numero: true, largura: '9rem', celula: (l) => <Margem a={l.analise} /> },
     {
       chave: 'markup',

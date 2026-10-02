@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { comoOrg } from '@/servidor/banco'
 import { pode, textoDaBusca } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -64,7 +64,7 @@ export default async function Etiquetas({
     modelo: texto(bruto.modelo),
   }
   const { empresa, sessao } = await exigirEntrada(slug)
-  if (!pode(sessao, 'produto.ver')) notFound()
+  if (!pode(sessao, 'produto.ver')) semAcesso(slug, 'cargo')
 
   const onde = await escolherUnidade(sessao, empresa, p.unidade, 'produto.ver')
   const q = textoDaBusca(texto(bruto.q))

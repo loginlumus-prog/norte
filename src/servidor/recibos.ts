@@ -1143,17 +1143,26 @@ export type CarneNoPapel = {
 export async function carneDaVenda(sessao: Sessao, vendaId: string): Promise<CarneNoPapel | null> {
   exigir(sessao, 'venda.ver')
   return comoOrg(sessao.orgId, async (db) => {
-    const v = await db.venda.findUnique({
+    const venda = await db.venda.findUnique({
       where: { id: vendaId },
       select: {
-        id: true, numero: true, criadaEm: true, situacao: true, unidadeId: true, total: true, vendedorNome: true,
-        cliente: { select: { id: true, nome: true, documento: true, telefone: true } },
-        itens: { select: { descricao: true, codigo: true, quantidade: true, total: true } },
-        pagamentos: { select: { forma: true, valor: true } },
-        parcelas: { orderBy: { numero: 'asc' }, select: { numero: true, de: true, vencimento: true, valor: true, pago: true, desconto: true, quitadaEm: true } },
+        id: true, numero: true, criadaEm: true, situacao: true, unidadeId: true, total: true, vendedorNome: true, clienteId: true,
       },
     })
-    if (!v || !pode(sessao, 'venda.ver', v.unidadeId) || !v.cliente || v.parcelas.length === 0) return null
+    if (!venda || !pode(sessao, 'venda.ver', venda.unidadeId) || !venda.clienteId) return null
+    // Uma relação por consulta: várias no mesmo select viram consultas em
+    // paralelo na mesma conexão da transação (ver pg-query-paralelo).
+    const parcelas = await db.parcela.findMany({
+      where: { vendaId },
+      orderBy: { numero: 'asc' },
+      select: { numero: true, de: true, vencimento: true, valor: true, pago: true, desconto: true, quitadaEm: true },
+    })
+    if (parcelas.length === 0) return null
+    const cliente = await db.cliente.findUnique({ where: { id: venda.clienteId }, select: { id: true, nome: true, documento: true, telefone: true } })
+    if (!cliente) return null
+    const itens = await db.vendaItem.findMany({ where: { vendaId }, select: { descricao: true, codigo: true, quantidade: true, total: true } })
+    const pagamentos = await db.pagamento.findMany({ where: { vendaId }, select: { forma: true, valor: true } })
+    const v = { ...venda, cliente, itens, pagamentos, parcelas }
     const credor = await credorDaLoja(db, sessao.orgId, v.unidadeId)
     const regra = await regraDoAtraso(db, sessao.orgId)
     const saldo = await db.$queryRaw<{ s: string }[]>`

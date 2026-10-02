@@ -38,7 +38,7 @@ export function Credito({
   saldoCent: number
   gasto30Cent: number
   diasQueDura: number | null
-  /** `null` = combinado em contrato (so o Corporativo). */
+  /** `null` = combinado em contrato (só o Corporativo). */
   inclusoMensal: number | null
   podeMexer: boolean
 }) {
@@ -134,10 +134,15 @@ export function Credito({
             )}
           </div>
           <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-tinta-3">
+            {/* Saldo acima da cota (recarga, sobra de mês anterior) enchia a
+                barra e dizia "100% da cota" ao lado de um saldo de cinco cotas
+                — parecia que o saldo ERA a cota. Acima dela, diz quanto passa. */}
             <span>
               {acabou
                 ? 'sem saldo'
-                : `${Math.round(cheio)}% da cota do mês (${brl(cotaCent)})`}
+                : saldoCent > cotaCent
+                  ? `${brl(saldoCent - cotaCent)} acima da cota do mês (${brl(cotaCent)}), de recargas e sobras`
+                  : `${Math.round(cheio)}% da cota do mês (${brl(cotaCent)})`}
             </span>
             {consumoDiaCent > 0 && (
               <span>o risco marca o consumo de um dia · {brl(consumoDiaCent)}</span>
@@ -147,8 +152,8 @@ export function Credito({
       )}
 
       {/* Recarregar vale para todo plano que TEM assistente — inclusive o
-          Corporativo, cujo credito sai no contrato mas acaba igual. So quem
-          nao tem assistente (credito zero) nao tem o que recarregar. */}
+          Corporativo, cujo crédito sai no contrato mas acaba igual. Só quem
+          não tem assistente (crédito zero) não tem o que recarregar. */}
       {podeMexer && inclusoMensal !== 0 && (
         <form action={agir} className="flex flex-col gap-2 border-t border-borda-suave pt-3">
           {/* O "em reais" mora no rótulo, e não numa dica embaixo do campo, por

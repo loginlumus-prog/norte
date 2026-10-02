@@ -14,6 +14,7 @@
 // o mesmo cliente cadastrado quatro vezes com dívidas separadas.
 
 import type { ConsentimentoOfertas } from '@prisma/client'
+import { SEM_ACERTO_DE_CATALOGO } from './acerto-catalogo'
 import { comoOrg } from './banco'
 import { exigir, pode, textoDaBusca, unidadesQuePodem, type Sessao } from './permissao'
 import { listarParcelas, situacaoDosClientes, type ParcelaNaLista } from './crediario'
@@ -423,6 +424,7 @@ export async function favoritosDoCliente(sessao: Sessao, clienteId: string) {
         from venda_itens i join vendas v on v.id = i.venda_id
        where v.cliente_id = ${clienteId} and v.situacao = 'CONCLUIDA'
          and (${lojas === null} or v.unidade_id = any(${lojas ?? ['-']}))
+         and ${SEM_ACERTO_DE_CATALOGO}
        group by 1, 2 order by vezes desc, total desc limit 5
     `
     return linhas.map((l) => ({

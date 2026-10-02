@@ -154,6 +154,26 @@ export type Aceite =
   | { ok: false; motivo: 'invalido' | 'vencido' | 'ja_usado' | 'empresa_nao_existe' }
 
 /**
+ * O convite ainda serve? Para a TELA do convite, antes de mostrar o formulário.
+ *
+ * Responde só "serve" ou "não serve" — nunca o e-mail convidado, nem se ele já
+ * tem conta. Abrir o link e saber que ele não vale não ensina nada a quem está
+ * tentando adivinhar: o token tem 256 bits (ver o topo), e um formulário que
+ * abre para link morto só faz a pessoa escolher senha para nada.
+ */
+export async function conviteServe(slugEmpresa: string, token: string): Promise<boolean> {
+  const org = await acharOrgPorSlug(slugEmpresa)
+  if (!org || !token) return false
+  return comoOrg(org.id, async (db) => {
+    const convite = await db.convite.findUnique({
+      where: { token: resumir(token) },
+      select: { expiraEm: true, aceitoEm: true },
+    })
+    return !!convite && !convite.aceitoEm && convite.expiraEm > new Date()
+  })
+}
+
+/**
  * Aceitar o convite: a pessoa escolhe o nome e a senha, e a conta nasce ali.
  *
  * `invalido` cobre token errado E token de outra empresa de propósito — quem

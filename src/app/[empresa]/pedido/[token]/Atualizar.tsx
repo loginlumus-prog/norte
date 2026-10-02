@@ -18,7 +18,7 @@ export function Atualizar() {
 export function CopiarPix({ chave }: { chave: string }) {
   const [copiou, setCopiou] = useState(false)
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-borda bg-superficie-2 px-3 py-2">
+    <div className="flex items-center gap-2 rounded-2xl border border-borda-suave bg-superficie-2 py-1.5 pr-1.5 pl-3.5">
       <code className="min-w-0 flex-1 truncate text-sm text-tinta">{chave}</code>
       <button
         type="button"
@@ -31,7 +31,8 @@ export function CopiarPix({ chave }: { chave: string }) {
             // Sem permissão de copiar: a chave está à vista para copiar à mão.
           }
         }}
-        className="shrink-0 rounded-lg bg-marca px-3 py-1.5 text-xs font-bold text-marca-tinta"
+        aria-live="polite"
+        className="h-10 shrink-0 rounded-xl bg-marca px-4 text-sm font-bold text-marca-tinta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca"
       >
         {copiou ? 'Copiado' : 'Copiar'}
       </button>

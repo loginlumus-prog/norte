@@ -123,12 +123,17 @@ export default async function FechamentoDoMes({
           valor={`${f.prontos} de ${f.itens.length}`}
           // "Travam" prometia uma trava que não existe (ver o rodapé): a
           // pendência não impede nada, ela deixa o resultado menos confiável.
+          // As que pedem "olhe" (atenção) também contam: "3 de 5 · nada
+          // pendente" com dois itens dizendo "olhe" logo abaixo não fecha a
+          // conta. Pendência é o que muda o resultado; atenção é para olhar.
           detalhe={
-            f.pendentes === 0
-              ? 'nada pendente'
-              : `${plural(f.pendentes, 'pendência ainda pode mudar', 'pendências ainda podem mudar')} o resultado`
+            f.pendentes > 0
+              ? `${plural(f.pendentes, 'pendência ainda pode mudar', 'pendências ainda podem mudar')} o resultado`
+              : f.itens.length - f.prontos > 0
+                ? `${plural(f.itens.length - f.prontos, 'item pede', 'itens pedem')} um olhar`
+                : 'tudo conferido'
           }
-          nivel={f.pendentes === 0 ? 'bom' : 'critico'}
+          nivel={f.pendentes > 0 ? 'critico' : f.prontos < f.itens.length ? 'atencao' : 'bom'}
         />
         <Numero
           rotulo="Taxa de máquina no mês"

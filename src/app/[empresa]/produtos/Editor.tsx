@@ -171,7 +171,7 @@ export function Editor({
             name="nome"
             required
             defaultValue={produto?.nome ?? ''}
-            placeholder="Camiseta canelada"
+            placeholder="Nome do produto"
             dica="É o que aparece no balcão e no comprovante."
           />
           <Campo
@@ -220,9 +220,9 @@ export function Editor({
           iguais a ele.
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Campo rotulo="À vista" name="precoVista" required readOnly={travado} defaultValue={produto?.precoVista ?? ''} placeholder="49,90" inputMode="decimal" erro={estado.campos?.precoVista} />
-          <Campo rotulo="No cartão" name="precoCartao" readOnly={travado} defaultValue={produto?.precoCartao ?? ''} placeholder="54,90" inputMode="decimal" erro={estado.campos?.precoCartao} />
-          <Campo rotulo="No crediário" name="precoCrediario" readOnly={travado} defaultValue={produto?.precoCrediario ?? ''} placeholder="59,90" inputMode="decimal" erro={estado.campos?.precoCrediario} />
+          <Campo rotulo="À vista" name="precoVista" required readOnly={travado} defaultValue={produto?.precoVista ?? ''} placeholder="0,00" inputMode="decimal" erro={estado.campos?.precoVista} />
+          <Campo rotulo="No cartão" name="precoCartao" readOnly={travado} defaultValue={produto?.precoCartao ?? ''} placeholder="Igual à vista" inputMode="decimal" erro={estado.campos?.precoCartao} />
+          <Campo rotulo="No crediário" name="precoCrediario" readOnly={travado} defaultValue={produto?.precoCrediario ?? ''} placeholder="Igual à vista" inputMode="decimal" erro={estado.campos?.precoCrediario} />
           {/* Sem o campo, o custo não vai no formulário e fica como está: quem
               não responde por nenhuma loja deste produto não lê o custo dele. */}
           {produto?.verCusto !== false && (
@@ -231,7 +231,7 @@ export function Editor({
               name="custo"
               readOnly={travado}
               defaultValue={produto?.custo ?? ''}
-              placeholder="22,00"
+              placeholder="0,00"
               inputMode="decimal"
               erro={estado.campos?.custo}
               dica="Sem ele o relatório não sabe calcular margem."
@@ -297,7 +297,7 @@ export function Editor({
             disabled={travado}
             onChange={(e) => setUsoInterno(e.target.checked)}
             titulo="Material de uso — não vende"
-            resumo="A luva, a acetona, o algodão. Conta estoque, mínimo e compra; não aparece no balcão."
+            resumo="O que se gasta dentro de casa e não se vende. Conta estoque, mínimo e compra; não aparece no balcão."
           />
           {travado && usoInterno && <input type="hidden" name="usoInterno" value="on" />}
           <Marcar

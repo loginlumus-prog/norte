@@ -199,6 +199,8 @@ export default async function Vendas({
       titulo: 'Total',
       numero: true,
       largura: '7rem',
+      // No cartão do celular, o total sobe para o lado do número da venda.
+      destaque: true,
       celula: (v: (typeof vendas)[number]) =>
         v.situacao === 'CANCELADA' ? (
           <span className="flex items-center justify-end gap-2">

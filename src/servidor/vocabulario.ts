@@ -170,6 +170,30 @@ export type PalavrasDaVenda = {
    * recebido" no dia em que entraram dez mensalidades. Nulo: soma tudo.
    */
   foraDoTotal: string | null
+  /**
+   * A lista de clientes e a ficha: o que a pessoa fez com a casa. Na escola o
+   * que a ficha do aluno soma é o que ele comprou NA SECRETARIA (material,
+   * uniforme) — a mensalidade tem conta própria. "41 nunca compraram" e
+   * "Gastou aqui" na ficha de um aluno eram a lista de uma loja lida na
+   * secretaria, e pareciam dizer que ele nunca pagou nada.
+   */
+  naFicha: {
+    /** O total: "Gastou", "Pagou", "Na secretaria". */
+    Gastou: string
+    /** "Última compra", "Último atendimento". */
+    Ultima: string
+    /** A coluna da contagem: "Compras", "Atendimentos". */
+    Contagem: string
+    /** "comprou", "foi atendido" — a ficha da tira, no singular. */
+    comprou: string
+    compraram: string
+    /** "nunca comprou" — célula e ficha. */
+    nunca: string
+    nuncaPlural: string
+    /** "compra"/"compras" na frase da ficha: "3 compras". */
+    uma: string
+    varias: string
+  }
 }
 
 /** As palavras do ramo: quem é atendido, como as telas se chamam e como se fala da venda. */
@@ -297,6 +321,11 @@ const VENDA_DA_LOJA = montarVenda({
   itensDeEstoque: 'produtos',
   acabouNoEstoque: 'Sem saldo para vender — é venda indo para o vizinho.',
   foraDoTotal: null,
+  naFicha: {
+    Gastou: 'Gastou', Ultima: 'Última compra', Contagem: 'Compras',
+    comprou: 'comprou', compraram: 'compraram', nunca: 'nunca comprou', nuncaPlural: 'nunca compraram',
+    uma: 'compra', varias: 'compras',
+  },
 })
 
 /**
@@ -334,6 +363,11 @@ const ATENDIMENTO = {
   itensDeEstoque: 'materiais',
   acabouNoEstoque: 'Sem saldo — peça antes que faça falta no atendimento.',
   foraDoTotal: null,
+  naFicha: {
+    Gastou: 'Pagou', Ultima: 'Último atendimento', Contagem: 'Atendimentos',
+    comprou: 'foi atendido', compraram: 'foram atendidos', nunca: 'nunca foi atendido', nuncaPlural: 'nunca foram atendidos',
+    uma: 'atendimento', varias: 'atendimentos',
+  },
 } satisfies Omit<BaseDaVenda, 'novoProduto'>
 
 /**
@@ -375,6 +409,12 @@ const VENDA: Partial<Record<Ramo, PalavrasDaVenda>> = {
     itensDeEstoque: 'materiais',
     acabouNoEstoque: 'Sem saldo — peça antes que faça falta.',
     foraDoTotal: 'sem as mensalidades',
+    naFicha: {
+      Gastou: 'Total na secretaria', Ultima: 'Último recebimento', Contagem: 'Recebimentos',
+      comprou: 'comprou na secretaria', compraram: 'compraram na secretaria',
+      nunca: 'nada na secretaria', nuncaPlural: 'sem compra na secretaria',
+      uma: 'recebimento', varias: 'recebimentos',
+    },
   }),
 }
 

@@ -23,7 +23,9 @@ export async function generateMetadata({ params }: { params: Promise<{ empresa: 
     robots: { index: false, follow: false },
     manifest: `/${empresa.slug}/manifest.webmanifest`,
     appleWebApp: { capable: true, title: empresa.nome, statusBarStyle: 'default' },
-    icons: { apple: '/marca/norte-app-192.png' },
+    // `icon` junto: declarar só o `apple` substitui o ícone padrão do
+    // app/icon.svg, e a aba do sistema ficava sem a marca.
+    icons: { icon: '/icon.svg', apple: '/marca/norte-app-192.png' },
   }
 }
 

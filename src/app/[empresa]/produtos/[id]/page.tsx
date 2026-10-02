@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { acharProduto, eixosDaEmpresa, comoVende, estoqueDoProduto, podeVerCustoDe } from '@/servidor/produto'
 import { listarMovimentos, ROTULO_MOVIMENTO } from '@/servidor/estoque'
 import { comoOrg } from '@/servidor/banco'
@@ -66,7 +67,7 @@ export default async function FichaProduto({
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
-  if (!pode(sessao, 'produto.editar')) notFound()
+  if (!pode(sessao, 'produto.editar')) semAcesso(slug, 'cargo')
 
   const noventa = new Date()
   noventa.setDate(noventa.getDate() - 90)

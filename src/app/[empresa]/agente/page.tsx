@@ -88,29 +88,40 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
               responde o que vocês perguntarem sobre a loja. Com cliente, ele só roda campanhas
               com roteiro fixo; o resto quem responde é a loja.
             </p>
+            {/* O caminho vira BOTÃO: era um link no meio da frase, e a tela
+                parecia um aviso sem saída. */}
             {doPlanoDela ? (
-              <p>
-                Seu plano inclui o assistente, mas ele não está ligado nesta empresa. Para ligar:{' '}
-                {pode(sessao, 'empresa.configurar') ? (
-                  <Link href={`/${slug}/configuracoes`} className="font-medium text-marca underline-offset-2 hover:underline">
-                    Configurações › O que sua empresa usa
+              <>
+                <p>
+                  Seu plano inclui o assistente, mas ele não está ligado nesta empresa. Para ligar:{' '}
+                  <b className="text-tinta">Configurações › O que sua empresa usa</b>, marque &quot;Assistente
+                  no WhatsApp&quot; e salve.
+                  {!pode(sessao, 'empresa.configurar') && ' Quem responde pela empresa faz isso.'}
+                </p>
+                {pode(sessao, 'empresa.configurar') && (
+                  <Link
+                    href={`/${slug}/configuracoes`}
+                    className="botao-marca w-fit rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
+                  >
+                    Ligar em Configurações
                   </Link>
-                ) : (
-                  <b className="text-tinta">Configurações › O que sua empresa usa</b>
                 )}
-                , marque &quot;Assistente no WhatsApp&quot; e salve.
-              </p>
+              </>
             ) : (
-              <p>
-                Ele é {quemAbre ? doPlano(quemAbre) : 'de planos acima do seu'}.{' '}
-                {podeVerPlanos(sessao) ? (
-                  <Link href={`/${slug}/assinatura`} className="font-medium text-marca underline-offset-2 hover:underline">
-                    Ver os planos em Assinatura
+              <>
+                <p>
+                  Ele é {quemAbre ? doPlano(quemAbre) : 'de planos acima do seu'}.
+                  {!podeVerPlanos(sessao) && ' Quem responde pela empresa troca de plano em Assinatura.'}
+                </p>
+                {podeVerPlanos(sessao) && (
+                  <Link
+                    href={`/${slug}/assinatura`}
+                    className="botao-marca w-fit rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
+                  >
+                    Ver os planos
                   </Link>
-                ) : (
-                  'Quem responde pela empresa troca de plano em Assinatura.'
                 )}
-              </p>
+              </>
             )}
           </div>
         </Cartao>

@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode, unidadesQuePodem, type Capacidade } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -69,9 +69,9 @@ export default async function Funcionarios({
   const { empresa, sessao } = await exigirEntrada(slug)
   const pontoLigado = moduloLigado(empresa, 'ponto')
   const agendaLigada = moduloLigado(empresa, 'agenda')
-  if (!pontoLigado && !agendaLigada) notFound()
+  if (!pontoLigado && !agendaLigada) semAcesso(slug, 'modulo-ponto')
   const capacidade: Capacidade | undefined = (['equipe.ver', 'ponto.ver', 'ponto.proprio', 'agenda.ver'] as const).find((c) => pode(sessao, c))
-  if (!capacidade) notFound()
+  if (!capacidade) semAcesso(slug, 'cargo')
 
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
   const agora = new Date()
@@ -287,7 +287,7 @@ export default async function Funcionarios({
           <Vazio>
             Ninguém cadastrado ainda.{' '}
             {podeGerir
-              ? 'Cadastre quem trabalha — com ou sem login no sistema. A manicure que nunca vai abrir o Norte tem agenda e ponto do mesmo jeito.'
+              ? 'Cadastre quem trabalha — com ou sem login no sistema. Quem nunca vai abrir o Norte tem agenda e ponto do mesmo jeito.'
               : 'Quem gere a equipe cadastra aqui.'}
           </Vazio>
         ) : (

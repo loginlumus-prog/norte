@@ -25,7 +25,10 @@ const TOM: Record<Tom, string> = {
   // o verde deixa de querer dizer alguma coisa.
   confirmar: 'bg-bom-vivo text-white hover:brightness-95 border-transparent',
   secundario: 'bg-superficie text-tinta hover:bg-superficie-2 border-borda',
-  discreto: 'bg-transparent text-tinta-2 hover:bg-superficie-2 hover:text-tinta border-transparent',
+  // Fantasma, mas COM contorno: sem borda nem fundo, "Ajustes: entrega, Pix,
+  // link" e "Arquivar quadro" pareciam frase solta, e ninguém tocava. O fio
+  // suave diz "isto é um botão" sem competir com o principal.
+  discreto: 'bg-transparent text-tinta-2 border-borda hover:bg-superficie-2 hover:text-tinta hover:border-tinta-3',
   perigo: 'bg-critico-vivo text-white hover:brightness-95 border-transparent',
 }
 

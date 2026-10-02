@@ -3,6 +3,9 @@ import { Fragment } from 'react'
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
+import { comoOrg } from '@/servidor/banco'
+import { pode } from '@/servidor/permissao'
 import { turnoParaImprimir } from '@/servidor/caixa'
 import { Folha, brl, quando } from '../../../crediario/Papel'
 
@@ -37,7 +40,15 @@ export default async function FechamentoPagina({
   const { sessao } = await exigirEntrada(slug, { capacidade: 'caixa.ver' })
 
   const t = await turnoParaImprimir(sessao, id)
-  if (!t) notFound()
+  if (!t) {
+    // Caixa que existe e ainda está aberto não é "endereço que não abre": é
+    // fechamento que ainda não existe. A tela diz isso e leva ao Caixa.
+    const c = /^[\w-]{1,64}$/.test(id)
+      ? await comoOrg(sessao.orgId, (db) => db.caixa.findUnique({ where: { id }, select: { aberto: true, unidadeId: true } }))
+      : null
+    if (c?.aberto && pode(sessao, 'caixa.ver', c.unidadeId)) semAcesso(slug, 'caixa-aberto')
+    notFound()
+  }
   const c = t.conferencia
   const dif = t.diferenca
   const linhasGaveta: [string, number][] = [
@@ -46,7 +57,8 @@ export default async function FechamentoPagina({
     ...(c.dinheiroRecebido ? ([['Crediário em dinheiro', c.dinheiroRecebido]] as [string, number][]) : []),
     ...(c.dinheiroMensalidades ? ([['Mensalidades em dinheiro', c.dinheiroMensalidades]] as [string, number][]) : []),
     ['Suprimentos', c.suprimentos],
-    ['Sangrias', -c.sangrias],
+    // `-0` sai "-R$ 0,00": sem sangria, zero sem sinal.
+    ['Sangrias', c.sangrias ? -c.sangrias : 0],
   ]
 
   return (

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { pode } from '@/servidor/permissao'
 import { moduloLigado } from '@/servidor/modulos'
 import { diaDaColuna, diaEmSP, mostrarDiaDaColuna } from '@/servidor/dia'
@@ -54,7 +55,7 @@ export default async function TurmaPagina({
   const { empresa: slug, id } = await params
   const q = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'escola.ver' })
-  if (!moduloLigado(empresa, 'escola')) notFound()
+  if (!moduloLigado(empresa, 'escola')) semAcesso(slug, 'modulo-escola')
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const t = await acharTurma(sessao, id)

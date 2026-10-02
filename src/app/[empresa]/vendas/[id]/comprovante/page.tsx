@@ -43,6 +43,28 @@ const cnpj = (d: string | null) => {
   return d
 }
 
+/**
+ * O nome da linha do acerto: "Encomenda ENC-3F9K2A: taxa de entrega, menos o
+ * sinal de R$ 10,00 já pago" (ver `textoDoAcerto` em encomenda.ts) vira
+ * "Sinal já pago" quando a linha devolve, "Taxa de entrega" quando cobra a
+ * entrega, e o resto do texto vai para o detalhe, com o código do pedido.
+ */
+function rotuloDoAcerto(descricao: string, total: number): { titulo: string; detalhe: string } {
+  const m = descricao.match(/^Encomenda (\S+): (.*)$/)
+  const codigo = m?.[1] ?? null
+  const texto = m?.[2] ?? descricao
+  const titulo =
+    total < 0
+      ? 'Sinal já pago'
+      : total > 0
+        ? texto.includes('taxa de entrega')
+          ? 'Taxa de entrega'
+          : 'Acerto do pedido'
+        : 'Pedido do catálogo'
+  const resto = texto === 'pedido do catálogo' ? 'nada a acertar' : texto
+  return { titulo, detalhe: [codigo ? `Pedido ${codigo}` : null, resto].filter(Boolean).join(' · ') }
+}
+
 export default async function Comprovante({
   params,
   searchParams,
@@ -175,19 +197,32 @@ export default async function Comprovante({
         <div className="linha" />
         <table>
           <tbody>
-            {v.itens.map((i) => (
-              <tr key={i.id}>
-                <td>
-                  {i.descricao}
-                  <br />
-                  <span style={{ color: '#333' }}>
-                    {qtd(i.quantidade, i.medida)} × {brl(i.precoUnit)}
-                    {i.codigo ? ` · ${i.codigo}` : ''}
-                  </span>
-                </td>
-                <td className="num">{brl(i.total)}</td>
-              </tr>
-            ))}
+            {v.itens.map((i) => {
+              // A linha do acerto do pedido do catálogo não é peça: é a taxa
+              // de entrega menos o sinal. Sai com o nome do que ela é, e o
+              // detalhe ("taxa de entrega, menos o sinal de R$ 10,00 já
+              // pago") embaixo — e não "1 un × -R$ 10,00".
+              const acerto = i.id === v.acertoItemId ? rotuloDoAcerto(i.descricao, Number(i.total)) : null
+              return (
+                <tr key={i.id}>
+                  <td>
+                    {acerto ? acerto.titulo : i.descricao}
+                    <br />
+                    <span style={{ color: '#333' }}>
+                      {acerto ? (
+                        acerto.detalhe
+                      ) : (
+                        <>
+                          {qtd(i.quantidade, i.medida)} × {brl(i.precoUnit)}
+                          {i.codigo ? ` · ${i.codigo}` : ''}
+                        </>
+                      )}
+                    </span>
+                  </td>
+                  <td className="num">{brl(i.total)}</td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
 

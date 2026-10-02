@@ -49,7 +49,9 @@ export function CabecalhoDoPedido({ p, acao }: { p: PedidoNaTela; acao?: ReactNo
 export function ItensDoPedido({ p }: { p: PedidoNaTela }) {
   const mandado = p.situacao === 'ENVIADO' || p.situacao === 'RECEBIDO' || p.itens.some((i) => (i.enviada ?? 0) > 0)
   return (
-    <div className="overflow-x-auto">
+    // `empilha`: no celular cada item vira um cartão (globals.css) — a
+    // diferença que chegou não fica atrás da rolagem lateral.
+    <div className="empilha overflow-x-auto">
       <table className="w-full min-w-[32rem] text-sm">
         <thead>
           <tr className="text-left text-xs text-tinta-3">
@@ -66,22 +68,22 @@ export function ItensDoPedido({ p }: { p: PedidoNaTela }) {
             const falta = i.enviada != null && i.recebida != null ? Math.round((i.enviada - i.recebida) * 1000) / 1000 : 0
             return (
               <tr key={i.id}>
-                <td className="py-1.5 pr-3 text-tinta">{i.nome}</td>
-                <td className="numero py-1.5 pr-3 text-right text-tinta-2">{quantidade(i.pedida, i.medida)}</td>
+                <td data-titulo className="py-1.5 pr-3 text-tinta">{i.nome}</td>
+                <td data-rotulo="Pedido" data-destaque={p.situacao === 'RECEBIDO' ? undefined : true} className="numero py-1.5 pr-3 text-right text-tinta-2">{quantidade(i.pedida, i.medida)}</td>
                 {mandado && (
-                  <td className={cx('numero py-1.5 pr-3 text-right', i.enviada != null && i.enviada < i.pedida ? 'text-atencao' : 'text-tinta')}>
+                  <td data-rotulo="Foi" className={cx('numero py-1.5 pr-3 text-right', i.enviada != null && i.enviada < i.pedida ? 'text-atencao' : 'text-tinta')}>
                     {i.enviada == null ? '—' : quantidade(i.enviada, i.medida)}
                   </td>
                 )}
                 {p.situacao === 'RECEBIDO' && (
-                  <td className="numero py-1.5 pr-3 text-right text-tinta">{i.recebida == null ? '—' : quantidade(i.recebida, i.medida)}</td>
+                  <td data-rotulo="Chegou" className="numero py-1.5 pr-3 text-right text-tinta">{i.recebida == null ? '—' : quantidade(i.recebida, i.medida)}</td>
                 )}
                 {p.situacao === 'RECEBIDO' && (
-                  <td className={cx('numero py-1.5 pr-3 text-right', falta > 0 ? 'font-semibold text-critico' : falta < 0 ? 'font-semibold text-atencao' : 'text-tinta-3')}>
+                  <td data-rotulo="Diferença" data-destaque className={cx('numero py-1.5 pr-3 text-right', falta > 0 ? 'font-semibold text-critico' : falta < 0 ? 'font-semibold text-atencao' : 'text-tinta-3')}>
                     {falta > 0 ? `faltou ${quantidade(falta, i.medida)}` : falta < 0 ? `veio ${quantidade(-falta, i.medida)} a mais` : 'ok'}
                   </td>
                 )}
-                {mandado && <td className="py-1.5 font-mono text-xs text-tinta-3">{i.lote ?? '—'}</td>}
+                {mandado && <td data-rotulo="Lote" className="py-1.5 font-mono text-xs text-tinta-3">{i.lote ?? '—'}</td>}
               </tr>
             )
           })}

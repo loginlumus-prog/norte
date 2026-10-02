@@ -3,26 +3,33 @@
 // A vitrine da loja no celular da cliente.
 //
 // Três momentos, e cada um cabe numa mão: OLHAR (categorias, busca, a grade
-// com foto e preço), ESCOLHER (o produto abre por baixo: tamanho/sabor,
-// quantidade, "adicionar") e PEDIR (a sacola, nome e WhatsApp, retirar ou
-// receber, como paga). Depois do pedido, o botão grande manda tudo para o
-// WhatsApp da loja — é ali que a conversa continua.
+// com foto e preço), ESCOLHER (o "+" do cartão põe direto na sacola quando o
+// produto não tem escolha; com tamanho/sabor, o produto abre por baixo) e
+// PEDIR (a sacola, nome e WhatsApp, retirar ou receber, como paga). Depois do
+// pedido, o botão grande manda tudo para o WhatsApp da loja — é ali que a
+// conversa continua.
 //
 // A sacola e os dados da cliente ficam NESTE aparelho (localStorage), para
 // quem fechou a aba sem querer voltar e achar tudo onde deixou. Nada disso vai
-// para o servidor antes de "Fazer pedido".
+// para o servidor antes de "Enviar pedido".
 
+import './vitrine.css'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import type { FormaPagamento } from '@prisma/client'
 import type { ProdutoNoCatalogo, OpcaoNoCatalogo, VitrinePublica } from '@/servidor/catalogo'
 import { maisProdutos, pedir } from './acoes'
-import { IconeFechar, IconeMais, IconeVisto } from '@/ui/Icones'
+import { estiloDaMarca } from './marca'
+import { Adiante, Alvo, Etiqueta, Fechar, Foto, Lixo, Lupa, MarcaDaLoja, Mais, Menos, Moto, Relogio, Sacola, Visto, Vitrine, Voltar, Zap } from './Pecas'
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const qtd = (q: number, medida: string) =>
   medida === 'UN' ? String(q) : `${q.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ${medida.toLowerCase()}`
 const passoDe = (medida: string) => (medida === 'UN' ? 1 : medida === 'KG' ? 0.25 : 0.5)
+/** Quanto entra no primeiro toque: 1 unidade, ou dois passos do que é pesado/medido. */
+const inicialDe = (medida: string) => (medida === 'UN' ? 1 : passoDe(medida) * 2)
 const arred = (n: number) => Math.round(n * 1000) / 1000
+const ZAP_VERDE = 'bg-[#15803d] hover:bg-[#126c34]'
+const FOCO = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca'
 
 type NaSacola = {
   variacaoId: string
@@ -72,95 +79,144 @@ function gravar(chave: string, v: unknown) {
   }
 }
 
-/* ── desenhos pequenos (24, traço 1.8, cor de quem chama) ── */
-const Lupa = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
-    <circle cx="11" cy="11" r="6.5" />
-    <path d="m16 16 4.5 4.5" />
-  </svg>
-)
-const Sacola = () => (
-  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden>
-    <path d="M5 8h14l-1.2 12H6.2z" />
-    <path d="M9 10V6.5a3 3 0 0 1 6 0V10" strokeLinecap="round" />
-  </svg>
-)
-const Menos = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-    <path d="M6 12h12" />
-  </svg>
-)
-const Zap = () => (
-  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden>
-    <path d="M12 2.2a9.7 9.7 0 0 0-8.4 14.6L2.3 21.7l5-1.3A9.7 9.7 0 1 0 12 2.2Zm0 17.7a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 19.9Zm4.4-6c-.2-.1-1.4-.7-1.7-.8-.2-.1-.4-.1-.5.1l-.8.9c-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5a.9.9 0 0 0-.6.3 2.7 2.7 0 0 0-.9 2c0 1.2.9 2.4 1 2.5.1.2 1.7 2.7 4.2 3.8 1.6.7 2.2.7 3 .6.5-.1 1.4-.6 1.6-1.1.2-.6.2-1 .1-1.1l-.5-.3Z" />
-  </svg>
-)
-
-function Foto({ src, nome, className }: { src: string | null; nome: string; className?: string }) {
-  if (src) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" loading="lazy" decoding="async" className={`h-full w-full object-cover ${className ?? ''}`} />
-  }
-  return (
-    <div aria-hidden className={`flex h-full w-full items-center justify-center bg-marca-suave text-2xl font-bold text-marca ${className ?? ''}`}>
-      {nome.trim().charAt(0).toUpperCase()}
-    </div>
-  )
+/** A única opção de um produto que não pede escolha — aí o "+" do cartão já põe na sacola. */
+function opcaoUnica(p: ProdutoNoCatalogo): OpcaoNoCatalogo | null {
+  const [o] = p.opcoes
+  return p.opcoes.length === 1 && o?.disponivel ? o : null
 }
 
-function Passador({ valor, medida, mudar, min = 0 }: { valor: number; medida: string; mudar: (n: number) => void; min?: number }) {
+function Passador({
+  valor,
+  medida,
+  mudar,
+  min = 0,
+  nome,
+  compacto,
+}: {
+  valor: number
+  medida: string
+  mudar: (n: number) => void
+  min?: number
+  nome?: string
+  compacto?: boolean
+}) {
   const passo = passoDe(medida)
+  const botao = `flex ${compacto ? 'h-9 w-9' : 'h-11 w-11'} items-center justify-center rounded-full text-tinta transition-colors hover:bg-superficie-3 disabled:opacity-35 ${FOCO}`
   return (
-    <div className="flex items-center rounded-full border border-borda bg-superficie">
-      <button
-        type="button"
-        aria-label="Diminuir"
-        onClick={() => mudar(arred(Math.max(min, valor - passo)))}
-        className="flex h-10 w-10 items-center justify-center rounded-full text-tinta-2 hover:bg-superficie-2 focus-visible:outline-2 focus-visible:outline-marca"
-      >
+    <div className="flex items-center rounded-full bg-superficie-2 p-0.5" role="group" aria-label={nome ? `Quantidade de ${nome}` : 'Quantidade'}>
+      <button type="button" aria-label="Diminuir" disabled={valor - passo < min - 1e-9 && min > 0} onClick={() => mudar(arred(Math.max(min, valor - passo)))} className={botao}>
         <Menos />
       </button>
-      <span className="min-w-14 text-center text-sm font-semibold tabular-nums">{qtd(valor, medida)}</span>
-      <button
-        type="button"
-        aria-label="Aumentar"
-        onClick={() => mudar(arred(Math.min(999, valor + passo)))}
-        className="flex h-10 w-10 items-center justify-center rounded-full text-tinta-2 hover:bg-superficie-2 focus-visible:outline-2 focus-visible:outline-marca"
-      >
-        <IconeMais tamanho={18} />
+      <span className={`${compacto ? 'min-w-9' : 'min-w-12'} text-center text-[15px] font-bold tabular-nums`}>
+        {qtd(valor, medida)}
+      </span>
+      <button type="button" aria-label="Aumentar" onClick={() => mudar(arred(Math.min(999, valor + passo)))} className={botao}>
+        <Mais />
       </button>
     </div>
   )
 }
 
 /** A folha que sobe de baixo (no computador, uma janela no meio). */
-function Folha({ aberta, fechar, titulo, children, rodape }: { aberta: boolean; fechar: () => void; titulo: string; children: React.ReactNode; rodape?: React.ReactNode }) {
+function Folha({
+  aberta,
+  fechar,
+  titulo,
+  subtitulo,
+  voltar,
+  children,
+  rodape,
+}: {
+  aberta: boolean
+  fechar: () => void
+  titulo: string
+  subtitulo?: string
+  voltar?: () => void
+  children: React.ReactNode
+  rodape?: React.ReactNode
+}) {
+  const painel = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!aberta) return
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && fechar()
-    window.addEventListener('keydown', esc)
+    // Quem usa teclado ou leitor de tela entra na folha e, ao fechar, volta
+    // para o botão de onde veio.
+    const antesFoco = document.activeElement as HTMLElement | null
+    painel.current?.focus()
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return fechar()
+      if (e.key !== 'Tab' || !painel.current) return
+      const focaveis = [...painel.current.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([tabindex="-1"]), textarea, select')]
+      if (!focaveis.length) return
+      const primeiro = focaveis[0]!
+      const ultimo = focaveis[focaveis.length - 1]!
+      if (e.shiftKey && (document.activeElement === primeiro || document.activeElement === painel.current)) {
+        e.preventDefault()
+        ultimo.focus()
+      } else if (!e.shiftKey && document.activeElement === ultimo) {
+        e.preventDefault()
+        primeiro.focus()
+      }
+    }
+    window.addEventListener('keydown', tecla)
     const antes = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
-      window.removeEventListener('keydown', esc)
+      window.removeEventListener('keydown', tecla)
       document.body.style.overflow = antes
+      if (antesFoco?.isConnected) antesFoco.focus()
     }
   }, [aberta, fechar])
   if (!aberta) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={titulo}>
-      <button type="button" aria-label="Fechar" onClick={fechar} className="absolute inset-0 bg-black/45" />
-      <div className="relative flex max-h-[92dvh] w-full flex-col rounded-t-3xl bg-superficie shadow-2xl sm:max-w-lg sm:rounded-3xl">
-        <header className="flex items-center justify-between gap-3 border-b border-borda-suave px-5 py-3.5">
-          <h2 className="text-base font-bold text-titulo">{titulo}</h2>
-          <button type="button" onClick={fechar} aria-label="Fechar" className="-mr-2 rounded-full p-2 text-tinta-2 hover:bg-superficie-2">
-            <IconeFechar tamanho={20} />
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={titulo}>
+      <button type="button" aria-label="Fechar" tabIndex={-1} onClick={fechar} className="vt-fundo absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
+      <div
+        ref={painel}
+        tabIndex={-1}
+        className="vt-folha relative flex max-h-[92dvh] w-full flex-col rounded-t-[28px] bg-superficie shadow-[0_-12px_48px_-12px_rgb(0_0_0/0.35)] outline-none sm:max-h-[86dvh] sm:max-w-lg sm:rounded-[28px]"
+      >
+        <span aria-hidden className="mx-auto mt-2 h-1 w-10 rounded-full bg-borda sm:hidden" />
+        <header className="flex items-center gap-2 px-4 pt-2 pb-3 sm:px-5 sm:pt-4">
+          {voltar ? (
+            <button type="button" onClick={voltar} aria-label="Voltar" className={`-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-tinta-2 hover:bg-superficie-2 ${FOCO}`}>
+              <Voltar />
+            </button>
+          ) : null}
+          <div className="min-w-0 flex-1 px-1">
+            {subtitulo ? <p className="text-[11px] font-bold tracking-[0.08em] text-tinta-3 uppercase">{subtitulo}</p> : null}
+            <h2 className="truncate text-lg leading-tight font-extrabold tracking-tight text-titulo">{titulo}</h2>
+          </div>
+          <button type="button" onClick={fechar} aria-label="Fechar" className={`-mr-1 flex h-10 w-10 items-center justify-center rounded-full bg-superficie-2 text-tinta-2 hover:text-tinta ${FOCO}`}>
+            <Fechar tamanho={18} />
           </button>
         </header>
-        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
-        {rodape ? <footer className="border-t border-borda-suave px-5 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">{rodape}</footer> : null}
+        <div data-rolar className="flex-1 overflow-y-auto overscroll-contain px-4 pb-5 sm:px-5">
+          {children}
+        </div>
+        {rodape ? (
+          <footer className="border-t border-borda-suave bg-superficie px-4 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:rounded-b-[28px] sm:px-5">{rodape}</footer>
+        ) : null}
       </div>
     </div>
+  )
+}
+
+/** O botão principal das folhas: texto à esquerda, valor à direita. */
+function BotaoGrande({
+  children,
+  valor,
+  className = '',
+  ...resto
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { valor?: string }) {
+  return (
+    <button
+      type="button"
+      {...resto}
+      className={`flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl bg-marca px-5 text-base font-bold text-marca-tinta shadow-[0_8px_20px_-10px_var(--marca)] transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:opacity-50 disabled:shadow-none ${FOCO} ${className}`}
+    >
+      <span>{children}</span>
+      {valor ? <span className="tabular-nums">{valor}</span> : null}
+    </button>
   )
 }
 
@@ -239,11 +295,33 @@ export function Loja({
       gravar(CHAVE_SACOLA, n.length ? n : null)
       return n
     })
+  // O que o leitor de tela anuncia quando a sacola muda (o total vem junto, já atualizado).
+  const [mexido, setMexido] = useState<string | null>(null)
 
   const subtotal = useMemo(() => sacola.reduce((s, i) => s + Math.round(i.preco * 100 * i.quantidade), 0) / 100, [sacola])
   const itensNaSacola = sacola.reduce((s, i) => s + (i.medida === 'UN' ? i.quantidade : 1), 0)
   const taxa = dados.entrega && loja.taxaEntrega ? loja.taxaEntrega : 0
   const faltaMinimo = loja.pedidoMinimo && subtotal < loja.pedidoMinimo ? loja.pedidoMinimo - subtotal : 0
+  /** Quanto de cada produto já está na sacola (somando tamanhos/sabores). */
+  const porProduto = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const i of sacola) m.set(i.produtoId, arred((m.get(i.produtoId) ?? 0) + i.quantidade))
+    return m
+  }, [sacola])
+
+  /** Põe (ou tira, com `delta` negativo) uma opção na sacola. */
+  function somar(p: ProdutoNoCatalogo, o: OpcaoNoCatalogo, delta: number, observacao?: string) {
+    mexerSacola((s) => {
+      const ja = s.find((i) => i.variacaoId === o.variacaoId)
+      if (ja) return s.map((i) => (i === ja ? { ...i, quantidade: arred(i.quantidade + delta), observacao: observacao || i.observacao } : i))
+      if (delta <= 0) return s
+      return [
+        ...s,
+        { variacaoId: o.variacaoId, produtoId: p.id, nome: p.nome, rotulo: o.rotulo, preco: o.preco, medida: p.medida, foto: p.foto, quantidade: delta, observacao: observacao ?? '' },
+      ]
+    })
+    setMexido(delta > 0 ? `${p.nome} na sacola` : `${p.nome}: quantidade diminuída`)
+  }
 
   // ── escolher um produto ──
   const [aberto, setAberto] = useState<ProdutoNoCatalogo | null>(null)
@@ -254,22 +332,20 @@ export function Loja({
     setAberto(p)
     const disponiveis = p.opcoes.filter((o) => o.disponivel)
     setOpcao(disponiveis.length === 1 || p.opcoes.length === 1 ? (disponiveis[0] ?? null) : null)
-    setQuantidade(p.medida === 'UN' ? 1 : passoDe(p.medida) * 2)
+    setQuantidade(inicialDe(p.medida))
     setObsItem('')
   }
   const fecharProduto = useCallback(() => setAberto(null), [])
   function adicionar() {
     if (!aberto || !opcao) return
-    const p = aberto
-    mexerSacola((s) => {
-      const ja = s.find((i) => i.variacaoId === opcao.variacaoId)
-      if (ja) return s.map((i) => (i === ja ? { ...i, quantidade: arred(i.quantidade + quantidade), observacao: obsItem || i.observacao } : i))
-      return [
-        ...s,
-        { variacaoId: opcao.variacaoId, produtoId: p.id, nome: p.nome, rotulo: opcao.rotulo, preco: opcao.preco, medida: p.medida, foto: p.foto, quantidade, observacao: obsItem },
-      ]
-    })
+    somar(aberto, opcao, quantidade, obsItem)
     setAberto(null)
+  }
+  /** O "+" do cartão: sem escolha a fazer, já entra; com escolha, abre o produto. */
+  function maisUm(p: ProdutoNoCatalogo) {
+    const o = opcaoUnica(p)
+    if (!o) return abrirProduto(p)
+    somar(p, o, porProduto.get(p.id) ? passoDe(p.medida) : inicialDe(p.medida))
   }
 
   // ── pedir ──
@@ -324,39 +400,49 @@ export function Loja({
     })
   }
 
-  const corDaMarca = empresa.corMarca && /^#[0-9a-fA-F]{6}$/.test(empresa.corMarca) ? empresa.corMarca : null
-  const estilo = corDaMarca ? ({ '--marca': corDaMarca, '--marca-forte': corDaMarca } as React.CSSProperties) : undefined
+  const estilo = estiloDaMarca(empresa.corMarca)
+  const subLoja = loja.nome && loja.nome !== empresa.nome ? loja.nome : null
 
   // ── depois do pedido ──
   if (feito) {
     const zap = feito.whatsapp ? `https://wa.me/${feito.whatsapp}?text=${encodeURIComponent(feito.mensagem)}` : null
     return (
-      <main style={estilo} className="flex min-h-dvh items-center justify-center bg-fundo px-4 py-10">
-        <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-borda bg-superficie p-6 text-center shadow-sm">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-bom-fundo text-bom">
-            <IconeVisto tamanho={28} />
+      <main style={estilo} className="relative flex min-h-dvh items-center justify-center bg-fundo px-4 py-10">
+        <div aria-hidden className="vt-halo pointer-events-none absolute inset-x-0 top-0 h-72" />
+        <div className="vt-folha relative flex w-full max-w-md flex-col items-center gap-6 rounded-[28px] border border-borda-suave bg-superficie p-6 text-center shadow-[0_24px_60px_-28px_rgb(0_0_0/0.35)] sm:p-8">
+          <MarcaDaLoja nome={empresa.nome} logo={empresa.logoUrl} className="h-12 w-12 rounded-2xl text-base" />
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-bom-fundo text-bom ring-8 ring-bom-fundo/40">
+            <Visto tamanho={30} />
           </span>
-          <div className="flex flex-col gap-1.5">
-            <h1 className="text-xl font-extrabold text-titulo text-balance">Pedido {feito.codigo} enviado</h1>
-            <p className="text-sm text-tinta-2">
-              Total de <strong className="text-tinta">{brl(feito.total)}</strong>. Agora mande pelo WhatsApp: a loja confirma mais rápido e vocês
-              combinam o que faltar por lá.
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-bold tracking-[0.1em] text-tinta-3 uppercase">Pedido {feito.codigo}</p>
+            <h1 className="text-2xl font-extrabold tracking-tight text-titulo text-balance">Pedido enviado!</h1>
+            <p className="text-[15px] leading-relaxed text-tinta-2">
+              Total de <strong className="text-tinta tabular-nums">{brl(feito.total)}</strong>.{' '}
+              {zap
+                ? 'Agora mande pelo WhatsApp: a loja confirma mais rápido e vocês combinam o que faltar por lá.'
+                : 'A loja já recebeu e vai confirmar.'}
             </p>
           </div>
-          {zap ? (
+          <div className="flex w-full flex-col gap-2.5">
+            {zap ? (
+              <a
+                href={zap}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex min-h-14 w-full items-center justify-center gap-2.5 rounded-2xl px-5 text-base font-bold text-white shadow-[0_10px_24px_-12px_#15803d] ${ZAP_VERDE} ${FOCO}`}
+              >
+                <Zap /> Enviar no WhatsApp
+              </a>
+            ) : null}
             <a
-              href={zap}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1f9d55] px-5 py-3.5 text-base font-bold text-white shadow-sm hover:brightness-95"
+              href={`/${slug}/pedido/${feito.acompanhamento}`}
+              className={`flex min-h-12 w-full items-center justify-center gap-1.5 rounded-2xl border border-borda bg-superficie px-5 text-[15px] font-semibold text-tinta hover:bg-superficie-2 ${FOCO}`}
             >
-              <Zap /> Enviar no WhatsApp
+              Acompanhar o pedido <Adiante tamanho={16} />
             </a>
-          ) : null}
-          <a href={`/${slug}/pedido/${feito.acompanhamento}`} className="w-full rounded-2xl border border-borda px-5 py-3 text-sm font-semibold text-tinta hover:bg-superficie-2">
-            Acompanhar o pedido
-          </a>
-          <button type="button" onClick={() => setFeito(null)} className="text-sm font-medium text-tinta-2 underline-offset-4 hover:underline">
+          </div>
+          <button type="button" onClick={() => setFeito(null)} className={`rounded-lg px-2 py-1 text-sm font-medium text-tinta-2 underline-offset-4 hover:underline ${FOCO}`}>
             Voltar ao catálogo
           </button>
         </div>
@@ -366,124 +452,214 @@ export function Loja({
 
   const produtos = lista.produtos
   const valorItemAberto = opcao ? Math.round(opcao.preco * 100 * quantidade) / 100 : 0
+  const buscando = busca.trim().length >= 2
+  // Com foto na maioria, grade de fotos. Com pouca foto, a lista (como
+  // cardápio de delivery): o azulejo fica pequeno ao lado do nome e ninguém
+  // vê uma parede de quadrados vazios.
+  const comFoto = produtos.filter((p) => p.foto).length
+  const emGrade = comFoto > 0 && comFoto * 2 >= produtos.length
+  // Em "Tudo", sem busca, a lista vem por categoria: um título para cada uma.
+  const nomeCategoria = new Map(categorias.map((c) => [c.id, c.nome]))
+  const secoes: { id: string; nome: string | null; itens: ProdutoNoCatalogo[] }[] = []
+  for (const p of produtos) {
+    const agrupar = categoria === null && !buscando && categorias.length > 1
+    const id = agrupar ? (p.categoriaId ?? 'outros') : 'tudo'
+    const ultimaSecao = secoes[secoes.length - 1]
+    if (ultimaSecao?.id === id) ultimaSecao.itens.push(p)
+    else secoes.push({ id, nome: agrupar ? (nomeCategoria.get(id) ?? 'Outros') : null, itens: [p] })
+  }
+  const zapLoja = loja.whatsapp ? `https://wa.me/${loja.whatsapp}?text=${encodeURIComponent('Olá! Vim pelo catálogo.')}` : null
 
   return (
-    <main style={estilo} className="min-h-dvh bg-fundo pb-28">
+    <main style={estilo} className="min-h-dvh bg-fundo pb-32">
       {/* ── quem é a loja ── */}
-      <header className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-6 pb-4">
-        <div className="flex items-center gap-3.5">
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-marca text-xl font-extrabold text-marca-tinta shadow-sm">
-            {empresa.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={empresa.logoUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              empresa.nome.trim().charAt(0).toUpperCase()
-            )}
-          </span>
-          <div className="min-w-0">
-            <h1 className="truncate text-xl font-extrabold tracking-tight text-titulo">{empresa.nome}</h1>
-            <p className="truncate text-sm text-tinta-2">
-              {loja.nome && loja.nome !== empresa.nome ? loja.nome : 'Catálogo'}
-              {loja.horario ? ` · ${loja.horario}` : ''}
-            </p>
+      <header className="relative">
+        <div aria-hidden className="vt-halo pointer-events-none absolute inset-x-0 top-0 h-64" />
+        <div className="relative mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-6 pb-4 sm:pt-10">
+          <div className="flex items-center gap-3.5">
+            <MarcaDaLoja nome={empresa.nome} logo={empresa.logoUrl} className="h-16 w-16 rounded-[20px] text-2xl sm:h-[72px] sm:w-[72px]" />
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[22px] leading-tight font-extrabold tracking-tight text-titulo sm:text-[28px]">{empresa.nome}</h1>
+              <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm text-tinta-2">
+                {subLoja ? <span className="truncate font-medium">{subLoja}</span> : <span className="truncate font-medium">Catálogo</span>}
+                {loja.horario ? (
+                  <>
+                    <span aria-hidden className="text-tinta-3">·</span>
+                    <span className="flex min-w-0 items-center gap-1">
+                      <Relogio tamanho={14} className="shrink-0 text-tinta-3" />
+                      <span className="truncate">{loja.horario}</span>
+                    </span>
+                  </>
+                ) : null}
+              </p>
+            </div>
+            {zapLoja ? (
+              <a
+                href={zapLoja}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Falar com a loja no WhatsApp"
+                className={`flex h-11 shrink-0 items-center gap-2 rounded-full border border-borda bg-superficie px-3 text-sm font-semibold vt-zap shadow-sm hover:bg-superficie-2 sm:px-4 ${FOCO}`}
+              >
+                <Zap tamanho={20} />
+                <span className="hidden sm:inline">WhatsApp</span>
+              </a>
+            ) : null}
           </div>
-        </div>
-        {loja.recado ? <p className="rounded-2xl bg-marca-suave px-4 py-3 text-sm font-medium text-tinta">{loja.recado}</p> : null}
-        <ul className="flex flex-wrap gap-2 text-xs font-medium text-tinta-2">
-          {loja.retirada ? <li className="rounded-full border border-borda bg-superficie px-3 py-1">Retirada na loja</li> : null}
-          {loja.entrega ? (
-            <li className="rounded-full border border-borda bg-superficie px-3 py-1">
-              Entrega{loja.taxaEntrega ? ` · ${brl(loja.taxaEntrega)}` : ' grátis'}
-            </li>
+
+          {loja.recado ? (
+            <p className="rounded-2xl border border-[var(--marca-borda)]/40 bg-marca-suave px-4 py-3 text-sm leading-relaxed font-medium text-tinta">{loja.recado}</p>
           ) : null}
-          {loja.pedidoMinimo ? <li className="rounded-full border border-borda bg-superficie px-3 py-1">Pedido mínimo {brl(loja.pedidoMinimo)}</li> : null}
-          {loja.endereco ? <li className="rounded-full border border-borda bg-superficie px-3 py-1">{loja.endereco}</li> : null}
-        </ul>
-        {ultimo ? (
-          <a href={`/${slug}/pedido/${ultimo}`} className="self-start text-sm font-semibold text-marca underline-offset-4 hover:underline">
-            Acompanhar o meu último pedido
-          </a>
-        ) : null}
+
+          <ul className="flex flex-wrap gap-2 text-[13px] font-semibold text-tinta-2" aria-label="Como funciona">
+            {loja.retirada ? (
+              <li className="flex items-center gap-1.5 rounded-full border border-borda-suave bg-superficie px-3 py-1.5 shadow-[0_1px_2px_rgb(0_0_0/0.04)]">
+                <Vitrine tamanho={15} className="text-[var(--marca-texto)]" /> Retirada
+              </li>
+            ) : null}
+            {loja.entrega ? (
+              <li className="flex items-center gap-1.5 rounded-full border border-borda-suave bg-superficie px-3 py-1.5 shadow-[0_1px_2px_rgb(0_0_0/0.04)]">
+                <Moto tamanho={15} className="text-[var(--marca-texto)]" /> Entrega
+                <span className="font-bold text-tinta tabular-nums">{loja.taxaEntrega ? brl(loja.taxaEntrega) : 'grátis'}</span>
+              </li>
+            ) : null}
+            {loja.pedidoMinimo ? (
+              <li className="flex items-center gap-1.5 rounded-full border border-borda-suave bg-superficie px-3 py-1.5 shadow-[0_1px_2px_rgb(0_0_0/0.04)]">
+                <Etiqueta tamanho={15} className="text-[var(--marca-texto)]" /> Mínimo
+                <span className="font-bold text-tinta tabular-nums">{brl(loja.pedidoMinimo)}</span>
+              </li>
+            ) : null}
+          </ul>
+          {loja.endereco ? (
+            <p className="-mt-1 flex items-start gap-1.5 text-[13px] text-tinta-2">
+              <Alvo tamanho={15} className="mt-px shrink-0 text-tinta-3" />
+              <span className="line-clamp-2">{loja.endereco}</span>
+            </p>
+          ) : null}
+          {ultimo ? (
+            <a
+              href={`/${slug}/pedido/${ultimo}`}
+              className={`flex items-center justify-between gap-3 rounded-2xl border border-borda-suave bg-superficie px-4 py-3 text-sm font-semibold text-tinta shadow-[0_1px_2px_rgb(0_0_0/0.04)] hover:border-borda sm:max-w-sm ${FOCO}`}
+            >
+              <span className="flex items-center gap-2.5">
+                <span aria-hidden className="h-2 w-2 rounded-full bg-marca" />
+                Acompanhar o meu último pedido
+              </span>
+              <Adiante tamanho={16} className="text-tinta-3" />
+            </a>
+          ) : null}
+        </div>
       </header>
 
       {/* ── procurar e categorias ── */}
-      <div className="sticky top-0 z-30 border-b border-borda-suave bg-fundo/95 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl flex-col gap-2.5 px-4 py-3">
-          <label className="flex items-center gap-2 rounded-2xl border border-borda bg-superficie px-3.5 py-2.5 text-tinta-3 focus-within:border-marca">
+      <div className="sticky top-0 z-30 border-b border-borda-suave/80 bg-fundo/85 backdrop-blur-xl backdrop-saturate-150">
+        <div className="mx-auto flex max-w-5xl flex-col gap-2.5 px-4 py-2.5">
+          <label className="flex h-12 items-center gap-2.5 rounded-full border border-borda bg-superficie px-4 text-tinta-3 shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-shadow focus-within:border-marca focus-within:ring-4 focus-within:ring-[var(--marca-anel)]">
             <Lupa />
+            <span className="sr-only">Procurar no catálogo</span>
             <input
               type="search"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Procurar no catálogo"
-              className="w-full bg-transparent text-[15px] text-tinta outline-none placeholder:text-tinta-3"
+              placeholder={`Procurar em ${empresa.nome}`}
+              className="w-full min-w-0 bg-transparent text-base text-tinta outline-none placeholder:text-tinta-3 [&::-webkit-search-cancel-button]:hidden"
               enterKeyHint="search"
             />
+            {busca ? (
+              <button type="button" onClick={() => setBusca('')} aria-label="Limpar a busca" className={`-mr-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-superficie-2 text-tinta-2 hover:text-tinta ${FOCO}`}>
+                <Fechar tamanho={14} />
+              </button>
+            ) : null}
           </label>
           {categorias.length > 1 ? (
-            <nav aria-label="Categorias" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none]">
-              {[{ id: null as string | null, nome: 'Tudo' }, ...categorias].map((c) => (
-                <button
-                  key={c.id ?? 'tudo'}
-                  type="button"
-                  onClick={() => setCategoria(c.id)}
-                  aria-pressed={categoria === c.id}
-                  className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-semibold transition-colors ${
-                    categoria === c.id ? 'border-transparent bg-marca text-marca-tinta' : 'border-borda bg-superficie text-tinta-2 hover:text-tinta'
-                  }`}
-                >
-                  {c.nome}
-                </button>
-              ))}
+            <nav aria-label="Categorias" className="vt-sem-barra -mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5">
+              {[{ id: null as string | null, nome: 'Tudo', total: 0 }, ...categorias].map((c) => {
+                const ativa = categoria === c.id
+                return (
+                  <button
+                    key={c.id ?? 'tudo'}
+                    type="button"
+                    onClick={() => setCategoria(c.id)}
+                    aria-pressed={ativa}
+                    className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-semibold whitespace-nowrap transition-colors ${FOCO} ${
+                      ativa ? 'bg-titulo text-fundo' : 'border border-borda-suave bg-superficie text-tinta-2 hover:border-borda hover:text-tinta'
+                    }`}
+                  >
+                    {c.nome}
+                    {c.total ? <span className={`text-xs tabular-nums ${ativa ? 'opacity-70' : 'text-tinta-3'}`}>{c.total}</span> : null}
+                  </button>
+                )
+              })}
             </nav>
           ) : null}
         </div>
       </div>
 
-      {/* ── a grade ── */}
-      <section className="mx-auto max-w-5xl px-4 pt-4" aria-busy={carregando}>
+      {/* ── os produtos ── */}
+      <section className={`mx-auto max-w-5xl px-4 pt-5 transition-opacity ${carregando && lista.produtos.length ? 'opacity-60' : ''}`} aria-busy={carregando} aria-label="Produtos">
         {produtos.length === 0 && !carregando ? (
-          <p className="py-16 text-center text-sm text-tinta-2">
-            {busca.trim().length >= 2 ? `Nada encontrado para “${busca.trim()}”.` : 'Nada disponível aqui agora.'}
-          </p>
+          <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-marca-suave text-[var(--marca-texto)]">
+              <Lupa tamanho={24} />
+            </span>
+            <p className="text-base font-bold text-titulo text-balance">
+              {buscando ? `Nada encontrado para “${busca.trim()}”` : 'Nada disponível aqui agora'}
+            </p>
+            <p className="max-w-xs text-sm text-tinta-2">
+              {buscando ? 'Confira a escrita ou tente outra palavra.' : 'Volte daqui a pouco ou fale com a loja.'}
+            </p>
+            {buscando || categoria ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setBusca('')
+                  setCategoria(null)
+                }}
+                className={`mt-1 rounded-full border border-borda bg-superficie px-4 py-2 text-sm font-semibold text-tinta hover:bg-superficie-2 ${FOCO}`}
+              >
+                Ver tudo
+              </button>
+            ) : null}
+          </div>
         ) : (
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {produtos.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => abrirProduto(p)}
-                  disabled={!p.disponivel}
-                  className="group flex h-full w-full flex-col overflow-hidden rounded-2xl border border-borda bg-superficie text-left transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-marca disabled:opacity-60"
-                >
-                  <div className="relative aspect-square w-full overflow-hidden">
-                    <Foto src={p.foto} nome={p.nome} className="transition-transform duration-300 group-hover:scale-[1.03]" />
-                    {!p.disponivel ? (
-                      <span className="absolute top-2 left-2 rounded-full bg-superficie/90 px-2.5 py-0.5 text-xs font-bold text-tinta-2">Esgotado</span>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-1 flex-col gap-1 p-3">
-                    <span className="line-clamp-2 text-sm leading-snug font-semibold text-tinta">{p.nome}</span>
-                    <span className="mt-auto text-[15px] font-extrabold text-titulo tabular-nums">
-                      {p.variavel ? <span className="text-xs font-medium text-tinta-3">a partir de </span> : null}
-                      {brl(p.preco)}
-                      {p.medida !== 'UN' ? <span className="text-xs font-medium text-tinta-3"> /{p.medida.toLowerCase()}</span> : null}
-                    </span>
-                  </div>
-                </button>
-              </li>
+          <div className="flex flex-col gap-7">
+            {secoes.map((s) => (
+              <div key={s.id} className="flex flex-col gap-3">
+                {s.nome ? (
+                  <h2 className="flex items-baseline gap-2 text-lg font-extrabold tracking-tight text-titulo">
+                    {s.nome}
+                    <span className="text-sm font-semibold text-tinta-3 tabular-nums">{s.itens.length}</span>
+                  </h2>
+                ) : null}
+                <ul className={emGrade ? 'grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4' : 'grid grid-cols-1 gap-2.5 md:grid-cols-2 md:gap-3'}>
+                  {s.itens.map((p) => (
+                    <Cartao
+                      key={p.id}
+                      p={p}
+                      grade={emGrade}
+                      naSacola={porProduto.get(p.id) ?? 0}
+                      abrir={() => abrirProduto(p)}
+                      mais={() => maisUm(p)}
+                      menos={() => {
+                        const o = opcaoUnica(p)
+                        if (o) somar(p, o, -passoDe(p.medida))
+                      }}
+                    />
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
         {lista.mais ? (
-          <div className="flex justify-center py-6">
+          <div className="flex justify-center py-8">
             <button
               type="button"
               disabled={carregando}
-              onClick={() => void carregar(categoria, busca.trim().length >= 2 ? busca : '', lista.proximo)}
-              className="rounded-full border border-borda bg-superficie px-5 py-2.5 text-sm font-semibold text-tinta hover:bg-superficie-2 disabled:opacity-60"
+              onClick={() => void carregar(categoria, buscando ? busca : '', lista.proximo)}
+              className={`h-11 rounded-full border border-borda bg-superficie px-6 text-sm font-semibold text-tinta shadow-[0_1px_2px_rgb(0_0_0/0.04)] hover:bg-superficie-2 disabled:opacity-60 ${FOCO}`}
             >
-              {carregando ? 'Carregando…' : 'Ver mais'}
+              {carregando ? 'Carregando…' : 'Ver mais produtos'}
             </button>
           </div>
         ) : null}
@@ -493,19 +669,31 @@ export function Loja({
         Preços para pagamento à vista ou Pix. O pagamento é combinado com a loja.
       </p>
 
+      {/* O que o leitor de tela ouve quando a sacola muda. */}
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {mexido ? `${mexido}. Sacola com ${Math.round(itensNaSacola)} ${itensNaSacola === 1 ? 'item' : 'itens'}, total ${brl(subtotal)}.` : ''}
+      </p>
+
       {/* ── a barra da sacola ── */}
       {sacola.length > 0 ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-5">
           <button
             type="button"
             onClick={() => setEtapa('sacola')}
-            className="mx-auto flex w-full max-w-lg items-center justify-between gap-3 rounded-2xl bg-marca px-5 py-3.5 text-marca-tinta shadow-lg hover:brightness-105"
+            aria-label={`Ver sacola: ${Math.round(itensNaSacola)} ${itensNaSacola === 1 ? 'item' : 'itens'}, ${brl(subtotal)}`}
+            className={`vt-barra pointer-events-auto mx-auto flex min-h-[60px] w-full max-w-lg items-center gap-3 rounded-[20px] bg-marca py-2 pr-5 pl-2 text-marca-tinta shadow-[0_16px_40px_-14px_var(--marca),0_4px_12px_-4px_rgb(0_0_0/0.25)] transition-[filter] hover:brightness-105 ${FOCO}`}
           >
-            <span className="flex items-center gap-2.5 text-[15px] font-bold">
-              <Sacola /> Ver pedido
-              <span className="rounded-full bg-black/15 px-2 py-0.5 text-xs tabular-nums">{Math.round(itensNaSacola)}</span>
+            <span key={`${itensNaSacola}-${subtotal}`} className="vt-pulo relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-black/15">
+              <Sacola />
+              <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-superficie px-1 text-[11px] font-extrabold text-titulo tabular-nums shadow">
+                {Math.round(itensNaSacola)}
+              </span>
             </span>
-            <span className="text-[15px] font-extrabold tabular-nums">{brl(subtotal)}</span>
+            <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
+              <span className="text-base font-bold">Ver sacola</span>
+              {faltaMinimo > 0 ? <span className="truncate text-xs font-medium opacity-85">Faltam {brl(faltaMinimo)} para o mínimo</span> : null}
+            </span>
+            <span className="text-base font-extrabold tabular-nums">{brl(subtotal)}</span>
           </button>
         </div>
       ) : null}
@@ -518,60 +706,79 @@ export function Loja({
         rodape={
           aberto ? (
             <div className="flex items-center gap-3">
-              <Passador valor={quantidade} medida={aberto.medida} mudar={(n) => setQuantidade(Math.max(passoDe(aberto.medida), n))} min={passoDe(aberto.medida)} />
-              <button
-                type="button"
-                disabled={!opcao}
-                onClick={adicionar}
-                className="flex flex-1 items-center justify-between gap-2 rounded-2xl bg-marca px-4 py-3 text-[15px] font-bold text-marca-tinta disabled:opacity-50"
-              >
-                <span>{opcao ? 'Adicionar' : 'Escolha uma opção'}</span>
-                {opcao ? <span className="tabular-nums">{brl(valorItemAberto)}</span> : null}
-              </button>
+              <Passador
+                valor={quantidade}
+                medida={aberto.medida}
+                nome={aberto.nome}
+                mudar={(n) => setQuantidade(Math.max(passoDe(aberto.medida), n))}
+                min={passoDe(aberto.medida)}
+              />
+              <BotaoGrande disabled={!opcao} onClick={adicionar} valor={opcao ? brl(valorItemAberto) : undefined} className="flex-1">
+                {opcao ? 'Adicionar' : 'Escolha uma opção'}
+              </BotaoGrande>
             </div>
           ) : null
         }
       >
         {aberto ? (
-          <div className="flex flex-col gap-4">
-            <div className="aspect-[4/3] w-full overflow-hidden rounded-2xl">
-              <Foto src={aberto.foto} nome={aberto.nome} />
+          <div className="flex flex-col gap-5">
+            {aberto.foto ? (
+              <div className="aspect-[4/3] w-full overflow-hidden rounded-2xl bg-superficie-2">
+                <Foto src={aberto.foto} nome={aberto.nome} />
+              </div>
+            ) : null}
+            <div className="flex items-center gap-3.5">
+              {!aberto.foto ? (
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl">
+                  <Foto src={null} nome={aberto.nome} tom={aberto.categoriaId} letra="text-xl" />
+                </div>
+              ) : null}
+              <p className="text-2xl font-extrabold tracking-tight text-titulo tabular-nums">
+                {aberto.variavel ? <span className="mr-1 text-sm font-semibold text-tinta-3">a partir de</span> : null}
+                {brl(aberto.preco)}
+                {aberto.medida !== 'UN' ? <span className="text-sm font-semibold text-tinta-3"> /{aberto.medida.toLowerCase()}</span> : null}
+              </p>
             </div>
-            {aberto.descricao ? <p className="text-sm leading-relaxed text-tinta-2">{aberto.descricao}</p> : null}
+            {aberto.descricao ? <p className="-mt-2 text-[15px] leading-relaxed text-tinta-2">{aberto.descricao}</p> : null}
             {aberto.opcoes.length > 1 || (aberto.opcoes[0]?.rotulo ?? '') !== '' ? (
               <fieldset className="flex flex-col gap-2">
-                <legend className="mb-1 text-sm font-semibold text-tinta">Escolha</legend>
+                <legend className="mb-2 flex w-full items-center justify-between text-sm font-bold text-titulo">
+                  Escolha uma opção
+                  {!opcao ? <span className="rounded-full bg-superficie-2 px-2 py-0.5 text-[11px] font-bold text-tinta-2">Obrigatório</span> : null}
+                </legend>
                 <div className="flex flex-wrap gap-2">
-                  {aberto.opcoes.map((o) => (
-                    <button
-                      key={o.variacaoId}
-                      type="button"
-                      disabled={!o.disponivel}
-                      onClick={() => setOpcao(o)}
-                      aria-pressed={opcao?.variacaoId === o.variacaoId}
-                      className={`rounded-xl border px-3.5 py-2 text-sm font-semibold transition-colors disabled:line-through disabled:opacity-45 ${
-                        opcao?.variacaoId === o.variacaoId ? 'border-marca bg-marca-suave text-tinta' : 'border-borda bg-superficie text-tinta-2 hover:border-tinta-3'
-                      }`}
-                    >
-                      {o.rotulo || aberto.nome}
-                      {aberto.variavel ? <span className="ml-1.5 font-medium text-tinta-3 tabular-nums">{brl(o.preco)}</span> : null}
-                    </button>
-                  ))}
+                  {aberto.opcoes.map((o) => {
+                    const sel = opcao?.variacaoId === o.variacaoId
+                    return (
+                      <button
+                        key={o.variacaoId}
+                        type="button"
+                        disabled={!o.disponivel}
+                        onClick={() => setOpcao(o)}
+                        aria-pressed={sel}
+                        className={`flex min-h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition-colors disabled:line-through disabled:opacity-45 ${FOCO} ${
+                          sel ? 'border-marca bg-marca-suave text-titulo ring-1 ring-marca' : 'border-borda bg-superficie text-tinta-2 hover:border-tinta-3'
+                        }`}
+                      >
+                        {sel ? <Visto tamanho={14} className="text-[var(--marca-texto)]" /> : null}
+                        {o.rotulo || aberto.nome}
+                        {aberto.variavel ? <span className="font-medium text-tinta-3 tabular-nums">{brl(o.preco)}</span> : null}
+                        {!o.disponivel ? <span className="sr-only">(esgotado)</span> : null}
+                      </button>
+                    )
+                  })}
                 </div>
               </fieldset>
-            ) : (
-              <p className="text-lg font-extrabold text-titulo tabular-nums">
-                {brl(aberto.preco)}
-                {aberto.medida !== 'UN' ? <span className="text-sm font-medium text-tinta-3"> /{aberto.medida.toLowerCase()}</span> : null}
-              </p>
-            )}
-            <label className="flex flex-col gap-1.5 text-sm font-semibold text-tinta">
-              Alguma observação? <span className="font-normal text-tinta-3">(opcional)</span>
+            ) : null}
+            <label className="flex flex-col gap-1.5 text-sm font-bold text-titulo">
+              <span>
+                Alguma observação? <span className="font-normal text-tinta-3">(opcional)</span>
+              </span>
               <input
                 value={obsItem}
                 onChange={(e) => setObsItem(e.target.value.slice(0, 200))}
                 placeholder="Ex.: sem cobertura, para presente"
-                className="rounded-xl border border-borda bg-superficie px-3.5 py-2.5 text-[15px] font-normal outline-none focus:border-marca"
+                className={CAMPO}
               />
             </label>
           </div>
@@ -582,57 +789,79 @@ export function Loja({
       <Folha
         aberta={etapa === 'sacola'}
         fechar={fecharEtapa}
-        titulo="Seu pedido"
+        titulo="Sua sacola"
+        subtitulo="Passo 1 de 2"
         rodape={
-          <div className="flex flex-col gap-2">
-            {faltaMinimo > 0 ? (
-              <p className="text-center text-xs font-medium text-atencao">Faltam {brl(faltaMinimo)} para o pedido mínimo.</p>
+          <div className="flex flex-col gap-3">
+            {loja.pedidoMinimo && sacola.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between text-xs font-medium">
+                  <span className={faltaMinimo > 0 ? 'text-atencao' : 'text-bom'}>
+                    {faltaMinimo > 0 ? `Faltam ${brl(faltaMinimo)} para o pedido mínimo` : 'Pedido mínimo atingido'}
+                  </span>
+                  <span className="text-tinta-3 tabular-nums">{brl(loja.pedidoMinimo)}</span>
+                </div>
+                <span className="h-1.5 overflow-hidden rounded-full bg-superficie-3" aria-hidden>
+                  <span className="block h-full rounded-full bg-marca transition-[width] duration-300" style={{ width: `${Math.min(100, (subtotal / loja.pedidoMinimo) * 100)}%` }} />
+                </span>
+              </div>
             ) : null}
-            <button
-              type="button"
+            <BotaoGrande
               disabled={sacola.length === 0 || faltaMinimo > 0}
               onClick={() => {
                 setErro(null)
                 setEtapa('dados')
               }}
-              className="flex w-full items-center justify-between rounded-2xl bg-marca px-5 py-3.5 text-[15px] font-bold text-marca-tinta disabled:opacity-50"
+              valor={brl(subtotal)}
             >
-              <span>Continuar</span>
-              <span className="tabular-nums">{brl(subtotal)}</span>
-            </button>
+              Continuar
+            </BotaoGrande>
           </div>
         }
       >
         {sacola.length === 0 ? (
-          <p className="py-8 text-center text-sm text-tinta-2">Seu pedido está vazio.</p>
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-marca-suave text-[var(--marca-texto)]">
+              <Sacola tamanho={26} />
+            </span>
+            <p className="text-sm text-tinta-2">Sua sacola está vazia.</p>
+          </div>
         ) : (
           <ul className="flex flex-col divide-y divide-borda-suave">
             {sacola.map((i) => (
-              <li key={i.variacaoId} className="flex gap-3 py-3">
+              <li key={i.variacaoId} className="flex gap-3 py-3.5 first:pt-1">
                 <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl">
-                  <Foto src={i.foto} nome={i.nome} className="text-lg" />
+                  <Foto src={i.foto} nome={i.nome} tom={produtos.find((p) => p.id === i.produtoId)?.categoriaId ?? null} letra="text-lg" />
                 </div>
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-tinta">{i.nome}</p>
-                      {i.rotulo ? <p className="truncate text-xs text-tinta-2">{i.rotulo}</p> : null}
+                      <p className="line-clamp-2 text-[15px] leading-snug font-semibold text-tinta">{i.nome}</p>
+                      {i.rotulo ? <p className="truncate text-xs font-medium text-tinta-2">{i.rotulo}</p> : null}
                       {i.observacao ? <p className="truncate text-xs text-tinta-3">“{i.observacao}”</p> : null}
                     </div>
-                    <span className="text-sm font-bold text-titulo tabular-nums">{brl(Math.round(i.preco * 100 * i.quantidade) / 100)}</span>
+                    <span className="shrink-0 text-[15px] font-bold text-titulo tabular-nums">{brl(Math.round(i.preco * 100 * i.quantidade) / 100)}</span>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <Passador
+                      compacto
                       valor={i.quantidade}
                       medida={i.medida}
-                      mudar={(n) => mexerSacola((s) => s.map((x) => (x.variacaoId === i.variacaoId ? { ...x, quantidade: n } : x)))}
+                      nome={i.nome}
+                      mudar={(n) => {
+                        mexerSacola((s) => s.map((x) => (x.variacaoId === i.variacaoId ? { ...x, quantidade: n } : x)))
+                        setMexido(n > 0 ? `${i.nome}: ${qtd(n, i.medida)}` : `${i.nome} saiu da sacola`)
+                      }}
                     />
                     <button
                       type="button"
-                      onClick={() => mexerSacola((s) => s.filter((x) => x.variacaoId !== i.variacaoId))}
-                      className="text-xs font-semibold text-tinta-3 hover:text-critico"
+                      onClick={() => {
+                        mexerSacola((s) => s.filter((x) => x.variacaoId !== i.variacaoId))
+                        setMexido(`${i.nome} saiu da sacola`)
+                      }}
+                      className={`flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-tinta-3 hover:bg-critico-fundo hover:text-critico ${FOCO}`}
                     >
-                      Tirar
+                      <Lixo tamanho={15} /> Tirar
                     </button>
                   </div>
                 </div>
@@ -646,28 +875,25 @@ export function Loja({
       <Folha
         aberta={etapa === 'dados'}
         fechar={fecharEtapa}
+        voltar={() => setEtapa('sacola')}
         titulo="Finalizar pedido"
+        subtitulo="Passo 2 de 2"
         rodape={
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5">
             {erro ? (
-              <p role="alert" className="rounded-xl bg-critico-fundo px-3 py-2 text-sm font-medium text-critico">
+              <p role="alert" className="rounded-xl bg-critico-fundo px-3.5 py-2.5 text-sm font-medium text-critico">
                 {erro}
               </p>
             ) : null}
-            <button
-              type="button"
-              onClick={mandar}
-              disabled={enviando}
-              className="flex w-full items-center justify-between rounded-2xl bg-marca px-5 py-3.5 text-[15px] font-bold text-marca-tinta disabled:opacity-60"
-            >
-              <span>{enviando ? 'Enviando…' : 'Fazer pedido'}</span>
-              <span className="tabular-nums">{brl(subtotal + taxa)}</span>
-            </button>
+            <BotaoGrande onClick={mandar} disabled={enviando} valor={brl(subtotal + taxa)}>
+              {enviando ? 'Enviando…' : 'Enviar pedido'}
+            </BotaoGrande>
+            <p className="text-center text-xs text-tinta-3">Depois é só confirmar com a loja pelo WhatsApp.</p>
           </div>
         }
       >
         <form
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-6"
           onSubmit={(e) => {
             e.preventDefault()
             mandar()
@@ -675,129 +901,232 @@ export function Loja({
         >
           {/* gente não vê; robô preenche */}
           <input ref={site} name="site" tabIndex={-1} autoComplete="off" aria-hidden className="absolute -left-[9999px] h-px w-px opacity-0" />
-          <Campo rotulo="Seu nome">
-            <input
-              value={dados.nome}
-              onChange={(e) => setDados({ ...dados, nome: e.target.value })}
-              autoComplete="name"
-              className={CAMPO}
-              maxLength={80}
-            />
-          </Campo>
-          <Campo rotulo="Seu WhatsApp">
-            <input
-              value={dados.telefone}
-              onChange={(e) => setDados({ ...dados, telefone: e.target.value })}
-              inputMode="tel"
-              autoComplete="tel-national"
-              placeholder="(71) 99999-0000"
-              className={CAMPO}
-              maxLength={20}
-            />
-          </Campo>
 
-          {loja.retirada && loja.entrega ? (
+          <Grupo titulo="Seus dados">
+            <Campo rotulo="Seu nome">
+              <input value={dados.nome} onChange={(e) => setDados({ ...dados, nome: e.target.value })} autoComplete="name" className={CAMPO} maxLength={80} />
+            </Campo>
+            <Campo rotulo="Seu WhatsApp">
+              <input
+                value={dados.telefone}
+                onChange={(e) => setDados({ ...dados, telefone: e.target.value })}
+                inputMode="tel"
+                autoComplete="tel-national"
+                placeholder="(71) 99999-0000"
+                className={CAMPO}
+                maxLength={20}
+              />
+            </Campo>
+          </Grupo>
+
+          <Grupo titulo="Como quer receber?">
+            {loja.retirada && loja.entrega ? (
+              <Escolha
+                oculto
+                rotulo="Como quer receber?"
+                valor={dados.entrega ? 'entrega' : 'retirada'}
+                mudar={(v) => setDados({ ...dados, entrega: v === 'entrega' })}
+                opcoes={[
+                  { valor: 'retirada', rotulo: 'Retirar na loja', detalhe: 'Sem taxa', icone: <Vitrine tamanho={20} /> },
+                  { valor: 'entrega', rotulo: 'Entrega', detalhe: loja.taxaEntrega ? `+ ${brl(loja.taxaEntrega)}` : 'Grátis', icone: <Moto tamanho={20} /> },
+                ]}
+              />
+            ) : (
+              <p className="flex items-center gap-2.5 rounded-xl bg-superficie-2 px-3.5 py-3 text-sm font-medium text-tinta">
+                {loja.entrega ? <Moto tamanho={18} className="text-[var(--marca-texto)]" /> : <Vitrine tamanho={18} className="text-[var(--marca-texto)]" />}
+                {loja.entrega ? 'Esta loja faz entrega.' : 'Retirada na loja.'}
+              </p>
+            )}
+            {dados.entrega ? (
+              <Campo rotulo="Endereço de entrega">
+                <textarea
+                  value={dados.endereco}
+                  onChange={(e) => setDados({ ...dados, endereco: e.target.value })}
+                  autoComplete="street-address"
+                  rows={2}
+                  placeholder="Rua, número, bairro e um ponto de referência"
+                  className={CAMPO}
+                  maxLength={300}
+                />
+              </Campo>
+            ) : null}
+
+          </Grupo>
+
+          <Grupo titulo="Para quando?">
             <Escolha
-              rotulo="Como quer receber?"
-              valor={dados.entrega ? 'entrega' : 'retirada'}
-              mudar={(v) => setDados({ ...dados, entrega: v === 'entrega' })}
+              oculto
+              rotulo="Para quando?"
+              valor={dados.quando}
+              mudar={(v) => setDados({ ...dados, quando: v as Dados['quando'] })}
               opcoes={[
-                { valor: 'retirada', rotulo: 'Retirar na loja' },
-                { valor: 'entrega', rotulo: `Entrega${loja.taxaEntrega ? ` (+${brl(loja.taxaEntrega)})` : ''}` },
+                { valor: 'logo', rotulo: 'O quanto antes' },
+                { valor: 'agendar', rotulo: 'Agendar' },
               ]}
             />
-          ) : (
-            <p className="text-sm text-tinta-2">{loja.entrega ? 'Esta loja faz entrega.' : 'Retirada na loja.'}</p>
-          )}
-          {dados.entrega ? (
-            <Campo rotulo="Endereço de entrega">
-              <textarea
-                value={dados.endereco}
-                onChange={(e) => setDados({ ...dados, endereco: e.target.value })}
-                autoComplete="street-address"
-                rows={2}
-                placeholder="Rua, número, bairro e um ponto de referência"
-                className={CAMPO}
-                maxLength={300}
-              />
-            </Campo>
-          ) : null}
+            {dados.quando === 'agendar' ? (
+              <input type="datetime-local" value={dados.para} onChange={(e) => setDados({ ...dados, para: e.target.value })} className={CAMPO} aria-label="Dia e hora" />
+            ) : null}
+          </Grupo>
 
-          <Escolha
-            rotulo="Para quando?"
-            valor={dados.quando}
-            mudar={(v) => setDados({ ...dados, quando: v as Dados['quando'] })}
-            opcoes={[
-              { valor: 'logo', rotulo: 'O quanto antes' },
-              { valor: 'agendar', rotulo: 'Agendar' },
-            ]}
-          />
-          {dados.quando === 'agendar' ? (
-            <input
-              type="datetime-local"
-              value={dados.para}
-              onChange={(e) => setDados({ ...dados, para: e.target.value })}
-              className={CAMPO}
-              aria-label="Dia e hora"
+          <Grupo titulo="Como vai pagar?">
+            <Escolha
+              oculto
+              rotulo="Como vai pagar?"
+              valor={dados.forma}
+              mudar={(v) => setDados({ ...dados, forma: v as FormaPagamento })}
+              opcoes={FORMAS.map((f) => ({ valor: f.forma, rotulo: f.rotulo }))}
             />
-          ) : null}
-
-          <Escolha
-            rotulo="Como vai pagar?"
-            valor={dados.forma}
-            mudar={(v) => setDados({ ...dados, forma: v as FormaPagamento })}
-            opcoes={FORMAS.map((f) => ({ valor: f.forma, rotulo: f.rotulo }))}
-          />
-          {dados.forma === 'DINHEIRO' ? (
-            <Campo rotulo="Troco para quanto?">
-              <input
-                value={dados.trocoPara}
-                onChange={(e) => setDados({ ...dados, trocoPara: e.target.value })}
-                inputMode="decimal"
-                placeholder="Ex.: 50 (deixe vazio se não precisa)"
-                className={CAMPO}
-                maxLength={10}
-              />
+            {dados.forma === 'DINHEIRO' ? (
+              <Campo rotulo="Troco para quanto?">
+                <input
+                  value={dados.trocoPara}
+                  onChange={(e) => setDados({ ...dados, trocoPara: e.target.value })}
+                  inputMode="decimal"
+                  placeholder="Ex.: 50 (deixe vazio se não precisa)"
+                  className={CAMPO}
+                  maxLength={10}
+                />
+              </Campo>
+            ) : null}
+            <Campo rotulo="Observação (opcional)">
+              <textarea value={dados.observacao} onChange={(e) => setDados({ ...dados, observacao: e.target.value })} rows={2} className={CAMPO} maxLength={500} />
             </Campo>
-          ) : null}
+          </Grupo>
 
-          <Campo rotulo="Observação (opcional)">
-            <textarea
-              value={dados.observacao}
-              onChange={(e) => setDados({ ...dados, observacao: e.target.value })}
-              rows={2}
-              className={CAMPO}
-              maxLength={500}
-            />
-          </Campo>
-
-          <dl className="flex flex-col gap-1 rounded-2xl bg-superficie-2 px-4 py-3 text-sm">
+          <dl className="flex flex-col gap-2 rounded-2xl border border-borda-suave bg-superficie-2 px-4 py-3.5 text-sm">
             <div className="flex justify-between text-tinta-2">
-              <dt>Produtos</dt>
+              <dt>
+                Produtos <span className="text-tinta-3">({Math.round(itensNaSacola)})</span>
+              </dt>
               <dd className="tabular-nums">{brl(subtotal)}</dd>
             </div>
-            {taxa > 0 ? (
+            {dados.entrega ? (
               <div className="flex justify-between text-tinta-2">
                 <dt>Entrega</dt>
-                <dd className="tabular-nums">{brl(taxa)}</dd>
+                <dd className="tabular-nums">{taxa > 0 ? brl(taxa) : 'Grátis'}</dd>
               </div>
             ) : null}
-            <div className="flex justify-between font-bold text-titulo">
+            <div className="mt-1 flex justify-between border-t border-borda-suave pt-2.5 text-base font-extrabold text-titulo">
               <dt>Total</dt>
               <dd className="tabular-nums">{brl(subtotal + taxa)}</dd>
             </div>
           </dl>
-          <p className="text-xs text-tinta-3">
-            Seu nome e WhatsApp vão só para a loja, para ela falar com você sobre este pedido.
-          </p>
+          <p className="-mt-2 text-xs leading-relaxed text-tinta-3">Seu nome e WhatsApp vão só para a loja, para ela falar com você sobre este pedido.</p>
         </form>
       </Folha>
     </main>
   )
 }
 
+/** Um produto na vitrine: em grade (foto em cima) ou em lista (azulejo ao lado). */
+function Cartao({
+  p,
+  grade,
+  naSacola,
+  abrir,
+  mais,
+  menos,
+}: {
+  p: ProdutoNoCatalogo
+  grade: boolean
+  naSacola: number
+  abrir: () => void
+  mais: () => void
+  menos: () => void
+}) {
+  const unica = opcaoUnica(p)
+  const preco = (
+    <span className="flex flex-wrap items-baseline gap-x-1 tabular-nums">
+      {p.variavel ? <span className="text-xs font-medium text-tinta-3">a partir de</span> : null}
+      <span className="text-base font-extrabold text-titulo">{brl(p.preco)}</span>
+      {p.medida !== 'UN' ? <span className="text-xs font-medium text-tinta-3">/{p.medida.toLowerCase()}</span> : null}
+    </span>
+  )
+  // O controle de quantidade: "+" redondo; depois de pôr, o passador (produto
+  // sem escolha) ou o número na sacola com "+" (produto com tamanho/sabor).
+  const controle = !p.disponivel ? null : naSacola > 0 && unica ? (
+    <div className="flex items-center rounded-full bg-marca text-marca-tinta shadow-[0_6px_16px_-6px_var(--marca)]" role="group" aria-label={`Quantidade de ${p.nome}`}>
+      <button type="button" onClick={menos} aria-label={`Diminuir ${p.nome}`} className={`flex h-9 w-9 items-center justify-center rounded-full hover:bg-black/10 ${FOCO}`}>
+        {naSacola - passoDe(p.medida) < 1e-9 ? <Lixo tamanho={15} /> : <Menos tamanho={16} />}
+      </button>
+      <span className="min-w-6 text-center text-sm font-extrabold tabular-nums">{p.medida === 'UN' ? naSacola : qtd(naSacola, p.medida)}</span>
+      <button type="button" onClick={mais} aria-label={`Mais ${p.nome}`} className={`flex h-9 w-9 items-center justify-center rounded-full hover:bg-black/10 ${FOCO}`}>
+        <Mais tamanho={16} />
+      </button>
+    </div>
+  ) : (
+    <button
+      type="button"
+      onClick={mais}
+      aria-label={unica ? `Adicionar ${p.nome}` : `Escolher opção de ${p.nome}`}
+      className={`relative flex h-9 min-w-9 items-center justify-center gap-1 rounded-full px-2 shadow-[0_4px_12px_-4px_rgb(0_0_0/0.3)] transition-transform active:scale-95 ${FOCO} ${
+        naSacola > 0 ? 'bg-marca text-marca-tinta' : 'bg-superficie text-titulo ring-1 ring-borda'
+      }`}
+    >
+      {naSacola > 0 ? <span className="pl-1 text-sm font-extrabold tabular-nums">{p.medida === 'UN' ? naSacola : qtd(naSacola, p.medida)}</span> : null}
+      <Mais tamanho={18} />
+    </button>
+  )
+  const esgotado = !p.disponivel ? (
+    <span className="rounded-full bg-superficie/95 px-2.5 py-1 text-[11px] font-bold tracking-wide text-tinta-2 uppercase shadow-sm ring-1 ring-borda-suave">Esgotado</span>
+  ) : null
+
+  if (grade) {
+    return (
+      <li className="relative">
+        <article className={`group flex h-full flex-col overflow-hidden rounded-[20px] border border-borda-suave bg-superficie shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-shadow hover:shadow-[0_10px_28px_-14px_rgb(0_0_0/0.25)] ${!p.disponivel ? 'opacity-70' : ''}`}>
+          <button type="button" onClick={abrir} disabled={!p.disponivel} className={`flex flex-1 flex-col text-left ${FOCO} focus-visible:-outline-offset-2`}>
+            <div className={`relative aspect-square w-full overflow-hidden ${!p.disponivel ? 'grayscale' : ''}`}>
+              <Foto src={p.foto} nome={p.nome} tom={p.categoriaId} letra="text-4xl" className="transition-transform duration-500 group-hover:scale-[1.03] motion-reduce:transition-none" />
+              {esgotado ? <span className="absolute top-2 left-2">{esgotado}</span> : null}
+            </div>
+            <div className="flex flex-1 flex-col gap-1.5 p-3 pr-3">
+              <span className="line-clamp-2 text-sm leading-snug font-semibold text-tinta">{p.nome}</span>
+              <span className="mt-auto">{preco}</span>
+            </div>
+          </button>
+        </article>
+        {controle ? <div className="pointer-events-none absolute inset-x-0 top-0 aspect-square"><div className="pointer-events-auto absolute right-2 bottom-2">{controle}</div></div> : null}
+      </li>
+    )
+  }
+
+  return (
+    <li className="relative">
+      <article
+        className={`flex h-full items-stretch overflow-hidden rounded-[20px] border border-borda-suave bg-superficie shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-shadow hover:shadow-[0_10px_28px_-16px_rgb(0_0_0/0.25)] ${!p.disponivel ? 'opacity-70' : ''}`}
+      >
+        <button type="button" onClick={abrir} disabled={!p.disponivel} className={`flex min-w-0 flex-1 items-center gap-3.5 p-3 text-left ${FOCO} focus-visible:-outline-offset-2`}>
+          <span className={`relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-2xl ${!p.disponivel ? 'grayscale' : ''}`}>
+            <Foto src={p.foto} nome={p.nome} tom={p.categoriaId} letra="text-2xl" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-1 pr-12">
+            <span className="line-clamp-2 text-[15px] leading-snug font-semibold text-tinta">{p.nome}</span>
+            {p.descricao ? <span className="line-clamp-1 text-[13px] text-tinta-2">{p.descricao}</span> : null}
+            <span className="mt-0.5 flex items-center gap-2">
+              {preco}
+              {esgotado}
+            </span>
+          </span>
+        </button>
+      </article>
+      {controle ? <div className="absolute right-3 bottom-3">{controle}</div> : null}
+    </li>
+  )
+}
+
 const CAMPO =
-  'w-full rounded-xl border border-borda bg-superficie px-3.5 py-2.5 text-[15px] text-tinta outline-none placeholder:text-tinta-3 focus:border-marca'
+  'w-full min-h-12 rounded-xl border border-borda bg-superficie px-3.5 py-3 text-base font-normal text-tinta outline-none transition-shadow placeholder:text-tinta-3 focus:border-marca focus:ring-4 focus:ring-[var(--marca-anel)]'
+
+function Grupo({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="text-base font-extrabold tracking-tight text-titulo">{titulo}</h3>
+      {children}
+    </section>
+  )
+}
 
 function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
@@ -813,29 +1142,39 @@ function Escolha({
   valor,
   mudar,
   opcoes,
+  oculto,
 }: {
   rotulo: string
+  /** A pergunta já está no título do grupo: a legenda fica só para o leitor de tela. */
+  oculto?: boolean
   valor: string
   mudar: (v: string) => void
-  opcoes: { valor: string; rotulo: string }[]
+  opcoes: { valor: string; rotulo: string; detalhe?: string; icone?: React.ReactNode }[]
 }) {
   return (
-    <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1.5 text-sm font-semibold text-tinta">{rotulo}</legend>
+    <fieldset className="flex flex-col">
+      <legend className={oculto ? 'sr-only' : 'mb-2 text-sm font-semibold text-tinta'}>{rotulo}</legend>
       <div className="grid grid-cols-2 gap-2">
-        {opcoes.map((o) => (
-          <button
-            key={o.valor}
-            type="button"
-            onClick={() => mudar(o.valor)}
-            aria-pressed={valor === o.valor}
-            className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
-              valor === o.valor ? 'border-marca bg-marca-suave text-tinta' : 'border-borda bg-superficie text-tinta-2 hover:border-tinta-3'
-            }`}
-          >
-            {o.rotulo}
-          </button>
-        ))}
+        {opcoes.map((o) => {
+          const sel = valor === o.valor
+          return (
+            <button
+              key={o.valor}
+              type="button"
+              onClick={() => mudar(o.valor)}
+              aria-pressed={sel}
+              className={`relative flex min-h-12 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left text-sm font-semibold transition-colors ${FOCO} ${
+                sel ? 'border-marca bg-marca-suave text-titulo ring-1 ring-marca' : 'border-borda bg-superficie text-tinta-2 hover:border-tinta-3'
+              } ${o.icone ? '' : 'justify-center text-center'}`}
+            >
+              {o.icone ? <span className={sel ? 'text-[var(--marca-texto)]' : 'text-tinta-3'}>{o.icone}</span> : null}
+              <span className="flex min-w-0 flex-col leading-tight">
+                {o.rotulo}
+                {o.detalhe ? <span className="mt-0.5 text-xs font-medium text-tinta-3 tabular-nums">{o.detalhe}</span> : null}
+              </span>
+            </button>
+          )
+        })}
       </div>
     </fieldset>
   )

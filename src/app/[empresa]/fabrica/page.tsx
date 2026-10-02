@@ -208,7 +208,9 @@ async function Producao({
         {encerradas.length === 0 ? (
           <p className="text-sm text-tinta-3">Nenhuma produção encerrada ainda.</p>
         ) : (
-          <div className="overflow-x-auto rounded-norte border border-borda bg-superficie">
+          // `empilha`: no celular cada produção vira um cartão (globals.css),
+          // em vez de esconder o lote e as etiquetas atrás da rolagem.
+          <div className="empilha overflow-x-auto rounded-norte border border-borda bg-superficie">
             <table className="w-full min-w-[34rem] text-sm">
               <thead className="border-b border-borda bg-superficie-2 text-left text-xs text-tinta-3">
                 <tr>
@@ -224,24 +226,24 @@ async function Producao({
               <tbody className="divide-y divide-borda-suave">
                 {encerradas.map((o) => (
                   <tr key={o.id}>
-                    <td className="px-3 py-2 font-mono text-xs text-tinta-3">{o.numero}</td>
-                    <td className="px-3 py-2 text-tinta">
+                    <td data-rotulo="OP" className="px-3 py-2 font-mono text-xs text-tinta-3">{o.numero}</td>
+                    <td data-titulo className="px-3 py-2 text-tinta">
                       {o.produto}
                       <span className="block text-xs text-tinta-3">
                         {o.encerradaEm ? `${quando(o.encerradaEm)} · ` : ''}
                         {o.quem}
                       </span>
                     </td>
-                    <td className="numero px-3 py-2 text-right text-tinta">
+                    <td data-destaque className="numero px-3 py-2 text-right text-tinta">
                       {o.produzida != null ? quantidade(o.produzida, o.medida) : '—'}
                       {o.produzida != null && o.produzida < o.prevista && (
                         <span className="block text-xs text-tinta-3">previsto {quantidade(o.prevista, o.medida)}</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs whitespace-nowrap text-tinta">{o.lote}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-tinta-2">{diaBR(o.validade)}</td>
+                    <td data-rotulo="Lote" className="px-3 py-2 font-mono text-xs whitespace-nowrap text-tinta">{o.lote}</td>
+                    <td data-rotulo="Validade" className="px-3 py-2 whitespace-nowrap text-tinta-2">{diaBR(o.validade)}</td>
                     {verCusto && (
-                      <td className="numero px-3 py-2 text-right text-tinta">
+                      <td data-rotulo="Custo" className="numero px-3 py-2 text-right text-tinta">
                         {o.custoUnitario != null ? (
                           <>
                             {brl(o.custoUnitario)}

@@ -253,7 +253,7 @@ export function Balcao({
             <AlertaDeDivida slug={slug} unidadeId={unidadeId} clienteId={cliente.id} podeReceber={crediario.receber !== false} />
           )}
           {crediario && !cliente && crediario.receber !== false && (
-            <BotaoReceber slug={slug} unidadeId={unidadeId} tom="discreto" className="self-start px-0 py-0.5 text-xs">
+            <BotaoReceber slug={slug} unidadeId={unidadeId} tom="discreto" className="self-start px-2.5 py-1 text-xs">
               Receber parcela do crediário
             </BotaoReceber>
           )}

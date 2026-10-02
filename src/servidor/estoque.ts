@@ -389,35 +389,52 @@ export async function listarMovimentos(sessao: Sessao, f: FiltroMovimentos): Pro
       select: {
         id: true, criadoEm: true, tipo: true, quantidade: true, saldoDepois: true, motivo: true,
         referencia: true, quem: true, unidadeId: true, variacaoId: true,
-        unidade: { select: { nome: true } },
-        variacao: {
-          select: {
-            codigo: true,
-            produto: { select: { nome: true, medida: true } },
-            opcoes: { select: { opcao: { select: { valor: true } } } },
-          },
-        },
       },
     })
-    return linhas.map((m) => ({
-      id: m.id,
-      criadoEm: m.criadoEm,
-      tipo: m.tipo,
-      quantidade: Number(m.quantidade),
-      saldoDepois: Number(m.saldoDepois),
-      motivo: m.motivo,
-      referencia: m.referencia,
-      quem: m.quem,
-      unidade: m.unidade.nome,
-      unidadeId: m.unidadeId,
-      variacaoId: m.variacaoId,
-      descricao:
-        m.variacao.opcoes.length > 0
-          ? `${m.variacao.produto.nome} — ${m.variacao.opcoes.map((o) => o.opcao.valor).join(' · ')}`
-          : m.variacao.produto.nome,
-      codigo: m.variacao.codigo,
-      medida: m.variacao.produto.medida,
-    }))
+    // A loja, o produto e as opções vêm em consultas próprias, uma depois da
+    // outra: no mesmo `select` o Prisma as busca AO MESMO TEMPO, e dentro do
+    // comoOrg a conexão é uma só — o `pg` avisa e, no pg@9, quebra.
+    const idsUni = [...new Set(linhas.map((m) => m.unidadeId))]
+    const idsVar = [...new Set(linhas.map((m) => m.variacaoId))]
+    const unidades = idsUni.length
+      ? await db.unidade.findMany({ where: { id: { in: idsUni } }, select: { id: true, nome: true } })
+      : []
+    const variacoes = idsVar.length
+      ? await db.variacao.findMany({
+          where: { id: { in: idsVar } },
+          select: { id: true, codigo: true, produto: { select: { nome: true, medida: true } } },
+        })
+      : []
+    const opcoes = idsVar.length
+      ? await db.variacaoOpcao.findMany({
+          where: { variacaoId: { in: idsVar } },
+          select: { variacaoId: true, opcao: { select: { valor: true } } },
+        })
+      : []
+    const nomeDa = new Map(unidades.map((u) => [u.id, u.nome]))
+    const varDe = new Map(variacoes.map((v) => [v.id, v]))
+    const opcoesDe = new Map<string, string[]>()
+    for (const o of opcoes) opcoesDe.set(o.variacaoId, [...(opcoesDe.get(o.variacaoId) ?? []), o.opcao.valor])
+    return linhas.map((m) => {
+      const v = varDe.get(m.variacaoId)!
+      const ops = opcoesDe.get(m.variacaoId) ?? []
+      return {
+        id: m.id,
+        criadoEm: m.criadoEm,
+        tipo: m.tipo,
+        quantidade: Number(m.quantidade),
+        saldoDepois: Number(m.saldoDepois),
+        motivo: m.motivo,
+        referencia: m.referencia,
+        quem: m.quem,
+        unidade: nomeDa.get(m.unidadeId) ?? '',
+        unidadeId: m.unidadeId,
+        variacaoId: m.variacaoId,
+        descricao: ops.length > 0 ? `${v.produto.nome} — ${ops.join(' · ')}` : v.produto.nome,
+        codigo: v.codigo,
+        medida: v.produto.medida,
+      }
+    })
   })
 }
 

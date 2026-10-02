@@ -188,6 +188,30 @@ export default async function Financeiro({
   const podeMexer = (unidadeId: string | null) =>
     podeLancar && (unidadeId === null ? lancaNaEmpresa : pode(sessao, 'financeiro.lancar', unidadeId))
 
+  // Uma conta a pagar, na lista das vencidas ou das a vencer.
+  //
+  // No celular a conta ocupa a linha inteira e a etiqueta, o valor e o
+  // "Paguei" descem para baixo dela. Lado a lado, sobravam 90px para o nome:
+  // "Pedido de…", "Manutenç…" — e a pessoa pagava sem ler o quê.
+  const linhaDeConta = (c: Omit<(typeof contas.vencidas)[number], 'dias'> & { nivel: 'critico' | 'atencao' | 'neutro'; quando: string }) => (
+    <li
+      key={c.id}
+      className="flex flex-col gap-2 border-b border-borda-suave py-2.5 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-2"
+    >
+      <span className="flex min-w-0 flex-col">
+        <span className="text-sm text-tinta sm:truncate">{c.descricao}</span>
+        <span className="text-xs text-tinta-3">vence {dia(c.vencimento)}</span>
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        <Situacao nivel={c.nivel}>{c.quando}</Situacao>
+        <span className="numero ml-auto text-sm font-semibold text-tinta sm:ml-0 sm:w-24 sm:text-right">
+          {brl(c.valor)}
+        </span>
+        {podeMexer(c.unidadeId) && <Pagar slug={slug} id={c.id} hoje={hoje} />}
+      </span>
+    </li>
+  )
+
   return (
     <Estrutura
       empresa={empresa}
@@ -243,15 +267,20 @@ export default async function Financeiro({
           </Aviso>
         )}
 
-        <Cartao
-          titulo="A vencer"
-          acao={
-            contas.vencidas.length > 0 ? (
-              <Ponto nivel="critico" quantos={contas.vencidas.length} titulo="vencidas" />
-            ) : undefined
-          }
-        >
-          {contas.vencidas.length + contas.hoje.length + contas.proximas.length === 0 ? (
+        {/* VENCIDAS e A VENCER em cartões separados: "A vencer" com conta
+            "há 23 dias" era o título dizendo uma coisa e a linha outra. */}
+        {contas.vencidas.length > 0 && (
+          <Cartao titulo="Vencidas" acao={<Ponto nivel="critico" quantos={contas.vencidas.length} titulo="vencidas" />}>
+            <ul className="flex flex-col">
+              {contas.vencidas.map((c) =>
+                linhaDeConta({ ...c, nivel: 'critico' as const, quando: `há ${plural(c.dias, 'dia', 'dias')}` }),
+              )}
+            </ul>
+          </Cartao>
+        )}
+
+        <Cartao titulo="A vencer">
+          {contas.hoje.length + contas.proximas.length === 0 ? (
             <p className="flex items-center justify-center gap-2 py-8 text-sm font-medium text-bom">
               <span aria-hidden className="size-2 rounded-full bg-bom-vivo" />
               Nada vencendo nos próximos 15 dias.
@@ -259,31 +288,9 @@ export default async function Financeiro({
           ) : (
             <ul className="flex flex-col">
               {[
-                ...contas.vencidas.map((c) => ({ ...c, nivel: 'critico' as const, quando: `há ${plural(c.dias, 'dia', 'dias')}` })),
                 ...contas.hoje.map((c) => ({ ...c, nivel: 'atencao' as const, quando: 'hoje' })),
                 ...contas.proximas.map((c) => ({ ...c, nivel: 'neutro' as const, quando: `em ${plural(c.dias, 'dia', 'dias')}` })),
-              ].map((c) => (
-                // No celular a conta ocupa a linha inteira e a etiqueta, o
-                // valor e o "Paguei" descem para baixo dela. Lado a lado,
-                // sobravam 90px para o nome: "Pedido de…", "Manutenç…" —
-                // e a pessoa pagava sem ler o quê.
-                <li
-                  key={c.id}
-                  className="flex flex-col gap-2 border-b border-borda-suave py-2.5 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-2"
-                >
-                  <span className="flex min-w-0 flex-col">
-                    <span className="text-sm text-tinta sm:truncate">{c.descricao}</span>
-                    <span className="text-xs text-tinta-3">vence {dia(c.vencimento)}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <Situacao nivel={c.nivel}>{c.quando}</Situacao>
-                    <span className="numero ml-auto text-sm font-semibold text-tinta sm:ml-0 sm:w-24 sm:text-right">
-                      {brl(c.valor)}
-                    </span>
-                    {podeMexer(c.unidadeId) && <Pagar slug={slug} id={c.id} hoje={hoje} />}
-                  </span>
-                </li>
-              ))}
+              ].map(linhaDeConta)}
             </ul>
           )}
         </Cartao>
@@ -409,6 +416,9 @@ export default async function Financeiro({
               {
                 chave: 'desc',
                 titulo: 'Lançamento',
+                // No cartão do celular, o lançamento é o título e a data
+                // desce para uma linha "Vence".
+                tituloDoCartao: true,
                 celula: (l: (typeof lancamentos)[number]) => (
                   // O nome quebra em até duas linhas em vez de esticar a
                   // tabela: esticada, ela empurrava o VALOR para fora da tela
@@ -458,6 +468,7 @@ export default async function Financeiro({
                 chave: 'valor',
                 titulo: 'Valor',
                 numero: true,
+                destaque: true,
                 celula: (l: (typeof lancamentos)[number]) => (
                   <span className={'numero font-semibold whitespace-nowrap ' + (l.tipo === 'RECEITA' ? 'text-bom' : 'text-tinta')}>
                     {l.tipo === 'RECEITA' ? '+ ' : ''}
@@ -471,6 +482,8 @@ export default async function Financeiro({
                       chave: 'acao',
                       titulo: '',
                       largura: '6rem',
+                      // O "Pagar" fica ao lado do valor, à vista no cartão.
+                      destaque: true,
                       celula: (l: (typeof lancamentos)[number]) =>
                         !podeMexer(l.unidadeId) ? null : l.pagoEm ? (
                           <DesfazerPagamento slug={slug} id={l.id} />

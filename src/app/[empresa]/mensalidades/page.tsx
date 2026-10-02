@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { pode, textoDaBusca } from '@/servidor/permissao'
 import { moduloLigado } from '@/servidor/modulos'
 import { diaEmSP, mostrarDiaDaColuna } from '@/servidor/dia'
@@ -65,7 +65,7 @@ export default async function Mensalidades({
   const { empresa: slug } = await params
   const p = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'mensalidade.ver' })
-  if (!moduloLigado(empresa, 'escola')) notFound()
+  if (!moduloLigado(empresa, 'escola')) semAcesso(slug, 'modulo-escola')
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
   const agora = new Date()
 
@@ -255,7 +255,14 @@ export default async function Mensalidades({
                   <Situacao nivel={NIVEL[m.situacao]}>
                     {m.situacao === 'atrasada' ? `${m.diasAtraso} dia${m.diasAtraso === 1 ? '' : 's'} em atraso` : ROTULO_SITUACAO[m.situacao]}
                   </Situacao>
-                  {m.motivoCancelamento && <span className="text-xs text-tinta-3">{m.motivoCancelamento}</span>}
+                  {/* Uma linha, cortada, com o motivo inteiro no "title": na
+                      coluna estreita ele quebrava em quatro linhas e esticava
+                      a fileira. */}
+                  {m.motivoCancelamento && (
+                    <span className="block max-w-full truncate text-xs text-tinta-3" title={m.motivoCancelamento}>
+                      {m.motivoCancelamento}
+                    </span>
+                  )}
                 </span>
               ),
             },

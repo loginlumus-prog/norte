@@ -31,7 +31,7 @@ export function Formulario({ slug, token }: { slug: string; token: string }) {
         autoComplete="new-password"
       />
 
-      <Botao type="submit" tom="confirmar" carregando={pendente} className="w-full">
+      <Botao type="submit" largo carregando={pendente} className="mt-1 h-12 rounded-xl text-[15px]">
         {pendente ? 'Criando...' : 'Criar minha conta'}
       </Botao>
     </form>

@@ -20,7 +20,7 @@
 //   barra fina: é o dia fraco que a pessoa quer investigar.
 // • Um eixo só. Duas medidas de escala diferente são dois gráficos.
 
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { cx } from './base'
 
 /** A ordem fixa das cores de série. A nona série vira "Outros". */
@@ -217,8 +217,26 @@ export function BarrasMeses({
   const g = aceso !== null ? aceso : null
   // Rótulo em todo grupo só enquanto cabe. Com as 13 horas de uma loja no
   // celular, "10h11h12h" encosta um no outro e nenhum se lê — um sim, um não
-  // continua dizendo onde se está, e a hora exata aparece no balão.
-  const salto = rotulos.length > 14 ? 2 : 1
+  // (ou um a cada três) continua dizendo onde se está, e a hora exata aparece
+  // no balão. Quem decide é a LARGURA medida, não a contagem: as mesmas 13
+  // horas cabem inteiras no computador e não cabem em 320px.
+  const fila = useRef<HTMLDivElement>(null)
+  const [largura, setLargura] = useState(0)
+  useEffect(() => {
+    const el = fila.current
+    if (!el) return
+    // Sem o recuo do eixo (`pl-10`): só a faixa onde os rótulos moram.
+    const medir = () => setLargura(el.clientWidth - parseFloat(getComputedStyle(el).paddingLeft))
+    medir()
+    const olho = new ResizeObserver(medir)
+    olho.observe(el)
+    return () => olho.disconnect()
+  }, [])
+  const maior = Math.max(...rotulos.map((r) => r.length), 1)
+  // ~6px por caractere a 10px, mais 6px de folga entre um rótulo e outro.
+  const precisa = maior * 6 + 6
+  const coluna = largura > 0 ? (largura - 8 * (rotulos.length - 1)) / rotulos.length + 8 : Infinity
+  const salto = largura > 0 ? Math.max(1, Math.ceil(precisa / coluna)) : rotulos.length > 14 ? 2 : 1
 
   return (
     <div className="flex flex-col gap-2">
@@ -282,7 +300,7 @@ export function BarrasMeses({
           ))}
         </div>
       </div>
-      <div className="flex gap-2 pl-10">
+      <div ref={fila} className="flex gap-2 pl-10">
         {rotulos.map((r, i) => (
           // Sem `overflow-hidden`: com rótulo um sim, um não, o "10h" pode
           // transbordar a coluna estreita para os lados — o vizinho está vazio.

@@ -47,7 +47,7 @@ export function PrimeirosPassos({ passos, chave }: { passos: PrimeiroPasso[]; ch
             {feitos} de {passos.length} feitos — o que falta para o Norte trabalhar por você.
           </p>
         </div>
-        <button type="button" onClick={esconder} className="rounded-norte px-2 py-1 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta">
+        <button type="button" onClick={esconder} className="rounded-norte border border-borda px-2 py-1 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta">
           Esconder
         </button>
       </header>

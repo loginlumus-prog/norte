@@ -153,30 +153,47 @@ export default async function TelaEstoque({
     // Por VARIAÇÃO, e não por linha de saldo: o item que nunca teve entrada
     // não tem linha nenhuma, e antes sumia daqui enquanto a tela de Produtos
     // o contava como "acabou". Agora as duas contam por `saldoNaVista`.
-    comoOrg(sessao.orgId, (db) =>
-      db.variacao.findMany({
-        // Serviço não tem estoque (a manicure, a consulta): na lista ele
-        // aparecia com saldo zero, como "acabou", e o filtro de falta o
-        // contava — o mesmo corte que o "Precisa de você" já fazia.
-        where: { ativa: true, produto: { ativo: true, servico: false } },
+    // Três consultas, uma depois da outra, e não um `select` com produto,
+    // opções e saldos lado a lado: relações irmãs o Prisma busca AO MESMO
+    // TEMPO, e dentro do comoOrg a conexão é uma só — o `pg` avisa e, no
+    // pg@9, quebra.
+    comoOrg(sessao.orgId, async (db) => {
+      // Serviço não tem estoque (a manicure, a consulta): na lista ele
+      // aparecia com saldo zero, como "acabou", e o filtro de falta o
+      // contava — o mesmo corte que o "Precisa de você" já fazia.
+      const daLista = { ativa: true, produto: { ativo: true, servico: false } }
+      const base = await db.variacao.findMany({
+        where: daLista,
         select: {
           id: true,
           codigo: true,
           produto: { select: { nome: true, referencia: true, medida: true, custo: true, vendidoEm: true, usoInterno: true, feitoNoDia: true } },
-          opcoes: {
-            select: {
-              opcao: {
-                select: { valor: true, hex: true, eixo: { select: { ordem: true } } },
-              },
-            },
-          },
-          estoques: {
-            where: { unidadeId: { in: onde.ids } },
-            select: { quantidade: true, minimo: true, unidadeId: true },
-          },
         },
-      }),
-    ),
+      })
+      const opcoes = await db.variacaoOpcao.findMany({
+        where: { variacao: daLista },
+        select: {
+          variacaoId: true,
+          opcao: { select: { valor: true, hex: true, eixo: { select: { ordem: true } } } },
+        },
+      })
+      const estoques = await db.estoque.findMany({
+        where: { unidadeId: { in: onde.ids }, variacao: daLista },
+        select: { variacaoId: true, quantidade: true, minimo: true, unidadeId: true },
+      })
+      const agrupar = <T extends { variacaoId: string }>(xs: T[]) => {
+        const m = new Map<string, Omit<T, 'variacaoId'>[]>()
+        for (const { variacaoId, ...resto } of xs) {
+          const l = m.get(variacaoId)
+          if (l) l.push(resto)
+          else m.set(variacaoId, [resto])
+        }
+        return m
+      }
+      const opcoesDe = agrupar(opcoes)
+      const estoquesDe = agrupar(estoques)
+      return base.map((v) => ({ ...v, opcoes: opcoesDe.get(v.id) ?? [], estoques: estoquesDe.get(v.id) ?? [] }))
+    }),
     comoOrg(sessao.orgId, (db) =>
       db.categoriaFinanceira.findMany({
         where: { ativa: true, tipo: 'DESPESA' },
@@ -277,6 +294,7 @@ export default async function TelaEstoque({
       titulo: 'Saldo',
       numero: true,
       largura: '5rem',
+      destaque: true,
       celula: (l) => (
         <span className={cx('numero', l.saldo <= 0 ? 'font-semibold text-critico' : 'text-tinta')}>
           {l.saldo.toLocaleString('pt-BR')}
@@ -429,6 +447,8 @@ export default async function TelaEstoque({
       titulo: 'Tem',
       numero: true,
       largura: '9rem',
+      // No cartão do celular, o "tem" sobe para o lado do nome.
+      destaque: true,
       celula: (i: (typeof itens)[number]) => (
         i.doDia ? (
           // Feito no dia e zerado: a sobra saiu ao fechar. Não é falta.
@@ -503,7 +523,7 @@ export default async function TelaEstoque({
           {pode(sessao, 'estoque.ajustar') && (
             <Link
               href={`/${slug}/produtos/rapida${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
-              className="rounded-norte border border-marca/50 bg-marca-suave px-3 py-1.5 text-sm font-semibold text-tinta hover:border-marca"
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
               title="Digitar o estoque contado de vários produtos numa tabela"
             >
               Editar em planilha
@@ -709,6 +729,7 @@ export default async function TelaEstoque({
             {
               chave: 'item',
               titulo: 'Item',
+              tituloDoCartao: true,
               celula: (m: MovimentoNaLista) => (
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-tinta">{m.descricao}</span>
@@ -752,6 +773,7 @@ export default async function TelaEstoque({
               titulo: 'Quantidade',
               numero: true,
               largura: '7rem',
+              destaque: true,
               celula: (m: MovimentoNaLista) => (
                 <span className={cx('numero font-semibold', m.quantidade < 0 ? 'text-critico' : 'text-bom')}>
                   {m.quantidade > 0 ? '+' : ''}

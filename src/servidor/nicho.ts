@@ -40,6 +40,7 @@ import { liberado } from './planos'
 import { previsaoDeRuptura, type SituacaoRuptura } from './ruptura'
 import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
 import { grupoDa, horaEmSP } from './encomenda'
+import { SEM_ACERTO_DE_CATALOGO } from './acerto-catalogo'
 import { listarAgenda, profissionaisDaLoja, horarioDaLoja, resumirDia, ROTULO_AGENDA, type SituacaoAgendamento } from './agenda'
 import { trabalhandoAgora } from './ponto'
 import { vocabularioDoRamo } from './vocabulario'
@@ -379,6 +380,10 @@ export type LinhaDeSabor = {
   vendidos7: number
   /** O item é da aba de complementos (granola, cobertura): não é sabor. */
   complemento?: boolean
+  /** Feito no dia (zera toda tarde): zerado não é falta. Ver `pendencias.ts`. */
+  feitoNoDia?: boolean
+  /** Tem linha de estoque nas lojas olhadas. Sem nenhuma, não há saldo a faltar. */
+  noEstoque?: boolean
 }
 
 /**
@@ -400,8 +405,13 @@ export type SaborAcabando = LinhaDeSabor & { motivo: 'acabou' | 'acaba_hoje' | '
  * "Acaba hoje" é saldo menor que o que sai num dia MÉDIO da última semana —
  * conta simples, sem previsão: se ontem saíram 3 kg por dia e sobrou 2 kg,
  * não chega ao fim do dia. "No mínimo" é o mínimo que a própria loja
- * cadastrou. "Acabou" só entra se vendia (sete dias): pote vazio de sabor que
- * ninguém pede não é notícia.
+ * cadastrou.
+ *
+ * "Acabou" é a MESMA régua do "Precisa de você" e da tela de Estoque
+ * (`pendencias.ts`): saldo zero ou menos, com linha de estoque, e não feito no
+ * dia. Antes só entrava o que vendeu na semana, e o painel dizia "Nada
+ * acabando" ao lado de "URGENTE: 3 produtos acabaram". O que vendia vem
+ * primeiro; o pote parado vai para o fim da lista.
  */
 export function saboresAcabando(linhas: LinhaDeSabor[], limite = 5): SaborAcabando[] {
   const peso = { acabou: 0, acaba_hoje: 1, minimo: 2 } as const
@@ -409,7 +419,7 @@ export function saboresAcabando(linhas: LinhaDeSabor[], limite = 5): SaborAcaban
   for (const l of linhas) {
     const porDia = l.vendidos7 / 7
     if (l.saldo <= 0) {
-      if (l.vendidos7 > 0) saida.push({ ...l, motivo: 'acabou', chave: -l.vendidos7 })
+      if (l.noEstoque !== false && !l.feitoNoDia) saida.push({ ...l, motivo: 'acabou', chave: -l.vendidos7 })
     } else if (porDia > 0 && l.saldo < porDia) {
       saida.push({ ...l, motivo: 'acaba_hoje', chave: l.saldo / porDia })
     } else if (l.minimo !== null && l.minimo > 0 && l.saldo <= l.minimo) {
@@ -914,13 +924,15 @@ async function dadosSabores(sessao: Sessao, ids: string[], agora: Date): Promise
         rotulo: string | null
         saldo: string | null
         minimo: string | null
+        linhas: number | null
+        feito_no_dia: boolean
         hoje: string | null
         semana: string | null
         categoria: string | null
       }[]
     >`
       select vr.id as variacao_id, p.nome as produto, p.medida::text as medida, o.rotulo,
-             e.saldo, e.minimo, s.hoje, s.semana, c.nome as categoria
+             e.saldo, e.minimo, e.linhas, p.feito_no_dia, s.hoje, s.semana, c.nome as categoria
         from variacoes vr
         join produtos p on p.id = vr.produto_id
         left join categorias c on c.id = p.categoria_id
@@ -931,9 +943,15 @@ async function dadosSabores(sessao: Sessao, ids: string[], agora: Date): Promise
             join eixos ex on ex.id = op.eixo_id
            where vo.variacao_id = vr.id
         ) o on true
+        -- As linhas de estoque com o mesmo corte do "Precisa de você"
+        -- (pendencias.ts): linha zerada de loja que não vende o produto não
+        -- conta; depósito conta sempre.
         left join lateral (
-          select sum(quantidade) as saldo, sum(minimo) as minimo from estoque
-           where variacao_id = vr.id and unidade_id = any(${est})
+          select sum(es.quantidade) as saldo, sum(es.minimo) as minimo, count(*)::int as linhas
+            from estoque es join unidades u on u.id = es.unidade_id
+           where es.variacao_id = vr.id and es.unidade_id = any(${est})
+             and (es.quantidade > 0 or u.eh_deposito
+                  or cardinality(p.vendido_em) = 0 or es.unidade_id = any(p.vendido_em))
         ) e on true
         left join lateral (
           select sum(i.quantidade) filter (where v.criada_em >= ${inicioHoje}) as hoje,
@@ -943,8 +961,9 @@ async function dadosSabores(sessao: Sessao, ids: string[], agora: Date): Promise
              and v.situacao = 'CONCLUIDA' and v.criada_em >= ${corte7}
         ) s on true
        where vr.ativa and p.ativo and not p.servico
-         and (cardinality(p.vendido_em) = 0 or p.vendido_em && ${uni}::text[])
-         and (coalesce(e.saldo, 0) > 0 or coalesce(s.hoje, 0) > 0 or coalesce(s.semana, 0) > 0)
+         and (cardinality(p.vendido_em) = 0 or p.vendido_em && ${uni}::text[] or coalesce(e.linhas, 0) > 0)
+         and (coalesce(e.saldo, 0) > 0 or coalesce(s.hoje, 0) > 0 or coalesce(s.semana, 0) > 0
+              or (coalesce(e.linhas, 0) > 0 and not p.feito_no_dia))
     `
 
     const porHora = Array.from({ length: 24 }, () => 0)
@@ -960,6 +979,8 @@ async function dadosSabores(sessao: Sessao, ids: string[], agora: Date): Promise
       // Os sete dias ANTES de hoje: o dia pela metade puxaria a média para baixo.
       vendidos7: n(l.semana),
       complemento: categoriaDeComplemento(l.categoria),
+      feitoNoDia: l.feito_no_dia,
+      noEstoque: n(l.linhas) > 0,
     }))
 
     return {
@@ -1107,6 +1128,7 @@ async function dadosReposicao(sessao: Sessao, ids: string[], plano: Plano, agora
              sum(i.quantidade) filter (where v.criada_em < ${semana}) as anterior
         from venda_itens i join vendas v on v.id = i.venda_id
        where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA' and v.criada_em >= ${duas}
+         and ${SEM_ACERTO_DE_CATALOGO}
        group by 1, 2
        order by 3 desc nulls last
        limit 20

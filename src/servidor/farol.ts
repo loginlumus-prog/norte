@@ -38,6 +38,7 @@ import { PRECOS } from './planos'
 import { diaEmSP } from './dia'
 import { moduloLigado } from './modulos'
 import type { TipoPecaFarol, SituacaoPecaFarol } from '@prisma/client'
+import { SEM_ACERTO_DE_CATALOGO } from './acerto-catalogo'
 
 export class FarolRecusou extends Error {}
 
@@ -201,6 +202,7 @@ export async function retratoDoNegocio(db: BancoDaOrg, unidadeIds: string[]): Pr
     select i.descricao nome, sum(i.quantidade) q, sum(i.total) total
       from venda_itens i join vendas v on v.id = i.venda_id
      where v.situacao = 'CONCLUIDA' and v.criada_em >= ${desde} and v.unidade_id = any(${ids})
+       and ${SEM_ACERTO_DE_CATALOGO}
      group by 1 order by 3 desc limit 12`
   const [r] = await db.$queryRaw<{ vendas: number; total: string }[]>`
     select count(*)::int vendas, coalesce(sum(total), 0) total from vendas

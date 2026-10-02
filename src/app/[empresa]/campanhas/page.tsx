@@ -40,14 +40,21 @@ export default async function Campanhas({ params }: { params: Promise<{ empresa:
       <Estrutura {...base}>
         {doPlano ? (
           <Cartao titulo="As campanhas estão desligadas">
-            <p className="text-sm text-tinta-2">
-              {bloqueio}{' '}
+            <div className="flex flex-col items-start gap-3">
+              <p className="text-sm text-tinta-2">
+                {bloqueio}
+                {!pode(sessao, 'empresa.configurar') && ' Quem responde pela empresa liga em Configurações.'}
+              </p>
+              {/* Botão, e não link no fim da frase: é a única coisa a fazer aqui. */}
               {pode(sessao, 'empresa.configurar') && (
-                <Link href={`/${slug}/configuracoes`} className="font-medium text-marca underline-offset-2 hover:underline">
-                  Abrir Configurações
+                <Link
+                  href={`/${slug}/configuracoes`}
+                  className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
+                >
+                  Ligar em Configurações
                 </Link>
               )}
-            </p>
+            </div>
           </Cartao>
         ) : (
           <Trancado

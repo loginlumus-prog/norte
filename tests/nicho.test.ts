@@ -206,16 +206,22 @@ describe('sabores', () => {
     variacaoId: rotulo, rotulo, produto: null, medida: 'KG', saldo: 5, minimo: null, vendidosHoje: 0, vendidos7: 0, ...x,
   })
 
-  it('acabou só se vendia; acaba hoje pela venda média; mínimo pelo da loja', () => {
+  // "Acabou" é a régua do "Precisa de você" (pendencias.ts): zerado com
+  // linha de estoque e não feito no dia — vendendo ou não. Antes só entrava o
+  // que vendia, e o painel dizia "Nada acabando" ao lado de "3 acabaram".
+  it('acabou pela régua das pendências; acaba hoje pela venda média; mínimo pelo da loja', () => {
     const r = saboresAcabando([
-      s('Morango', { saldo: 0, vendidos7: 0 }), // não vendia: não é notícia
+      s('Morango', { saldo: 0, vendidos7: 0 }), // não vendia: entra, depois de quem vendia
       s('Chocolate', { saldo: 0, vendidos7: 14 }),
+      s('Pão', { saldo: 0, vendidos7: 9, feitoNoDia: true }), // zera todo dia: não é falta
+      s('Sem controle', { saldo: 0, vendidos7: 3, noEstoque: false }), // sem linha de estoque
       s('Flocos', { saldo: 1, vendidos7: 14 }), // 2 kg por dia, sobrou 1
       s('Creme', { saldo: 3, minimo: 4, vendidos7: 7 }), // 1 kg/dia, dura 3 dias, mas está no mínimo
       s('Limão', { saldo: 30, minimo: 4, vendidos7: 7 }),
     ])
     expect(r.map((x) => [x.rotulo, x.motivo])).toEqual([
       ['Chocolate', 'acabou'],
+      ['Morango', 'acabou'],
       ['Flocos', 'acaba_hoje'],
       ['Creme', 'minimo'],
     ])

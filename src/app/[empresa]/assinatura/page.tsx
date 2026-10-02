@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { pode, podeVerPlanos } from '@/servidor/permissao'
 import { assinaturaDe, opcoesDeTroca, extratoDeCredito } from '@/servidor/assinatura'
 import { eventosDePedido, pedidosParaTela, type Pedido } from '@/servidor/pedidos'
@@ -75,7 +75,7 @@ export default async function AssinaturaPagina({
 
   // Assinatura é dinheiro da empresa. Quem opera o caixa não abre esta tela —
   // e o endereço colado no navegador também não passa.
-  if (!podeVerPlanos(sessao)) notFound()
+  if (!podeVerPlanos(sessao)) semAcesso(slug, 'cargo')
 
   const a = await assinaturaDe(sessao)
   const podeMexer = pode(sessao, 'empresa.configurar')

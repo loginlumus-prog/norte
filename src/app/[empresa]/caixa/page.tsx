@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { pode } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
 import { janela, lerPeriodo } from '@/servidor/periodo'
@@ -49,7 +49,7 @@ export default async function CaixaPagina({
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
-  if (!pode(sessao, 'caixa.ver')) notFound()
+  if (!pode(sessao, 'caixa.ver')) semAcesso(slug, 'cargo')
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'caixa.ver')
   // "Recebido nos turnos · 15 atendimentos" na recepção (vocabulario.ts).
@@ -275,7 +275,7 @@ export default async function CaixaPagina({
                 {[
                   ['Abertura', aberto.saldoAbertura],
                   ['Suprimentos', aberto.suprimentos],
-                  ['Sangrias', -aberto.sangrias],
+                  ['Sangrias', aberto.sangrias ? -aberto.sangrias : 0],
                 ].map(([r, v]) => (
                   <div key={String(r)} className="flex justify-between gap-4 border-b border-borda-suave py-1.5 text-tinta-2">
                     <dt>{r}</dt>

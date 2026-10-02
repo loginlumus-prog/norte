@@ -174,26 +174,26 @@ export default async function FichaCliente({
         )}
         <div className="grid gap-2 sm:grid-cols-3">
           <Numero
-            rotulo="Gastou aqui"
+            rotulo={vocab.naFicha.Gastou === 'Gastou' ? 'Gastou aqui' : vocab.naFicha.Gastou}
             valor={brl(gastou)}
-            detalhe={plural(cliente.vendas.length, 'compra', 'compras')}
+            detalhe={plural(cliente.vendas.length, vocab.naFicha.uma, vocab.naFicha.varias)}
             nivel={gastou > 0 ? 'bom' : undefined}
           />
-          <Numero rotulo="Ticket médio" valor={brl(ticket)} detalhe="por compra" />
+          <Numero rotulo={vocab.ticketMedio} valor={brl(ticket)} detalhe={`por ${vocab.naFicha.uma}`} />
           <Numero
-            rotulo="Última compra"
+            rotulo={vocab.naFicha.Ultima}
             valor={dias === null ? '—' : dias === 0 ? 'hoje' : `há ${plural(dias, 'dia', 'dias')}`}
-            detalhe={dias === null ? 'nunca comprou' : undefined}
+            detalhe={dias === null ? vocab.naFicha.nunca : undefined}
             nivel={dias !== null && dias >= 60 ? 'atencao' : undefined}
           />
         </div>
 
         {cliente.vendas.length > 0 && (
           <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
-            <Cartao caixa titulo="Quanto gastou, mês a mês">
+            <Cartao caixa titulo={vocab.naFicha.Gastou === 'Gastou' ? 'Quanto gastou, mês a mês' : `${vocab.naFicha.Gastou}, mês a mês`}>
               <BarrasMeses
                 rotulos={meses.map((m) => m.rotulo)}
-                series={[{ nome: 'Gastou', cor: 'var(--bom-vivo)', valores: meses.map((m) => m.total) }]}
+                series={[{ nome: vocab.naFicha.Gastou, cor: 'var(--bom-vivo)', valores: meses.map((m) => m.total) }]}
                 altura={110}
               />
             </Cartao>
@@ -205,7 +205,7 @@ export default async function FichaCliente({
                   rotulo: f.descricao,
                   valor: f.vezes,
                   texto: quantidade(f.quantidade, f.medida),
-                  detalhe: `${plural(f.vezes, 'compra', 'compras')} · ${brl(f.total)}`,
+                  detalhe: `${plural(f.vezes, 'vez', 'vezes')} · ${brl(f.total)}`,
                 }))}
                 formato="un"
               />

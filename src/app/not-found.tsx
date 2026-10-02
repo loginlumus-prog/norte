@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Marca } from '@/ui/Marca'
+import { TituloNaoAchei } from './TituloNaoAchei'
 
 // A tela de endereço que não existe.
 //
@@ -13,6 +14,7 @@ import { Marca } from '@/ui/Marca'
 export default function NaoAchei() {
   return (
     <main className="relative flex min-h-dvh bg-fundo flex-col items-center justify-center gap-6 overflow-hidden p-6 text-center">
+      <TituloNaoAchei />
       <div className="relative">
         <Marca tamanho={30} />
       </div>

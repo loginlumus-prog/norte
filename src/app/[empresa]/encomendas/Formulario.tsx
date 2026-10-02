@@ -304,7 +304,7 @@ export function Formulario({
           name="descricao"
           required
           defaultValue={inicial?.descricao}
-          placeholder="Bolo de chocolate 2 kg, escrito Parabéns Ana"
+          placeholder="O que foi pedido: quantidade, tamanho, detalhes"
         />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -395,7 +395,7 @@ export function Formulario({
           rotulo="Observação"
           name="observacao"
           defaultValue={inicial?.observacao ?? undefined}
-          placeholder="Sem lactose, vela número 7, deixar na portaria"
+          placeholder="O que foi combinado com o cliente"
         />
 
         {estado.pedeConfirmacao && (

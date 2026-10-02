@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { moduloLigado } from '@/servidor/modulos'
 import { acharOrdem } from '@/servidor/fabrica'
 import { quantidade } from '@/ui/texto'
@@ -28,7 +29,7 @@ export default async function EtiquetaDoLotePagina({
   const { empresa: slug, id } = await params
   const q = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'estoque.ver' })
-  if (!moduloLigado(empresa, 'fabrica')) notFound()
+  if (!moduloLigado(empresa, 'fabrica')) semAcesso(slug, 'modulo-fabrica')
   if (!/^[\w-]{1,64}$/.test(id)) notFound()
   const ordem = await acharOrdem(sessao, id)
   if (!ordem) notFound()

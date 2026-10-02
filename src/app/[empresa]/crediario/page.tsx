@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import { mostrarDiaDaColuna } from '@/servidor/dia'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { pode } from '@/servidor/permissao'
 import { moduloLigado } from '@/servidor/modulos'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -56,7 +56,8 @@ export default async function CrediarioPagina({
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
-  if (!moduloLigado(empresa, 'crediario') || !pode(sessao, 'crediario.ver')) notFound()
+  if (!moduloLigado(empresa, 'crediario')) semAcesso(slug, 'modulo-crediario')
+  if (!pode(sessao, 'crediario.ver')) semAcesso(slug, 'cargo')
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'crediario.ver')
   const q = (qBruto ?? '').trim()

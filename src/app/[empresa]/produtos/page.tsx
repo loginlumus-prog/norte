@@ -315,7 +315,7 @@ export default async function Produtos({
             // vez, e cadastro em sequência. A ficha fica para grade e foto.
             <Link
               href={`/${slug}/produtos/rapida${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
-              className="rounded-norte border border-marca/50 bg-marca-suave px-3 py-1.5 text-sm font-semibold text-tinta hover:border-marca"
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
               title="Editar nome, preço e estoque de vários produtos numa tabela"
             >
               Editar em planilha
@@ -326,7 +326,7 @@ export default async function Produtos({
             // planilha, relatório) entra de uma vez — ver produtos/importar.
             <Link
               href={`/${slug}/produtos/importar`}
-              className="rounded-norte border border-marca/50 bg-marca-suave px-3 py-1.5 text-sm font-semibold text-tinta hover:border-marca"
+              className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
               title="Trazer o catálogo de uma planilha (Excel, CSV) ou do sistema antigo"
             >
               Trazer de outra planilha ou sistema

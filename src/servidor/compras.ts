@@ -243,22 +243,34 @@ export type PedidoCompleto = PedidoNaLista & {
 
 export async function acharPedido(sessao: Sessao, id: string): Promise<PedidoCompleto | null> {
   exigir(sessao, 'compra.ver')
-  const p = await comoOrg(sessao.orgId, (db) =>
-    db.pedidoCompra.findUnique({
+  // Uma consulta por vez: as relações irmãs de um `select` o Prisma busca ao
+  // mesmo tempo, e dentro do comoOrg a conexão é uma só — o `pg` avisa e, no
+  // pg@9, quebra. A tela do pedido de compra disparava quatro de uma vez.
+  const p = await comoOrg(sessao.orgId, async (db) => {
+    const pedido = await db.pedidoCompra.findUnique({
       where: { id },
       select: {
         id: true, unidadeId: true, situacao: true, previsto: true, criadoEm: true, quem: true, fornecedorId: true,
         observacao: true, motivoCancelamento: true,
-        unidade: { select: { nome: true } },
-        fornecedor: { select: { nome: true } },
-        itens: {
-          orderBy: { descricao: 'asc' },
-          select: { id: true, variacaoId: true, descricao: true, quantidade: true, recebido: true, custoUnit: true, variacao: { select: { produto: { select: { medida: true } } } } },
-        },
-        recebimentos: { orderBy: { criadoEm: 'desc' }, select: { id: true, criadoEm: true, quem: true, total: true, contaLancada: true, itens: true } },
       },
-    }),
-  )
+    })
+    if (!pedido) return null
+    const unidade = await db.unidade.findUniqueOrThrow({ where: { id: pedido.unidadeId }, select: { nome: true } })
+    const fornecedor = pedido.fornecedorId
+      ? await db.fornecedor.findUnique({ where: { id: pedido.fornecedorId }, select: { nome: true } })
+      : null
+    const itens = await db.itemCompra.findMany({
+      where: { pedidoId: id },
+      orderBy: { descricao: 'asc' },
+      select: { id: true, variacaoId: true, descricao: true, quantidade: true, recebido: true, custoUnit: true, variacao: { select: { produto: { select: { medida: true } } } } },
+    })
+    const recebimentos = await db.recebimentoCompra.findMany({
+      where: { pedidoId: id },
+      orderBy: { criadoEm: 'desc' },
+      select: { id: true, criadoEm: true, quem: true, total: true, contaLancada: true, itens: true },
+    })
+    return { ...pedido, unidade, fornecedor, itens, recebimentos }
+  })
   if (!p || !pode(sessao, 'compra.ver', p.unidadeId)) return null
   const itensLista = p.itens.map((i) => ({
     id: i.id,

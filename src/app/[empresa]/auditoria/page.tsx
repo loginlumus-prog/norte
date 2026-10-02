@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { pode, textoDaBusca, type Capacidade, type Sessao } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
 import { janela, lerPeriodo } from '@/servidor/periodo'
@@ -77,7 +77,7 @@ export default async function AuditoriaPagina({
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
-  if (!pode(sessao, 'auditoria.ver')) notFound()
+  if (!pode(sessao, 'auditoria.ver')) semAcesso(slug, 'cargo')
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'auditoria.ver')
   const j = janela(lerPeriodo(pedido))

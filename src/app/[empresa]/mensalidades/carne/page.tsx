@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { comoOrg } from '@/servidor/banco'
 import { moduloLigado } from '@/servidor/modulos'
 import { colunaDoDia, mostrarDiaDaColuna } from '@/servidor/dia'
@@ -32,8 +33,9 @@ export default async function Carne({
   const { empresa: slug } = await params
   const { aluno: alunoId, imprimir } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'mensalidade.ver' })
-  if (!moduloLigado(empresa, 'escola')) notFound()
-  if (!alunoId || !/^[\w-]{1,64}$/.test(alunoId)) notFound()
+  if (!moduloLigado(empresa, 'escola')) semAcesso(slug, 'modulo-escola')
+  if (!alunoId) semAcesso(slug, 'sem-aluno')
+  if (!/^[\w-]{1,64}$/.test(alunoId)) notFound()
 
   const c = await carneDoAluno(sessao, alunoId, 12)
   if (!c) notFound()

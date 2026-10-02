@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -36,7 +36,7 @@ export default async function MaterialUsado({
   const { empresa: slug } = await params
   const { unidade } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'estoque.consumir' })
-  if (!moduloLigado(empresa, 'compras')) notFound()
+  if (!moduloLigado(empresa, 'compras')) semAcesso(slug, 'modulo-compras')
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
   const onde = await escolherUnidade(sessao, empresa, unidade, 'estoque.consumir')
   const lojas = onde.opcoes.filter((u) => (onde.unidadeId ? u.id === onde.unidadeId : true)).filter((u) => pode(sessao, 'estoque.consumir', u.id))

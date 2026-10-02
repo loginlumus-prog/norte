@@ -96,7 +96,7 @@ export function Consumo({ slug, lojas, lojaAtual }: { slug: string; lojas: { id:
             ))}
           </ul>
         )}
-        <Campo rotulo="Para quê" name="motivo" value={motivo} onChange={(ev) => setMotivo(ev.currentTarget.value)} placeholder="Atendimentos da manhã" dica="Opcional. Aparece no histórico do estoque." />
+        <Campo rotulo="Para quê" name="motivo" value={motivo} onChange={(ev) => setMotivo(ev.currentTarget.value)} placeholder="Uso do dia" dica="Opcional. Aparece no histórico do estoque." />
         {pedePin && (
           <div className="max-w-xs">
             <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} aoEnviar={anotar} />

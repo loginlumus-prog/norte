@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { diaEmSP, mostrarDiaDaColuna } from '@/servidor/dia'
@@ -26,7 +27,8 @@ const quando = (d: Date) =>
 export default async function PedidoDeCompra({ params }: { params: Promise<{ empresa: string; id: string }> }) {
   const { empresa: slug, id } = await params
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'compra.ver' })
-  if (!moduloLigado(empresa, 'compras') || !/^[\w-]{1,64}$/.test(id)) notFound()
+  if (!moduloLigado(empresa, 'compras')) semAcesso(slug, 'modulo-compras')
+  if (!/^[\w-]{1,64}$/.test(id)) notFound()
   const p = await acharPedido(sessao, id)
   if (!p) notFound()
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema

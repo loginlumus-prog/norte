@@ -362,7 +362,7 @@ async function Simples({ slug, empresa, sessao, tema, onde }: Base) {
               depois dos botões: o que fazer vem antes do que olhar. */}
           {nichos.map((b) => (
             <div key={b.ramo} className="order-4 min-w-0 lg:order-none lg:col-span-2">
-              <BlocoDoRamo bloco={b} slug={slug} sessao={sessao} varias={onde.mostrarSeletor} />
+              <BlocoDoRamo bloco={b} slug={slug} sessao={sessao} varias={onde.mostrarSeletor} acabaram={contagens.acabaram ?? 0} />
             </div>
           ))}
 
@@ -641,7 +641,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
             que o dono da sorveteria e o da loja de roupa perguntam de
             maneiras diferentes — ver servidor/nicho.ts. */}
         {nichos.map((b) => (
-          <BlocoDoRamo key={b.ramo} bloco={b} slug={slug} sessao={sessao} varias={onde.mostrarSeletor} secao />
+          <BlocoDoRamo key={b.ramo} bloco={b} slug={slug} sessao={sessao} varias={onde.mostrarSeletor} acabaram={contagens.acabaram ?? 0} secao />
         ))}
 
         {/* ── QUANDO ── */}
@@ -733,7 +733,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
             <div className="grid gap-4 lg:grid-cols-2">
               <Bloco
                 titulo="Acabando"
-                detalhe="No mínimo cadastrado ou abaixo dele"
+                detalhe="Acabou, ou está no mínimo cadastrado"
                 acao={
                   r.acabando.length > 0 ? (
                     <Ponto nivel={acabou > 0 ? 'critico' : 'atencao'} quantos={r.acabando.length} titulo="itens" />
@@ -741,7 +741,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
                 }
               >
                 {r.acabando.length === 0 ? (
-                  <TudoCerto>Nada abaixo do mínimo.</TudoCerto>
+                  <TudoCerto>Nada acabou nem está no mínimo.</TudoCerto>
                 ) : (
                   <ul className="flex flex-col divide-y divide-borda-suave">
                     {r.acabando.map((a) => (
@@ -1027,6 +1027,7 @@ function BlocoDoRamo({
   slug,
   sessao,
   varias,
+  acabaram = 0,
   secao = false,
 }: {
   bloco: BlocoDoNicho
@@ -1034,6 +1035,8 @@ function BlocoDoRamo({
   sessao: Sessao
   /** A empresa tem mais de uma loja: o bloco diz de qual (ou quais) é. */
   varias: boolean
+  /** O "acabaram" do "Precisa de você" (pendencias.ts), na mesma vista. */
+  acabaram?: number
   /** No avançado, o bloco é uma seção do painel, com o título grande. */
   secao?: boolean
 }) {
@@ -1050,7 +1053,12 @@ function BlocoDoRamo({
     bloco.familia === 'grade' ? (
       <GradeDoRamo dados={bloco.dados} noEstoque={noEstoque} varias={variasNoBloco} />
     ) : bloco.familia === 'sabores' ? (
-      <SaboresDoRamo dados={bloco.dados} noEstoque={noEstoque} />
+      <SaboresDoRamo
+        dados={bloco.dados}
+        noEstoque={noEstoque}
+        acabaram={acabaram}
+        verAcabaram={pode(sessao, 'estoque.ver') ? `/${slug}/estoque?situacao=acabaram` : null}
+      />
     ) : bloco.familia === 'producao' ? (
       <ProducaoDoRamo
         dados={bloco.dados}
@@ -1397,7 +1405,17 @@ function GradeDoRamo({ dados, noEstoque, varias }: { dados: DadosGrade; noEstoqu
 
 /* ── sorveteria ── */
 
-function SaboresDoRamo({ dados, noEstoque }: { dados: DadosSabores; noEstoque: NoEstoque }) {
+function SaboresDoRamo({
+  dados,
+  noEstoque,
+  acabaram,
+  verAcabaram,
+}: {
+  dados: DadosSabores
+  noEstoque: NoEstoque
+  acabaram: number
+  verAcabaram: string | null
+}) {
   const numeros: { rotulo: string; valor: string; detalhe?: string }[] = [
     ...(dados.vendePeso ? [{ rotulo: 'Saiu a quilo hoje', valor: quantidadeFalada(dados.kgHoje, 'KG') }] : []),
     { rotulo: 'Vendas hoje', valor: dados.vendasHoje.toLocaleString('pt-BR') },
@@ -1431,7 +1449,23 @@ function SaboresDoRamo({ dados, noEstoque }: { dados: DadosSabores; noEstoque: N
       <div className={cx('grid gap-6', dados.acabando && 'md:grid-cols-2')}>
         {dados.acabando && (
           <Peca titulo="O que está acabando" detalhe="Pelo que sai num dia e pelo mínimo da loja" icone="/x/estoque">
-            {dados.acabando.length === 0 ? (
+            {/* A lista usa a régua do "Precisa de você" (saboresAcabando). Vazia
+                com "N acabaram" lá do lado, o que acabou está FORA destas
+                lojas — o depósito, a fábrica — e a tela diz isso, em vez de
+                um "Nada acabando" verde ao lado de um "URGENTE". */}
+            {dados.acabando.length === 0 && acabaram > 0 ? (
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-norte bg-atencao-fundo px-3 py-2.5 text-sm text-atencao">
+                <span>
+                  Nada acabando nestas lojas — {palavra(acabaram, 'o item que acabou está', `os ${acabaram} que acabaram estão`)} em
+                  outra unidade (depósito ou fábrica).
+                </span>
+                {verAcabaram && (
+                  <Link href={verAcabaram} className="font-semibold underline-offset-2 hover:underline">
+                    Ver
+                  </Link>
+                )}
+              </p>
+            ) : dados.acabando.length === 0 ? (
               <Calmo>Nada acabando.</Calmo>
             ) : (
               <ul className="flex flex-col divide-y divide-borda-suave">

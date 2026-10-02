@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -47,7 +47,7 @@ export default async function Compras({
   const { empresa: slug } = await params
   const q = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'compra.ver' })
-  if (!moduloLigado(empresa, 'compras')) notFound()
+  if (!moduloLigado(empresa, 'compras')) semAcesso(slug, 'modulo-compras')
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const onde = await escolherUnidade(sessao, empresa, q.unidade, 'compra.ver')

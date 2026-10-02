@@ -611,25 +611,29 @@ function Linha({
   return (
     <>
       <tr className={cx('group', aberta && 'bg-superficie-2/60')}>
-        <td className={cx(CELULA, 'min-w-44 sm:min-w-56')}>
+        {/* `data-*`: no celular a linha vira cartão (globals.css, `.empilha`)
+            — a tarefa é o título, a situação e os detalhes ficam ao lado
+            dele, e cada coluna vira "rótulo … valor". Sem isso o Resp. e o
+            prazo moravam atrás da rolagem lateral. */}
+        <td data-titulo className={cx(CELULA, 'min-w-44 sm:min-w-56')}>
           <Titulo t={t} podeGerir={podeGerir} rodar={rodar} />
         </td>
-        <td className={CELULA}>
+        <td data-destaque className={CELULA}>
           <PilulaSituacao t={t} rodar={rodar} />
         </td>
-        <td className={CELULA}>
+        <td data-rotulo="Resp." className={CELULA}>
           <Responsavel t={t} pessoas={pessoas} podeGerir={podeGerir} liberado={lib.responsavel} rodar={rodar} />
         </td>
-        <td className={CELULA}>
+        <td data-rotulo="Linha do tempo" className={CELULA}>
           <LinhaDoTempo t={t} liberado={lib.linhaDoTempo} rodar={rodar} />
         </td>
-        <td className={CELULA}>
+        <td data-rotulo="Prazo" className={CELULA}>
           <Prazo t={t} podeGerir={podeGerir} liberado={lib.prazo} rodar={rodar} />
         </td>
-        <td className={CELULA}>
+        <td data-rotulo="Prioridade" className={CELULA}>
           <Estrelas t={t} podeGerir={podeGerir} liberado={lib.prioridade} rodar={rodar} />
         </td>
-        <td className={cx(CELULA, 'w-8 text-right')}>
+        <td data-destaque className={cx(CELULA, 'w-8 text-right')}>
           <button
             type="button"
             aria-label={aberta ? 'Fechar detalhes' : 'Detalhes da tarefa'}
@@ -644,7 +648,7 @@ function Linha({
       </tr>
       {aberta && (
         <tr>
-          <td colSpan={7} className="border-b border-borda-suave bg-superficie-2/40 px-3 py-3">
+          <td data-titulo colSpan={7} className="border-b border-borda-suave bg-superficie-2/40 px-3 py-3">
             <Detalhes t={t} grupos={grupos} podeGerir={podeGerir} rodar={rodar} fechar={() => setAberta(false)} />
           </td>
         </tr>
@@ -784,10 +788,22 @@ function Grupo({
           pasta. A tabela rola dentro da própria caixa — a página nunca rola
           de lado, senão o menu vai embora. */}
       <div
-        className={cx('relative overflow-x-auto rounded-norte border border-borda bg-superficie border-l-[3px]', !quadro.cor && (primeiro ? 'border-l-marca' : 'border-l-tinta-3'))}
+        className={cx('empilha relative overflow-x-auto rounded-norte border border-borda bg-superficie border-l-[3px]', !quadro.cor && (primeiro ? 'border-l-marca' : 'border-l-tinta-3'))}
         style={quadro.cor ? { borderLeftColor: quadro.cor } : undefined}
       >
-        <table className="w-full min-w-[760px] border-collapse text-sm">
+        <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+          {/* Larguras fixas: os quadros "Ao abrir" e "Ao fechar" ficam um
+              embaixo do outro, e com a largura pelo conteúdo as colunas de um
+              não batiam com as do outro. */}
+          <colgroup>
+            <col />
+            <col className="w-36" />
+            <col className="w-28" />
+            <col className="w-44" />
+            <col className="w-28" />
+            <col className="w-28" />
+            <col className="w-12" />
+          </colgroup>
           <thead>
             <tr>
               {/* Situação logo depois da tarefa, como no Monday: é a
@@ -810,13 +826,13 @@ function Grupo({
             ))}
             {tarefas.length === 0 && (
               <tr>
-                <td colSpan={7} className="border-b border-borda-suave px-3 py-3 text-center text-xs text-tinta-3">
+                <td data-titulo colSpan={7} className="border-b border-borda-suave px-3 py-3 text-center text-xs text-tinta-3">
                   Nada neste grupo ainda.
                 </td>
               </tr>
             )}
             <tr>
-              <td colSpan={7} className="px-2 py-1">
+              <td data-titulo colSpan={7} className="px-2 py-1">
                 <NovaTarefa quadroId={quadro.id} grupo={nome} podeGerir={podeGerir} teto={teto} rodar={rodar} />
               </td>
             </tr>

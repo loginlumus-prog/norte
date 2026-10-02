@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
@@ -73,7 +73,7 @@ export default async function Encomendas({
   const { unidade: pedida, situacao: sitPedida, q: qBruto, editar } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'venda.ver' })
   // Módulo desligado: a tela não existe para esta empresa — igual ao menu.
-  if (!moduloLigado(empresa, 'encomenda')) notFound()
+  if (!moduloLigado(empresa, 'encomenda')) semAcesso(slug, 'modulo-encomenda')
 
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
   const simples = (await lerModo()) === 'simples'
@@ -443,7 +443,7 @@ export default async function Encomendas({
         >
           {q || chaveFiltro
             ? 'Nenhuma encomenda com esse filtro.'
-            : 'Nenhuma encomenda em aberto. Quando alguém pedir um bolo para sábado, anote em “Nova encomenda” — com dia, hora e sinal.'}
+            : 'Nenhuma encomenda em aberto. Quando alguém pedir algo para depois, anote em “Nova encomenda” — com dia, hora e sinal.'}
         </Vazio>
       ) : (
         grupos.map((g) => (

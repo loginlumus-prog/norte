@@ -55,7 +55,9 @@ export function Cabecalho({
   const aba = (ativo: boolean) =>
     cx(
       'flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-xs font-semibold whitespace-nowrap transition-colors',
-      ativo ? 'bg-marca text-marca-tinta' : 'text-tinta-2 hover:bg-superficie-2 hover:text-tinta',
+      // A aba escolhida em azul CLARO: cheia, ela era um segundo botão azul ao
+      // lado do "Novo quadro", e o cabeçalho tinha duas ações principais.
+      ativo ? 'bg-marca-suave text-marca' : 'text-tinta-2 hover:bg-superficie-2 hover:text-tinta',
     )
 
   return (
@@ -65,7 +67,7 @@ export function Cabecalho({
           {quadros.map((q) => (
             <Link key={q.id} href={com({ quadro: q.id, novo: null })} aria-current={q.id === atual ? 'page' : undefined} className={aba(q.id === atual)}>
               {q.cor && <span aria-hidden className="size-2 rounded-full" style={{ background: q.cor }} />}
-              <span className="max-w-40 truncate" title={q.nome}>{q.nome}</span>
+              <span className="max-w-56 truncate xl:max-w-80" title={q.nome}>{q.nome}</span>
               {q.abertas > 0 && <span className={cx('numero text-[10px]', q.id === atual ? 'opacity-80' : 'text-tinta-3')}>{q.abertas}</span>}
             </Link>
           ))}

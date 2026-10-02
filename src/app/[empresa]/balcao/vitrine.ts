@@ -115,21 +115,59 @@ export const rotuloDaVariacao = (v: Achado & { opcoes?: OpcaoDaVariacao[] }) =>
 
 const MIUDAS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'com', 'sem', 'no', 'na', 'em'])
 
+/** As palavras que dão inicial: com letra, sem as miúdas, só as letras. "(P)" vira "P"; "+" e "800ml" saem. */
+function palavrasDoNome(nome: string): string[] {
+  return nome
+    .trim()
+    .split(/[\s\-—/]+/)
+    .filter((p) => p && !MIUDAS.has(p.toLowerCase()))
+    // Começa por número ("800ml", "2kg") é medida, não nome: "Copo 800ml"
+    // virava "C8". Sem letra nenhuma ("+", "&", "(1)") também não serve.
+    .filter((p) => /^[^\p{N}]*\p{L}/u.test(p))
+    .map((p) => p.replace(/[^\p{L}]/gu, ''))
+    .filter(Boolean)
+}
+
 /**
  * As iniciais do cartão sem foto: "Sorvete a granel" → "SG", "Açaí" → "AÇ".
  *
  * Duas letras e não uma: com uma só, "Picolé" e "Pote" viram o mesmo "P", e a
- * inicial deixa de servir para achar de longe.
+ * inicial deixa de servir para achar de longe. Só LETRAS: "Camiseta (P)"
+ * dava "C(", e "Cabo + capa", "C+".
  */
 export function iniciais(nome: string): string {
-  const palavras = nome
-    .trim()
-    .split(/[\s\-—/]+/)
-    .filter((p) => p && !MIUDAS.has(p.toLowerCase()))
-  const [a, b] = palavras
-  if (!a) return '?'
-  if (!b) return a.slice(0, 2).toLocaleUpperCase('pt-BR')
-  return (a.charAt(0) + b.charAt(0)).toLocaleUpperCase('pt-BR')
+  return candidatasDeIniciais(nome)[0] ?? '?'
+}
+
+/** Da melhor para a pior: 1ª+2ª palavra, 1ª+3ª…, depois a 1ª com as letras de dentro. */
+function candidatasDeIniciais(nome: string): string[] {
+  const ps = palavrasDoNome(nome)
+  const [a, ...resto] = ps
+  if (!a) return []
+  const up = (x: string) => x.toLocaleUpperCase('pt-BR')
+  const saida: string[] = []
+  if (resto.length === 0) saida.push(up(a.slice(0, 2)))
+  for (const b of resto) saida.push(up(a.charAt(0) + b.charAt(0)))
+  for (const b of resto) for (const ch of b.slice(1)) saida.push(up(a.charAt(0) + ch))
+  for (const ch of a.slice(1)) saida.push(up(a.charAt(0) + ch))
+  return [...new Set(saida)]
+}
+
+/**
+ * As iniciais de uma grade inteira, sem repetir: dois cartões "AK" lado a
+ * lado não se acham de longe. O primeiro fica com a melhor; quem empata
+ * tenta a próxima candidata ("Água com gás" e "Água kids": AG, AK; "Açaí
+ * kids" e "Açaí kiwi": AK, AI). Sem candidata livre, repete — melhor que
+ * inventar letra que não está no nome.
+ */
+export function iniciaisDistintas(nomes: string[]): string[] {
+  const usadas = new Set<string>()
+  return nomes.map((nome) => {
+    const cs = candidatasDeIniciais(nome)
+    const livre = cs.find((c) => !usadas.has(c)) ?? cs[0] ?? '?'
+    usadas.add(livre)
+    return livre
+  })
 }
 
 /**

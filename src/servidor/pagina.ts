@@ -25,6 +25,7 @@ import { registrarErro } from './registro'
 import { conferirSenha } from './senha'
 import { reservarTentativa, concluirTentativa } from './limite'
 import { CABECALHO_CAMINHO, CABECALHO_SELO, caminhoCarimbado } from './carimbo'
+import { semAcesso } from './sem-acesso'
 
 export { CABECALHO_CAMINHO } from './carimbo'
 
@@ -354,7 +355,9 @@ export async function exigirSessao(slugEmpresa: string): Promise<SessaoViva> {
  * `capacidade` é a que a tela exige. Sem ela, a tela abre para quem colou o
  * endereço e só estoura lá embaixo, quando a primeira consulta chama
  * `exigir` — e estouro é a tela de "deu problema", que parece defeito. Com
- * ela, quem não pode cai no "este endereço não abre", que é a verdade.
+ * ela, quem não pode cai em "Seu acesso não abre esta tela" (sem-acesso.ts),
+ * dentro do sistema e com o menu — e não no "este endereço não abre", que
+ * dizia que o link estava errado.
  */
 export async function exigirEntrada(
   slugEmpresa: string,
@@ -371,11 +374,11 @@ export async function exigirEntrada(
   const sessao = conferida.sessao
   if (!sessao) redirect(enderecoDeEntrar(slugEmpresa, conferida.motivo))
 
-  if (capacidade && !pode(sessao, capacidade)) notFound()
-
   // O cookie diz de quem é a sessão; o endereço diz qual empresa foi aberta.
   // Se divergirem, a sessão não vale — vale a empresa do endereço, sempre.
   if (sessao.orgId !== empresa.id) redirect(`/${slugEmpresa}/entrar`)
+
+  if (capacidade && !pode(sessao, capacidade)) semAcesso(slugEmpresa, 'cargo')
 
   // Empresa suspensa depois que a pessoa já estava dentro: a sessão morre aqui,
   // não na próxima vez que ela tentar entrar.

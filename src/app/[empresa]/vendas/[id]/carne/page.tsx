@@ -2,6 +2,9 @@ import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
+import { semAcesso } from '@/servidor/sem-acesso'
+import { comoOrg } from '@/servidor/banco'
+import { pode } from '@/servidor/permissao'
 import { carneDaVenda } from '@/servidor/recibos'
 import { Folha, Credor, FaltaCredor, brl, dia, quando } from '../../../crediario/Papel'
 
@@ -31,7 +34,15 @@ export default async function CarnePagina({
   const { sessao } = await exigirEntrada(slug, { capacidade: 'venda.ver' })
 
   const c = await carneDaVenda(sessao, id)
-  if (!c) notFound()
+  if (!c) {
+    // Venda que existe, mas sem carnê (paga à vista, sem cliente): a tela diz
+    // isso, em vez de "o link está errado".
+    const v = /^[\w-]{1,64}$/.test(id)
+      ? await comoOrg(sessao.orgId, (db) => db.venda.findUnique({ where: { id }, select: { unidadeId: true } }))
+      : null
+    if (v && pode(sessao, 'venda.ver', v.unidadeId)) semAcesso(slug, 'sem-carne', `/${slug}/vendas/${id}`)
+    notFound()
+  }
 
   const a4 = formato === 'a4'
   const base = `/${slug}/vendas/${id}/carne`

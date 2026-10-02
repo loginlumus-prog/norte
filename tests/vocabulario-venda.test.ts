@@ -55,6 +55,11 @@ const DA_LOJA: PalavrasDaVenda = {
   itensDeEstoque: 'produtos',
   acabouNoEstoque: 'Sem saldo para vender — é venda indo para o vizinho.',
   foraDoTotal: null,
+  naFicha: {
+    Gastou: 'Gastou', Ultima: 'Última compra', Contagem: 'Compras',
+    comprou: 'comprou', compraram: 'compraram', nunca: 'nunca comprou', nuncaPlural: 'nunca compraram',
+    uma: 'compra', varias: 'compras',
+  },
 }
 
 const SERVICO = ['saude', 'beleza', 'escola'] as const

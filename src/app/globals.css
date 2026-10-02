@@ -412,6 +412,226 @@ th.numero {
   text-align: right;
 }
 
+/* ── tabela que vira cartões ─────────────────────────────────
+   No telefone, a tabela larga rolava de lado e escondia justo a coluna que
+   importa: o TOTAL da venda, o preço, o botão "Pagar". Dentro de `.empilha`
+   (quadro com menos de 32rem) ou `.empilha-largo` (42rem), cada linha vira um
+   cartão: a célula com `data-titulo` é o título; as com `data-destaque` sobem
+   para o lado dele, em letra maior; as outras viram "rótulo … valor", com o
+   rótulo vindo de `data-rotulo`. É o QUADRO que decide, não a janela.
+
+   Em @layer utilities e com uma classe a mais de especificidade: assim estas
+   regras ganham do `px-3`/`text-right`/`min-w-*` de cada célula, mas o
+   `hidden` da coluna que some no celular continua valendo (`:not(.hidden)`). */
+@layer utilities {
+  .empilha {
+    container: empilha / inline-size;
+  }
+  .empilha-largo {
+    container: empilha-largo / inline-size;
+  }
+
+  @container empilha (max-width: 32rem) {
+    .empilha table,
+    .empilha tbody {
+      display: block;
+      min-width: 0;
+      width: 100%;
+    }
+    .empilha thead {
+      display: none;
+    }
+    .empilha tbody > tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      column-gap: 0.75rem;
+      padding: 0.5rem 0;
+    }
+    .empilha tbody > tr:not(:last-child) {
+      border-bottom: 1px solid var(--borda-suave);
+    }
+.empilha tbody > tr > td:not(.hidden) {
+      display: flex;
+    }
+    .empilha tbody > tr > td {
+      order: 2;
+      border-bottom-width: 0;
+      width: 100%;
+      min-width: 0;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.1875rem 0.75rem;
+      text-align: right;
+    }
+    .empilha tbody > tr > td[data-rotulo]::before {
+      content: attr(data-rotulo);
+      flex-shrink: 0;
+      padding-top: 0.125rem;
+      text-align: left;
+      font-family: var(--font-sans);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.025em;
+      text-transform: uppercase;
+      color: var(--tinta-3);
+      white-space: nowrap;
+    }
+    .empilha tbody > tr > td:not([data-rotulo]) {
+      justify-content: flex-end;
+    }
+    .empilha tbody > tr > td[data-titulo] {
+      order: 0;
+      display: block;
+      flex: 1 1 10rem;
+      width: auto;
+      padding-bottom: 0.25rem;
+      text-align: left;
+      font-weight: 600;
+    }
+    .empilha tbody > tr > td[data-titulo]::before,
+    .empilha tbody > tr > td[data-destaque]::before {
+      display: none;
+    }
+    .empilha tbody > tr > td[data-destaque] {
+      order: 1;
+      width: auto;
+      margin-left: auto;
+      padding-bottom: 0.25rem;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--titulo);
+    }
+    .empilha tbody > tr > td:empty {
+      display: none;
+    }
+  }
+
+  /* O mesmo, para quadro de até 42rem. Repetido porque a consulta de
+     contêiner não aceita variável: cada limite é um bloco. */
+  @container empilha-largo (max-width: 42rem) {
+    .empilha-largo table,
+    .empilha-largo tbody {
+      display: block;
+      min-width: 0;
+      width: 100%;
+    }
+    .empilha-largo thead {
+      display: none;
+    }
+    .empilha-largo tbody > tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      column-gap: 0.75rem;
+      padding: 0.5rem 0;
+    }
+    .empilha-largo tbody > tr:not(:last-child) {
+      border-bottom: 1px solid var(--borda-suave);
+    }
+.empilha-largo tbody > tr > td:not(.hidden) {
+      display: flex;
+    }
+    .empilha-largo tbody > tr > td {
+      order: 2;
+      border-bottom-width: 0;
+      width: 100%;
+      min-width: 0;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.1875rem 0.75rem;
+      text-align: right;
+    }
+    .empilha-largo tbody > tr > td[data-rotulo]::before {
+      content: attr(data-rotulo);
+      flex-shrink: 0;
+      padding-top: 0.125rem;
+      text-align: left;
+      font-family: var(--font-sans);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.025em;
+      text-transform: uppercase;
+      color: var(--tinta-3);
+      white-space: nowrap;
+    }
+    .empilha-largo tbody > tr > td:not([data-rotulo]) {
+      justify-content: flex-end;
+    }
+    .empilha-largo tbody > tr > td[data-titulo] {
+      order: 0;
+      display: block;
+      flex: 1 1 10rem;
+      width: auto;
+      padding-bottom: 0.25rem;
+      text-align: left;
+      font-weight: 600;
+    }
+    .empilha-largo tbody > tr > td[data-titulo]::before,
+    .empilha-largo tbody > tr > td[data-destaque]::before {
+      display: none;
+    }
+    .empilha-largo tbody > tr > td[data-destaque] {
+      order: 1;
+      width: auto;
+      margin-left: auto;
+      padding-bottom: 0.25rem;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--titulo);
+    }
+    .empilha-largo tbody > tr > td:empty {
+      display: none;
+    }
+  }
+}
+
+/* ── a lista da barra lateral, que rola sozinha ──────────────
+   A sombra no pé (e no topo, depois de rolar) é o aviso de que há mais
+   itens. O fundo "local" anda com a lista e cobre a sombra quando se chega
+   ao fim; a sombra "scroll" fica parada na borda. Sem JavaScript. */
+.lista-rola {
+  background:
+    linear-gradient(var(--lado) 30%, transparent) top / 100% 28px no-repeat local,
+    linear-gradient(transparent, var(--lado) 70%) bottom / 100% 28px no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgb(0 0 0 / 0.16), transparent) top / 100% 10px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 0.16), transparent) bottom / 100% 10px no-repeat scroll;
+  background-color: var(--lado);
+  scrollbar-width: thin;
+}
+
+/* ── as ações do cabeçalho no telefone ───────────────────────
+   Ver ui/AcoesDoTopo.tsx: o que não é a ação principal ganha `data-mais` e
+   some abaixo de `sm`; o "Mais" abre o mesmo pedaço como um painel na linha
+   de baixo do cabeçalho. Fora de camada de propósito: tem de ganhar do
+   `flex`/`inline-flex` de cada botão. */
+/* O invólucro que cada tela manda (`<span class="flex flex-wrap">`) alinha
+   à direita, junto do resto do cabeçalho, quando as ações quebram linha. */
+.acoes-topo > :only-child {
+  justify-content: flex-end;
+}
+
+@media (width < 40rem) {
+  .acoes-topo:not([data-aberto]) [data-mais] {
+    display: none;
+  }
+  .acoes-topo[data-aberto] {
+    order: 10;
+    flex-basis: 100%;
+    justify-content: flex-start;
+    padding: 0.625rem;
+    border: 1px solid var(--borda);
+    border-radius: var(--raio);
+    background: var(--superficie-2);
+  }
+  .acoes-topo[data-aberto] > * {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+
 /* Foco visível sempre — teclado é como o balcão trabalha rápido. */
 :focus-visible {
   outline: 2px solid var(--anel);

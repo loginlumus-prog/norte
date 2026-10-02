@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { cx } from './base'
+import { IconeAbaixo } from './Icones'
 import type { UnidadeVisivel } from '@/servidor/unidade'
 import { TODAS_AS_UNIDADES, UNIDADE_LEMBRADA_SEG, cookieDaUnidade } from '@/servidor/unidade-lembrada'
 
@@ -115,9 +116,8 @@ export function SeletorUnidade({
         )}
       >
         <span className="max-w-44 truncate">{rotulo}</span>
-        <span aria-hidden className="text-xs text-tinta-3">
-          {aberto ? '▲' : '▼'}
-        </span>
+        {/* A mesma seta das outras listas que abrem, e não "▼" de fonte. */}
+        <IconeAbaixo tamanho={14} className={cx('shrink-0 text-tinta-3 transition-transform', aberto && 'rotate-180')} />
       </button>
 
       {aberto && (
