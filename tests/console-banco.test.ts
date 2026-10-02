@@ -177,7 +177,7 @@ describe('definirModuloDaEquipe', () => {
   it('não liga fora do plano (o Grátis não tem Farol), nem módulo que não é à parte', async () => {
     await expect(m.operacao.definirModuloDaEquipe('org-b', 'farol', true, { motivo: 'tentativa errada', quem: 'Rafa' })).rejects.toThrow(/não tem/)
     await expect(
-      m.operacao.definirModuloDaEquipe('org-a', 'agente' as never, false, { motivo: 'tentativa errada', quem: 'Rafa' }),
+      m.operacao.definirModuloDaEquipe('org-a', 'crediario' as never, false, { motivo: 'tentativa errada', quem: 'Rafa' }),
     ).rejects.toThrow(/não é contratado/)
     const [b] = await linhas<{ modulos: string[] }>(`select modulos from orgs where id = 'org-b'`)
     expect(b!.modulos).toEqual([])

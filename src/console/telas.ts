@@ -430,7 +430,7 @@ export function telaEmpresa(c: Contexto, d: DetalheEmpresa, dominioDaEquipe: str
       )}
     </div></details>
     <details class="acao"><summary>Módulos à parte <span class="mini">${[temFabrica ? 'Fábrica' : '', temFarol ? `Farol ${l.farolMarcas}` : ''].filter(Boolean).join(' · ') || 'nenhum'}</span></summary><div class="corpo">
-      ${(['fabrica', 'farol'] as const)
+      ${(['agente', 'fabrica', 'farol'] as const)
         .map((m) => {
           const ligado = l.modulos.includes(m)
           return form(

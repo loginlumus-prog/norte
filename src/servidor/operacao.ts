@@ -682,7 +682,7 @@ export async function trocarPlanoPelaEquipe(
 // ─────────────────────────────────────────────────────────────
 
 /** Os módulos que a equipe liga e desliga por contrato. */
-export const MODULOS_DA_EQUIPE = ['fabrica', 'farol'] as const
+export const MODULOS_DA_EQUIPE = ['agente', 'fabrica', 'farol'] as const
 export type ModuloDaEquipe = (typeof MODULOS_DA_EQUIPE)[number]
 
 /**
