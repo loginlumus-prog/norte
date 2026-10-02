@@ -40,6 +40,18 @@ export function register() {
   }
 }
 
+/**
+ * O caminho sem o que é segredo. O endereço do webhook do Z-API TEM o token
+ * (`/api/whatsapp/{empresa}/{token}`: quem tem o endereço manda mensagem como
+ * o dono), e o da mídia tem a assinatura (`/api/midia/{id}/{assinatura}`).
+ * Log de erro é lido por mais gente e guardado por mais tempo que o banco.
+ */
+function caminhoSemSegredo(caminho: string): string {
+  return caminho
+    .replace(/^(\/api\/whatsapp\/[^/]+\/)[^/?#]+/, '$1[token]')
+    .replace(/^(\/api\/midia\/[^/]+\/)[^/?#]+/, '$1[assinatura]')
+}
+
 export const onRequestError: Instrumentation.onRequestError = async (erro, pedido, contexto) => {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
   const { resumoDoErro, semBusca } = await import('./servidor/registro')
@@ -50,7 +62,7 @@ export const onRequestError: Instrumentation.onRequestError = async (erro, pedid
       nivel: 'erro',
       codigo: digest ?? null,
       metodo: pedido.method,
-      caminho: semBusca(pedido.path),
+      caminho: caminhoSemSegredo(semBusca(pedido.path)),
       rota: contexto.routePath,
       tipo: contexto.routeType,
       erro: resumoDoErro(erro),

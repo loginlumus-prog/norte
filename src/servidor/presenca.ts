@@ -282,3 +282,18 @@ export async function liberarVaga(orgId: string, usuarioId: string): Promise<voi
 export function precisaTrancar(agora: Date, ultimoSinal: Date): boolean {
   return minutosDesde(agora, ultimoSinal) >= TRANCA_MIN
 }
+
+/**
+ * A tela já abre trancada?
+ *
+ * `toque` é o último toque de verdade neste aparelho (o cookie de
+ * `marcarToque`, em sessao.ts); `nasceu`, o instante do login — entrar de
+ * novo conta como mexer, mesmo com um cookie de toque velho de outra sessão.
+ * Sem toque registrado (aparelho que entrou antes de existir o cookie), não
+ * tranca: na dúvida, é a venda em andamento que pesa.
+ */
+export function trancadaAoAbrir(agora: Date, toque: Date | null, nasceu: Date | null): boolean {
+  if (!toque) return false
+  const ultimo = nasceu && nasceu > toque ? nasceu : toque
+  return precisaTrancar(agora, ultimo)
+}

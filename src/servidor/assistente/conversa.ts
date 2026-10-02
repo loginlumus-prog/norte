@@ -39,10 +39,11 @@
 // código nenhum segue o caminho de sempre.
 //
 // ── o SIM, antes do modelo ───────────────────────────────────
-// "sim", "pode lançar", "não", "sim 2" de quem pediu uma proposta na última
-// hora — e o ACEITAR / PRONTO do pedido do catálogo — são tratados sem IA
-// (ver respostas.ts), com a permissão de quem respondeu conferida pelo mesmo
-// caminho da tela. O modelo nunca confirma nada.
+// "sim", "pode lançar", "não", "sim KP42" de quem pediu uma proposta na
+// última hora — e o ACEITAR / PRONTO do pedido do catálogo — são tratados sem
+// IA (ver respostas.ts), com a permissão de quem respondeu conferida pelo
+// mesmo caminho da tela. O modelo nunca confirma nada. E a resposta que criou
+// proposta termina com o resumo do SERVIDOR e o código (ver propostas.ts).
 //
 // ── o áudio da equipe ────────────────────────────────────────
 // Quem é da equipe pode falar em vez de digitar: o áudio vira texto
@@ -81,13 +82,15 @@ import {
   donosComTelefone,
   empresaApta,
   enviarEGravar,
+  registrarConsumoAvulso,
   registrarConsumoIA,
   type Contexto,
 } from './contexto'
 import { agoraEmSP, ferramentasParaModelo, montarSistema, poderDaFerramenta, poderesDaConversa, type Equipe } from './regras'
 import { executarFerramenta } from './ferramentas'
 import { responderPeloWhatsApp } from './respostas'
-import { ecoDoAudio, ouvir, type AudioRecebido } from './transcricao'
+import { fechoDasPropostas } from './propostas'
+import { custoDaTranscricaoCent, ecoDoAudio, ouvirMedindo, type AudioRecebido } from './transcricao'
 import { decidirRecado, humanoAteDepoisDe, recadoDe, type DecisaoRecado } from './recado'
 import { chaveTelefone, mesmoTelefone } from './telefone'
 import {
@@ -222,15 +225,20 @@ export async function processarMensagem(e: Entrada, deps: Dependencias): Promise
   // `midia` guarda que veio de áudio. Sem transcrição, fica o aviso.
   let texto = textoGravado
   let eco: string | null = null
-  if (e.audio) {
-    const ouvido = await ouvir(e.audio, deps.buscarTranscricao)
+  // A transcrição também gasta: o teto da conversa, o crédito e o teto do
+  // dia valem ANTES dela, não só antes do modelo. Sem isso o áudio era a
+  // porta de gastar com a carteira zerada (e o custo nem entrava na conta).
+  if (e.audio && (await cabeHojeNaConversa(e.orgId, conversa.id)) && temChaveIA() && (await podeGastarHoje(e.orgId)).pode) {
+    const ouvido = await ouvirMedindo(e.audio, deps.buscarTranscricao)
     if (ouvido) {
-      texto = ouvido
-      eco = ecoDoAudio(ouvido)
+      const falado = ouvido.texto
+      texto = falado
+      eco = ecoDoAudio(falado)
+      await registrarConsumoAvulso(e.orgId, agente.id, 'transcricao', custoDaTranscricaoCent(ouvido.segundos))
       await comoOrg(e.orgId, (db) =>
         db.mensagemAgente.update({
           where: { id: idDaMensagem(e.orgId, e.idExterno) },
-          data: { texto: ouvido.slice(0, MAXIMO_ENTRADA), midia: `Áudio transcrito: ${ouvido}`.slice(0, MAXIMO_ENTRADA + 20) },
+          data: { texto: falado.slice(0, MAXIMO_ENTRADA), midia: `Áudio transcrito: ${falado}`.slice(0, MAXIMO_ENTRADA + 20) },
         }),
       )
     }
@@ -409,12 +417,7 @@ async function conversarComEquipe(
   const agente = ctx.agente
 
   // ── teto da conversa ─────────────────────────────────────
-  // O dia é o de São Paulo, não o da máquina (ver `inicioDeHojeEmSP`).
-  const inicio = inicioDeHojeEmSP()
-  const respondidasHoje = await comoOrg(orgId, (db) =>
-    db.mensagemAgente.count({ where: { conversaId: conversa.id, de: 'AGENTE', criadaEm: { gte: inicio } } }),
-  )
-  if (respondidasHoje >= MAXIMO_POR_CONVERSA_DIA) return { tipo: 'ignorada', motivo: 'teto_conversa' }
+  if (!(await cabeHojeNaConversa(orgId, conversa.id))) return { tipo: 'ignorada', motivo: 'teto_conversa' }
 
   // ── chave, crédito, teto de gasto ────────────────────────
   // Antes da chamada, sempre. Depois da chamada o dinheiro já foi.
@@ -511,8 +514,29 @@ async function conversarComEquipe(
     resposta = RECADO_FALHA_ASSISTENTE
   }
 
+  // A proposta que o laço criou fecha a mensagem com o resumo DO SERVIDOR e
+  // o código (ver propostas.ts): o SIM confirma o que a pessoa leu aqui, não
+  // a descrição do modelo, que pode ter dito outra coisa.
+  if (propostas.length > 0) {
+    try {
+      const fecho = await fechoDasPropostas(orgId, propostas)
+      if (fecho) resposta = `${resposta}\n\n${fecho}`
+    } catch (erro) {
+      console.error(`[assistente] ${orgId}: o fecho da proposta falhou:`, erro instanceof Error ? erro.message : erro)
+    }
+  }
+
   const saida = await enviarEGravar(deps.canal, agente, conversa, eco ? `${eco}\n\n${resposta}` : resposta)
   return { tipo: 'respondida', texto: resposta, enviada: saida.enviada, propostas }
+}
+
+/** Ainda cabe resposta hoje nesta conversa? O dia é o de São Paulo (ver `inicioDeHojeEmSP`). */
+async function cabeHojeNaConversa(orgId: string, conversaId: string): Promise<boolean> {
+  const inicio = inicioDeHojeEmSP()
+  const respondidasHoje = await comoOrg(orgId, (db) =>
+    db.mensagemAgente.count({ where: { conversaId, de: 'AGENTE', criadaEm: { gte: inicio } } }),
+  )
+  return respondidasHoje < MAXIMO_POR_CONVERSA_DIA
 }
 
 const textoDe = (blocos: BlocoResposta[]) =>

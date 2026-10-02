@@ -348,7 +348,7 @@ export async function listarClientes(
       },
     })
 
-    const fiado = await situacaoDosClientes(db, clientes.map((c) => c.id))
+    const fiado = await situacaoDosClientes(db, clientes.map((c) => c.id), sessao)
 
     return clientes.map((c) => {
       const daqui = c.vendas.filter((v) => v.situacao === 'CONCLUIDA')

@@ -1,8 +1,14 @@
 // As variáveis do conector, lidas uma vez, conferidas na partida.
 //
-//   CONECTOR_SEGREDO   o MESMO valor configurado no Norte. Pelo menos 32
-//                      caracteres. Gerar:
-//                        node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+//   CONECTOR_TOKEN       o Bearer que o Norte manda em todo pedido: o MESMO
+//                        CONECTOR_TOKEN do Norte. Pelo menos 32 caracteres.
+//   CONECTOR_ASSINATURA  a chave do HMAC com que este serviço assina o que
+//                        manda ao Norte: a MESMA do Norte, e DIFERENTE do
+//                        token (o token viaja; esta nunca sai da máquina).
+//   CONECTOR_SEGREDO     o antigo, um só para os dois. Vale como reserva de
+//                        cada um que faltar, para o que já está no ar não
+//                        parar. Gerar cada um:
+//                          node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 //   NORTE_URL          o endereço do Norte, ex.: https://norte.app — para onde
 //                      vão as mensagens recebidas e onde mora a sessão cifrada
 //   PORT               a porta HTTP deste serviço (padrão 3200)
@@ -26,7 +32,10 @@ import { MINIMO_SEGREDO } from './assinatura'
 import { RITMO_PADRAO, type ConfigRitmo } from './ritmo'
 
 export type Config = {
+  /** O Bearer que o Norte manda (CONECTOR_TOKEN). */
   segredo: string
+  /** A chave do HMAC do que vai para o Norte (CONECTOR_ASSINATURA). */
+  segredoAssinatura: string
   norteUrl: string
   porta: number
   host: string
@@ -43,8 +52,13 @@ const inteiro = (v: string | undefined, padrao: number, min: number, max: number
 
 export function lerConfig(env: Record<string, string | undefined>): { ok: true; config: Config } | { ok: false; erros: string[] } {
   const erros: string[] = []
-  const segredo = (env.CONECTOR_SEGREDO ?? '').trim()
-  if (segredo.length < MINIMO_SEGREDO) erros.push(`CONECTOR_SEGREDO falta ou tem menos de ${MINIMO_SEGREDO} caracteres.`)
+  const antigo = (env.CONECTOR_SEGREDO ?? '').trim()
+  const segredo = (env.CONECTOR_TOKEN ?? '').trim() || antigo
+  const segredoAssinatura = (env.CONECTOR_ASSINATURA ?? '').trim() || antigo
+  if (segredo.length < MINIMO_SEGREDO) erros.push(`CONECTOR_TOKEN (ou CONECTOR_SEGREDO) falta ou tem menos de ${MINIMO_SEGREDO} caracteres.`)
+  if (segredoAssinatura.length < MINIMO_SEGREDO) {
+    erros.push(`CONECTOR_ASSINATURA (ou CONECTOR_SEGREDO) falta ou tem menos de ${MINIMO_SEGREDO} caracteres.`)
+  }
 
   const norteUrl = (env.NORTE_URL ?? '').trim().replace(/\/+$/, '')
   try {
@@ -63,6 +77,7 @@ export function lerConfig(env: Record<string, string | undefined>): { ok: true; 
 
   const config: Config = {
     segredo,
+    segredoAssinatura,
     norteUrl,
     porta: inteiro(env.PORT, 3200, 1, 65535),
     host: (env.HOST ?? '').trim() || '0.0.0.0',

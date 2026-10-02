@@ -51,6 +51,12 @@ export type ClienteNaTela = {
   cep: string
   observacoes: string
   ativo: boolean
+  /**
+   * O limite do crediário, como o campo mostra ('' = sem limite). Só vem com
+   * o crediário ligado; `podeLimite` diz se quem está na tela pode mudar
+   * (`venda.desconto`).
+   */
+  crediario?: { limite: string; podeLimite: boolean } | null
 }
 
 export function Editor({ slug, cliente, ofertas }: { slug: string; cliente?: ClienteNaTela; ofertas: OfertasNaTela }) {
@@ -215,6 +221,26 @@ export function Editor({ slug, cliente, ofertas }: { slug: string; cliente?: Cli
           </div>
         )}
       </Cartao>
+
+      {cliente?.crediario && (
+        <Cartao titulo="Crediário">
+          {cliente.crediario.podeLimite ? (
+            <Campo
+              rotulo="Limite de crédito no crediário, em R$"
+              name="limiteCredito"
+              inputMode="decimal"
+              defaultValue={cliente.crediario.limite}
+              placeholder="Sem limite"
+              dica="Quanto ela pode dever, somando o que já deve. Passar dele pede o PIN de quem autoriza. Vazio = sem limite."
+            />
+          ) : (
+            <p className="text-sm text-tinta-2">
+              Limite de crédito: <b className="numero">{cliente.crediario.limite ? `R$ ${cliente.crediario.limite}` : 'sem limite'}</b>.
+              Quem pode autorizar desconto muda o limite.
+            </p>
+          )}
+        </Cartao>
+      )}
 
       {cliente && (
         <Cartao titulo="Situação">

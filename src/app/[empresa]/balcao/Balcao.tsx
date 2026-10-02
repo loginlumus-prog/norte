@@ -137,7 +137,7 @@ export function Balcao({
     recado, alerta, voltou, concluir, indo,
     busca, vendedorRef, primeiraForma, raiz, focarBusca,
   } = v
-  const { tabela, totalCent, aPagarCent, faltaCent, trocoCent, sobrouSemDinheiro, escada, temEscada } = conta
+  const { tabela, totalCent, aPagarCent, faltaCent, trocoCent, sobrouSemDinheiro, trocoAlemDoDinheiro, escada, temEscada } = conta
   // O item que o Enter lançaria agora (ver etiqueta.ts): nenhum quando a
   // etiqueta é de um produto com vários tamanhos.
   const lancaNoEnter = escolhaDoEnter(termo, achados.filter((a) => !a.foraDaLoja)).item?.id ?? null
@@ -836,7 +836,7 @@ export function Balcao({
                     }
                     if (e.key === 'Escape') setValeAberto(false)
                   }}
-                  placeholder="VT-XXXXXX"
+                  placeholder="VT-XXXXX-XXXXX"
                   aria-label="Código do vale de troca"
                   className="min-w-0 flex-1 rounded border border-borda bg-superficie px-2 py-1.5 font-mono text-sm tracking-wider text-tinta placeholder:text-tinta-3"
                 />
@@ -898,8 +898,17 @@ export function Balcao({
 
           {sobrouSemDinheiro && (
             <Aviso nivel="critico">
-              O valor passou do total, e não há dinheiro {p.naVenda} para dar troco. Ajuste o valor
-              recebido.
+              {trocoAlemDoDinheiro ? (
+                <>
+                  O troco passa do dinheiro entregue: o que sobrou foi no Pix ou no cartão, e isso não volta pela
+                  gaveta. Ajuste o valor do Pix ou do cartão para o que falta.
+                </>
+              ) : (
+                <>
+                  O valor passou do total, e não há dinheiro {p.naVenda} para dar troco. Ajuste o valor
+                  recebido.
+                </>
+              )}
             </Aviso>
           )}
 

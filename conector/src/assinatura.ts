@@ -1,8 +1,9 @@
 // A conversa entre o conector e o Norte é assinada nos dois sentidos.
 //
-//   Norte → conector: `Authorization: Bearer <CONECTOR_SEGREDO>`. O conector é
-//     serviço interno; quem tem o segredo manda nele.
-//   conector → Norte: HMAC-SHA256 do pedido inteiro, com o mesmo segredo. O
+//   Norte → conector: `Authorization: Bearer <CONECTOR_TOKEN>`. O conector é
+//     serviço interno; quem tem o token manda nele.
+//   conector → Norte: HMAC-SHA256 do pedido inteiro, com CONECTOR_ASSINATURA
+//     (outro segredo: o token viaja em todo pedido, esta chave não sai). O
 //     Norte fica na internet aberta, e o endereço do webhook é adivinhável
 //     (/api/whatsapp-proprio/<id da empresa>). Sem a assinatura, qualquer um
 //     mandaria "mensagem do dono" para o assistente — ou trocaria a sessão

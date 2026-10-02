@@ -30,6 +30,7 @@ import { codigoEncomenda, ehFinal, ROTULO_ENCOMENDA, type SituacaoEncomenda } fr
 import { diaEmSP, inicioDoDiaEmSP, somarDias } from '../dia'
 import { unidadesVisiveis } from './contexto'
 import { comoRecebe, finalDoCodigo, itensEmTexto, primeiroNome, quandoFalado } from './encomenda-texto'
+import { aposentarAnteriores, RECADO_DO_FECHO } from './propostas'
 import type { ResultadoFerramenta } from './ferramentas'
 
 const MAXIMO_RESULTADO = 6000
@@ -74,6 +75,8 @@ export type Candidato = {
   opcoes: string | null
   medida: Medida
   vendidoEm: string[]
+  /** O custo de hoje no cadastro, por unidade do cadastro (reais). Para conferir o custo dito. */
+  custo?: number | null
 }
 
 export type Achado =
@@ -155,6 +158,37 @@ export function converter(q: number, de: Medida | null, para: Medida): number | 
 /** "kg" de "1 kg" — a sigla da medida, para o preço por unidade. */
 const sigla = (m: Medida) => comMedida(1, m).split(' ')[1] ?? 'un'
 
+/**
+ * O custo dito, por unidade do cadastro. O preço tem a SUA unidade ("500 g a
+ * 39,90 o quilo": quantidade em g, preço por kg) — tratar o preço como "por
+ * unidade da quantidade" fazia o quilo custar R$ 39.900. Sem unidade do preço,
+ * vale a da quantidade (o contrato antigo). Nulo = sem custo; `undefined` =
+ * a unidade do preço não converte para a do cadastro (pergunta).
+ */
+export function custoNaMedida(
+  p: { custoUnit: number | null; medidaDita: Medida | null; medidaDoCusto: Medida | null },
+  medida: Medida,
+): number | null | undefined {
+  if (p.custoUnit === null) return null
+  const doPreco = p.medidaDoCusto ?? p.medidaDita ?? medida
+  // Quantas unidades do preço cabem em uma do cadastro (1 kg = 1000 g).
+  const fator = converter(1, medida, doPreco)
+  if (fator === null) return undefined
+  return Math.round(p.custoUnit * fator * 100) / 100
+}
+
+/** Quantas vezes o custo de hoje faz o custo novo merecer conferência. */
+const FORA_DO_NORMAL = 5
+
+/** "12 vezes o custo de hoje" — quando o custo novo foge do de hoje; nulo se está no normal. */
+export function custoForaDoNormal(novo: number, hoje: number | null): string | null {
+  if (!hoje || hoje <= 0 || novo <= 0) return null
+  const r = novo / hoje
+  if (r > FORA_DO_NORMAL) return `${Math.round(r)} vezes o custo de hoje`
+  if (r < 1 / FORA_DO_NORMAL) return `${Math.round(1 / r)} vezes menos que o custo de hoje`
+  return null
+}
+
 /** "picanha bovina" → "Picanha bovina", para o produto que nasce do que a pessoa disse. */
 const comMaiuscula = (s: string) => {
   const t = s.replace(/\s+/g, ' ').trim()
@@ -170,6 +204,21 @@ const MAXIMO_ITENS = 20
 
 type Loja = { id: string; nome: string; ehDeposito: boolean }
 
+/**
+ * A loja que a pessoa disse, dentre as dela. O nome exato vence ("Shopping"
+ * acha a Shopping mesmo havendo a Shopping Norte); sem exato, vale o pedaço
+ * de nome que só uma tem. Duas que servem: nula, e a ferramenta pergunta —
+ * proposta na loja errada é estoque (ou conta) na loja errada depois do sim.
+ */
+export function escolherLoja<T extends { nome: string }>(lojas: readonly T[], pedida: string): T | null {
+  const p = normalizar(pedida)
+  if (!p) return null
+  const exatas = lojas.filter((l) => normalizar(l.nome) === p)
+  if (exatas.length > 0) return exatas.length === 1 ? exatas[0]! : null
+  const contem = lojas.filter((l) => normalizar(l.nome).includes(p))
+  return contem.length === 1 ? contem[0]! : null
+}
+
 /** As lojas onde a pessoa dá entrada, e a que ela quis dizer. */
 async function lojaDaEntrada(sessao: Sessao, pedida: string): Promise<{ loja: Loja | null; lojas: Loja[] }> {
   const ids = await unidadesVisiveis(sessao, 'estoque.ajustar')
@@ -180,11 +229,7 @@ async function lojaDaEntrada(sessao: Sessao, pedida: string): Promise<{ loja: Lo
       select: { id: true, nome: true, ehDeposito: true },
     }),
   )
-  if (pedida) {
-    const p = normalizar(pedida)
-    const achadas = lojas.filter((l) => normalizar(l.nome).includes(p))
-    return { loja: achadas.length === 1 ? achadas[0]! : null, lojas }
-  }
+  if (pedida) return { loja: escolherLoja(lojas, pedida), lojas }
   // Sem dizer: a única loja que ela alcança. O depósito só entra se for a
   // única coisa — compra que chega sem dizer onde é compra de balcão.
   const lojasDeVenda = lojas.filter((l) => !l.ehDeposito)
@@ -207,28 +252,63 @@ async function candidatosDe(orgId: string, pedidos: string[]): Promise<Candidato
     for (const w of palavrasDe(p)) termos.add(`%${w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w}%`)
   }
   if (termos.size === 0 && codigos.size === 0) return []
-  const linhas = await comoOrg(orgId, (db) =>
-    db.$queryRaw<
-      { variacaoId: string; codigo: string | null; codigoBarras: string | null; nome: string; opcoes: string | null; medida: Medida; vendidoEm: string[] | null }[]
-    >`
+  type Linha = { variacaoId: string; codigo: string | null; codigoBarras: string | null; nome: string; opcoes: string | null; medida: Medida; vendidoEm: string[] | null; custo: string | null }
+  // Duas buscas, em sequência (mesma transação). O código e o código de
+  // barras EXATOS vêm sem teto; pelo nome, com teto, mas pelo que casa com
+  // mais palavras primeiro. Com uma busca só, ordenada pelo nome, a loja com
+  // mais de 120 variações parecidas ("camiseta ...") perdia a peça pedida —
+  // e o assistente a recriava como produto novo, duplicado.
+  const linhas = await comoOrg(orgId, async (db) => {
+    const exatas = await db.$queryRaw<Linha[]>`
       select vr.id as "variacaoId", vr.codigo, vr.codigo_barras as "codigoBarras", p.nome, p.medida as medida,
-             p.vendido_em as "vendidoEm",
+             p.vendido_em as "vendidoEm", p.custo::text as custo,
              (select string_agg(op.valor, ' · ' order by ex.ordem, op.ordem)
                 from variacao_opcoes vo join opcoes op on op.id = vo.opcao_id join eixos ex on ex.id = op.eixo_id
                where vo.variacao_id = vr.id) as opcoes
         from variacoes vr
         join produtos p on p.id = vr.produto_id
        where p.ativo and vr.ativa and not p.servico
-         and (lower(vr.codigo) = any(${[...codigos]}) or vr.codigo_barras = any(${[...codigos]})
-              or translate(lower(p.nome), ${COM_ACENTO}, ${SEM_ACENTO}) like any(${[...termos]}))
+         and (lower(vr.codigo) = any(${[...codigos]}) or vr.codigo_barras = any(${[...codigos]}))
        order by p.nome, vr.codigo
+    `
+    const jaVieram = exatas.map((l) => l.variacaoId)
+    const peloNome =
+      termos.size === 0
+        ? []
+        : await db.$queryRaw<Linha[]>`
+      select vr.id as "variacaoId", vr.codigo, vr.codigo_barras as "codigoBarras", p.nome, p.medida as medida,
+             p.vendido_em as "vendidoEm", p.custo::text as custo,
+             (select string_agg(op.valor, ' · ' order by ex.ordem, op.ordem)
+                from variacao_opcoes vo join opcoes op on op.id = vo.opcao_id join eixos ex on ex.id = op.eixo_id
+               where vo.variacao_id = vr.id) as opcoes
+        from variacoes vr
+        join produtos p on p.id = vr.produto_id
+       where p.ativo and vr.ativa and not p.servico
+         and translate(lower(p.nome), ${COM_ACENTO}, ${SEM_ACENTO}) like any(${[...termos]})
+         and not (vr.id = any(${jaVieram}))
+       -- Quem casa com MAIS palavras do pedido vem primeiro: "camiseta polo"
+       -- acha a Polo antes das 130 variações da "Camiseta Básica", que só
+       -- casam com "camiseta" — o teto não a corta mais.
+       order by (select count(*) from unnest(${[...termos]}::text[]) t
+                  where translate(lower(p.nome), ${COM_ACENTO}, ${SEM_ACENTO}) like t) desc,
+                p.nome, vr.codigo
        limit 120
-    `,
-  )
-  return linhas.map((l) => ({ ...l, vendidoEm: l.vendidoEm ?? [] }))
+    `
+    return [...exatas, ...peloNome]
+  })
+  return linhas.map((l) => ({ ...l, vendidoEm: l.vendidoEm ?? [], custo: l.custo === null ? null : Number(l.custo) }))
 }
 
-type ItemPedido = { produto: string; quantidade: number; custoUnit: number | null; medidaDita: Medida | null; precoVista: number | null }
+type ItemPedido = {
+  produto: string
+  quantidade: number
+  custoUnit: number | null
+  /** A unidade da QUANTIDADE ("500 g"). */
+  medidaDita: Medida | null
+  /** A unidade do PREÇO ("39,90 o quilo"). Nula = a mesma da quantidade. */
+  medidaDoCusto: Medida | null
+  precoVista: number | null
+}
 
 function lerItens(bruto: unknown): ItemPedido[] | string {
   if (!Array.isArray(bruto) || bruto.length === 0) return 'Diga o que chegou: produto e quantidade.'
@@ -244,7 +324,14 @@ function lerItens(bruto: unknown): ItemPedido[] | string {
     if (!(quantidade > 0) || quantidade > 1_000_000) return `A quantidade de "${produto}" precisa ser maior que zero.`
     if (custo !== null && !(custo >= 0)) return `O custo de "${produto}" não pode ser negativo.`
     if (preco !== null && !(preco > 0)) return `O preço de venda de "${produto}" precisa ser maior que zero.`
-    itens.push({ produto, quantidade, custoUnit: custo, medidaDita: medidaDoTexto(str(o.unidade, 20)), precoVista: preco })
+    itens.push({
+      produto,
+      quantidade,
+      custoUnit: custo,
+      medidaDita: medidaDoTexto(str(o.unidade, 20)),
+      medidaDoCusto: medidaDoTexto(str(o.unidadeCusto, 20)),
+      precoVista: preco,
+    })
   }
   return itens
 }
@@ -272,7 +359,16 @@ export async function proporEntrada(
   const candidatos = await candidatosDe(orgId, pedidos.map((p) => p.produto))
   const podeCadastrar = pode(sessao, 'produto.cadastrar')
 
-  type Linha = { variacaoId?: string; nome: string; medida: Medida; quantidade: number; custoUnit: number | null; precoVista?: number }
+  type Linha = {
+    variacaoId?: string
+    nome: string
+    medida: Medida
+    quantidade: number
+    custoUnit: number | null
+    precoVista?: number
+    /** O custo do cadastro hoje, para conferir o novo. */
+    custoHoje?: number | null
+  }
   const linhas: Linha[] = []
   const escolher: { pedido: string; opcoes: { produto: string; codigo: string | null }[] }[] = []
   const semCadastro: string[] = []
@@ -295,10 +391,12 @@ export async function proporEntrada(
         recusas.push(`${nomeCompleto(c)} é contado em ${sigla(c.medida)}, e a pessoa disse em ${p.medidaDita ? sigla(p.medidaDita) : '?'}: pergunte quanto é em ${sigla(c.medida)}.`)
         continue
       }
-      // O custo dito por quilo vale por quilo do cadastro; dito por grama de
-      // um produto em quilo, converte junto (o contrário da quantidade).
-      const custo = p.custoUnit === null ? null : p.medidaDita && p.medidaDita !== c.medida ? Math.round((p.custoUnit * p.quantidade * 100) / q) / 100 : p.custoUnit
-      linhas.push({ variacaoId: c.variacaoId, nome: nomeCompleto(c), medida: c.medida, quantidade: q, custoUnit: custo })
+      const custo = custoNaMedida(p, c.medida)
+      if (custo === undefined) {
+        recusas.push(`${nomeCompleto(c)} é contado em ${sigla(c.medida)}, e o preço veio por ${sigla(p.medidaDoCusto ?? p.medidaDita!)}: pergunte quanto custou o ${sigla(c.medida)}.`)
+        continue
+      }
+      linhas.push({ variacaoId: c.variacaoId, nome: nomeCompleto(c), medida: c.medida, quantidade: q, custoUnit: custo, custoHoje: c.custo ?? null })
       continue
     }
     // Não existe no cadastro.
@@ -310,11 +408,17 @@ export async function proporEntrada(
       semCadastro.push(p.produto)
       continue
     }
+    const medida = p.medidaDita ?? 'UN'
+    const custoNovo = custoNaMedida(p, medida)
+    if (custoNovo === undefined) {
+      recusas.push(`"${p.produto}" chegou em ${sigla(medida)} e o preço veio por ${sigla(p.medidaDoCusto!)}: pergunte quanto custou o ${sigla(medida)}.`)
+      continue
+    }
     linhas.push({
       nome: comMaiuscula(p.produto),
-      medida: p.medidaDita ?? 'UN',
+      medida,
       quantidade: p.quantidade,
-      custoUnit: p.custoUnit,
+      custoUnit: custoNovo,
       precoVista: p.precoVista,
     })
   }
@@ -340,6 +444,7 @@ export async function proporEntrada(
   // ── o resumo, com os nomes DO CADASTRO ──
   let totalC = 0
   let todosComCusto = true
+  const conferir: string[] = []
   const partes = linhas.map((l) => {
     const s = sigla(l.medida)
     let t = `${comMedida(l.quantidade, l.medida)} ${l.nome}`
@@ -347,6 +452,8 @@ export async function proporEntrada(
       const linhaC = multiplicar(centavos(l.custoUnit), l.quantidade)
       totalC += linhaC
       t += ` (${brl(l.custoUnit)}/${s} = ${brlC(linhaC)})`
+      const fora = custoForaDoNormal(l.custoUnit, l.custoHoje ?? null)
+      if (fora) conferir.push(`${l.nome} sai a ${brl(l.custoUnit)}/${s}, ${fora} (${brl(l.custoHoje!)}/${s})`)
     } else {
       todosComCusto = false
     }
@@ -357,7 +464,10 @@ export async function proporEntrada(
     `Entrada na ${loja.nome}: ${partes.join('; ')}.` +
     (linhas.length > 1 && totalC > 0 ? ` Total${todosComCusto ? '' : ' (dos itens com custo)'}: ${brlC(totalC)}.` : '') +
     ` Fornecedor: ${fornecedor || '—'}.` +
-    (documento ? ` Nota: ${documento}.` : '')
+    (documento ? ` Nota: ${documento}.` : '') +
+    // O custo dito vira o custo do produto (e o lucro de toda venda daqui em
+    // diante): fora do normal, o aviso vai NO resumo que a pessoa confirma.
+    (conferir.length > 0 ? ` ATENÇÃO, confira antes do SIM: ${conferir.join('; ')}. Se a unidade do preço estiver errada, responda NÃO e diga de novo.` : '')
 
   const proposta = await propor(orgId, empresa, {
     poder: 'estoque.entrada',
@@ -378,10 +488,13 @@ export async function proporEntrada(
       })),
     },
   })
+  const substituidas = await aposentarAnteriores(orgId, { usuarioId: sessao.usuarioId, poder: 'estoque.entrada', novaId: proposta.id })
   return {
     texto:
-      `Proposta criada — nada foi lançado ainda. Mostre à pessoa este resumo, com os nomes como estão no cadastro, ` +
-      `e termine com "Responda SIM para lançar": ${resumo}`,
+      `Proposta criada — nada foi lançado ainda: ${resumo} ` +
+      (substituidas > 0 ? 'A entrada que esta pessoa tinha deixado esperando foi substituída por esta (só esta vale). ' : '') +
+      (conferir.length > 0 ? 'O custo saiu muito diferente do cadastro: pergunte se a unidade do preço está certa. ' : '') +
+      RECADO_DO_FECHO,
     propostaId: proposta.id,
   }
 }
@@ -534,8 +647,15 @@ export async function proporMudancaEncomenda(
     usuarioId: sessao.usuarioId,
     dados: { encomendaId: enc.id, acao, origem: enc.origem, ...(acao === 'cancelar' ? { motivo } : {}) },
   })
+  // A anterior DESTA encomenda (pronta → não, cancela) sai; a de outra encomenda fica.
+  await aposentarAnteriores(orgId, {
+    usuarioId: sessao.usuarioId,
+    poder: 'encomenda.mudar',
+    novaId: proposta.id,
+    mesmoAlvo: { campo: 'encomendaId', valor: enc.id },
+  })
   return {
-    texto: `Proposta criada — nada mudou ainda. Mostre o resumo e termine com "Responda SIM para confirmar": ${resumo}`,
+    texto: `Proposta criada — nada mudou ainda: ${resumo} ${RECADO_DO_FECHO}`,
     propostaId: proposta.id,
   }
 }

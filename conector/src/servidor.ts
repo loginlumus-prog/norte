@@ -4,7 +4,7 @@
 // ABERTA o tempo todo — coisa que o Norte (que pode dormir, escalar, reiniciar
 // a cada deploy) não segura. Ver README.md, seção "Conector do WhatsApp".
 //
-// ── a API (interna; todo pedido com Authorization: Bearer <CONECTOR_SEGREDO>)
+// ── a API (interna; todo pedido com Authorization: Bearer <CONECTOR_TOKEN>)
 //   POST /sessoes/:orgId/iniciar   liga (ou retoma) — devolve o estado
 //   GET  /sessoes/:orgId           o estado; com o QR (PNG em data URL) quando
 //                                  aguardando_qr; o número mascarado
@@ -32,7 +32,9 @@ if (!lido.ok) {
   process.exit(1)
 }
 const cfg = lido.config
-const norte = new ClienteNorte(cfg.norteUrl, cfg.segredo)
+// O que vai para o Norte é assinado com a chave do HMAC — não com o token
+// que o Norte manda para cá (ver config.ts).
+const norte = new ClienteNorte(cfg.norteUrl, cfg.segredoAssinatura)
 const sessoes = new Sessoes(cfg, norte)
 
 const MAXIMO_CORPO = 64 * 1024

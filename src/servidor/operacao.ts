@@ -316,6 +316,59 @@ export async function mudarSituacao(
 }
 
 // ─────────────────────────────────────────────────────────────
+// AS MARCAS DO FAROL CONTRATADAS
+// ─────────────────────────────────────────────────────────────
+
+/** Teto contra o dedo errado: ninguém contrata cem marcas sem conversa. */
+export const FAROL_MARCAS_MAX = 50
+
+/** O contratado hoje e quantas marcas estão ativas no Farol — para o resumo antes de mudar. */
+export async function marcasDoFarol(orgId: string): Promise<{ contratadas: number; ativas: number }> {
+  return comoOrg(orgId, async (db) => {
+    const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { farolMarcas: true } })
+    const ativas = await db.marcaFarol.count({ where: { ativa: true } })
+    return { contratadas: org.farolMarcas, ativas }
+  })
+}
+
+/**
+ * Quantas marcas do Farol a empresa CONTRATOU (`Org.farolMarcas`). É o que
+ * a conta do mês cobra (`mensalidade`) e o teto de marcas ativas no Farol.
+ * Muda só pela equipe, pelo contrato — a loja não se dá marca a mais.
+ */
+export async function definirMarcasDoFarol(
+  orgId: string,
+  marcas: number,
+  dados: { motivo: string; quem: string },
+): Promise<{ de: number; para: number; mudou: boolean }> {
+  if (!Number.isInteger(marcas) || marcas < 1 || marcas > FAROL_MARCAS_MAX) {
+    throw new Error(`Marcas do Farol: um número inteiro de 1 a ${FAROL_MARCAS_MAX}.`)
+  }
+  const quem = quemDaEquipe(dados.quem)
+  const motivo = validarMotivo(dados.motivo)
+  return comoOrg(orgId, async (db) => {
+    const antes = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { farolMarcas: true } })
+    if (antes.farolMarcas === marcas) return { de: marcas, para: marcas, mudou: false }
+    await db.org.update({ where: { id: orgId }, data: { farolMarcas: marcas } })
+    await db.auditoria.create({
+      data: {
+        orgId,
+        quem,
+        autor: 'SISTEMA',
+        acao: 'empresa.farol_marcas',
+        alvoTipo: 'empresa',
+        alvoId: orgId,
+        alvoNome: 'marcas do Farol',
+        motivo,
+        antes: { farolMarcas: antes.farolMarcas },
+        depois: { farolMarcas: marcas },
+      },
+    })
+    return { de: antes.farolMarcas, para: marcas, mudou: true }
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
 // ACESSO DE SUPORTE
 // ─────────────────────────────────────────────────────────────
 //

@@ -33,13 +33,15 @@ export function MeuPin({ slug, tem, desde }: { slug: string; tem: boolean; desde
         type="password"
         inputMode="numeric"
         autoComplete="off"
-        pattern="[0-9]{4,6}"
-        minLength={4}
+        // PIN novo tem 6 números (o servidor recusa menos). O de 4 que já
+        // existe continua valendo no balcão até a pessoa trocar.
+        pattern="[0-9]{6}"
+        minLength={6}
         maxLength={6}
         required
-        dica="De 4 a 6 números. Nada de 1234 nem 0000 — é o primeiro que alguém chuta."
+        dica="6 números. Nada de 123456 nem 000000 — é o primeiro que alguém chuta."
       />
-      <Campo rotulo="Repita o PIN" name="repetido" type="password" inputMode="numeric" autoComplete="off" maxLength={6} required />
+      <Campo rotulo="Repita o PIN" name="repetido" type="password" inputMode="numeric" autoComplete="off" minLength={6} maxLength={6} required />
       <Campo
         rotulo="Sua senha de entrar"
         name="senha"

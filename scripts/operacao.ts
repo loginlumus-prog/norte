@@ -8,6 +8,7 @@
 //   npm run operacao -- suporte  <slug> --email <quem> --horas <1..72> --motivo "..."
 //   npm run operacao -- suporte-revogar <slug> --email <quem>
 //   npm run operacao -- situacao <slug> ATIVA|SUSPENSA|CANCELADA --motivo "..."
+//   npm run operacao -- farol-marcas <slug> <quantas> --motivo "..."
 //
 //   ... --quem "Seu nome"   quem assina no livro da loja (ou NORTE_OPERADOR no .env)
 //   ... --confirmar         sem isto, o que MUDA dado só mostra o que faria
@@ -70,7 +71,7 @@ for (const saida of [process.stdout, process.stderr]) {
 }
 
 const { acharOrgPorSlug, fechar } = await import('../src/servidor/banco')
-const { PLANOS } = await import('../src/servidor/planos')
+const { PLANOS, precoDoFarol } = await import('../src/servidor/planos')
 const { mostrar } = await import('../src/servidor/dinheiro')
 const { previaDeTroca, trocarPlanoComoEquipe, quemDaEquipe, SemCota } = await import('../src/servidor/assinatura')
 const ped = await import('../src/servidor/pedidos')
@@ -505,6 +506,39 @@ async function situacao() {
   )
 }
 
+async function farolMarcas() {
+  const [slug, quantasBruto] = resto
+  const quantas = Number(quantasBruto)
+  if (!quantasBruto || !Number.isInteger(quantas) || quantas < 1 || quantas > op.FAROL_MARCAS_MAX) {
+    parar(`Diga quantas marcas do Farol a empresa contratou: um número de 1 a ${op.FAROL_MARCAS_MAX}.`)
+  }
+  const motivo = op.validarMotivo(texto('motivo'))
+  const org = await empresaDo(slug)
+  const { contratadas: agora, ativas } = await op.marcasDoFarol(org.id)
+  const ligado = org.modulos.includes('farol')
+
+  titulo(`Marcas do Farol de /${org.slug}`)
+  resumo([
+    ['Empresa', `${org.nome} (${org.situacao.toLowerCase()})`],
+    ['Marcas', `${agora} → ${quantas} (ativas no Farol hoje: ${ativas})`],
+    ['Na conta', ligado
+      ? `${mostrar(Math.round(precoDoFarol(agora) * 100))} → ${mostrar(Math.round(precoDoFarol(quantas) * 100))} por mês`
+      : 'o módulo Farol está desligado: não entra na conta até ligar'],
+    ['Motivo', `"${motivo}" — vai para o livro da loja`],
+  ])
+  if (agora === quantas) parar(`/${org.slug} já tem ${quantas} marca(s) do Farol contratada(s).`)
+  if (ativas > quantas) {
+    console.log(`  Atenção: há ${ativas} marcas ativas e o contrato passa a ${quantas}. A loja precisa desativar as que sobram.
+`)
+  }
+
+  const quem = confirmar ? operador() : null
+  if (!(await porta(org.slug))) return
+  const r = await op.definirMarcasDoFarol(org.id, quantas, { motivo, quem: quem! })
+  console.log(`  Feito. /${org.slug}: ${r.de} → ${r.para} marca(s) do Farol. No livro da loja: ${quem}.
+`)
+}
+
 function ajuda() {
   console.log(`
   Operação do Norte — rode do laptop, nunca de um servidor.
@@ -517,6 +551,7 @@ function ajuda() {
     npm run operacao -- suporte  <endereço> --email <e-mail> --horas <1..72> --motivo "..." [--nome "..."]
     npm run operacao -- suporte-revogar <endereço> --email <e-mail> [--motivo "..."]
     npm run operacao -- situacao <endereço> ATIVA|SUSPENSA|CANCELADA --motivo "..."
+    npm run operacao -- farol-marcas <endereço> <quantas> --motivo "..."
 
   O que muda dado só mostra o resumo, a não ser com --confirmar.
   --quem "Seu nome" (ou NORTE_OPERADOR no .env) assina no livro da loja.
@@ -535,6 +570,7 @@ const COMANDOS: Record<string, () => Promise<void> | void> = {
   suporte,
   'suporte-revogar': suporteRevogar,
   situacao,
+  'farol-marcas': farolMarcas,
   ajuda,
 }
 

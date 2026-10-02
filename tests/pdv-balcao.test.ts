@@ -43,7 +43,7 @@ const BALCAO = sessao('usr-bal1', 'Balcão Centro', [{ papel: 'BALCAO', unidadeI
 const BALCAO2 = sessao('usr-bal2', 'Outra Vendedora', [{ papel: 'BALCAO', unidadeId: 'uni-a1' }])
 
 const SENHA = 'senha-boa-123'
-const PIN = { ger1: '2580', ger2: '1357', ger3: '9147', bal2: '8642' }
+const PIN = { ger1: '258013', ger2: '135792', ger3: '914726', bal2: '864209' }
 
 const SEMENTE = `
   insert into orgs (id, nome, slug, plano, situacao, modulos, desconto_maximo, pontos_ativo, pontos_por_real, ponto_vale,

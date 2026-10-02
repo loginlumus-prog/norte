@@ -49,7 +49,7 @@ export default async function AceitarConvite({
               <span
                 aria-hidden
                 className="h-5 w-1.5 shrink-0 rounded-full"
-                style={{ background: org.corMarca || 'var(--marca)' }}
+                style={{ background: org.corMarca && /^#[0-9a-f]{6}$/i.test(org.corMarca) ? org.corMarca : 'var(--marca)' }}
               />
               <span className="text-lg font-bold tracking-tight text-tinta">{org.nome}</span>
             </div>

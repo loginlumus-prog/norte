@@ -59,8 +59,9 @@ import { Prisma } from '@prisma/client'
 import type { FormaPagamento, Plano, SituacaoEncomenda, TipoCaixa, TipoLancamento } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, SemPermissao, unidadesQuePodem, type Sessao } from './permissao'
-import { centavos, reais } from './dinheiro'
+import { centavos, mostrar, reais } from './dinheiro'
 import { travarCaixaAberto } from './caixa'
+import { autorizarComPin } from './autorizacao'
 import { CATEGORIAS_PADRAO } from './financeiro'
 import { soDigitos } from './cliente'
 import { moduloLigado } from './modulos'
@@ -339,6 +340,11 @@ export type DadosEncomenda = {
   observacao?: string | null
   /** A pessoa viu o aviso de "essa data já passou" e confirmou. */
   confirmarPassado?: boolean
+  /**
+   * O PIN de quem autoriza baixar o valor além do teto de desconto (só na
+   * edição). A tela só manda depois de o servidor pedir (`pedePin`).
+   */
+  pin?: string | null
 }
 
 export type EncomendaLimpa = {
@@ -480,6 +486,8 @@ export type EncomendaNaLista = {
   formaCombinada: FormaPagamento | null
   taxaEntrega: number
   itens: { descricao: string; quantidade: number; total: number }[]
+  /** Tem produto do cadastro (o pedido do catálogo): sai só pelo Balcão, que baixa o estoque. */
+  comProdutos: boolean
 }
 
 export type FiltroEncomendas = {
@@ -504,7 +512,13 @@ const SELECT = {
   venda: { select: { id: true, numero: true } },
 } as const
 
-type ItemLido = { encomendaId: string; descricao: string; quantidade: { toString(): string }; total: { toString(): string } }
+type ItemLido = {
+  encomendaId: string
+  variacaoId: string | null
+  descricao: string
+  quantidade: { toString(): string }
+  total: { toString(): string }
+}
 
 /**
  * Os itens das encomendas, numa leitura à parte. Aninhados no SELECT (junto
@@ -516,7 +530,7 @@ async function itensDe(db: BancoDaOrg, ids: string[]): Promise<Map<string, ItemL
   if (ids.length === 0) return por
   const itens = await db.encomendaItem.findMany({
     where: { encomendaId: { in: ids } },
-    select: { encomendaId: true, descricao: true, quantidade: true, total: true },
+    select: { encomendaId: true, variacaoId: true, descricao: true, quantidade: true, total: true },
   })
   for (const i of itens) por.set(i.encomendaId, [...(por.get(i.encomendaId) ?? []), i])
   return por
@@ -557,6 +571,7 @@ const naLista = (e: Linha, itens: ItemLido[] = []): EncomendaNaLista => ({
   formaCombinada: e.formaCombinada,
   taxaEntrega: e.taxaEntrega != null ? reais(centavos(e.taxaEntrega)) : 0,
   itens: itens.map((i) => ({ descricao: i.descricao, quantidade: Number(i.quantidade), total: reais(centavos(i.total)) })),
+  comProdutos: itens.some((i) => !!i.variacaoId),
 })
 
 /**
@@ -851,9 +866,49 @@ export function recusaDoModuloEm(org: { plano: Plano; modulos: string[] } | null
   return null
 }
 
+/* ── a autorização e o preço do pedido ───────────────────────── */
+
+/**
+ * O PIN de quem autoriza desconto, conferido para a loja desta encomenda.
+ * Null quando não veio PIN, ou quando quem pede já tem o poder (o PIN que veio
+ * à toa é ignorado, como na venda). Fora de transação: `autorizarComPin` abre
+ * as próprias.
+ */
+async function autorizarDesconto(
+  sessao: Sessao,
+  id: string,
+  pinBruto: string | null | undefined,
+  motivo: string,
+): Promise<{ ok: true; autorizador: { usuarioId: string; nome: string } } | { ok: false; erro: string } | null> {
+  const pin = typeof pinBruto === 'string' ? pinBruto.trim().slice(0, 12) : ''
+  if (!pin) return null
+  const e = await comoOrg(sessao.orgId, (db) => db.encomenda.findUnique({ where: { id }, select: { unidadeId: true } }))
+  if (!e || pode(sessao, 'venda.desconto', e.unidadeId)) return null
+  return autorizarComPin({
+    orgId: sessao.orgId,
+    unidadeId: e.unidadeId,
+    pin,
+    capacidade: 'venda.desconto',
+    motivo,
+    quemPediu: { usuarioId: sessao.usuarioId, nome: sessao.nome },
+  })
+}
+
+/** O que os produtos do pedido do catálogo somam, pelo preço do pedido. Centavos. */
+async function totalDosProdutos(db: BancoDaOrg, id: string): Promise<number> {
+  const s = await db.encomendaItem.aggregate({
+    where: { encomendaId: id, variacaoId: { not: null } },
+    _sum: { total: true },
+  })
+  return s._sum.total != null ? centavos(s._sum.total) : 0
+}
+
 /* ── anotar e editar ─────────────────────────────────────────── */
 
-export type Resultado = { ok: true; id: string } | { ok: false; erro: string; pedeConfirmacao?: boolean }
+export type Resultado =
+  | { ok: true; id: string }
+  /** `pedePin`: a mudança passa da regra e a tela deve pedir o PIN de quem autoriza. */
+  | { ok: false; erro: string; pedeConfirmacao?: boolean; pedePin?: boolean }
 
 /** Anota a encomenda. O sinal, se houver, entra no financeiro na mesma transação. */
 export async function criarEncomenda(sessao: Sessao, d: DadosEncomenda, agora = new Date()): Promise<Resultado> {
@@ -870,8 +925,17 @@ export async function criarEncomenda(sessao: Sessao, d: DadosEncomenda, agora = 
   return comoOrg(sessao.orgId, async (db) => {
     const recusa = await recusaDoModulo(db, sessao.orgId)
     if (recusa) return { ok: false as const, erro: recusa }
-    const loja = await db.unidade.findFirst({ where: { id: e.unidadeId, ativa: true }, select: { id: true } })
+    const loja = await db.unidade.findFirst({
+      where: { id: e.unidadeId, ativa: true },
+      select: { id: true, ehDeposito: true, ehFabrica: true },
+    })
     if (!loja) return { ok: false as const, erro: 'Essa loja não existe ou está desativada.' }
+    // Depósito e fábrica não atendem cliente: a encomenda anotada ali não
+    // tinha balcão para ser recebida, e o sinal entrava numa gaveta que não
+    // existe.
+    if (loja.ehDeposito || loja.ehFabrica) {
+      return { ok: false as const, erro: 'Encomenda é de loja que atende cliente. Escolha uma loja (depósito e fábrica não vendem).' }
+    }
     const gaveta = await caixaDoSinal(db, e.unidadeId, e.sinalForma, e.sinalC)
     if (!gaveta.ok) return { ok: false as const, erro: SEM_CAIXA_ENTRADA }
 
@@ -959,6 +1023,13 @@ export async function editarEncomenda(
 ): Promise<Resultado> {
   exigir(sessao, 'venda.criar')
 
+  // ── a autorização, quando veio um PIN ──
+  // ANTES da transação: a conferência abre as próprias (o freio e o livro), e
+  // transação não aninha. A tela só manda o PIN depois de o servidor pedir
+  // (`pedePin`, lá embaixo) — quem já tem o poder não precisa dele.
+  const autorizador = await autorizarDesconto(sessao, id, d.pin, `Encomenda ${codigoEncomenda(id)}: valor baixado além do teto de desconto`)
+  if (autorizador && !autorizador.ok) return { ok: false, erro: autorizador.erro, pedePin: true }
+
   return comoOrg(sessao.orgId, async (db) => {
     const recusa = await recusaDoModulo(db, sessao.orgId)
     if (recusa) return { ok: false as const, erro: recusa }
@@ -967,6 +1038,7 @@ export async function editarEncomenda(
       select: {
         unidadeId: true, clienteId: true, clienteNome: true, telefone: true, descricao: true, valor: true,
         sinal: true, sinalForma: true, para: true, entrega: true, endereco: true, observacao: true, situacao: true,
+        origem: true, taxaEntrega: true,
       },
     })
     if (!antes) return { ok: false as const, erro: 'Essa encomenda não existe mais.' }
@@ -978,6 +1050,49 @@ export async function editarEncomenda(
     const v = validarEncomenda({ ...d, unidadeId: antes.unidadeId }, agora, antes.para)
     if (!v.ok) return v
     const e = v.limpo
+
+    // ── virou retirada: a taxa de entrega sai ──
+    // O pedido do catálogo guarda a taxa à parte. Mudou para retirada e a
+    // pessoa não mexeu no valor: a taxa sai do valor sozinha — senão o balcão
+    // cobrava entrega de quem veio buscar. Se ela já ajustou o valor, vale o
+    // dela.
+    const taxaAntesC = antes.taxaEntrega != null ? centavos(antes.taxaEntrega) : 0
+    const tiraTaxa = antes.entrega && !e.entrega && taxaAntesC > 0
+    if (tiraTaxa && e.valorC === centavos(antes.valor)) e.valorC = Math.max(e.valorC - taxaAntesC, 0)
+    if (e.sinalC > e.valorC) return { ok: false as const, erro: 'O sinal não pode ser maior que o valor da encomenda.' }
+
+    // ── baixar o valor é desconto, e desconto tem teto ──
+    // A mesma régua da venda (venda.ts, "o desconto, medido contra a
+    // TABELA"): até o teto da empresa, quem opera baixa; além dele, só quem
+    // tem `venda.desconto`, ou com o PIN de quem tem. Sem isto, o balcão
+    // "editava" a torta de R$ 120 para R$ 55 e recebia o resto no caixa — o
+    // desconto que a venda recusaria, feito pela porta do lado.
+    //
+    // A régua do pedido do catálogo é o que a cliente pediu (os produtos pelo
+    // preço do pedido, mais a entrega): baixar em passos pequenos não soma
+    // desconto escondido. A da encomenda de balcão é o valor de antes — o
+    // valor dela foi a loja que deu, na hora de anotar.
+    const itensC = antes.origem === 'CATALOGO' ? await totalDosProdutos(db, id) : 0
+    const reguaC = itensC > 0
+      ? itensC + (e.entrega ? taxaAntesC : 0)
+      : centavos(antes.valor) - (tiraTaxa ? taxaAntesC : 0)
+    const abatidoC = reguaC - e.valorC
+    const empresa = await db.org.findUnique({ where: { id: sessao.orgId }, select: { descontoMaximo: true } })
+    const teto = Number(empresa?.descontoMaximo ?? 0)
+    const percentual = abatidoC > 0 ? (reguaC > 0 ? (abatidoC / reguaC) * 100 : 100) : 0
+    const passouDoTeto = percentual > teto + 0.001
+    const temPoder = pode(sessao, 'venda.desconto', antes.unidadeId)
+    if (passouDoTeto && !temPoder && !autorizador) {
+      return {
+        ok: false as const,
+        pedePin: true,
+        erro:
+          `Baixar o valor para ${mostrar(e.valorC)} é desconto de ${(Math.round(percentual * 10) / 10).toFixed(1).replace('.', ',')}% ` +
+          `sobre ${mostrar(reguaC)}, acima do teto de ${String(teto).replace('.', ',')}% da loja. Peça o PIN de quem autoriza desconto.`,
+      }
+    }
+    // Só vira "autorizou" quando foi o PIN que deixou passar.
+    const autorizou = passouDoTeto && !temPoder && autorizador?.ok ? autorizador.autorizador : null
 
     // Baixar o sinal é DEVOLVER dinheiro ao cliente — sai do financeiro como
     // despesa de hoje. É o mesmo gesto de cancelar venda ou devolver em
@@ -1030,6 +1145,7 @@ export async function editarEncomenda(
         sinal: reais(e.sinalC),
         // A forma guardada é a do último dinheiro que ENTROU como sinal.
         ...(difC > 0 ? { sinalForma: e.sinalForma } : {}),
+        ...(tiraTaxa ? { taxaEntrega: null } : {}),
         para: e.para,
         entrega: e.entrega,
         endereco: e.endereco,
@@ -1082,7 +1198,17 @@ export async function editarEncomenda(
           para: e.para.toISOString(),
           entrega: e.entrega,
           endereco: e.endereco,
+          ...(tiraTaxa ? { taxaEntrega: null } : {}),
+          ...(autorizou ? { autorizadoPor: autorizou.nome } : {}),
         },
+        motivo:
+          [
+            abatidoC > 0 ? `valor ${(Math.round(percentual * 10) / 10).toFixed(1)}% abaixo de ${mostrar(reguaC)}` : null,
+            tiraTaxa ? 'taxa de entrega retirada' : null,
+            autorizou ? `autorizado por ${autorizou.nome}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || null,
       },
     })
     return { ok: true as const, id }
@@ -1094,7 +1220,16 @@ export async function editarEncomenda(
 export type Mudanca =
   | { para: 'PRONTA' }
   | { para: 'ABERTA' }
-  | { para: 'ENTREGUE' }
+  | {
+      para: 'ENTREGUE'
+      /**
+       * Entregar com dinheiro em aberto, sem passar pelo balcão: como o resto
+       * foi pago (ou por que fica sem pagar). Obrigatório quando falta.
+       */
+      motivo?: string | null
+      /** O PIN de quem autoriza, quando quem marca não tem `venda.desconto`. */
+      pin?: string | null
+    }
   | {
       para: 'CANCELADA'
       motivo: string
@@ -1125,13 +1260,18 @@ export async function mudarSituacao(
   id: string,
   m: Mudanca,
   agora = new Date(),
-): Promise<{ ok: true; falta: number } | { ok: false; erro: string }> {
+): Promise<{ ok: true; falta: number } | { ok: false; erro: string; pedePin?: boolean }> {
   const cap = m.para === 'CANCELADA' ? 'venda.cancelar' : 'venda.criar'
   exigir(sessao, cap)
-  const motivo = m.para === 'CANCELADA' ? m.motivo.replace(/\s+/g, ' ').trim().slice(0, 300) : ''
+  const motivo =
+    m.para === 'CANCELADA' || m.para === 'ENTREGUE' ? String(m.motivo ?? '').replace(/\s+/g, ' ').trim().slice(0, 300) : ''
   if (m.para === 'CANCELADA' && motivo.length < 3) {
     return { ok: false, erro: 'Escreva o motivo do cancelamento.' }
   }
+  // Fora da transação, como na edição: o PIN abre as transações dele.
+  const autorizador =
+    m.para === 'ENTREGUE' ? await autorizarDesconto(sessao, id, m.pin, `Encomenda ${codigoEncomenda(id)}: entregue com saldo em aberto`) : null
+  if (autorizador && !autorizador.ok) return { ok: false, erro: autorizador.erro, pedePin: true }
 
   return comoOrg(sessao.orgId, async (db) => {
     const recusa = await recusaDoModulo(db, sessao.orgId)
@@ -1151,6 +1291,46 @@ export async function mudarSituacao(
         erro: ehFinal(antes.situacao)
           ? `Esta encomenda já está ${ROTULO_ENCOMENDA[antes.situacao].toLowerCase()}.`
           : 'Essa mudança não é possível.',
+      }
+    }
+
+    // ── entregar sem o balcão ──
+    // O pedido do catálogo tem produto do cadastro: ele sai pelo Balcão, que
+    // é onde o estoque baixa e o que falta entra no caixa — mesmo pago todo
+    // no sinal (aí a venda fecha em zero). "Só marcar entregue" deixava os
+    // produtos no estoque e o dinheiro em lugar nenhum.
+    //
+    // A encomenda de balcão com saldo em aberto pode sair sem venda (o resto
+    // foi pago por fora, ou a loja abriu mão), mas é abrir mão de dinheiro: a
+    // mesma régua do desconto — `venda.desconto`, ou o PIN de quem tem — e o
+    // porquê escrito, que vai para o livro.
+    const faltaC = centavos(antes.valor) - centavos(antes.sinal)
+    let autorizou: { usuarioId: string; nome: string } | null = null
+    if (m.para === 'ENTREGUE') {
+      const comProdutos = await db.encomendaItem.count({ where: { encomendaId: id, variacaoId: { not: null } } })
+      if (comProdutos > 0) {
+        return {
+          ok: false as const,
+          erro: 'Pedido do catálogo sai pelo Balcão: é lá que os produtos baixam do estoque e o que falta entra no caixa (com o sinal já descontado). Use “Receber no balcão”.',
+        }
+      }
+      if (faltaC > 0) {
+        if (motivo.length < 3) {
+          return {
+            ok: false as const,
+            erro: `Falta receber ${mostrar(faltaC)}. Para entregar sem receber no balcão, escreva como o resto foi pago (ou por que fica sem pagar).`,
+          }
+        }
+        if (!pode(sessao, 'venda.desconto', antes.unidadeId)) {
+          if (!autorizador) {
+            return {
+              ok: false as const,
+              pedePin: true,
+              erro: `Entregar com ${mostrar(faltaC)} em aberto é abrir mão de dinheiro: precisa do PIN de quem autoriza desconto.`,
+            }
+          }
+          autorizou = autorizador.autorizador
+        }
       }
     }
 
@@ -1200,8 +1380,15 @@ export async function mudarSituacao(
         depois: {
           situacao: m.para,
           ...(m.para === 'CANCELADA' ? { devolveuSinal: devolve, ...(devolve ? { formaDevolucao } : {}) } : {}),
+          ...(m.para === 'ENTREGUE' && faltaC > 0 ? { emAberto: reais(faltaC), semVenda: true } : {}),
+          ...(autorizou ? { autorizadoPor: autorizou.nome } : {}),
         },
-        motivo: motivo || null,
+        motivo:
+          m.para === 'ENTREGUE' && faltaC > 0
+            ? [`entregue sem venda, com ${mostrar(faltaC)} em aberto: ${motivo}`, autorizou ? `autorizado por ${autorizou.nome}` : null]
+                .filter(Boolean)
+                .join(' · ')
+            : motivo || null,
       },
     })
     return { ok: true as const, falta: faltaPagar(antes.valor, antes.sinal) }
@@ -1271,21 +1458,33 @@ export async function marcarVista(
 // O vínculo é um campo de verdade: `Venda.encomendaId`, único (uma encomenda
 // se recebe numa venda só) e com chave estrangeira. Até 28/09 ele era o código
 // ENC-… escrito na observação da venda e o número da venda na da encomenda —
-// texto que qualquer um editava e que nenhuma consulta conseguia seguir.
+// texto que qualquer um editava e que nenhuma consulta conseguia seguir. A
+// venda CANCELADA solta o vínculo (ver `reabrirPelaVendaCancelada`): a
+// encomenda volta a esperar e pode ser recebida de novo.
+//
+// ── o pedido do catálogo sai SEMPRE com os produtos ──────────
+// Os produtos entram no pedido do balcão como linhas de verdade, pelo preço
+// que a cliente viu no catálogo (baixam estoque, contam no ranking). A linha
+// da encomenda vira o ACERTO: o que falta pagar menos o que os produtos
+// cobram. Com a taxa de entrega, ela soma; com o sinal já pago (ou o valor
+// baixado com autorização), ela desconta — e pode ser negativa, que é o
+// crédito do que a cliente já pagou. Sinal (no financeiro) + venda = o valor
+// da encomenda, uma vez só. Pago tudo no sinal, a venda fecha em zero, mas o
+// estoque baixa do mesmo jeito.
 
 export type EncomendaNoBalcao = {
   id: string
   codigo: string
   descricao: string
   clienteNome: string
-  /** Em reais. É o que a linha do pedido cobra. */
+  /** Em reais. É o que a linha do pedido cobra (no catálogo, o acerto — pode ser negativo). */
   falta: number
   /**
    * O pedido do catálogo: os produtos entram no pedido do balcão como linhas
-   * de verdade (baixam estoque, contam no ranking), e a linha da encomenda
-   * cobra só a taxa de entrega. Vazio na encomenda de balcão.
+   * de verdade, pelo preço do pedido (`precoUnit`). Vazio na encomenda de
+   * balcão.
    */
-  itens: { variacaoId: string; quantidade: number }[]
+  itens: { variacaoId: string; quantidade: number; precoUnit: number }[]
 }
 
 /** A linha do pedido: "Encomenda ENC-3F9K2A: Bolo de chocolate 2 kg". */
@@ -1303,21 +1502,46 @@ type EncomendaTravada = {
   taxa_entrega: { toString(): string } | null
   /** Quantos itens com produto do cadastro (a do catálogo tem; a de balcão, não). */
   itens_com_produto: number
+  /** O que esses itens somam, pelo preço do pedido. */
+  itens_total: { toString(): string } | null
 }
 
-/**
- * A encomenda vem com os produtos? Só a do catálogo SEM sinal: com sinal pago
- * (a loja anotou depois), o que falta não fecha com os itens a preço cheio, e
- * ela volta a ser recebida como uma linha só, pelo que falta.
- */
-const comItens = (e: EncomendaTravada) => Number(e.itens_com_produto) > 0 && centavos(e.sinal) === 0
+/** A encomenda vem com os produtos? A do catálogo, sempre — com sinal ou sem. */
+const comItens = (e: EncomendaTravada) => Number(e.itens_com_produto) > 0
 
-/** O que a linha da encomenda cobra quando os produtos vêm separados: a taxa. */
+/** A taxa de entrega guardada no pedido do catálogo. Centavos. */
 const taxaC = (e: EncomendaTravada) => (e.taxa_entrega != null ? centavos(e.taxa_entrega) : 0)
+
+/** O que os produtos do pedido somam. Centavos. */
+const produtosC = (e: EncomendaTravada) => (e.itens_total != null ? centavos(e.itens_total) : 0)
+
+/**
+ * A linha da encomenda quando os produtos vêm separados, em centavos: o que
+ * falta pagar menos o que os produtos cobram. Positiva com a entrega,
+ * negativa com o sinal.
+ */
+const acertoC = (e: EncomendaTravada) => centavos(e.valor) - centavos(e.sinal) - produtosC(e)
+
+/** "taxa de entrega, menos o sinal de R$ 10,00 já pago" — o que a linha do acerto é. */
+function textoDoAcerto(e: EncomendaTravada): string {
+  const taxa = taxaC(e)
+  const ajuste = centavos(e.valor) - produtosC(e) - taxa
+  const sinal = centavos(e.sinal)
+  return (
+    [
+      taxa > 0 ? 'taxa de entrega' : null,
+      ajuste < 0 ? `abatimento de ${mostrar(-ajuste)} combinado` : ajuste > 0 ? `acréscimo de ${mostrar(ajuste)} combinado` : null,
+      sinal > 0 ? `menos o sinal de ${mostrar(sinal)} já pago` : null,
+    ]
+      .filter(Boolean)
+      .join(', ') || 'pedido do catálogo'
+  )
+}
 
 const COLUNAS_TRAVADA = Prisma.sql`
   e.id, e.unidade_id, e.situacao::text as situacao, e.valor, e.sinal, e.descricao, e.cliente_nome, e.taxa_entrega,
-  (select count(*)::int from encomenda_itens i where i.encomenda_id = e.id and i.variacao_id is not null) as itens_com_produto`
+  (select count(*)::int from encomenda_itens i where i.encomenda_id = e.id and i.variacao_id is not null) as itens_com_produto,
+  (select sum(i.total) from encomenda_itens i where i.encomenda_id = e.id and i.variacao_id is not null) as itens_total`
 
 /**
  * Por que esta encomenda não pode ser recebida nesta loja agora — ou null.
@@ -1328,10 +1552,23 @@ function recusaDoRecebimento(e: EncomendaTravada | undefined, unidadeId: string)
   if (e.unidade_id !== unidadeId) return 'Essa encomenda é de outra loja. Receba no balcão de lá.'
   if (e.situacao === 'ENTREGUE') return 'Essa encomenda já foi entregue. Confira em Vendas se o que faltava já entrou.'
   if (e.situacao === 'CANCELADA') return 'Essa encomenda foi cancelada.'
-  if (centavos(e.valor) - centavos(e.sinal) <= 0) {
+  // Paga toda no sinal: a de balcão não tem o que cobrar (marca a entrega em
+  // Encomendas). A do catálogo passa — os produtos ainda precisam sair do
+  // estoque, e a venda fecha em zero.
+  if (!comItens(e) && centavos(e.valor) - centavos(e.sinal) <= 0) {
     return 'Essa encomenda já está paga. Marque a entrega em Encomendas — não há o que cobrar.'
   }
   return null
+}
+
+/** Os produtos do pedido do catálogo, pelo preço do pedido. */
+async function itensDoPedido(db: BancoDaOrg, id: string) {
+  const itens = await db.encomendaItem.findMany({
+    where: { encomendaId: id, variacaoId: { not: null } },
+    select: { variacaoId: true, quantidade: true, precoUnit: true },
+    orderBy: { id: 'asc' },
+  })
+  return itens.map((i) => ({ variacaoId: i.variacaoId!, quantidade: Number(i.quantidade), precoC: centavos(i.precoUnit) }))
 }
 
 /**
@@ -1354,24 +1591,32 @@ export async function encomendaParaReceber(
     const nao = recusaDoRecebimento(e, unidadeId)
     if (nao) return { ok: false as const, erro: nao }
     const separados = comItens(e!)
-    const itens = separados
-      ? await db.encomendaItem.findMany({
-          where: { encomendaId: id, variacaoId: { not: null } },
-          select: { variacaoId: true, quantidade: true },
-        })
-      : []
+    const itens = separados ? await itensDoPedido(db, id) : []
     return {
       ok: true as const,
       encomenda: {
         id: e!.id,
         codigo: codigoEncomenda(e!.id),
-        descricao: separados ? (taxaC(e!) > 0 ? 'taxa de entrega' : 'pedido do catálogo') : e!.descricao,
+        descricao: separados ? textoDoAcerto(e!) : e!.descricao,
         clienteNome: e!.cliente_nome,
-        falta: separados ? reais(taxaC(e!)) : faltaPagar(e!.valor, e!.sinal),
-        itens: itens.map((i) => ({ variacaoId: i.variacaoId!, quantidade: Number(i.quantidade) })),
+        falta: separados ? reais(acertoC(e!)) : faltaPagar(e!.valor, e!.sinal),
+        itens: itens.map((i) => ({ variacaoId: i.variacaoId, quantidade: i.quantidade, precoUnit: reais(i.precoC) })),
       },
     }
   })
+}
+
+/** A encomenda travada para a venda: o que a linha dela cobra e, no catálogo, os produtos combinados. */
+export type EncomendaParaVenda = {
+  ok: true
+  /** A linha da encomenda, em centavos. No catálogo, o acerto (pode ser negativo). */
+  faltaC: number
+  linha: string
+  comItens: boolean
+  /** Como estava antes de a venda receber (para o cancelamento devolver). */
+  situacao: 'ABERTA' | 'PRONTA'
+  /** Os produtos do pedido do catálogo, pelo preço do pedido. Vazio na de balcão. */
+  itens: { variacaoId: string; quantidade: number; precoC: number }[]
 }
 
 /**
@@ -1385,7 +1630,7 @@ export async function travarParaVenda(
   empresa: { plano: Plano; modulos: string[] } | null,
   id: string,
   unidadeId: string,
-): Promise<{ ok: true; faltaC: number; linha: string; comItens: boolean } | { ok: false; recado: string }> {
+): Promise<EncomendaParaVenda | { ok: false; recado: string }> {
   const recusa = recusaDoModuloEm(empresa)
   if (recusa) return { ok: false, recado: recusa }
   const [e] = await db.$queryRaw<EncomendaTravada[]>`
@@ -1393,15 +1638,17 @@ export async function travarParaVenda(
   `
   const nao = recusaDoRecebimento(e, unidadeId)
   if (nao) return { ok: false, recado: nao }
+  const situacao = e!.situacao === 'PRONTA' ? 'PRONTA' : 'ABERTA'
   // A do catálogo: os produtos vêm no pedido como linhas de verdade, e a linha
-  // da encomenda cobra só a entrega (pode ser zero).
+  // da encomenda é o acerto (entrega, sinal).
   if (comItens(e!)) {
-    const t = taxaC(e!)
     return {
       ok: true,
-      faltaC: t,
-      linha: descricaoDaLinha({ id: e!.id, descricao: t > 0 ? 'taxa de entrega' : 'pedido do catálogo' }),
+      faltaC: acertoC(e!),
+      linha: descricaoDaLinha({ id: e!.id, descricao: textoDoAcerto(e!) }),
       comItens: true,
+      situacao,
+      itens: await itensDoPedido(db, id),
     }
   }
   return {
@@ -1409,6 +1656,8 @@ export async function travarParaVenda(
     faltaC: centavos(e!.valor) - centavos(e!.sinal),
     linha: descricaoDaLinha(e!),
     comItens: false,
+    situacao,
+    itens: [],
   }
 }
 
@@ -1421,7 +1670,7 @@ export async function entregarPelaVenda(
   db: BancoDaOrg,
   sessao: Sessao,
   id: string,
-  venda: { id: string; numero: number; unidadeId: string; faltaC: number },
+  venda: { id: string; numero: number; unidadeId: string; faltaC: number; situacaoAntes?: 'ABERTA' | 'PRONTA' },
   agora = new Date(),
 ) {
   const r = await db.encomenda.updateMany({
@@ -1440,8 +1689,57 @@ export async function entregarPelaVenda(
       alvoId: id,
       alvoNome: codigoEncomenda(id),
       valor: reais(venda.faltaC),
+      // O `antes` é o que o cancelamento da venda lê para devolver a
+      // encomenda ao lugar em que estava.
+      ...(venda.situacaoAntes ? { antes: { situacao: venda.situacaoAntes } } : {}),
       depois: { situacao: 'ENTREGUE', vendaId: venda.id, vendaNumero: venda.numero },
       motivo: `recebido na venda ${venda.numero}`,
     },
   })
+}
+
+/**
+ * A venda que recebeu esta encomenda foi cancelada: a encomenda volta a
+ * esperar — no lugar em que estava antes da venda (a fazer ou pronta; sem o
+ * registro, pronta, porque o pedido existia). Dentro da transação do
+ * cancelamento. Sem isto, a encomenda ficava "entregue" por uma venda que não
+ * aconteceu: não se recebia de novo, e o sinal não tinha mais como ser
+ * devolvido. Quem chama solta o `encomendaId` da venda (o vínculo é único).
+ */
+export async function reabrirPelaVendaCancelada(
+  db: BancoDaOrg,
+  sessao: Sessao,
+  id: string,
+  venda: { id: string; numero: number; unidadeId: string },
+): Promise<boolean> {
+  const entrega = await db.auditoria.findFirst({
+    where: { acao: 'encomenda.entregou', alvoTipo: 'encomenda', alvoId: id },
+    orderBy: { criadoEm: 'desc' },
+    select: { antes: true },
+  })
+  const lida = entrega?.antes && typeof entrega.antes === 'object' && !Array.isArray(entrega.antes)
+    ? (entrega.antes as Record<string, unknown>).situacao
+    : null
+  const volta: SituacaoEncomenda = lida === 'ABERTA' ? 'ABERTA' : 'PRONTA'
+  const r = await db.encomenda.updateMany({
+    where: { id, situacao: 'ENTREGUE' },
+    data: { situacao: volta, concluidaEm: null },
+  })
+  if (r.count === 0) return false
+  await db.auditoria.create({
+    data: {
+      orgId: sessao.orgId,
+      unidadeId: venda.unidadeId,
+      usuarioId: sessao.usuarioId,
+      quem: sessao.nome,
+      acao: 'encomenda.alterou',
+      alvoTipo: 'encomenda',
+      alvoId: id,
+      alvoNome: codigoEncomenda(id),
+      antes: { situacao: 'ENTREGUE', vendaId: venda.id },
+      depois: { situacao: volta },
+      motivo: `a venda ${venda.numero}, que recebeu a encomenda, foi cancelada`,
+    },
+  })
+  return true
 }

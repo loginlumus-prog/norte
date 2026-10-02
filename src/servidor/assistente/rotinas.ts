@@ -36,7 +36,7 @@ import { janela } from '../periodo'
 import { previsaoDeRuptura, type LinhaRuptura } from '../ruptura'
 import { aVencer } from '../financeiro'
 import { mostrar } from '../dinheiro'
-import { pode, type Sessao } from '../permissao'
+import { pode, unidadesQuePodem, type Sessao } from '../permissao'
 import type { Canal, ModeloParaEnvio } from './canal'
 import { modeloDeAviso, modeloDoRelatorio } from './meta-regras'
 import {
@@ -277,12 +277,24 @@ export async function rodarNaEmpresa(
         if (texto) mensagens.push({ para: d, texto, modelo: modeloDoRelatorio(d.nome, quando, texto) })
       }
     } else if (rotina === 'ruptura') {
-      const r = await ruptura(orgId, ctx.org, agente.poderes, donos[0]!.sessao)
-      saida.propostas += r.propostas
-      if (r.texto) for (const d of donos) mensagens.push({ para: d, texto: r.texto, modelo: modeloDeAviso(ctx.org.nome, r.texto) })
+      // Cada dono com o SEU alcance: o texto montado com a sessão do primeiro
+      // e mandado a todos entregava à dona de uma loja o estoque das outras.
+      // A reposição é proposta uma vez, por quem alcança a empresa inteira.
+      let reposicao: Reposicao | null = null
+      for (const d of donos) {
+        const r = await ruptura(orgId, ctx.org, agente.poderes, d.sessao, reposicao)
+        if (r.reposicao && !reposicao) {
+          reposicao = r.reposicao
+          saida.propostas += r.reposicao.feitas.length
+        }
+        if (r.texto) mensagens.push({ para: d, texto: r.texto, modelo: modeloDeAviso(ctx.org.nome, r.texto) })
+      }
     } else if (rotina === 'cliente_sumido') {
-      const texto = await clienteSumido(orgId, donos[0]!.sessao, await diasDoGatilho(orgId, agente.id))
-      if (texto) for (const d of donos) mensagens.push({ para: d, texto, modelo: modeloDeAviso(ctx.org.nome, texto) })
+      const dias = await diasDoGatilho(orgId, agente.id)
+      for (const d of donos) {
+        const texto = await clienteSumido(orgId, d.sessao, dias)
+        if (texto) mensagens.push({ para: d, texto, modelo: modeloDeAviso(ctx.org.nome, texto) })
+      }
     }
 
     for (const m of mensagens) {
@@ -398,20 +410,25 @@ export function quantoRepor(l: Pick<LinhaRuptura, 'saldo' | 'previsao'>): number
   return Math.max(1, precisa - Math.max(0, Math.floor(l.saldo)))
 }
 
+/** As propostas de reposição do dia: feitas uma vez, contadas a quem alcança a empresa inteira. */
+type Reposicao = { feitas: string[]; acimaDoTeto: string[] }
+
 async function ruptura(
   orgId: string,
   empresa: { modulos: string[] },
   poderes: string[],
   sessao: Sessao,
-): Promise<{ texto: string | null; propostas: number }> {
-  if (!pode(sessao, 'estoque.ver')) return { texto: null, propostas: 0 }
+  /** A reposição que outro dono já propôs hoje: não propõe de novo. */
+  jaProposta: Reposicao | null = null,
+): Promise<{ texto: string | null; reposicao: Reposicao | null }> {
+  if (!pode(sessao, 'estoque.ver')) return { texto: null, reposicao: null }
   const unidades = await unidadesVisiveis(sessao, 'estoque.ver')
   const linhas = await previsaoDeRuptura(sessao, unidades)
   // "Já faltou" só entra se vendia: peça sem giro que zerou não é urgência.
   const urgentes = linhas.filter(
     (l) => l.previsao.situacao === 'pedir_agora' || (l.previsao.situacao === 'ja_faltou' && l.vendidos30 > 0),
   )
-  if (urgentes.length === 0) return { texto: null, propostas: 0 }
+  if (urgentes.length === 0) return { texto: null, reposicao: null }
 
   const peca = (l: LinhaRuptura) => [l.nome, l.opcoes].filter(Boolean).join(' — ')
   const linhasTexto = urgentes.slice(0, 8).map((l) =>
@@ -422,13 +439,17 @@ async function ruptura(
 
   // A reposição só é proposta se a loja deu esse poder a ele. O teto é
   // conferido dentro de `propor`: proposta acima do teto nem chega a existir.
-  const feitas: string[] = []
-  const acimaDoTeto: string[] = []
-  if (poderes.includes('pedir.compra') && pode(sessao, 'financeiro.lancar')) {
-    const r = await proporReposicoes(orgId, empresa, urgentes, unidades)
-    feitas.push(...r.feitas)
-    acimaDoTeto.push(...r.acimaDoTeto)
+  // A proposta é da empresa inteira (conta sem loja): só quem alcança a
+  // empresa inteira a faz — e só quem alcança a empresa inteira lê a lista.
+  const daEmpresa =
+    unidadesQuePodem(sessao, 'estoque.ver') === 'todas' && unidadesQuePodem(sessao, 'financeiro.lancar') === 'todas'
+  let reposicao: Reposicao | null = null
+  if (daEmpresa && !jaProposta && poderes.includes('pedir.compra') && pode(sessao, 'financeiro.lancar')) {
+    reposicao = await proporReposicoes(orgId, empresa, urgentes, unidades)
   }
+  const daLista = daEmpresa ? (reposicao ?? jaProposta) : null
+  const feitas = daLista?.feitas ?? []
+  const acimaDoTeto = daLista?.acimaDoTeto ?? []
 
   const partes = [`*Vai faltar* (${urgentes.length}):`, ...linhasTexto]
   if (urgentes.length > 8) partes.push(`…e mais ${urgentes.length - 8} na tela Estoque.`)
@@ -438,7 +459,7 @@ async function ruptura(
   if (acimaDoTeto.length > 0) {
     partes.push('', `Não propus (passa do teto que você deu): ${acimaDoTeto.join(', ')}.`)
   }
-  return { texto: partes.join('\n'), propostas: feitas.length }
+  return { texto: partes.join('\n'), reposicao }
 }
 
 async function proporReposicoes(
@@ -533,6 +554,10 @@ export const DIAS_SUMIDO = 45
  */
 async function clienteSumido(orgId: string, sessao: Sessao, dias: number): Promise<string | null> {
   if (!pode(sessao, 'cliente.ver') || !pode(sessao, 'venda.ver')) return null
+  // Só as vendas das lojas que ESTA pessoa vê: a lista vai para o WhatsApp
+  // dela, e o cliente da loja que ela não alcança não é dela para ligar.
+  const lojas = await unidadesVisiveis(sessao, 'venda.ver')
+  if (lojas.length === 0) return null
   const corte = new Date(Date.now() - dias * 864e5)
   const inicio = new Date(Date.now() - 240 * 864e5)
   const linhas = await comoOrg(orgId, (db) =>
@@ -544,6 +569,7 @@ async function clienteSumido(orgId: string, sessao: Sessao, dias: number): Promi
                      sum(v.total) as total
                 from vendas v
                where v.cliente_id is not null and v.situacao = 'CONCLUIDA'
+                 and v.unidade_id = any(${lojas})
                  and v.criada_em >= ${inicio}
                group by v.cliente_id) c
         join clientes cl on cl.id = c.cliente_id

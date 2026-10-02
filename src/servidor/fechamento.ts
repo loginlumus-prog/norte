@@ -25,7 +25,7 @@ import { exigir, pode, soAsQuePode, type Capacidade, type Sessao } from './permi
 import { plural } from './texto'
 import { colunaDoDia, diaEmSP, somarDias } from './dia'
 import { centavos, reais } from './dinheiro'
-import { montarDRE, janelaDoMes, outroMes, mesDeAgora, type DRE } from './financeiro'
+import { contasDaEmpresa, montarDRE, janelaDoMes, outroMes, mesDeAgora, type DRE } from './financeiro'
 import { listarCaixas } from './caixa'
 import { taxasDaEmpresa } from './taxas'
 import { mesValido, nomeDoMes } from './metas'
@@ -271,6 +271,9 @@ export async function montarFechamento(
   const lojasCred = usaCrediario ? soAsQuePode(sessao, 'crediario.ver', unidadeIds) : []
   const nada = ateDia < primeiroDia
   const { contas, fiado } = await comoOrg(sessao.orgId, async (db) => {
+    // A conta sem loja só no fechamento da empresa — o mesmo critério do DRE
+    // logo acima (ver `contasDaEmpresa`).
+    const empresa = await contasDaEmpresa(db, sessao, lojasFin)
     const soma = nada
       ? null
       : await db.lancamento.aggregate({
@@ -278,7 +281,7 @@ export async function montarFechamento(
             tipo: 'DESPESA',
             pagoEm: null,
             vencimento: { gte: colunaDoDia(primeiroDia), lte: colunaDoDia(ateDia) },
-            OR: [{ unidadeId: { in: lojasFin } }, { unidadeId: null }],
+            OR: [{ unidadeId: { in: lojasFin } }, ...(empresa === 'dentro' ? [{ unidadeId: null }] : [])],
           },
           _count: true,
           _sum: { valor: true },
@@ -294,9 +297,14 @@ export async function montarFechamento(
             quitadaEm: null,
             vencimento: { gte: colunaDoDia(primeiroDia), lte: colunaDoDia(ateDia) },
           },
-          select: { valor: true, pago: true },
+          select: { valor: true, pago: true, desconto: true },
         })
-    const abertas = parcelas.map((p) => centavos(p.valor) - centavos(p.pago)).filter((r) => r > 0)
+    // O que resta é valor − pago − DESCONTO, a conta da tela do crediário:
+    // sem o desconto, a parcela de 100 com 30 pagos e 20 de desconto
+    // aparecia aqui devendo 70, e lá devendo 50.
+    const abertas = parcelas
+      .map((p) => centavos(p.valor) - centavos(p.pago) - centavos(p.desconto))
+      .filter((r) => r > 0)
     return {
       contas,
       fiado: { parcelasVencidas: abertas.length, vencido: reais(abertas.reduce((s, r) => s + r, 0)) },

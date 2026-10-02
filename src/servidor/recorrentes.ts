@@ -42,7 +42,10 @@
 
 import type { TipoLancamento } from '@prisma/client'
 import { comoOrg } from './banco'
-import { exigir, exigirNoAlcance, pode, unidadesQuePodem, type Sessao } from './permissao'
+import { exigir, exigirNoAlcance, pode, soAsQuePode, unidadesQuePodem, type Sessao } from './permissao'
+// Ciclo com financeiro.ts (que usa `hojeNaLoja`): só funções, chamadas na
+// hora — nada é lido enquanto os módulos carregam.
+import { contasDaEmpresa } from './financeiro'
 import { centavos, reais } from './dinheiro'
 import { registrarErro } from './registro'
 
@@ -252,10 +255,20 @@ function escopoDeLancar(sessao: Sessao) {
 
 export async function listarRecorrentes(sessao: Sessao, unidadeIds: string[]): Promise<RecorrenteNaLista[]> {
   exigir(sessao, 'financeiro.ver')
+  // As lojas pedidas vêm do endereço: só as que a pessoa vê no financeiro.
+  const lojas = soAsQuePode(sessao, 'financeiro.ver', unidadeIds)
   return comoOrg(sessao.orgId, async (db) => {
+    // A conta sem loja (o aluguel do escritório) só na leitura da empresa
+    // inteira, e só para quem alcança o financeiro da empresa — a régua de
+    // `contasDaEmpresa`. Antes o financeiro preso à loja A via (e editava
+    // na tela) as recorrentes da empresa inteira.
+    const empresa = await contasDaEmpresa(db, sessao, lojas)
     const linhas = await db.recorrente.findMany({
       where: {
-        AND: [escopo(sessao), { OR: [{ unidadeId: null }, { unidadeId: { in: unidadeIds } }] }],
+        AND: [
+          escopo(sessao),
+          { OR: [{ unidadeId: { in: lojas } }, ...(empresa === 'dentro' ? [{ unidadeId: null }] : [])] },
+        ],
       },
       orderBy: [{ ativo: 'desc' }, { diaVencimento: 'asc' }, { descricao: 'asc' }],
       select: {

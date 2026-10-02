@@ -108,7 +108,24 @@ export function conferirToken(slug: string, token: string): boolean {
  */
 export function portaAbre(slug: string, token: string, resumoGuardado: string | null | undefined): boolean {
   if (resumoGuardado) return conferirTokenProprio(resumoGuardado, token)
-  return conferirToken(slug, token)
+  const abriu = conferirToken(slug, token)
+  if (abriu) avisarPortaAntiga(slug)
+  return abriu
+}
+
+const avisadas = new Set<string>()
+/**
+ * A porta antiga continua abrindo (a loja do piloto não pode parar de
+ * receber), mas fica no log, uma vez por empresa e por processo, para a
+ * equipe pedir a ela que gere o endereço próprio na tela do assistente.
+ * Sem o token: só o slug.
+ */
+function avisarPortaAntiga(slug: string) {
+  if (avisadas.has(slug)) return
+  avisadas.add(slug)
+  console.warn(
+    `[webhook] ${slug}: entrou pelo endereço ANTIGO (WEBHOOK_SEGREDO). Obsoleto — gere o endereço próprio na tela do assistente e troque no Z-API.`,
+  )
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -163,10 +180,13 @@ export function lerZapi(
   const idExterno = typeof c.messageId === 'string' ? c.messageId : ''
   if (!telefone || !idExterno) return { tipo: 'ignorar', motivo: 'sem telefone ou id' }
 
-  // Instância diferente da configurada: não é o nosso número falando.
+  // Instância diferente da configurada: não é o nosso número falando. E sem
+  // instância nenhuma, quando a empresa tem uma, também não: o Z-API sempre
+  // manda a dele, e o corpo sem ela é o de quem montou o pedido à mão —
+  // com o endereço vazado, inventaria mensagem "do dono".
   const instancia = instanciaEsperada
-  if (instancia && typeof c.instanceId === 'string' && c.instanceId !== instancia) {
-    return { tipo: 'ignorar', motivo: 'outra instância' }
+  if (instancia && c.instanceId !== instancia) {
+    return { tipo: 'ignorar', motivo: typeof c.instanceId === 'string' ? 'outra instância' : 'sem instância' }
   }
 
   if (c.fromMe === true) {

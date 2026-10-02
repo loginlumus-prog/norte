@@ -182,7 +182,7 @@ export function Planos({
                     {/* A conta da tabela é a referência para a conversa — o
                         que se paga de fato é o combinado. */}
                     {m.novoMensal !== null && (
-                      <span className="numero text-[11px] text-tinta-3">
+                      <span className="text-[11px] leading-snug text-tinta-3 tabular-nums">
                         pela tabela, {brl(m.novoMensal)} por mês com {lojas === 1 ? '1 loja' : `${lojas} lojas`}
                       </span>
                     )}
@@ -196,7 +196,7 @@ export function Planos({
                       <span className="numero text-base font-bold text-tinta-3">{partes(m.novoMensal!).cent}</span>
                       <span className="ml-0.5 text-xs text-tinta-3">/mês</span>
                     </span>
-                    <span className="numero text-[11px] leading-snug text-tinta-3">
+                    <span className="text-[11px] leading-snug text-tinta-3 tabular-nums">
                       {lojas <= 1 ? 'com 1 loja' : `com as suas ${lojas} lojas`}: {brl0(PRECOS.primeiraLoja)} a
                       primeira, {brl0(PRECOS.lojaExtra)} cada loja a mais
                       {comAssistente ? `, ${brl0(PRECOS.assistente)} o assistente` : ''}. Depósito não conta.

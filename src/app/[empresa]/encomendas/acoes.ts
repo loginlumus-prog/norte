@@ -23,7 +23,7 @@ import {
 import { registrarErro } from '@/servidor/registro'
 import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
-export type EstadoEncomenda = { erro?: string; ok?: string; pedeConfirmacao?: boolean; vez?: number }
+export type EstadoEncomenda = { erro?: string; ok?: string; pedeConfirmacao?: boolean; pedePin?: boolean; vez?: number }
 
 const texto = (v: unknown, max = 1000) => (typeof v === 'string' ? v.slice(0, max) : '')
 const idValido = (v: unknown): v is string => typeof v === 'string' && /^[\w-]{1,64}$/.test(v)
@@ -68,6 +68,8 @@ export async function salvarEncomendaAcao(
     endereco: texto(form.get('endereco'), 400),
     observacao: texto(form.get('observacao'), 1200),
     confirmarPassado: form.get('confirmarPassado') === 'on',
+    // Só vem depois de o servidor pedir (baixar o valor além do teto).
+    pin: texto(form.get('pin'), 12).trim() || null,
   }
   if (Number.isNaN(dados.valor)) return { erro: `O valor: ${DINHEIRO_ILEGIVEL}` }
   if (Number.isNaN(dados.sinal)) return { erro: `O sinal: ${DINHEIRO_ILEGIVEL}` }
@@ -75,7 +77,7 @@ export async function salvarEncomendaAcao(
   const vez = (anterior.vez ?? 0) + 1
   try {
     const r = id ? await editarEncomenda(sessao, id, dados) : await criarEncomenda(sessao, dados)
-    if (!r.ok) return { erro: r.erro, pedeConfirmacao: r.pedeConfirmacao, vez }
+    if (!r.ok) return { erro: r.erro, pedeConfirmacao: r.pedeConfirmacao, pedePin: r.pedePin, vez }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode anotar encomenda nesta loja.', vez }
     return { erro: `Não deu para salvar. Tente de novo. (código ${registrarErro('encomenda.salvar', e)})`, vez }
@@ -94,7 +96,7 @@ export async function mudarSituacaoAcao(
   slug: string,
   id: string,
   mudanca: Mudanca,
-): Promise<{ ok?: string; erro?: string }> {
+): Promise<{ ok?: string; erro?: string; pedePin?: boolean }> {
   const sessao = await exigirSessao(slug)
   if (!idValido(id)) return { erro: 'Encomenda inválida.' }
   const para = mudanca?.para
@@ -111,11 +113,17 @@ export async function mudarSituacaoAcao(
             ? ((mudanca as { formaDevolucao: DadosEncomenda['sinalForma'] }).formaDevolucao)
             : null,
         }
-      : { para }
+      : para === 'ENTREGUE'
+        ? {
+            para,
+            motivo: texto((mudanca as { motivo?: unknown }).motivo, 400) || null,
+            pin: texto((mudanca as { pin?: unknown }).pin, 12).trim() || null,
+          }
+        : { para }
 
   try {
     const r = await mudarSituacao(sessao, id, m)
-    if (!r.ok) return { erro: r.erro }
+    if (!r.ok) return { erro: r.erro, pedePin: r.pedePin }
     // O pedido do catálogo: a cliente fica sabendo pelo WhatsApp (sem esperar).
     if (para === 'PRONTA' || para === 'CANCELADA') void avisarClienteDaEncomenda(sessao.orgId, id, para).catch(() => {})
   } catch (e) {

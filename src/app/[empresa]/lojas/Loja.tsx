@@ -91,7 +91,7 @@ function Formulario({
         name="ehDeposito"
         id={`dep-${d?.id ?? 'nova'}`}
         titulo="É um depósito"
-        resumo="Guarda estoque e recebe mercadoria, mas não tem balcão de venda."
+        resumo="Guarda estoque e recebe mercadoria, mas não tem balcão de venda — e não entra na conta do plano. Desmarcar faz dela loja de venda, que entra (e sai do catálogo da internet quando volta a ser depósito)."
         defaultChecked={d?.ehDeposito ?? false}
         onChange={(e) => {
           // Fábrica é depósito: desmarcar o depósito desmarca a fábrica junto.

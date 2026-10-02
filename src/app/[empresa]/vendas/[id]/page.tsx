@@ -8,6 +8,7 @@ import { acharVenda } from '@/servidor/venda'
 import { codigoEncomenda } from '@/servidor/encomenda'
 import { pode } from '@/servidor/permissao'
 import { mostrarTelefone } from '@/servidor/cliente'
+import { escolherUnidade } from '@/servidor/unidade'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao } from '@/ui/base'
@@ -75,7 +76,20 @@ export default async function FichaVenda({
   // devolve (o servidor recusa também), e a tela diz o que ele é.
   const importado = v.situacao === 'SALDO_IMPORTADO'
   const podeCancelar = !cancelada && !importado && pode(sessao, 'venda.cancelar', v.unidadeId)
-  const podeDevolver = !cancelada && !importado && pode(sessao, 'venda.criar', v.unidadeId)
+  // A devolução acontece na loja de quem está no balcão — que pode não ser a
+  // da venda (a cliente comprou no shopping e devolve no centro). A loja
+  // lembrada no seletor vem primeiro; sem ela, a da venda; sem acesso à da
+  // venda, a primeira que a pessoa alcança. Só LOJA: depósito não tem balcão.
+  const escolha = await escolherUnidade(sessao, empresa, undefined, 'venda.criar')
+  const lojasDevolucao = escolha.opcoes
+    .filter((u) => !u.ehDeposito)
+    .map((u) => ({ id: u.id, nome: u.nome, podeDinheiro: pode(sessao, 'venda.cancelar', u.id) }))
+  const lojaDevolucao =
+    (escolha.unidadeId && lojasDevolucao.some((u) => u.id === escolha.unidadeId) ? escolha.unidadeId : null) ??
+    (lojasDevolucao.some((u) => u.id === v.unidadeId) ? v.unidadeId : null) ??
+    lojasDevolucao[0]?.id ??
+    null
+  const podeDevolver = !cancelada && !importado && lojaDevolucao !== null
 
   const subtotal = Number(v.subtotal)
   const desconto = Number(v.desconto)
@@ -91,7 +105,10 @@ export default async function FichaVenda({
   // Quanto de cada item já voltou, e quanto ainda pode voltar.
   const voltouDe = (i: (typeof v.itens)[number]) =>
     i.devolucoes.reduce((s, d) => s + Number(d.quantidade), 0)
+  // A linha negativa do pedido do catálogo (o sinal já pago) não é peça:
+  // não volta (o servidor recusa também).
   const devolviveis: ItemDevolvivel[] = v.itens
+    .filter((i) => Number(i.precoUnit) >= 0 && Number(i.total) >= 0)
     .map((i) => ({
       id: i.id,
       descricao: i.descricao,
@@ -476,7 +493,11 @@ export default async function FichaVenda({
               vendaId={v.id}
               numero={v.numero}
               itens={devolviveis}
-              podeDinheiro={pode(sessao, 'venda.cancelar', v.unidadeId)}
+              lojas={lojasDevolucao}
+              lojaInicial={lojaDevolucao!}
+              lojaDaVenda={v.unidadeId}
+              // O seletor só aparece para quem tem mais de uma loja de verdade.
+              escolherLoja={escolha.mostrarSeletor && lojasDevolucao.length > 1}
               palavras={{ destaVenda: palavras.destaVenda, daVenda: palavras.daVenda }}
             />
           )}

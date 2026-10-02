@@ -33,7 +33,7 @@ import { diaEmSP, inicioDoDiaEmSP, somarDias } from '../dia'
 import { listarCaixas } from '../caixa'
 import { aVencer } from '../financeiro'
 import { mostrar } from '../dinheiro'
-import { pode, type Sessao } from '../permissao'
+import { pode, unidadesQuePodem, type Sessao } from '../permissao'
 import type { ComModulos } from '../modulos'
 import { unidadesVisiveis } from './contexto'
 import { buscarNoGuia } from '../guia'
@@ -49,7 +49,8 @@ import {
   proporDesmarcar,
   proporMarcar,
 } from './ferramentas-atendimento'
-import { proporEntrada, proporMudancaEncomenda, verEncomendas } from './ferramentas-loja'
+import { escolherLoja, proporEntrada, proporMudancaEncomenda, verEncomendas } from './ferramentas-loja'
+import { aposentarAnteriores, RECADO_DO_FECHO } from './propostas'
 
 export type ResultadoFerramenta = { texto: string; erro?: boolean; propostaId?: string }
 
@@ -90,12 +91,12 @@ export async function executarFerramenta(
       case 'ver.contas':
         return await verContas(quem.sessao)
       case 'consultar.produto':
-        return await consultarProduto(orgId, str(entrada.busca, 60))
+        return await consultarProduto(quem.sessao, str(entrada.busca, 60))
       case 'explicar.sistema':
         return explicarSistema(empresa, quem.sessao, str(entrada.pergunta, 300), nomesNoGuia(await vocabularioDaEmpresa(orgId)))
       case 'lancar.despesa':
       case 'pedir.compra':
-        return await proporLancamento(orgId, empresa, poder, entrada, quem.sessao.usuarioId)
+        return await proporLancamento(orgId, empresa, poder, entrada, quem.sessao)
       case 'ajustar.estoque':
         return await proporAjuste(orgId, empresa, quem.sessao, entrada)
       case 'estoque.entrada':
@@ -265,13 +266,17 @@ async function verContas(sessao: Sessao): Promise<ResultadoFerramenta> {
  * A vitrine: nome, preço, tem ou não tem.
  *
  * "Tem" é saldo em loja de verdade — depósito não conta, porque o cliente
- * a quem a equipe repassa o "tem" vai até a loja. A quantidade por loja é
- * `ver.estoque`, que confere as lojas que a pessoa enxerga.
+ * a quem a equipe repassa o "tem" vai até a loja. E só as lojas DESTA
+ * pessoa (`produto.ver`): a vendedora da loja A não responde ao cliente com o
+ * saldo da loja B, nem oferece o que a loja dela não vende ("Vendido em").
+ * A quantidade por loja é `ver.estoque`.
  */
-async function consultarProduto(orgId: string, busca: string): Promise<ResultadoFerramenta> {
+async function consultarProduto(sessao: Sessao, busca: string): Promise<ResultadoFerramenta> {
   if (busca.length < 2) return falha('Diga o nome ou o código da peça.')
+  const lojas = await unidadesVisiveis(sessao, 'produto.ver')
+  if (lojas.length === 0) return falha('Nenhuma loja visível para esta pessoa.')
   const termo = `%${busca.replace(/[%_]/g, '')}%`
-  const linhas = await comoOrg(orgId, (db) =>
+  const linhas = await comoOrg(sessao.orgId, (db) =>
     db.$queryRaw<
       { produto: string; opcoes: string | null; vista: string | null; cartao: string | null; ajuste: string | null; tem: boolean }[]
     >`
@@ -282,12 +287,17 @@ async function consultarProduto(orgId: string, busca: string): Promise<Resultado
              p.preco_vista as vista, p.preco_cartao as cartao, vr.ajuste_preco as ajuste,
              coalesce((select sum(e.quantidade) > 0
                          from estoque e join unidades u on u.id = e.unidade_id
-                        where e.variacao_id = vr.id and u.ativa and not u.eh_deposito), false) as tem
+                        where e.variacao_id = vr.id and u.ativa and not u.eh_deposito
+                          and u.id = any(${lojas})
+                          -- só a loja que vende: saldo esquecido onde não vende não é "tem"
+                          and (coalesce(cardinality(p.vendido_em), 0) = 0 or u.id = any(p.vendido_em))), false) as tem
         from variacoes vr
         join produtos p on p.id = vr.produto_id
        -- Material de uso não tem preço de venda: a luva da clínica não se
        -- oferece a ninguém, e o assistente não cita preço do que não vende.
        where p.ativo and vr.ativa and not p.uso_interno
+         -- vendido em ao menos uma loja desta pessoa (vazio = em todas)
+         and (coalesce(cardinality(p.vendido_em), 0) = 0 or p.vendido_em && ${lojas}::text[])
          and (p.nome ilike ${termo} or p.marca ilike ${termo} or vr.codigo ilike ${termo})
        order by p.nome, vr.codigo
        limit 20
@@ -317,13 +327,36 @@ const dataValida = (s: string) => {
 }
 const dataBR = (d: Date) => d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
+/**
+ * De que loja é a conta. Quem lança na empresa inteira pode deixar sem loja
+ * (é da empresa) ou dizer uma; quem só lança em algumas lojas PRECISA de uma
+ * delas — conta sem loja é da empresa inteira, e o sim dessa pessoa seria
+ * recusado (`lancar` confere o alcance). Melhor perguntar agora.
+ */
+async function lojaDoLancamento(
+  sessao: Sessao,
+  pedida: string,
+): Promise<{ unidade: { id: string; nome: string } | null } | { pergunta: string }> {
+  const alcance = unidadesQuePodem(sessao, 'financeiro.lancar')
+  if (alcance === 'todas' && !pedida) return { unidade: null }
+  const ids = await unidadesVisiveis(sessao, 'financeiro.lancar')
+  const lojas = await comoOrg(sessao.orgId, (db) =>
+    db.unidade.findMany({ where: { id: { in: ids }, ativa: true }, orderBy: { criadaEm: 'asc' }, select: { id: true, nome: true } }),
+  )
+  if (lojas.length === 0) return { pergunta: 'Esta pessoa não lança conta em loja nenhuma.' }
+  if (!pedida && lojas.length === 1) return { unidade: lojas[0]! }
+  const achada = pedida ? escolherLoja(lojas, pedida) : null
+  if (achada) return { unidade: achada }
+  return { pergunta: `De qual loja é a conta? ${lojas.map((l) => l.nome).join(', ')}.` }
+}
+
 async function proporLancamento(
   orgId: string,
   empresa: ComModulos,
   poder: 'lancar.despesa' | 'pedir.compra',
   e: Record<string, unknown>,
   /** Quem pediu: é quem pode responder SIM na conversa. */
-  usuarioId: string,
+  sessao: Sessao,
 ): Promise<ResultadoFerramenta> {
   const descricao = str(e.descricao, 120)
   const valor = numero(e.valor)
@@ -332,6 +365,9 @@ async function proporLancamento(
   if (!descricao) return falha('Falta dizer o que é a conta.')
   if (!(valor > 0)) return falha('O valor precisa ser maior que zero.')
   if (!vencimento) return falha('A data de vencimento precisa ser AAAA-MM-DD.')
+  const onde = await lojaDoLancamento(sessao, str(e.loja, 60))
+  if ('pergunta' in onde) return falha(onde.pergunta)
+  const unidade = onde.unidade
 
   const categoria = await acharCategoria(orgId, poder === 'pedir.compra' ? 'Compra de mercadoria' : str(e.categoria, 60))
   if (!categoria) return falha('O financeiro desta loja ainda não foi preparado; alguém precisa abrir a tela do Financeiro uma vez.')
@@ -339,24 +375,28 @@ async function proporLancamento(
   const oque = poder === 'pedir.compra' ? 'Registrar compra de mercadoria' : 'Lançar conta a pagar'
   const resumo =
     `${oque}: "${descricao}" — ${brl(valor)}, vence ${dataBR(vencimento)}` +
-    `${fornecedor ? `, ${fornecedor}` : ''} (${categoria.nome}).`
+    `${fornecedor ? `, ${fornecedor}` : ''} (${categoria.nome})${unidade ? `, da ${unidade.nome}` : ''}.`
 
   const proposta = await propor(orgId, empresa, {
     poder,
     resumo,
     valor,
-    usuarioId,
+    usuarioId: sessao.usuarioId,
     dados: {
       categoriaId: categoria.id,
-      unidadeId: null,
+      unidadeId: unidade?.id ?? null,
       descricao,
       valor,
       vencimento: vencimento.toISOString(),
       fornecedor,
     },
   })
+  const substituidas = await aposentarAnteriores(orgId, { usuarioId: sessao.usuarioId, poder, novaId: proposta.id })
   return {
-    texto: `Proposta criada: ${resumo} Nada foi lançado ainda. Mostre o resumo e termine com "Responda SIM para confirmar" (também dá para confirmar na tela do assistente).`,
+    texto:
+      `Proposta criada: ${resumo} Nada foi lançado ainda (também dá para confirmar na tela do assistente). ` +
+      (substituidas > 0 ? 'A proposta do mesmo tipo que esta pessoa tinha deixado esperando foi substituída por esta. ' : '') +
+      RECADO_DO_FECHO,
     propostaId: proposta.id,
   }
 }
@@ -405,17 +445,16 @@ async function proporAjuste(
     })
     const unidades = await db.unidade.findMany({
       where: { id: { in: permitidas }, ativa: true },
+      orderBy: { criadaEm: 'asc' },
       select: { id: true, nome: true },
     })
     return { variacao, unidades }
   })
   if (!achado.variacao) return falha(`Não achei a etiqueta "${codigo}".`)
 
-  const unidade = loja
-    ? achado.unidades.find((u) => u.nome.toLowerCase().includes(loja.toLowerCase()))
-    : achado.unidades.length === 1
-      ? achado.unidades[0]
-      : undefined
+  // A mesma régua da entrada: o nome exato vence ("Shopping" não vira
+  // "Shopping Norte"), e pedaço de nome só vale se uma loja só tiver.
+  const unidade = loja ? escolherLoja(achado.unidades, loja) : achado.unidades.length === 1 ? achado.unidades[0] : undefined
   if (!unidade) {
     return falha(`Em qual loja? ${achado.unidades.map((u) => u.nome).join(', ') || 'Nenhuma loja permitida.'}`)
   }
@@ -429,8 +468,12 @@ async function proporAjuste(
     usuarioId: sessao.usuarioId,
     dados: { variacaoId: achado.variacao.id, unidadeId: unidade.id, quantidade, motivo },
   })
+  const substituidas = await aposentarAnteriores(orgId, { usuarioId: sessao.usuarioId, poder: 'ajustar.estoque', novaId: proposta.id })
   return {
-    texto: `Proposta criada: ${resumo} O estoque ainda não mudou. Mostre o resumo e termine com "Responda SIM para confirmar".`,
+    texto:
+      `Proposta criada: ${resumo} O estoque ainda não mudou. ` +
+      (substituidas > 0 ? 'O ajuste que esta pessoa tinha deixado esperando foi substituído por este. ' : '') +
+      RECADO_DO_FECHO,
     propostaId: proposta.id,
   }
 }

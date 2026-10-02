@@ -14,7 +14,8 @@
 // Puro onde dá (a conta da comissão e a chave do mês), banco no resto.
 
 import { comoOrg } from './banco'
-import { exigir, podeConcederAcesso, PODERES, unidadesQuePodem, type Papel, type Sessao } from './permissao'
+import { exigir, podeConcederAcesso, PODERES, soAsQuePode, unidadesQuePodem, type Papel, type Sessao } from './permissao'
+import { contaDoVendedor, realizadoPorVendedor } from './receita'
 import { diaEmSP, inicioDoDiaEmSP } from './dia'
 import { planoLibera } from './planos'
 import { centavos, reais } from './dinheiro'
@@ -86,28 +87,65 @@ function janelaDoMes(mes: string) {
 /**
  * A meta de cada pessoa que vende, no mês, com o realizado.
  * Quem lê é a tela da equipe (todo mundo) e o painel.
+ *
+ * ── quem aparece ─────────────────────────────────────────────
+ * Quem vende nas lojas que a pessoa olha (o gerente da loja 3 não vê a
+ * vendedora da loja 5) — e TAMBÉM quem vendeu ali no mês e já saiu da
+ * empresa: desativar a vendedora em outubro apagava a linha e a comissão de
+ * setembro dela, e o total do mês encolhia sozinho.
+ *
+ * ── o realizado é um só ──────────────────────────────────────
+ * Sem `unidadeIds`, o realizado e a comissão são os da PESSOA no mês, em
+ * todas as lojas: o gerente da loja A e o próprio vendedor (`minhaMeta`) leem
+ * o mesmo número — a comissão é uma só, e é ela que vai para a folha. Antes o
+ * gerente via só a fatia da loja dele, e os dois discutiam dois valores.
+ *
+ * Com `unidadeIds` (o painel olhando uma loja), o realizado é a FATIA
+ * daquelas lojas — "quanto esta loja fez da meta de cada um" — e a
+ * comissão, a dessa fatia.
+ *
+ * A conta do realizado mora em `receita.ts` (`contaDoVendedor`): a troca paga
+ * com vale volta para quem vendeu a peça original.
  */
-export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPessoa[]> {
+export async function metasDoMes(sessao: Sessao, mes: string, unidadeIds?: string[]): Promise<MetaDaPessoa[]> {
   exigir(sessao, 'equipe.ver')
   if (!mesValido(mes)) return []
   const { de, ate } = janelaDoMes(mes)
 
-  // O gerente da loja 3 vê a equipe e as vendas da loja 3 — não quanto a
-  // vendedora da loja 5 vendeu nem quanto ela ganha de comissão. `null` é o
-  // dono (todas as lojas): nenhum filtro.
+  // O gerente da loja 3 vê a equipe da loja 3 — não a vendedora da loja 5.
+  // `null` é o dono (todas as lojas): nenhum filtro.
   const alcance = unidadesQuePodem(sessao, 'equipe.ver')
   const lojas = alcance === 'todas' ? null : alcance
+  // As lojas pedidas, só as que esta pessoa alcança (a lista vem de quem chama).
+  const recorte = unidadeIds ? soAsQuePode(sessao, 'equipe.ver', unidadeIds) : null
+  if (recorte && recorte.length === 0) return []
+  const quem = recorte ?? lojas
 
   return comoOrg(sessao.orgId, async (db) => {
+    const linhas = await realizadoPorVendedor(db, { de, ate, unidadeIds: null })
+    const conta = recorte ? linhas.filter((l) => recorte.includes(l.unidadeId)) : linhas
+    // Quem mexeu em venda nas lojas olhadas, ativo ou não.
+    const comMovimento = [
+      ...new Set(
+        linhas
+          .filter((l) => l.vendedorId && (quem === null || quem.includes(l.unidadeId)))
+          .map((l) => l.vendedorId!),
+      ),
+    ]
     const pessoas = await db.usuario.findMany({
       where: {
-        ativo: true,
-        acessos: {
-          some: {
-            papel: { in: PAPEIS_QUE_VENDEM },
-            ...(lojas ? { unidadeId: { in: lojas } } : {}),
+        OR: [
+          {
+            ativo: true,
+            acessos: {
+              some: {
+                papel: { in: PAPEIS_QUE_VENDEM },
+                ...(quem ? { unidadeId: { in: quem } } : {}),
+              },
+            },
           },
-        },
+          { id: { in: comMovimento } },
+        ],
       },
       orderBy: { nome: 'asc' },
       select: { id: true, nome: true },
@@ -119,33 +157,12 @@ export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPes
       orderBy: { mes: 'desc' },
       select: { usuarioId: true, mes: true, valor: true, comissaoPct: true },
     })
-    const vendas = await db.$queryRaw<{ vendedor_id: string; total: string }[]>`
-      select v.vendedor_id, sum(v.total) as total
-        from vendas v
-       where v.situacao = 'CONCLUIDA' and v.vendedor_id is not null
-         and v.criada_em >= ${de} and v.criada_em < ${ate}
-         and (${lojas === null} or v.unidade_id = any(${lojas ?? ['-']}))
-       group by 1
-    `
-    const devolucoes = await db.$queryRaw<{ vendedor_id: string; total: string }[]>`
-      select v.vendedor_id, sum(d.valor) as total
-        from devolucoes d join vendas v on v.id = d.venda_id
-       where v.vendedor_id is not null
-         and d.criada_em >= ${de} and d.criada_em < ${ate}
-         and (${lojas === null} or v.unidade_id = any(${lojas ?? ['-']}))
-       group by 1
-    `
-
-    const vendidoDe = new Map(vendas.map((v) => [v.vendedor_id, centavos(v.total)]))
-    const devolvidoDe = new Map(devolucoes.map((d) => [d.vendedor_id, centavos(d.total)]))
 
     return pessoas.map((p) => {
       const linha = metas.find((m) => m.usuarioId === p.id)
       const valorC = linha ? centavos(linha.valor) : 0
       const pct = linha ? Number(linha.comissaoPct) : 0
-      const vendidoC = vendidoDe.get(p.id) ?? 0
-      const devolvidoC = devolvidoDe.get(p.id) ?? 0
-      const liquidoC = Math.max(vendidoC - devolvidoC, 0)
+      const c = contaDoVendedor(conta.filter((l) => l.vendedorId === p.id))
       return {
         usuarioId: p.id,
         nome: p.nome,
@@ -153,17 +170,21 @@ export async function metasDoMes(sessao: Sessao, mes: string): Promise<MetaDaPes
         valor: reais(valorC),
         comissaoPct: pct,
         herdada: !!linha && linha.mes !== mes,
-        vendido: reais(vendidoC),
-        devolvido: reais(devolvidoC),
-        liquido: reais(liquidoC),
-        comissao: reais(calcularComissao(liquidoC, pct)),
-        progresso: valorC > 0 ? liquidoC / valorC : null,
+        vendido: reais(c.vendidoCent),
+        devolvido: reais(c.devolvidoCent),
+        liquido: reais(c.liquidoCent),
+        comissao: reais(calcularComissao(c.liquidoCent, pct)),
+        progresso: valorC > 0 ? c.liquidoCent / valorC : null,
       }
     })
   })
 }
 
-/** A meta da própria pessoa, para o balcão dizer "faltam R$ X". */
+/**
+ * A meta da própria pessoa, para o balcão dizer "faltam R$ X". A MESMA conta
+ * de `metasDoMes` sem lojas — o número do balcão e o da tela da equipe têm
+ * que ser o mesmo, senão a pessoa desconfia dos dois.
+ */
 export async function minhaMeta(sessao: Sessao, mes: string) {
   if (!mesValido(mes)) return null
   const { de, ate } = janelaDoMes(mes)
@@ -173,25 +194,17 @@ export async function minhaMeta(sessao: Sessao, mes: string) {
       orderBy: { mes: 'desc' },
       select: { valor: true, comissaoPct: true },
     })
-    const vendas = await db.venda.aggregate({
-      where: { vendedorId: sessao.usuarioId, situacao: 'CONCLUIDA', criadaEm: { gte: de, lt: ate } },
-      _sum: { total: true },
-    })
-    // Líquido de devolução, a mesma conta da tela da equipe — os dois
-    // números têm que ser o mesmo, senão a pessoa desconfia dos dois.
-    const devolucoes = await db.devolucao.aggregate({
-      where: { venda: { vendedorId: sessao.usuarioId }, criadaEm: { gte: de, lt: ate } },
-      _sum: { valor: true },
-    })
     if (!linha) return null
+    const c = contaDoVendedor(
+      await realizadoPorVendedor(db, { de, ate, unidadeIds: null, vendedores: [sessao.usuarioId] }),
+    )
     const valorC = centavos(linha.valor)
-    const vendidoC = Math.max(centavos(vendas._sum.total ?? 0) - centavos(devolucoes._sum.valor ?? 0), 0)
     return {
       valor: reais(valorC),
       comissaoPct: Number(linha.comissaoPct),
-      vendido: reais(vendidoC),
-      progresso: valorC > 0 ? vendidoC / valorC : null,
-      comissao: reais(calcularComissao(vendidoC, Number(linha.comissaoPct))),
+      vendido: reais(c.liquidoCent),
+      progresso: valorC > 0 ? c.liquidoCent / valorC : null,
+      comissao: reais(calcularComissao(c.liquidoCent, Number(linha.comissaoPct))),
     }
   })
 }
@@ -223,6 +236,12 @@ export async function salvarMeta(
       select: { nome: true, acessos: { select: { papel: true, unidadeId: true, expiraEm: true } } },
     })
     if (!pessoa) throw new Error('Pessoa não encontrada nesta empresa.')
+    // Sem acesso nenhum valendo, a pessoa não vende em loja nenhuma — e o
+    // `every` logo abaixo, numa lista vazia, dizia "pode": o gerente da loja
+    // 3 punha meta e comissão em qualquer conta sem acesso da empresa.
+    const agora = new Date()
+    const vivos = pessoa.acessos.filter((a) => !a.expiraEm || a.expiraEm > agora)
+    if (vivos.length === 0) throw new Error('Esta pessoa não tem acesso a nenhuma loja: dê o acesso antes de pôr meta.')
     // Meta e comissão de alguém é poder SOBRE essa pessoa: a mesma régua de
     // trocar o papel dela. O gerente da loja 3 não mexe na comissão da
     // vendedora da loja 5, nem na do outro gerente.

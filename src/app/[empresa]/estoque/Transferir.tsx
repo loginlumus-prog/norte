@@ -10,6 +10,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao } from '@/ui/base'
+import { CampoDoPin } from '@/ui/Assinar'
 import { transferirAcao } from './acoes'
 
 export function Transferir({
@@ -31,6 +32,9 @@ export function Transferir({
   const [qtd, setQtd] = useState('1')
   const [motivo, setMotivo] = useState('')
   const [recado, setRecado] = useState<{ erro?: string; ok?: string } | null>(null)
+  // Quem transfere porque a empresa deixou assina com o PIN (o servidor pede).
+  const [pedePin, setPedePin] = useState(false)
+  const [pin, setPin] = useState('')
   const [indo, comecar] = useTransition()
   const router = useRouter()
 
@@ -82,6 +86,7 @@ export function Transferir({
         aria-label="Motivo da transferência"
         className="rounded border border-borda bg-superficie px-1.5 py-1 text-tinta placeholder:text-tinta-3"
       />
+      {pedePin && <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} />}
       {recado?.erro && <span className="font-medium text-critico">{recado.erro}</span>}
       {recado?.ok && <span className="font-medium text-bom">{recado.ok}</span>}
       <div className="flex gap-1.5">
@@ -97,9 +102,13 @@ export function Transferir({
                 paraUnidadeId: para,
                 quantidade: Number(qtd),
                 motivo,
+                pin: pin || null,
               })
+              setPin('')
               setRecado(r)
+              if (r.precisaPin) setPedePin(true)
               if (r.ok) {
+                setPedePin(false)
                 router.refresh()
                 setTimeout(() => setAberto(false), 1500)
               }

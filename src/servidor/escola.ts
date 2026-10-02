@@ -606,6 +606,9 @@ export async function matricular(sessao: Sessao, d: DadosMatricula, agora = new 
 
 export type MudancaMatricula = { para: SituacaoMatricula; motivo?: string | null; dia?: string | null }
 
+/** O começo do motivo da mensalidade dispensada pela saída — é por ele que a reativação a acha. */
+const MOTIVO_DA_SAIDA = 'matrícula'
+
 /**
  * Tranca, reativa, cancela ou conclui. Toda saída pede motivo.
  *
@@ -613,7 +616,11 @@ export type MudancaMatricula = { para: SituacaoMatricula; motivo?: string | null
  * que não receberam nada são dispensadas — não se cobra o mês em que o aluno
  * não estava. A do próprio mês fica: se é devida ou não, a escola decide
  * (e dispensa à mão, com motivo). O que já venceu e não foi pago continua
- * devido — sair da escola não apaga dívida.
+ * devido — sair da escola não apaga dívida. Dispensar é de quem ajusta
+ * mensalidade (`mensalidade.ajustar`).
+ *
+ * Reativou (a trancada volta): o que o trancamento dispensou, do mês da volta
+ * em diante, volta a valer.
  */
 export async function mudarMatricula(
   sessao: Sessao,
@@ -631,7 +638,10 @@ export async function mudarMatricula(
     if (recusa) return { ok: false as const, erro: recusa }
     const x = await db.matricula.findUnique({
       where: { id },
-      select: { id: true, situacao: true, unidadeId: true, alunoId: true, inicio: true, aluno: { select: { nome: true } }, turma: { select: { nome: true } } },
+      select: {
+        id: true, situacao: true, unidadeId: true, alunoId: true, inicio: true, saidaEm: true,
+        aluno: { select: { nome: true } }, turma: { select: { nome: true } },
+      },
     })
     if (!x) return { ok: false as const, erro: 'Essa matrícula não existe mais.' }
     exigir(sessao, 'escola.matricular', x.unidadeId)
@@ -641,6 +651,18 @@ export async function mudarMatricula(
     if (dia < diaDaColuna(x.inicio)) return { ok: false as const, erro: 'A data é antes do início da matrícula.' }
 
     const sai = m.para !== 'ATIVA'
+    // O que a saída dispensa: as mensalidades depois do mês da saída que não
+    // receberam nada.
+    const aDispensar = { matriculaId: id, mes: { gt: dia.slice(0, 7) }, quitadaEm: null, canceladaEm: null, pago: 0, abono: 0 }
+    // Dispensar mensalidade é poder de quem AJUSTA mensalidade (o mesmo de
+    // dispensar uma à mão). Sem isto, o Balcão — que matricula e tranca —
+    // dispensava os meses seguintes trancando e reativando a matrícula.
+    if (sai && !pode(sessao, 'mensalidade.ajustar', x.unidadeId) && (await db.mensalidade.count({ where: aDispensar })) > 0) {
+      return {
+        ok: false as const,
+        erro: 'Sair da turma dispensa as mensalidades dos próximos meses, e isso é com quem ajusta mensalidade. Peça a quem pode.',
+      }
+    }
     const r = await db.matricula.updateMany({
       where: { id, situacao: x.situacao },
       data: sai
@@ -655,19 +677,39 @@ export async function mudarMatricula(
     if (r.count === 0) return { ok: false as const, erro: 'Alguém mudou esta matrícula agora. Recarregue a tela.' }
 
     let dispensadas = 0
+    let devolvidas = 0
     if (sai) {
       const d = await db.mensalidade.updateMany({
-        where: { matriculaId: id, mes: { gt: dia.slice(0, 7) }, quitadaEm: null, canceladaEm: null, pago: 0, abono: 0 },
-        data: { canceladaEm: agora, motivoCancelamento: `matrícula ${ROTULO_MATRICULA[m.para].toLowerCase()}: ${motivo}`.slice(0, 200) },
+        where: aDispensar,
+        data: { canceladaEm: agora, motivoCancelamento: `${MOTIVO_DA_SAIDA} ${ROTULO_MATRICULA[m.para].toLowerCase()}: ${motivo}`.slice(0, 200) },
       })
       dispensadas = d.count
+    } else if (x.saidaEm) {
+      // Reativou: as mensalidades que o TRANCAMENTO dispensou, do mês da volta
+      // em diante, voltam a valer. Sem isto elas ficavam canceladas para
+      // sempre — e a geração não as refazia, porque (matrícula, mês) já
+      // existe: o aluno estudava em novembro e novembro não era cobrado.
+      // Só as que a saída dispensou (motivo e instante), não as dispensadas à
+      // mão; os meses em que o aluno ficou fora continuam dispensados.
+      const r = await db.mensalidade.updateMany({
+        where: {
+          matriculaId: id,
+          mes: { gte: dia.slice(0, 7) },
+          quitadaEm: null,
+          canceladaEm: { gte: x.saidaEm },
+          motivoCancelamento: { startsWith: MOTIVO_DA_SAIDA },
+        },
+        data: { canceladaEm: null, motivoCancelamento: null },
+      })
+      devolvidas = r.count
     }
     await db.auditoria.create({
       data: {
         orgId: sessao.orgId, unidadeId: x.unidadeId, usuarioId: sessao.usuarioId, quem: sessao.nome,
         acao: `matricula.${m.para.toLowerCase()}`, alvoTipo: 'cliente', alvoId: x.alunoId, alvoNome: x.aluno.nome,
         motivo: `turma ${x.turma.nome}${motivo ? `: ${motivo}` : ''}`.slice(0, 300),
-        antes: { situacao: x.situacao }, depois: { situacao: m.para, dia, mensalidadesDispensadas: dispensadas, matriculaId: id },
+        antes: { situacao: x.situacao },
+        depois: { situacao: m.para, dia, mensalidadesDispensadas: dispensadas, ...(devolvidas ? { mensalidadesDeVolta: devolvidas } : {}), matriculaId: id },
       },
     })
     // Reativou: o mês de agora e o próximo nascem de novo, se faltarem.

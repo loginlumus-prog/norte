@@ -51,12 +51,13 @@ export async function conferirExistentesAcao(
  */
 export async function importarLoteAcao(
   slug: string,
-  e: { unidadeId: string | null; seJaExiste: SeJaExiste; itens: unknown[]; pin?: string | null },
+  e: { unidadeId: string | null; vendidoEmTodas?: boolean; seJaExiste: SeJaExiste; itens: unknown[]; pin?: string | null },
 ): Promise<ResultadoLote> {
   const sessao = await exigirSessao(slug)
   try {
     return await importarLote(sessao, {
-      unidadeId: e?.unidadeId ?? null,
+      unidadeId: typeof e?.unidadeId === 'string' ? e.unidadeId : null,
+      vendidoEmTodas: e?.vendidoEmTodas === true,
       seJaExiste: e?.seJaExiste,
       itens: Array.isArray(e?.itens) ? e.itens : [],
       pin: e?.pin ? String(e.pin).replace(/\D/g, '') : null,

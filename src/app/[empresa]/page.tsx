@@ -440,10 +440,13 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
   const j = janela(lerPeriodo(pedido))
   const temCrediario = moduloLigado(empresa, 'crediario') && pode(sessao, 'crediario.ver')
   const verEquipe = moduloLigado(empresa, 'metas') && pode(sessao, 'equipe.ver')
+  // Com uma loja escolhida, a meta e as estrelas do mês são DELA: quanto
+  // cada um fez ali. No consolidado, o alcance de quem olha, como sempre.
+  const lojaDaEquipe = onde.unidadeId ? onde.ids : undefined
   const [r, fiado, metas, contagens, nichos] = await Promise.all([
     resumoDoPainel(sessao, onde.ids, j),
     temCrediario ? resumoCrediario(sessao, onde.ids) : Promise.resolve(null),
-    verEquipe ? metasDoMes(sessao, mesChave(new Date())) : Promise.resolve([]),
+    verEquipe ? metasDoMes(sessao, mesChave(new Date()), lojaDaEquipe) : Promise.resolve([]),
     pendenciasDoDia(sessao, empresa, onde.ids),
     nichoSemDerrubar(sessao, empresa, onde.ids, new Date()),
   ])
@@ -458,7 +461,11 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
   // Promise.all porque abre o próprio comoOrg depois do das metas.
   const verDesempenho = verEquipe && liberado(r.plano, 'desempenho.basico')
   const desempenho = verDesempenho
-    ? await desempenhoDoMes(sessao, mesChave(new Date()), { metas: true, metasProntas: metas })
+    ? await desempenhoDoMes(sessao, mesChave(new Date()), {
+        metas: true,
+        metasProntas: metas,
+        unidadeIds: lojaDaEquipe,
+      })
     : null
   const melhores = desempenho?.pessoas.filter((p) => !semDados(p.nota)).slice(0, 5) ?? []
   const temCartaoMeta = metas.some((m) => m.valor > 0)
@@ -474,8 +481,9 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
   const pct =
     r.anterior.total > 0 ? ((r.atual.total - r.anterior.total) / r.anterior.total) * 100 : NaN
   // Margem BRUTA, sobre o que ficou vendido: a devolução sai da receita e o
-  // custo dela já sai de `r.atual.custo` (ver painel.ts).
-  const receitaLiquida = r.atual.total - r.devolucoes.valor
+  // custo dela já sai de `r.atual.custo` (ver painel.ts). A receita é a da
+  // régua de receita.ts (`liquido`) — a mesma da Análise e do DRE.
+  const receitaLiquida = r.atual.liquido ?? r.atual.total - r.devolucoes.valor
   const lucroBruto = receitaLiquida - r.atual.custo
   const margem = receitaLiquida > 0 ? (lucroBruto / receitaLiquida) * 100 : 0
 

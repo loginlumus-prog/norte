@@ -20,7 +20,7 @@ export function Crediario({
   inicial,
 }: {
   empresa: string
-  inicial: { jurosMes: number; maxParcelas: number; diasEntre: number; multaPct: number; carenciaDias: number; arredondar: boolean }
+  inicial: { jurosMes: number; maxParcelas: number; diasEntre: number; multaPct: number; carenciaDias: number; arredondar: boolean; atrasoDias: number | null }
 }) {
   const [estado, agir, pendente] = useActionState<EstadoCrediario, FormData>(salvarCrediario, {})
 
@@ -83,6 +83,21 @@ export function Crediario({
             defaultChecked={inicial.arredondar}
           />
         </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Campo
+          rotulo="Parcela atrasada há mais de N dias pede autorização no crediário"
+          name="atrasoDias"
+          inputMode="numeric"
+          type="number"
+          min={1}
+          max={365}
+          step={1}
+          defaultValue={inicial.atrasoDias != null ? String(inicial.atrasoDias) : ''}
+          placeholder="desligado"
+          dica="Vazio = desligado. Com 15, quem tem parcela vencida há mais de 15 dias só leva fiado com o PIN de quem pode dar desconto."
+        />
       </div>
 
       <div className="flex items-center justify-between gap-3">

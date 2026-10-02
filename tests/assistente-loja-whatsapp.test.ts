@@ -43,6 +43,7 @@ import { avisarClienteDaEncomenda, avisarEquipeDoPedido } from '../src/servidor/
 import { CanalFalso } from '../src/servidor/assistente/canal'
 import { chaveTelefone } from '../src/servidor/assistente/telefone'
 import { fechar } from '../src/servidor/banco'
+import { codigoDaProposta } from '../src/servidor/assistente/propostas'
 
 let db: PGlite
 let servidor: PGLiteSocketServer
@@ -197,7 +198,16 @@ describe('a compra pelo WhatsApp: proposta e SIM', () => {
     const p = await ultimaProposta()
     expect(p).toMatchObject({ poder: 'estoque.entrada', situacao: 'AGUARDANDO', usuario_id: 'usr-ana' })
     expect(p.resumo).toBe('Entrada na Loja Centro A: 10 kg Picanha (R$ 39,90/kg = R$ 399,00). Fornecedor: —.')
-    expect(resultado.content).toMatch(/Responda SIM para lançar/)
+    // O fecho é do servidor, não do modelo: o resumo da proposta e o código vão
+    // no fim da mensagem, e a ferramenta diz ao modelo para não repetir.
+    expect(resultado.content).toMatch(/anexados pelo sistema/)
+    const c = codigoDaProposta(p.id)
+    expect(r.tipo === 'respondida' && r.texto).toBe(
+      `Confere? Responda SIM para lançar.
+
+*Para confirmar:* ${p.resumo}
+Responda *SIM ${c}* para confirmar ou *NÃO ${c}* para cancelar.`,
+    )
     expect(await saldoPicanha()).toBe(4)
   })
 
@@ -214,7 +224,8 @@ describe('a compra pelo WhatsApp: proposta e SIM', () => {
       texto: 'Feito: entrada de 10 kg de Picanha lançada na Loja Centro A. Saldo agora: 14 kg.',
     })
     expect(await saldoPicanha()).toBe(14)
-    expect(Number((await uma<{ c: string }>(`select custo c from produtos where id = 'prod-pic'`)).c)).toBe(39.9)
+    // O custo do produto é o MÉDIO (entrada.ts): 4 kg a R$ 35 + 10 kg a R$ 39,90.
+    expect(Number((await uma<{ c: string }>(`select custo c from produtos where id = 'prod-pic'`)).c)).toBe(38.5)
     expect((await ultimaProposta()).situacao).toBe('CONFIRMADA')
     // o livro: a entrada em nome de quem confirmou, e a marca de que a ideia foi do assistente
     expect(await conta(`select count(*) n from auditoria where acao = 'estoque.entrada' and usuario_id = 'usr-ana'`)).toBe(1)
@@ -329,24 +340,57 @@ describe('o SIM: quem, qual e com que permissão', () => {
     expect(await saldoPicanha()).toBe(antes)
   })
 
-  it('várias esperando: lista numerada, e "sim 2" confirma a segunda', async () => {
+  it('várias esperando: a lista mostra o CÓDIGO de cada uma, e "sim <código>" escolhe — o número de lista, não', async () => {
     await pedirEntrada(ANA, [{ produto: 'linguiça toscana', quantidade: 1 }])
-    await pedirEntrada(ANA, [{ produto: 'picanha', quantidade: 1 }])
+    const a = await ultimaProposta()
+    // Uma segunda entrada esperando, de outro pedido (a ferramenta aposentaria a
+    // primeira; aqui as duas valem, como quando são de tipos diferentes).
+    await db.query(
+      `insert into propostas_agente (id, org_id, agente_id, poder, resumo, dados, situacao, expira_em, usuario_id, criada_em)
+       values ('prop-b', 'org-a', 'ag-a', 'estoque.entrada', 'Entrada na Loja Centro A: 1 kg Picanha. Fornecedor: —.', $1,
+               'AGUARDANDO', $2, 'usr-ana', $3)`,
+      [
+        JSON.stringify({ ...a.dados, itens: [{ variacaoId: 'var-pic', nome: 'Picanha', medida: 'KG', quantidade: 1, custoUnit: null }] }),
+        // Datas do lado do JS: a coluna é sem fuso, e o now() do banco de teste sai no fuso local.
+        new Date(Date.now() + 864e5),
+        new Date(),
+      ],
+    )
+    const [ca, cb] = [codigoDaProposta(a.id), codigoDaProposta('prop-b')]
     const antes = await saldoPicanha()
     const canal = new CanalFalso()
     const api = apiFalsa(diz('não deveria ser chamado'))
 
     await processarMensagem(msg(ANA, 'sim'), { canal, buscar: api.buscar })
     const lista = canal.enviadas.at(-1)!.texto
-    expect(lista).toMatch(/^Tem 2 propostas suas esperando:\n1\) Entrada na Loja Centro A: 1 kg Linguiça toscana/)
-    expect(lista).toMatch(/\n2\) Entrada na Loja Centro A: 1 kg Picanha/)
-    expect(await conta(`select count(*) n from propostas_agente where situacao = 'AGUARDANDO'`)).toBe(2)
+    expect(lista.startsWith(`Tem 2 propostas suas esperando:\n• *${ca}* — Entrada na Loja Centro A: 1 kg Linguiça toscana`)).toBe(true)
+    expect(lista).toContain(`• *${cb}* — Entrada na Loja Centro A: 1 kg Picanha`)
 
+    // "sim 2" (o número da lista) não escolhe: volta a lista com os códigos.
     await processarMensagem(msg(ANA, 'sim 2'), { canal, buscar: api.buscar })
+    expect(canal.enviadas.at(-1)!.texto).toMatch(/^Tem 2 propostas/)
+    expect(await saldoPicanha()).toBe(antes)
+
+    await processarMensagem(msg(ANA, `sim ${cb}`), { canal, buscar: api.buscar })
     expect(await saldoPicanha()).toBe(antes + 1)
-    await processarMensagem(msg(ANA, 'não 1'), { canal, buscar: api.buscar })
+    // O código da outra continua o mesmo depois do primeiro sim.
+    await processarMensagem(msg(ANA, `não ${ca.toLowerCase()}`), { canal, buscar: api.buscar })
     expect(await conta(`select count(*) n from propostas_agente where situacao = 'AGUARDANDO'`)).toBe(0)
+    expect((await uma<{ s: string }>(`select situacao s from propostas_agente where id = $1`, [a.id])).s).toBe('RECUSADA')
     expect(api.corpos).toHaveLength(0)
+  })
+
+  it('a entrada corrigida ("não, são 12") aposenta a que estava esperando: só a nova vale', async () => {
+    await pedirEntrada(ANA, [{ produto: 'picanha', quantidade: 10, unidade: 'kg' }])
+    const velha = await ultimaProposta()
+    await pedirEntrada(ANA, [{ produto: 'picanha', quantidade: 12, unidade: 'kg' }])
+    const nova = await ultimaProposta()
+    expect(nova.resumo).toMatch(/12 kg Picanha/)
+    expect((await uma<{ s: string; e: string }>(`select situacao s, erro e from propostas_agente where id = $1`, [velha.id]))).toEqual({
+      s: 'EXPIRADA',
+      e: `Substituída pela proposta ${codigoDaProposta(nova.id)}.`,
+    })
+    expect(await conta(`select count(*) n from propostas_agente where situacao = 'AGUARDANDO'`)).toBe(1)
   })
 
   it('proposta sem quem pediu (a da rotina) é só da tela; e a de mais de uma hora também', async () => {

@@ -137,12 +137,17 @@ export default async function TelaEstoque({
     moduloLigado(empresa, 'multiUnidade') && onde.unidadeId
       ? onde.opcoes.filter((u) => u.id !== onde.unidadeId && pode(sessao, 'estoque.ajustar', u.id))
       : []
-  // Dar entrada é sempre EM UMA loja. Sem loja escolhida (consolidado), a
-  // mercadoria não teria onde entrar — então a ação usa a primeira visível.
-  const unidadeAlvo = onde.unidadeId ?? onde.opcoes[0]?.id ?? null
+  // Dar entrada é sempre EM UMA loja. Com a loja escolhida no alto, é ela;
+  // no consolidado ("Todas as unidades"), a pessoa escolhe no próprio
+  // formulário, sem nenhuma marcada — antes a mercadoria ia em silêncio para
+  // a primeira loja da lista, e a outra loja só descobria no balanço.
+  const lojasDaEntrada = onde.opcoes
+    .filter((u) => (onde.unidadeId ? u.id === onde.unidadeId : onde.ids.includes(u.id)))
+    .filter((u) => pode(sessao, 'estoque.ajustar', u.id))
+    .map((u) => ({ id: u.id, nome: u.nome, conta: pode(sessao, 'financeiro.lancar', u.id) }))
 
-  const podeMexer = unidadeAlvo ? pode(sessao, 'estoque.ajustar', unidadeAlvo) : false
-  const podeLancarConta = unidadeAlvo ? pode(sessao, 'financeiro.lancar', unidadeAlvo) : false
+  // Corrigir, mínimo e transferir são da loja escolhida no alto.
+  const podeMexer = onde.unidadeId ? pode(sessao, 'estoque.ajustar', onde.unidadeId) : false
 
   const [variacoes, categorias, divergencia] = await Promise.all([
     // Por VARIAÇÃO, e não por linha de saldo: o item que nunca teve entrada
@@ -181,7 +186,9 @@ export default async function TelaEstoque({
     ),
     // A conferência histórico × saldo. Ela é o que impede o estoque de virar
     // um número em que ninguém confia: se divergir, a tela diz na hora.
-    pode(sessao, 'estoque.ajustar') ? conferirSaldos(sessao, onde.unidadeId ?? undefined) : null,
+    // Só as lojas da vista: o gerente de duas lojas, no "Todas as unidades",
+    // não recebe o aviso (nem a conta) do estoque das outras.
+    pode(sessao, 'estoque.ajustar') ? conferirSaldos(sessao, onde.ids) : null,
   ])
 
   // Consolidado soma as lojas; por loja, é o saldo da loja. Linha zerada de
@@ -521,14 +528,14 @@ export default async function TelaEstoque({
         </Aviso>
       )}
 
-      {podeMexer && unidadeAlvo && (
+      {lojasDaEntrada.length > 0 && (
         <Entrada
           slug={slug}
-          unidadeId={unidadeAlvo}
-          unidadeNome={onde.opcoes.find((u) => u.id === unidadeAlvo)?.nome ?? 'esta loja'}
-          ambiguo={onde.unidadeId === null && onde.opcoes.length > 1}
+          lojas={lojasDaEntrada}
+          // Uma só possível (a escolhida no alto, ou a única que a pessoa
+          // alcança): já vem marcada. Mais de uma: a pessoa escolhe.
+          unidadeId={lojasDaEntrada.length === 1 ? lojasDaEntrada[0]!.id : null}
           categorias={categorias}
-          podeLancarConta={podeLancarConta}
           mercadoria={vocab.mercadoria}
           aMercadoria={vocab.aMercadoria}
         />

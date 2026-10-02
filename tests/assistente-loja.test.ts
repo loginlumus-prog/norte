@@ -12,6 +12,7 @@ import {
   type Candidato,
 } from '../src/servidor/assistente/ferramentas-loja'
 import { fraseDaResposta, lerAtalhoEncomenda, lerRespostaCurta } from '../src/servidor/assistente/respostas'
+import { codigoDaProposta } from '../src/servidor/assistente/propostas'
 import { finalDoCodigo, horaFalada, itensEmTexto, primeiroNome } from '../src/servidor/assistente/encomenda-texto'
 import { textoDoPedidoNovo, textoParaCliente } from '../src/servidor/assistente/avisos-encomenda'
 import {
@@ -102,18 +103,34 @@ describe('achar o produto que a pessoa disse', () => {
 
 describe('o "sim" e o "não" na conversa', () => {
   it('a mensagem inteira é o sim (com pontuação, acento e emoji)', () => {
-    for (const t of ['sim', 'Sim!', 'SIM.', 'confirmo', 'Confirma', 'pode', 'Pode lançar', 'ok', 'Ok 👍', 'isso', 'isso mesmo']) {
-      expect(lerRespostaCurta(t), t).toEqual({ aceita: true, numero: null })
+    for (const t of ['sim', 'Sim!', 'SIM.', 'confirmo', 'Confirma', 'Pode lançar']) {
+      expect(lerRespostaCurta(t), t).toEqual({ aceita: true, codigo: null, numero: null, frouxa: false })
+    }
+    // o sim frouxo: também responde a outras perguntas (só vale logo depois da proposta)
+    for (const t of ['pode', 'ok', 'Ok 👍', 'isso', 'isso mesmo']) {
+      expect(lerRespostaCurta(t), t).toEqual({ aceita: true, codigo: null, numero: null, frouxa: true })
     }
     for (const t of ['não', 'Nao', 'cancela', 'Cancelar']) {
-      expect(lerRespostaCurta(t), t).toEqual({ aceita: false, numero: null })
+      expect(lerRespostaCurta(t), t).toEqual({ aceita: false, codigo: null, numero: null, frouxa: true })
     }
   })
 
-  it('com o número: "sim 2", "sim, a 2", "não 1"', () => {
-    expect(lerRespostaCurta('sim 2')).toEqual({ aceita: true, numero: 2 })
-    expect(lerRespostaCurta('Sim, a 2')).toEqual({ aceita: true, numero: 2 })
-    expect(lerRespostaCurta('não 1')).toEqual({ aceita: false, numero: 1 })
+  it('com o código da proposta: "sim KP42", "SIM kp-42", "não KP42"; o número da lista antiga é lido, mas não escolhe', () => {
+    expect(lerRespostaCurta('sim KP42')).toEqual({ aceita: true, codigo: 'KP42', numero: null, frouxa: false })
+    expect(lerRespostaCurta('SIM kp-42')).toEqual({ aceita: true, codigo: 'KP42', numero: null, frouxa: false })
+    expect(lerRespostaCurta('não KP42')).toMatchObject({ aceita: false, codigo: 'KP42' })
+    expect(lerRespostaCurta('ok KP42')).toMatchObject({ aceita: true, codigo: 'KP42', frouxa: true })
+    expect(lerRespostaCurta('sim 2')).toEqual({ aceita: true, codigo: null, numero: 2, frouxa: false })
+    expect(lerRespostaCurta('Sim, a 2')).toMatchObject({ numero: 2 })
+    expect(lerRespostaCurta('não 1')).toMatchObject({ aceita: false, numero: 1 })
+  })
+
+  it('o código é fixo para a proposta, curto, e sem letra que se confunde com número', () => {
+    const c1 = codigoDaProposta('cmabc123')
+    expect(c1).toMatch(/^[A-HJKMNP-Z]{2}\d{2}$/)
+    expect(codigoDaProposta('cmabc123')).toBe(c1)
+    const muitos = new Set(Array.from({ length: 50 }, (_, i) => codigoDaProposta(`prop-${i}`)))
+    expect(muitos.size).toBeGreaterThan(45)
   })
 
   it('frase com mais coisa não é sim: vai para o modelo', () => {

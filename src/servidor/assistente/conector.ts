@@ -8,21 +8,31 @@
 // ele "gera o QR", "manda esta mensagem", e recebe dele o que chegou.
 //
 // ── as duas mãos, e o segredo de cada uma ────────────────────
-//   Norte → conector: `Authorization: Bearer ${CONECTOR_SEGREDO}`.
-//   conector → Norte: HMAC-SHA256 de carimbo + método + caminho + corpo, com o
-//     mesmo segredo, e o carimbo vale cinco minutos. O caminho tem o id da
-//     empresa: assinado para a A não abre a porta da B.
+//   Norte → conector: `Authorization: Bearer ${CONECTOR_TOKEN}`.
+//   conector → Norte: HMAC-SHA256 de carimbo + método + caminho + corpo, com
+//     CONECTOR_ASSINATURA, e o carimbo vale cinco minutos. O caminho tem o id
+//     da empresa: assinado para a A não abre a porta da B.
+//
+// Dois segredos, e não um: o Bearer VIAJA em todo pedido (log de proxy,
+// cabeçalho de depuração, um http esquecido); a chave do HMAC nunca sai da
+// máquina. Com um segredo só, quem lesse o Bearer uma vez também assinava
+// mensagem "recebida" falsa para o Norte — inclusive como o dono.
 //
 // Variáveis:
-//   CONECTOR_URL      onde o conector escuta, ex.: https://conector.norte.app.
-//                     Em produção (NODE_ENV=production) SÓ https — http só
-//                     para http://localhost / 127.0.0.1 (a mesma máquina). O
-//                     segredo viaja em todo pedido; em http, quem está no
-//                     caminho lê.
-//   CONECTOR_SEGREDO  32+ caracteres, o MESMO configurado no conector
+//   CONECTOR_URL          onde o conector escuta, ex.: https://conector.norte.app.
+//                         Em produção (NODE_ENV=production) SÓ https — http só
+//                         para http://localhost / 127.0.0.1 (a mesma máquina).
+//   CONECTOR_TOKEN        32+ caracteres: o Bearer que o Norte manda. O MESMO
+//                         CONECTOR_TOKEN no conector.
+//   CONECTOR_ASSINATURA   32+ caracteres, DIFERENTE do token: a chave com que
+//                         o conector assina o que manda ao Norte. A MESMA nos
+//                         dois lados.
+//   CONECTOR_SEGREDO      o antigo, um só para as duas mãos. Vale como
+//                         reserva de cada uma que faltar (com aviso no log, uma
+//                         vez), para o que já está no ar não parar no deploy.
 //
-// Sem as duas, a conexão por QR Code fica desligada neste servidor e a tela
-// diz isso — nada finge funcionar.
+// Sem URL e token, a conexão por QR Code fica desligada neste servidor e a
+// tela diz isso — nada finge funcionar.
 //
 // A conta do HMAC é IGUAL à de conector/src/assinatura.ts (dois programas,
 // nenhum pacote em comum). tests/whatsapp-proprio.test.ts confere que um
@@ -36,12 +46,33 @@ const MINIMO_SEGREDO = 32
 /** Quanto o relógio dos dois lados pode discordar — e quanto um pedido assinado vale. */
 export const TOLERANCIA_SEGUNDOS = 300
 
+/** `segredo`: o Bearer (CONECTOR_TOKEN) — o que vai em todo pedido ao conector. */
 export type ConfigConector = { url: string; segredo: string }
+
+/**
+ * O segredo de uma das mãos: o próprio, ou o antigo `CONECTOR_SEGREDO` (com
+ * aviso, uma vez). Curto demais é como não ter.
+ */
+function segredoDe(env: Record<string, string | undefined>, nome: 'CONECTOR_TOKEN' | 'CONECTOR_ASSINATURA'): string | null {
+  const proprio = (env[nome] ?? '').trim()
+  if (proprio) return proprio.length >= MINIMO_SEGREDO ? proprio : null
+  const antigo = (env.CONECTOR_SEGREDO ?? '').trim()
+  if (antigo.length < MINIMO_SEGREDO) return null
+  avisarAntigo(nome)
+  return antigo
+}
+
+const avisosDoAntigo = new Set<string>()
+function avisarAntigo(nome: string) {
+  if (avisosDoAntigo.has(nome)) return
+  avisosDoAntigo.add(nome)
+  console.warn(`[conector] ${nome} não configurado: usando CONECTOR_SEGREDO. Separe os dois segredos (ver assistente/conector.ts).`)
+}
 
 export function lerConfigConector(env: Record<string, string | undefined> = process.env): ConfigConector | null {
   const url = (env.CONECTOR_URL ?? '').trim().replace(/\/+$/, '')
-  const segredo = (env.CONECTOR_SEGREDO ?? '').trim()
-  if (!url || segredo.length < MINIMO_SEGREDO) return null
+  const segredo = segredoDe(env, 'CONECTOR_TOKEN')
+  if (!url || !segredo) return null
   try {
     const u = new URL(url)
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
@@ -73,11 +104,8 @@ function avisarUmaVez(texto: string) {
 /** A conexão por QR Code está ligada neste servidor? */
 export const temConector = () => lerConfigConector() !== null
 
-/** Só o segredo, para conferir o que o conector manda (o endereço não importa aí). */
-const segredoDoAmbiente = () => {
-  const s = (process.env.CONECTOR_SEGREDO ?? '').trim()
-  return s.length >= MINIMO_SEGREDO ? s : null
-}
+/** Só a chave da assinatura, para conferir o que o conector manda (o endereço não importa aí). */
+const segredoDoAmbiente = () => segredoDe(process.env, 'CONECTOR_ASSINATURA')
 
 // ─────────────────────────────────────────────────────────────
 // A ASSINATURA

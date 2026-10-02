@@ -10,6 +10,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Selecao, cx } from '@/ui/base'
+import { CampoDoPin } from '@/ui/Assinar'
 import { plural, quantidade } from '@/ui/texto'
 import { criarPedidoAcao, type Recado } from '../acoes'
 import { LEGIVEL, ler } from '../formato'
@@ -38,7 +39,11 @@ export function FazerPedido({
   itens: ItemParaPedir[]
 }) {
   const [quero, setQuero] = useState<Record<string, string>>({})
-  const [fabrica, setFabrica] = useState(fabricas[0]?.id ?? '')
+  // Com mais de uma fábrica, a pessoa escolhe — nenhuma vem marcada (antes o
+  // pedido sem escolha ia para a fábrica mais antiga).
+  const [fabrica, setFabrica] = useState(fabricas.length === 1 ? fabricas[0]!.id : '')
+  const [pedePin, setPedePin] = useState(false)
+  const [pin, setPin] = useState('')
   const [observacao, setObservacao] = useState('')
   const [busca, setBusca] = useState('')
   const [recado, setRecado] = useState<Recado | null>(null)
@@ -55,9 +60,12 @@ export function FazerPedido({
     if (linhas.some((l) => Number.isNaN(l.quantidade))) return setRecado({ erro: LEGIVEL })
     setRecado(null)
     comecar(async () => {
-      const r = await criarPedidoAcao(slug, { lojaId, fabricaId: fabrica || null, itens: linhas, observacao })
+      const r = await criarPedidoAcao(slug, { lojaId, fabricaId: fabrica || null, itens: linhas, observacao, pin: pin || null })
+      setPin('')
+      if (r.precisaPin) setPedePin(true)
       setRecado(r)
       if (r.ok) {
+        setPedePin(false)
         setQuero({})
         setObservacao('')
         router.refresh()
@@ -78,7 +86,13 @@ export function FazerPedido({
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Campo rotulo="Procurar" name="procurar" value={busca} onChange={(ev) => setBusca(ev.currentTarget.value)} placeholder="Nome, código ou gaveta" autoComplete="off" />
         {fabricas.length > 1 && (
-          <Selecao rotulo="Pedir para" name="fabrica" value={fabrica} onChange={(ev) => setFabrica(ev.currentTarget.value)} opcoes={fabricas.map((f) => ({ valor: f.id, titulo: f.nome }))} />
+          <Selecao
+            rotulo="Pedir para"
+            name="fabrica"
+            value={fabrica}
+            onChange={(ev) => setFabrica(ev.currentTarget.value)}
+            opcoes={[{ valor: '', titulo: 'Escolha a fábrica' }, ...fabricas.map((f) => ({ valor: f.id, titulo: f.nome }))]}
+          />
         )}
       </div>
 
@@ -129,6 +143,11 @@ export function FazerPedido({
           ficar lá embaixo, depois de 80 sabores. Só ele — o recado fica fora,
           senão no celular a faixa grudada come meia tela. */}
       <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-borda bg-fundo py-3">
+        {pedePin && (
+          <div className="max-w-xs">
+            <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} aoEnviar={pedir} />
+          </div>
+        )}
         {recado?.erro && <Aviso nivel="critico">{recado.erro}</Aviso>}
         {recado?.ok && <Aviso nivel="bom">{recado.ok}</Aviso>}
         {/* O botão à esquerda: o canto direito de baixo é do "Ajuda" flutuante. */}

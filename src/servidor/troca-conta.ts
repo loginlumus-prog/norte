@@ -29,12 +29,37 @@ export function valorDevolvidoCent(precoUnitCent: number, quantidade: number, fa
 }
 
 /**
- * Quanto de cada real da etiqueta a cliente pagou: total ÷ subtotal da
- * compra. O juro do crédito parcelado fica de fora — está no total, mas não é
- * preço de peça (quem estorna o parcelamento é a operadora).
+ * O valor que volta por uma linha da compra, em centavos: o que a linha
+ * custou DEPOIS do desconto dado nela (o total do item, na proporção da
+ * quantidade que volta), ajustado pelo desconto da compra inteira. Para
+ * baixo, como `valorDevolvidoCent`.
+ *
+ * É esta, e não `valorDevolvidoCent` sobre o preço unitário, que a devolução
+ * grava: o preço unitário é o de ANTES do desconto no item — a blusa de
+ * R$ 100 vendida com R$ 20 de desconto na linha voltava R$ 100.
  */
-export function fatorPago(subtotalCent: number, totalCent: number, jurosCent = 0): number {
-  return subtotalCent > 0 ? (totalCent - jurosCent) / subtotalCent : 1
+export function valorDoItemCent(totalItemCent: number, vendido: number, quantidade: number, fatorPago: number): number {
+  if (!(vendido > 0) || !(quantidade > 0) || !(totalItemCent > 0)) return 0
+  // O epsilon segura o 8999,9999 que a vírgula flutuante faz de 9000.
+  return Math.max(0, Math.floor(((totalItemCent * quantidade) / vendido) * fatorPago + 1e-6))
+}
+
+/**
+ * Quanto de cada real das peças a cliente pagou: (total − juro − acréscimo) ÷
+ * subtotal da compra, nunca mais que 1.
+ *
+ * O juro do crédito parcelado fica de fora — está no total, mas não é preço
+ * de peça (quem estorna o parcelamento é a operadora). O ACRÉSCIMO também: ele
+ * é de UMA peça (a etiqueta velha da blusa), mas a venda só guarda o total
+ * dele, sem dizer de qual. Espalhado pelo fator, a saia de R$ 50 devolvida de
+ * uma compra com R$ 30 de acréscimo na blusa voltava R$ 60 — a loja pagando
+ * para receber a peça de volta. A regra: devolução nunca passa do que a peça
+ * custou; o acréscimo fica com a loja (quem quer desfazer a compra inteira,
+ * com o acréscimo, cancela a venda).
+ */
+export function fatorPago(subtotalCent: number, totalCent: number, jurosCent = 0, acrescimoCent = 0): number {
+  if (!(subtotalCent > 0)) return 1
+  return Math.max(0, Math.min(1, (totalCent - jurosCent - Math.max(0, acrescimoCent)) / subtotalCent))
 }
 
 /** A tabela de preço das peças novas: a da forma da diferença (o vale é à vista). */
@@ -86,11 +111,25 @@ export function resultadoDaTroca(c: Pick<ContaDaTroca, 'pagaCent' | 'sobraCent'>
 
 /**
  * O preço digitado na troca sem a compra (a peça veio do sistema anterior)
- * parece dedo errado? Cinco vezes a etiqueta mais cara de hoje é o zero a
- * mais — R$ 1.299 numa blusa de R$ 129,90. A autorização com PIN vale para o
- * número que a gerente viu, mas não salva o número que ninguém conferiu.
+ * pode virar vale? Só até a etiqueta MAIS CARA de hoje (vista, cartão ou
+ * crediário, com o ajuste da variação). Antes o teto era cinco vezes ela —
+ * contra o zero a mais —, e o preço digitado é dinheiro: R$ 500 por uma blusa
+ * de R$ 129,90 virava R$ 500 de vale com a autorização de quem só viu o
+ * número. Peça sem preço no cadastro não tem régua: recusa.
  */
 export function precoSemCompraPareceErrado(digitadoCent: number, etiquetaMaisCaraCent: number): boolean {
   if (!(digitadoCent > 0)) return true
-  return etiquetaMaisCaraCent > 0 && digitadoCent > etiquetaMaisCaraCent * 5
+  if (!(etiquetaMaisCaraCent > 0)) return true
+  return digitadoCent > etiquetaMaisCaraCent
 }
+
+/** Na troca sem a compra, quantas peças de um mesmo item voltam numa troca só. */
+export const QTD_MAX_SEM_COMPRA = 20
+
+/**
+ * O crédito da troca sem a compra que uma pessoa autoriza sozinha (R$ 2.000).
+ * Acima disto, o PIN tem de ser de OUTRA pessoa que pode autorizar — até a
+ * dona: vale de R$ 5.000 sem compra nenhuma é dinheiro saindo sem lastro, e
+ * pede dois pares de olhos.
+ */
+export const TETO_CREDITO_SEM_COMPRA_CENT = 200_000

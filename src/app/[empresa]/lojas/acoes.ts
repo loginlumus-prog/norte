@@ -84,7 +84,13 @@ export async function editarLojaAcao(
     const sessao = await exigirSessao(slug)
     const r = await editarLoja(sessao, id, dadosDo(form))
     revalidatePath(`/${slug}`, 'layout')
-    return { ok: 'Salvo.' + oQueNasceu(r) }
+    return {
+      ok:
+        'Salvo.' +
+        oQueNasceu(r) +
+        // Virar loja de venda (ou fábrica) muda a conta: a tela diz quanto.
+        (r.custoExtra > 0 ? ` Agora ela soma ${mostrar(Math.round(r.custoExtra * 100))} à conta do mês.` : ''),
+    }
   } catch (e) {
     return { erro: recado(e) }
   }

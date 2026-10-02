@@ -3,7 +3,9 @@ import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { acharRecibo } from '@/servidor/recibos'
+import { pode } from '@/servidor/permissao'
 import { Folha, Credor, FaltaCredor, brl, dia, diaCurto, quando } from '../../Papel'
+import { Estornar } from './Estornar'
 
 export const metadata: Metadata = { title: 'Recibo do crediário' }
 
@@ -41,7 +43,15 @@ export default async function ReciboPagina({
       nonce={nonce}
       voltar={{ href: `/${slug}/crediario?cliente=${r.cliente.id}`, rotulo: 'crediário da cliente' }}
       imprimir={imprimir === '1'}
-      aviso={<FaltaCredor c={r.credor} slug={slug} />}
+      aviso={
+        <div className="flex flex-col gap-2">
+          <FaltaCredor c={r.credor} slug={slug} />
+          {/* O estorno do recibo lançado errado: só na tela, só para quem pode cancelar venda na loja dele. */}
+          {pode(sessao, 'venda.cancelar', r.unidadeId) && (
+            <Estornar slug={slug} reciboId={r.id} clienteId={r.cliente.id} codigo={r.codigo} />
+          )}
+        </div>
+      }
     >
       <Credor c={r.credor} />
 

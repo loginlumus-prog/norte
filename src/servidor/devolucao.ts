@@ -17,8 +17,22 @@
 // ── quanto vale o que voltou ─────────────────────────────────
 // O que a pessoa recebe é o que ela PAGOU pela peça, não a etiqueta. Numa
 // venda com desconto de 10%, a blusa de R$ 100 foi paga por R$ 90 — devolver
-// R$ 100 seria a loja pagar para receber a peça de volta. O fator é
-// total ÷ subtotal da venda, aplicado ao preço do item.
+// R$ 100 seria a loja pagar para receber a peça de volta. A conta é o total
+// da linha (já sem o desconto dado nela), na proporção do que volta, vezes o
+// fator (total − juro − acréscimo) ÷ subtotal da venda — nunca mais que 1:
+// o acréscimo é de uma peça que a venda não diz qual, e devolução nunca passa
+// do que a peça custou (ver `fatorPago` em troca-conta.ts).
+//
+// ── onde acontece ────────────────────────────────────────────
+// A cliente comprou no Centro e devolve no Shopping: o dinheiro sai da gaveta
+// do Shopping, a peça volta para a arara do Shopping, e o vale é de lá. A
+// devolução continua contada na loja da VENDA (é lá que a receita dela está),
+// e o livro das duas lojas registra.
+//
+// ── o vale volta como vale ───────────────────────────────────
+// Compra paga com vale, devolvida "em dinheiro": o vale virava dinheiro na
+// mão. O que sai em dinheiro (ou estorno) nunca passa do que a compra recebeu
+// FORA do vale, somadas as devoluções anteriores; o resto volta num vale novo.
 //
 // ── o que volta e o que não volta ────────────────────────────
 // O estoque volta (movimento DEVOLUCAO apontando para a venda). Os pontos
@@ -29,13 +43,15 @@
 // do período; é assim que o mês de março não muda quando alguém devolve em
 // abril.
 
+import { randomInt } from 'node:crypto'
 import { colunaDoDia, diaDaColuna, diaEmSP, somarDias } from './dia'
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, pode, type Sessao } from './permissao'
+import { exigir, pode, SemPermissao, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
 import { travarCaixaAberto } from './caixa'
 import { centavos, reais, multiplicar } from './dinheiro'
-import { fatorPago, valorDevolvidoCent } from './troca-conta'
+import { desfazerTentativa, reservarTentativa } from './limite'
+import { fatorPago, valorDevolvidoCent, valorDoItemCent } from './troca-conta'
 import type { DestinoDevolucao } from '@prisma/client'
 
 /** Quantos dias o vale vale. Depois disso ele não paga mais nada. */
@@ -47,10 +63,27 @@ export const VALE_DIAS = 90
  */
 const ALFABETO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 
-export function gerarCodigoDeVale(sorteio: () => number = Math.random): string {
+/**
+ * Quantos símbolos tem o código novo. O vale é dinheiro ao portador: quem
+ * acerta um código gasta o crédito de outra pessoa. Seis símbolos sorteados
+ * com `Math.random` eram ~900 milhões de combinações num gerador previsível;
+ * dez, com o sorteio do sistema operacional, são ~8 × 10¹⁴ — e a consulta do
+ * balcão tem freio (ver `consultarVale`). Os de seis que já estão no papel
+ * continuam valendo (`normalizarCodigo` aceita os dois).
+ */
+const SIMBOLOS_DO_VALE = 10
+
+/**
+ * "VT-K3M9P-2QXRT": dez símbolos em dois grupos de cinco, que é como se dita
+ * e se digita sem perder o lugar. `sorteio` só para teste e demonstração (um
+ * número em [0, 1), como `Math.random`); sem ele, `crypto.randomInt`.
+ */
+export function gerarCodigoDeVale(sorteio?: () => number): string {
   let s = ''
-  for (let i = 0; i < 6; i++) s += ALFABETO[Math.floor(sorteio() * ALFABETO.length)]
-  return `VT-${s}`
+  for (let i = 0; i < SIMBOLOS_DO_VALE; i++) {
+    s += ALFABETO[sorteio ? Math.floor(sorteio() * ALFABETO.length) : randomInt(ALFABETO.length)]
+  }
+  return `VT-${s.slice(0, 5)}-${s.slice(5)}`
 }
 
 /**
@@ -182,6 +215,12 @@ export type PedidoDevolucao = {
   itens: { vendaItemId: string; quantidade: number; variacaoId?: string | null }[]
   destino: DestinoDevolucao
   motivo: string
+  /**
+   * A loja onde a devolução ACONTECE — a de quem está no balcão. O dinheiro
+   * sai do caixa aberto dela, a peça volta para o estoque dela e o vale é
+   * dela. Sem ela, a loja da venda (o de sempre).
+   */
+  unidadeId?: string | null
 }
 
 export type ResultadoDevolucao =
@@ -190,6 +229,11 @@ export type ResultadoDevolucao =
       devolucaoId: string
       /** O que vai para o cliente: vale, dinheiro da gaveta ou estorno. */
       valor: number
+      /**
+       * Quanto de `valor` virou vale. Com destino VALE, tudo; com dinheiro ou
+       * estorno, a parte que a compra pagou com vale (o vale volta como vale).
+       */
+      emVale: number
       /** O que abateu o fiado desta venda, antes de sobrar para o cliente. */
       abatido: number
       vale: { id: string; codigo: string; validade: Date } | null
@@ -207,6 +251,7 @@ export type ResultadoDevolucao =
         | 'sem_permissao'
         | 'item_repetido'
         | 'quantidade_fracionada'
+        | 'item_ajuste'
     }
 
 /** A forma do pedido, conferida antes de abrir o banco. Pura. */
@@ -256,37 +301,68 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
   const { motivo, pedidos } = conferido
 
   await travarVenda(db, p.vendaId)
-  const v = await db.venda.findUnique({
+  // Uma consulta por lista (pagamentos, itens, devoluções): duas listas no
+  // mesmo select o Prisma busca em paralelo, e dentro da transação isso
+  // avisa (e quebra no pg@9).
+  const venda = await db.venda.findUnique({
     where: { id: p.vendaId },
     select: {
       id: true, numero: true, unidadeId: true, situacao: true, clienteId: true,
-      subtotal: true, total: true, pontosGanhos: true, pontosUsados: true,
-      pagamentos: { select: { juros: true } },
-      itens: {
-        select: {
-          id: true, variacaoId: true, descricao: true, medida: true, quantidade: true, precoUnit: true,
-          devolucoes: { select: { quantidade: true } },
-        },
-      },
+      subtotal: true, total: true, acrescimo: true, pontosGanhos: true, pontosUsados: true,
+      unidade: { select: { nome: true } },
     },
   })
-  if (!v) return { ok: false as const, motivo: 'nao_achada' as const }
+  if (!venda) return { ok: false as const, motivo: 'nao_achada' as const }
+  const pagamentos = await db.pagamento.findMany({
+    where: { vendaId: venda.id },
+    select: { forma: true, valor: true, juros: true },
+  })
+  const itens = await db.vendaItem.findMany({
+    where: { vendaId: venda.id },
+    select: {
+      id: true, variacaoId: true, descricao: true, medida: true, quantidade: true, precoUnit: true, total: true,
+      devolucoes: { select: { quantidade: true } },
+    },
+  })
+  const v = { ...venda, pagamentos, itens }
   if (v.situacao === 'CANCELADA') return { ok: false as const, motivo: 'cancelada' as const }
   // O saldo trazido do sistema anterior não tem peça para voltar: o "item"
   // dele é a dívida. Devolver aqui criaria vale ou sangria de uma venda que
   // nunca passou por este balcão.
   if (v.situacao === 'SALDO_IMPORTADO') return { ok: false as const, motivo: 'saldo_importado' as const }
 
+  // ── onde a devolução acontece ──
+  // A loja de quem está no balcão (ver `PedidoDevolucao.unidadeId`). Em outra
+  // loja que não a da venda, quem devolve precisa enxergar a venda de lá —
+  // e a loja daqui precisa vender (depósito não tem balcão nem gaveta).
+  const onde = p.unidadeId || v.unidadeId
+  const outraLoja = onde !== v.unidadeId
+  let ondeNome = v.unidade.nome
+  if (outraLoja) {
+    const u = await db.unidade.findUnique({ where: { id: onde }, select: { nome: true, ativa: true, ehDeposito: true } })
+    if (!u || !u.ativa || u.ehDeposito) return { ok: false as const, motivo: 'sem_permissao' as const }
+    if (!pode(sessao, 'venda.ver', v.unidadeId)) return { ok: false as const, motivo: 'sem_permissao' as const }
+    ondeNome = u.nome
+  }
+
   // Troca (vale) é gesto de balcão. Dinheiro saindo da gaveta e estorno
-  // são gestos de quem pode cancelar venda — o mesmo nível de confiança.
+  // são gestos de quem pode cancelar venda — o mesmo nível de confiança. Na
+  // loja onde acontece: é a gaveta e o estoque dela que mexem.
   const precisa = p.destino === 'VALE' ? 'venda.criar' : 'venda.cancelar'
-  if (!pode(sessao, precisa, v.unidadeId)) return { ok: false as const, motivo: 'sem_permissao' as const }
+  if (!pode(sessao, precisa, onde)) return { ok: false as const, motivo: 'sem_permissao' as const }
 
   // ── o que ainda pode voltar ──
   const porId = new Map(v.itens.map((i) => [i.id, i]))
   for (const ped of pedidos) {
     const item = porId.get(ped.vendaItemId)
     if (!item) return { ok: false as const, motivo: 'nao_achada' as const }
+    // A linha negativa do pedido do catálogo ("menos o sinal já pago") é
+    // acerto de conta, não peça: não volta. Devolvê-la "valeria" um número
+    // negativo e encolheria o vale das peças de verdade da mesma venda — que
+    // continuam devolvíveis.
+    if (centavos(item.precoUnit) < 0 || centavos(item.total) < 0) {
+      return { ok: false as const, motivo: 'item_ajuste' as const }
+    }
     if (pedeInteiro(item.medida) && !Number.isInteger(ped.quantidade)) {
       return { ok: false as const, motivo: 'quantidade_fracionada' as const }
     }
@@ -323,10 +399,12 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
   // O juro do crédito parcelado (quando a loja cobra) está dentro do total,
   // mas não é preço de peça: devolver a blusa não devolve juro de
   // maquininha — quem estorna o parcelamento é a operadora.
+  // E o acréscimo fica de fora (ver `fatorPago`): a devolução nunca passa do
+  // que a peça custou.
   const subtotalCent = centavos(v.subtotal)
   const jurosCent = v.pagamentos.reduce((s, x) => s + centavos(x.juros), 0)
   const totalCent = centavos(v.total) - jurosCent
-  const fator = fatorPago(subtotalCent, totalCent)
+  const fator = fatorPago(subtotalCent, totalCent, 0, centavos(v.acrescimo))
 
   const linhas = pedidos.map((ped) => {
     const item = porId.get(ped.vendaItemId)!
@@ -334,7 +412,7 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
       item,
       quantidade: ped.quantidade,
       variacaoId: ped.variacaoId ?? null,
-      valorCent: valorDevolvidoCent(centavos(item.precoUnit), ped.quantidade, fator),
+      valorCent: valorDoItemCent(centavos(item.total), Number(item.quantidade), ped.quantidade, fator),
     }
   })
   const valorCent = linhas.reduce((s, l) => s + l.valorCent, 0)
@@ -363,22 +441,45 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
   )
   const paraClienteCent = valorCent - fiado.abatidoCent
 
+  // ── o vale volta como vale ──
+  // O que pode sair em dinheiro (ou estorno) é o que a compra recebeu FORA do
+  // vale, menos o que as devoluções anteriores já tiraram por fora (o que não
+  // virou vale nelas: dinheiro, estorno, abatimento do fiado). O abatimento
+  // de agora vem primeiro — é dinheiro de fora também (a parcela). O resto
+  // vira vale, seja qual for o destino pedido.
+  const valePagoCent = v.pagamentos.filter((x) => x.forma === 'VALE').reduce((s, x) => s + centavos(x.valor), 0)
+  let foraCent = 0
+  if (p.destino !== 'VALE' && paraClienteCent > 0) {
+    const anteriores = await db.devolucao.findMany({
+      where: { vendaId: v.id },
+      select: { valor: true, vale: { select: { valor: true } } },
+    })
+    const foraJaSaiuCent = anteriores.reduce((s, d) => s + centavos(d.valor) - centavos(d.vale?.valor ?? 0), 0)
+    const foraLivreCent = Math.max(0, totalCent - valePagoCent - foraJaSaiuCent - fiado.abatidoCent)
+    foraCent = Math.min(paraClienteCent, foraLivreCent)
+  }
+  const emValeCent = paraClienteCent - foraCent
+
   // ── dinheiro sai da gaveta: precisa de gaveta ──
-  // Preso até o fim: o turno não fecha no meio desta sangria.
+  // A gaveta da loja onde a devolução acontece. Preso até o fim: o turno não
+  // fecha no meio desta sangria.
   let caixaId: string | null = null
-  if (p.destino === 'DINHEIRO' && paraClienteCent > 0) {
-    caixaId = await travarCaixaAberto(db, v.unidadeId)
+  if (p.destino === 'DINHEIRO' && foraCent > 0) {
+    caixaId = await travarCaixaAberto(db, onde)
     if (!caixaId) return { ok: false as const, motivo: 'caixa_fechado' as const }
   }
 
   // ── o vale ──
-  // A loja que emitiu: com "vale por loja" ligado, só se gasta nela.
+  // Da loja onde a devolução acontece: com "vale por loja" ligado, só se
+  // gasta nela — e é nela que a cliente está.
   const vale =
-    p.destino === 'VALE' && paraClienteCent > 0
-      ? await criarValeEm(db, sessao, { clienteId: v.clienteId, unidadeId: v.unidadeId, valorCent: paraClienteCent })
+    emValeCent > 0
+      ? await criarValeEm(db, sessao, { clienteId: v.clienteId, unidadeId: onde, valorCent: emValeCent })
       : null
 
   // ── a devolução ──
+  // Contada na loja da VENDA: é lá que a receita dela está, e os relatórios
+  // descontam a devolução de onde a venda entrou (ver o topo do arquivo).
   const dev = await db.devolucao.create({
     data: {
       orgId: sessao.orgId,
@@ -404,18 +505,22 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
 
   // ── o estoque volta ──
   // Para a variação do item; no item sem cadastro, para a peça do catálogo
-  // que quem devolveu apontou (ver `PedidoDevolucao.itens`).
+  // que quem devolveu apontou (ver `PedidoDevolucao.itens`). Na loja onde a
+  // devolução acontece: é lá que a peça está, na mão.
+  const daLoja = outraLoja ? ` da ${v.unidade.nome}, devolvida na ${ondeNome}` : ''
   for (const l of linhas) {
     const como = !l.item.variacaoId && l.variacaoId ? voltaComo.get(l.variacaoId) : undefined
     const variacaoId = l.item.variacaoId ?? como?.id
     if (!variacaoId) continue
     await mexerEstoqueEm(db, sessao, {
       variacaoId,
-      unidadeId: v.unidadeId,
+      unidadeId: onde,
       tipo: 'DEVOLUCAO',
       quantidade: l.quantidade,
       referencia: v.id,
-      motivo: como ? `Devolução da venda ${v.numero} (${l.item.descricao}, sem cadastro, voltou como ${como.nome})` : `Devolução da venda ${v.numero}`,
+      motivo: como
+        ? `Devolução da venda ${v.numero}${daLoja} (${l.item.descricao}, sem cadastro, voltou como ${como.nome})`
+        : `Devolução da venda ${v.numero}${daLoja}`,
     })
   }
 
@@ -428,14 +533,14 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
   }
 
   // ── o dinheiro sai da gaveta ──
-  if (p.destino === 'DINHEIRO' && caixaId && paraClienteCent > 0) {
+  if (p.destino === 'DINHEIRO' && caixaId && foraCent > 0) {
     await db.caixaMovimento.create({
       data: {
         orgId: sessao.orgId,
         caixaId,
         tipo: 'SANGRIA',
-        valor: reais(paraClienteCent),
-        motivo: `Devolução da venda ${v.numero}`,
+        valor: reais(foraCent),
+        motivo: `Devolução da venda ${v.numero}${outraLoja ? ` (${v.unidade.nome})` : ''}`,
         quem: sessao.nome,
       },
     })
@@ -482,33 +587,43 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
     })
   }
 
-  await db.auditoria.create({
-    data: {
-      orgId: sessao.orgId,
-      unidadeId: v.unidadeId,
-      usuarioId: sessao.usuarioId,
-      quem: sessao.nome,
-      acao: 'venda.devolveu',
-      alvoTipo: 'venda',
-      alvoId: v.id,
-      alvoNome: `Venda ${v.numero}`,
-      valor: reais(valorCent),
-      motivo: [
-        motivo,
-        fiado.abatidoCent > 0 ? `${reais(fiado.abatidoCent).toFixed(2)} abatido do crediário` : null,
-        paraClienteCent > 0
-          ? p.destino === 'VALE' ? `vale ${vale!.codigo}` : p.destino === 'DINHEIRO' ? 'em dinheiro' : 'estorno por fora'
-          : null,
-      ]
-        .filter(Boolean)
-        .join(' · '),
-    },
-  })
+  // No livro das DUAS lojas quando a devolução foi em outra: a da venda vê a
+  // receita saindo; a de onde aconteceu vê a peça e o dinheiro (ou o vale).
+  const textoDoLivro = [
+    motivo,
+    outraLoja ? `venda da ${v.unidade.nome}, devolvida na ${ondeNome}` : null,
+    fiado.abatidoCent > 0 ? `${reais(fiado.abatidoCent).toFixed(2)} abatido do crediário` : null,
+    foraCent > 0 ? `${reais(foraCent).toFixed(2)} ${p.destino === 'DINHEIRO' ? 'em dinheiro' : 'estorno por fora'}` : null,
+    vale
+      ? p.destino === 'VALE'
+        ? `vale ${vale.codigo}`
+        : `${reais(emValeCent).toFixed(2)} em vale ${vale.codigo} (a compra foi paga com vale)`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  for (const unidadeId of outraLoja ? [v.unidadeId, onde] : [v.unidadeId]) {
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'venda.devolveu',
+        alvoTipo: 'venda',
+        alvoId: v.id,
+        alvoNome: `Venda ${v.numero}`,
+        valor: reais(valorCent),
+        motivo: textoDoLivro,
+      },
+    })
+  }
 
   return {
     ok: true as const,
     devolucaoId: dev.id,
     valor: reais(paraClienteCent),
+    emVale: reais(emValeCent),
     abatido: reais(fiado.abatidoCent),
     vale: vale ? { id: vale.id, codigo: vale.codigo, validade: vale.validade } : null,
   }
@@ -522,17 +637,46 @@ export type ValeConsultado =
   | { ok: true; id: string; codigo: string; saldo: number; cliente: string | null; validade: Date | null }
   | { ok: false; motivo: 'nao_achado' | 'zerado' | 'vencido' }
   | { ok: false; motivo: 'outra_loja'; loja: string }
+  /** Código errado demais vezes seguidas: a consulta espera (ver `consultarVale`). */
+  | { ok: false; motivo: 'bloqueado'; esperarMin: number; recado: string }
 
 /**
  * Lê um vale pelo código, como o balcão faz antes de aceitar. Com a loja da
  * venda, já diz se o vale é de outra loja (regra "vale por loja") — a venda
  * confere de novo ao fechar.
+ *
+ * O vale é dinheiro ao portador, e esta consulta diz "existe, vale R$ X" para
+ * quem digitar o código certo. Por isso:
+ *   • a loja é obrigatória, e a pessoa precisa vender NELA — sem a loja, a
+ *     permissão valia para "alguma loja", e qualquer acesso consultava tudo;
+ *   • tem freio, o mesmo do login e do PIN (limite.ts): código que não existe
+ *     conta como erro, por pessoa; cinco em 15 minutos seguram a consulta.
+ *     O vale achado sai da conta, mas NÃO zera os erros de antes: senão
+ *     quem chuta intercala o próprio vale entre os chutes e nunca para.
  */
 export async function consultarVale(sessao: Sessao, codigo: string, unidadeId?: string): Promise<ValeConsultado> {
+  if (!unidadeId) throw new SemPermissao('venda.criar')
   exigir(sessao, 'venda.criar', unidadeId)
   const c = normalizarCodigo(codigo)
+  // Formato errado não gasta tentativa: é dedo, não chute (como o PIN).
   if (!c) return { ok: false, motivo: 'nao_achado' }
 
+  const reserva = await reservarTentativa(sessao.orgId, `vale:${sessao.usuarioId}`, null)
+  if (reserva.bloqueado) {
+    return {
+      ok: false,
+      motivo: 'bloqueado',
+      esperarMin: reserva.esperarMin,
+      recado: `Código de vale errado muitas vezes. Espere ${reserva.esperarMin} min e tente de novo.`,
+    }
+  }
+
+  const r = await consultarValeEm(sessao, c, unidadeId)
+  if (r.ok || r.motivo !== 'nao_achado') await desfazerTentativa(sessao.orgId, reserva.tentativaId)
+  return r
+}
+
+async function consultarValeEm(sessao: Sessao, c: string, unidadeId: string | undefined): Promise<ValeConsultado> {
   return comoOrg(sessao.orgId, async (db) => {
     const v = await db.vale.findFirst({
       where: { codigo: c },
@@ -560,12 +704,19 @@ export async function consultarVale(sessao: Sessao, codigo: string, unidadeId?: 
   })
 }
 
-/** "vt 3f9k2a" → "VT-3F9K2A". O papel amassado não tem culpa da formatação. */
+/**
+ * "vt k3m9p 2qxrt" → "VT-K3M9P-2QXRT"; "vt 3f9k2a" → "VT-3F9K2A" (o código
+ * de seis, de antes, continua valendo). O papel amassado não tem culpa da
+ * formatação.
+ */
 export function normalizarCodigo(bruto: string): string | null {
-  const limpo = bruto.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  const corpo = limpo.startsWith('VT') ? limpo.slice(2) : limpo
-  if (corpo.length !== 6) return null
-  return `VT-${corpo}`
+  const limpo = String(bruto ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const serve = (n: number) => n === 6 || n === SIMBOLOS_DO_VALE
+  // Com o "VT" na frente, ou sem ele (o código que começa com VT, digitado
+  // sem o prefixo, também tem de achar).
+  const corpo = limpo.startsWith('VT') && serve(limpo.length - 2) ? limpo.slice(2) : serve(limpo.length) ? limpo : null
+  if (!corpo) return null
+  return corpo.length === 6 ? `VT-${corpo}` : `VT-${corpo.slice(0, 5)}-${corpo.slice(5)}`
 }
 
 /**

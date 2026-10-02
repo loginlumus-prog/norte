@@ -10,12 +10,15 @@ import { SemPermissao } from '@/servidor/permissao'
 import { situacaoDeCredito, salvarConfigCrediario, configCrediario, type SituacaoDeCredito } from '@/servidor/crediario'
 import {
   baixaExterna,
+  estornarRecibo,
   fichaParaReceber,
   procurarDevedores,
   receberVarias,
   type FichaParaReceber,
   type PedidoDeBaixaExterna,
+  type PedidoDeEstorno,
   type PedidoDeRecibo,
+  type ResultadoDoEstorno,
   type ResultadoDoRecibo,
 } from '@/servidor/recibos'
 import { lerNumero } from '@/servidor/dinheiro'
@@ -85,6 +88,22 @@ export async function baixaExternaAcao(slug: string, pedido: PedidoDeBaixaExtern
     return r
   } catch (e) {
     if (e instanceof SemPermissao) return { ok: false, erro: 'Baixa de pagamento feito fora é de quem negocia o crediário (gerente ou dona).' }
+    throw e
+  }
+}
+
+/** Estornar o recibo lançado errado (ver `estornarRecibo`): volta para a lista da cliente. */
+export async function estornarReciboAcao(
+  slug: string,
+  pedido: PedidoDeEstorno & { clienteId: string },
+): Promise<ResultadoDoEstorno> {
+  try {
+    const sessao = await exigirSessao(slug)
+    const r = await estornarRecibo(sessao, { reciboId: pedido.reciboId, motivo: pedido.motivo, pin: pedido.pin })
+    if (r.ok) revalidar(slug, pedido.clienteId)
+    return r
+  } catch (e) {
+    if (e instanceof SemPermissao) return { ok: false, erro: SEM_PERMISSAO }
     throw e
   }
 }

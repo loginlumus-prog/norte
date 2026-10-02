@@ -9,11 +9,16 @@
 //    "Vendi bem?" e "a loja do shopping vendeu bem?" são perguntas diferentes,
 //    e o dono faz as duas no mesmo minuto.
 //
-// 3. A escolha vive no ENDEREÇO (?unidade=...), não em cookie escondido.
-//    Assim o gerente manda o link para o dono e os dois veem a mesma tela —
-//    com cookie, cada um veria a sua e a conversa não fecha.
+// 3. A escolha vive no ENDEREÇO (?unidade=...) sempre que ele traz uma.
+//    Assim o gerente manda o link para o dono e os dois veem a mesma tela.
+//    Sem nada no endereço — o clique no menu, o "voltar à lista" —, vale a
+//    última escolha feita no seletor, lembrada num cookie da empresa (ver
+//    unidade-lembrada.ts). Antes disso, cada clique no menu voltava para
+//    "Todas as unidades" e a loja escolhida se perdia.
 
+import { cookies } from 'next/headers'
 import { comoOrg } from './banco'
+import { cookieDaUnidade, pedidaOuLembrada } from './unidade-lembrada'
 import { unidadesQuePodem, type Capacidade, type Sessao } from './permissao'
 import { moduloLigado, type ComModulos } from './modulos'
 
@@ -54,22 +59,44 @@ export type Escolha = {
 }
 
 /**
+ * A unidade lembrada neste aparelho para esta empresa, ou nada. Fora de uma
+ * requisição (teste, rotina) não há cookie, e não há o que lembrar.
+ */
+async function unidadeLembrada(slug: string): Promise<string | undefined> {
+  try {
+    return (await cookies()).get(cookieDaUnidade(slug))?.value
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Resolve o que veio no endereço contra o que a pessoa pode ver.
  *
- * Unidade de outra empresa, ou unidade que esta pessoa não alcança, cai no
- * consolidado em vez de dar erro — endereço colado errado não deve virar tela
- * quebrada, e também não pode virar porta dos fundos.
+ * Sem nada no endereço, tenta a última unidade escolhida (o cookie). As duas
+ * passam pela mesma conferência: unidade de outra empresa, ou unidade que
+ * esta pessoa não alcança, cai no consolidado em vez de dar erro — endereço
+ * colado errado não deve virar tela quebrada, e cookie antigo (a pessoa
+ * perdeu a loja, a loja fechou) também não pode virar porta dos fundos.
+ *
+ * `empresa.slug` é o que liga a lembrança; quem não passa (os testes) fica
+ * só com o endereço.
  */
 export async function escolherUnidade(
   sessao: Sessao,
-  empresa: ComModulos,
+  empresa: ComModulos & { slug?: string },
   pedida: string | undefined,
   capacidade: Capacidade = 'venda.ver',
 ): Promise<Escolha> {
   const opcoes = await unidadesVisiveis(sessao, capacidade)
   const varias = opcoes.length > 1 && moduloLigado(empresa, 'multiUnidade')
 
-  const valida = pedida && opcoes.some((u) => u.id === pedida) ? pedida : null
+  // Só vale procurar o cookie quando há o que escolher: quem alcança uma
+  // loja só fica sempre com ela, lembrada ou não.
+  const alvo = varias
+    ? pedidaOuLembrada(pedida, !pedida && empresa.slug ? await unidadeLembrada(empresa.slug) : undefined)
+    : pedida
+  const valida = alvo && opcoes.some((u) => u.id === alvo) ? alvo : null
   const unidadeId = varias ? valida : (opcoes[0]?.id ?? null)
 
   return {

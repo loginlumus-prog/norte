@@ -52,8 +52,17 @@ import {
 export type SeJaExiste = 'atualizar' | 'pular'
 
 export type EntradaLote = {
-  /** A loja onde o estoque da planilha entra. Sem estoque na planilha, pode faltar. */
+  /**
+   * A loja onde o estoque da planilha entra — e onde os produtos novos nascem
+   * vendidos. Sem estoque na planilha, pode faltar.
+   */
   unidadeId: string | null
+  /**
+   * Os produtos novos nascem vendidos em TODAS as lojas de quem traz (vazio,
+   * para quem responde pela empresa inteira), e não só na loja escolhida.
+   * Padrão: só na loja escolhida.
+   */
+  vendidoEmTodas?: boolean
   seJaExiste: SeJaExiste
   /** Os itens como vieram do navegador — conferidos aqui, um a um. */
   itens: unknown[]
@@ -111,7 +120,7 @@ const doNorte = (codigo: string, nome: string) => new RegExp(`^${prefixoDe(nome)
 
 const SELECT_EXISTENTE = {
   id: true, nome: true, ativo: true, servico: true, vendidoEm: true,
-  precoVista: true, precoCartao: true, custo: true,
+  precoVista: true, precoCartao: true, precoCrediario: true, custo: true,
   variacoes: {
     where: { ativa: true },
     select: { id: true, codigo: true, codigoBarras: true, opcoes: { select: { opcaoId: true } } },
@@ -126,6 +135,7 @@ type Existente = {
   vendidoEm: string[]
   precoVista: unknown
   precoCartao: unknown
+  precoCrediario: unknown
   custo: unknown
   variacoes: { id: string; codigo: string | null; codigoBarras: string | null; opcoes: { opcaoId: string }[] }[]
 }
@@ -183,12 +193,7 @@ export async function importarLote(sessao: Sessao, e: EntradaLote): Promise<Resu
     exigir(sessao, 'estoque.ajustar', unidadeId)
   }
 
-  // Em que lojas o produto NASCE. Quem responde pela empresa inteira
-  // cadastra para todas (vazio = todas, inclusive as que abrirem); o gerente
-  // de uma loja cadastra só para as dele — a mesma regra da ficha.
   const alcance = unidadesQuePodem(sessao, 'produto.cadastrar')
-  const vendidoEm = alcance === 'todas' ? [] : unidadeId && alcance.includes(unidadeId) ? [unidadeId] : alcance
-  if (!alcancaOProduto(alcance, vendidoEm)) throw new SemPermissao('produto.cadastrar')
 
   // A assinatura, UMA vez por lote: a vendedora que cadastra ou corrige
   // estoque porque a empresa deixou assina sempre; os outros, quando a
@@ -209,6 +214,21 @@ export async function importarLote(sessao: Sessao, e: EntradaLote): Promise<Resu
     if (erro instanceof ImportacaoRecusada) return { ok: false, erro: erro.message }
     throw erro
   }
+
+  // Em que lojas o produto NASCE. Na loja escolhida — a mesma onde entra o
+  // estoque da planilha —, a não ser que a pessoa peça "em todas as lojas".
+  // Antes, quem responde pela empresa inteira cadastrava sempre para todas
+  // (vazio), mesmo trazendo a planilha da sorveteria: o picolé aparecia no
+  // balcão da loja de roupa. Depósito não vende: com ele, vale o alcance de
+  // quem traz. O gerente nunca cadastra fora das lojas dele — a regra da ficha.
+  const loja = unidadeId && !preparo.deposito ? unidadeId : null
+  const vendidoEm =
+    loja && !e.vendidoEmTodas && (alcance === 'todas' || alcance.includes(loja))
+      ? [loja]
+      : alcance === 'todas'
+        ? []
+        : alcance
+  if (!alcancaOProduto(alcance, vendidoEm)) throw new SemPermissao('produto.cadastrar')
 
   const ctx: Contexto = {
     sessao,
@@ -525,24 +545,66 @@ async function criar(db: BancoDaOrg, ctx: Contexto, item: ItemImportado): Promis
   return {
     produto: {
       id: produto.id, nome: item.nome, ativo: true, servico: false, vendidoEm: ctx.vendidoEm,
-      precoVista: item.precoVista, precoCartao: item.precoCartao ?? item.precoVista, custo: item.custo, variacoes,
+      precoVista: item.precoVista, precoCartao: item.precoCartao ?? item.precoVista,
+      precoCrediario: item.precoCartao ?? item.precoVista, custo: item.custo, variacoes,
     },
     linha: { linha: item.linha, nome: item.nome, situacao: 'criado', recado: recados.join('; ') || undefined },
   }
 }
 
+/**
+ * Os preços de cartão e crediário depois de reimportar com preço novo.
+ *
+ * A planilha manda o à vista (e às vezes o cartão); o crediário ela não traz
+ * — a importação cria crediário = cartão. Mexer só no à vista deixava cartão
+ * e crediário no preço velho, e o balcão passava a vender no crediário MAIS
+ * BARATO que à vista. A régua:
+ *   • cartão: o da planilha, se ela tem a coluna; senão acompanha o à vista
+ *     na mesma proporção de antes (o que era igual continua igual);
+ *   • crediário: se andava junto com o cartão, continua junto; senão
+ *     acompanha o à vista na mesma proporção.
+ * Puro — o teste confere a conta sem banco.
+ */
+export function precosDerivados(
+  antes: { vista: number | null; cartao: number | null; crediario: number | null },
+  vistaNova: number,
+  cartaoDaPlanilha: number | null,
+): { cartao: number; crediario: number } {
+  const centavo = (v: number) => Math.round(v * 100) / 100
+  const vistaMudou = antes.vista === null || centavo(antes.vista) !== centavo(vistaNova)
+  const proporcional = (v: number | null) =>
+    v === null || !antes.vista ? vistaNova : vistaMudou ? centavo((v / antes.vista) * vistaNova) : v
+  const cartao = cartaoDaPlanilha ?? proporcional(antes.cartao)
+  const juntos = antes.crediario === null || (antes.cartao !== null && centavo(antes.crediario) === centavo(antes.cartao))
+  const crediario = juntos ? cartao : proporcional(antes.crediario)
+  return { cartao, crediario }
+}
+
 async function atualizar(db: BancoDaOrg, ctx: Contexto, item: ItemImportado, p: Existente): Promise<LinhaDoLote> {
   const base = { linha: item.linha, nome: item.nome }
   if (ctx.seJaExiste === 'pular') {
-    return { ...base, situacao: 'pulado', recado: p.nome === item.nome ? 'já existe' : `já existe como "${p.nome}"` }
+    // O que já existe não muda — menos o estoque da loja que ainda não tem
+    // linha nenhuma deste produto. É o caso da segunda loja: a planilha da
+    // loja B, com "pular", deixava fora as 7 peças da B de todo produto que
+    // a loja A já tinha trazido, e o estoque da B nascia vazio sem aviso.
+    const recados = await lancarEstoqueDoItem(db, ctx, item, p, true)
+    const jaExiste = p.nome === item.nome ? 'já existe' : `já existe como "${p.nome}"`
+    return { ...base, situacao: 'pulado', recado: [jaExiste, ...recados].join('; ') }
   }
   const { sessao } = ctx
   const recados: string[] = []
 
   // ── o preço: as mesmas regras de `editarProduto` ──
-  const dados: { precoVista?: number; precoCartao?: number; custo?: number } = {}
+  const dados: { precoVista?: number; precoCartao?: number; precoCrediario?: number; custo?: number } = {}
+  const n = (v: unknown) => (v == null ? null : Number(v))
+  const derivados = precosDerivados(
+    { vista: n(p.precoVista), cartao: n(p.precoCartao), crediario: n(p.precoCrediario) },
+    item.precoVista,
+    item.precoCartao,
+  )
   if (mudou(item.precoVista, p.precoVista)) dados.precoVista = item.precoVista
-  if (item.precoCartao !== null && mudou(item.precoCartao, p.precoCartao)) dados.precoCartao = item.precoCartao
+  if (mudou(derivados.cartao, p.precoCartao)) dados.precoCartao = derivados.cartao
+  if (mudou(derivados.crediario, p.precoCrediario)) dados.precoCrediario = derivados.crediario
   if (item.custo !== null && mudou(item.custo, p.custo)) dados.custo = item.custo
   if (Object.keys(dados).length > 0) {
     // Preço vale em toda loja onde o produto é vendido: só muda quem tem
@@ -551,6 +613,11 @@ async function atualizar(db: BancoDaOrg, ctx: Contexto, item: ItemImportado, p: 
       recados.push('o preço não mudou: mexer em preço pede permissão própria')
     } else {
       await db.produto.update({ where: { id: p.id }, data: dados })
+      // O custo da planilha vale para o produto inteiro: o custo próprio de
+      // cada variação (da fábrica, da nota) sai — como na ficha.
+      if (dados.custo !== undefined) {
+        await db.variacao.updateMany({ where: { produtoId: p.id, custo: { not: null } }, data: { custo: null } })
+      }
       await db.auditoria.create({
         data: {
           orgId: sessao.orgId,
@@ -561,8 +628,18 @@ async function atualizar(db: BancoDaOrg, ctx: Contexto, item: ItemImportado, p: 
           alvoId: p.id,
           alvoNome: p.nome,
           motivo: MOTIVO_IMPORTACAO,
-          antes: { precoVista: Number(p.precoVista ?? 0), custo: Number(p.custo ?? 0) },
-          depois: { precoVista: dados.precoVista ?? Number(p.precoVista ?? 0), custo: dados.custo ?? Number(p.custo ?? 0) },
+          antes: {
+            precoVista: Number(p.precoVista ?? 0),
+            precoCartao: Number(p.precoCartao ?? 0),
+            precoCrediario: Number(p.precoCrediario ?? 0),
+            custo: Number(p.custo ?? 0),
+          },
+          depois: {
+            precoVista: dados.precoVista ?? Number(p.precoVista ?? 0),
+            precoCartao: dados.precoCartao ?? Number(p.precoCartao ?? 0),
+            precoCrediario: dados.precoCrediario ?? Number(p.precoCrediario ?? 0),
+            custo: dados.custo ?? Number(p.custo ?? 0),
+          },
           assinado: ctx.assinou,
         },
       })
@@ -571,13 +648,33 @@ async function atualizar(db: BancoDaOrg, ctx: Contexto, item: ItemImportado, p: 
   }
 
   // ── o estoque: o saldo contado, na variação certa ──
+  recados.push(...(await lancarEstoqueDoItem(db, ctx, item, p, false)))
+  if (!p.ativo) recados.push('está fora de venda, e continua')
+
+  return { ...base, situacao: 'atualizado', recado: recados.join('; ') || 'já existia, sem mudança' }
+}
+
+/**
+ * O estoque da linha, na variação certa do produto que já existe. Com
+ * `soOndeNaoTem`, só nas variações que ainda não têm linha de saldo nesta
+ * loja (o "pular": não mexe no que já foi contado). Devolve os recados.
+ */
+async function lancarEstoqueDoItem(
+  db: BancoDaOrg,
+  ctx: Contexto,
+  item: ItemImportado,
+  p: Existente,
+  soOndeNaoTem: boolean,
+): Promise<string[]> {
+  const recados: string[] = []
   const porCodigo = (c: string | null, e: string | null) =>
     p.variacoes.find((v) => (c && v.codigo?.toUpperCase() === c) || (e && v.codigoBarras === e))
   if (item.variacoes.length === 0 && item.estoque !== null) {
     const alvo = porCodigo(item.codigo, item.codigoBarras) ?? (p.variacoes.length === 1 ? p.variacoes[0] : undefined)
-    if (!alvo) recados.push('no Norte este produto tem grade: o estoque de cada opção se lança na tela de Estoque')
-    else {
-      const r = await lancarSaldo(db, ctx, p, alvo, item.estoque, '')
+    if (!alvo) {
+      if (!soOndeNaoTem) recados.push('no Norte este produto tem grade: o estoque de cada opção se lança na tela de Estoque')
+    } else {
+      const r = await lancarSaldo(db, ctx, p, alvo, item.estoque, '', soOndeNaoTem)
       if (r) recados.push(r)
     }
   }
@@ -585,15 +682,14 @@ async function atualizar(db: BancoDaOrg, ctx: Contexto, item: ItemImportado, p: 
     if (v.estoque === null) continue
     const chave = opcoesDa(ctx, v).sort().join('|')
     const alvo = porCodigo(v.codigo, v.codigoBarras) ?? p.variacoes.find((x) => x.opcoes.map((o) => o.opcaoId).sort().join('|') === chave)
-    if (!alvo) recados.push(`${rotuloDa(v)} não existe neste produto — acrescente pela ficha`)
-    else {
-      const r = await lancarSaldo(db, ctx, p, alvo, v.estoque, rotuloDa(v))
+    if (!alvo) {
+      if (!soOndeNaoTem) recados.push(`${rotuloDa(v)} não existe neste produto — acrescente pela ficha`)
+    } else {
+      const r = await lancarSaldo(db, ctx, p, alvo, v.estoque, rotuloDa(v), soOndeNaoTem)
       if (r) recados.push(r)
     }
   }
-  if (!p.ativo) recados.push('está fora de venda, e continua')
-
-  return { ...base, situacao: 'atualizado', recado: recados.join('; ') || 'já existia, sem mudança' }
+  return recados
 }
 
 /**
@@ -609,17 +705,28 @@ async function lancarSaldo(
   v: { id: string; codigo: string | null },
   alvo: number,
   rotulo: string,
+  /** Só lança se esta loja ainda não tem linha de saldo deste item. */
+  soSeNaoTem = false,
 ): Promise<string | null> {
   const unidadeId = ctx.unidadeId
   if (!unidadeId) return null
-  if (p.servico) return 'é serviço: não tem estoque'
-  // A loja que não vende o produto não guarda saldo dele (o balcão não
-  // venderia); o depósito guarda qualquer coisa — ver `transferir`.
-  if (!ctx.deposito && !vendidoNaLoja(p.vendidoEm, unidadeId)) return `${ctx.lojaNome} não vende este produto: o estoque não entrou`
+  if (p.servico) return soSeNaoTem ? null : 'é serviço: não tem estoque'
   const quantidade = Math.max(0, alvo)
   const [linha] = await db.$queryRaw<{ quantidade: string }[]>`
     select quantidade from estoque where variacao_id = ${v.id} and unidade_id = ${unidadeId}
   `
+  if (soSeNaoTem && linha) return null
+  // A loja que não vende o produto não guarda saldo dele (o balcão não
+  // venderia); o depósito guarda qualquer coisa — ver `transferir`.
+  if (!ctx.deposito && !vendidoNaLoja(p.vendidoEm, unidadeId)) {
+    // A planilha DESTA loja traz o produto com saldo: a loja tem a peça. Quem
+    // pode decidir pelas lojas do produto passa a vendê-lo aqui também — é a
+    // segunda loja trazendo a planilha dela, depois que os produtos nasceram
+    // só na primeira. Quem não pode fica com o recado.
+    if (quantidade > 0 && (await passarAVenderNaLoja(db, ctx, p, unidadeId))) {
+      p.vendidoEm = [...p.vendidoEm, unidadeId].sort()
+    } else return `${ctx.lojaNome} não vende este produto: o estoque não entrou`
+  }
   const antes = linha ? Number(linha.quantidade) : null
   if (antes === quantidade || (antes === null && quantidade === 0)) return null
 
@@ -648,6 +755,41 @@ async function lancarSaldo(
     },
   })
   return null
+}
+
+/**
+ * Acrescenta a loja ao "Vendido em" do produto, se quem traz a planilha pode
+ * decidir as lojas dele — a régua de `editarProduto`: alcançar todas as lojas
+ * de antes e a nova. Vendido em todas (vazio) já inclui a loja e nem chega
+ * aqui. Devolve se acrescentou.
+ */
+async function passarAVenderNaLoja(
+  db: BancoDaOrg,
+  ctx: Contexto,
+  p: Pick<Existente, 'id' | 'nome' | 'vendidoEm'>,
+  unidadeId: string,
+): Promise<boolean> {
+  const alcance = unidadesQuePodem(ctx.sessao, 'produto.editar')
+  const depois = [...new Set([...p.vendidoEm, unidadeId])].sort()
+  if (!alcancaOProduto(alcance, p.vendidoEm) || !alcancaOProduto(alcance, depois)) return false
+  await db.produto.update({ where: { id: p.id }, data: { vendidoEm: depois } })
+  await db.auditoria.create({
+    data: {
+      orgId: ctx.sessao.orgId,
+      unidadeId,
+      usuarioId: ctx.sessao.usuarioId,
+      quem: ctx.sessao.nome,
+      acao: 'produto.alterou',
+      alvoTipo: 'produto',
+      alvoId: p.id,
+      alvoNome: p.nome,
+      motivo: `${MOTIVO_IMPORTACAO}: passou a ser vendido em ${ctx.lojaNome}`,
+      antes: { vendidoEm: p.vendidoEm },
+      depois: { vendidoEm: depois },
+      assinado: ctx.assinou,
+    },
+  })
+  return true
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -35,6 +35,8 @@ import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, PODERES, soAsQuePode, unidadesQuePodem, type Papel, type Sessao } from './permissao'
 import { metasDoMes, type MetaDaPessoa } from './metas'
 import { diaEmSP, inicioDoDiaEmSP } from './dia'
+import { reais } from './dinheiro'
+import { contaDoVendedor, realizadoPorVendedor, type LinhaDoVendedor } from './receita'
 
 // ─────────────────────────────────────────────────────────────
 // A CONTA
@@ -305,34 +307,23 @@ async function lerPresenca(db: BancoDaOrg, j: Janela): Promise<Map<string, numbe
 const chaveLoja = (unidadeId: string, usuarioId: string) => `${unidadeId}|${usuarioId}`
 
 /**
- * Vendido líquido de devolução por (loja, vendedor), em reais.
+ * Vendido líquido por (loja, vendedor), em reais — a conta da meta
+ * (`contaDoVendedor`, em receita.ts), loja a loja.
  *
  * Só serve quando a leitura é POR LOJA: a meta da pessoa é uma só, mas o
  * realizado se reparte pelas lojas onde ela vendeu. Sem filtro de loja, o
  * progresso vem direto de `metasDoMes` — a mesma conta da seção de metas.
  */
 async function lerLiquidoPorLoja(db: BancoDaOrg, j: Janela, uni: string[]): Promise<Map<string, number>> {
-  const vendas = await db.$queryRaw<{ unidade_id: string; vendedor_id: string; total: string }[]>`
-    select v.unidade_id, v.vendedor_id, sum(v.total) as total
-      from vendas v
-     where v.situacao = 'CONCLUIDA' and v.vendedor_id is not null
-       and v.unidade_id = any(${uni})
-       and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-     group by 1, 2
-  `
-  const devolucoes = await db.$queryRaw<{ unidade_id: string; vendedor_id: string; total: string }[]>`
-    select v.unidade_id, v.vendedor_id, sum(d.valor) as total
-      from devolucoes d join vendas v on v.id = d.venda_id
-     where v.vendedor_id is not null and v.unidade_id = any(${uni})
-       and d.criada_em >= ${j.de} and d.criada_em < ${j.ate}
-     group by 1, 2
-  `
-  const liquido = new Map<string, number>()
-  for (const v of vendas) liquido.set(chaveLoja(v.unidade_id, v.vendedor_id), Number(v.total))
-  for (const d of devolucoes) {
-    const k = chaveLoja(d.unidade_id, d.vendedor_id)
-    liquido.set(k, Math.max((liquido.get(k) ?? 0) - Number(d.total), 0))
+  const linhas = await realizadoPorVendedor(db, { de: j.de, ate: j.ate, unidadeIds: uni })
+  const porChave = new Map<string, LinhaDoVendedor[]>()
+  for (const l of linhas) {
+    if (!l.vendedorId) continue
+    const k = chaveLoja(l.unidadeId, l.vendedorId)
+    porChave.set(k, [...(porChave.get(k) ?? []), l])
   }
+  const liquido = new Map<string, number>()
+  for (const [k, ls] of porChave) liquido.set(k, reais(contaDoVendedor(ls).liquidoCent))
   return liquido
 }
 

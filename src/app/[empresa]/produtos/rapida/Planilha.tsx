@@ -51,9 +51,15 @@ const inicial = (l: LinhaDaPlanilha): Rascunho => ({
   precoVista: dinheiroNoCampo(l.precoVista),
   precoCartao: dinheiroNoCampo(l.precoCartao),
   precoCrediario: dinheiroNoCampo(l.precoCrediario),
-  custo: dinheiroNoCampo(l.custo),
+  custo: custoNoCampo(l.custo),
   estoque: paraCampo(l.estoque),
 })
+/** O custo com até quatro casas quando ele tem (o mililitro a 0,0028): com duas, aparecia 0,00. */
+function custoNoCampo(n: number | null) {
+  if (n === null) return ''
+  const quatro = Math.round(n * 10_000) / 10_000
+  return Math.round(quatro * 100) / 100 === quatro ? dinheiroNoCampo(quatro) : String(quatro).replace('.', ',')
+}
 const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 const campo =

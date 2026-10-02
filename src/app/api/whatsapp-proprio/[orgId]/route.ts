@@ -2,7 +2,7 @@
 // QR Code: POST /api/whatsapp-proprio/{orgId}.
 //
 // Sem sessão, sem cookie. Quem autoriza é a assinatura HMAC do corpo, com o
-// CONECTOR_SEGREDO, e um carimbo de no máximo cinco minutos (ver
+// CONECTOR_ASSINATURA (ou o antigo CONECTOR_SEGREDO), e um carimbo de no máximo cinco minutos (ver
 // src/servidor/assistente/conector.ts). Assinatura errada, velha ou de outro
 // caminho: 401, antes de qualquer leitura no banco.
 //

@@ -111,12 +111,17 @@ export const telefoneValido = (u: TelefoneDaPessoa, agora: Date = new Date()) =>
  * `NORTE_CODIGO_SEGREDO` em produção. Sem ele, deriva da chave de cifra
  * (`NORTE_CIFRA`), e sem as duas — o laptop — um valor fixo: o código vive 10
  * minutos e aceita 5 tentativas, então o fixo no laptop não abre porta nenhuma.
+ * Em PRODUÇÃO sem as duas, para: o valor fixo está no código-fonte, e com ele
+ * quem lesse o banco testaria os resumos de todos os códigos num piscar.
  */
 export function segredoDoCodigo(env: Record<string, string | undefined> = process.env): string {
   const proprio = (env.NORTE_CODIGO_SEGREDO ?? '').trim()
   if (proprio) return proprio
   const cifra = (env.NORTE_CIFRA ?? '').trim()
   if (cifra) return createHash('sha256').update(`codigo-telefone:${cifra}`).digest('hex')
+  if (env.NODE_ENV === 'production') {
+    throw new Error('Falta NORTE_CODIGO_SEGREDO (ou NORTE_CIFRA) no ambiente: sem ele o código de confirmação do telefone não é seguro.')
+  }
   return 'norte-laptop-codigo-telefone'
 }
 

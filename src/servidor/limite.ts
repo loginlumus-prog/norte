@@ -134,3 +134,13 @@ export async function concluirTentativa(orgId: string, tentativaId: string, suce
     })
   })
 }
+
+/**
+ * Tira a tentativa reservada da conta, sem virar acerto: ela não conta como
+ * erro, e também não zera os erros de antes. É o fecho do PIN no freio da
+ * LOJA — o acerto de um PIN (o da gerente que todo mundo conhece) não pode
+ * apagar os chutes que vieram antes dele e liberar mais cinco.
+ */
+export async function desfazerTentativa(orgId: string, tentativaId: string) {
+  await comoOrg(orgId, (db) => db.tentativaLogin.deleteMany({ where: { id: tentativaId, sucesso: false } }))
+}

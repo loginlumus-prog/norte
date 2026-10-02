@@ -271,6 +271,14 @@ export type PedidoDeRecibo = {
   autorizacao?: { pin: string } | null
   /** Por que o desconto ou o perdão. */
   motivo?: string | null
+  /**
+   * Não arredonda o atraso para cima, mesmo com a regra da empresa ligada.
+   * É o caminho de uma parcela só (`receberParcela`): quem chama já diz
+   * quanto do total é atraso, e esse número é o do atraso sem arredondar —
+   * com o arredondamento por cima, os centavos dele saíam do VALOR da parcela
+   * e ela ficava aberta com R$ 0,04 dizendo "quitada".
+   */
+  semArredondar?: boolean
 }
 
 export type ResultadoDoRecibo =
@@ -378,13 +386,14 @@ export async function receberVarias(sessao: Sessao, p: PedidoDeRecibo, agora = n
       for (const f of formasC) if (!temMaquininha(f.forma)) f.maquininha = null
 
       const regra = await regraDoAtraso(db, sessao.orgId)
+      const arredondar = regra.arredondar && !p.semArredondar
       const abertas = await parcelasAbertas(db, p.clienteId, p.unidadeId, regra, agora)
       if (abertas.length === 0) throw new Recusa('Ela não deve nada nesta loja.')
       const marcadas = [...new Set(p.parcelaIds ?? [])]
       if (marcadas.some((id) => !abertas.some((a) => a.id === id))) throw new Recusa(MUDOU)
 
       if (p.esperado !== null && p.esperado !== undefined && marcadas.length > 0) {
-        const conta = contaDasMarcadas(abertas, marcadas, regra.arredondar)
+        const conta = contaDasMarcadas(abertas, marcadas, arredondar)
         if (!Number.isFinite(p.esperado) || centavos(p.esperado) !== conta.totalC) throw new Recusa(MUDOU)
       }
 
@@ -394,7 +403,7 @@ export async function receberVarias(sessao: Sessao, p: PedidoDeRecibo, agora = n
         perdoarAtraso: p.perdoarAtraso,
         descontoAtrasoC,
         descontoC,
-        arredondar: regra.arredondar,
+        arredondar,
       })
       if (!plano.ok) throw new Recusa(explicarRecusa(plano, brlC))
       if (negociou && plano.perdoadoC === 0 && plano.descontoC === 0) autorizador = null
@@ -411,6 +420,7 @@ export async function receberVarias(sessao: Sessao, p: PedidoDeRecibo, agora = n
       const abateC = plano.principalC + plano.descontoC
       const saldoDepoisC = saldoAntesC - abateC
 
+      const comoEstavam = await fotoDasParcelas(db, plano.linhas.map((l) => l.id))
       const recibo = await db.reciboCrediario.create({
         data: {
           orgId: sessao.orgId,
@@ -477,6 +487,7 @@ export async function receberVarias(sessao: Sessao, p: PedidoDeRecibo, agora = n
           motivo: [quaisParcelas(abertas, plano.linhas), ...extras, saldoDepoisC === 0 ? 'quitou' : `ainda deve ${reais(saldoDepoisC).toFixed(2)}`]
             .join(' · ')
             .slice(0, 300),
+          antes: { parcelas: comoEstavam },
           depois: { reciboId: recibo.id, formas: formasC.map((f) => ({ forma: f.forma, valor: reais(f.valorC), maquininha: f.maquininha })) },
         },
       })
@@ -607,6 +618,7 @@ export async function baixaExterna(sessao: Sessao, p: PedidoDeBaixaExterna, agor
 
       const saldoAntesC = abertas.reduce((s, a) => s + a.restaC, 0)
       const saldoDepoisC = saldoAntesC - plano.principalC
+      const comoEstavam = await fotoDasParcelas(db, plano.linhas.map((l) => l.id))
       const recibo = await db.reciboCrediario.create({
         data: {
           orgId: sessao.orgId,
@@ -651,11 +663,215 @@ export async function baixaExterna(sessao: Sessao, p: PedidoDeBaixaExterna, agor
           alvoNome: cliente.nome,
           valor: reais(plano.dinheiroC),
           motivo: `${p.tudo ? 'quitou tudo · ' : ''}pago fora em ${p.pagoEm.split('-').reverse().join('/')} · ${referencia} · ${quaisParcelas(abertas, plano.linhas)}`.slice(0, 300),
+          antes: { parcelas: comoEstavam },
           depois: { reciboId: recibo.id, forma },
           assinado: assinatura.assinou,
         },
       })
       return { ok: true as const, reciboId: recibo.id, saldoDepois: reais(saldoDepoisC), quitou: saldoDepoisC === 0, troco: 0, recebido: reais(plano.dinheiroC) }
+    })
+  } catch (e) {
+    if (e instanceof Recusa) return { ok: false, erro: e.message }
+    throw e
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// ESTORNAR O RECIBO LANÇADO ERRADO
+// ─────────────────────────────────────────────────────────────
+//
+// Recebeu na ficha da cliente errada, digitou 500 em vez de 50: o recibo
+// precisa sair, e a dívida voltar a ser o que era. Não é cancelar cobrança —
+// é desfazer um lançamento. Por isso:
+//   • é de quem pode cancelar venda na loja do recibo (`venda.cancelar`), e
+//     assina SEMPRE com o PIN dela (é dinheiro saindo do registro);
+//   • só o recibo MAIS NOVO de cada parcela: o de antes de outro pagamento
+//     mudaria o chão em que o de depois foi calculado;
+//   • só enquanto o turno dele estiver aberto: o turno fechado já foi
+//     contado, e mexer nele faria o fechamento de ontem mudar sozinho;
+//   • as parcelas voltam a ser o que eram — pago, desconto, juro, multa, e
+//     até onde o atraso estava resolvido (a fotografia que o recebimento
+//     guardou no livro). Recibo de antes dessa fotografia não se estorna.
+//
+// O recibo e os recebimentos dele saem do banco (é como o fechamento e o DRE
+// deixam de contá-los); o livro guarda tudo o que eles eram.
+
+/** Como as parcelas estavam ANTES do recebimento, no que a conta não refaz sozinha. */
+type FotoDaParcela = { id: string; multaCobrada: boolean; jurosAte: string | null }
+
+async function fotoDasParcelas(db: BancoDaOrg, ids: string[]): Promise<FotoDaParcela[]> {
+  const ps = await db.parcela.findMany({ where: { id: { in: ids } }, select: { id: true, multaCobrada: true, jurosAte: true } })
+  return ps.map((x) => ({ id: x.id, multaCobrada: x.multaCobrada, jurosAte: x.jurosAte ? x.jurosAte.toISOString() : null }))
+}
+
+export type PedidoDeEstorno = { reciboId: string; motivo: string; pin?: string | null }
+
+export type ResultadoDoEstorno =
+  | { ok: true; valor: number; saldoDepois: number; turnoAberto: boolean }
+  | { ok: false; erro: string; precisaPin?: true }
+
+export async function estornarRecibo(sessao: Sessao, p: PedidoDeEstorno): Promise<ResultadoDoEstorno> {
+  const motivo = limparTexto(p.motivo)
+  if (motivo.length < 3) return { ok: false, erro: 'Diga por que o recibo está sendo estornado (fica no livro).' }
+  if (!/^[\w-]{1,64}$/.test(p.reciboId ?? '')) return { ok: false, erro: 'Recibo não encontrado.' }
+
+  // A loja do recibo antes do PIN: quem não pode estornar nem gasta tentativa.
+  const dono = await comoOrg(sessao.orgId, (db) =>
+    db.reciboCrediario.findUnique({ where: { id: p.reciboId }, select: { unidadeId: true } }),
+  )
+  if (!dono || !pode(sessao, 'crediario.ver', dono.unidadeId)) return { ok: false, erro: 'Recibo não encontrado.' }
+  if (!pode(sessao, 'venda.cancelar', dono.unidadeId)) {
+    return { ok: false, erro: 'Estornar recibo é para quem pode cancelar venda nesta loja. Chame a gerente.' }
+  }
+  // Fora da transação: a conferência do PIN abre a dela (o freio).
+  const assinatura = await assinarExcecao(sessao, { pin: p.pin, sempre: true })
+  if (!assinatura.ok) return { ok: false, erro: assinatura.erro, precisaPin: true }
+
+  try {
+    return await comoOrg(sessao.orgId, async (db) => {
+      const r = await db.reciboCrediario.findUnique({
+        where: { id: p.reciboId },
+        select: {
+          id: true, unidadeId: true, clienteId: true, caixaId: true, valor: true, juros: true, multa: true,
+          desconto: true, perdoado: true, troco: true, saldoAntes: true, saldoDepois: true, externo: true,
+          referencia: true, pagoEm: true, quem: true, autorizadoPor: true, motivo: true, criadoEm: true,
+          cliente: { select: { nome: true } },
+        },
+      })
+      if (!r) throw new Recusa('Recibo não encontrado (pode ter sido estornado agora).')
+      const recs = await db.recebimento.findMany({
+        where: { reciboId: r.id },
+        select: { id: true, parcelaId: true, forma: true, valor: true, juros: true, multa: true, desconto: true, maquininha: true, criadoEm: true },
+      })
+      if (recs.length === 0) throw new Recusa('Este recibo não tem recebimento para desfazer.')
+      const parcelaIds = [...new Set(recs.map((x) => x.parcelaId))]
+
+      // As vendas das parcelas travadas, em ordem (como o recebimento): nada
+      // recebe nem devolve nelas no meio do estorno.
+      const vendas = await db.parcela.findMany({ where: { id: { in: parcelaIds } }, distinct: ['vendaId'], select: { vendaId: true } })
+      for (const id of vendas.map((v) => v.vendaId).sort()) await travarVenda(db, id)
+
+      // Só o mais novo: outro pagamento depois deste nas mesmas parcelas foi
+      // calculado em cima dele.
+      const depois = await db.recebimento.count({
+        where: {
+          parcelaId: { in: parcelaIds },
+          criadoEm: { gte: r.criadoEm },
+          OR: [{ reciboId: null }, { reciboId: { not: r.id } }],
+        },
+      })
+      if (depois > 0) throw new Recusa('Estas parcelas receberam outro pagamento depois deste recibo. Estorne primeiro o mais novo.')
+
+      // A fotografia de como as parcelas estavam (ver `fotoDasParcelas`).
+      const livro = await db.auditoria.findFirst({
+        where: {
+          acao: { in: ['crediario.recebeu', 'crediario.baixa_externa', 'crediario.quitou'] },
+          alvoTipo: 'cliente',
+          alvoId: r.clienteId,
+          depois: { path: ['reciboId'], equals: r.id },
+        },
+        orderBy: { criadoEm: 'desc' },
+        select: { antes: true },
+      })
+      const fotos = ((livro?.antes as { parcelas?: FotoDaParcela[] } | null)?.parcelas ?? []).filter((f) => parcelaIds.includes(f.id))
+      if (fotos.length !== parcelaIds.length) {
+        throw new Recusa('Este recibo é de antes do estorno existir: o sistema não guardou como as parcelas estavam. Fale com o suporte.')
+      }
+
+      // O turno: aberto, preso até o fim (o fechamento espera). Fechado, não
+      // se mexe — já foi contado.
+      let turnoAberto = false
+      if (r.caixaId) {
+        turnoAberto = !!(await travarCaixaAberto(db, r.unidadeId, r.caixaId))
+        if (!turnoAberto) {
+          throw new Recusa('O turno deste recibo já fechou, e o dinheiro dele já foi contado. Um recibo de turno fechado não se estorna.')
+        }
+      }
+
+      // ── as parcelas voltam ──
+      const parcelas = await db.parcela.findMany({
+        where: { id: { in: parcelaIds } },
+        select: { id: true, valor: true, pago: true, desconto: true, juros: true, multa: true, quitadaEm: true },
+      })
+      for (const x of parcelas) {
+        const dela = recs.filter((y) => y.parcelaId === x.id)
+        const principalC = dela.reduce((s, y) => s + centavos(y.valor) - centavos(y.juros) - centavos(y.multa), 0)
+        const descontoC = dela.reduce((s, y) => s + centavos(y.desconto), 0)
+        const jurosC = dela.reduce((s, y) => s + centavos(y.juros), 0)
+        const multaC = dela.reduce((s, y) => s + centavos(y.multa), 0)
+        const pagoC = centavos(x.pago) - principalC
+        const descC = centavos(x.desconto) - descontoC
+        const jurC = centavos(x.juros) - jurosC
+        const mulC = centavos(x.multa) - multaC
+        if (pagoC < 0 || descC < 0 || jurC < 0 || mulC < 0) {
+          throw new Recusa('As parcelas deste recibo não batem com os recebimentos dele. Nada foi estornado: fale com o suporte.')
+        }
+        const foto = fotos.find((f) => f.id === x.id)!
+        const restaC = centavos(x.valor) - pagoC - descC
+        await db.parcela.update({
+          where: { id: x.id },
+          data: {
+            pago: reais(pagoC),
+            desconto: reais(descC),
+            juros: reais(jurC),
+            multa: reais(mulC),
+            multaCobrada: foto.multaCobrada,
+            jurosAte: foto.jurosAte ? new Date(foto.jurosAte) : null,
+            // Volta a dever: abre. (A devolução que abateu a parcela depois
+            // pode ter deixado ela quitada mesmo assim — aí fica.)
+            quitadaEm: restaC > 0 ? null : x.quitadaEm,
+          },
+        })
+      }
+
+      // ── o recibo sai (e, com ele, do turno, do fechamento e do DRE) ──
+      await db.recebimento.deleteMany({ where: { reciboId: r.id } })
+      await db.reciboCrediario.delete({ where: { id: r.id } })
+
+      const saldo = await db.$queryRaw<{ s: string }[]>`
+        select coalesce(sum(valor - pago - desconto), 0) as s from parcelas
+         where cliente_id = ${r.clienteId} and unidade_id = ${r.unidadeId} and quitada_em is null`
+      const saldoDepoisC = centavos(saldo[0]?.s ?? 0)
+
+      const dinheiroC = recs.filter((y) => y.forma === 'DINHEIRO').reduce((s, y) => s + centavos(y.valor), 0)
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          unidadeId: r.unidadeId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          acao: 'crediario.estornou',
+          alvoTipo: 'cliente',
+          alvoId: r.clienteId,
+          alvoNome: r.cliente.nome,
+          valor: reais(centavos(r.valor)),
+          motivo: [
+            `estornou o recibo ${codigoDoRecibo(r.id)} de ${brlC(centavos(r.valor))}`,
+            r.externo ? 'baixa externa' : null,
+            dinheiroC > 0 ? `${brlC(dinheiroC)} em dinheiro saem da conta da gaveta` : null,
+            motivo,
+          ]
+            .filter(Boolean)
+            .join(' · ')
+            .slice(0, 300),
+          antes: {
+            recibo: {
+              id: r.id, criadoEm: r.criadoEm.toISOString(), quem: r.quem, caixaId: r.caixaId, externo: r.externo,
+              referencia: r.referencia, valor: Number(r.valor), juros: Number(r.juros), multa: Number(r.multa),
+              desconto: Number(r.desconto), perdoado: Number(r.perdoado), troco: Number(r.troco),
+              saldoAntes: Number(r.saldoAntes), saldoDepois: Number(r.saldoDepois), autorizadoPor: r.autorizadoPor, motivo: r.motivo,
+            },
+            recebimentos: recs.map((y) => ({
+              parcelaId: y.parcelaId, forma: y.forma, valor: Number(y.valor), juros: Number(y.juros),
+              multa: Number(y.multa), desconto: Number(y.desconto), maquininha: y.maquininha,
+            })),
+          },
+          depois: { saldoNaLoja: reais(saldoDepoisC) },
+          assinado: assinatura.assinou,
+        },
+      })
+
+      return { ok: true as const, valor: reais(centavos(r.valor)), saldoDepois: reais(saldoDepoisC), turnoAberto }
     })
   } catch (e) {
     if (e instanceof Recusa) return { ok: false, erro: e.message }

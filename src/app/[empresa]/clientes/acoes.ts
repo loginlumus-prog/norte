@@ -11,6 +11,8 @@ import { criarCliente, editarCliente, type AceiteNaFicha } from '@/servidor/clie
 import { anonimizarCliente } from '@/servidor/anonimizar'
 import { anotarSemOfertas, tirarSemOfertas } from '@/servidor/ofertas'
 import { SemPermissao } from '@/servidor/permissao'
+import { definirLimiteCredito } from '@/servidor/venda'
+import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
 
 export type EstadoCliente = {
   erro?: string
@@ -86,6 +88,14 @@ export async function editar(
 ): Promise<EstadoCliente> {
   const sessao = await exigirSessao(slug)
 
+  // O limite do crediário: só quando o campo veio (crediário ligado, e quem
+  // está na tela pode mudar). Vazio = sem limite. Lido ANTES de salvar, para
+  // o valor ilegível não deixar a ficha meio salva.
+  const temLimite = form.has('limiteCredito')
+  const limiteBruto = temLimite ? String(form.get('limiteCredito') ?? '').trim().slice(0, 20) : ''
+  const limite = limiteBruto ? lerDinheiro(limiteBruto) : null
+  if (limiteBruto && limite === null) return { erro: `O limite de crédito: ${DINHEIRO_ILEGIVEL}` }
+
   try {
     const r = await editarCliente(
       sessao,
@@ -98,6 +108,10 @@ export async function editar(
     }
     revalidatePath(`/${slug}/clientes`)
     revalidatePath(`/${slug}/clientes/${clienteId}`)
+    if (temLimite) {
+      const l = await definirLimiteCredito(sessao, clienteId, limite)
+      if (!l.ok) return { erro: l.erro }
+    }
     return { ok: 'Salvo.' }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para editar cliente.' }

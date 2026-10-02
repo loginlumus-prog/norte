@@ -21,7 +21,7 @@ import { comoOrg } from './banco'
 import { chaveTelefone, soDigitos } from './assistente/telefone'
 import { SELECT_TELEFONE, estadoDoTelefone, type EstadoTelefone } from './assistente/confirmacao'
 import { cortarSessoes } from './pagina'
-import { exigir, pode, podeConcederAcesso, PODERES, type Papel, type Sessao } from './permissao'
+import { exigir, pode, podeConcederAcesso, PODERES, unidadesQuePodem, type Papel, type Sessao } from './permissao'
 import { SELECT_ACESSO, acessosDoBanco } from './cargos'
 import { NOME_DO_PAPEL } from './guia'
 
@@ -48,11 +48,23 @@ export type PessoaDaEquipe = {
   }[]
 }
 
+/**
+ * Quem esta pessoa vê na equipe.
+ *
+ * Quem alcança a empresa inteira vê todo mundo. O gerente preso à loja 3 vê
+ * quem tem acesso na loja 3 — e quem tem acesso à empresa inteira (o dono),
+ * que também é da loja 3. Antes ele lia a empresa toda: nome, e-mail,
+ * telefone e o papel de cada um em cada loja.
+ */
 export async function listarEquipe(sessao: Sessao): Promise<PessoaDaEquipe[]> {
   exigir(sessao, 'equipe.ver')
+  const alcance = unidadesQuePodem(sessao, 'equipe.ver')
 
   return comoOrg(sessao.orgId, async (db) => {
     const pessoas = await db.usuario.findMany({
+      ...(alcance === 'todas'
+        ? {}
+        : { where: { acessos: { some: { OR: [{ unidadeId: { in: alcance } }, { unidadeId: null }] } } } }),
       orderBy: [{ ativo: 'desc' }, { nome: 'asc' }],
       select: {
         id: true, nome: true, email: true, ativo: true, ultimoLogin: true, ...SELECT_TELEFONE,

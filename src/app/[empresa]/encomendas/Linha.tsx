@@ -15,6 +15,11 @@
 // valor que falta — só o que falta, porque o sinal já entrou no financeiro.
 // A entrega é marcada pela venda, quando ela fecha (ver servidor/venda.ts):
 // antes, a encomenda virava "entregue" aqui e o dinheiro podia nunca entrar.
+//
+// O pedido do catálogo (com produto do cadastro) só sai pelo Balcão, mesmo
+// pago todo no sinal: é lá que os produtos baixam do estoque. E entregar a de
+// balcão com dinheiro em aberto, sem venda, é abrir mão do que falta — pede o
+// porquê e, para quem não autoriza desconto, o PIN de quem autoriza.
 
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -73,6 +78,7 @@ export function AcoesEncomenda({
   editarEm,
   simples,
   nova = false,
+  comProdutos = false,
 }: {
   slug: string
   id: string
@@ -93,12 +99,19 @@ export function AcoesEncomenda({
   simples: boolean
   /** Pedido do catálogo que ninguém aceitou ainda: o primeiro botão é "Aceitar". */
   nova?: boolean
+  /** Tem produto do cadastro (pedido do catálogo): sai só pelo Balcão. */
+  comProdutos?: boolean
 }) {
   const [painel, setPainel] = useState<null | 'entregar' | 'cancelar'>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [motivo, setMotivo] = useState('')
   const [devolveu, setDevolveu] = useState(false)
   const [formaDevolucao, setFormaDevolucao] = useState<FormaSinal | ''>(sinalForma ?? '')
+  /** "Só marcar entregue" aberto: o porquê (e o PIN, quando o servidor pede). */
+  const [semBalcao, setSemBalcao] = useState(false)
+  const [porque, setPorque] = useState('')
+  const [pin, setPin] = useState('')
+  const [pedePin, setPedePin] = useState(false)
   const [indo, comecar] = useTransition()
   const router = useRouter()
 
@@ -114,8 +127,10 @@ export function AcoesEncomenda({
       const r = await mudarSituacaoAcao(slug, id, m)
       if (r.erro) {
         setErro(r.erro)
+        if (r.pedePin) setPedePin(true)
         return
       }
+      setPin('')
       setPainel(null)
       depois?.()
     })
@@ -175,7 +190,43 @@ export function AcoesEncomenda({
 
       {painel === 'entregar' && (
         <Janela titulo={`Entregar: ${resumo}`} aoFechar={() => setPainel(null)}>
-          {falta > 0 ? (
+          {comProdutos ? (
+            <>
+              <p className="text-sm text-tinta">
+                {falta > 0 ? (
+                  <>
+                    Falta receber <b className="numero">{brl(falta)}</b>.
+                  </>
+                ) : (
+                  <>Tudo pago no sinal.</>
+                )}
+              </p>
+              <p className="text-xs text-tinta-2">
+                Pedido do catálogo sai pelo Balcão: os produtos entram no pedido pelo preço que a cliente viu, baixam do
+                estoque, e o sinal já pago é descontado{falta > 0 ? '' : ' — a venda fecha em zero'}. A entrega fica marcada
+                quando a venda fechar.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {podeVender && (
+                  <Botao
+                    tom="confirmar"
+                    className={normal}
+                    carregando={indo}
+                    onClick={() =>
+                      router.push(
+                        `/${slug}/balcao?unidade=${encodeURIComponent(unidadeId)}&encomenda=${encodeURIComponent(id)}`,
+                      )
+                    }
+                  >
+                    Receber no balcão
+                  </Botao>
+                )}
+                <Botao tom="discreto" className={normal} onClick={() => setPainel(null)}>
+                  Voltar
+                </Botao>
+              </div>
+            </>
+          ) : falta > 0 ? (
             <>
               <p className="text-sm text-tinta">
                 Falta receber <b className="numero">{brl(falta)}</b>.
@@ -204,16 +255,57 @@ export function AcoesEncomenda({
                     Receber no balcão
                   </Botao>
                 )}
-                <Botao tom="secundario" className={normal} carregando={indo} onClick={() => mudar({ para: 'ENTREGUE' })}>
-                  Só marcar entregue
-                </Botao>
+                {!semBalcao && (
+                  <Botao tom="secundario" className={normal} onClick={() => setSemBalcao(true)}>
+                    Só marcar entregue
+                  </Botao>
+                )}
                 <Botao tom="discreto" className={normal} onClick={() => setPainel(null)}>
                   Voltar
                 </Botao>
               </div>
-              <p className="text-xs text-tinta-3">
-                “Só marcar entregue” é para quando o que faltava já foi pago de outro jeito.
-              </p>
+              {semBalcao ? (
+                <div className="flex flex-col gap-2 rounded-norte border border-borda p-3">
+                  <Campo
+                    rotulo="Como o resto foi pago?"
+                    name={`porque-${id}`}
+                    id={`porque-${id}`}
+                    value={porque}
+                    onChange={(ev) => setPorque(ev.currentTarget.value)}
+                    placeholder="Pagou no Pix da loja ontem, a loja deu de presente..."
+                    dica={`Entregar sem receber os ${brl(falta)} aqui vai para o livro, com o seu nome.`}
+                    required
+                  />
+                  {pedePin && (
+                    <Campo
+                      rotulo="PIN de quem autoriza"
+                      name={`pin-${id}`}
+                      id={`pin-${id}`}
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={pin}
+                      onChange={(ev) => setPin(ev.currentTarget.value.replace(/\D/g, '').slice(0, 12))}
+                      dica="Quem pode autorizar desconto digita o PIN dela aqui."
+                    />
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    <Botao
+                      tom="secundario"
+                      className={normal}
+                      carregando={indo}
+                      disabled={porque.trim().length < 3 || (pedePin && pin.length < 4)}
+                      onClick={() => mudar({ para: 'ENTREGUE', motivo: porque, pin: pin || null })}
+                    >
+                      Marcar entregue sem receber
+                    </Botao>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-tinta-3">
+                  “Só marcar entregue” é para quando o que faltava já foi pago de outro jeito.
+                </p>
+              )}
             </>
           ) : (
             <>

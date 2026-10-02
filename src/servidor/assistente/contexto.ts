@@ -12,7 +12,7 @@ import { planoLibera } from '../planos'
 import { vencerTesteSeAcabou } from '../assinatura'
 import { moduloLigado } from '../modulos'
 import { unidadesQuePodem, type Acesso, type Capacidade, type Papel, type Sessao } from '../permissao'
-import { custoEmCentavos, cobrancaEmCentavos, type Tokens } from '../custo-ia'
+import { custoEmCentavos, cobrancaEmCentavos, MARGEM, MINIMO_POR_CHAMADA, type Tokens } from '../custo-ia'
 import { inicioDeHojeEmSP } from '../dia'
 import { chaveTelefone, paraEnvio, soDigitos } from './telefone'
 import type { Interlocutor, Loja } from './regras'
@@ -366,6 +366,20 @@ export async function registrarConsumoIA(
         cobradoCent,
       },
     })
+    await db.org.update({ where: { id: orgId }, data: { creditoIaCent: { decrement: cobradoCent } } })
+  })
+  return { custoCent, cobradoCent }
+}
+
+/**
+ * O consumo que não é token: a transcrição do áudio, cobrada por minuto.
+ * Mesma carteira, mesmo livro (`ConsumoIA`) e a mesma margem — senão o áudio
+ * seria a porta de gastar sem o teto do dia ver.
+ */
+export async function registrarConsumoAvulso(orgId: string, agenteId: string, modelo: string, custoCent: number) {
+  const cobradoCent = custoCent > 0 ? Math.max(MINIMO_POR_CHAMADA, Math.ceil(custoCent * MARGEM)) : 0
+  await comoOrg(orgId, async (db) => {
+    await db.consumoIA.create({ data: { orgId, agenteId, modelo, custoCent, cobradoCent } })
     await db.org.update({ where: { id: orgId }, data: { creditoIaCent: { decrement: cobradoCent } } })
   })
   return { custoCent, cobradoCent }

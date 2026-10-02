@@ -19,6 +19,8 @@ import {
   EstoqueSumiu,
   PontosDisputados,
   ValeDisputado,
+  MAX_ITENS_DA_VENDA,
+  MAX_PAGAMENTOS_DA_VENDA,
   type PagamentoDaVenda,
   type ResultadoVenda,
 } from '@/servidor/venda'
@@ -535,6 +537,22 @@ export async function fecharVenda(
   const s = await exigirSessao(slug)
   const obs = dados.observacoes?.trim().slice(0, 500)
 
+  // O tamanho do que chegou, antes de qualquer conta: a Server Action é
+  // endereço público, e uma lista de 100 mil itens seria lida inteira (e
+  // conferida item por item, dentro da transação) antes de alguém recusar.
+  if (
+    !Array.isArray(dados?.itens) ||
+    !Array.isArray(dados?.pagamentos) ||
+    dados.itens.length > MAX_ITENS_DA_VENDA ||
+    dados.pagamentos.length > MAX_PAGAMENTOS_DA_VENDA
+  ) {
+    return {
+      ok: false,
+      motivo: 'recusa',
+      recado: `Uma venda vai até ${MAX_ITENS_DA_VENDA} linhas e ${MAX_PAGAMENTOS_DA_VENDA} pagamentos. Divida em duas. Nada foi gravado.`,
+    }
+  }
+
   // A venda que estoura no meio — a última peça levada por outro caixa, o
   // vale ou os pontos gastos no mesmo segundo em outra máquina — desfaz tudo
   // e LANÇA. Lançado de uma Server Action, o erro chega à tela sem a frase, e
@@ -664,7 +682,7 @@ export async function paraCobrarHorario(slug: string, agendamentoId: string, uni
         _count: { _all: true },
         _min: { criadaEm: true },
       })
-      const sit = await situacaoDosClientes(db, [ficha.id])
+      const sit = await situacaoDosClientes(db, [ficha.id], s)
       return { ficha, compras, trazidas, sit: sit.get(ficha.id) }
     })
     if (c) {
@@ -883,7 +901,7 @@ export async function procurarClientes(
   // "EM DIA" ou "ATRASADO" na hora de escolher a pessoa: é o que muda a
   // conversa antes de a venda começar, não depois.
   const situacao = await comoOrg(s.orgId, (db) =>
-    situacaoDosClientes(db, achados.map((c) => c.id)),
+    situacaoDosClientes(db, achados.map((c) => c.id), s),
   )
   return achados.map((c) => ({
     id: c.id,
@@ -928,7 +946,7 @@ export async function cadastrarNoBalcao(
     if (!r.jaExiste) return { ok: false, erro: r.erro }
     // A ficha que já existe vem com a situação do crediário: escolher a
     // pessoa por aqui tem de avisar "deve · atrasado" igual à busca.
-    const fiado = await comoOrg(s.orgId, (db) => situacaoDosClientes(db, [r.jaExiste!.id]))
+    const fiado = await comoOrg(s.orgId, (db) => situacaoDosClientes(db, [r.jaExiste!.id], s))
     return {
       ok: false,
       erro: r.erro,

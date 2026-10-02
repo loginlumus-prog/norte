@@ -28,6 +28,7 @@
 
 import { comoOrg } from './banco'
 import { exigir, pode, type Capacidade, type Sessao } from './permissao'
+import { contasDaEmpresa } from './financeiro'
 import { vocabularioDoRamo, type PalavrasDaVenda } from './vocabulario'
 import { moduloLigado, type ComModulos } from './modulos'
 import { diaEmSP } from './dia'
@@ -385,7 +386,11 @@ export async function pendenciasDoDia(
 
     if (doDinheiro.length > 0) {
       // Conta sem unidade é da empresa inteira (contador, aluguel do
-      // escritório) — entra em qualquer recorte, como na tela do Financeiro.
+      // escritório): entra quando a leitura é a empresa e quem olha paga a
+      // conta da empresa — o mesmo critério da tela do Financeiro (ver
+      // `contasDaEmpresa`). Antes entrava em qualquer loja escolhida, e o
+      // financeiro preso à loja 3 recebia o chamado da conta que não paga.
+      const empresa = await contasDaEmpresa(db, sessao, doDinheiro, 'financeiro.lancar')
       const [f] = await db.$queryRaw<{ vencidas: number; valorVencido: string; hoje: number; valorHoje: string }[]>`
         select count(*) filter (where l.vencimento < ${hoje}::date)::int as vencidas,
                coalesce(sum(l.valor) filter (where l.vencimento < ${hoje}::date), 0) as "valorVencido",
@@ -394,24 +399,26 @@ export async function pendenciasDoDia(
           from lancamentos l
          where l.tipo = 'DESPESA' and l.pago_em is null
            and l.vencimento <= ${hoje}::date
-           and (l.unidade_id = any(${doDinheiro}) or l.unidade_id is null)
+           and (l.unidade_id = any(${doDinheiro}) or (${empresa === 'dentro'} and l.unidade_id is null))
       `
       c.contasVencidas = { quantas: n(f?.vencidas), valor: n(f?.valorVencido) }
       c.contasHoje = { quantas: n(f?.hoje), valor: n(f?.valorHoje) }
     }
 
     if (doFiado.length > 0) {
-      // Só o que ainda resta: parcela paga pela metade é meia dívida. Quem
+      // Só o que ainda resta: parcela paga pela metade é meia dívida, e o
+      // desconto concedido abate como o pago — a conta da tela do crediário
+      // (valor − pago − desconto). Quem
       // está com a cobrança pausada (acordo, advogado — ver
       // crediario-gestao.ts) não entra: isto é o chamado de COBRAR.
       const [p] = await db.$queryRaw<{ quantas: number; valor: string; clientes: number }[]>`
         select count(*)::int as quantas,
-               coalesce(sum(p.valor - p.pago), 0) as valor,
+               coalesce(sum(p.valor - p.pago - p.desconto), 0) as valor,
                count(distinct p.cliente_id)::int as clientes
           from parcelas p
           join clientes c on c.id = p.cliente_id
          where p.unidade_id = any(${doFiado}) and p.quitada_em is null
-           and p.vencimento < ${hoje}::date and p.valor > p.pago
+           and p.vencimento < ${hoje}::date and p.valor > p.pago + p.desconto
            and c.cobranca_pausada_em is null
       `
       c.parcelasVencidas = { quantas: n(p?.quantas), valor: n(p?.valor), clientes: n(p?.clientes) }

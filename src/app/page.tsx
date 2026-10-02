@@ -4,7 +4,7 @@ import type { Plano } from '@prisma/client'
 import './site.css'
 import { PLANOS as LIMITES, PLANOS_COM_PRECO, PRECOS, RECURSOS } from '@/servidor/planos'
 import { PODERES, TODOS_PODERES } from '@/servidor/poderes'
-import { RAMOS } from '@/servidor/modulos'
+import { MODULOS, RAMOS, type Ramo } from '@/servidor/modulos'
 import { EMPRESA } from '@/servidor/legal'
 import { Marca } from '@/ui/Marca'
 import { SistemaPorDentro, type TextoTela } from '@/ui/venda/demo/SistemaPorDentro'
@@ -13,7 +13,6 @@ import { COMECAR, ENTRAR, mailto } from '@/ui/venda/mapa'
 import {
   CelularCatalogo,
   ConversaAssistente,
-  FichaFabrica,
   MiniBalcao,
   MiniEquipe,
   MiniEstoque,
@@ -24,6 +23,7 @@ import {
 } from '@/ui/site/Cenas'
 import { Calculadora } from '@/ui/site/Calculadora'
 import { LuzQueSegue } from '@/ui/site/LuzQueSegue'
+import { Ramos, type RamoNaVitrine } from '@/ui/site/Ramos'
 import { IconeAuditoria, IconeCorte, IconeFreio, IconeParedes, IconeTranca } from '@/ui/Icones'
 
 // A página de venda.
@@ -59,6 +59,18 @@ import { IconeAuditoria, IconeCorte, IconeFreio, IconeParedes, IconeTranca } fro
 // • Entrar ao rolar com CSS puro, bento com luz que segue o mouse, faixa de
 //   ramos correndo, calculadora de preço.
 //
+// ── 02/10/2026 (2): de todo ramo, e sem tela vazia ──────────
+// O dono olhou de novo e pediu: menos açougue e sorveteria, mais "geral" —
+// a gente atende mercado, salão, escola, pet shop. E os celulares por cima
+// das fotos, com a história aparecendo e sumindo, ficaram feios.
+// • O topo virou um mosaico de quatro ramos (mercado, salão, moda,
+//   sorveteria). O exemplo do áudio é água mineral, que todo ramo vende.
+// • A telinha mora DENTRO do quadro da foto (nada pendurado para fora), e
+//   está sempre inteira — o laço só destaca cada peça na vez dela.
+// • A fábrica saiu do palco: é um dos ramos (aba "Sorveteria"/"Padaria" e o
+//   preço à parte), não uma seção inteira.
+// • "Para quem é" virou o seletor de ramo, lido de `RAMOS`.
+//
 // ── o que continua NÃO estando aqui, de propósito ───────────
 // • Logo de cliente e depoimento: não inventamos. Quando houver, com nome e
 //   permissão.
@@ -72,7 +84,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Norte — sua loja vendendo mais, você no controle',
     description: 'PDV, estoque, catálogo no WhatsApp, financeiro e um assistente com IA. 30 dias grátis.',
-    images: [{ url: '/img/site/balcao.webp', width: 1400, height: 1056 }],
+    images: [{ url: '/img/site/mercado.webp', width: 1100, height: 1365 }],
   },
 }
 
@@ -304,6 +316,34 @@ const PERGUNTAS: { p: string; r: string }[] = [
   },
 ]
 
+/** As abas de "Para quem é": o ramo, a frase e a cor. O resto vem de RAMOS. */
+const VITRINE_RAMOS: { id: Ramo; frase: string; cor: string }[] = [
+  { id: 'roupa', cor: 'var(--s-rosa)', frase: 'Grade de cor e tamanho, troca com vale, crediário com carnê, etiqueta com código de barras e meta por vendedora.' },
+  { id: 'mercearia', cor: 'var(--s-verde)', frase: 'Catálogo grande e giro rápido: bipe e receba, veja o que acaba hoje e lance a mercadoria que chegou mandando um áudio.' },
+  { id: 'beleza', cor: 'var(--s-violeta)', frase: 'Agenda de horários, o serviço e a revenda no mesmo balcão, e o material de uso separado do que se vende.' },
+  { id: 'sorveteria', cor: 'var(--s-sol)', frase: 'Venda por quilo e por sabor, botões grandes, encomenda com sinal — e, se você produz, a fábrica com ficha técnica, lote e o pedido das lojas.' },
+  { id: 'padaria', cor: 'var(--s-sol)', frase: 'A produção do dia que zera sem virar “falta”, encomenda de bolo com sinal e data, e venda por quilo.' },
+  { id: 'petshop', cor: 'var(--s-azul)', frase: 'Ração por porte, banho e tosa na agenda, e o cliente que volta com o programa de pontos.' },
+  { id: 'escola', cor: 'var(--s-azul)', frase: 'Turmas, matrícula e mensalidade com aviso no WhatsApp — e o uniforme e o material vendidos no mesmo caixa.' },
+  { id: 'construcao', cor: 'var(--s-verde)', frase: 'Venda por metro, caixa e litro, encomenda para entregar e o crediário de quem compra todo mês.' },
+]
+const RAMOS_VITRINE: RamoNaVitrine[] = VITRINE_RAMOS.map(({ id, frase, cor }) => {
+  const r = RAMOS[id]
+  return {
+    id,
+    frase,
+    cor,
+    titulo: r.titulo,
+    categorias: [...r.categorias],
+    eixos: r.eixos.map((e) => ({ nome: e.nome, opcoes: [...e.opcoes] })),
+    medida: r.medida,
+    balcao: r.balcao,
+    funcoes: [...(r.sugere as readonly string[]), ...(id === 'sorveteria' || id === 'padaria' ? ['fabrica'] : [])]
+      .filter((m): m is keyof typeof MODULOS => m in MODULOS)
+      .map((m) => MODULOS[m].titulo),
+  }
+})
+
 const RAMOS_FAIXA = Object.values(RAMOS)
   .map((r) => r.titulo)
   .filter((t) => t !== 'Outro' && t !== 'Serviços')
@@ -352,16 +392,26 @@ function Visto({ cor = 'var(--s-verde)' }: { cor?: string }) {
   )
 }
 
-function Foto({ src, alt, className = '', prioridade = false }: { src: string; alt: string; className?: string; prioridade?: boolean }) {
+function Foto({ src, alt, className = '', prioridade = false, foco = '' }: { src: string; alt: string; className?: string; prioridade?: boolean; foco?: string }) {
   return (
     <div className={`site-foto overflow-hidden ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} loading={prioridade ? 'eager' : 'lazy'} decoding="async" fetchPriority={prioridade ? 'high' : 'auto'} className="h-full w-full object-cover" />
+      <img src={src} alt={alt} loading={prioridade ? 'eager' : 'lazy'} decoding="async" fetchPriority={prioridade ? 'high' : 'auto'} className={`h-full w-full object-cover ${foco}`} />
     </div>
   )
 }
 
-/** Um destaque: texto de um lado, foto + telinha do outro. */
+/** Uma foto do mosaico do topo, com o nome do ramo no canto. */
+function Mosaico({ src, alt, rotulo, proporcao, foco = '', prioridade = false }: { src: string; alt: string; rotulo: string; proporcao: string; foco?: string; prioridade?: boolean }) {
+  return (
+    <div className={`relative overflow-hidden rounded-[24px] shadow-[var(--s-sombra)] sm:rounded-[28px] ${proporcao}`}>
+      <Foto src={src} alt={alt} prioridade={prioridade} foco={foco} className="h-full w-full" />
+      <span className="absolute bottom-2.5 left-2.5 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-[#0d1b45] backdrop-blur sm:text-[12px]">{rotulo}</span>
+    </div>
+  )
+}
+
+/** Um destaque: texto de um lado; do outro, a foto com a telinha morando dentro dela. */
 function Destaque({
   id,
   cor,
@@ -375,6 +425,7 @@ function Destaque({
   tela,
   invertido = false,
   rodape,
+  foco = '',
 }: {
   id: string
   cor: string
@@ -388,6 +439,8 @@ function Destaque({
   tela: ReactNode
   invertido?: boolean
   rodape?: ReactNode
+  /** Para onde a foto olha (object-position), para a pessoa não ficar atrás da telinha. */
+  foco?: string
 }) {
   return (
     <section id={id} className="relative scroll-mt-20 overflow-hidden py-20 sm:py-28">
@@ -414,17 +467,16 @@ function Destaque({
           ) : null}
           {rodape}
         </div>
-        <div className="site-revela relative lg:h-[640px]">
-          <Foto
-            src={foto}
-            alt={alt}
-            className={`aspect-[4/5] w-[86%] rounded-[36px] shadow-[var(--s-sombra-alta)] lg:absolute lg:top-4 lg:aspect-auto lg:h-[88%] lg:w-[66%] ${invertido ? 'ml-auto lg:right-0' : 'lg:left-0'}`}
-          />
+        <div className="site-revela relative overflow-hidden rounded-[36px] shadow-[var(--s-sombra-alta)]">
+          <Foto src={foto} alt={alt} foco={foco} className="absolute inset-0 h-full w-full" />
           <div
-            className={`relative -mt-32 flex ${invertido ? 'justify-start' : 'justify-end'} lg:absolute lg:top-1/2 lg:mt-0 lg:-translate-y-1/2 ${invertido ? 'lg:left-0' : 'lg:right-0'}`}
-          >
-            {tela}
-          </div>
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(${invertido ? '90deg' : '270deg'}, color-mix(in srgb, ${cor} 30%, rgb(11 18 48 / 0.6)) 0%, transparent 70%)`,
+            }}
+          />
+          <div className={`relative flex min-h-[520px] items-end p-5 pt-44 sm:p-8 sm:pt-8 lg:h-[660px] ${invertido ? 'justify-start' : 'justify-end'}`}>{tela}</div>
         </div>
       </div>
     </section>
@@ -515,7 +567,7 @@ export default function Inicio() {
                 <span aria-hidden className="transition-transform group-hover:translate-x-0.5">→</span>
               </a>
               <h1 className="site-chega mt-7 text-[2.9rem] leading-[1.02] font-extrabold sm:text-[4rem] lg:text-[4.6rem]" style={v(0.1)}>
-                Sua loja vende mais
+                Seu negócio vende mais
                 <br />
                 <span className="site-troca" aria-hidden>
                   <span>no balcão.</span>
@@ -526,8 +578,8 @@ export default function Inicio() {
                 <span className="sr-only">no balcão, no WhatsApp, no catálogo e no Instagram.</span>
               </h1>
               <p className="site-chega mt-6 max-w-xl text-lg leading-relaxed text-[var(--s-tinta-2)] sm:text-xl" style={v(0.25)}>
-                Frente de caixa, estoque, catálogo online, financeiro e equipe numa tela só — e um assistente no WhatsApp que lança a compra quando
-                você manda um áudio. Feito para o comércio brasileiro de verdade.
+                Frente de caixa, estoque, catálogo online, financeiro e equipe numa tela só — e um assistente no WhatsApp que lança a mercadoria
+                quando você manda um áudio. Do mercadinho ao salão, da loja de roupa à sorveteria.
               </p>
               <div className="site-chega mt-9 flex w-full flex-col gap-3 sm:w-auto sm:flex-row" style={v(0.4)}>
                 <a href={COMECAR} className="site-botao site-botao-principal px-8 py-4 text-[16px]">
@@ -547,22 +599,26 @@ export default function Inicio() {
               </ul>
             </div>
 
-            {/* A loja de verdade, com o sistema acontecendo por cima. */}
+            {/* Quatro ramos de verdade, com o sistema acontecendo por cima. */}
             <div className="site-chega relative mx-auto w-full max-w-xl" style={v(0.3)}>
-              <Foto
-                src="/img/site/balcao.webp"
-                alt="Dona de sorveteria sorrindo no balcão, lançando a venda no tablet"
-                prioridade
-                className="aspect-[4/3.4] rounded-[36px] shadow-[var(--s-sombra-alta)]"
-              />
-              <div className="site-boia site-cartao absolute -top-5 -left-3 flex items-center gap-3 rounded-2xl px-4 py-3 sm:-left-8" style={{ animationDelay: '-1s' }}>
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                <div className="flex flex-col gap-3 sm:gap-4">
+                  <Mosaico src="/img/site/mercado.webp" alt="Dona de mercadinho entregando a sacola para a cliente no caixa" rotulo="Mercado" proporcao="aspect-[4/5]" foco="object-[50%_30%]" prioridade />
+                  <Mosaico src="/img/site/moda.webp" alt="Vendedora de loja de roupa entre as araras coloridas" rotulo="Moda" proporcao="aspect-[4/3]" />
+                </div>
+                <div className="flex flex-col gap-3 pt-10 sm:gap-4">
+                  <Mosaico src="/img/site/beleza.webp" alt="Manicure conferindo a agenda no tablet, no balcão do salão" rotulo="Salão e beleza" proporcao="aspect-[4/3]" foco="object-[60%_35%]" />
+                  <Mosaico src="/img/site/balcao.webp" alt="Dona de sorveteria lançando a venda no tablet, no balcão" rotulo="Sorveteria" proporcao="aspect-[4/5]" foco="object-[70%_50%]" />
+                </div>
+              </div>
+              <div className="site-boia site-cartao absolute top-6 -left-3 flex items-center gap-3 rounded-2xl px-4 py-3 sm:-left-8" style={{ animationDelay: '-1s' }}>
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--s-verde)] text-sm font-black text-white">✓</span>
                 <div className="leading-tight">
                   <p className="text-[11px] text-[var(--s-tinta-2)]">Venda concluída · Pix</p>
                   <p className="text-lg font-extrabold tabular-nums">R$ 38,00</p>
                 </div>
               </div>
-              <div className="site-boia site-cartao absolute top-[30%] -right-3 w-52 rounded-2xl p-3.5 sm:-right-10" style={{ animationDelay: '-3s' }}>
+              <div className="site-boia site-cartao absolute top-[42%] -right-3 w-52 rounded-2xl p-3.5 sm:-right-8" style={{ animationDelay: '-3s' }}>
                 <p className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--s-rosa)]">
                   <span className="site-pulsa h-2 w-2 rounded-full bg-[var(--s-rosa)]" style={{ '--cor': 'var(--s-rosa)' } as CSSProperties} />
                   Pedido novo pelo catálogo
@@ -570,18 +626,11 @@ export default function Inicio() {
                 <p className="mt-1 text-[13px] font-bold">ENC-7Q2K · 3 itens</p>
                 <p className="text-[12px] text-[var(--s-tinta-2)]">Retirada às 15h · Pix</p>
               </div>
-              <div className="site-boia site-cartao absolute -bottom-6 left-2 flex max-w-[15rem] items-center gap-2.5 rounded-2xl px-3.5 py-3 sm:-left-6" style={{ animationDelay: '-2s' }}>
+              <div className="site-boia site-cartao absolute -bottom-5 left-2 flex max-w-[16rem] items-center gap-2.5 rounded-2xl px-3.5 py-3 sm:-left-6" style={{ animationDelay: '-2s' }}>
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0f6e47] text-[11px] font-black text-white">▶</span>
                 <p className="text-[12px] leading-snug">
-                  <span className="text-[var(--s-tinta-2)]">Ouvi:</span> “comprei 10 kg de picanha”
+                  <span className="text-[var(--s-tinta-2)]">Ouvi:</span> “chegaram 48 águas de 500 ml”
                 </p>
-              </div>
-              <div className="site-boia site-cartao absolute -right-2 -bottom-8 hidden w-44 rounded-2xl p-3.5 sm:block" style={{ animationDelay: '-4s' }}>
-                <p className="text-[11px] text-[var(--s-tinta-2)]">Vendido hoje</p>
-                <p className="text-lg font-extrabold tabular-nums">R$ 3.906</p>
-                <div className="mt-2">
-                  <MiniGrafico baixo />
-                </div>
               </div>
             </div>
           </div>
@@ -763,6 +812,7 @@ export default function Inicio() {
           fichas={['Retirada ou entrega', 'Taxa e pedido mínimo', 'Chave Pix', 'Esgotado some sozinho', 'Um link por loja']}
           foto="/img/site/catalogo.webp"
           alt="Cliente escolhendo produtos pelo catálogo da loja no celular, numa mesa de café"
+          foco="object-[25%_50%]"
           tela={<CelularCatalogo />}
         />
 
@@ -779,7 +829,7 @@ export default function Inicio() {
             }
             texto={
               <>
-                “Comprei 10 kg de picanha a 39,90.” O assistente entende, monta a entrada com o valor e pergunta. Você responde <b>SIM</b> e está feito — com o saldo
+                “Chegaram 48 águas a R$ 1,20.” O assistente entende, monta a entrada com o valor e pergunta. Você responde <b>SIM</b> e está feito — com o saldo
                 novo na resposta. Para você e a sua equipe, no WhatsApp que vocês já usam.
               </>
             }
@@ -789,8 +839,9 @@ export default function Inicio() {
               'Pedido novo do catálogo avisado na hora — responda ACEITAR ou PRONTO.',
               'Nada acontece sem o seu SIM. Tetos de valor no banco, tudo assinado no livro.',
             ]}
-            foto="/img/site/audio.webp"
-            alt="Dono de açougue sorrindo enquanto grava um áudio no WhatsApp"
+            foto="/img/site/mercadoria.webp"
+            alt="Dono de loja no estoque, entre as caixas que acabaram de chegar, gravando um áudio no WhatsApp"
+            foco="object-[60%_15%]"
             tela={<ConversaAssistente />}
             invertido
             rodape={
@@ -820,34 +871,10 @@ export default function Inicio() {
           ]}
           fichas={['Instagram', 'TikTok', 'WhatsApp', `${reais(PRECOS.farolMarca)}/mês por marca`]}
           foto="/img/site/farol.webp"
-          alt="Dona de sorveteria gravando um vídeo do sorvete com o celular e um anel de luz"
+          alt="Dona de loja gravando um vídeo do produto com o celular e um anel de luz"
+          foco="object-[30%_15%]"
           tela={<PecasFarol />}
         />
-
-        {/* ── fábrica e rede ── */}
-        <section className="bg-[var(--s-cartao)]">
-          <Destaque
-            id="fabrica"
-            cor="var(--s-violeta)"
-            olho="Fábrica e rede de lojas"
-            titulo={
-              <>
-                Da produção à <span className="text-[var(--s-violeta)]">prateleira de cada loja</span>.
-              </>
-            }
-            texto="Para quem produz o que vende: ficha técnica com o custo de cada litro, ordem de produção com lote e validade, e o pedido de cada loja para a fábrica — que sai de um estoque e entra no outro na mesma hora."
-            itens={[
-              'Custo real por produto, puxado da ficha técnica.',
-              'Lote e validade na etiqueta, do freezer à vitrine.',
-              'A loja pede, a fábrica envia, a loja confere — e o que faltou vira perda registrada.',
-              'Cada loja com o seu estoque e os seus cargos; o dono vê a rede inteira.',
-            ]}
-            foto="/img/site/fabrica.webp"
-            alt="Funcionário produzindo sorvete artesanal numa fábrica limpa, com potes coloridos"
-            tela={<FichaFabrica />}
-            invertido
-          />
-        </section>
 
         {/* ── começar ── */}
         <section id="comecar" className="scroll-mt-20 py-20 sm:py-28">
@@ -899,53 +926,26 @@ export default function Inicio() {
         </section>
 
         {/* ── para quem é ── */}
-        <section className="py-20 sm:py-28">
+        <section id="ramos" className="scroll-mt-20 py-20 sm:py-28">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <Cabeca
               olho="Para quem é"
               cor="var(--s-rosa)"
               titulo="Feito para o seu ramo desde o primeiro dia."
-              texto="Diga o seu ramo no cadastro e o Norte já abre com as variações, as categorias e o jeito de vender de quem é do ramo."
+              texto="Diga o seu ramo no cadastro e o Norte já abre com as categorias, as variações e o jeito de vender de quem é do ramo. Toque no seu:"
             />
-            <div className="mt-12 grid gap-4 md:grid-cols-2">
-              {[
-                {
-                  src: '/img/site/moda.webp',
-                  alt: 'Vendedora de loja de roupa dobrando peças coloridas ao lado da arara',
-                  t: 'Moda, calçados e acessórios',
-                  d: 'Grade de cor e tamanho, troca com vale, crediário com carnê, etiqueta com código de barras e meta por vendedora.',
-                  cor: 'var(--s-rosa)',
-                },
-                {
-                  src: '/img/site/retirada.webp',
-                  alt: 'Atendente entregando um pedido em sacola de papel para uma cliente no balcão',
-                  t: 'Alimentação, mercearia e conveniência',
-                  d: 'Venda por peso, botões grandes, encomenda com sinal, catálogo para retirada e entrega, e o aviso do que acaba hoje.',
-                  cor: 'var(--s-verde)',
-                },
-              ].map((c) => (
-                <article key={c.t} className="site-revela group relative overflow-hidden rounded-[32px]">
-                  <Foto src={c.src} alt={c.alt} className="aspect-[4/3]" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                  <div className="absolute inset-x-0 bottom-0 p-6 text-white sm:p-8">
-                    <span className="site-olho" style={{ color: 'white' }}>
-                      <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: c.cor }} />
-                      Ramo
-                    </span>
-                    <h3 className="mt-2 text-2xl font-extrabold text-white sm:text-3xl" style={{ color: 'white' }}>
-                      {c.t}
-                    </h3>
-                    <p className="mt-2 max-w-md text-[15px] text-white/85">{c.d}</p>
-                  </div>
-                </article>
-              ))}
+            <div className="site-revela mt-12">
+              <Ramos ramos={RAMOS_VITRINE} />
             </div>
-            <div className="site-revela mt-8 flex flex-wrap gap-2">
-              {RAMOS_FAIXA.map((r, i) => (
-                <Ficha key={r} cor={['var(--s-azul)', 'var(--s-rosa)', 'var(--s-verde)', 'var(--s-sol)', 'var(--s-violeta)'][i % 5]!}>
-                  {r}
-                </Ficha>
-              ))}
+            <div className="site-revela mt-10">
+              <p className="text-[13px] font-bold text-[var(--s-tinta-2)]">E também:</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {RAMOS_FAIXA.filter((t) => !RAMOS_VITRINE.some((r) => r.titulo === t)).map((r, i) => (
+                  <Ficha key={r} cor={['var(--s-azul)', 'var(--s-rosa)', 'var(--s-verde)', 'var(--s-sol)', 'var(--s-violeta)'][i % 5]!}>
+                    {r}
+                  </Ficha>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -1111,7 +1111,7 @@ export default function Inicio() {
                 ['Catálogo online', '#catalogo'],
                 ['Assistente no WhatsApp', '#assistente'],
                 ['Farol', '#farol'],
-                ['Fábrica', '#fabrica'],
+                ['Para o seu ramo', '#ramos'],
                 ['Por dentro', '#demo'],
               ],
             },

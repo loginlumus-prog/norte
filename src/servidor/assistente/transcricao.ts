@@ -115,11 +115,31 @@ export async function transcrever(
   }
 }
 
+/** Endereço IPv4 de dentro de casa (rede interna, a própria máquina, o metadado da nuvem). */
+function ipv4Interno(h: string): boolean {
+  const [a, b] = h.split('.').map(Number) as [number, number]
+  return (
+    a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224
+  )
+}
+
+/** O mesmo, para o endereço que o DNS devolveu (v4 ou v6). */
+export function ipInterno(ip: string): boolean {
+  const h = ip.toLowerCase().replace(/^\[|\]$/g, '')
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return ipv4Interno(h)
+  // IPv4 embrulhado em IPv6 (::ffff:10.0.0.1) é o IPv4 de dentro.
+  const embrulhado = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(h)
+  if (embrulhado) return ipv4Interno(embrulhado[1]!)
+  return h === '::' || h === '::1' || /^f[cd]/.test(h) || /^fe[89ab]/.test(h)
+}
+
 /**
  * Endereço de onde se pode baixar: https, e nunca a própria máquina nem a
  * rede interna. O link vem do provedor (Z-API), num corpo que só chega com o
  * token da empresa — mas o servidor não busca nada de dentro de casa por
- * pedido de fora.
+ * pedido de fora. Isto olha o NOME; `resolveParaFora` olha o endereço que o
+ * nome dá (um nome de fora pode apontar para dentro).
  */
 export function enderecoBaixavel(url: string): boolean {
   let u: URL
@@ -131,17 +151,59 @@ export function enderecoBaixavel(url: string): boolean {
   if (u.protocol !== 'https:' || u.username || u.password) return false
   const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, '')
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return false
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
-    const [a, b] = h.split('.').map(Number) as [number, number]
-    if (a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
-      return false
-    }
-  }
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h) && ipv4Interno(h)) return false
   if (h.includes(':')) return false // IPv6 literal: não há motivo para o provedor mandar um
   return true
 }
 
-async function baixar(url: string, buscar: typeof fetch): Promise<{ bytes: Uint8Array; mime: string | null } | null> {
+/** Quem resolve o nome: o DNS de verdade, ou um de mentira nos testes. */
+export type Resolver = (host: string) => Promise<string[]>
+
+const resolverDoSistema: Resolver = async (host) => {
+  const { lookup } = await import('node:dns/promises')
+  return (await lookup(host, { all: true, verbatim: true })).map((a) => a.address)
+}
+
+/** Todos os endereços que o nome dá são de fora? Nome que não resolve: não. */
+async function resolveParaFora(url: string, resolver: Resolver): Promise<boolean> {
+  try {
+    const ips = await resolver(new URL(url).hostname.replace(/^\[|\]$/g, ''))
+    return ips.length > 0 && !ips.some(ipInterno)
+  } catch {
+    return false
+  }
+}
+
+/** Lê o corpo até o teto, com ou sem Content-Length: passou, para e devolve nulo. */
+async function lerAteOTeto(r: Response, teto: number): Promise<Uint8Array | null> {
+  if (!r.body) return null
+  const leitor = r.body.getReader()
+  const pedacos: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await leitor.read()
+    if (done) break
+    total += value.byteLength
+    if (total > teto) {
+      await leitor.cancel().catch(() => undefined)
+      return null
+    }
+    pedacos.push(value)
+  }
+  const bytes = new Uint8Array(total)
+  let i = 0
+  for (const p of pedacos) {
+    bytes.set(p, i)
+    i += p.byteLength
+  }
+  return bytes
+}
+
+async function baixar(
+  url: string,
+  buscar: typeof fetch,
+  resolver: Resolver | null,
+): Promise<{ bytes: Uint8Array; mime: string | null } | null> {
   try {
     // Redirecionamento só um, e conferido como o primeiro endereço: seguir
     // às cegas deixaria o link de fora apontar para dentro de casa.
@@ -149,6 +211,7 @@ async function baixar(url: string, buscar: typeof fetch): Promise<{ bytes: Uint8
     let r: Response | null = null
     for (let i = 0; i < 2; i++) {
       if (!enderecoBaixavel(atual)) return null
+      if (resolver && !(await resolveParaFora(atual, resolver))) return null
       r = await buscar(atual, { redirect: 'manual', signal: AbortSignal.timeout(ESPERA_MS) })
       const destino = r.status >= 300 && r.status < 400 ? r.headers.get('location') : null
       if (!destino) break
@@ -158,8 +221,10 @@ async function baixar(url: string, buscar: typeof fetch): Promise<{ bytes: Uint8
     if (!r || !r.ok) return null
     const tamanho = Number(r.headers.get('content-length') ?? 0)
     if (tamanho > MAXIMO_AUDIO_BYTES) return null
-    const bytes = new Uint8Array(await r.arrayBuffer())
-    if (bytes.byteLength === 0 || bytes.byteLength > MAXIMO_AUDIO_BYTES) return null
+    // O Content-Length é do servidor de lá, e pode faltar ou mentir: o teto
+    // vale para o que de fato chega.
+    const bytes = await lerAteOTeto(r, MAXIMO_AUDIO_BYTES)
+    if (!bytes || bytes.byteLength === 0) return null
     return { bytes, mime: r.headers.get('content-type') }
   } catch {
     return null
@@ -167,25 +232,63 @@ async function baixar(url: string, buscar: typeof fetch): Promise<{ bytes: Uint8
 }
 
 /**
- * O áudio recebido → texto, do jeito que ele vier. Nulo quando não deu, e
- * sem chave nem baixa nada (o caso comum, enquanto a loja não liga).
+ * Quanto dura o áudio, para a conta. O provedor diz os segundos (Z-API);
+ * sem isso, estima pelo tamanho — a nota de voz do WhatsApp (opus) anda
+ * perto de 2 KB por segundo. Errar para cima é o lado seguro da conta.
  */
+const segundosDe = (bytes: number, informados?: number | null) =>
+  informados && informados > 0 ? Math.ceil(informados) : Math.max(1, Math.ceil(bytes / 2000))
+
+export type Ouvido = { texto: string; segundos: number }
+
+/**
+ * O áudio recebido → texto, e quanto ele durava (para a conta). Nulo quando
+ * não deu, e sem chave nem baixa nada (o caso comum, enquanto a loja não liga).
+ *
+ * O DNS é conferido quando quem busca é o `fetch` de verdade; o `buscar` de
+ * mentira dos testes não sai para a rede, e o nome dele não resolve.
+ */
+export async function ouvirMedindo(
+  audio: AudioRecebido,
+  buscar: typeof fetch = fetch,
+  env: Record<string, string | undefined> = process.env,
+  resolver: Resolver | null = buscar === fetch ? resolverDoSistema : null,
+): Promise<Ouvido | null> {
+  if (!lerConfigTranscricao(env)) return null
+  if ('base64' in audio) {
+    if (!/^[A-Za-z0-9+/=]+$/.test(audio.base64)) return null
+    const bytes = Buffer.from(audio.base64, 'base64')
+    const texto = await transcrever(bytes, audio.mime, buscar, env)
+    return texto ? { texto, segundos: segundosDe(bytes.byteLength) } : null
+  }
+  if (audio.segundos != null && audio.segundos > MAXIMO_AUDIO_SEGUNDOS) return null
+  const b = await baixar(audio.url, buscar, resolver)
+  if (!b) return null
+  const mime = ehAudio(audio.mime) ? audio.mime! : ehAudio(b.mime) ? b.mime! : 'audio/ogg'
+  const texto = await transcrever(b.bytes, mime, buscar, env)
+  return texto ? { texto, segundos: segundosDe(b.bytes.byteLength, audio.segundos) } : null
+}
+
+/** `ouvirMedindo`, só o texto. */
 export async function ouvir(
   audio: AudioRecebido,
   buscar: typeof fetch = fetch,
   env: Record<string, string | undefined> = process.env,
 ): Promise<string | null> {
-  if (!lerConfigTranscricao(env)) return null
-  if ('base64' in audio) {
-    if (!/^[A-Za-z0-9+/=]+$/.test(audio.base64)) return null
-    const bytes = Buffer.from(audio.base64, 'base64')
-    return transcrever(bytes, audio.mime, buscar, env)
-  }
-  if (audio.segundos != null && audio.segundos > MAXIMO_AUDIO_SEGUNDOS) return null
-  const b = await baixar(audio.url, buscar)
-  if (!b) return null
-  const mime = ehAudio(audio.mime) ? audio.mime! : ehAudio(b.mime) ? b.mime! : 'audio/ogg'
-  return transcrever(b.bytes, mime, buscar, env)
+  return (await ouvirMedindo(audio, buscar, env))?.texto ?? null
+}
+
+// ── a conta ──────────────────────────────────────────────────
+
+/**
+ * O custo da transcrição, em centavos por minuto começado. O Whisper da Groq
+ * sai por menos de meio centavo o minuto; um centavo arredonda para cima (e
+ * cobre o câmbio). `TRANSCRICAO_CENT_POR_MINUTO` muda, se o serviço mudar.
+ */
+export function custoDaTranscricaoCent(segundos: number, env: Record<string, string | undefined> = process.env): number {
+  const porMinuto = Number(env.TRANSCRICAO_CENT_POR_MINUTO ?? 1)
+  const p = Number.isFinite(porMinuto) && porMinuto >= 0 ? porMinuto : 1
+  return Math.ceil(Math.max(1, Math.ceil(segundos / 60)) * p)
 }
 
 /**

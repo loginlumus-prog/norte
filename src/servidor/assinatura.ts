@@ -29,14 +29,21 @@ import {
   type Mudanca,
 } from './planos'
 import { mostrar } from './dinheiro'
-import { MODULOS } from './modulos'
+import { MODULOS, moduloLigado } from './modulos'
 import { diaEmSP } from './dia'
 
 const mostrarDia = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(d)
 import { plural } from './texto'
 
-export type Uso = { unidades: number; usuarios: number }
+export type Uso = {
+  unidades: number
+  usuarios: number
+  /** Fábricas ativas: cobradas à parte (`PRECOS.fabrica`). */
+  fabricas?: number
+  /** Marcas do Farol contratadas (0 sem o módulo). */
+  farolMarcas?: number
+}
 
 export type Assinatura = {
   plano: Plano
@@ -49,7 +56,7 @@ export type Assinatura = {
   diasDeTeste: number | null
   uso: Uso
   limite: { unidades: number | null; vagas: number | null }
-  mensal: { base: number | null; extras: number; porExtra: number | null; fabricas: number; porFabrica: number | null; total: number | null }
+  mensal: ReturnType<typeof mensalidade>
   credito: {
     saldoCent: number
     avisoCent: number
@@ -106,6 +113,13 @@ export async function garantirCreditoDoMes(orgId: string, agora = new Date()): P
       select: { id: true },
     })
     if (ja) return 0
+    // O crédito de conhecer é um por TESTE, não um por mês: o teste de 30
+    // dias que atravessa a virada recebia duas vezes. Qualquer crédito de
+    // plano já depositado (o teste nasce sem nenhum) é o dele.
+    if (org.situacao === 'TESTE') {
+      const doTeste = await db.recargaIA.findFirst({ where: { tipo: 'PLANO', origem: 'plano' }, select: { id: true } })
+      if (doTeste) return 0
+    }
 
     const centavos = incluso * 100
     const depois = await db.org.update({
@@ -200,6 +214,10 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
     })
     // A fábrica é cobrada à parte (PRECOS.fabrica), por unidade marcada.
     const fabricas = await db.unidade.count({ where: { ativa: true, ehFabrica: true } })
+    // E o Farol, pelas marcas CONTRATADAS (não pelas cadastradas: o teto de
+    // cadastro é este mesmo número — ver farol.ts).
+    const comFarol = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { modulos: true, farolMarcas: true } })
+    const farolMarcas = moduloLigado(comFarol, 'farol') ? comFarol.farolMarcas : 0
     // O que a LOJA pagou, nao o que o fornecedor cobrou da gente: e o
     // consumo dela que a tela dela mostra.
     const gasto = await db.consumoIA.aggregate({
@@ -208,7 +226,7 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
     })
 
     const p = PLANOS[org.plano]
-    const uso: Uso = { unidades, usuarios }
+    const uso: Uso = { unidades, usuarios, fabricas, farolMarcas }
     const gasto30Cent = gasto._sum.cobradoCent ?? 0
     const porDia = gasto30Cent / 30
     const saldoCent = org.creditoIaCent
@@ -299,7 +317,7 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
       diasDeTeste,
       uso,
       limite: { unidades: p.unidades, vagas: p.vagas },
-      mensal: mensalidade(org.plano, unidades, fabricas),
+      mensal: mensalidade(org.plano, unidades, fabricas, farolMarcas),
       credito,
       alertas,
     }
@@ -360,7 +378,23 @@ export async function exigirCotaDeUnidade(
  * `NORTE_ASSINATURA_LIVRE=1` liga o clique direto — para o banco local, as
  * conferências e, no futuro, quando o gateway cobrar antes de liberar.
  */
-export const assinaturaLivre = () => process.env.NORTE_ASSINATURA_LIVRE === '1'
+export const assinaturaLivre = () => {
+  if (process.env.NORTE_ASSINATURA_LIVRE !== '1') return false
+  // Em produção, nunca: a variável esquecida no painel da hospedagem daria
+  // plano e crédito de graça a qualquer dono que clicasse.
+  if (process.env.NODE_ENV === 'production') {
+    avisarLivreIgnorada()
+    return false
+  }
+  return true
+}
+
+let avisouLivre = false
+function avisarLivreIgnorada() {
+  if (avisouLivre) return
+  avisouLivre = true
+  console.error('[assinatura] NORTE_ASSINATURA_LIVRE=1 em produção: IGNORADA. Tire a variável do ambiente.')
+}
 
 /** Registra o pedido no livro da empresa e no log do servidor, onde a gente lê. */
 export async function registrarPedido(
@@ -404,14 +438,17 @@ export async function registrarPedido(
  * prévia.
  */
 export async function previaDeTroca(orgId: string, para: Plano): Promise<Mudanca> {
-  const { plano, unidades } = await comoOrg(orgId, async (db) => {
+  const { plano, unidades, fabricas, farolMarcas } = await comoOrg(orgId, async (db) => {
     // Em sequência: dentro do comoOrg é uma conexão só.
-    const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } })
+    const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true, modulos: true, farolMarcas: true } })
     // Só loja ATIVA conta, e depósito fora — como em `assinaturaDaEmpresa`.
     const unidades = await db.unidade.count({ where: { ativa: true, ehDeposito: false } })
-    return { plano: org.plano, unidades }
+    // A fábrica e o Farol também estão na conta: a prévia que os deixava de
+    // fora mostrava um valor menor que o da fatura.
+    const fabricas = await db.unidade.count({ where: { ativa: true, ehFabrica: true } })
+    return { plano: org.plano, unidades, fabricas, farolMarcas: moduloLigado(org, 'farol') ? org.farolMarcas : 0 }
   })
-  return mudanca(plano, para, { unidades })
+  return mudanca(plano, para, { unidades, fabricas, farolMarcas })
 }
 
 /** Quem assina a troca no livro. */
@@ -518,9 +555,48 @@ export async function trocarPlanoComoEquipe(
   // confirmada: o teste acaba ali, e a empresa fica ATIVA — senão o prazo do
   // teste venceria depois e desceria para o Grátis quem já pagou.
   if (PLANOS[para].mensal !== 0) {
-    await comoOrg(orgId, (db) => db.org.updateMany({ where: { id: orgId, situacao: 'TESTE' }, data: { situacao: 'ATIVA' } }))
+    const virou = await comoOrg(orgId, (db) =>
+      db.org.updateMany({ where: { id: orgId, situacao: 'TESTE' }, data: { situacao: 'ATIVA' } }),
+    )
+    if (virou.count > 0) await completarCreditoDaConversao(orgId)
   }
   return m
+}
+
+/**
+ * Quem assina no mês em que testou já recebeu, naquele mês, o crédito de
+ * conhecer (R$ 20) — e o depósito do mês (`plano:AAAA-MM`) não cai de novo.
+ * Pagava o plano cheio e ficava com R$ 20 de IA até o mês seguinte. Aqui
+ * completa o que falta para o crédito do plano, uma vez (`:conversao`).
+ */
+export async function completarCreditoDaConversao(orgId: string, agora = new Date()): Promise<number> {
+  const mes = diaEmSP(agora).slice(0, 7)
+  const referencia = `plano:${mes}:conversao`
+  return comoOrg(orgId, async (db) => {
+    await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`credito-do-mes:${orgId}`}))`
+    const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true, situacao: true } })
+    const incluso = PLANOS[org.plano].creditoMensal
+    if (!incluso || org.situacao !== 'ATIVA') return 0
+    if (await db.recargaIA.findFirst({ where: { tipo: 'PLANO', referencia }, select: { id: true } })) return 0
+    const doMes = await db.recargaIA.aggregate({
+      where: { tipo: 'PLANO', origem: 'plano', referencia: { startsWith: `plano:${mes}` } },
+      _sum: { centavos: true },
+    })
+    const ja = doMes._sum.centavos ?? 0
+    // Nada depositado ainda no mês: o depósito normal (`garantirCreditoDoMes`) cuida.
+    if (ja === 0) return 0
+    const falta = incluso * 100 - ja
+    if (falta <= 0) return 0
+    const [ano, m] = mes.split('-')
+    await creditarNaTransacao(db, orgId, falta, {
+      tipo: 'PLANO',
+      origem: 'plano',
+      referencia,
+      motivo: `Crédito do plano ${PLANOS[org.plano].titulo}, completando o do teste — ${m}/${ano}`,
+      quem: 'Norte',
+    })
+    return falta
+  })
 }
 
 /**

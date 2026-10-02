@@ -98,7 +98,7 @@ export const LINKS_BARRA: { nome: string; href: string }[] = [
  * diz que está fechado e mostra o e-mail — o botão nunca leva a lugar vazio.
  */
 export const COMECAR = '/cadastro'
-export const ENTRAR = '/exemplo/entrar'
+export const ENTRAR = '/entrar'
 export const EMAIL = 'contato@usenorte.com.br'
 
 export const mailto = (assunto: string) =>

@@ -3,14 +3,15 @@
 // A loja confere o que chegou da fábrica.
 //
 // O enviado já entrou no estoque da loja no momento do envio — conferir é
-// dizer o que NÃO veio. Cada item vem preenchido com o enviado; quem confere
-// só troca o que chegou a menos, e a diferença sai como perda, com o número
-// do pedido no motivo.
+// dizer o que veio DIFERENTE. Cada item vem preenchido com o enviado; quem
+// confere troca o que chegou a menos (a diferença sai como perda) ou a mais
+// (a diferença entra na loja e sai da fábrica), com o número do pedido.
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao } from '@/ui/base'
 import { Confirmar } from '@/ui/Confirmar'
+import { CampoDoPin } from '@/ui/Assinar'
 import { quantidade } from '@/ui/texto'
 import type { PedidoNaTela } from '@/servidor/fabrica'
 import { cancelarPedidoAcao, receberPedidoAcao, type Recado } from '../acoes'
@@ -21,6 +22,10 @@ export function Conferir({ slug, pedido: p }: { slug: string; pedido: PedidoNaTe
   const [aberto, setAberto] = useState(false)
   const [chegou, setChegou] = useState<Record<string, string>>(() => Object.fromEntries(mandados.map((i) => [i.id, paraCampo(i.enviada)])))
   const [recado, setRecado] = useState<Recado | null>(null)
+  // Diferença na conferência é baixa: pede o PIN quando a empresa assina as
+  // exceções (ou de quem confere porque a empresa deixou).
+  const [pedePin, setPedePin] = useState(false)
+  const [pin, setPin] = useState('')
   const [indo, comecar] = useTransition()
   const router = useRouter()
 
@@ -37,7 +42,9 @@ export function Conferir({ slug, pedido: p }: { slug: string; pedido: PedidoNaTe
     if (itens.some((i) => Number.isNaN(i.recebida))) return setRecado({ erro: LEGIVEL })
     setRecado(null)
     comecar(async () => {
-      const r = await receberPedidoAcao(slug, p.id, { itens })
+      const r = await receberPedidoAcao(slug, p.id, { itens, pin: pin || null })
+      setPin('')
+      if (r.precisaPin) setPedePin(true)
       setRecado(r)
       if (r.ok) router.refresh()
     })
@@ -72,9 +79,14 @@ export function Conferir({ slug, pedido: p }: { slug: string; pedido: PedidoNaTe
         ))}
       </ul>
       <p className="text-xs text-tinta-3">
-        Veio a menos? Ponha o que chegou: a diferença sai do estoque da loja como perda, com o número do pedido. Veio a mais
-        não entra por aqui — avise a fábrica.
+        Veio diferente? Ponha o que chegou. A menos: a diferença sai do estoque da loja como perda. A mais: a diferença entra
+        na loja e sai da fábrica. As duas com o número do pedido.
       </p>
+      {pedePin && (
+        <div className="max-w-xs">
+          <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} aoEnviar={conferir} />
+        </div>
+      )}
       {recado?.erro && <Aviso nivel="critico">{recado.erro}</Aviso>}
       <div className="flex justify-end gap-2">
         <Botao tom="discreto" onClick={() => setAberto(false)}>

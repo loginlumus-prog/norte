@@ -96,8 +96,17 @@ export type Conta = {
   faltaCent: number
   temDinheiro: boolean
   trocoCent: number
-  /** Passou do total sem dinheiro na venda: não há de onde dar troco. Trava. */
+  /**
+   * Passou do total sem ter de onde dar troco. Trava. Vale também quando há
+   * dinheiro, mas o troco passa dele (`trocoAlemDoDinheiro`).
+   */
   sobrouSemDinheiro: boolean
+  /**
+   * Pix 100 + Dinheiro 10 numa venda de 80: o "troco" de R$ 30 é maior que os
+   * R$ 10 em dinheiro. O que sobrou foi no Pix ou no cartão, e isso não
+   * volta pela gaveta — o valor é que está errado.
+   */
+  trocoAlemDoDinheiro: boolean
   escada: Record<Tabela, number>
   temEscada: boolean
   /**
@@ -142,9 +151,16 @@ export function contar(
   // Troco só existe em dinheiro. Cartão e Pix não devolvem diferença — se
   // sobrar ali, é erro de digitação, e a venda tem que travar em vez de "dar
   // troco" de um valor que nunca entrou na gaveta.
+  //
+  // E o troco sai do dinheiro que a pessoa ENTREGOU: maior que ele, a sobra
+  // veio do Pix ou do cartão, e a linha de dinheiro mandada ao servidor sairia
+  // negativa (o servidor recusava com um "falta R$ 0,00" que ninguém entendia).
   const temDinheiro = pagos.some((p) => p.forma === 'DINHEIRO')
-  const trocoCent = temDinheiro ? Math.max(-faltaCent, 0) : 0
-  const sobrouSemDinheiro = !temDinheiro && faltaCent < 0
+  const dinheiroCent = pagos.filter((p) => p.forma === 'DINHEIRO').reduce((s, p) => s + cent(p.valor), 0)
+  const sobraCent = Math.max(-faltaCent, 0)
+  const trocoAlemDoDinheiro = temDinheiro && sobraCent > dinheiroCent
+  const trocoCent = temDinheiro && !trocoAlemDoDinheiro ? sobraCent : 0
+  const sobrouSemDinheiro = (!temDinheiro && faltaCent < 0) || trocoAlemDoDinheiro
 
   // A escada: os três totais. Só aparece quando são diferentes — loja que
   // cobra igual em tudo não precisa saber que a escada existe.
@@ -169,6 +185,7 @@ export function contar(
     temDinheiro,
     trocoCent,
     sobrouSemDinheiro,
+    trocoAlemDoDinheiro,
     escada,
     temEscada,
     economiaCent,

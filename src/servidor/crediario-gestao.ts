@@ -264,6 +264,21 @@ export async function pausarCobranca(
     })
     if (!c) return { ok: false as const, erro: 'Cliente não encontrado.' }
     if (c.anonimizadoEm) return { ok: false as const, erro: 'Este cadastro foi anonimizado e não se edita mais.' }
+    // A pausa vale para a cobrança de TODAS as lojas (é da pessoa): quem
+    // pausa precisa negociar o crediário em cada loja onde ela deve. Sem
+    // isto, a gerente do Centro calava a cobrança da dívida do Shopping —
+    // a mesma régua de `juntarFichas`.
+    const lojas = await db.parcela.findMany({
+      where: { clienteId: c.id, quitadaEm: null },
+      distinct: ['unidadeId'],
+      select: { unidadeId: true },
+    })
+    if (lojas.some((l) => !pode(sessao, 'crediario.cobrar', l.unidadeId))) {
+      return {
+        ok: false as const,
+        erro: `Ela deve numa loja que você não cuida. Quem ${pausar ? 'pausa' : 'retoma'} a cobrança é quem negocia o crediário em todas as lojas onde ela deve.`,
+      }
+    }
     if (pausar === !!c.cobrancaPausadaEm) return { ok: true as const }
     await db.cliente.update({
       where: { id: c.id },

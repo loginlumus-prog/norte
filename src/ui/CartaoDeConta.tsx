@@ -22,7 +22,8 @@ export function CartaoDeConta({
   /** Embaixo do cartão. Padrão: voltar para a tela de entrar. */
   rodape?: ReactNode
 }) {
-  const cor = empresa.corMarca || 'var(--marca)'
+  // Só "#rrggbb": a cor gravada antes da conferência pode ser texto qualquer.
+  const cor = empresa.corMarca && /^#[0-9a-f]{6}$/i.test(empresa.corMarca) ? empresa.corMarca : 'var(--marca)'
   const inicial = empresa.nome.trim().charAt(0).toUpperCase() || 'N'
   const luz = {
     background: `radial-gradient(60rem 32rem at 50% -12%, color-mix(in srgb, var(--marca) 11%, transparent) 0%, transparent 65%), radial-gradient(36rem 24rem at 100% 100%, color-mix(in srgb, ${cor} 8%, transparent) 0%, transparent 70%), var(--fundo)`,

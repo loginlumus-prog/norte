@@ -809,6 +809,20 @@ begin
   end loop;
 end $$;
 
+-- ── a tabela de controle das migrações ───────────────────────
+-- O `grant ... on all tables` (preparar-banco.ts, e o .video/pos.ts no laptop)
+-- pega tudo o que estiver em public — inclusive `_prisma_migrations`, que
+-- guarda o histórico do schema e que a aplicação não tem o que ler nem
+-- reescrever. Este arquivo roda DEPOIS de todo grant e de toda migração: é o
+-- lugar que garante a retirada, qualquer que tenha sido o caminho.
+do $$
+begin
+  if to_regclass('public._prisma_migrations') is not null
+     and exists (select 1 from pg_roles where rolname = 'app_norte') then
+    revoke all on public._prisma_migrations from app_norte;
+  end if;
+end $$;
+
 -- ── conferência ──────────────────────────────────────────────
 -- Deve listar TODA tabela com org_id, e rowsecurity = true em todas.
 --

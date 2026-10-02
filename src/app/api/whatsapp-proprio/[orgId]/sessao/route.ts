@@ -5,7 +5,7 @@
 //   DELETE /api/whatsapp-proprio/{orgId}/sessao
 //
 // Só o conector fala aqui: assinatura HMAC do pedido inteiro (método, caminho,
-// corpo, carimbo de até cinco minutos), com o CONECTOR_SEGREDO. É por isto
+// corpo, carimbo de até cinco minutos), com o CONECTOR_ASSINATURA (ou o antigo CONECTOR_SEGREDO). É por isto
 // que o conector não guarda credencial nenhuma no disco — e é por isto que
 // esta porta é tão fechada quanto a do webhook: com a sessão, fala-se pelo
 // WhatsApp da loja.

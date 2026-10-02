@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
-import { unidadesVisiveis } from '@/servidor/unidade'
+import { escolherUnidade } from '@/servidor/unidade'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { pode, podeVerPlanos } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
@@ -20,6 +20,7 @@ import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, Vazio } from '@/ui/base'
 import { SeletorPeriodo } from '@/ui/Periodo'
+import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import { Tabela, type Coluna } from '@/ui/Tabela'
 import { BarrasH } from '@/ui/Graficos'
@@ -34,10 +35,13 @@ export const metadata: Metadata = { title: 'Análise' }
 // já rodou alguns meses: qual loja puxa, o que sustenta a casa, e quem estava
 // no balcão quando o dinheiro entrou.
 //
-// ── por que ela NÃO tem seletor de unidade ───────────────────
-// Porque comparar lojas com uma loja escondida é o jeito mais rápido de tirar
-// conclusão errada. A tela abre com tudo que a pessoa pode ver, sempre. O
-// recorte que existe aqui é o de TEMPO, que é o que muda a pergunta.
+// ── o seletor de unidade, e o que ele NÃO corta ──────────────
+// A curva ABC, o parado e os turnos seguem a loja escolhida — é a mesma
+// pergunta do resto do sistema ("e na loja do shopping?"), e a tela que
+// ignorava a escolha mostrava a rede inteira para quem tinha acabado de
+// escolher uma loja. A comparação ENTRE as lojas, não: comparar lojas com as
+// outras escondidas é o jeito mais rápido de tirar conclusão errada. Ela
+// mostra sempre todas que a pessoa acompanha.
 //
 // ── e por que o "parado" não segue o período ─────────────────
 // Duas coisas diferentes usam a palavra parado. Na comparação entre lojas,
@@ -71,18 +75,21 @@ export default async function Analise({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ periodo?: string }>
+  searchParams: Promise<{ periodo?: string; unidade?: string }>
 }) {
   const { empresa: slug } = await params
-  const { periodo: pedido } = await searchParams
+  const { periodo: pedido, unidade: pedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'relatorio.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const j = janela(lerPeriodo(pedido))
   const plano = await planoDaEmpresa(sessao)
   const liberado = temAnaliseAvancada(plano)
-  const unidades = await unidadesVisiveis(sessao, 'relatorio.ver')
-  const ids = unidades.map((u) => u.id)
+  const onde = await escolherUnidade(sessao, empresa, pedida, 'relatorio.ver')
+  const unidades = onde.opcoes
+  // Todas as que a pessoa acompanha (a comparação) × as da loja escolhida (o resto).
+  const todas = unidades.map((u) => u.id)
+  const ids = onde.ids
   // Quantas lojas a EMPRESA tem, para a frase de "uma loja só" dizer a
   // verdade: o gerente de uma das três lojas não "tem uma loja só" — ele
   // acompanha uma. Depósito não conta como loja para comparar.
@@ -98,7 +105,7 @@ export default async function Analise({
   // a análise e não abrem a ficha: para eles o nome vai sem link.
   const abreFicha = pode(sessao, 'produto.editar')
 
-  const lojas = liberado ? await compararLojas(sessao, ids, j.de, j.ate) : []
+  const lojas = liberado ? await compararLojas(sessao, todas, j.de, j.ate) : []
   const abc = liberado ? await curvaAbc(sessao, ids, j.de, j.ate) : []
   const parado = liberado ? await dinheiroParado(sessao, ids) : []
   const turnos = liberado && verEscala ? await escala(sessao, ids, j.de, j.ate) : []
@@ -239,7 +246,14 @@ export default async function Analise({
       ativo={`/${slug}/analise`}
       tema={tema}
       titulo="Análise"
-      acao={liberado ? <SeletorPeriodo atual={j.chave} /> : undefined}
+      acao={
+        liberado ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+            <SeletorPeriodo atual={j.chave} />
+          </div>
+        ) : undefined
+      }
     >
       {!liberado ? (
         <Cartao>
@@ -284,7 +298,7 @@ export default async function Analise({
           {/* ── entre as lojas ── */}
           <Secao
             titulo={`Entre as lojas · ${j.rotulo.toLowerCase()}`}
-            resumo="A mesma régua para todas: o que entrou (já sem as devoluções), o que sobrou depois do custo da mercadoria, e quanto de estoque ficou sem saída no período em cada uma."
+            resumo={`A mesma régua para todas: o que entrou (já sem as devoluções), o que sobrou depois do custo da mercadoria, e quanto de estoque ficou sem saída no período em cada uma.${onde.unidadeId ? ' Aqui aparecem sempre todas as lojas que você acompanha, mesmo com uma escolhida lá em cima: o resto da tela é só dela.' : ''}`}
           >
             {unidades.length < 2 ? (
               <Cartao>

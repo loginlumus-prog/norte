@@ -28,25 +28,44 @@ export type ItemDevolvivel = {
   precoUnit: number
 }
 
+export type LojaDaDevolucao = {
+  id: string
+  nome: string
+  /** Dinheiro e estorno são para quem pode cancelar venda NESTA loja. */
+  podeDinheiro: boolean
+}
+
 export function Devolver({
   slug,
   vendaId,
   numero,
   itens,
-  podeDinheiro,
+  lojas,
+  lojaInicial,
+  lojaDaVenda,
+  escolherLoja,
   palavras,
 }: {
   slug: string
   vendaId: string
   numero: number
   itens: ItemDevolvivel[]
-  /** Dinheiro e estorno são para quem pode cancelar venda. */
-  podeDinheiro: boolean
+  /** Onde a devolução pode acontecer: as lojas (não depósitos) em que a pessoa vende. */
+  lojas: LojaDaDevolucao[]
+  /** A loja do balcão de agora (a lembrada no seletor), ou a da venda. */
+  lojaInicial: string
+  lojaDaVenda: string
+  /** Mais de uma loja: a pessoa diz em qual está. */
+  escolherLoja: boolean
   /** "deste atendimento", "do atendimento" na clínica (servidor/vocabulario.ts). */
   palavras: { destaVenda: string; daVenda: string }
 }) {
   const [aberto, setAberto] = useState(false)
   const [qtds, setQtds] = useState<Record<string, number>>({})
+  const [loja, setLoja] = useState(lojaInicial)
+  // A gaveta e o estoque que mexem são os da loja escolhida — a permissão de
+  // tirar dinheiro também é dela.
+  const podeDinheiro = lojas.find((u) => u.id === loja)?.podeDinheiro ?? false
   const [estado, agir, pendente] = useActionState<EstadoDevolucao, FormData>(devolverAcao, {})
 
   if (estado.ok) {
@@ -68,6 +87,17 @@ export function Devolver({
             {estado.ok.valor > 0
               ? ` O restante, ${brl(estado.ok.valor)}, vai para a pessoa.`
               : ' Não sai dinheiro do caixa.'}
+          </p>
+        )}
+        {/* Dinheiro ou estorno numa compra paga (em parte) com vale: o que
+            veio de vale volta como vale. Sem esta linha, a tela dizia
+            "R$ 100 devolvido" e a pessoa tirava R$ 100 da gaveta. */}
+        {estado.ok.destino !== 'VALE' && estado.ok.emVale > 0 && (
+          <p className="text-[13px] font-medium text-tinta">
+            {estado.ok.valor - estado.ok.emVale > 0
+              ? `${brl(estado.ok.valor - estado.ok.emVale)} ${estado.ok.destino === 'DINHEIRO' ? 'em dinheiro da gaveta' : 'em estorno por fora'} + ${brl(estado.ok.emVale)} em vale.`
+              : `Tudo vira vale (${brl(estado.ok.emVale)}): ${estado.ok.destino === 'DINHEIRO' ? 'nada sai da gaveta' : 'nada é estornado'}.`}{' '}
+            A compra foi paga com vale, e o que veio de vale volta como vale.
           </p>
         )}
         {estado.ok.vale && (
@@ -104,6 +134,29 @@ export function Devolver({
     <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4 rounded-norte border border-borda bg-superficie p-4">
       <input type="hidden" name="empresa" value={slug} />
       <input type="hidden" name="venda" value={vendaId} />
+      {!escolherLoja && <input type="hidden" name="unidade" value={loja} />}
+
+      {escolherLoja && (
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-tinta">Em qual loja a peça está voltando</span>
+          <select
+            name="unidade"
+            value={loja}
+            onChange={(e) => setLoja(e.target.value)}
+            className="rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta"
+          >
+            {lojas.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.nome}
+                {u.id === lojaDaVenda ? ' (loja da venda)' : ''}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-tinta-3">
+            A peça volta para o estoque desta loja, e o dinheiro sai da gaveta dela.
+          </span>
+        </label>
+      )}
 
       <div className="flex flex-col gap-1">
         <p className="text-sm font-bold text-tinta">
@@ -149,7 +202,7 @@ export function Devolver({
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium text-tinta">Para onde vai o valor</legend>
-        <div className={cx('grid gap-2', podeDinheiro ? 'sm:grid-cols-3' : '')}>
+        <div key={loja} className={cx('grid gap-2', podeDinheiro ? 'sm:grid-cols-3' : '')}>
           <Marcar
             type="radio"
             name="destino"

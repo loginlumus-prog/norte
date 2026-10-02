@@ -21,7 +21,7 @@
 import { ondeOCodigo } from './etiqueta'
 import { randomUUID } from 'node:crypto'
 import { comoOrg } from './banco'
-import { exigir, pode, soPelaEmpresa, textoDaBusca, type Capacidade, type Sessao } from './permissao'
+import { exigir, pode, SemPermissao, soPelaEmpresa, textoDaBusca, unidadesQuePodem, type Capacidade, type Sessao } from './permissao'
 import { assinarExcecao } from './autorizacao'
 import type { TipoMovimento } from '@prisma/client'
 import { vendidoNaLoja } from './catalogo-loja'
@@ -439,6 +439,11 @@ export const ROTULO_MOVIMENTO: Record<TipoMovimento, string> = {
 export type Transferencia =
   | { ok: true; saldoOrigem: number; saldoDestino: number }
   | { ok: false; motivo: 'mesma_unidade' | 'quantidade' | 'sem_saldo'; saldo?: number }
+  /** Quem transfere porque a empresa deixou (a vendedora) assina com o PIN dela. */
+  | { ok: false; motivo: 'assinatura'; erro: string }
+
+/** Teto de uma transferência: mais que isto é dedo, não caixa de mercadoria. */
+const TRANSFERENCIA_MAXIMA = 1_000_000
 
 /**
  * Tira de uma loja e põe na outra, na mesma transação. Sai como
@@ -452,12 +457,21 @@ export type Transferencia =
  */
 export async function transferir(
   sessao: Sessao,
-  t: { variacaoId: string; deUnidadeId: string; paraUnidadeId: string; quantidade: number; motivo?: string },
+  t: { variacaoId: string; deUnidadeId: string; paraUnidadeId: string; quantidade: number; motivo?: string; pin?: string | null },
 ): Promise<Transferencia> {
   if (t.deUnidadeId === t.paraUnidadeId) return { ok: false, motivo: 'mesma_unidade' }
-  if (!(t.quantidade > 0) || !Number.isFinite(t.quantidade)) return { ok: false, motivo: 'quantidade' }
+  if (!(t.quantidade > 0) || !Number.isFinite(t.quantidade) || t.quantidade > TRANSFERENCIA_MAXIMA) return { ok: false, motivo: 'quantidade' }
   exigir(sessao, 'estoque.ajustar', t.deUnidadeId)
   exigir(sessao, 'estoque.ajustar', t.paraUnidadeId)
+  // A vendedora que mexe no estoque porque a empresa deixou assina sempre —
+  // a mesma régua da correção pelo contado. Transferir não é exceção: para
+  // quem mexe no estoque pelo papel, não pede.
+  let assinou = false
+  if (soPelaEmpresa(sessao, 'estoque.ajustar', t.deUnidadeId) || soPelaEmpresa(sessao, 'estoque.ajustar', t.paraUnidadeId)) {
+    const a = await assinarExcecao(sessao, { pin: t.pin, sempre: true })
+    if (!a.ok) return { ok: false, motivo: 'assinatura', erro: a.erro }
+    assinou = a.assinou
+  }
 
   const transferenciaId = randomUUID()
   return comoOrg(sessao.orgId, async (db) => {
@@ -520,6 +534,7 @@ export async function transferir(
         alvoId: t.variacaoId,
         alvoNome: v ? `${v.produto.nome}${v.codigo ? ` (${v.codigo})` : ''}` : null,
         motivo: `${t.quantidade} de ${de.nome} para ${para.nome}${t.motivo ? ` — ${t.motivo}` : ''}`,
+        assinado: assinou,
       },
     })
 
@@ -534,8 +549,18 @@ export async function transferir(
  * um script, um `update` na mão. O histórico é a verdade; o saldo é atalho.
  * Divergência aqui é sinal de que alguém mexeu por fora.
  */
-export async function conferirSaldos(sessao: Sessao, unidadeId?: string) {
-  exigir(sessao, 'estoque.ver', unidadeId)
+export async function conferirSaldos(sessao: Sessao, unidades?: string | string[]) {
+  // Uma loja, as lojas da tela, ou — sem nada — a empresa inteira, que só
+  // quem vê o estoque de todas pede. A lista vem da tela (o "Todas as
+  // unidades" do gerente de duas lojas): o que não é dele sai daqui.
+  const pedidas = unidades === undefined ? undefined : Array.isArray(unidades) ? unidades : [unidades]
+  if (pedidas === undefined) {
+    if (unidadesQuePodem(sessao, 'estoque.ver') !== 'todas') throw new SemPermissao('estoque.ver')
+  } else if (pedidas.length === 1) {
+    exigir(sessao, 'estoque.ver', pedidas[0])
+  }
+  const lojas = pedidas?.filter((u) => pode(sessao, 'estoque.ver', u)) ?? null
+  if (lojas && lojas.length === 0) return []
 
   return comoOrg(sessao.orgId, (db) =>
     db.$queryRaw<
@@ -549,7 +574,7 @@ export async function conferirSaldos(sessao: Sessao, unidadeId?: string) {
         left join movimentos_estoque m
                on m.variacao_id = e.variacao_id
               and m.unidade_id = e.unidade_id
-       where (${unidadeId ?? null}::text is null or e.unidade_id = ${unidadeId ?? null})
+       where (${lojas === null} or e.unidade_id = any(${lojas ?? []}::text[]))
        group by e.variacao_id, e.unidade_id, e.quantidade
       having e.quantidade <> coalesce(sum(m.quantidade), 0)
     `,
@@ -636,7 +661,27 @@ export async function listarParaConferir(sessao: Sessao, unidadeIds: string[], l
  * (`estoque.ajustar`) na loja da venda — conferir é contar a prateleira e,
  * se preciso, corrigir o saldo, que é o mesmo poder.
  */
-export async function marcarConferido(sessao: Sessao, vendaItemId: string): Promise<{ ok: true } | { ok: false; erro: string }> {
+export async function marcarConferido(
+  sessao: Sessao,
+  vendaItemId: string,
+  pin?: string | null,
+): Promise<{ ok: true } | { ok: false; erro: string; precisaPin?: true }> {
+  // A loja da venda primeiro (numa leitura só): a assinatura confere o PIN
+  // numa transação própria, e transação não aninha.
+  const alvo = await comoOrg(sessao.orgId, (db) =>
+    db.vendaItem.findUnique({ where: { id: vendaItemId }, select: { venda: { select: { unidadeId: true } } } }),
+  )
+  if (!alvo) return { ok: false, erro: 'Item não encontrado na lista.' }
+  exigir(sessao, 'estoque.ajustar', alvo.venda.unidadeId)
+  // A vendedora que confere porque a empresa deixou assina — tirar o item
+  // da lista é dizer "a prateleira bate", e isso precisa ter nome.
+  let assinou = false
+  if (soPelaEmpresa(sessao, 'estoque.ajustar', alvo.venda.unidadeId)) {
+    const a = await assinarExcecao(sessao, { pin, sempre: true })
+    if (!a.ok) return { ok: false, erro: a.erro, precisaPin: true }
+    assinou = a.assinou
+  }
+
   return comoOrg(sessao.orgId, async (db) => {
     const item = await db.vendaItem.findUnique({
       where: { id: vendaItemId },
@@ -665,6 +710,7 @@ export async function marcarConferido(sessao: Sessao, vendaItemId: string): Prom
         alvoId: item.venda.id,
         alvoNome: `Venda ${item.venda.numero}`,
         motivo: `${item.descricao}: vendeu ${Number(item.quantidade)}, o sistema tinha ${Number(item.saldoNaVenda)}`,
+        assinado: assinou,
       },
     })
     return { ok: true as const }

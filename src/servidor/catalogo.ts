@@ -28,12 +28,13 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto'
 import type { FormaPagamento, Prisma } from '@prisma/client'
 import { acharOrgPorSlug, comoOrg, type BancoDaOrg } from './banco'
-import { exigir, pode, type Sessao } from './permissao'
+import { exigir, pode, unidadesQuePodem, type Sessao } from './permissao'
 import { centavos, reais } from './dinheiro'
 import { soDigitos } from './cliente'
 import { moduloLigado } from './modulos'
 import { planoLibera } from './planos'
-import { aVendaNaLoja } from './catalogo-loja'
+import { aVendaNaLoja, alcancaOProduto } from './catalogo-loja'
+import { pedeInteiro } from './devolucao'
 import { codigoEncomenda } from './encomenda'
 
 // ─────────────────────────────────────────────────────────────
@@ -150,6 +151,12 @@ export function conferirPedido(
     const obs = (i.observacao ?? '').trim().slice(0, 200) || null
     const ja = juntos.get(i.variacaoId)
     juntos.set(i.variacaoId, { variacaoId: i.variacaoId, quantidade: Math.round(((ja?.quantidade ?? 0) + q) * 1000) / 1000, observacao: obs ?? ja?.observacao ?? null })
+  }
+  // Conferido DEPOIS de juntar: a quantidade grava com 3 casas (0,0004 kg
+  // virava um item de zero, a R$ 0), e o teto vale para o item, não para cada
+  // linha mandada — 999 + 999 do mesmo picolé passava como 1998.
+  for (const i of juntos.values()) {
+    if (i.quantidade <= 0 || i.quantidade > MAX_QTD) return { ok: false, erro: 'Confira as quantidades.' }
   }
   let paraData: Date | null = null
   if (p.para) {
@@ -379,6 +386,18 @@ export function tipoDaImagem(b: Uint8Array): 'image/jpeg' | 'image/png' | 'image
   return null
 }
 
+/**
+ * Quem pode mexer na foto deste produto: quem edita produto em TODAS as lojas
+ * em que ele é vendido (a mesma régua da ficha — `alcancaOProduto`). A foto
+ * aparece no catálogo de cada uma dessas lojas; o gerente de uma loja só não
+ * troca a vitrine da loja vizinha.
+ */
+function alcancaAFoto(sessao: Sessao, vendidoEm: readonly string[]): boolean {
+  return alcancaOProduto(unidadesQuePodem(sessao, 'produto.editar'), vendidoEm)
+}
+
+const FORA_DO_ALCANCE = 'Este produto também é vendido em loja que você não alcança. Quem responde por todas elas troca a foto.'
+
 export async function guardarFotoDoProduto(
   sessao: Sessao,
   produtoId: string,
@@ -390,8 +409,9 @@ export async function guardarFotoDoProduto(
   if (!mime) return { ok: false, erro: 'Esse arquivo não é uma foto (JPG, PNG ou WebP).' }
   const sha256 = createHash('sha256').update(bytes).digest('hex')
   return comoOrg(sessao.orgId, async (db) => {
-    const produto = await db.produto.findUnique({ where: { id: produtoId }, select: { id: true, nome: true, fotoId: true } })
+    const produto = await db.produto.findUnique({ where: { id: produtoId }, select: { id: true, nome: true, fotoId: true, vendidoEm: true } })
     if (!produto) return { ok: false as const, erro: 'Esse produto não existe.' }
+    if (!alcancaAFoto(sessao, produto.vendidoEm)) return { ok: false as const, erro: FORA_DO_ALCANCE }
     const midia = await db.midia.upsert({
       where: { orgId_sha256: { orgId: sessao.orgId, sha256 } },
       create: { orgId: sessao.orgId, nome: `foto-${produtoId}`, mime, tipo: 'imagem', tamanho: bytes.length, sha256, dados: Buffer.from(bytes) },
@@ -414,10 +434,28 @@ export async function guardarFotoDoProduto(
   })
 }
 
-export async function tirarFotoDoProduto(sessao: Sessao, produtoId: string): Promise<{ ok: boolean }> {
+export async function tirarFotoDoProduto(sessao: Sessao, produtoId: string): Promise<{ ok: boolean; erro?: string }> {
   exigir(sessao, 'produto.editar')
   return comoOrg(sessao.orgId, async (db) => {
+    const produto = await db.produto.findUnique({ where: { id: produtoId }, select: { nome: true, fotoId: true, vendidoEm: true } })
+    if (!produto) return { ok: false }
+    if (!alcancaAFoto(sessao, produto.vendidoEm)) return { ok: false, erro: FORA_DO_ALCANCE }
     const r = await db.produto.updateMany({ where: { id: produtoId }, data: { fotoId: null } })
+    // Tirar a foto também vai para o livro: a vitrine de todas as lojas muda.
+    if (r.count > 0 && produto.fotoId) {
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          acao: 'produto.foto',
+          alvoTipo: 'produto',
+          alvoId: produtoId,
+          alvoNome: produto.nome,
+          motivo: 'foto retirada',
+        },
+      })
+    }
     return { ok: r.count > 0 }
   })
 }
@@ -429,9 +467,11 @@ export async function tirarFotoDoProduto(sessao: Sessao, produtoId: string): Pro
 export async function lerFotoPublica(slug: string, id: string): Promise<{ mime: string; dados: Uint8Array } | null> {
   if (!/^[\w-]{1,64}$/.test(id)) return null
   const org = await acharOrgPorSlug(slug)
-  if (!org) return null
+  // A mesma régua da vitrine: empresa fora do ar não mostra nada, e a foto do
+  // produto desativado (ou de material de uso) não sai pelo link público.
+  if (!org || !SITUACOES_NO_AR.has(org.situacao)) return null
   return comoOrg(org.id, async (db) => {
-    const usada = await db.produto.findFirst({ where: { fotoId: id }, select: { id: true } })
+    const usada = await db.produto.findFirst({ where: { fotoId: id, ativo: true, usoInterno: false }, select: { id: true } })
     if (!usada) return null
     const m = await db.midia.findUnique({ where: { id }, select: { mime: true, dados: true } })
     return m ? { mime: m.mime, dados: new Uint8Array(m.dados) } : null
@@ -494,7 +534,9 @@ async function abrir(slug: string, endereco: string): Promise<Aberto | null> {
   if (!org || !SITUACOES_NO_AR.has(org.situacao)) return null
   const c = await comoOrg(org.id, (db) =>
     db.catalogoLoja.findFirst({
-      where: { endereco, ativo: true, unidade: { ativa: true } },
+      // Depósito e fábrica não vendem ao público: o catálogo ligado de antes
+      // (a loja que virou depósito) não abre nem recebe pedido.
+      where: { endereco, ativo: true, unidade: { ativa: true, ehDeposito: false, ehFabrica: false } },
       select: { id: true, unidadeId: true, mostrarEsgotado: true, chavePix: true, whatsapp: true, retirada: true, entrega: true, taxaEntrega: true, pedidoMinimo: true, recado: true },
     }),
   )
@@ -722,6 +764,12 @@ export async function fazerPedidoPeloCatalogo(
     }
 
     // ── o freio ──
+    // Contar e gravar na mesma transação não basta: dez pedidos mandados no
+    // mesmo instante contavam os dez "zero na última hora" e passavam todos.
+    // A trava (por aparelho e por telefone, sempre nessa ordem) faz o segundo
+    // esperar o primeiro gravar — e já contá-lo.
+    if (ipResumo) await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`catalogo-freio:${a.orgId}:ip:${ipResumo}`}))`
+    await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`catalogo-freio:${a.orgId}:tel:${d.telefone}`}))`
     const umaHora = new Date(agora.getTime() - 3600_000)
     if (ipResumo) {
       const doAparelho = await db.encomenda.count({ where: { origem: 'CATALOGO', ipResumo, criadaEm: { gte: umaHora } } })
@@ -767,8 +815,29 @@ export async function fazerPedidoPeloCatalogo(
         fora.push(descricao)
         continue
       }
-      // Produto por unidade não se pede em fração.
-      const quantidade = x.produto.medida === 'UN' ? Math.max(1, Math.round(i.quantidade)) : i.quantidade
+      // Peça, par e caixa não se pedem em fração: o balcão recusa "1,5 caixa"
+      // (ver `pedeInteiro`), e o pedido aceito no link ficava sem como sair.
+      // Recusa aqui, com o nome, em vez de arredondar escondido.
+      const quantidade = i.quantidade
+      if (pedeInteiro(x.produto.medida) && !Number.isInteger(quantidade)) {
+        return { ok: false as const, erro: `${descricao} vai em número inteiro. Confira a quantidade.` }
+      }
+      // A loja que não vende sem estoque não aceita pedido de mais do que tem:
+      // 50 potes com 1 na prateleira viravam um pedido "aceito" de R$ 1.500
+      // que o balcão nunca conseguiria entregar. Sem reservar — o saldo é o
+      // de agora, e dois pedidos do último ainda podem disputá-lo no balcão.
+      if (!org.vendeSemEstoque && !x.produto.servico && !x.produto.feitoNoDia && x.estoques.length > 0) {
+        const tem = Number(x.estoques[0]!.quantidade)
+        if (quantidade > tem) {
+          return {
+            ok: false as const,
+            mudou: true,
+            erro: tem > 0
+              ? `Só há ${qtdEmTexto(tem)} de ${descricao} agora. Diminua a quantidade e mande de novo.`
+              : `${descricao} acabou. Tire do pedido e mande de novo.`,
+          }
+        }
+      }
       const precoC = centavos(Number(x.produto.precoVista ?? 0) + Number(x.ajustePreco ?? 0))
       if (precoC <= 0) {
         fora.push(descricao)

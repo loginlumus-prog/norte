@@ -53,7 +53,7 @@ import { assinarExcecao, autorizarComPin } from './autorizacao'
 import { maquininhaDoPagamento, maquininhasNoBanco } from './maquininhas'
 import { cpfValido } from './cliente'
 import { travarCaixaAberto } from './caixa'
-import { codigoEncomenda, entregarPelaVenda, travarParaVenda } from './encomenda'
+import { codigoEncomenda, entregarPelaVenda, reabrirPelaVendaCancelada, travarParaVenda, type EncomendaParaVenda } from './encomenda'
 import { lerTaxas, taxaDe, ROTULO_FORMA } from './taxas'
 import {
   programaNoPlano,
@@ -183,7 +183,8 @@ export type ResultadoVenda =
     }
   | { ok: false; motivo: 'sem_itens' }
   | { ok: false; motivo: 'sem_estoque'; faltando: { descricao: string; pedido: number; tem: number }[] }
-  | { ok: false; motivo: 'pagamento_nao_fecha'; total: number; pago: number }
+  /** `recado`: quando a conta não fecha por um motivo que o número sozinho não explica. */
+  | { ok: false; motivo: 'pagamento_nao_fecha'; total: number; pago: number; recado?: string }
   | { ok: false; motivo: 'caixa_fechado' }
   | { ok: false; motivo: 'desconto_acima_do_teto'; percentual: number; teto: number }
   /** O PIN digitado não autorizou (errado, de quem não pode, ou freio). Nada foi gravado. */
@@ -211,9 +212,18 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'encomenda_recusada'; recado: string }
   /** O horário da agenda já foi cobrado (outra aba, outro caixa) ou não está mais de pé. */
   | { ok: false; motivo: 'agendamento_recusado'; recado: string }
+  /**
+   * Crediário além do limite da cliente, ou para quem tem parcela atrasada
+   * além da regra da loja: a tela pede o PIN de quem autoriza (não é trava).
+   */
+  | { ok: false; motivo: 'crediario_pede_autorizacao'; recado: string }
 
 /** Troco acima disto é dedo errado (R$ 5.000 de troco não sai de gaveta de loja). */
 const TETO_DO_TROCO_CENT = 500_000
+
+/** O tamanho de uma venda de verdade (o supermercado de bairro passa longe). */
+export const MAX_ITENS_DA_VENDA = 500
+export const MAX_PAGAMENTOS_DA_VENDA = 20
 
 export async function registrarVenda(
   sessao: Sessao,
@@ -238,15 +248,39 @@ export async function registrarVenda(
   if (pedido.itens.some((i) => !Number.isFinite(i.quantidade) || i.quantidade <= 0)) {
     return { ok: false, motivo: 'sem_itens' }
   }
+  // Pedido do tamanho de um ataque, não de uma compra: a conferência de
+  // estoque, preço e desconto roda item por item dentro da transação.
+  if (pedido.itens.length > MAX_ITENS_DA_VENDA || pedido.pagamentos.length > MAX_PAGAMENTOS_DA_VENDA) {
+    return {
+      ok: false,
+      motivo: 'pagamento_recusado',
+      recado: `Uma venda vai até ${MAX_ITENS_DA_VENDA} linhas e ${MAX_PAGAMENTOS_DA_VENDA} pagamentos. Divida em duas.`,
+    }
+  }
   // Pagamento negativo seria dinheiro SAINDO da gaveta dentro de uma venda.
   // Zero não é pagamento (sobra do troco): sai da lista em vez de virar uma
-  // linha de R$ 0 — ou um crediário de zero parcelas.
+  // linha de R$ 0 — ou um crediário de zero parcelas. O caso de verdade é o
+  // troco descontado de um dinheiro menor que ele (Pix 100 + Dinheiro 10 numa
+  // venda de 80): a frase diz isso, e não "falta R$ 0,00".
   if (pedido.pagamentos.some((p) => !Number.isFinite(p.valor) || p.valor < 0)) {
-    return { ok: false, motivo: 'pagamento_nao_fecha', total: 0, pago: 0 }
+    return {
+      ok: false,
+      motivo: 'pagamento_nao_fecha',
+      total: 0,
+      pago: 0,
+      recado: 'Um pagamento chegou negativo: o troco passou do dinheiro entregue. Troco só sai do dinheiro — ajuste o valor do Pix ou do cartão para o que falta.',
+    }
   }
+  // A quantidade grava com 3 casas (o quilo da balança chega com 4): arredonda
+  // AQUI, antes de qualquer conta, para o total ser preço × o que fica
+  // gravado — senão a linha dizia 0,348 kg e cobrava 0,3475.
+  const itensPedidos = pedido.itens.map((i) => ({ ...i, quantidade: Math.round(i.quantidade * 1000) / 1000 }))
+  if (itensPedidos.some((i) => i.quantidade <= 0)) return { ok: false, motivo: 'sem_itens' }
   // A chave vem do navegador: só letras, números e hífen, de tamanho de uuid.
   const chave = typeof pedido.chave === 'string' && /^[\w-]{8,64}$/.test(pedido.chave) ? pedido.chave : null
   // A hora de quando estava sem internet: nem no futuro, nem de mais de 7 dias.
+  // E nem de antes do turno de caixa em que ela entra — ver "a hora da venda
+  // sem internet", lá embaixo, já com o caixa travado.
   const quando = pedido.offline?.quando instanceof Date && Number.isFinite(pedido.offline.quando.getTime())
     ? new Date(Math.min(pedido.offline.quando.getTime(), Date.now()))
     : null
@@ -257,7 +291,7 @@ export async function registrarVenda(
     offline,
     desconto: Math.max(0, pedido.desconto ?? 0),
     acrescimo: Number.isFinite(pedido.acrescimo) ? Math.max(0, pedido.acrescimo ?? 0) : 0,
-    itens: pedido.itens.map((i) => (i.desconto !== undefined ? { ...i, desconto: Math.max(0, i.desconto) } : i)),
+    itens: itensPedidos.map((i) => (i.desconto !== undefined ? { ...i, desconto: Math.max(0, i.desconto) } : i)),
     pagamentos: pedido.pagamentos.filter((p) => centavos(p.valor) > 0),
   }
 
@@ -306,7 +340,10 @@ export async function registrarVenda(
       unidadeId: v.unidadeId,
       pin: v.autorizacao.pin,
       capacidade: 'venda.desconto',
-      motivo: `Venda no balcão: ${pedidoDe.join(' e ') || 'acima da regra'}`,
+      motivo: `Venda no balcão: ${
+        pedidoDe.join(' e ') ||
+        (v.pagamentos.some((p) => p.forma === 'CREDIARIO') ? 'crediário fora da regra (limite ou atraso)' : 'acima da regra')
+      }`,
       quemPediu: { usuarioId: sessao.usuarioId, nome: sessao.nome },
     })
     if (!r.ok) return { ok: false, motivo: 'autorizacao_recusada', recado: r.erro }
@@ -345,7 +382,7 @@ export async function registrarVenda(
         plano: true,
         descontoMaximo: true, modulos: true,
         pontosAtivo: true, pontosPorReal: true, pontoVale: true, pontosMinimo: true,
-        crediarioMaxParcelas: true, crediarioDiasEntre: true,
+        crediarioMaxParcelas: true, crediarioDiasEntre: true, crediarioAtrasoDias: true,
         vendeSemEstoque: true, valePorLoja: true, creditoMaxParcelas: true, creditoJurosPct: true,
       },
     })
@@ -413,19 +450,38 @@ export async function registrarVenda(
     // Sem `venda.desconto`: não é preço inventado por quem opera, é o saldo
     // de um pedido que a loja já anotou (o avulso pede o poder porque o preço
     // dele é digitado na hora; este não é).
-    let daEncomenda: { faltaC: number; linha: string } | null = null
+    let daEncomenda: EncomendaParaVenda | null = null
+    // O preço que a cliente viu no catálogo, por variação: é ele que a venda
+    // cobra nas linhas do pedido (ver "3. as contas").
+    const precoDoPedido = new Map<string, number>()
     if (v.encomendaId) {
       const e = await travarParaVenda(db, empresa, v.encomendaId, v.unidadeId)
       if (!e.ok) return { ok: false as const, motivo: 'encomenda_recusada' as const, recado: e.recado }
       // O pedido do catálogo vem com os produtos: eles entram no pedido como
-      // linhas de verdade (baixam estoque), e a linha da encomenda cobra só a
-      // entrega. Sem nenhum produto no pedido, a encomenda sairia "entregue"
-      // cobrando só a taxa.
-      if (e.comItens && doCatalogo.length === 0) {
-        return {
-          ok: false as const,
-          motivo: 'encomenda_recusada' as const,
-          recado: 'Os produtos deste pedido do catálogo não estão na venda. Abra a encomenda de novo pelo botão "Receber no balcão".',
+      // linhas de verdade (baixam estoque), e a linha da encomenda é o acerto
+      // (entrega, sinal). As linhas têm de ser OS produtos do pedido, na
+      // quantidade do pedido — antes, qualquer linha fechava o pedido inteiro
+      // (o de R$ 60 saía "entregue" recebendo um picolé de R$ 2). Produto a
+      // mais, fora do pedido, pode: é a cliente levando outra coisa junto.
+      if (e.comItens) {
+        const pedidoQtd = new Map<string, number>()
+        for (const i of e.itens) {
+          pedidoQtd.set(i.variacaoId, (pedidoQtd.get(i.variacaoId) ?? 0) + i.quantidade)
+          if (!precoDoPedido.has(i.variacaoId)) precoDoPedido.set(i.variacaoId, i.precoC)
+        }
+        const naVenda = new Map<string, number>()
+        for (const i of doCatalogo) {
+          if (pedidoQtd.has(i.variacaoId)) naVenda.set(i.variacaoId, (naVenda.get(i.variacaoId) ?? 0) + i.quantidade)
+        }
+        const diferente = [...pedidoQtd].some(([id, q]) => Math.abs((naVenda.get(id) ?? 0) - q) > 0.0005)
+        if (diferente) {
+          return {
+            ok: false as const,
+            motivo: 'encomenda_recusada' as const,
+            recado:
+              'Os produtos na venda não batem com o pedido do catálogo (falta item, ou a quantidade mudou). ' +
+              'Abra a encomenda de novo pelo botão "Receber no balcão" — e, se a cliente mudou o pedido, mude a encomenda antes.',
+          }
         }
       }
       daEncomenda = e
@@ -437,6 +493,8 @@ export async function registrarVenda(
     // a loja decidiu.
     const fiado = v.pagamentos.filter((p) => p.forma === 'CREDIARIO')
     let primeiroVencimento: string | null = null
+    /** Por que este crediário passou da regra (limite, atraso) — e foi autorizado. */
+    let crediarioForaDaRegra: string | null = null
     if (fiado.length > 0) {
       // Módulo ligado E plano que abre: o módulo pode ter ficado ligado de
       // um plano anterior, e a lista de módulos já foi gravada sem conferir
@@ -468,6 +526,71 @@ export async function registrarVenda(
       primeiroVencimento = primeiro
       if (v.clienteCpf && !cpfValido(v.clienteCpf)) {
         return { ok: false as const, motivo: 'crediario_recusado' as const, recado: 'Esse CPF não confere. Confira os números ou siga sem CPF.' }
+      }
+
+      // ── a ficha que vai dever ──
+      // Inativa, ou juntada em outra: a dívida nova nascia numa ficha que
+      // ninguém cobra — fora da lista de cobrança, sem telefone, longe da
+      // ficha de verdade da cliente.
+      const ficha = await db.cliente.findUnique({
+        where: { id: v.clienteId },
+        select: { ativo: true, juntadaNaId: true, limiteCredito: true },
+      })
+      if (!ficha) {
+        return { ok: false as const, motivo: 'crediario_recusado' as const, recado: 'Essa cliente não foi encontrada no cadastro.' }
+      }
+      if (!ficha.ativo || ficha.juntadaNaId) {
+        return {
+          ok: false as const,
+          motivo: 'crediario_recusado' as const,
+          recado: ficha.juntadaNaId
+            ? 'Esta ficha foi juntada em outra. O crediário vai na ficha que ficou — busque a cliente de novo.'
+            : 'Esta ficha está desativada. Reative a cliente no cadastro antes de vender no crediário.',
+        }
+      }
+
+      // ── o limite e o atraso: pedem quem autoriza, não travam ──
+      // O limite é da pessoa (`Cliente.limiteCredito`): o que ela já deve,
+      // somado a esta venda, não passa dele. O atraso é regra da empresa
+      // (`Org.crediarioAtrasoDias`): quem tem parcela vencida há mais de N
+      // dias não leva mais fiado sem a gerente olhar. Os dois só pedem o PIN
+      // de quem pode dar desconto — a gerente conhece a cliente e decide;
+      // quem já tem o poder segue direto. Nulos = sem regra (o padrão).
+      const limiteC = ficha.limiteCredito != null ? centavos(ficha.limiteCredito) : null
+      const atrasoDias = empresa.crediarioAtrasoDias
+      if (limiteC !== null || atrasoDias != null) {
+        const abertas = await db.parcela.findMany({
+          where: { clienteId: v.clienteId, quitadaEm: null },
+          select: { valor: true, pago: true, desconto: true, vencimento: true },
+        })
+        const hojeMeiaNoite = new Date(`${hoje}T00:00:00.000Z`).getTime()
+        let devendoC = 0
+        let diasDeAtraso = 0
+        for (const p of abertas) {
+          const restaC = centavos(p.valor) - centavos(p.pago) - centavos(p.desconto)
+          if (restaC <= 0) continue
+          devendoC += restaC
+          diasDeAtraso = Math.max(diasDeAtraso, Math.floor((hojeMeiaNoite - p.vencimento.getTime()) / 864e5))
+        }
+        const novoC = centavos(fiado[0]!.valor)
+        const motivos = [
+          limiteC !== null && devendoC + novoC > limiteC
+            ? `passa do limite de ${mostrar(limiteC)} (já deve ${mostrar(devendoC)}, e esta venda põe mais ${mostrar(novoC)})`
+            : null,
+          atrasoDias != null && diasDeAtraso > atrasoDias
+            ? `tem parcela atrasada há ${plural(diasDeAtraso, 'dia', 'dias')} (a regra da loja é até ${plural(atrasoDias, 'dia', 'dias')})`
+            : null,
+        ].filter((x): x is string => !!x)
+        if (motivos.length > 0) {
+          if (!podeDesconto) {
+            return {
+              ok: false as const,
+              motivo: 'crediario_pede_autorizacao' as const,
+              recado: `Crediário fora da regra: a cliente ${motivos.join(' e ')}. Precisa do PIN de quem autoriza.`,
+            }
+          }
+          crediarioForaDaRegra = `crediário fora da regra: ${motivos.join(' e ')}`
+        }
       }
     }
 
@@ -523,7 +646,7 @@ export async function registrarVenda(
     const variacoes = await db.variacao.findMany({
       where: { id: { in: doCatalogo.map((i) => i.variacaoId) } },
       select: {
-        id: true, codigo: true, ajustePreco: true, ativa: true,
+        id: true, codigo: true, ajustePreco: true, ativa: true, custo: true,
         produto: {
           select: {
             nome: true, medida: true, custo: true, ativo: true,
@@ -606,13 +729,19 @@ export async function registrarVenda(
     })
     const saldoDe = new Map(saldos.map((e) => [e.variacaoId, Number(e.quantidade)]))
 
-    const faltando = deEstoque
-      .filter((i) => (saldoDe.get(i.variacaoId) ?? 0) < i.quantidade)
-      .map((i) => ({
-        variacaoId: i.variacaoId,
-        descricao: descrever(porId.get(i.variacaoId)),
-        pedido: i.quantidade,
-        tem: saldoDe.get(i.variacaoId) ?? 0,
+    // Somado por variação: a mesma peça em duas linhas (bipou duas vezes, ou
+    // a linha do pedido do catálogo e outra igual) pede a soma das duas. Linha
+    // por linha, cada uma "cabia" no saldo de 1, e a segunda baixa estourava
+    // no meio da transação em vez de virar a recusa limpa de "sem estoque".
+    const pedidoPorVariacao = new Map<string, number>()
+    for (const i of deEstoque) pedidoPorVariacao.set(i.variacaoId, (pedidoPorVariacao.get(i.variacaoId) ?? 0) + i.quantidade)
+    const faltando = [...pedidoPorVariacao]
+      .filter(([id, q]) => (saldoDe.get(id) ?? 0) < q - 1e-9)
+      .map(([id, q]) => ({
+        variacaoId: id,
+        descricao: descrever(porId.get(id)),
+        pedido: Math.round(q * 1000) / 1000,
+        tem: saldoDe.get(id) ?? 0,
       }))
     // A loja que liga "vender o que o sistema diz que acabou" (estoque
     // importado sem balanço, a peça achada no provador) não trava: a peça
@@ -661,15 +790,20 @@ export async function registrarVenda(
       // etiqueta é sempre erro de sincronia, e erro de sincronia não pode
       // virar cobrança a mais no cliente.
       const p = va?.produto
-      const tabelaCent =
-        precoNaTabela(
-          {
-            vista: centavos(p?.precoVista ?? 0),
-            cartao: p?.precoCartao != null ? centavos(p.precoCartao) : null,
-            crediario: p?.precoCrediario != null ? centavos(p.precoCrediario) : null,
-          },
-          tabela,
-        ) + centavos(va?.ajustePreco ?? 0)
+      // A linha do pedido do catálogo cobra o preço que a cliente viu e
+      // combinou (a fotografia do pedido), em qualquer forma de pagamento: o
+      // preço que subiu depois, ou a tabela do cartão, não mudam o que foi
+      // prometido no link. É a "tabela" dela — o desconto se mede daí.
+      const tabelaCent = precoDoPedido.has(i.variacaoId)
+        ? precoDoPedido.get(i.variacaoId)!
+        : precoNaTabela(
+            {
+              vista: centavos(p?.precoVista ?? 0),
+              cartao: p?.precoCartao != null ? centavos(p.precoCartao) : null,
+              crediario: p?.precoCrediario != null ? centavos(p.precoCrediario) : null,
+            },
+            tabela,
+          ) + centavos(va?.ajustePreco ?? 0)
       const pedidoCent = i.precoUnit != null ? centavos(i.precoUnit) : tabelaCent
       const precoCent = Math.max(0, Math.min(pedidoCent, tabelaCent))
       const descontoCent = centavos(i.desconto ?? 0)
@@ -683,7 +817,15 @@ export async function registrarVenda(
         precoUnit: reais(precoCent),
         desconto: reais(descontoCent),
         total: reais(totalCent),
-        custoUnit: va?.produto.custo != null ? reais(centavos(va.produto.custo)) : null,
+        // O custo da VARIAÇÃO quando ela tem o próprio (o picolé de chocolate
+        // custa mais que o de coco), senão o do produto — sem arredondar para
+        // centavos: R$ 0,1550 de custo vira R$ 0,16 e, em mil picolés, a
+        // margem erra em R$ 5. A coluna guarda 4 casas; o dinheiro mostrado
+        // continua com 2.
+        custoUnit: (() => {
+          const c = va?.custo ?? va?.produto.custo
+          return c != null ? Number(c) : null
+        })(),
         saldoNaVenda: saldoQueFaltou.has(i.variacaoId) ? saldoQueFaltou.get(i.variacaoId)! : null,
         _cent: totalCent,
         _tabelaCent: multiplicar(tabelaCent, i.quantidade),
@@ -691,7 +833,9 @@ export async function registrarVenda(
     })
 
     // A linha da encomenda: o que falta, lido lá em cima com a encomenda
-    // travada. Entra como tabela dela mesma — não é desconto de ninguém.
+    // travada. Entra como tabela dela mesma — não é desconto de ninguém. No
+    // pedido do catálogo é o acerto, e pode ser negativa: o sinal já pago
+    // abatido dos produtos (pago tudo no sinal, a venda fecha em zero).
     if (daEncomenda) {
       itens.push({
         variacaoId: null,
@@ -751,7 +895,7 @@ export async function registrarVenda(
     }
     // A autorização entra na venda só quando foi ELA que deixou passar: quem
     // já tem o poder, ou o PIN que chegou sem precisar, não vira "autorizou".
-    const autorizou = !temPoder && autorizador && (passouDoTeto || avulsos.length > 0) ? autorizador : null
+    const autorizou = !temPoder && autorizador && (passouDoTeto || avulsos.length > 0 || !!crediarioForaDaRegra) ? autorizador : null
 
     // ── 3.2 os pontos que o cliente resolveu gastar ──
     // Entram AQUI, depois da trava de desconto, e isso é a decisão que
@@ -858,6 +1002,19 @@ export async function registrarVenda(
       }
     }
 
+    // ── a hora da venda sem internet ──
+    // A hora vem do aparelho, e o aparelho é de quem opera: sem limite, a
+    // marca "sem internet" lançava venda com a data de uma semana atrás,
+    // dentro de um mês já fechado. A venda entra no turno de caixa aberto, e
+    // não pode ter acontecido antes de ele abrir; sem turno nenhum, ela é de
+    // agora. (A marca segue no livro, com a hora que o aparelho mandou.)
+    let quandoDaVenda: Date | null = null
+    if (v.offline) {
+      const turno = caixaId ? await db.caixa.findUnique({ where: { id: caixaId }, select: { abertoEm: true } }) : null
+      const piso = turno?.abertoEm.getTime() ?? Date.now()
+      quandoDaVenda = new Date(Math.min(Math.max(v.offline.quando.getTime(), piso), Date.now()))
+    }
+
     // ── 3.3 o vale de troca, quando paga com ele ──
     // O código vem do navegador; o saldo vem do banco, agora. Primeiro
     // confere TODOS os vales sem escrever nada — uma recusa aqui é saída
@@ -957,9 +1114,10 @@ export async function registrarVenda(
         encomendaId: v.encomendaId && daEncomenda ? v.encomendaId : null,
         observacoes: v.observacoes || undefined,
         chave: v.chave ?? null,
-        // A hora de verdade da venda: a de quando estava sem internet, se foi.
-        ...(v.offline ? { criadaEm: v.offline.quando } : {}),
-        concluidaEm: v.offline?.quando ?? new Date(),
+        // A hora de verdade da venda: a de quando estava sem internet, se foi
+        // (presa ao turno de caixa — ver "a hora da venda sem internet").
+        ...(quandoDaVenda ? { criadaEm: quandoDaVenda } : {}),
+        concluidaEm: quandoDaVenda ?? new Date(),
         itens: {
           create: itens.map(({ _cent, _tabelaCent, ...i }) => ({ orgId: sessao.orgId, ...i })),
         },
@@ -1070,6 +1228,7 @@ export async function registrarVenda(
         numero,
         unidadeId: v.unidadeId,
         faltaC: daEncomenda.faltaC,
+        situacaoAntes: daEncomenda.situacao,
       })
     }
 
@@ -1166,7 +1325,18 @@ export async function registrarVenda(
         alvoId: venda.id,
         alvoNome: `Venda ${numero}`,
         valor: total,
-        ...(trocoCent > 0 && trocoCent <= TETO_DO_TROCO_CENT ? { depois: { troco: reais(trocoCent) } } : {}),
+        ...((trocoCent > 0 && trocoCent <= TETO_DO_TROCO_CENT) || v.offline
+          ? {
+              depois: {
+                ...(trocoCent > 0 && trocoCent <= TETO_DO_TROCO_CENT ? { troco: reais(trocoCent) } : {}),
+                // A venda que subiu da fila de sem internet: a hora que o
+                // aparelho disse e a que valeu.
+                ...(v.offline && quandoDaVenda
+                  ? { semInternet: { horaDoAparelho: v.offline.quando.toISOString(), horaGravada: quandoDaVenda.toISOString() } }
+                  : {}),
+              },
+            }
+          : {}),
         // Desconto entra no livro com o número. É o que permite ao dono
         // perguntar depois "quem andou dando 40%?" e ter resposta. E quando
         // quem vendeu não é quem registrou, os dois nomes ficam.
@@ -1181,6 +1351,8 @@ export async function registrarVenda(
             vendedor.id !== sessao.usuarioId ? `vendedor: ${vendedor.nome}` : null,
             tabela !== 'vista' ? `preço ${ROTULO_TABELA[tabela]}` : null,
             fiado.length > 0 ? `crediário em ${fiado[0]!.parcelas ?? 1}×` : null,
+            crediarioForaDaRegra,
+            v.offline ? 'feita sem internet (subiu da fila do aparelho)' : null,
             v.encomendaId ? `encomenda ${codigoEncomenda(v.encomendaId)}` : null,
           ]
             .filter(Boolean)
@@ -1699,6 +1871,7 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
         pontosUsados: true,
         total: true,
         caixaId: true,
+        encomendaId: true,
         itens: { select: { variacaoId: true, quantidade: true } },
         devolucoes: { select: { id: true } },
         pagamentos: { select: { forma: true, valor: true, valeId: true } },
@@ -1844,10 +2017,23 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
       notas.push(`${mostrar(dinheiroC)} devolvido em dinheiro pela gaveta aberta`)
     }
 
+    // ── 2.4 a encomenda e o horário que esta venda recebeu voltam a esperar ──
+    // Sem isto, a encomenda ficava "entregue" e o horário "cobrado" por uma
+    // venda que não aconteceu: não dava para receber de novo, nem cancelar a
+    // encomenda devolvendo o sinal. A venda cancelada SOLTA a encomenda (o
+    // vínculo é único — e é ele que deixa a próxima venda receber); o código
+    // dela fica no livro, junto com o motivo.
+    if (v.encomendaId) {
+      const voltou = await reabrirPelaVendaCancelada(db, sessao, v.encomendaId, { id: v.id, numero: v.numero, unidadeId: v.unidadeId })
+      if (voltou) notas.push(`encomenda ${codigoEncomenda(v.encomendaId)} voltou a esperar`)
+    }
+    const horario = await db.agendamento.updateMany({ where: { vendaId: v.id }, data: { vendaId: null } })
+    if (horario.count > 0) notas.push('horário da agenda volta a poder ser cobrado')
+
     // ── 3. a marca ──
     await db.venda.update({
       where: { id: v.id },
-      data: { situacao: 'CANCELADA', canceladaEm: new Date(), motivoCancelamento: texto },
+      data: { situacao: 'CANCELADA', canceladaEm: new Date(), motivoCancelamento: texto, encomendaId: null },
     })
 
     await db.auditoria.create({
@@ -1926,4 +2112,57 @@ export async function salvarConfigDoBalcao(sessao: Sessao, c: ConfigDoBalcaoNaEm
     })
   })
   return novo
+}
+
+// ─────────────────────────────────────────────────────────────
+// O LIMITE DE CREDIÁRIO DA CLIENTE
+// ─────────────────────────────────────────────────────────────
+//
+// Mora aqui porque é a venda que o confere (ver "o limite e o atraso"). Quem
+// pode mexer é quem poderia autorizar passar dele — `venda.desconto`: subir o
+// limite é autorizar de antemão. E vai para o livro com o antes e o depois.
+
+export async function limiteDeCredito(sessao: Sessao, clienteId: string): Promise<number | null> {
+  exigir(sessao, 'cliente.ver')
+  const c = await comoOrg(sessao.orgId, (db) =>
+    db.cliente.findUnique({ where: { id: clienteId }, select: { limiteCredito: true } }),
+  )
+  return c?.limiteCredito != null ? reais(centavos(c.limiteCredito)) : null
+}
+
+/** Grava o limite (nulo = sem limite). Mesmo valor de antes não pede poder nem vai para o livro. */
+export async function definirLimiteCredito(
+  sessao: Sessao,
+  clienteId: string,
+  limite: number | null,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  if (limite !== null && (!Number.isFinite(limite) || limite < 0 || limite > 10_000_000)) {
+    return { ok: false, erro: 'O limite de crédito precisa ser um valor de zero para cima (vazio = sem limite).' }
+  }
+  const novoC = limite !== null ? centavos(limite) : null
+  return comoOrg(sessao.orgId, async (db) => {
+    const c = await db.cliente.findUnique({ where: { id: clienteId }, select: { nome: true, limiteCredito: true } })
+    if (!c) return { ok: false as const, erro: 'Essa cliente não foi encontrada.' }
+    const antesC = c.limiteCredito != null ? centavos(c.limiteCredito) : null
+    if (antesC === novoC) return { ok: true as const }
+    if (!pode(sessao, 'venda.desconto')) {
+      return { ok: false as const, erro: 'O limite de crédito é com quem pode autorizar desconto. Os outros dados foram salvos.' }
+    }
+    await db.cliente.update({ where: { id: clienteId }, data: { limiteCredito: novoC !== null ? reais(novoC) : null } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'cliente.alterou',
+        alvoTipo: 'cliente',
+        alvoId: clienteId,
+        alvoNome: c.nome,
+        antes: { limiteCredito: antesC !== null ? reais(antesC) : null },
+        depois: { limiteCredito: novoC !== null ? reais(novoC) : null },
+        motivo: 'limite de crédito do crediário',
+      },
+    })
+    return { ok: true as const }
+  })
 }

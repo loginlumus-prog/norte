@@ -122,6 +122,53 @@ export async function abrirSessao(slugEmpresa: string, sessao: SessaoComVaga) {
     path: `/${slugEmpresa}`, // é isto que separa as sessões por empresa
     maxAge: DURACAO_HORAS * 3600,
   })
+  // Entrar é mexer: a tranca conta a partir daqui.
+  await marcarToque(slugEmpresa)
+}
+
+// ── o último toque, para a tranca sobreviver ao F5 ───────────
+// A tela tranca no navegador (ui/Tranca.tsx), pelo relógio dela. Só que o
+// relógio nascia de novo a cada carregamento: trancada, bastava apertar F5 —
+// ou abrir outra aba — e a tela voltava aberta, sem senha.
+//
+// Este cookie guarda o instante do último toque DE VERDADE (tecla, clique,
+// rolagem), mandado pela própria tela enquanto alguém mexe (`/<empresa>/sinal`,
+// no máximo uma vez por minuto). Abrir tela NÃO conta como toque — é
+// justamente o F5 que não pode destrancar. Ao abrir, a moldura compara o
+// cookie com TRANCA_MIN e a tela já nasce trancada.
+//
+// Por que cookie, e não o `ultimoSinal` da presença: o sinal da presença é
+// gravado a cada tela aberta (pagina.ts), inclusive pelo próprio F5 — no
+// instante em que a moldura fosse ler, o F5 já teria contado como "mexeu". E
+// a presença é da PESSOA: o celular da dona em uso não pode manter aberto o
+// computador esquecido no balcão. A tranca é do aparelho, como o cookie.
+//
+// httpOnly: o JavaScript da página não consegue fingir que mexeu.
+const TOQUE = 'norte_toque_'
+
+/** Grava "mexeram agora" no aparelho. Só em Server Action ou rota (ver cookies.md). */
+export async function marcarToque(slugEmpresa: string, agora = Date.now()) {
+  const cookieStore = await cookies()
+  cookieStore.set(TOQUE + slugEmpresa, String(agora), {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: `/${slugEmpresa}`,
+    // O mesmo prazo da sessão: parado mais que isso, a sessão já acabou.
+    maxAge: DURACAO_HORAS * 3600,
+  })
+}
+
+/** O último toque registrado neste aparelho, ou null (cookie de antes da tranca ler o cookie). */
+export async function ultimoToque(slugEmpresa: string): Promise<Date | null> {
+  return lerToque((await cookies()).get(TOQUE + slugEmpresa)?.value)
+}
+
+/** O valor do cookie, conferido. Exportada para o teste. */
+export function lerToque(bruto: string | undefined): Date | null {
+  if (!bruto || !/^\d{1,15}$/.test(bruto)) return null
+  const n = Number(bruto)
+  return n > 0 ? new Date(n) : null
 }
 
 /**
@@ -177,6 +224,13 @@ export async function fecharSessao(slugEmpresa: string) {
   // '/empresa'. Caminho diferente = outro cookie para o navegador, e a sessão
   // sobreviveria ao "Sair" — que foi exatamente o que aconteceu aqui.
   cookieStore.set(PREFIXO + slugEmpresa, '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: `/${slugEmpresa}`,
+    maxAge: 0,
+  })
+  cookieStore.set(TOQUE + slugEmpresa, '', {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',

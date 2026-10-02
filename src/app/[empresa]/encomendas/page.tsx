@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
+import { comoOrg } from '@/servidor/banco'
 import { escolherUnidade } from '@/servidor/unidade'
 import { lerModo } from '@/servidor/modo'
 import { mostrarTelefone } from '@/servidor/cliente'
@@ -88,8 +89,12 @@ export default async function Encomendas({
   const resumo = await resumoEncomendas(sessao, onde.ids, agora)
   const editando = editar && /^[\w-]{1,64}$/.test(editar) ? await acharEncomenda(sessao, editar) : null
 
+  // Só loja que atende cliente: depósito e fábrica não recebem encomenda (o
+  // servidor recusa de novo — ver `criarEncomenda`).
+  const fabricas = await comoOrg(sessao.orgId, (db) => db.unidade.findMany({ where: { ehFabrica: true }, select: { id: true } }))
   const lojasParaAnotar = onde.opcoes
     .filter((u) => (onde.unidadeId ? u.id === onde.unidadeId : true))
+    .filter((u) => !u.ehDeposito && !fabricas.some((f) => f.id === u.id))
     .filter((u) => pode(sessao, 'venda.criar', u.id))
   const podeAnotar = lojasParaAnotar.length > 0
   const podeBuscarCliente = pode(sessao, 'cliente.ver')
@@ -201,6 +206,7 @@ export default async function Encomendas({
       editarEm={link({ editar: e.id })}
       simples={simples}
       nova={e.nova}
+      comProdutos={e.comProdutos}
     />
   )
 

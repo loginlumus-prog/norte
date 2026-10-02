@@ -13,10 +13,13 @@
 // formato que o contador espera.
 
 import { comoOrg, type BancoDaOrg } from './banco'
-import { exigir, exigirNoAlcance, pode, soAsQuePode, textoDaBusca, type Sessao } from './permissao'
+import {
+  exigir, exigirNoAlcance, pode, podeNoAlcance, soAsQuePode, textoDaBusca, type Capacidade, type Sessao,
+} from './permissao'
 import { colunaDoDia, diaDaColuna, diaEmSP, inicioDoDiaEmSP } from './dia'
 import { centavos, reais } from './dinheiro'
 import { taxasDoPeriodo } from './taxas'
+import { receitaPorLoja, somarReceita } from './receita'
 import { hojeNaLoja, situacaoDoVencimento } from './recorrentes'
 import type { GrupoDRE, TipoLancamento } from '@prisma/client'
 
@@ -84,15 +87,48 @@ export type NovoLancamento = {
   observacoes?: string
 }
 
-export async function lancar(sessao: Sessao, l: NovoLancamento) {
+/**
+ * O teto de um lançamento: R$ 10 milhões. Ninguém no varejo pequeno paga uma
+ * conta desse tamanho, e um zero a mais digitado — ou um número mandado
+ * direto para a ação — virava um DRE de R$ 1 bilhão negativo que só se
+ * desfazia apagando a linha no banco.
+ */
+export const TETO_LANCAMENTO = 10_000_000
+
+/** Quantos anos para trás uma baixa pode ir. Mais que isso é dedo errado (o ano "1926"). */
+export const ANOS_DE_BAIXA = 5
+
+/** Os tetos dos textos: cabem na tela, no livro e na planilha. */
+const TEXTO_MAX = { descricao: 200, fornecedor: 120, documento: 60, observacoes: 1000 } as const
+
+/**
+ * O dia de pagamento cabe? Nem depois de hoje (é agendamento, não
+ * pagamento) nem mais de `ANOS_DE_BAIXA` anos para trás. Devolve o erro, ou
+ * nulo. `pagoEm` é o dia numa coluna `date`.
+ */
+function erroDoDiaPago(pagoEm: Date, agora: Date): string | null {
+  if (Number.isNaN(pagoEm.getTime())) return 'A data do pagamento não é uma data.'
+  const dia = diaDaColuna(pagoEm)
+  const hoje = diaEmSP(agora)
+  if (dia > hoje) return 'A data do pagamento não pode ser depois de hoje.'
+  const limite = `${Number(hoje.slice(0, 4)) - ANOS_DE_BAIXA}${hoje.slice(4)}`
+  if (dia < limite) return `A data do pagamento está mais de ${ANOS_DE_BAIXA} anos para trás. Confira o ano.`
+  return null
+}
+
+export async function lancar(sessao: Sessao, l: NovoLancamento, agora = new Date()) {
   // Sem loja é da empresa inteira, e isso só lança quem alcança a empresa
   // inteira — ver `exigirNoAlcance`.
   exigirNoAlcance(sessao, 'financeiro.lancar', l.unidadeId || null)
   if (!Number.isFinite(l.valor) || l.valor <= 0) throw new Error('O valor precisa ser maior que zero.')
+  if (l.valor > TETO_LANCAMENTO) throw new Error('Valor alto demais para um lançamento: confira os zeros.')
   if (!l.descricao.trim()) throw new Error('Todo lançamento precisa de descrição.')
   if (l.tipo !== 'DESPESA' && l.tipo !== 'RECEITA') throw new Error('Escolha se é despesa ou receita.')
   if (Number.isNaN(l.vencimento.getTime())) throw new Error('A data de vencimento não é uma data.')
-  if (l.pagoEm && Number.isNaN(l.pagoEm.getTime())) throw new Error('A data de pagamento não é uma data.')
+  if (l.pagoEm) {
+    const erro = erroDoDiaPago(l.pagoEm, agora)
+    if (erro) throw new Error(erro)
+  }
 
   return comoOrg(sessao.orgId, async (db) => {
     // Categoria, conta e loja vêm do formulário, e o formulário é do
@@ -126,13 +162,13 @@ export async function lancar(sessao: Sessao, l: NovoLancamento) {
         categoriaId: l.categoriaId,
         contaId: l.contaId ?? null,
         tipo: l.tipo,
-        descricao: l.descricao.trim(),
+        descricao: l.descricao.trim().slice(0, TEXTO_MAX.descricao),
         valor: reais(centavos(l.valor)),
         vencimento: l.vencimento,
         pagoEm: l.pagoEm ?? null,
-        fornecedor: l.fornecedor?.trim() || null,
-        documento: l.documento?.trim() || null,
-        observacoes: l.observacoes?.trim() || null,
+        fornecedor: l.fornecedor?.trim().slice(0, TEXTO_MAX.fornecedor) || null,
+        documento: l.documento?.trim().slice(0, TEXTO_MAX.documento) || null,
+        observacoes: l.observacoes?.trim().slice(0, TEXTO_MAX.observacoes) || null,
         quem: sessao.nome,
       },
       select: { id: true },
@@ -147,7 +183,7 @@ export async function lancar(sessao: Sessao, l: NovoLancamento) {
         acao: l.tipo === 'DESPESA' ? 'financeiro.despesa' : 'financeiro.receita',
         alvoTipo: 'lancamento',
         alvoId: criado.id,
-        alvoNome: l.descricao,
+        alvoNome: l.descricao.trim().slice(0, TEXTO_MAX.descricao),
         valor: l.valor,
       },
     })
@@ -173,13 +209,15 @@ export const hojeParaColuna = (agora: Date = new Date()) => colunaDoDia(diaEmSP(
  * sem isso, um toque na conta errada ficava para sempre.
  *
  * `pagoEm` é o dia numa coluna `date` (`colunaDoDia`). Dia depois de hoje
- * não é pagamento, é agendamento, e é recusado.
+ * não é pagamento, é agendamento, e é recusado — e dia de mais de
+ * `ANOS_DE_BAIXA` anos atrás também: a tela aceitava 1900, e a conta sumia
+ * do mês em que foi paga para um DRE que ninguém abre.
  */
 export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null, agora = new Date()) {
   exigir(sessao, 'financeiro.lancar')
   if (pagoEm) {
-    if (Number.isNaN(pagoEm.getTime())) throw new Error('A data do pagamento não é uma data.')
-    if (diaDaColuna(pagoEm) > diaEmSP(agora)) throw new Error('A data do pagamento não pode ser depois de hoje.')
+    const erro = erroDoDiaPago(pagoEm, agora)
+    if (erro) throw new Error(erro)
   }
 
   await comoOrg(sessao.orgId, async (db) => {
@@ -218,6 +256,40 @@ export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null
   })
 }
 
+/* ── as contas da empresa inteira ─────────────────────────── */
+
+/**
+ * O que fazer, nesta leitura, com o lançamento SEM loja (o aluguel do
+ * escritório, o contador — a conta da empresa inteira):
+ *
+ *   'dentro' — a leitura é a empresa: entra no resultado e nas listas;
+ *   'fora'   — a leitura é uma loja (ou algumas): a conta da empresa não é
+ *              dela. O DRE a mostra numa linha à parte, fora do resultado;
+ *              as listas não a trazem;
+ *   'oculta' — quem olha não alcança a empresa inteira: não aparece.
+ *
+ * Antes ela entrava em TODA loja escolhida: o aluguel do escritório saía no
+ * resultado da loja A e de novo no da B, e A + B dava menos que a empresa. E
+ * o financeiro preso à loja A lia (e somava) as contas da empresa inteira.
+ *
+ * "A empresa" é a leitura que pega todas as lojas que vendem e estão
+ * abertas — depósito não conta: a empresa de uma loja e um depósito, olhando
+ * a loja, está olhando a empresa.
+ */
+export type ContasDaEmpresa = 'dentro' | 'fora' | 'oculta'
+
+export async function contasDaEmpresa(
+  db: BancoDaOrg,
+  sessao: Sessao,
+  unidadeIds: readonly string[],
+  capacidade: Capacidade = 'financeiro.ver',
+): Promise<ContasDaEmpresa> {
+  if (!podeNoAlcance(sessao, capacidade, null)) return 'oculta'
+  const abertas = await db.unidade.findMany({ where: { ativa: true }, select: { id: true, ehDeposito: true } })
+  const lojas = abertas.some((u) => !u.ehDeposito) ? abertas.filter((u) => !u.ehDeposito) : abertas
+  return lojas.every((u) => unidadeIds.includes(u.id)) ? 'dentro' : 'fora'
+}
+
 /* ── contas a vencer ──────────────────────────────────────── */
 
 export type AVencer = {
@@ -251,12 +323,14 @@ export async function aVencer(sessao: Sessao, pedidas: string[], dias = 15, agor
   const limite = new Date(hoje.getTime() + dias * 864e5)
 
   return comoOrg(sessao.orgId, async (db) => {
+    // A conta sem loja só na leitura da empresa — ver `contasDaEmpresa`.
+    const empresa = await contasDaEmpresa(db, sessao, unidadeIds)
     const linhas = await db.lancamento.findMany({
       where: {
         tipo: 'DESPESA',
         pagoEm: null,
         vencimento: { lte: limite },
-        OR: [{ unidadeId: { in: unidadeIds } }, { unidadeId: null }],
+        OR: [{ unidadeId: { in: unidadeIds } }, ...(empresa === 'dentro' ? [{ unidadeId: null }] : [])],
       },
       orderBy: { vencimento: 'asc' },
       select: { id: true, descricao: true, valor: true, vencimento: true, unidadeId: true },
@@ -339,7 +413,9 @@ export async function montarDRE(
 ): Promise<DRE> {
   exigir(sessao, 'financeiro.ver')
   const unidadeIds = soAsQuePode(sessao, 'financeiro.ver', pedidas)
-  return comoOrg(sessao.orgId, (db) => calcularDRE(db, unidadeIds, de, ate))
+  return comoOrg(sessao.orgId, async (db) =>
+    calcularDRE(db, unidadeIds, de, ate, await contasDaEmpresa(db, sessao, unidadeIds)),
+  )
 }
 
 /**
@@ -348,12 +424,18 @@ export async function montarDRE(
  * conta dele, e mostrava um resultado diferente do quadro logo acima (deixava
  * de fora as outras receitas, o sinal de encomenda e o juro do crediário).
  */
-async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: Date): Promise<DRE> {
+async function calcularDRE(
+  db: BancoDaOrg,
+  unidadeIds: string[],
+  de: Date,
+  ate: Date,
+  /** A conta sem loja, nesta leitura — ver `contasDaEmpresa`. */
+  empresa: ContasDaEmpresa,
+): Promise<DRE> {
   {
-    const venda = await db.venda.aggregate({
-      where: { unidadeId: { in: unidadeIds }, situacao: 'CONCLUIDA', criadaEm: { gte: de, lte: ate } },
-      _sum: { total: true },
-    })
+    // Venda, devolução e "troca sem a compra" na régua de `receita.ts` — a
+    // mesma do painel e da análise. A janela de lá é exclusiva no fim.
+    const receita = somarReceita((await receitaPorLoja(db, unidadeIds, de, new Date(ate.getTime() + 1))).values())
     const cmv = await db.$queryRaw<{ custo: string }[]>`
       select coalesce(sum(i.quantidade * coalesce(i.custo_unit, 0)), 0) as custo
         from venda_itens i join vendas v on v.id = i.venda_id
@@ -377,21 +459,41 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
     //
     // `pago_em` é coluna `date`: compara com o DIA em São Paulo, não com o
     // instante. Com o instante, o que foi pago no dia 1º caía fora do mês.
+    //
+    // A conta sem loja (da empresa inteira) só entra no resultado quando a
+    // leitura É a empresa. Olhando uma loja, ela vem à parte, numa linha fora
+    // do resultado — e nem isso para quem não alcança a empresa inteira.
     const grupos = await db.$queryRaw<{ grupo: GrupoDRE; nome: string; total: string }[]>`
       select c.grupo, c.nome, sum(l.valor) as total
         from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
        where l.pago_em is not null
          and l.pago_em >= ${diaEmSP(de)}::date and l.pago_em <= ${diaEmSP(ate)}::date
-         and (l.unidade_id = any(${unidadeIds}) or l.unidade_id is null)
+         and (l.unidade_id = any(${unidadeIds}) or (${empresa === 'dentro'} and l.unidade_id is null))
        group by c.grupo, c.nome
        order by 3 desc
     `
-    // O que voltou em devolução sai da receita: a peça devolvida não foi
-    // vendida, mesmo que a venda continue registrada.
-    const devol = await db.devolucao.aggregate({
-      where: { unidadeId: { in: unidadeIds }, criadaEm: { gte: de, lte: ate } },
-      _sum: { valor: true },
-    })
+    const daEmpresa =
+      empresa === 'fora'
+        ? await db.$queryRaw<{ grupo: GrupoDRE; tipo: string; nome: string; total: string }[]>`
+            select c.grupo, c.tipo::text as tipo, c.nome, sum(l.valor) as total
+              from lancamentos l join categorias_financeiras c on c.id = l.categoria_id
+             where l.pago_em is not null and l.unidade_id is null and c.grupo <> 'MERCADORIA'
+               and l.pago_em >= ${diaEmSP(de)}::date and l.pago_em <= ${diaEmSP(ate)}::date
+             group by c.grupo, c.tipo, c.nome
+             order by 4 desc
+          `
+        : []
+    // O desconto dado ao receber o crediário é venda que não virou dinheiro:
+    // a loja vendeu 100, aceitou 70 para fechar o acordo, e o resultado
+    // seguia contando 100. Sai da receita, pela data do recebimento — a mesma
+    // régua do juro logo abaixo. A baixa externa não tem desconto.
+    const descontoCred = await db.$queryRaw<{ desconto: string }[]>`
+      select coalesce(sum(r.desconto), 0) as desconto
+        from recebimentos r join parcelas p on p.id = r.parcela_id
+       where p.unidade_id = any(${unidadeIds})
+         and not r.externo
+         and r.criado_em >= ${de} and r.criado_em <= ${ate}
+    `
     // Juro e multa de atraso do crediário são receita que não é venda. A
     // baixa externa ("já pagou fora") não entra: o dinheiro foi recebido —
     // e contado — no outro sistema.
@@ -424,10 +526,14 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
       }
     }
 
-    const vendaBrutaC = centavos(venda._sum.total ?? 0)
-    const devolC = centavos(devol._sum.valor ?? 0)
+    const vendaBrutaC = receita.brutoCent
+    // O que voltou em devolução sai da receita: a peça devolvida não foi
+    // vendida, mesmo que a venda continue registrada.
+    const devolC = receita.devolvidoCent
+    const semCompraC = receita.semCompraCent
+    const descontoCredC = centavos(descontoCred[0]?.desconto ?? 0)
     const mensalidadesC = centavos(mens[0]?.total ?? 0)
-    const receitaVendaC = vendaBrutaC - devolC + mensalidadesC
+    const receitaVendaC = vendaBrutaC - devolC - semCompraC - descontoCredC + mensalidadesC
 
     const outrasReceitas = porGrupo('RECEITA_OUTRA')
     const jurosC = centavos(jurosCred[0]?.juros ?? 0)
@@ -472,9 +578,23 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
     // aparece como informação, fora da conta.
     const compra = porGrupo('MERCADORIA')
 
+    // A conta da empresa inteira, olhando uma loja: despesa negativa, receita
+    // positiva, e o saldo numa linha só — fora do resultado da loja.
+    const empresaItens = daEmpresa.map((x) => ({
+      nome: x.nome,
+      valor: x.tipo === 'RECEITA' ? Number(x.total) : -Number(x.total),
+    }))
+    const empresaC = daEmpresa.reduce((s, x) => s + (x.tipo === 'RECEITA' ? 1 : -1) * centavos(x.total), 0)
+
     const linhas: LinhaDRE[] = [
       { chave: 'venda', rotulo: 'Venda de mercadoria', valor: reais(vendaBrutaC) },
       ...(devolC > 0 ? [{ chave: 'devolucoes', rotulo: '(−) Devoluções', valor: -reais(devolC) }] : []),
+      ...(semCompraC > 0
+        ? [{ chave: 'semCompra', rotulo: '(−) Pago com vale de troca sem a compra', valor: -reais(semCompraC) }]
+        : []),
+      ...(descontoCredC > 0
+        ? [{ chave: 'descontoCred', rotulo: '(−) Descontos no recebimento do crediário', valor: -reais(descontoCredC) }]
+        : []),
       ...(mensalidadesC > 0 ? [{ chave: 'mensalidades', rotulo: 'Mensalidades', valor: reais(mensalidadesC) }] : []),
       ...(outrasReceitas.valor > 0
         ? [{ chave: 'outras', rotulo: 'Outras receitas', valor: reais(outrasReceitas.valor), itens: outrasReceitas.itens }]
@@ -503,6 +623,15 @@ async function calcularDRE(db: BancoDaOrg, unidadeIds: string[], de: Date, ate: 
             rotulo: 'Compra de mercadoria (fora do resultado)',
             valor: reais(compra.valor),
             itens: compra.itens,
+            fora: true,
+          }]
+        : []),
+      ...(daEmpresa.length > 0
+        ? [{
+            chave: 'empresa',
+            rotulo: 'Despesas da empresa (fora do resultado da loja)',
+            valor: reais(empresaC),
+            itens: empresaItens,
             fora: true,
           }]
         : []),
@@ -603,10 +732,11 @@ export async function resultadoPorMes(
 
   return comoOrg(sessao.orgId, async (db) => {
     const saida: MesDoResultado[] = []
+    const empresa = await contasDaEmpresa(db, sessao, unidadeIds)
     // Um de cada vez: consultas dentro da mesma transação não andam em paralelo.
     for (const mes of chaves) {
       const { de, ate } = janelaDoMes(mes)
-      const dre = await calcularDRE(db, unidadeIds, de, new Date(ate.getTime() - 1))
+      const dre = await calcularDRE(db, unidadeIds, de, new Date(ate.getTime() - 1), empresa)
       const valor = (chave: string) => dre.linhas.find((l) => l.chave === chave)?.valor ?? 0
       const receita = valor('bruta')
       const cmv = -valor('cmv')
@@ -693,6 +823,7 @@ export async function listarLancamentos(
   const lojas = f.unidadeIds.filter((u) => pode(sessao, 'financeiro.ver', u))
 
   return comoOrg(sessao.orgId, async (db) => {
+    const empresa = await contasDaEmpresa(db, sessao, lojas)
     const linhas = await db.lancamento.findMany({
       where: {
         // DUAS condições de "ou", e por isso dentro de um AND. Antes as duas
@@ -701,8 +832,9 @@ export async function listarLancamentos(
         // passava a ver os lançamentos da loja 5.
         AND: [
           // Lançamento sem unidade é da empresa inteira (aluguel do escritório,
-          // contador) e aparece em qualquer loja escolhida.
-          { OR: [{ unidadeId: { in: lojas } }, { unidadeId: null }] },
+          // contador): aparece na leitura da empresa, e não em cada loja — o
+          // mesmo critério do DRE (ver `contasDaEmpresa`).
+          { OR: [{ unidadeId: { in: lojas } }, ...(empresa === 'dentro' ? [{ unidadeId: null }] : [])] },
           ...(q
             ? [
                 {

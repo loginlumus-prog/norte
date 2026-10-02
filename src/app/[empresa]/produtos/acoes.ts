@@ -12,7 +12,7 @@ import { SemPermissao, pode, unidadesQuePodem, type Sessao } from '@/servidor/pe
 import { comoOrg } from '@/servidor/banco'
 import { alcanceComum, normalizarVendidoEm, vendidoEmDoGerente } from '@/servidor/catalogo-loja'
 import { palavra, plural } from '@/ui/texto'
-import { DINHEIRO_ILEGIVEL, lerDinheiro } from '@/servidor/dinheiro'
+import { DINHEIRO_ILEGIVEL, lerDinheiro, lerNumero } from '@/servidor/dinheiro'
 import type { Medida } from '@prisma/client'
 
 export type EstadoProduto = {
@@ -52,7 +52,9 @@ function precosDo(
       valores[k] = null
       continue
     }
-    const v = lerDinheiro(bruto)
+    // O custo aceita quatro casas: o mililitro de calda custa R$ 0,0028, e
+    // com duas ele virava zero. Preço continua em centavos.
+    const v = k === 'custo' ? lerNumero(bruto.replace(/^R\$\s*/i, ''), 4) : lerDinheiro(bruto)
     if (v === null) campos[k] = DINHEIRO_ILEGIVEL
     valores[k] = v
   }

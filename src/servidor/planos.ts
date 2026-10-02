@@ -334,23 +334,46 @@ export function podeAbrirVaga(plano: Plano, jaDentro: number): Veredito {
   }
 }
 
-/** O que esta empresa deve pagar hoje, com as unidades que ela tem. */
-export function mensalidade(plano: Plano, unidades: number, fabricas = 0) {
+/**
+ * O Farol na conta: a primeira marca a `farolMarca`, cada uma a mais a
+ * `farolMarcaExtra` — a mesma conta da calculadora do site. Zero marcas, zero.
+ */
+export function precoDoFarol(marcas: number): number {
+  const n = Math.max(0, Math.floor(marcas))
+  return n === 0 ? 0 : PRECOS.farolMarca + (n - 1) * PRECOS.farolMarcaExtra
+}
+
+/**
+ * O que esta empresa deve pagar hoje, com as unidades que ela tem, as
+ * fábricas e as marcas do Farol CONTRATADAS (`Org.farolMarcas`, só com o
+ * módulo ligado — quem chama decide; ver `assinaturaDaEmpresa`).
+ */
+export function mensalidade(plano: Plano, unidades: number, fabricas = 0, farolMarcas = 0) {
   const p = PLANOS[plano]
-  if (p.mensal === null) return { base: null, extras: 0, porExtra: null, fabricas: 0, porFabrica: null, total: null }
+  if (p.mensal === null) {
+    return { base: null, extras: 0, porExtra: null, fabricas: 0, porFabrica: null, farolMarcas: 0, farol: 0, total: null }
+  }
 
   const cota = p.unidades ?? unidades
   const extras = p.porUnidadeExtra !== null ? Math.max(0, unidades - cota) : 0
   // A fábrica (unidade marcada como fábrica) é cobrada à parte, por fábrica,
   // nos planos que cobram por unidade. No Grátis ela nem existe.
   const fab = p.porUnidadeExtra !== null ? Math.max(0, fabricas) : 0
+  // O Farol é contratado à parte e só existe onde o plano deixa ligar o
+  // módulo (no Grátis, não). Sem esta linha a tela de Assinatura mostrava a
+  // conta sem o Farol — que é a maior parcela de quem o contrata.
+  const marcas = planoLibera(plano, 'farol') ? Math.max(0, Math.floor(farolMarcas)) : 0
+  const farol = precoDoFarol(marcas)
   return {
     base: p.mensal,
     extras,
     porExtra: p.porUnidadeExtra,
     fabricas: fab,
     porFabrica: fab > 0 ? PRECOS.fabrica : null,
-    total: p.mensal + extras * (p.porUnidadeExtra ?? 0) + fab * PRECOS.fabrica,
+    farolMarcas: marcas,
+    /** O Farol inteiro, em reais por mês (todas as marcas). */
+    farol,
+    total: p.mensal + extras * (p.porUnidadeExtra ?? 0) + fab * PRECOS.fabrica + farol,
   }
 }
 
@@ -392,14 +415,18 @@ export type Mudanca = {
 export function mudanca(
   de: Plano,
   para: Plano,
-  /** Só as lojas: gente cadastrada deixou de ser cota — ver `vagas`. */
-  uso: { unidades: number },
+  /**
+   * As lojas, e o que também entra na conta: as fábricas e as marcas do
+   * Farol. Sem elas a prévia mostrava R$ 368 a quem ia pagar R$ 747. Gente
+   * cadastrada deixou de ser cota — ver `vagas`.
+   */
+  uso: { unidades: number; fabricas?: number; farolMarcas?: number },
 ): Mudanca {
   const atual = PLANOS[de]
   const alvo = PLANOS[para]
 
-  const mensalAtual = mensalidade(de, uso.unidades).total
-  const mensalNovo = mensalidade(para, uso.unidades).total
+  const mensalAtual = mensalidade(de, uso.unidades, uso.fabricas ?? 0, uso.farolMarcas ?? 0).total
+  const mensalNovo = mensalidade(para, uso.unidades, uso.fabricas ?? 0, uso.farolMarcas ?? 0).total
 
   const impedimentos: string[] = []
   // Plano que cobra loja a mais comporta qualquer número: a conta é que cresce.

@@ -26,6 +26,16 @@ export const metadata: Metadata = { title: 'Produto' }
 
 /** Decimal do banco vira o texto que a pessoa digitou: "49,90". */
 const emReais = (v: unknown) => (v == null ? '' : Number(v).toFixed(2).replace('.', ','))
+/**
+ * O custo no campo: duas casas, ou até quatro quando ele tem (o mililitro de
+ * calda a 0,0028). Com duas sempre, o campo mostrava 0,00 — e quem salvasse a
+ * ficha gravava zero por cima do custo de verdade.
+ */
+const custoNoCampo = (v: unknown) => {
+  if (v == null) return ''
+  const n = Number(v)
+  return (Math.round(n * 100) === Math.round(n * 10_000) / 100 ? n.toFixed(2) : String(Math.round(n * 10_000) / 10_000)).replace('.', ',')
+}
 
 const quando = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }).format(d)
@@ -121,7 +131,7 @@ export default async function FichaProduto({
     precoVista: emReais(produto.precoVista),
     precoCartao: emReais(produto.precoCartao),
     precoCrediario: emReais(produto.precoCrediario),
-    custo: verCusto ? emReais(produto.custo) : '',
+    custo: verCusto ? custoNoCampo(produto.custo) : '',
     verCusto,
     prazoReposicaoDias: produto.prazoReposicaoDias == null ? '' : String(produto.prazoReposicaoDias),
     servico: produto.servico,

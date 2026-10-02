@@ -16,6 +16,9 @@ const texto = (f: FormData, k: string) => {
   return v === '' ? null : v
 }
 
+/** A cor da marca como o navegador espera e mais nada: "#1a2b3c" ou nada. */
+const corValida = (v: string | null | undefined) => (v && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim() : null)
+
 export async function terminarCadastro(
   _anterior: EstadoComeco,
   form: FormData,
@@ -78,7 +81,10 @@ export async function terminarCadastro(
         email: texto(form, 'email'),
         telefone: texto(form, 'telefone'),
         whatsapp: texto(form, 'whatsapp'),
-        corMarca: texto(form, 'corMarca'),
+        // Só "#rrggbb": a cor vai para o `style` da tela de entrar (pública).
+        // Texto livre ali era CSS de quem digitou — `url(...)` que avisa a
+        // terceiro cada visita, ou um fundo que imita outra loja.
+        corMarca: corValida(texto(form, 'corMarca')),
         // O jeito de vender vem do ramo: sorveteria toca no botão, loja de
         // roupa bipa a etiqueta. É padrão, e o dono troca em Configurações.
         balcaoGrade: RAMOS[ramo].balcao === 'grade',

@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao, cx } from '@/ui/base'
+import { CampoDoPin } from '@/ui/Assinar'
 import { procurarParaEntrada, darEntrada, type AchadoEstoque } from './acoes'
 
 type Linha = AchadoEstoque & { quantidade: number; custoUnit: number | null }
@@ -21,29 +22,40 @@ type Linha = AchadoEstoque & { quantidade: number; custoUnit: number | null }
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const hojeMais = (dias: number) =>
   new Date(Date.now() + dias * 864e5).toISOString().slice(0, 10)
+/** A chave desta entrada: o mesmo envio repetido não dá entrada duas vezes. */
+const novaChave = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
 export function Entrada({
   slug,
-  unidadeId,
-  unidadeNome,
-  ambiguo,
+  lojas,
+  unidadeId: lojaInicial,
   categorias,
-  podeLancarConta,
   mercadoria,
   aMercadoria,
 }: {
   slug: string
-  unidadeId: string
-  unidadeNome: string
-  /** A tela está no consolidado e a empresa tem mais de uma loja. */
-  ambiguo: boolean
+  /** As lojas onde a pessoa pode dar entrada nesta vista, e se lança conta em cada uma. */
+  lojas: { id: string; nome: string; conta: boolean }[]
+  /** A loja já decidida (a escolhida no alto, ou a única). Nulo = a pessoa escolhe. */
+  unidadeId: string | null
   categorias: { id: string; nome: string }[]
-  podeLancarConta: boolean
   /** "mercadoria" na loja, "material" na clínica (servidor/vocabulario.ts). */
   mercadoria: string
   /** "A mercadoria", "O material" — começo de frase. */
   aMercadoria: string
 }) {
+  // Sem loja marcada de saída quando há mais de uma: a pessoa escolhe. Antes
+  // a entrada ia para a primeira da lista, e a loja errada só aparecia no
+  // balanço.
+  const [unidadeId, setUnidadeId] = useState(lojaInicial ?? '')
+  const loja = lojas.find((l) => l.id === unidadeId) ?? null
+  const unidadeNome = loja?.nome ?? 'esta loja'
+  const podeLancarConta = loja?.conta ?? false
+  const [chave, setChave] = useState(novaChave)
+  const [pedePin, setPedePin] = useState(false)
+  const [pin, setPin] = useState('')
+  const [notaRepetida, setNotaRepetida] = useState(false)
   const [aberto, setAberto] = useState(false)
   const [termo, setTermo] = useState('')
   const [achados, setAchados] = useState<AchadoEstoque[]>([])
@@ -62,7 +74,7 @@ export function Entrada({
   const busca = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (termo.trim().length < 2) {
+    if (termo.trim().length < 2 || !unidadeId) {
       setAchados([])
       return
     }
@@ -89,8 +101,12 @@ export function Entrada({
   const mudar = (id: string, campo: 'quantidade' | 'custoUnit', valor: number | null) =>
     setLinhas((atual) => atual.map((l) => (l.id === id ? { ...l, [campo]: valor } : l)))
 
-  function enviar() {
+  function enviar(repetirDocumento = false) {
     setRecado(null)
+    if (!unidadeId) {
+      setRecado({ nivel: 'critico', texto: `Escolha em que loja ${aMercadoria.toLowerCase()} entra.` })
+      return
+    }
     comecar(async () => {
       const r = await darEntrada(slug, {
         unidadeId,
@@ -103,10 +119,16 @@ export function Entrada({
         })),
         conta:
           lancarConta && podeLancarConta ? { categoriaId, vencimento, jaPago } : null,
+        chave,
+        repetirDocumento,
+        pin: pin || null,
       })
+      setPin('')
 
       if (r.erro) {
-        setRecado({ nivel: 'critico', texto: r.erro })
+        if (r.precisaPin) setPedePin(true)
+        setNotaRepetida(r.documentoRepetido === true)
+        setRecado({ nivel: r.documentoRepetido ? 'atencao' : 'critico', texto: r.erro })
         return
       }
       setRecado({
@@ -116,6 +138,10 @@ export function Entrada({
       setLinhas([])
       setFornecedor('')
       setDocumento('')
+      setNotaRepetida(false)
+      setPedePin(false)
+      // A próxima entrada é outra: chave nova.
+      setChave(novaChave())
     })
   }
 
@@ -158,15 +184,25 @@ export function Entrada({
         </div>
       )}
 
-      {/* Mercadoria entra em UMA loja. No consolidado a tela soma as duas, e
-          sem dizer onde vai entrar a pessoa dá entrada na loja errada e só
-          descobre no balanço. */}
-      {ambiguo && (
-        <div className="mb-3">
-          <Aviso nivel="atencao">
-            {aMercadoria} vai entrar em <b>{unidadeNome}</b>. A lista abaixo está somando
-            todas as lojas — troque a loja no alto da tela se for outra.
-          </Aviso>
+      {/* Mercadoria entra em UMA loja. No consolidado a tela soma as lojas, e
+          sem perguntar onde vai entrar a pessoa dava entrada na loja errada e
+          só descobria no balanço. Aqui ela escolhe — nenhuma vem marcada. */}
+      {lojas.length > 1 && (
+        <div className="mb-3 max-w-sm">
+          <Selecao
+            rotulo={`Em que loja ${aMercadoria.toLowerCase()} entra`}
+            name="unidadeId"
+            value={unidadeId}
+            onChange={(e) => {
+              setUnidadeId(e.currentTarget.value)
+              // O saldo de cada linha era o da outra loja, e ela pode nem
+              // vender aquilo: começa de novo.
+              setLinhas([])
+              setAchados([])
+              setLancarConta(false)
+            }}
+            opcoes={[{ valor: '', titulo: 'Escolha a loja' }, ...lojas.map((l) => ({ valor: l.id, titulo: l.nome }))]}
+          />
         </div>
       )}
 
@@ -177,7 +213,8 @@ export function Entrada({
           rotulo="O que chegou"
           value={termo}
           onChange={(e) => setTermo(e.currentTarget.value)}
-          placeholder="Bipe a etiqueta ou digite o nome"
+          placeholder={unidadeId ? 'Bipe a etiqueta ou digite o nome' : 'Escolha a loja primeiro'}
+          disabled={!unidadeId}
           autoComplete="off"
         />
         {achados.length > 0 && (
@@ -235,7 +272,9 @@ export function Entrada({
                 <input
                   type="number"
                   min={0}
-                  step={0.01}
+                  // "any": o mililitro de calda custa R$ 0,0028 — com passo de
+                  // centavo o navegador recusava o número.
+                  step="any"
                   value={l.custoUnit ?? ''}
                   placeholder="—"
                   onChange={(e) =>
@@ -318,14 +357,29 @@ export function Entrada({
             </div>
           )}
 
-          <div className="mt-5 flex items-center justify-between gap-3">
+          {pedePin && (
+            <div className="mt-4 max-w-xs">
+              <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} aoEnviar={() => enviar(notaRepetida)} />
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-tinta-2">
               {linhas.length} {linhas.length === 1 ? 'item' : 'itens'} ·{' '}
               <b className="numero text-tinta">{brl(total)}</b>
             </span>
-            <Botao tom="confirmar" carregando={indo} onClick={enviar}>
-              {indo ? 'Registrando...' : 'Dar entrada'}
-            </Botao>
+            <span className="flex flex-wrap items-center gap-2">
+              {/* A mesma nota já entrou: só com a confirmação de que é outra
+                  entrega a segunda passa. */}
+              {notaRepetida && (
+                <Botao tom="secundario" carregando={indo} onClick={() => enviar(true)}>
+                  É outra entrega — dar entrada
+                </Botao>
+              )}
+              <Botao tom="confirmar" carregando={indo} disabled={!unidadeId} onClick={() => enviar(false)}>
+                {indo ? 'Registrando...' : 'Dar entrada'}
+              </Botao>
+            </span>
           </div>
         </>
       )}

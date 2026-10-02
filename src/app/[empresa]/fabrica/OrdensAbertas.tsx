@@ -13,6 +13,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Situacao } from '@/ui/base'
+import { CampoDoPin } from '@/ui/Assinar'
 import { brl } from '@/ui/painel'
 import { quantidade } from '@/ui/texto'
 import type { OrdemNaTela } from '@/servidor/fabrica'
@@ -87,13 +88,27 @@ function ResultadoDoEncerramento({ slug, r, verCusto }: { slug: string; r: Resul
       </Aviso>
     )
   }
+  const fora = r.foraDaReceita
+    ? ` ${r.foraDaReceita === 1 ? 'Um insumo usado não estava' : `${r.foraDaReceita} insumos usados não estavam`} na ficha técnica: entrou na ordem e no custo.`
+    : ''
+  // Quem encerra sem poder mexer em preço registra a produção; o custo do
+  // produto fica com quem decide preço.
+  if (!r.custoAtualizado) {
+    return (
+      <Aviso nivel="atencao">
+        {linha}
+        {verCusto && r.custoUnitario != null ? ` Custo apurado: ${brl(r.custoUnitario)} por ${sigla(r.medida)}.` : ''} O custo do produto
+        ficou como estava — mexer em custo é de quem decide preço.{fora} {etiquetas}
+      </Aviso>
+    )
+  }
   return (
     <Aviso nivel="bom">
       {linha}{' '}
       {verCusto && r.custoUnitario != null
-        ? `Custo apurado: ${brl(r.custoUnitario)} por ${sigla(r.medida)} — já é o custo do produto, e a margem das lojas é calculada por ele.`
-        : 'O custo apurado já é o custo do produto.'}{' '}
-      {etiquetas}
+        ? `Custo apurado: ${brl(r.custoUnitario)} por ${sigla(r.medida)} — entrou no custo médio deste item, e a margem das lojas é calculada por ele.`
+        : 'O custo apurado entrou no custo médio deste item.'}
+      {fora} {etiquetas}
     </Aviso>
   )
 }
@@ -120,6 +135,9 @@ function Ordem({
   const [validade, setValidade] = useState(validadeSugerida)
   const [motivo, setMotivo] = useState('')
   const [erro, setErro] = useState<string | null>(null)
+  // A vendedora que produz porque a empresa deixou assina com o PIN dela.
+  const [pedePin, setPedePin] = useState(false)
+  const [pin, setPin] = useState('')
   const [indo, comecar] = useTransition()
   const router = useRouter()
 
@@ -132,8 +150,10 @@ function Ordem({
     }
     setErro(null)
     comecar(async () => {
-      const r = await encerrarOrdemAcao(slug, o.id, { produzida: q, consumos, lote, validade })
+      const r = await encerrarOrdemAcao(slug, o.id, { produzida: q, consumos, lote, validade, pin: pin || null })
+      setPin('')
       if (r.erro) {
+        if (r.precisaPin) setPedePin(true)
         setErro(r.erro)
         return
       }
@@ -231,6 +251,11 @@ function Ordem({
             </div>
           )}
 
+          {pedePin && (
+            <div className="max-w-xs">
+              <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} aoEnviar={encerrar} />
+            </div>
+          )}
           {erro && <Aviso nivel="critico">{erro}</Aviso>}
           <div className="flex flex-wrap justify-end gap-2">
             <Botao tom="discreto" onClick={() => { setErro(null); setModo('ver') }}>

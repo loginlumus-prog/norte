@@ -281,55 +281,50 @@
 .site-bloco:hover .site-mostra { transform: translateY(-6px) scale(1.02); }
 
 /* ── as telinhas animadas ── */
-/* As telinhas contam uma história em laço de 10 segundos, todas no mesmo
-   relógio: o passo N aparece na sua vez e todos somem juntos no fim. */
-.site-passo-0 { animation: site-passo-0 10s ease-out infinite both; }
+/* 02/10/2026 (2): as telinhas NUNCA nascem vazias. Antes cada passo
+   aparecia na sua vez e todos sumiam no fim do laço — quem olhava no
+   momento errado via um celular em branco (e o print da página também).
+   Agora tudo está na tela o tempo todo; o laço de 10 s só dá um "pulo"
+   em cada peça, na ordem da história, para o olho seguir o caminho. */
+.site-passo-0 { animation: site-passo-0 10s ease-in-out infinite; }
 @keyframes site-passo-0 {
-  0%, 4% { opacity: 0; transform: translateY(10px) scale(0.97); }
-  8%, 90% { opacity: 1; transform: none; }
-  96%, 100% { opacity: 0; transform: translateY(-4px); }
+  0%, 4%, 12%, 100% { transform: none; }
+  7% { transform: translateY(-3px) scale(1.025); }
 }
-.site-passo-1 { animation: site-passo-1 10s ease-out infinite both; }
+.site-passo-1 { animation: site-passo-1 10s ease-in-out infinite; }
 @keyframes site-passo-1 {
-  0%, 13% { opacity: 0; transform: translateY(10px) scale(0.97); }
-  17%, 90% { opacity: 1; transform: none; }
-  96%, 100% { opacity: 0; transform: translateY(-4px); }
+  0%, 13%, 21%, 100% { transform: none; }
+  16% { transform: translateY(-3px) scale(1.025); }
 }
-.site-passo-2 { animation: site-passo-2 10s ease-out infinite both; }
+.site-passo-2 { animation: site-passo-2 10s ease-in-out infinite; }
 @keyframes site-passo-2 {
-  0%, 22% { opacity: 0; transform: translateY(10px) scale(0.97); }
-  26%, 90% { opacity: 1; transform: none; }
-  96%, 100% { opacity: 0; transform: translateY(-4px); }
+  0%, 22%, 30%, 100% { transform: none; }
+  25% { transform: translateY(-3px) scale(1.025); }
 }
-.site-passo-3 { animation: site-passo-3 10s ease-out infinite both; }
+.site-passo-3 { animation: site-passo-3 10s ease-in-out infinite; }
 @keyframes site-passo-3 {
-  0%, 31% { opacity: 0; transform: translateY(10px) scale(0.97); }
-  35%, 90% { opacity: 1; transform: none; }
-  96%, 100% { opacity: 0; transform: translateY(-4px); }
+  0%, 31%, 39%, 100% { transform: none; }
+  34% { transform: translateY(-3px) scale(1.025); }
 }
-.site-passo-4 { animation: site-passo-4 10s ease-out infinite both; }
+.site-passo-4 { animation: site-passo-4 10s ease-in-out infinite; }
 @keyframes site-passo-4 {
-  0%, 40% { opacity: 0; transform: translateY(10px) scale(0.97); }
-  44%, 90% { opacity: 1; transform: none; }
-  96%, 100% { opacity: 0; transform: translateY(-4px); }
+  0%, 40%, 48%, 100% { transform: none; }
+  43% { transform: translateY(-3px) scale(1.025); }
 }
-.site-passo-5 { animation: site-passo-5 10s ease-out infinite both; }
+.site-passo-5 { animation: site-passo-5 10s ease-in-out infinite; }
 @keyframes site-passo-5 {
-  0%, 49% { opacity: 0; transform: translateY(10px) scale(0.97); }
-  53%, 90% { opacity: 1; transform: none; }
-  96%, 100% { opacity: 0; transform: translateY(-4px); }
+  0%, 49%, 57%, 100% { transform: none; }
+  52% { transform: translateY(-3px) scale(1.025); }
 }
-.site-passo-6 { animation: site-passo-6 10s ease-out infinite both; }
+.site-passo-6 { animation: site-passo-6 10s ease-in-out infinite; }
 @keyframes site-passo-6 {
-  0%, 58% { opacity: 0; transform: translateY(10px) scale(0.97); }
-  62%, 90% { opacity: 1; transform: none; }
-  96%, 100% { opacity: 0; transform: translateY(-4px); }
+  0%, 58%, 66%, 100% { transform: none; }
+  61% { transform: translateY(-3px) scale(1.025); }
 }
-.site-passo-7 { animation: site-passo-7 10s ease-out infinite both; }
+.site-passo-7 { animation: site-passo-7 10s ease-in-out infinite; }
 @keyframes site-passo-7 {
-  0%, 67% { opacity: 0; transform: translateY(10px) scale(0.97); }
-  71%, 90% { opacity: 1; transform: none; }
-  96%, 100% { opacity: 0; transform: translateY(-4px); }
+  0%, 67%, 75%, 100% { transform: none; }
+  70% { transform: translateY(-3px) scale(1.025); }
 }
 .site-onda > i {
   display: block;
@@ -343,16 +338,9 @@
   to { transform: scaleY(1); }
 }
 .site-digita {
-  overflow: hidden;
-  white-space: nowrap;
   border-right: 2px solid currentColor;
-  width: 0;
-  animation: site-digita 10s steps(30, end) infinite, site-cursor 0.8s step-end infinite;
-}
-@keyframes site-digita {
-  0%, 8% { width: 0; }
-  40%, 92% { width: 100%; }
-  100% { width: 0; }
+  padding-right: 2px;
+  animation: site-cursor 0.9s step-end infinite;
 }
 @keyframes site-cursor {
   50% { border-color: transparent; }
@@ -405,7 +393,17 @@
     transition: none !important;
   }
   .site-troca > span { opacity: 0; }
-  [class*='site-passo-'] { opacity: 1 !important; transform: none !important; }
   .site-troca > span:first-child { opacity: 1; }
-  .site-digita { width: 100%; border-right: 0; }
+  .site-digita { border-right: 0; }
+}
+
+/* O painel do ramo escolhido entra de leve quando a aba muda (nunca some). */
+.site-troca-painel {
+  animation: site-troca-painel 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes site-troca-painel {
+  from { opacity: 0.35; transform: translateY(8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-troca-painel { animation: none; }
 }

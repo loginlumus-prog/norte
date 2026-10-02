@@ -313,7 +313,7 @@ export const GUIA: Entrada[] = [
           'No crediário o total passa para a tabela "no crediário", e as parcelas nascem a cada N dias contando de hoje. Receber depois é na tela Crediário.',
           'Pontos: com o programa ligado e o cliente escolhido, aparece "Tem X pontos — dá R$ Y de desconto — usar" quando ele passou do mínimo.',
           'Os pontos abatem do valor já com desconto e nunca passam do total da venda. O ✕ desfaz.',
-          '"+ vale de troca": digite o código do papel (VT-XXXXXX) e "Usar". A tela mostra o saldo e de quem é, e o vale entra como pagamento até o que falta.',
+          '"+ vale de troca": digite o código do papel (VT-XXXXX-XXXXX) e "Usar". A tela mostra o saldo e de quem é, e o vale entra como pagamento até o que falta.',
           'Vale vencido (90 dias) ou já usado é recusado. O mesmo vale não entra duas vezes na mesma venda.',
         ],
         capacidade: 'venda.criar',

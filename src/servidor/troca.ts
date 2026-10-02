@@ -32,6 +32,8 @@
 // digita o preço que a cliente pagou. Preço digitado vira vale — é dinheiro
 // —, e por isso pede o PIN de quem pode autorizar desconto (ou ser essa
 // pessoa). A peça volta ao estoque e o crédito nasce como vale desta loja.
+// E tem teto: o preço até a etiqueta mais cara de hoje, até 20 peças de cada
+// item, e acima de R$ 2.000 de crédito o PIN de OUTRA pessoa (troca-conta.ts).
 
 import type { FormaPagamento, Prisma } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
@@ -54,8 +56,9 @@ import {
   fatorPago,
   precoDaPeca,
   precoSemCompraPareceErrado,
+  QTD_MAX_SEM_COMPRA,
   tabelaDaTroca,
-  valorDevolvidoCent,
+  TETO_CREDITO_SEM_COMPRA_CENT,
 } from './troca-conta'
 
 // ─────────────────────────────────────────────────────────────
@@ -121,7 +124,7 @@ export async function procurarCompras(
         pagamentos: { select: { forma: true } },
         itens: {
           orderBy: { id: 'asc' },
-          select: { descricao: true, quantidade: true, devolucoes: { select: { quantidade: true } } },
+          select: { descricao: true, quantidade: true, total: true, devolucoes: { select: { quantidade: true } } },
         },
       },
     })
@@ -138,8 +141,9 @@ export async function procurarCompras(
         })
         .join(' · '),
       formas: [...new Set(v.pagamentos.map((p) => p.forma))],
+      // A linha negativa do sinal (pedido do catálogo) não conta: não é peça.
       podeVoltar: v.itens.some(
-        (i) => restante(Number(i.quantidade), i.devolucoes.reduce((s, d) => s + Number(d.quantidade), 0)) > 0,
+        (i) => Number(i.total) >= 0 && restante(Number(i.quantidade), i.devolucoes.reduce((s, d) => s + Number(d.quantidade), 0)) > 0,
       ),
     }))
   })
@@ -167,7 +171,11 @@ export type CompraParaTroca = {
     inteiro: boolean
     /** Quanto ainda pode voltar. */
     restante: number
+    /** O preço da etiqueta na venda (para mostrar). */
     precoUnitCent: number
+    /** O total da linha, já sem o desconto dado nela, e quanto foi vendido: a régua do que volta (`valorDoItemCent`). */
+    totalCent: number
+    vendido: number
     /** Item sem cadastro (venda trazida do sistema anterior, avulso): o estoque só volta se apontarem a peça. */
     semCadastro: boolean
   }[]
@@ -182,21 +190,24 @@ export async function compraParaTroca(sessao: Sessao, vendaId: string): Promise<
       where: { id: vendaId },
       select: {
         id: true, numero: true, criadaEm: true, unidadeId: true, situacao: true,
-        subtotal: true, total: true,
+        subtotal: true, total: true, acrescimo: true,
         unidade: { select: { nome: true } },
         cliente: { select: { id: true, nome: true } },
-        pagamentos: { select: { juros: true } },
-        itens: {
-          orderBy: { id: 'asc' },
-          select: {
-            id: true, descricao: true, codigo: true, medida: true, quantidade: true, precoUnit: true, variacaoId: true,
-            devolucoes: { select: { quantidade: true } },
-          },
-        },
       },
     })
     if (!v || v.situacao !== 'CONCLUIDA') return null
     if (!pode(sessao, 'venda.criar', v.unidadeId)) return null
+    // As listas uma por vez (duas no mesmo select vão em paralelo, e dentro
+    // da transação isso avisa).
+    const pagamentos = await db.pagamento.findMany({ where: { vendaId: v.id }, select: { juros: true } })
+    const itens = await db.vendaItem.findMany({
+      where: { vendaId: v.id },
+      orderBy: { id: 'asc' },
+      select: {
+        id: true, descricao: true, codigo: true, medida: true, quantidade: true, precoUnit: true, total: true, variacaoId: true,
+        devolucoes: { select: { quantidade: true } },
+      },
+    })
     const abertas = await db.parcela.findMany({
       where: { vendaId: v.id, quitadaEm: null },
       select: { valor: true, pago: true, desconto: true },
@@ -214,13 +225,16 @@ export async function compraParaTroca(sessao: Sessao, vendaId: string): Promise<
       unidade: v.unidade.nome,
       total: Number(v.total),
       cliente: v.cliente,
+      // A mesma conta da devolução (devolucao.ts): sem o juro do parcelado e
+      // sem o acréscimo, nunca mais que 1.
       fator: fatorPago(
         centavos(v.subtotal),
         centavos(v.total),
-        v.pagamentos.reduce((s, x) => s + centavos(x.juros), 0),
+        pagamentos.reduce((s, x) => s + centavos(x.juros), 0),
+        centavos(v.acrescimo),
       ),
       fiadoAbertoCent,
-      itens: v.itens
+      itens: itens
         .map((i) => ({
           id: i.id,
           descricao: i.descricao,
@@ -229,9 +243,12 @@ export async function compraParaTroca(sessao: Sessao, vendaId: string): Promise<
           inteiro: pedeInteiro(i.medida),
           restante: restante(Number(i.quantidade), i.devolucoes.reduce((s, d) => s + Number(d.quantidade), 0)),
           precoUnitCent: centavos(i.precoUnit),
+          totalCent: centavos(i.total),
+          vendido: Number(i.quantidade),
           semCadastro: !i.variacaoId,
         }))
-        .filter((i) => i.restante > 0),
+        // A linha negativa do sinal (pedido do catálogo) não é peça: não volta.
+        .filter((i) => i.restante > 0 && i.precoUnitCent >= 0 && i.totalCent >= 0),
     }
   })
 }
@@ -363,9 +380,6 @@ const recusa = (motivo: string, recado: string, extra: { precisaPin?: boolean } 
 
 const quantidadeBoa = (q: unknown) => typeof q === 'number' && Number.isFinite(q) && q > 0
 
-/** Teto do preço digitado sem a compra, contra o dedo errado em peça sem etiqueta de hoje. */
-const TETO_SEM_COMPRA_CENT = 1_000_000
-
 export async function trocar(sessao: Sessao, p: PedidoTroca): Promise<ResultadoTroca> {
   exigir(sessao, 'venda.criar', p.unidadeId)
 
@@ -401,30 +415,52 @@ export async function trocar(sessao: Sessao, p: PedidoTroca): Promise<ResultadoT
   // que a vendedora escreveu vem junto.
   const motivo = motivoLimpo ? `Troca: ${motivoLimpo}` : 'Troca'
 
+  // ── os limites da troca sem a compra ──
+  // Sem compra, o crédito nasce do que a vendedora digita: é dinheiro sem
+  // lastro. Por item, no máximo QTD_MAX_SEM_COMPRA peças (somadas as linhas
+  // do mesmo item — duas linhas de 20 são 40); o preço, até a etiqueta mais
+  // cara de hoje (conferido na transação, com o cadastro na mão).
+  if (!p.vendaId) {
+    const porPeca = new Map<string, number>()
+    for (const i of semCompra) porPeca.set(i.variacaoId, (porPeca.get(i.variacaoId) ?? 0) + i.quantidade)
+    if ([...porPeca.values()].some((q) => q > QTD_MAX_SEM_COMPRA)) {
+      return recusa('quantidade_demais', `Sem a compra, voltam no máximo ${QTD_MAX_SEM_COMPRA} peças de cada item numa troca.`)
+    }
+  }
+
   // ── a autorização da troca sem a compra ──
   // ANTES da transação: a conferência do PIN abre as próprias (o freio e o
   // livro), e transação não aninha. Quem pode dar desconto acima do teto
-  // não precisa de PIN — é a mesma régua do item avulso na venda.
+  // não precisa de PIN — é a mesma régua do item avulso na venda — até o
+  // teto do crédito (TETO_CREDITO_SEM_COMPRA_CENT). Acima dele, ninguém
+  // autoriza a si mesma: o PIN tem de ser de OUTRA pessoa que pode.
   let autorizador: { usuarioId: string; nome: string } | null = null
-  if (!p.vendaId && !pode(sessao, 'venda.desconto', p.unidadeId)) {
+  if (!p.vendaId) {
     const creditoCent = semCompra.reduce((s, i) => s + multiplicar(centavos(i.precoUnit), i.quantidade), 0)
-    if (!p.pin || !String(p.pin).trim()) {
-      return recusa(
-        'precisa_pin',
-        `Troca sem a compra vira um vale de ${mostrar(creditoCent)} pelo preço digitado: precisa do PIN de quem pode autorizar.`,
-        { precisaPin: true },
-      )
+    const acimaDoTeto = creditoCent > TETO_CREDITO_SEM_COMPRA_CENT
+    if (acimaDoTeto || !pode(sessao, 'venda.desconto', p.unidadeId)) {
+      const recadoDoPin = acimaDoTeto
+        ? `Troca sem a compra acima de ${mostrar(TETO_CREDITO_SEM_COMPRA_CENT)} (este vale: ${mostrar(creditoCent)}) precisa do PIN de OUTRA pessoa que pode autorizar.`
+        : `Troca sem a compra vira um vale de ${mostrar(creditoCent)} pelo preço digitado: precisa do PIN de quem pode autorizar.`
+      if (!p.pin || !String(p.pin).trim()) return recusa('precisa_pin', recadoDoPin, { precisaPin: true })
+      const r = await autorizarComPin({
+        orgId: sessao.orgId,
+        unidadeId: p.unidadeId,
+        pin: String(p.pin).trim().slice(0, 12),
+        capacidade: 'venda.desconto',
+        motivo: `Troca sem a compra (sistema anterior): crédito de ${mostrar(creditoCent)}`,
+        quemPediu: { usuarioId: sessao.usuarioId, nome: sessao.nome },
+      })
+      if (!r.ok) return recusa('autorizacao_recusada', r.erro, { precisaPin: true })
+      if (acimaDoTeto && r.autorizador.usuarioId === sessao.usuarioId) {
+        return recusa(
+          'autorizacao_recusada',
+          `Acima de ${mostrar(TETO_CREDITO_SEM_COMPRA_CENT)}, o PIN tem de ser de outra pessoa — não de quem está fazendo a troca.`,
+          { precisaPin: true },
+        )
+      }
+      autorizador = r.autorizador
     }
-    const r = await autorizarComPin({
-      orgId: sessao.orgId,
-      unidadeId: p.unidadeId,
-      pin: String(p.pin).trim().slice(0, 12),
-      capacidade: 'venda.desconto',
-      motivo: `Troca sem a compra (sistema anterior): crédito de ${mostrar(creditoCent)}`,
-      quemPediu: { usuarioId: sessao.usuarioId, nome: sessao.nome },
-    })
-    if (!r.ok) return recusa('autorizacao_recusada', r.erro, { precisaPin: true })
-    autorizador = r.autorizador
   }
 
   try {
@@ -488,7 +524,7 @@ async function trocarEm(
     if (compra.clienteId) clienteId = compra.clienteId
     compraNumero = compra.numero
 
-    const dev = await devolverEm(db, sessao, { vendaId: p.vendaId, itens: c.voltam, destino: 'VALE', motivo: c.motivo })
+    const dev = await devolverEm(db, sessao, { vendaId: p.vendaId, itens: c.voltam, destino: 'VALE', motivo: c.motivo, unidadeId: p.unidadeId })
     // A devolução recusa antes de escrever qualquer coisa: dá para devolver a
     // recusa sem desfazer nada.
     if (!dev.ok) return recusaDaDevolucao(dev)
@@ -529,8 +565,13 @@ async function trocarEm(
           x.produto.precoCartao != null ? centavos(x.produto.precoCartao) : 0,
           x.produto.precoCrediario != null ? centavos(x.produto.precoCrediario) : 0,
         ) + ajuste
-      if (precoCent > TETO_SEM_COMPRA_CENT || precoSemCompraPareceErrado(precoCent, maisCara)) {
-        return recusa('preco_errado', `${mostrar(precoCent)} por ${descricao} parece dedo errado. Confira o preço que a cliente pagou.`)
+      if (precoSemCompraPareceErrado(precoCent, maisCara)) {
+        return recusa(
+          'preco_errado',
+          maisCara > 0
+            ? `${mostrar(precoCent)} por ${descricao} passa da etiqueta mais cara dela hoje (${mostrar(maisCara)}). Sem a compra, o vale vai até esse preço.`
+            : `${descricao} está sem preço no cadastro: sem a etiqueta, a troca sem a compra não tem como valer. Cadastre o preço e tente de novo.`,
+        )
       }
       linhas.push({ variacaoId: x.id, descricao, quantidade: i.quantidade, cent: multiplicar(precoCent, i.quantidade) })
     }
@@ -685,6 +726,7 @@ function recusaDaDevolucao(d: Extract<ResultadoDevolucao, { ok: false }>) {
     sem_permissao: 'Você não pode fazer troca nesta loja.',
     item_repetido: 'A mesma peça veio duas vezes. Recarregue a tela e marque de novo.',
     quantidade_fracionada: 'Peça, par e caixa voltam inteiros: 1, 2, 3.',
+    item_ajuste: 'A linha do sinal já pago é acerto de conta, não peça: não volta. Marque só os produtos.',
   }
   return recusa(d.motivo, recado[d.motivo])
 }

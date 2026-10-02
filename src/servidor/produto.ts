@@ -288,13 +288,14 @@ export async function editarProduto(
 
     // O que MUDOU de fato, e não o que veio no formulário. A ficha manda
     // todos os campos a cada "Salvar": contar presença como mudança travaria
-    // o gerente de corrigir o nome de uma peça vendida em todas as lojas, e
-    // escreveria "alterou o preço" no livro sem o preço ter mudado.
+    // o gerente de corrigir o nome de uma peça que a loja dele divide com
+    // outra, e escreveria "alterou o preço" no livro sem o preço ter mudado.
+    const mexeuNoCusto = mudou(dados.custo, antes.custo, 4)
     const mexeuNoPreco =
       mudou(dados.precoVista, antes.precoVista) ||
       mudou(dados.precoCartao, antes.precoCartao) ||
       mudou(dados.precoCrediario, antes.precoCrediario) ||
-      mudou(dados.custo, antes.custo)
+      mexeuNoCusto
     const mexeuNoVendidoEm = dados.vendidoEm !== undefined && !mesmasLojas(dados.vendidoEm, antes.vendidoEm)
     const mexeuNoResto =
       mexeuNoVendidoEm ||
@@ -316,6 +317,52 @@ export async function editarProduto(
     }
     if (mexeuNoVendidoEm && !alcancaOProduto(alcanceDe(sessao, 'produto.editar'), dados.vendidoEm)) {
       return { ok: false as const, motivo: MOTIVO_FORA_DO_ALCANCE }
+    }
+    // E o resto da ficha (nome, descrição, marca, categoria, serviço, feito
+    // no dia) também é de quem cuida do produto: ele precisa passar pelo
+    // balcão de alguma loja de quem edita. `produto.editar` sem loja deixava o
+    // gerente do Centro renomear o picolé que só a sorveteria vende. Vendido
+    // em todas (vazio) inclui as lojas que abrirem: só quem edita pela
+    // empresa inteira alcança.
+    if (!tocaAlguma(alcanceDe(sessao, 'produto.editar'), antes.vendidoEm)) {
+      return { ok: false as const, motivo: MOTIVO_DE_OUTRA_LOJA }
+    }
+
+    // ── a medida não muda por cima do saldo ──
+    // Trocar quilo por grama com 11 kg na prateleira não converte nada: o
+    // saldo passava a ser "11 g", e o preço por quilo virava preço por grama.
+    if (dados.medida !== undefined && dados.medida !== antes.medida) {
+      const comSaldo = await saldosDoProduto(db, produtoId)
+      if (comSaldo.length > 0) {
+        return {
+          ok: false as const,
+          motivo:
+            `Ainda tem saldo deste produto (${comSaldo.map((s) => `${s.loja}: ${s.quantidade.toLocaleString('pt-BR')}`).join('; ')}). ` +
+            'Trocar a medida não converte o estoque. Zere antes na tela de Estoque — ou cadastre um produto novo na medida nova.',
+        }
+      }
+    }
+
+    // ── tirar uma loja não pode deixar mercadoria presa nela ──
+    // A loja que deixa de vender o produto não vende mais o que tem na
+    // prateleira (o balcão recusa) — o saldo vira dinheiro parado que nenhuma
+    // tela mostra. Recusa e diz quanto transferir, de onde.
+    if (mexeuNoVendidoEm) {
+      const lojas = await db.unidade.findMany({ where: { ativa: true, ehDeposito: false }, select: { id: true } })
+      const saem = lojas
+        .map((l) => l.id)
+        .filter((u) => vendidoNaLoja(antes.vendidoEm, u) && !vendidoNaLoja(dados.vendidoEm, u))
+      if (saem.length > 0) {
+        const presos = await saldosDoProduto(db, produtoId, saem)
+        if (presos.length > 0) {
+          return {
+            ok: false as const,
+            motivo:
+              `Ainda tem estoque nas lojas que você está tirando: ${presos.map((s) => `${s.loja} — ${s.item}: ${s.quantidade.toLocaleString('pt-BR')}`).join('; ')}. ` +
+              'Transfira para uma loja que continua vendendo (ou para um depósito) na tela de Estoque, e depois tire a loja.',
+          }
+        }
+      }
     }
 
     await db.produto.update({
@@ -340,6 +387,12 @@ export async function editarProduto(
         ...(dados.ativo !== undefined && { ativo: dados.ativo }),
       },
     })
+    // O custo digitado na ficha é o custo de TODAS as variações: o custo
+    // próprio que cada sabor ganhou na fábrica (ou cada tamanho na nota) sai,
+    // senão continuaria valendo por cima do que a pessoa acabou de decidir.
+    if (mexeuNoCusto) {
+      await db.variacao.updateMany({ where: { produtoId, custo: { not: null } }, data: { custo: null } })
+    }
 
     await db.auditoria.create({
       data: {
@@ -375,15 +428,51 @@ export class GradeRecusada extends Error {
 export const MOTIVO_FORA_DO_ALCANCE =
   'Este produto também é vendido em lojas que você não cuida. Preço, custo, lojas, medida, situação e grade dele ficam com quem responde por todas elas.'
 
+/** Frase do produto que não passa por nenhuma loja de quem tenta editar. */
+export const MOTIVO_DE_OUTRA_LOJA =
+  'Este produto não é vendido em nenhuma das suas lojas. Quem cuida dele é quem responde pelas lojas onde ele é vendido.'
+
 function alcanceDe(sessao: Sessao, capacidade: Capacidade) {
   return unidadesQuePodem(sessao, capacidade)
 }
 
-/** O campo veio e é diferente do que está gravado? Dinheiro compara em centavos. */
-function mudou(novo: number | null | undefined, antigo: unknown): boolean {
+/**
+ * O alcance toca alguma loja onde o produto é vendido? Vazio = todas,
+ * inclusive as futuras: só quem alcança a empresa inteira.
+ */
+function tocaAlguma(alcance: 'todas' | readonly string[], vendidoEm: readonly string[]): boolean {
+  if (alcance === 'todas') return true
+  if (vendidoEm.length === 0) return false
+  return vendidoEm.some((u) => alcance.includes(u))
+}
+
+/** O saldo diferente de zero do produto, por loja e item — nas lojas pedidas, ou em todas. */
+async function saldosDoProduto(db: BancoDaOrg, produtoId: string, unidadeIds?: string[]) {
+  const linhas = await db.estoque.findMany({
+    where: { variacao: { produtoId }, quantidade: { not: 0 }, ...(unidadeIds ? { unidadeId: { in: unidadeIds } } : {}) },
+    select: {
+      quantidade: true,
+      unidade: { select: { nome: true } },
+      variacao: { select: { codigo: true, padrao: true } },
+    },
+    take: 20,
+  })
+  return linhas.map((l) => ({
+    loja: l.unidade.nome,
+    item: l.variacao.padrao ? 'o item' : (l.variacao.codigo ?? 'item'),
+    quantidade: Number(l.quantidade),
+  }))
+}
+
+/**
+ * O campo veio e é diferente do que está gravado? Dinheiro compara em
+ * centavos; o custo, em quatro casas (o mililitro de calda custa R$ 0,0028).
+ */
+function mudou(novo: number | null | undefined, antigo: unknown, casas = 2): boolean {
   if (novo === undefined) return false
-  const a = antigo == null ? null : Math.round(Number(antigo) * 100)
-  const n = novo == null ? null : Math.round(novo * 100)
+  const f = 10 ** casas
+  const a = antigo == null ? null : Math.round(Number(antigo) * f)
+  const n = novo == null ? null : Math.round(novo * f)
   return a !== n
 }
 

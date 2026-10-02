@@ -11,7 +11,7 @@ import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { criarProduto, editarProduto } from '@/servidor/produto'
 import { corrigirPeloContado } from '@/servidor/estoque'
 import { comoOrg } from '@/servidor/banco'
-import { SemPermissao } from '@/servidor/permissao'
+import { SemPermissao, unidadesQuePodem } from '@/servidor/permissao'
 
 export type EstadoLinha = { ok?: string; erro?: string; precisaPin?: boolean; saldo?: number; produtoId?: string }
 
@@ -108,6 +108,17 @@ export async function criarLinha(
     // Por unidade: o que vende a peso (o quilo do açaí) se cadastra pela
     // ficha, que pergunta a medida.
     const medida = 'UN' as const
+    // Nasce vendido na loja da planilha — a que está escolhida no alto e onde
+    // o estoque entra. Antes nascia em TODAS (vazio): o produto cadastrado
+    // na contagem da sorveteria aparecia no balcão da loja de roupa. Em
+    // outra loja, marca-se na ficha. Depósito não vende: aí vale o alcance de
+    // quem cadastra, como na ficha.
+    const alcance = unidadesQuePodem(sessao, 'produto.cadastrar')
+    const unidadeId = typeof d.unidadeId === 'string' && d.unidadeId ? d.unidadeId : null
+    const loja = unidadeId
+      ? await comoOrg(sessao.orgId, (db) => db.unidade.findFirst({ where: { id: unidadeId, ativa: true }, select: { id: true, ehDeposito: true } }))
+      : null
+    const vendidoEm = loja && !loja.ehDeposito ? [loja.id] : alcance === 'todas' ? [] : alcance
     const r = await criarProduto(
       sessao,
       {
@@ -116,7 +127,7 @@ export async function criarLinha(
         medida,
         precoVista: preco,
         custo,
-        vendidoEm: [],
+        vendidoEm,
       },
       [],
       pin,

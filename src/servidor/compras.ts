@@ -9,8 +9,8 @@
 // ── receber é dar entrada, pelo caminho que já existe ────────
 // Não existe um segundo jeito de o estoque subir. Receber chama a MESMA
 // entrada de mercadoria da tela de Estoque (`registrarEntradaEm`, em
-// entrada.ts): o saldo sobe, o custo do produto passa a ser o desta compra
-// (com a mesma trava de `produto.preco`) e, se a pessoa pedir e puder, nasce
+// entrada.ts): o saldo sobe, o custo do produto passa a ser o custo médio
+// com esta compra (com a mesma trava de `produto.preco`) e, se a pessoa pedir e puder, nasce
 // a conta a pagar do fornecedor no Financeiro. Tudo numa transação com o
 // pedido: ou a mercadoria entrou E o pedido sabe disso, ou nenhum dos dois.
 //
@@ -30,6 +30,7 @@ import type { SituacaoCompra } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, SemPermissao, unidadesQuePodem, type Sessao } from './permissao'
 import { registrarEntradaEm } from './entrada'
+import { assinarExcecao } from './autorizacao'
 import { mexerEstoqueEm } from './estoque'
 import { centavos, multiplicar, reais } from './dinheiro'
 import { soDigitos } from './cliente'
@@ -303,17 +304,17 @@ export type ItemParaComprar = { variacaoId: string; descricao: string; codigo: s
  */
 export async function buscarParaComprar(sessao: Sessao, unidadeId: string, termo: string): Promise<ItemParaComprar[]> {
   exigir(sessao, 'compra.gerir', unidadeId)
-  return buscarMaterial(sessao, unidadeId, termo)
+  return buscarMaterial(sessao, unidadeId, termo, false)
 }
 
-async function buscarMaterial(sessao: Sessao, unidadeId: string, termo: string): Promise<ItemParaComprar[]> {
+async function buscarMaterial(sessao: Sessao, unidadeId: string, termo: string, soDeUso: boolean): Promise<ItemParaComprar[]> {
   const t = termo.trim().slice(0, 60)
   if (t.length < 2) return []
   const vs = await comoOrg(sessao.orgId, (db) =>
     db.variacao.findMany({
       where: {
         ativa: true,
-        produto: { ativo: true, servico: false },
+        produto: { ativo: true, servico: false, ...(soDeUso ? { usoInterno: true } : {}) },
         OR: [
           { codigo: { equals: t, mode: 'insensitive' } },
           { codigoBarras: t },
@@ -657,12 +658,15 @@ export async function receberPedido(sessao: Sessao, id: string, r: Recebimento, 
 /** Material para anotar o que foi usado: o que esta loja tem. */
 export async function buscarParaConsumo(sessao: Sessao, unidadeId: string, termo: string): Promise<ItemParaComprar[]> {
   exigir(sessao, 'estoque.consumir', unidadeId)
-  const l = await buscarMaterial(sessao, unidadeId, termo)
+  // Só MATERIAL DE USO: consumo é o esmalte e a luva, não a mercadoria da
+  // vitrine — baixar a blusa como "consumo" era sumir com ela sem venda, sem
+  // perda e sem ninguém perguntar.
+  const l = await buscarMaterial(sessao, unidadeId, termo, true)
   // Custo é da compra, e quem só anota o consumo não o vê.
   return pode(sessao, 'compra.ver', unidadeId) ? l : l.map((i) => ({ ...i, custo: null }))
 }
 
-export type ResultadoConsumo = { ok: true; itens: number } | { ok: false; erro: string }
+export type ResultadoConsumo = { ok: true; itens: number } | { ok: false; erro: string; precisaPin?: true }
 
 /** A quantidade não saiu porque não havia saldo: desfaz tudo, dizendo qual. */
 class SemSaldoParaConsumo extends Error {
@@ -675,10 +679,16 @@ class SemSaldoParaConsumo extends Error {
 /**
  * Anota o material usado: sai do estoque como CONSUMO, item a item, numa
  * transação. Sem saldo em um, nenhum sai — e a frase diz qual.
+ *
+ * Só MATERIAL DE USO (`Produto.usoInterno`). Antes qualquer produto saía por
+ * aqui, sem PIN e sem nome no livro do que saiu: a blusa da vitrine sumia
+ * como "consumo", que não é venda nem perda e não aparece em relatório
+ * nenhum. Agora é baixa como as outras: assinada quando a empresa pede
+ * assinatura nas exceções, e com cada item e quantidade na linha do livro.
  */
 export async function registrarConsumo(
   sessao: Sessao,
-  d: { unidadeId: string; itens: { variacaoId: string; quantidade: number }[]; motivo?: string | null },
+  d: { unidadeId: string; itens: { variacaoId: string; quantidade: number }[]; motivo?: string | null; pin?: string | null },
 ): Promise<ResultadoConsumo> {
   exigir(sessao, 'estoque.consumir', d.unidadeId || undefined)
   if (!d.unidadeId) return { ok: false, erro: 'Escolha a loja.' }
@@ -686,19 +696,27 @@ export async function registrarConsumo(
   if (itens.length === 0) return { ok: false, erro: 'Ponha pelo menos um item com quantidade.' }
   if (itens.some((i) => !Number.isFinite(i.quantidade) || i.quantidade > 100_000)) return { ok: false, erro: 'Uma das quantidades não confere.' }
   const motivo = limpar(d.motivo, 200) || 'Consumo interno'
+  const assinatura = await assinarExcecao(sessao, { pin: d.pin })
+  if (!assinatura.ok) return { ok: false, erro: assinatura.erro, precisaPin: true }
   try {
     return await comoOrg(sessao.orgId, async (db) => {
       const loja = await db.unidade.findFirst({ where: { id: d.unidadeId, ativa: true }, select: { nome: true } })
       if (!loja) return { ok: false as const, erro: 'Essa loja não existe ou está fechada.' }
       const vs = await db.variacao.findMany({
         where: { id: { in: itens.map((i) => i.variacaoId) } },
-        select: { id: true, produto: { select: { nome: true, servico: true } }, opcoes: { select: { opcao: { select: { valor: true } } } } },
+        select: { id: true, codigo: true, produto: { select: { nome: true, servico: true, usoInterno: true } }, opcoes: { select: { opcao: { select: { valor: true } } } } },
       })
       const porId = new Map(vs.map((v) => [v.id, v]))
       for (const i of itens) {
         const v = porId.get(i.variacaoId)
         if (!v) return { ok: false as const, erro: 'Um dos itens não existe nesta empresa.' }
         if (v.produto.servico) return { ok: false as const, erro: `${v.produto.nome} é serviço: não tem estoque para gastar.` }
+        if (!v.produto.usoInterno) {
+          return {
+            ok: false as const,
+            erro: `${v.produto.nome} não é material de uso. Mercadoria que saiu sem venda é perda — registre na tela de Estoque, com o motivo.`,
+          }
+        }
         const r = await mexerEstoqueEm(db, sessao, {
           variacaoId: i.variacaoId,
           unidadeId: d.unidadeId,
@@ -715,7 +733,21 @@ export async function registrarConsumo(
         data: {
           orgId: sessao.orgId, unidadeId: d.unidadeId, usuarioId: sessao.usuarioId, quem: sessao.nome,
           acao: 'estoque.consumo', alvoTipo: 'consumo', alvoNome: motivo,
-          depois: { itens: itens.length, dia: diaEmSP() },
+          depois: {
+            itens: itens.length,
+            dia: diaEmSP(),
+            // O que saiu, item a item: "quem gastou 20 luvas na terça?".
+            linhas: itens.slice(0, 200).map((i) => {
+              const v = porId.get(i.variacaoId)!
+              return {
+                variacaoId: i.variacaoId,
+                descricao: v.opcoes.length ? `${v.produto.nome} — ${v.opcoes.map((o) => o.opcao.valor).join(' · ')}` : v.produto.nome,
+                codigo: v.codigo,
+                quantidade: i.quantidade,
+              }
+            }),
+          },
+          assinado: assinatura.assinou,
         },
       })
       return { ok: true as const, itens: itens.length }

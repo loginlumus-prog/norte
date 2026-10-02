@@ -32,6 +32,13 @@ const config: NextConfig = {
       // aceita até 16 MB. O padrão do Next é 1 MB. A folga cobre o envelope do
       // multipart. O teto por TIPO (imagem 5 MB) é conferido lá dentro, antes
       // de gravar — ver src/servidor/campanhas/midia-regras.ts.
+      //
+      // O teto é um só para TODA ação (o Next não tem um por ação), e é o
+      // menor que ainda cabe o maior envio de verdade: os outros são bem
+      // menores — a foto do produto chega reduzida a 1,5 MB, e a importação
+      // de planilha sobe em lotes de JSON, não o arquivo. Baixar daqui exige
+      // tirar a mídia de campanha da Server Action (uma rota própria, com o
+      // teto dela), e só então este número pode cair para uns 2 MB.
       bodySizeLimit: '17mb',
     },
     // O proxy (src/proxy.ts) guarda uma cópia do corpo de cada pedido, e corta

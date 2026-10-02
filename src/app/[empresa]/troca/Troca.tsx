@@ -19,7 +19,7 @@ import { plural } from '@/ui/texto'
 import { centavos, lerDinheiro, lerNumero, multiplicar, reais } from '@/servidor/dinheiro'
 import { agendaDoCrediario, primeiroVencimentoMaximo, primeiroVencimentoPadrao } from '@/servidor/crediario-agenda'
 import { mostrarDiaDaColuna, somarDias } from '@/servidor/dia'
-import { contaDaTroca, resultadoDaTroca, tabelaDaTroca, valorDevolvidoCent, type ContaDaTroca } from '@/servidor/troca-conta'
+import { contaDaTroca, resultadoDaTroca, tabelaDaTroca, valorDoItemCent, type ContaDaTroca } from '@/servidor/troca-conta'
 import type { Tabela } from '@/servidor/preco'
 import type { Maquininha } from '@/servidor/maquininhas'
 import type { CompraAchada, CompraParaTroca, ResultadoTroca } from '@/servidor/troca'
@@ -116,7 +116,7 @@ export function Troca({ config, inicial }: { config: ConfigDaTroca; inicial: Com
   }
 
   const voltaCent = compra
-    ? compra.itens.reduce((s, i) => s + valorDevolvidoCent(i.precoUnitCent, qtdDe(i), compra.fator), 0)
+    ? compra.itens.reduce((s, i) => s + valorDoItemCent(i.totalCent, i.vendido, qtdDe(i), compra.fator), 0)
     : voltaSem.reduce((s, l) => s + multiplicar(precoSem(l) ?? 0, l.quantidade), 0)
   const pecasVoltando = compra
     ? compra.itens.reduce((s, i) => s + qtdDe(i), 0)
@@ -269,7 +269,7 @@ export function Troca({ config, inicial }: { config: ConfigDaTroca; inicial: Com
     return Array.from({ length: i.restante }, (_, n) => {
       const chave = `${i.id}#${n}`
       const on = marcadas.has(chave)
-      const valor = valorDevolvidoCent(i.precoUnitCent, 1, compra.fator)
+      const valor = valorDoItemCent(i.totalCent, i.vendido, 1, compra.fator)
       return (
         <li key={chave}>
           <button

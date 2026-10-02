@@ -26,7 +26,8 @@ export async function guardarFotoAcao(slug: string, produtoId: string, form: For
 export async function tirarFotoAcao(slug: string, produtoId: string): Promise<{ ok?: true; erro?: string }> {
   const sessao = await exigirSessao(slug)
   try {
-    await tirarFotoDoProduto(sessao, produtoId)
+    const r = await tirarFotoDoProduto(sessao, produtoId)
+    if (r.erro) return { erro: r.erro }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode mudar este produto.' }
     return { erro: recadoDoErro(e, 'Não deu para tirar a foto.') }

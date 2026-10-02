@@ -21,8 +21,15 @@
 // executam duas vezes).
 //
 // Uma proposta esperando: "sim" confirma, "não" recusa. Várias: a resposta
-// lista numeradas, e "sim 2" escolhe. Nenhuma: a mensagem segue para o
-// modelo, como qualquer outra.
+// lista cada uma com o CÓDIGO dela (ver propostas.ts), e "sim KP42" escolhe.
+// O número de lista ("sim 2") não escolhe mais: a lista encolhia a cada
+// resposta e o "2" da lista antiga virava outra proposta. Nenhuma: a
+// mensagem segue para o modelo, como qualquer outra.
+//
+// O "ok", "isso", "pode" (e o "não" sem código) são frouxos: costumam
+// responder a OUTRA pergunta do modelo ("quer que eu veja o Norte também?").
+// Eles só valem quando a última mensagem do assistente nesta conversa foi
+// a da proposta, e só há ela esperando. Fora disso, vão para o modelo.
 //
 // ── ACEITAR e PRONTO ─────────────────────────────────────────
 // O aviso do pedido novo do catálogo (avisos-encomenda.ts) termina com
@@ -45,6 +52,7 @@ import { enviarEGravar, type Contexto } from './contexto'
 import type { Equipe } from './regras'
 import { acharPeloCodigo } from './ferramentas-loja'
 import { avisarClienteDaEncomenda, PREFIXO_PEDIDO_NOVO } from './avisos-encomenda'
+import { codigoDaProposta } from './propostas'
 
 /** Até quanto tempo depois de pedir o "sim" na conversa vale. */
 export const MINUTOS_DO_SIM = 60
@@ -64,17 +72,29 @@ const limpar = (t: string) =>
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 
-const SIM = ['sim', 'confirmo', 'confirma', 'confirmar', 'confirmado', 'pode', 'pode lancar', 'pode sim', 'sim pode', 'ok', 'okay', 'isso', 'isso mesmo', 'pode confirmar']
+/** O sim que só pode ser sim. */
+const SIM_FORTE = ['sim', 'confirmo', 'confirma', 'confirmar', 'confirmado', 'pode lancar', 'pode sim', 'sim pode', 'pode confirmar']
+/** O sim que também responde a outras perguntas: só vale logo depois da proposta. */
+const SIM_FROUXO = ['pode', 'ok', 'okay', 'isso', 'isso mesmo']
+const SIM = [...SIM_FORTE, ...SIM_FROUXO]
 const NAO = ['nao', 'cancela', 'cancelar', 'nao pode', 'nao quero']
 
-/** "o 2", "a 2", "numero 2", "n 2", "2". */
-const NUMERO = String.raw`(?:\s+(?:o|a|numero|n)?\s*(\d{1,2}))?`
-const RESPOSTA = new RegExp(`^(${[...SIM, ...NAO].sort((a, b) => b.length - a.length).join('|')})${NUMERO}$`)
+/** "KP42" (o código da proposta), ou o número da lista antiga ("o 2", "n 2", "2"). */
+const ALVO = String.raw`(?:\s+(?:([a-z]{2})\s?(\d{2})|(?:o|a|numero|n)?\s*(\d{1,2})))?`
+const RESPOSTA = new RegExp(`^(${[...SIM, ...NAO].sort((a, b) => b.length - a.length).join('|')})${ALVO}$`)
 
-export type RespostaCurta = { aceita: boolean; numero: number | null }
+export type RespostaCurta = {
+  aceita: boolean
+  /** O código da proposta, em maiúsculas ("KP42"). */
+  codigo: string | null
+  /** O número de uma lista antiga. Não escolhe nada: a resposta mostra os códigos. */
+  numero: number | null
+  /** "ok", "isso", "pode", "não": só valem logo depois da proposta. */
+  frouxa: boolean
+}
 
 /**
- * A mensagem INTEIRA é um sim ou um não (com o número, opcional)? Frase com
+ * A mensagem INTEIRA é um sim ou um não (com o código, opcional)? Frase com
  * mais coisa ("sim, mas muda a data") não é: vai para o modelo, que entende.
  */
 export function lerRespostaCurta(texto: string): RespostaCurta | null {
@@ -82,7 +102,14 @@ export function lerRespostaCurta(texto: string): RespostaCurta | null {
   if (!t || t.length > 30) return null
   const m = RESPOSTA.exec(t)
   if (!m) return null
-  return { aceita: !NAO.includes(m[1]!), numero: m[2] ? Number(m[2]) : null }
+  const palavra = m[1]!
+  const aceita = !NAO.includes(palavra)
+  return {
+    aceita,
+    codigo: m[2] && m[3] ? `${m[2]}${m[3]}`.toUpperCase() : null,
+    numero: m[4] ? Number(m[4]) : null,
+    frouxa: !aceita || SIM_FROUXO.includes(palavra),
+  }
 }
 
 export type AtalhoEncomenda = { acao: 'aceitar' | 'pronta'; codigo: string | null; numero: number | null }
@@ -131,7 +158,7 @@ export async function responderPeloWhatsApp(
 ): Promise<Atalho | null> {
   const curta = lerRespostaCurta(texto)
   const resposta = curta
-    ? await responderAProposta(ctx, quem, curta)
+    ? await responderAProposta(ctx, quem, conversa, curta)
     : await atalhoDeEncomenda(ctx, quem, conversa, texto)
   if (resposta === null) return null
   const saida = await enviarEGravar(canal, ctx.agente, conversa, eco ? `${eco}\n\n${resposta}` : resposta)
@@ -141,11 +168,12 @@ export async function responderPeloWhatsApp(
 /** Resumo de proposta numa linha de lista: cortado, que a lista é para escolher. */
 const linha = (resumo: string) => (resumo.length > 220 ? `${resumo.slice(0, 219).trimEnd()}…` : resumo)
 
-function lista(propostas: { resumo: string }[]): string {
+function lista(propostas: { id: string; resumo: string }[]): string {
+  const primeiro = codigoDaProposta(propostas[0]!.id)
   return [
     `Tem ${propostas.length} propostas suas esperando:`,
-    ...propostas.map((p, i) => `${i + 1}) ${linha(p.resumo)}`),
-    `Responda SIM 1${propostas.length > 1 ? `, SIM ${propostas.length}` : ''} para confirmar uma, ou NÃO 1 para cancelar.`,
+    ...propostas.map((p) => `• *${codigoDaProposta(p.id)}* — ${linha(p.resumo)}`),
+    `Responda SIM e o código (ex.: SIM ${primeiro}) para confirmar uma, ou NÃO e o código para cancelar.`,
   ].join('\n')
 }
 
@@ -171,7 +199,12 @@ export function fraseDaResposta(r: Resposta, aceita: boolean, resumo: string): s
   }
 }
 
-async function responderAProposta(ctx: Contexto & { agente: Agente }, quem: Equipe, curta: RespostaCurta): Promise<string | null> {
+async function responderAProposta(
+  ctx: Contexto & { agente: Agente },
+  quem: Equipe,
+  conversa: Conversa,
+  curta: RespostaCurta,
+): Promise<string | null> {
   const orgId = ctx.org.id
   const agora = new Date()
   const recentes = await comoOrg(orgId, (db) =>
@@ -192,12 +225,38 @@ async function responderAProposta(ctx: Contexto & { agente: Agente }, quem: Equi
 
   const valendo = recentes.filter((p) => p.expiraEm > agora)
   let alvo: (typeof recentes)[number] | undefined
-  if (valendo.length === 0) {
+  if (curta.codigo !== null) {
+    // O código escolhe sem ambiguidade — e vale até para "ok KP42".
+    const achadas = recentes.filter((p) => codigoDaProposta(p.id) === curta.codigo)
+    if (achadas.length > 1) return 'Esse código bate com mais de uma proposta sua. Confirme pela tela do assistente.'
+    alvo = achadas[0]
+    if (!alvo) {
+      return valendo.length > 0
+        ? `Não achei a proposta ${curta.codigo}.\n${lista(valendo)}`
+        : `Não achei a proposta ${curta.codigo}.`
+    }
+  } else if (curta.numero !== null && valendo.length > 0) {
+    // Número de lista não escolhe mais (a lista mudava a cada resposta):
+    // mostra os códigos e a pessoa responde de novo.
+    return valendo.length === 1
+      ? `Para não confundir, responda com o código: SIM ${codigoDaProposta(valendo[0]!.id)} (${linha(valendo[0]!.resumo)}).`
+      : lista(valendo)
+  } else if (curta.frouxa) {
+    // "ok", "isso", "pode", "não": só se a proposta foi a ÚLTIMA coisa que
+    // o assistente disse aqui, e só há ela. Senão era resposta a outra pergunta.
+    if (valendo.length !== 1) return null
+    const ultima = await comoOrg(orgId, (db) =>
+      db.mensagemAgente.findFirst({
+        where: { conversaId: conversa.id, de: 'AGENTE' },
+        orderBy: { criadaEm: 'desc' },
+        select: { texto: true },
+      }),
+    )
+    if (!ultima?.texto.includes(codigoDaProposta(valendo[0]!.id))) return null
+    alvo = valendo[0]
+  } else if (valendo.length === 0) {
     // Só vencidas: `responderProposta` diz isso e marca a proposta.
     alvo = recentes.at(-1)
-  } else if (curta.numero !== null) {
-    alvo = valendo[curta.numero - 1]
-    if (!alvo) return `Não tenho a proposta ${curta.numero}.\n${lista(valendo)}`
   } else if (valendo.length === 1) {
     alvo = valendo[0]
   } else {

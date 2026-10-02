@@ -424,7 +424,12 @@ describe('LGPD: anonimizar o aluno leva o responsável junto', () => {
 
   it('cancelar dispensa o que vem depois; a secretaria não dispensa; o financeiro dispensa com motivo', async () => {
     const mat = await matriculaDe('cli-pedro')
-    const c = await m.escola.mudarMatricula(SEC, mat, { para: 'CANCELADA', motivo: 'mudou de cidade com a mãe Maria Souza', dia: '2026-11-20' }, em('2026-12-20', '10:00'))
+    const saida = { para: 'CANCELADA' as const, motivo: 'mudou de cidade com a mãe Maria Souza', dia: '2026-11-20' }
+    // A secretaria matricula e cancela — mas cancelar aqui DISPENSA mensalidade,
+    // e dispensar é de quem ajusta mensalidade: recusado, nada muda.
+    const sec = await m.escola.mudarMatricula(SEC, mat, saida, em('2026-12-20', '10:00'))
+    expect(sec).toMatchObject({ ok: false, erro: expect.stringMatching(/ajusta mensalidade/) })
+    const c = await m.escola.mudarMatricula(DONA, mat, saida, em('2026-12-20', '10:00'))
     // dezembro e janeiro (já nascidos) não se cobram de quem saiu em novembro
     expect(c).toMatchObject({ ok: true, dispensadas: 2 })
     const nov = await mensalidadeDe('cli-pedro', '2026-11')

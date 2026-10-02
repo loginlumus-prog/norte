@@ -7,6 +7,7 @@ import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
 import { acharCliente, mostrarTelefone, comprasPorMes, favoritosDoCliente } from '@/servidor/cliente'
 import { valesDoCliente } from '@/servidor/devolucao'
+import { limiteDeCredito } from '@/servidor/venda'
 import { listarParcelas } from '@/servidor/crediario'
 import { recibosDoCliente, type ReciboNaLista } from '@/servidor/recibos'
 import { BotaoReceber } from '../../crediario/BotaoReceber'
@@ -131,6 +132,13 @@ export default async function FichaCliente({
     cep: cliente.cep ?? '',
     observacoes: cliente.observacoes ?? '',
     ativo: cliente.ativo,
+    crediario:
+      moduloLigado(empresa, 'crediario') && podeEditar
+        ? await limiteDeCredito(sessao, cliente.id).then((l) => ({
+            limite: l !== null ? l.toFixed(2).replace('.', ',') : '',
+            podeLimite: pode(sessao, 'venda.desconto'),
+          }))
+        : null,
   }
 
   return (

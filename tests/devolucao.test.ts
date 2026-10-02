@@ -6,19 +6,24 @@ import {
   valorDevolvidoCent,
   venceu,
 } from '../src/servidor/devolucao'
+import { fatorPago, valorDoItemCent } from '../src/servidor/troca-conta'
 
 describe('o código do vale', () => {
-  it('tem o formato VT-XXXXXX e nunca usa letra ambígua', () => {
+  it('tem o formato VT-XXXXX-XXXXX (dez símbolos) e nunca usa letra ambígua', () => {
+    const vistos = new Set<string>()
     for (let i = 0; i < 200; i++) {
       const c = gerarCodigoDeVale()
-      expect(c).toMatch(/^VT-[A-HJ-KM-NP-Z2-9]{6}$/)
+      expect(c).toMatch(/^VT-[A-HJ-KM-NP-Z2-9]{5}-[A-HJ-KM-NP-Z2-9]{5}$/)
       expect(c).not.toMatch(/[0OIL1]/)
+      vistos.add(c)
     }
+    // Sorteio do sistema (crypto), não um gerador previsível: 200 códigos, 200 diferentes.
+    expect(vistos.size).toBe(200)
   })
 
   it('é determinístico dado o sorteio', () => {
-    expect(gerarCodigoDeVale(() => 0)).toBe('VT-AAAAAA')
-    expect(gerarCodigoDeVale(() => 0.999)).toBe('VT-999999')
+    expect(gerarCodigoDeVale(() => 0)).toBe('VT-AAAAA-AAAAA')
+    expect(gerarCodigoDeVale(() => 0.999)).toBe('VT-99999-99999')
   })
 
   it('aceita o que a pessoa digita lendo do papel', () => {
@@ -27,6 +32,12 @@ describe('o código do vale', () => {
     expect(normalizarCodigo('3F9K2A')).toBe('VT-3F9K2A')
     expect(normalizarCodigo('3F9K')).toBeNull()
     expect(normalizarCodigo('')).toBeNull()
+    // O código novo, de dez, com ou sem o traço do meio — e o de seis continua valendo.
+    expect(normalizarCodigo('vt-k3m9p-2qxrt')).toBe('VT-K3M9P-2QXRT')
+    expect(normalizarCodigo('K3M9P2QXRT')).toBe('VT-K3M9P-2QXRT')
+    expect(normalizarCodigo('VT K3M9P 2QXRT')).toBe('VT-K3M9P-2QXRT')
+    expect(normalizarCodigo('VT-ABCDEF')).toBe('VT-ABCDEF')
+    expect(normalizarCodigo('K3M9P2QX')).toBeNull()
   })
 })
 
@@ -61,6 +72,23 @@ describe('o valor que volta', () => {
 
   it('peso quebrado também', () => {
     expect(valorDevolvidoCent(4490, 0.75, 1)).toBe(3368)
+  })
+
+  it('o desconto dado NA LINHA também fica: volta o total da linha, na proporção', () => {
+    // Duas blusas de R$ 100 com R$ 20 de desconto na linha (total 180): uma volta por 90.
+    expect(valorDoItemCent(18000, 2, 1, 1)).toBe(9000)
+    expect(valorDoItemCent(18000, 2, 2, 0.9)).toBe(16200)
+    expect(valorDoItemCent(0, 1, 1, 1)).toBe(0)
+  })
+
+  it('o acréscimo não entra no fator, e o fator nunca passa de 1', () => {
+    // Blusa 100 + Saia 50, R$ 30 de acréscimo: total 180, subtotal 150. A saia volta 50.
+    expect(fatorPago(15000, 18000, 0, 3000)).toBe(1)
+    expect(valorDoItemCent(5000, 1, 1, fatorPago(15000, 18000, 0, 3000))).toBe(5000)
+    // Com desconto de 10% E acréscimo: o desconto vale, o acréscimo não.
+    expect(fatorPago(15000, 16500, 0, 3000)).toBeCloseTo(0.9, 10)
+    // Mesmo sem dizer o acréscimo, nunca devolve mais que a peça.
+    expect(fatorPago(15000, 18000)).toBe(1)
   })
 })
 

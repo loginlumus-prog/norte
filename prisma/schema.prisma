@@ -178,6 +178,10 @@ model Org {
   /// Arredondar o atraso (multa + juro) do recibo para os 10 centavos de
   /// cima: no dinheiro, R$ 3,47 de juro vira conversa sobre moeda de 1 centavo.
   crediarioArredondar   Boolean @default(false) @map("crediario_arredondar")
+  /// Venda nova no crediário para quem tem parcela atrasada há MAIS de N dias
+  /// pede o PIN de quem pode dar desconto (não trava: a gerente decide). Nulo
+  /// = regra desligada, que é o padrão. Ver `registrarVenda` em venda.ts.
+  crediarioAtrasoDias   Int?    @map("crediario_atraso_dias")
 
   // ── o livro de assinaturas e o balcão que conta estoque ──
   /// Pedir o PIN de QUEM FAZ nas exceções: sangria, suprimento, cancelar
@@ -223,6 +227,12 @@ model Org {
 
   /// Avisar quando o saldo cair disto. Zero desliga o aviso.
   creditoAvisoCent Int @default(1000) @map("credito_aviso_cent")
+
+  /// Quantas marcas do Farol a empresa CONTRATOU. Só vale com o módulo
+  /// `farol` ligado. É o teto de marcas ativas, do crédito de IA do Farol
+  /// que cai por mês e da linha do Farol na mensalidade (ver farol.ts e
+  /// `mensalidade` em planos.ts). Quem muda é a equipe do Norte.
+  farolMarcas Int @default(1) @map("farol_marcas")
 
   recargas RecargaIA[]
 
@@ -952,7 +962,10 @@ model Produto {
   precoVista     Decimal? @map("preco_vista") @db.Decimal(12, 2)
   precoCartao    Decimal? @map("preco_cartao") @db.Decimal(12, 2)
   precoCrediario Decimal? @map("preco_crediario") @db.Decimal(12, 2)
-  custo          Decimal? @db.Decimal(12, 2)
+  /// Quatro casas, não duas: o mililitro de calda custa R$ 0,0028, e com
+  /// duas casas ele virava zero — e zerava o custo de tudo que leva calda.
+  /// É o CUSTO MÉDIO das compras e produções (ver `custoMedio` em entrada.ts).
+  custo          Decimal? @db.Decimal(12, 4)
 
   /// Em quais lojas este produto é VENDIDO. Vazio = em todas.
   ///
@@ -1043,6 +1056,11 @@ model Variacao {
 
   /// Diferença de preço desta variação (tamanho especial custa mais).
   ajustePreco Decimal? @map("ajuste_preco") @db.Decimal(12, 2)
+  /// O custo médio DESTA variação, quando ela tem o próprio: o picolé de
+  /// chocolate sai da fábrica a R$ 1,55 e o de coco a R$ 0,55, e um custo só
+  /// no produto fazia o último lote valer para todos os sabores. Nulo = vale
+  /// o custo do produto (que continua sendo a média do produto inteiro).
+  custo       Decimal? @db.Decimal(12, 4)
 
   padrao Boolean @default(false)
   ativa  Boolean @default(true)
@@ -1231,6 +1249,9 @@ model Cliente {
   /// para lá; esta fica inativa, para o histórico e os links antigos.
   juntadaNaId           String?   @map("juntada_na_id")
   juntadaEm             DateTime? @map("juntada_em")
+  /// Quanto esta pessoa pode dever no crediário, somando o que já deve. Passar
+  /// dele pede o PIN de quem pode dar desconto — não trava. Nulo = sem limite.
+  limiteCredito         Decimal?  @map("limite_credito") @db.Decimal(12, 2)
 
   vendas           Venda[]
   movimentosPontos MovimentoPontos[]
@@ -1489,7 +1510,7 @@ model VendaItem {
   desconto   Decimal  @default(0) @db.Decimal(12, 2)
   total      Decimal  @db.Decimal(12, 2)
   /// Custo do momento da venda — é o que permite calcular a margem depois.
-  custoUnit  Decimal? @map("custo_unit") @db.Decimal(12, 2)
+  custoUnit  Decimal? @map("custo_unit") @db.Decimal(12, 4)
 
   /// Vendido sem estoque: o saldo que o sistema tinha na hora (0, ou menos
   /// que o vendido). Nulo = havia estoque. É a pendência "vendeu 2, havia 1"
@@ -3630,6 +3651,9 @@ model OrdemProducao {
   encerradaEm DateTime? @map("encerrada_em")
 
   @@unique([orgId, numero])
+  /// Lote é o que a etiqueta e o recall procuram: dois produtos com o mesmo
+  /// lote na empresa é rastreio que aponta para os dois.
+  @@unique([orgId, lote])
   @@index([orgId, situacao])
   @@map("ordens_producao")
 }

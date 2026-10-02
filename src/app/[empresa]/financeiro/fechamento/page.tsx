@@ -2,11 +2,12 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
-import { unidadesVisiveis } from '@/servidor/unidade'
+import { escolherUnidade } from '@/servidor/unidade'
 import { mesDeAgora, montarFechamento, outroMes } from '@/servidor/fechamento'
 import { mesValido } from '@/servidor/metas'
 import { moduloLigado } from '@/servidor/modulos'
 import { Estrutura } from '@/ui/Estrutura'
+import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, cx } from '@/ui/base'
 import { Numero, Secao, brl } from '@/ui/painel'
@@ -50,18 +51,20 @@ export default async function FechamentoDoMes({
   searchParams,
 }: {
   params: Promise<{ empresa: string }>
-  searchParams: Promise<{ mes?: string }>
+  searchParams: Promise<{ mes?: string; unidade?: string }>
 }) {
   const { empresa: slug } = await params
-  const { mes: pedido } = await searchParams
+  const { mes: pedido, unidade: pedida } = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'financeiro.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   const mes = mesValido(pedido) ? pedido : mesPassado()
-  const unidades = await unidadesVisiveis(sessao, 'financeiro.ver')
+  // A loja escolhida, como no Financeiro: o fechamento de uma loja só é a
+  // conferência que o gerente dela faz; o consolidado é o do dono.
+  const onde = await escolherUnidade(sessao, empresa, pedida, 'financeiro.ver')
   const f = await montarFechamento(
     sessao,
-    unidades.map((u) => u.id),
+    onde.ids,
     mes,
     slug,
     moduloLigado(empresa, 'crediario'),
@@ -71,6 +74,8 @@ export default async function FechamentoDoMes({
   const seguinte = outroMes(mes, 1)
   // Não dá para fechar um mês que ainda não terminou.
   const passouDoFim = seguinte > mesDeAgora()
+  // Trocar de mês não troca de loja.
+  const naLoja = onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''
 
   return (
     <Estrutura
@@ -82,15 +87,16 @@ export default async function FechamentoDoMes({
       titulo={`Fechamento · ${f.titulo}`}
       acao={
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
           <Link
-            href={`/${slug}/financeiro/fechamento?mes=${anterior}`}
+            href={`/${slug}/financeiro/fechamento?mes=${anterior}${naLoja}`}
             className="rounded-norte border border-borda px-2.5 py-1.5 text-sm text-tinta-2 hover:bg-superficie-2"
           >
             ← mês anterior
           </Link>
           {!passouDoFim && (
             <Link
-              href={`/${slug}/financeiro/fechamento?mes=${seguinte}`}
+              href={`/${slug}/financeiro/fechamento?mes=${seguinte}${naLoja}`}
               className="rounded-norte border border-borda px-2.5 py-1.5 text-sm text-tinta-2 hover:bg-superficie-2"
             >
               mês seguinte →

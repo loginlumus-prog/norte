@@ -9,15 +9,33 @@
 // Acima de oito lojas aparece uma busca: rolar lista de vinte procurando
 // "Shopping da Bahia" é pior do que digitar três letras.
 //
-// A escolha vai para o ENDEREÇO, não para um cookie: o gerente manda o link
-// para o dono e os dois veem exatamente a mesma tela.
+// A escolha vai para o ENDEREÇO: o gerente manda o link para o dono e os dois
+// veem exatamente a mesma tela. E ela fica LEMBRADA (unidade-lembrada.ts): o
+// menu e os links de cada tela não levam a loja, e sem a lembrança cada
+// clique voltava para "Todas as unidades".
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { cx } from './base'
 import type { UnidadeVisivel } from '@/servidor/unidade'
+import { TODAS_AS_UNIDADES, UNIDADE_LEMBRADA_SEG, cookieDaUnidade } from '@/servidor/unidade-lembrada'
 
 const COM_BUSCA = 8
+
+/**
+ * Guarda a escolha no cookie da empresa (o caminho `/<empresa>`). Escrito
+ * aqui, e não por uma Server Action: ação que mexe em cookie faz o Next
+ * redesenhar a tela inteira, e a navegação logo em seguida já faz isso.
+ * O servidor confere a unidade de novo a cada leitura — o cookie só sugere.
+ */
+function lembrar(caminho: string, id: string | null) {
+  const slug = caminho.split('/')[1]
+  if (!slug) return
+  const seguro = window.location.protocol === 'https:' ? '; secure' : ''
+  document.cookie =
+    `${cookieDaUnidade(slug)}=${encodeURIComponent(id ?? TODAS_AS_UNIDADES)}` +
+    `; path=/${slug}; max-age=${UNIDADE_LEMBRADA_SEG}; samesite=lax${seguro}`
+}
 
 export function SeletorUnidade({
   opcoes,
@@ -30,6 +48,15 @@ export function SeletorUnidade({
   const router = useRouter()
   const caminho = usePathname()
   const busca = useSearchParams()
+
+  // Chegou por um link que já trazia a loja (o painel manda para o Estoque
+  // daquela loja; o gerente manda o endereço): ela passa a ser a lembrada,
+  // e o próximo clique no menu continua nela. Só quando o endereço foi
+  // obedecido — loja que esta tela não alcança não apaga a lembrança.
+  const doEndereco = busca.get('unidade')
+  useEffect(() => {
+    if (doEndereco && doEndereco === atual) lembrar(caminho, atual)
+  }, [doEndereco, atual, caminho])
 
   const [aberto, setAberto] = useState(false)
   const [filtro, setFiltro] = useState('')
@@ -58,6 +85,7 @@ export function SeletorUnidade({
     else p.delete('unidade')
     setAberto(false)
     setFiltro('')
+    lembrar(caminho, id)
     router.push(`${caminho}${p.size ? `?${p}` : ''}`)
   }
 

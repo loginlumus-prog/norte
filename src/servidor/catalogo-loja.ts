@@ -96,7 +96,10 @@ export function normalizarVendidoEm(marcadas: readonly string[], lojasAtivas: re
 // custo, "Vendido em", medida, situação e grade — exige alcançar CADA uma
 // dessas lojas. `vendidoEm` vazio quer dizer "todas, inclusive as que
 // abrirem", e isso só quem responde pela empresa inteira alcança (o dono).
-// Nome, marca, descrição, categoria e prazo continuam com quem edita produto.
+// Nome, marca, descrição, categoria e prazo pedem menos: que o produto passe
+// pelo balcão de ALGUMA loja de quem edita (`tocaAlguma`, em produto.ts). O
+// produto vendido em todas (vazio) inclui as lojas que abrirem — então nem o
+// nome dele o gerente de uma loja muda: só quem edita pela empresa inteira.
 
 /** Onde a pessoa pode isso: 'todas' (acesso sem loja) ou a lista das lojas dela. */
 export type Alcance = 'todas' | readonly string[]
@@ -134,8 +137,7 @@ const mesmaLista = (a: readonly string[], b: readonly string[]) =>
  * o que o navegador mandar sobre elas é ignorado. Nunca vira vazio ("todas"):
  * vazio incluiria as lojas que abrirem depois, e essas ninguém de uma loja só
  * alcança. Se o conjunto final é o mesmo de antes, devolve o valor de antes
- * intacto — assim "vendido em todas" continua vazio quando o gerente só
- * corrigiu o nome.
+ * intacto — salvar a ficha sem mexer nas lojas não reescreve a lista.
  *
  * `antes` nulo = produto novo.
  */

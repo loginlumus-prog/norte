@@ -76,9 +76,12 @@ export default async function BalcaoPagina({
   const encomenda = lida
     ? {
         ...lida,
+        // Pelo preço do pedido, em toda forma de pagamento: é o que a cliente
+        // viu no catálogo, e é o que a venda cobra (ver venda.ts, "3. as contas").
         itens: lida.itens.flatMap((i) => {
           const a = achadosDoPedido.find((x) => x.id === i.variacaoId)
-          return a ? [{ achado: a, quantidade: i.quantidade }] : []
+          const p = i.precoUnit
+          return a ? [{ achado: { ...a, preco: p, precos: { vista: p, cartao: p, crediario: p } }, quantidade: i.quantidade }] : []
         }),
         faltaram: lida.itens.length - lida.itens.filter((i) => achadosDoPedido.some((x) => x.id === i.variacaoId)).length,
       }

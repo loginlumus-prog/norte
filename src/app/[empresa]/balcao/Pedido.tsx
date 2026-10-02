@@ -510,7 +510,7 @@ export function Pagamento({
                 }
                 if (e.key === 'Escape') v.vale.setAberto(false)
               }}
-              placeholder="VT-XXXXXX"
+              placeholder="VT-XXXXX-XXXXX"
               autoComplete="off"
               className="h-11 min-w-0 flex-1 rounded-xl border border-borda bg-superficie px-3 font-mono text-base tracking-wider text-tinta placeholder:text-tinta-3"
             />
@@ -695,7 +695,14 @@ export function Pagamento({
 
           {c.sobrouSemDinheiro && (
             <Aviso nivel="critico">
-              O valor passou do total, e não há dinheiro {palavras.naVenda} para dar troco. Ajuste o valor.
+              {c.trocoAlemDoDinheiro ? (
+                <>
+                  O troco passa do dinheiro entregue: o que sobrou foi no Pix ou no cartão, e isso não volta pela gaveta.
+                  Ajuste o valor do Pix ou do cartão para o que falta.
+                </>
+              ) : (
+                <>O valor passou do total, e não há dinheiro {palavras.naVenda} para dar troco. Ajuste o valor.</>
+              )}
             </Aviso>
           )}
 
@@ -717,7 +724,9 @@ export function Concluir({ v, caixaId }: { v: Venda; caixaId: string | null }) {
       : v.pagos.length === 0
         ? 'Escolha como o cliente vai pagar.'
         : c.sobrouSemDinheiro
-          ? 'O valor passou do total. Ajuste antes de concluir.'
+          ? c.trocoAlemDoDinheiro
+            ? 'O troco passa do dinheiro entregue. Ajuste o Pix ou o cartão.'
+            : 'O valor passou do total. Ajuste antes de concluir.'
           : c.faltaCent > 0
             ? `Falta receber ${brl(c.faltaCent / 100)}.`
             : v.cpfRuim && v.pagos.some((x) => x.forma === 'CREDIARIO')

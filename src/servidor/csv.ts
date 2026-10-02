@@ -47,14 +47,21 @@ export function celula(v: Celula): string {
   if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(2).replace('.', ',')
   if (typeof v === 'boolean') return v ? 'sim' : 'não'
   if (v instanceof Date) return data(v)
-  // Texto que começa com = + - @ é FÓRMULA para o Excel. O nome do cliente é
-  // digitado no balcão; "=HYPERLINK(...)" cadastrado lá virava um link
-  // clicável (ou pior) na planilha que o dono abre. O apóstrofo na frente
-  // faz o Excel ler como texto. Número e telefone ("-5", "+55 71...") passam.
-  const seguro = /^[=+\-@\t\r]/.test(v) && !/^[+-]?[\d\s().,-]+$/.test(v) ? `'${v}` : v
+  // Texto que começa com = + - @ é FÓRMULA para o Excel — e com espaço na
+  // frente também: o Excel e o LibreOffice aparam o espaço antes de decidir.
+  // O nome do cliente é digitado no balcão; "=HYPERLINK(...)" cadastrado lá
+  // virava um link clicável (ou pior) na planilha que o dono abre. O
+  // apóstrofo na frente faz o Excel ler como texto. Número e telefone ("-5",
+  // "+55 71...") passam.
+  const formula = /^\s*[=+\-@]/.test(v) || /^[\t\r]/.test(v)
+  const seguro = formula && !/^\s*[+-]?[\d\s().,-]+$/.test(v) ? `'${v}` : v
   // Texto com ponto e vírgula, aspas ou quebra de linha vai entre aspas, com
   // as aspas de dentro dobradas — é a regra do CSV e é o que o Excel espera.
-  return /[;"\n\r]/.test(seguro) ? `"${seguro.replace(/"/g, '""')}"` : seguro
+  // E com VÍRGULA também: o programa configurado com a vírgula de separador
+  // (o Excel em inglês, a importação do Google Planilhas) partia "Ana,=CMD(…)"
+  // em duas células, e a segunda começava com a fórmula. Entre aspas, a
+  // célula fica inteira em qualquer separador. Número não passa por aqui.
+  return /[;,"\n\r]/.test(seguro) ? `"${seguro.replace(/"/g, '""')}"` : seguro
 }
 
 /** Monta o arquivo inteiro. O BOM (﻿) é o que faz o Excel ler UTF-8. */

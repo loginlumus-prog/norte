@@ -7,6 +7,7 @@ import { Aviso } from '@/ui/base'
 import { Marca } from '@/ui/Marca'
 import { IconeDoItem } from '@/ui/IconesMenu'
 import { Formulario } from './Formulario'
+import { LembrarEmpresa } from './LembrarEmpresa'
 
 export const metadata: Metadata = { title: 'Entrar' }
 
@@ -80,7 +81,9 @@ export default async function Entrar({
 
   const modo = await lerModo()
   const suspensa = org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA'
-  const cor = org.corMarca || 'var(--marca)'
+  // A cor gravada antes da conferência (comecar/acoes.ts) pode ser texto
+  // qualquer: no `style`, só "#rrggbb".
+  const cor = org.corMarca && /^#[0-9a-f]{6}$/i.test(org.corMarca) ? org.corMarca : 'var(--marca)'
   const inicial = org.nome.trim().charAt(0).toUpperCase() || 'N'
   const ola = saudacao()
 
@@ -113,6 +116,8 @@ export default async function Entrar({
           <Formulario empresa={empresa} />
         </>
       )}
+      {/* Só endereço que existe chega aqui (o `notFound` lá em cima). */}
+      <LembrarEmpresa slug={empresa} />
     </div>
   )
 

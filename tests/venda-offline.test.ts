@@ -28,7 +28,7 @@ const SEMENTE = `
     ('p-pic', 'org-o', 'Picolé', 'UN', 2.00, true, now());
   insert into variacoes (id, org_id, produto_id, codigo, ativa) values ('v-pic', 'org-o', 'p-pic', 'PIC001', true);
   insert into estoque (id, org_id, variacao_id, unidade_id, quantidade, atualizado_em) values ('e-pic', 'org-o', 'v-pic', 'uni-o', 3, now());
-  insert into caixas (id, org_id, unidade_id, aberto_por, saldo_abertura) values ('cx-1', 'org-o', 'uni-o', 'Caixa', 50);
+  insert into caixas (id, org_id, unidade_id, aberto_por, saldo_abertura, aberto_em) values ('cx-1', 'org-o', 'uni-o', 'Caixa', 50, now() - interval '3 hours');
 `
 
 beforeAll(async () => {
@@ -117,6 +117,21 @@ describe('a venda que subiu da fila de sem internet', () => {
       pagamentos: [{ forma: 'DINHEIRO', valor: 1 }],
     })
     expect(r).toMatchObject({ ok: false, motivo: 'desconto_acima_do_teto' })
+  })
+
+  it('a hora do aparelho não vai para antes do turno aberto; a venda fica marcada no livro como sem internet', async () => {
+    // cx-2 abriu agora há pouco: a venda "de dois dias atrás" entra com a hora de abertura dele.
+    // Lida pelo Prisma (UTC), como a venda lê — não pela leitura crua do teste.
+    const cx = await m.banco.comoOrg('org-o', (tx) => tx.caixa.findUnique({ where: { id: 'cx-2' }, select: { abertoEm: true } }))
+    const r = await m.venda.registrarVenda(BALCAO, { ...pedido(1, { chave: 'chave-ffff-0006', offline: { quando: new Date(Date.now() - 2 * 864e5) } }), caixaId: 'cx-2' })
+    expect(r.ok).toBe(true)
+    const lida = await m.banco.comoOrg('org-o', (tx) => tx.venda.findFirst({ where: { chave: 'chave-ffff-0006' }, select: { id: true, criadaEm: true } }))
+    expect(Math.abs(lida!.criadaEm.getTime() - cx!.abertoEm.getTime())).toBeLessThan(2000)
+    const [aud] = await linhas<{ motivo: string; depois: { semInternet?: { horaDoAparelho: string } } }>(
+      `select motivo, depois from auditoria where acao = 'venda.registrou' and alvo_id = $1`, [lida!.id],
+    )
+    expect(aud!.motivo).toMatch(/sem internet/)
+    expect(aud!.depois.semInternet?.horaDoAparelho).toBeTruthy()
   })
 
   it('hora de mais de 7 dias não vale como sem internet', async () => {

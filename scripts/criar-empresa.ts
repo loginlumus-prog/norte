@@ -92,8 +92,10 @@ if (!(plano in PLANOS)) {
   recusar(`plano "${plano}" não existe.`, `Os que existem: ${Object.keys(PLANOS).join(', ')}.`)
 }
 
-if (!Number.isInteger(dias) || dias < 0 || dias > 365) {
-  recusar('--dias precisa ser um número inteiro de 0 a 365.')
+// Zero dias criava teste SEM data de fim (`testeAte` nulo): o teste que
+// nunca vence, com o plano pago e o crédito de conhecer todo mês, para sempre.
+if (!Number.isInteger(dias) || dias < 1 || dias > 365) {
+  recusar('--dias precisa ser um número inteiro de 1 a 365.', 'Teste sem fim não existe: para empresa paga, crie e confirme o plano pela operação.')
 }
 
 if (!base) {
@@ -144,7 +146,7 @@ const org =
       email: normalizar(email!),
       plano,
       situacao: 'TESTE',
-      testeAte: dias > 0 ? new Date(Date.now() + dias * 864e5) : null,
+      testeAte: new Date(Date.now() + dias * 864e5),
     },
     select: { id: true, nome: true, _count: { select: { usuarios: true } } },
   }))

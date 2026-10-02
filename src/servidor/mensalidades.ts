@@ -113,14 +113,25 @@ export type MatriculaParaGerar = {
   inicio: string
   fim: string | null
   diaVencimento: number
+  /**
+   * "AAAA-MM-DD" do dia em que a SAÍDA foi registrada (cancelou, concluiu).
+   * Só importa para a matrícula que saiu com data de saída no futuro.
+   */
+  saida?: string | null
 }
 
 /**
  * Quais matrículas precisam da mensalidade de `mes`, e com que vencimento.
  *
- * Só as ATIVAS; só se o mês cai dentro da matrícula (do mês do início até o
+ * As ATIVAS; só se o mês cai dentro da matrícula (do mês do início até o
  * mês do fim); e só as que ainda não têm a do mês — é isto que torna a
  * geração idempotente, e o único do banco é a garantia final.
+ *
+ * E a cancelada (ou concluída) com data de saída no FUTURO, até o mês dessa
+ * data: quem avisa em outubro que sai em 15/12 estuda até dezembro, e
+ * dezembro se paga. Antes a geração parava no dia do aviso, e dezembro nunca
+ * nascia. Só os meses DEPOIS do mês em que a saída foi registrada — os de
+ * antes a matrícula ativa já gerou, e um mês dispensado à mão não volta.
  */
 export function aGerarNoMes(
   matriculas: MatriculaParaGerar[],
@@ -130,7 +141,9 @@ export function aGerarNoMes(
   if (!mesValido(mes)) return []
   const saida: { matriculaId: string; vencimento: string }[] = []
   for (const m of matriculas) {
-    if (m.situacao !== 'ATIVA') continue
+    const saiuDepois =
+      (m.situacao === 'CANCELADA' || m.situacao === 'CONCLUIDA') && !!m.fim && !!m.saida && m.saida.slice(0, 7) < mes
+    if (m.situacao !== 'ATIVA' && !saiuDepois) continue
     if (jaGeradas.has(`${m.id}|${mes}`)) continue
     if (m.inicio.slice(0, 7) > mes) continue
     if (m.fim && m.fim.slice(0, 7) < mes) continue
@@ -349,11 +362,20 @@ export async function gerarNaTransacao(
   const validos = meses.filter(mesValido)
   if (validos.length === 0) return 0
 
+  // A ativa, e a que saiu com data de saída num dos meses pedidos ou depois
+  // (ver `aGerarNoMes`).
+  const primeiroMes = [...validos].sort()[0]!
   const matriculas = await db.matricula.findMany({
-    where: { situacao: 'ATIVA', ...(matriculaId ? { id: matriculaId } : {}) },
+    where: {
+      OR: [
+        { situacao: 'ATIVA' },
+        { situacao: { in: ['CANCELADA', 'CONCLUIDA'] }, fim: { gte: colunaDoDia(`${primeiroMes}-01`) } },
+      ],
+      ...(matriculaId ? { id: matriculaId } : {}),
+    },
     select: {
       id: true, alunoId: true, unidadeId: true, situacao: true, inicio: true, fim: true, diaVencimento: true,
-      valor: true, descontoPct: true, descontoValor: true,
+      valor: true, descontoPct: true, descontoValor: true, saidaEm: true,
     },
   })
   if (matriculas.length === 0) return 0
@@ -370,6 +392,7 @@ export async function gerarNaTransacao(
     inicio: diaDaColuna(m.inicio),
     fim: m.fim ? diaDaColuna(m.fim) : null,
     diaVencimento: m.diaVencimento,
+    saida: m.saidaEm ? diaEmSP(m.saidaEm) : null,
   }))
 
   const linhas: {
@@ -978,14 +1001,28 @@ export async function carneDoAluno(sessao: Sessao, alunoId: string, meses = 12, 
       select: { id: true, nome: true, anonimizadoEm: true, responsavel: { select: { nome: true, documento: true } } },
     })
     if (!aluno) return null
+    // Quem não vê matrícula NENHUMA deste aluno (de qualquer situação) não lê
+    // o carnê — nem o nome e o documento do responsável. Antes qualquer id de
+    // cliente da empresa devolvia o cabeçalho, com o nome, para o Balcão de
+    // outra escola.
+    const alguma = await db.matricula.count({
+      where: { alunoId, ...(visiveis === 'todas' ? {} : { unidadeId: { in: visiveis } }) },
+    })
+    if (alguma === 0) return null
     const matriculas = await db.matricula.findMany({
       where: {
         alunoId,
-        situacao: 'ATIVA',
+        // A ativa, e a que avisou a saída para um dia que ainda não chegou:
+        // ela ainda tem meses a pagar (ver `aGerarNoMes`).
+        OR: [
+          { situacao: 'ATIVA' },
+          { situacao: { in: ['CANCELADA', 'CONCLUIDA'] }, fim: { gte: colunaDoDia(`${diaEmSP(agora).slice(0, 7)}-01`) } },
+        ],
         ...(visiveis === 'todas' ? {} : { unidadeId: { in: visiveis } }),
       },
       select: {
         id: true, situacao: true, inicio: true, fim: true, diaVencimento: true, valor: true, descontoPct: true, descontoValor: true, unidadeId: true,
+        saidaEm: true,
         turma: { select: { nome: true } },
         unidade: { select: { nome: true } },
       },
@@ -1013,7 +1050,10 @@ export async function carneDoAluno(sessao: Sessao, alunoId: string, meses = 12, 
         continue
       }
       const f = aGerarNoMes(
-        [{ id: m.id, situacao: m.situacao, inicio: diaDaColuna(m.inicio), fim: m.fim ? diaDaColuna(m.fim) : null, diaVencimento: m.diaVencimento }],
+        [{
+          id: m.id, situacao: m.situacao, inicio: diaDaColuna(m.inicio), fim: m.fim ? diaDaColuna(m.fim) : null,
+          diaVencimento: m.diaVencimento, saida: m.saidaEm ? diaEmSP(m.saidaEm) : null,
+        }],
         new Set(),
         mes,
       )[0]

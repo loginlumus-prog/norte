@@ -225,8 +225,8 @@ export async function buscarConsumoAcao(slug: string, unidadeId: string, termo: 
 
 export async function registrarConsumoAcao(
   slug: string,
-  d: { unidadeId: unknown; itens: unknown; motivo?: unknown },
-): Promise<{ ok?: string; erro?: string }> {
+  d: { unidadeId: unknown; itens: unknown; motivo?: unknown; pin?: unknown },
+): Promise<{ ok?: string; erro?: string; precisaPin?: boolean }> {
   const sessao = await exigirSessao(slug)
   if (!(await comprasLigadas(sessao.orgId))) return { erro: DESLIGADO }
   if (!idValido(d.unidadeId)) return { erro: 'Escolha a loja.' }
@@ -237,8 +237,13 @@ export async function registrarConsumoAcao(
   }))
   if (itens.some((i) => !idValido(i.variacaoId) || Number.isNaN(i.quantidade))) return { erro: 'Uma das quantidades não confere.' }
   try {
-    const r = await registrarConsumo(sessao, { unidadeId: d.unidadeId, itens, motivo: texto(d.motivo, 200) })
-    if (!r.ok) return { erro: r.erro }
+    const r = await registrarConsumo(sessao, {
+      unidadeId: d.unidadeId,
+      itens,
+      motivo: texto(d.motivo, 200),
+      pin: texto(d.pin, 12).replace(/\D/g, '') || null,
+    })
+    if (!r.ok) return { erro: r.erro, precisaPin: r.precisaPin }
   } catch (e) {
     return { erro: traduzir(e, 'consumo.registrar') }
   }

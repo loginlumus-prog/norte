@@ -20,9 +20,15 @@
 //
 // ── quanto custa ─────────────────────────────────────────────
 // Cada peça sai da carteira de crédito da empresa — a MESMA do assistente
-// (custo-ia.ts: custo do fornecedor × margem). Cada marca do Farol deposita
+// (custo-ia.ts: custo do fornecedor × margem). Cada marca CONTRATADA deposita
 // `PRECOS.creditoDoFarol` por mês (`garantirCreditoDoFarol`). Acabou o
 // crédito, o Farol para de escrever até recarregar; o resto do sistema segue.
+//
+// ── marcas contratadas ───────────────────────────────────────
+// O Farol se vende por marca (`Org.farolMarcas`, que a equipe acerta pelo
+// contrato). É o teto de marcas ativas, de crédito por mês e da linha do
+// Farol na mensalidade. Antes a marca era livre: contratava uma, cadastrava
+// cinco, e recebia o crédito de IA de cinco — na mesma carteira do assistente.
 
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, type Sessao } from './permissao'
@@ -58,10 +64,15 @@ export type DadosDaMarca = {
   unidadeIds?: string[]
 }
 
-async function exigirFarol(db: BancoDaOrg, orgId: string) {
-  const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { modulos: true } })
+async function exigirFarol(db: BancoDaOrg, orgId: string): Promise<{ contratadas: number }> {
+  const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { modulos: true, farolMarcas: true } })
   if (!moduloLigado(org, 'farol')) throw new FarolRecusou('O Farol não está contratado nesta empresa. Fale com a gente para ligar.')
+  return { contratadas: Math.max(0, org.farolMarcas) }
 }
+
+/** As marcas contratadas desta empresa: zero sem o módulo. */
+export const marcasContratadas = (org: { modulos: string[]; farolMarcas: number }) =>
+  moduloLigado(org, 'farol') ? Math.max(0, org.farolMarcas) : 0
 
 export async function listarMarcas(sessao: Sessao) {
   exigir(sessao, 'agente.configurar')
@@ -95,7 +106,19 @@ export async function salvarMarca(sessao: Sessao, id: string | null, d: DadosDaM
     unidadeIds: [...new Set((d.unidadeIds ?? []).map(String))].slice(0, 100),
   }
   return comoOrg(sessao.orgId, async (db) => {
-    await exigirFarol(db, sessao.orgId)
+    const { contratadas } = await exigirFarol(db, sessao.orgId)
+    if (!id) {
+      // A trava por empresa: dois cliques em "Criar" não passam os dois
+      // pela contagem antes de um gravar.
+      await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`farol:marcas:${sessao.orgId}`}))`
+      const ativas = await db.marcaFarol.count({ where: { ativa: true } })
+      if (ativas >= contratadas) {
+        throw new FarolRecusou(
+          `O contrato do Farol é de ${contratadas === 1 ? '1 marca' : `${contratadas} marcas`}, e ${ativas === 1 ? 'ela já está cadastrada' : 'elas já estão cadastradas'}. ` +
+            'Para mais uma, fale com a gente — ou arquive uma que não usa mais.',
+        )
+      }
+    }
     if (dados.unidadeIds.length) {
       const achadas = await db.unidade.count({ where: { id: { in: dados.unidadeIds } } })
       if (achadas !== dados.unidadeIds.length) throw new FarolRecusou('Loja não encontrada nesta empresa.')
@@ -130,7 +153,7 @@ export async function arquivarMarca(sessao: Sessao, id: string) {
 
 /**
  * Deposita o crédito do Farol do mês, uma vez: `PRECOS.creditoDoFarol` por
- * marca ativa. A trava e a referência `farol:AAAA-MM` são as mesmas do
+ * marca ativa, até as contratadas. A trava e a referência `farol:AAAA-MM` são as mesmas do
  * crédito do plano (assinatura.ts): duas chamadas ao mesmo tempo não depositam
  * duas vezes. Marca criada no meio do mês entra no mês seguinte.
  */
@@ -139,10 +162,12 @@ export async function garantirCreditoDoFarol(orgId: string, agora = new Date()):
   const referencia = `farol:${mes}`
   return comoOrg(orgId, async (db) => {
     await db.$executeRaw`select pg_advisory_xact_lock(hashtext(${`credito-farol:${orgId}`}))`
-    const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { modulos: true, situacao: true } })
+    const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { modulos: true, situacao: true, farolMarcas: true } })
     if (!moduloLigado(org, 'farol') || org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA') return 0
     if (await db.recargaIA.findFirst({ where: { tipo: 'PLANO', referencia }, select: { id: true } })) return 0
-    const marcas = await db.marcaFarol.count({ where: { ativa: true } })
+    // As ativas, até o contratado: marca a mais (de antes da trava, ou
+    // gravada à mão) não traz crédito que ninguém paga.
+    const marcas = Math.min(await db.marcaFarol.count({ where: { ativa: true } }), marcasContratadas(org))
     if (marcas === 0) return 0
     const centavos = marcas * PRECOS.creditoDoFarol * 100
     const depois = await db.org.update({ where: { id: orgId }, data: { creditoIaCent: { increment: centavos } }, select: { creditoIaCent: true } })

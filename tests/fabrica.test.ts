@@ -125,7 +125,7 @@ describe('a ordem de produção', () => {
     await expect(m.fabrica.abrirOrdem(GER_LOJA, { unidadeId: 'uni-fab', variacaoId: 'v-pic', bateladas: 1 })).rejects.toThrow()
   })
 
-  it('encerrar baixa o USADO, dá entrada no que saiu e acerta o custo do produto', async () => {
+  it('encerrar baixa o USADO, dá entrada no que saiu e apura o custo (o do produto só muda com produto.preco)', async () => {
     // usou 9 L de leite (previsto 8); açúcar e palito como previsto; saíram 78.
     const r = await m.fabrica.encerrarOrdem(PRODUCAO, ordemId, { produzida: 78, consumos: [{ insumoId: 'v-lei', usado: 9 }] })
     expect(await saldo('v-pic', 'uni-fab')).toBe(78)
@@ -133,10 +133,14 @@ describe('a ordem de produção', () => {
     expect(await saldo('v-acu', 'uni-fab')).toBe(8)
     // palito sem estoque lançado: não trava a produção, fica negativo
     expect(await saldo('v-pal', 'uni-fab')).toBe(-80)
-    // 9×5 + 2×4 + 80×0,05 = 57 → 57 / 78
-    expect(r.custoUnitario).toBeCloseTo(57 / 78, 6)
-    const [p] = await linhas<{ custo: string }>(`select custo from produtos where id = 'p-pic'`)
-    expect(Number(p!.custo)).toBe(0.73)
+    // 9×5 + 2×4 + 80×0,05 = 57 → 57 / 78, com quatro casas (o custo guarda 4)
+    expect(r.custoUnitario).toBe(0.7308)
+    // O cargo de produção não tem `produto.preco`: registra a produção e o
+    // custo apurado fica na ordem, mas o custo do produto (o CMV das lojas)
+    // fica com quem decide preço — a mesma régua da entrada de mercadoria.
+    expect(r.custoAtualizado).toBe(false)
+    const [p] = await linhas<{ custo: string | null }>(`select custo from produtos where id = 'p-pic'`)
+    expect(p!.custo).toBeNull()
     for (const v of ['v-pic', 'v-lei', 'v-acu', 'v-pal']) expect(await somaMov(v, 'uni-fab'), v).toBe(await saldo(v, 'uni-fab'))
     // validade pela receita: 180 dias
     const [o] = await m.fabrica.listarOrdens(DONO, { situacao: 'ENCERRADA' })
@@ -165,15 +169,18 @@ describe('o pedido da loja à fábrica', () => {
     await expect(m.fabrica.enviarPedido(GER_LOJA, pedidoId, [])).rejects.toThrow()
   })
 
-  it('não manda mais do que a fábrica tem (empresa que não vende sem estoque)', async () => {
+  it('não manda mais do que a loja pediu', async () => {
     const [it] = (await m.fabrica.listarPedidos(DONO))[0]!.itens
-    await expect(m.fabrica.enviarPedido(PRODUCAO, pedidoId, [{ itemId: it!.id, enviada: 500 }])).rejects.toThrow(/tem 78/)
+    await expect(m.fabrica.enviarPedido(PRODUCAO, pedidoId, [{ itemId: it!.id, enviada: 500 }])).rejects.toThrow(/no máximo 50/)
     expect(await saldo('v-pic', 'uni-fab')).toBe(78)
   })
 
   it('a fábrica manda: sai da fábrica, entra na loja, com o lote da produção', async () => {
     const [it] = (await m.fabrica.listarPedidos(DONO))[0]!.itens
-    await m.fabrica.enviarPedido(PRODUCAO, pedidoId, [{ itemId: it!.id, enviada: 48 }])
+    // Manda 48 dos 50 e diz que o resto não vai: o pedido segue para a loja
+    // conferir (sem `encerrar`, ficaria aberto esperando os 2 — ver a
+    // auditoria [F8]).
+    await m.fabrica.enviarPedido(PRODUCAO, pedidoId, [{ itemId: it!.id, enviada: 48 }], { encerrar: true })
     expect(await saldo('v-pic', 'uni-fab')).toBe(30)
     expect(await saldo('v-pic', 'uni-praia')).toBe(48)
     const [lido] = await m.fabrica.listarPedidos(DONO)

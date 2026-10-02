@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { exigirEntrada } from '@/servidor/pagina'
 import { comoOrg } from '@/servidor/banco'
 import { pode } from '@/servidor/permissao'
+import { podeVerCustoDe } from '@/servidor/produto'
+import { vendidoNaLoja } from '@/servidor/catalogo-loja'
 import { escolherUnidade } from '@/servidor/unidade'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
@@ -37,14 +39,14 @@ export default async function EditarEmPlanilha({
   const lojaId = onde.unidadeId ?? onde.opcoes[0]?.id ?? null
   const loja = onde.opcoes.find((u) => u.id === lojaId) ?? null
 
-  const [categorias, produtos, org] = await Promise.all([
+  const [categorias, todos, org] = await Promise.all([
     comoOrg(sessao.orgId, (db) => db.categoria.findMany({ orderBy: { ordem: 'asc' }, select: { id: true, nome: true } })),
     comoOrg(sessao.orgId, (db) =>
       db.produto.findMany({
         where: { ativo: true },
         orderBy: { nome: 'asc' },
         select: {
-          id: true, nome: true, categoriaId: true, medida: true, servico: true,
+          id: true, nome: true, categoriaId: true, medida: true, servico: true, vendidoEm: true,
           precoVista: true, precoCartao: true, precoCrediario: true, custo: true,
           variacoes: {
             where: { ativa: true },
@@ -60,7 +62,20 @@ export default async function EditarEmPlanilha({
     comoOrg(sessao.orgId, (db) => db.org.findUnique({ where: { id: sessao.orgId }, select: { pinNasExcecoes: true } })),
   ])
 
-  const podePreco = pode(sessao, 'produto.preco')
+  // Só o que ESTA loja vende — ou o que tem saldo nela (precisa aparecer para
+  // alguém tirar de lá). Antes a tabela trazia o catálogo da empresa inteira
+  // com a loja escolhida no alto: a gerente da loja de roupa via o picolé da
+  // sorveteria, e podia digitar estoque dele na loja dela. Depósito guarda o
+  // que as lojas vendem: nele, tudo. A régua é a mesma de Produtos e Estoque.
+  const produtos = loja
+    ? todos.filter(
+        (p) =>
+          loja.ehDeposito ||
+          vendidoNaLoja(p.vendidoEm, loja.id) ||
+          p.variacoes.some((v) => v.estoques.some((e) => Number(e.quantidade) !== 0)),
+      )
+    : todos
+
   const podeEditar = pode(sessao, 'produto.editar')
   const podeCadastrar = pode(sessao, 'produto.cadastrar')
   const podeEstoque = lojaId ? pode(sessao, 'estoque.ajustar', lojaId) : false
@@ -81,7 +96,9 @@ export default async function EditarEmPlanilha({
       precoVista: Number(p.precoVista ?? 0),
       precoCartao: p.precoCartao == null ? null : Number(p.precoCartao),
       precoCrediario: p.precoCrediario == null ? null : Number(p.precoCrediario),
-      custo: podePreco && p.custo != null ? Number(p.custo) : null,
+      // O custo de cada produto só para quem vê o custo DELE (o mesmo corte da
+      // ficha): o gerente da loja de roupa não lê o custo do picolé.
+      custo: p.custo != null && podeVerCustoDe(sessao, p.vendidoEm) ? Number(p.custo) : null,
       servico: p.servico,
       opcoes: p.variacoes.length,
       variacaoId: unica?.id ?? null,
@@ -114,7 +131,7 @@ export default async function EditarEmPlanilha({
         linhas={linhas}
         categorias={categorias}
         loja={loja ? { id: loja.id, nome: loja.nome } : null}
-        podePreco={podePreco}
+        podePreco={pode(sessao, 'produto.preco')}
         podeEditar={podeEditar}
         podeCadastrar={podeCadastrar}
         podeEstoque={podeEstoque}

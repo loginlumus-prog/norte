@@ -15,7 +15,14 @@ export type EstadoDevolucao = {
    * própria venda antes (ver `abaterDoFiado`). Numa venda no crediário ainda
    * em aberto, a devolução pode ser toda abatimento — e aí não sai dinheiro.
    */
-  ok?: { valor: number; abatido: number; vale: { codigo: string; validade: string } | null }
+  ok?: {
+    valor: number
+    /** Quanto de `valor` virou vale — com dinheiro ou estorno, a parte que a compra pagou com vale. */
+    emVale: number
+    destino: DestinoDevolucao
+    abatido: number
+    vale: { codigo: string; validade: string } | null
+  }
 }
 
 /**
@@ -29,6 +36,9 @@ export async function devolverAcao(
 ): Promise<EstadoDevolucao> {
   const slug = String(form.get('empresa') ?? '')
   const vendaId = String(form.get('venda') ?? '')
+  // A loja onde a devolução acontece (a do balcão). O servidor confere se a
+  // pessoa vende nela; vazio é a loja da venda.
+  const unidadeId = String(form.get('unidade') ?? '').trim() || null
   const motivo = String(form.get('motivo') ?? '')
   const destinoBruto = String(form.get('destino') ?? '')
   const destino: DestinoDevolucao | null =
@@ -53,7 +63,7 @@ export async function devolverAcao(
   }
 
   const sessao = await exigirSessao(slug)
-  const r = await devolver(sessao, { vendaId, itens, destino, motivo })
+  const r = await devolver(sessao, { vendaId, itens, destino, motivo, unidadeId })
 
   if (!r.ok) {
     return {
@@ -65,9 +75,11 @@ export async function devolverAcao(
         passa_do_vendido: 'Está devolvendo mais do que foi vendido.',
         sem_motivo: 'Diga o motivo. Ele vai para o livro.',
         caixa_fechado: 'Para devolver em dinheiro o caixa desta loja precisa estar aberto.',
-        sem_permissao: 'Devolver em dinheiro ou estorno é para quem pode cancelar venda. Troca por vale, todo mundo pode.',
+        sem_permissao:
+          'Sem permissão para devolver nesta loja. Devolver em dinheiro ou estorno é para quem pode cancelar venda; troca por vale, quem vende na loja pode.',
         item_repetido: 'O mesmo item veio duas vezes. Recarregue a tela e marque de novo.',
         quantidade_fracionada: 'Peça, par e caixa voltam inteiros: 1, 2, 3. Fração só em quilo, litro ou metro.',
+        item_ajuste: 'A linha do sinal já pago é acerto de conta, não peça: não volta. Devolva os produtos.',
       }[r.motivo],
     }
   }
@@ -77,6 +89,8 @@ export async function devolverAcao(
   return {
     ok: {
       valor: r.valor,
+      emVale: r.emVale,
+      destino,
       abatido: r.abatido,
       vale: r.vale
         ? {

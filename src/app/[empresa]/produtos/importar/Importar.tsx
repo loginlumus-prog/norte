@@ -162,6 +162,9 @@ export function Importar({
   const [existentes, setExistentes] = useState<{ codigos: Set<string>; nomes: Set<string> } | null>(null)
   const [loja, setLoja] = useState(lojas.find((u) => !u.deposito)?.id ?? lojas[0]?.id ?? '')
   const [seJaExiste, setSeJaExiste] = useState<SeJaExiste>('pular')
+  // Os produtos novos nascem vendidos SÓ na loja da planilha (o padrão), ou
+  // em todas as lojas de quem traz.
+  const [emTodas, setEmTodas] = useState(false)
   const [verProblemas, setVerProblemas] = useState(false)
 
   const [indo, comecar] = useTransition()
@@ -295,7 +298,10 @@ export function Importar({
       for (let n = aPartirDe; n < pacotes.length; n++) {
         const lote = pacotes[n]!
         const r = await importarLoteAcao(slug, {
-          unidadeId: comEstoque && !semLoja ? loja : null,
+          // A loja vai sempre: é onde o estoque entra E onde os produtos
+          // novos nascem vendidos (a não ser que a pessoa peça todas).
+          unidadeId: !semLoja ? loja : null,
+          vendidoEmTodas: emTodas,
           seJaExiste,
           itens: lote,
           pin: pin || null,
@@ -645,12 +651,14 @@ export function Importar({
             {itens.length > 20 && <p className="text-xs text-tinta-3">Mostrando os 20 primeiros de {itens.length.toLocaleString('pt-BR')}.</p>}
 
             <div className="grid gap-4 md:grid-cols-2">
-              {comEstoque &&
-                (semLoja ? (
+              {semLoja ? (
+                comEstoque && (
                   <Aviso nivel="atencao">Você não pode lançar estoque em nenhuma loja: os produtos entram sem estoque. Quem pode ajustar o estoque lança depois.</Aviso>
-                ) : (
+                )
+              ) : (
+                <div className="flex min-w-0 flex-col gap-3">
                   <label className="flex min-w-0 flex-col gap-1.5">
-                    <span className="text-sm font-medium text-tinta">O estoque da planilha entra em</span>
+                    <span className="text-sm font-medium text-tinta">{comEstoque ? 'O estoque da planilha entra em' : 'A planilha é da loja'}</span>
                     <select
                       value={loja}
                       onChange={(e) => setLoja(e.target.value)}
@@ -663,11 +671,37 @@ export function Importar({
                         </option>
                       ))}
                     </select>
-                    <span className="text-xs text-tinta-3">
-                      Entra como o saldo contado, com o motivo &ldquo;Importado de outro sistema&rdquo;. Trazer de novo deixa o saldo no número da planilha — não soma.
-                    </span>
+                    {comEstoque && (
+                      <span className="text-xs text-tinta-3">
+                        Entra como o saldo contado, com o motivo &ldquo;Importado de outro sistema&rdquo;. Trazer de novo deixa o saldo no número da planilha — não soma.
+                      </span>
+                    )}
                   </label>
-                ))}
+                  {/* Onde os produtos NOVOS são vendidos. O padrão é só a loja
+                      da planilha: a planilha da sorveteria não põe picolé no
+                      balcão da loja de roupa. Depósito não vende — com ele, a
+                      pergunta não vale. */}
+                  {lojas.length > 1 && !lojas.find((u) => u.id === loja)?.deposito && (
+                    <fieldset className="flex flex-col gap-2">
+                      <legend className="mb-1.5 text-sm font-medium text-tinta">Os produtos novos são vendidos</legend>
+                      {(
+                        [
+                          [false, `Só em ${lojas.find((u) => u.id === loja)?.nome ?? 'nesta loja'}`, 'Nas outras lojas, marque na ficha do produto quando quiser.'],
+                          [true, empresaInteira ? 'Em todas as lojas' : 'Em todas as lojas que você cuida', 'Inclusive no balcão das outras lojas, desde já.'],
+                        ] as const
+                      ).map(([v, t, r]) => (
+                        <label key={String(v)} className="flex cursor-pointer items-start gap-3 rounded-norte border border-borda bg-superficie p-3 has-checked:border-marca has-checked:bg-marca-suave">
+                          <input type="radio" name="vendidoEmTodas" checked={emTodas === v} onChange={() => setEmTodas(v)} className="mt-0.5 size-4 accent-[var(--marca)]" />
+                          <span className="flex flex-col gap-0.5">
+                            <span className="text-sm font-semibold text-tinta">{t}</span>
+                            <span className="text-xs text-tinta-2">{r}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
+                  )}
+                </div>
+              )}
               {jaExistem > 0 && (
                 <fieldset className="flex flex-col gap-2">
                   <legend className="mb-1.5 text-sm font-medium text-tinta">
@@ -676,7 +710,13 @@ export function Importar({
                   {(
                     [
                       ['atualizar', 'Atualizar o preço e o estoque do que já existe', podePreco ? 'Nome, grade e etiqueta continuam como estão.' : 'O estoque muda; o preço só para quem pode mexer em preço.'],
-                      ['pular', 'Pular o que já existe', 'Não mexe em nada do que já está no Norte.'],
+                      [
+                        'pular',
+                        'Pular o que já existe',
+                        comEstoque
+                          ? 'Não mexe no que já está no Norte — só lança o estoque desta loja do que ainda não tem saldo nela.'
+                          : 'Não mexe em nada do que já está no Norte.',
+                      ],
                     ] as const
                   ).map(([v, t, r]) => (
                     <label key={v} className="flex cursor-pointer items-start gap-3 rounded-norte border border-borda bg-superficie p-3 has-checked:border-marca has-checked:bg-marca-suave">

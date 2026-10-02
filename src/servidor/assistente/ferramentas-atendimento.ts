@@ -37,6 +37,8 @@ import { unidadesVisiveis } from './contexto'
 import { listarMensalidades, mesAnterior, mesPorExtenso, ROTULO_SITUACAO } from '../mensalidades'
 import { horarioDaTurma, listarTurmas, TURNOS } from '../escola'
 import type { ResultadoFerramenta } from './ferramentas'
+import { escolherLoja } from './ferramentas-loja'
+import { RECADO_DO_FECHO } from './propostas'
 
 const MAXIMO_RESULTADO = 6000
 const json = (v: unknown): ResultadoFerramenta => ({ texto: JSON.stringify(v).slice(0, MAXIMO_RESULTADO) })
@@ -67,13 +69,19 @@ export async function consultarAgenda(sessao: Sessao, e: Record<string, unknown>
   let livres: { loja: string; profissional: string; horarios: string[] }[] | undefined
   if (e.livres === true && quando !== 'semana') {
     livres = []
+    // O NOME da loja, não o id: é o que o modelo repete para a pessoa.
+    const nomes = new Map(
+      (await comoOrg(sessao.orgId, (db) => db.unidade.findMany({ where: { id: { in: unidades } }, select: { id: true, nome: true } }))).map(
+        (u) => [u.id, u.nome] as const,
+      ),
+    )
     for (const u of unidades) {
       const profs = (await profissionaisDaLoja(sessao, u)).filter((p) => bate(p.nome, profissional))
       const { horario } = await horarioDaLoja(sessao, u)
       const vivos = lista.filter((a) => a.unidadeId === u && ocupa(a.situacao))
       for (const p of profs) {
         const h = horariosLivres({ horario, dia: de, ocupados: vivos.filter((a) => a.colaboradorId === p.id), duracaoMin: 30 }, agora)
-        livres.push({ loja: u, profissional: p.nome, horarios: h.slice(0, 12).map(horaEmSP) })
+        livres.push({ loja: nomes.get(u) ?? 'loja', profissional: p.nome, horarios: h.slice(0, 12).map(horaEmSP) })
       }
     }
   }
@@ -103,8 +111,8 @@ async function lojaDaProposta(sessao: Sessao, pedida: string) {
     db.unidade.findMany({ where: { id: { in: ids }, ativa: true, ehDeposito: false }, select: { id: true, nome: true } }),
   )
   if (lojas.length === 1) return { loja: lojas[0]!, lojas }
-  const achada = pedida ? lojas.find((l) => bate(l.nome, pedida)) : undefined
-  return { loja: achada ?? null, lojas }
+  // Nome exato vence; pedaço de nome só se uma loja só tiver (ver `escolherLoja`).
+  return { loja: pedida ? escolherLoja(lojas, pedida) : null, lojas }
 }
 
 export async function proporMarcar(
@@ -177,7 +185,7 @@ export async function proporMarcar(
   }
   const resumo =
     `Marcar ${nomeCliente} com ${prof.nome}: ${doCatalogo?.nome ?? servicoPedido}, ${diaCurtoSP(inicio)} às ${horaEmSP(inicio)} (${duracao} min)` +
-    `${lojas.length > 1 ? `, na ${loja.nome}` : ''}.${fora ? ` Atenção: fora do funcionamento da loja (${texto}).` : ''}`
+    `, na ${loja.nome}.${fora ? ` Atenção: fora do funcionamento da loja (${texto}).` : ''}`
   const proposta = await propor(orgId, empresa, {
     poder: 'agenda.marcar',
     resumo,
@@ -185,7 +193,7 @@ export async function proporMarcar(
     dados: dados as unknown as Record<string, unknown>,
   })
   return {
-    texto: `Proposta criada: ${resumo} O horário ainda não está marcado, e o cliente não é avisado por aqui. Mostre o resumo e termine com "Responda SIM para confirmar".`,
+    texto: `Proposta criada: ${resumo} O horário ainda não está marcado, e o cliente não é avisado por aqui. ${RECADO_DO_FECHO}`,
     propostaId: proposta.id,
   }
 }
@@ -202,7 +210,7 @@ export async function proporDesmarcar(orgId: string, empresa: ComModulos, sessao
   const resumo = `Desmarcar ${a.clienteNome} com ${a.colaboradorNome}, ${diaCurtoSP(a.inicio)} às ${horaEmSP(a.inicio)} (${a.servico}). Motivo: ${motivo}.`
   const proposta = await propor(orgId, empresa, { poder: 'agenda.desmarcar', resumo, usuarioId: sessao.usuarioId, dados: { id, motivo } })
   return {
-    texto: `Proposta criada: ${resumo} O horário ainda está de pé, e o cliente não é avisado por aqui. Mostre o resumo e termine com "Responda SIM para confirmar".`,
+    texto: `Proposta criada: ${resumo} O horário ainda está de pé, e o cliente não é avisado por aqui. ${RECADO_DO_FECHO}`,
     propostaId: proposta.id,
   }
 }

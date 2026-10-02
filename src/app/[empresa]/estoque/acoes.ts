@@ -10,24 +10,34 @@ import { comoOrg } from '@/servidor/banco'
 import { corrigirPeloContado, marcarConferido, transferir } from '@/servidor/estoque'
 import { colunaDoDia } from '@/servidor/dia'
 import { registrarEntrada, definirMinimo, type ItemEntrada } from '@/servidor/entrada'
+import { podeVerCustoDe } from '@/servidor/produto'
+import { soDaLoja } from '@/servidor/catalogo-loja'
 import { plural } from '@/ui/texto'
 
 /** Tirar de uma loja e pôr na outra. A trava inteira está em `transferir`. */
 export async function transferirAcao(
   slug: string,
-  dados: { variacaoId: string; deUnidadeId: string; paraUnidadeId: string; quantidade: number; motivo: string },
-): Promise<EstadoEntrada> {
+  dados: { variacaoId: string; deUnidadeId: string; paraUnidadeId: string; quantidade: number; motivo: string; pin?: string | null },
+): Promise<EstadoEntrada & { precisaPin?: boolean }> {
   const s = await exigirSessao(slug)
   try {
-    const r = await transferir(s, dados)
+    const r = await transferir(s, {
+      variacaoId: String(dados.variacaoId),
+      deUnidadeId: String(dados.deUnidadeId),
+      paraUnidadeId: String(dados.paraUnidadeId),
+      quantidade: Number(dados.quantidade),
+      motivo: typeof dados.motivo === 'string' ? dados.motivo.slice(0, 200) : undefined,
+      pin: dados.pin ? String(dados.pin).replace(/\D/g, '') : null,
+    })
     if (!r.ok) {
+      if (r.motivo === 'assinatura') return { erro: r.erro, precisaPin: true }
       return {
         erro:
           r.motivo === 'sem_saldo'
             ? `Só tem ${r.saldo ?? 0} na loja de origem.`
             : r.motivo === 'mesma_unidade'
               ? 'Escolha outra loja para receber.'
-              : 'A quantidade precisa ser maior que zero.',
+              : 'A quantidade precisa ser maior que zero (e não um número absurdo).',
       }
     }
     revalidatePath(`/${slug}/estoque`)
@@ -62,31 +72,40 @@ export async function procurarParaEntrada(
   exigir(s, 'estoque.ajustar', unidadeId)
   exigir(s, 'produto.ver', unidadeId)
 
-  const t = termo.trim()
+  const t = termo.trim().slice(0, 120)
   if (t.length < 2) return []
 
   return comoOrg(s.orgId, async (db) => {
-    const vs = await db.variacao.findMany({
-      where: {
-        ativa: true,
-        produto: { ativo: true },
-        OR: [
-          { codigo: { equals: t, mode: 'insensitive' } },
-          { codigoBarras: t },
-          { produto: { nome: { contains: t, mode: 'insensitive' } } },
-        ],
-      },
+    const loja = await db.unidade.findUnique({ where: { id: unidadeId }, select: { ehDeposito: true } })
+    if (!loja) return []
+    // Só o que esta loja vende — a entrada recusa o resto de todo jeito (ver
+    // `registrarEntrada`), e oferecer a camisa na sorveteria é convidar o
+    // erro. O depósito guarda o que as lojas vendem: nele, tudo.
+    const produto = { ativo: true, ...(loja.ehDeposito ? {} : soDaLoja(unidadeId)) }
+    const select = {
+      id: true,
+      codigo: true,
+      produto: { select: { nome: true, medida: true, custo: true, vendidoEm: true } },
+      opcoes: { select: { opcao: { select: { valor: true } } } },
+      estoques: { where: { unidadeId }, select: { quantidade: true } },
+    } as const
+    // A etiqueta ou o código de barras exatos primeiro, sem teto: com doze
+    // nomes parecidos na frente, a peça bipada ficava de fora da lista — e a
+    // pessoa cadastrava de novo o que já existia.
+    const exatos = await db.variacao.findMany({
+      where: { ativa: true, produto, OR: [{ codigo: { equals: t, mode: 'insensitive' } }, { codigoBarras: t }] },
+      select,
+    })
+    const porNome = await db.variacao.findMany({
+      where: { ativa: true, produto: { ...produto, nome: { contains: t, mode: 'insensitive' } }, id: { notIn: exatos.map((v) => v.id) } },
+      orderBy: [{ produto: { nome: 'asc' } }, { codigo: 'asc' }],
       take: 12,
-      select: {
-        id: true,
-        codigo: true,
-        produto: { select: { nome: true, medida: true, custo: true } },
-        opcoes: { select: { opcao: { select: { valor: true } } } },
-        estoques: { where: { unidadeId }, select: { quantidade: true } },
-      },
+      select,
     })
 
-    const achados = vs.map((v) => ({
+    // O custo só para quem vê o custo DESTE produto (o mesmo corte da ficha):
+    // quem só dá entrada não lê a margem da loja vizinha.
+    return [...exatos, ...porNome].map((v) => ({
       id: v.id,
       codigo: v.codigo,
       medida: v.produto.medida as string,
@@ -95,17 +114,15 @@ export async function procurarParaEntrada(
           ? `${v.produto.nome} — ${v.opcoes.map((o) => o.opcao.valor).join(' · ')}`
           : v.produto.nome,
       saldo: Number(v.estoques[0]?.quantidade ?? 0),
-      custo: v.produto.custo != null ? Number(v.produto.custo) : null,
+      custo: v.produto.custo != null && podeVerCustoDe(s, v.produto.vendidoEm) ? Number(v.produto.custo) : null,
     }))
-
-    const exato = t.toUpperCase()
-    return achados.sort((a, b) =>
-      a.codigo?.toUpperCase() === exato ? -1 : b.codigo?.toUpperCase() === exato ? 1 : 0,
-    )
   })
 }
 
 export type EstadoEntrada = { erro?: string; ok?: string; aviso?: string }
+
+/** A entrada pede o PIN de quem dá entrada, ou a mesma nota já entrou (a tela pergunta). */
+export type EstadoDaEntrada = EstadoEntrada & { precisaPin?: boolean; documentoRepetido?: boolean }
 
 export async function darEntrada(
   slug: string,
@@ -115,16 +132,24 @@ export async function darEntrada(
     documento: string
     itens: ItemEntrada[]
     conta: { categoriaId: string; vencimento: string; jaPago: boolean } | null
+    /** Sorteada quando a tela abriu: o reenvio não dá entrada duas vezes. */
+    chave?: string | null
+    repetirDocumento?: boolean
+    pin?: string | null
   },
-): Promise<EstadoEntrada> {
+): Promise<EstadoDaEntrada> {
   const s = await exigirSessao(slug)
+  if (typeof dados.unidadeId !== 'string' || !dados.unidadeId) return { erro: 'Escolha em que loja a mercadoria entra.' }
 
   try {
     const r = await registrarEntrada(s, {
       unidadeId: dados.unidadeId,
-      fornecedor: dados.fornecedor,
-      documento: dados.documento,
-      itens: dados.itens,
+      fornecedor: typeof dados.fornecedor === 'string' ? dados.fornecedor.slice(0, 120) : '',
+      documento: typeof dados.documento === 'string' ? dados.documento.slice(0, 60) : '',
+      itens: Array.isArray(dados.itens) ? dados.itens.slice(0, 500) : [],
+      chave: typeof dados.chave === 'string' ? dados.chave : null,
+      repetirDocumento: dados.repetirDocumento === true,
+      pin: dados.pin ? String(dados.pin).replace(/\D/g, '') : null,
       conta: dados.conta
         ? {
             categoriaId: dados.conta.categoriaId,
@@ -139,7 +164,8 @@ export async function darEntrada(
         : undefined,
     })
 
-    if (!r.ok) return { erro: r.motivo }
+    if (!r.ok) return { erro: r.motivo, precisaPin: r.precisaPin, documentoRepetido: r.documentoRepetido }
+    if (r.repetido) return { ok: 'Esta entrada já tinha sido registrada — nada entrou de novo.' }
 
     revalidatePath(`/${slug}/estoque`)
     revalidatePath(`/${slug}/produtos`)
@@ -221,11 +247,11 @@ export async function salvarMinimo(
  * "Já conferi" na lista "Vendido sem estoque — conferir". A trava inteira
  * (`estoque.ajustar` na loja da venda, clique duplo) está em `marcarConferido`.
  */
-export async function jaConferiAcao(slug: string, vendaItemId: string): Promise<{ erro?: string }> {
+export async function jaConferiAcao(slug: string, vendaItemId: string, pin?: string | null): Promise<{ erro?: string; precisaPin?: boolean }> {
   try {
     const s = await exigirSessao(slug)
-    const r = await marcarConferido(s, vendaItemId)
-    if (!r.ok) return { erro: r.erro }
+    const r = await marcarConferido(s, String(vendaItemId), pin ? String(pin).replace(/\D/g, '') : null)
+    if (!r.ok) return { erro: r.erro, precisaPin: r.precisaPin }
     revalidatePath(`/${slug}/estoque`)
     return {}
   } catch (e) {

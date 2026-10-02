@@ -20,9 +20,18 @@
 // ── por que é lento e por que tem freio ──────────────────────
 // Guardado como a senha (scrypt, ver senha.ts), amarrado à pessoa: o mesmo
 // 1234 de duas pessoas dá dois resumos diferentes. Quatro números são poucos
-// — 10 mil combinações —, então o freio é o que segura o chute: cinco erros em
-// 15 minutos por LOJA (a mesma régua do login, em limite.ts). Por loja, e não
-// por pessoa, porque quem chuta não sabe de quem é o PIN que está tentando.
+// — 10 mil combinações —, então o PIN NOVO tem seis (o de quatro que já
+// existe continua valendo), e o freio é o que segura o chute: cinco erros em
+// 15 minutos por LOJA e cinco por QUEM PEDE (a mesma régua do login, em
+// limite.ts). Por loja porque quem chuta não sabe de quem é o PIN que está
+// tentando; por quem pede porque a loja é a conta de todos — e o acerto não
+// zera a conta da loja: o PIN da gerente digitado certo no meio dos chutes
+// liberaria mais cinco a cada vez.
+//
+// A recusa é UMA só para tudo que não seja a trava: PIN errado, PIN de quem
+// não pode, e PIN igual de duas pessoas. Frase diferente para "duas pessoas
+// usam esse PIN" contava que aquele número é o PIN de alguém. O PIN repetido
+// é barrado na hora de criar (`definirMeuPin`).
 //
 // Cada autorização vai para o livro, no nome de quem AUTORIZOU, com o motivo
 // e quem pediu.
@@ -34,10 +43,13 @@ import { comoOrg } from './banco'
 import { SELECT_ACESSO, acessosDoBanco } from './cargos'
 import { podeNoAlcance, type Capacidade, type Papel, type Sessao } from './permissao'
 import { conferirSenha, guardarSenha, HASH_ISCA } from './senha'
-import { concluirTentativa, reservarTentativa } from './limite'
+import { concluirTentativa, desfazerTentativa, reservarTentativa } from './limite'
 
+/** O menor PIN que ainda CONFERE: os de quatro números criados antes continuam valendo. */
 export const PIN_MIN = 4
 export const PIN_MAX = 6
+/** O menor PIN que se CRIA (ou troca) hoje. */
+export const PIN_NOVO_MIN = 6
 
 /**
  * O que está errado neste PIN, ou `null` quando ele serve.
@@ -62,6 +74,11 @@ const materialDoPin = (usuarioId: string, pin: string) => `pin:${usuarioId}:${pi
 
 /** A chave do freio: a loja (ou a empresa inteira, para o que não é de loja). */
 const chaveDoFreio = (unidadeId: string | null) => `pin:${unidadeId ?? 'empresa'}`
+/** E a de quem pede, na mesma loja: a vendedora que chuta trava a si mesma primeiro. */
+const chaveDeQuemPede = (unidadeId: string | null, usuarioId: string) => `pin:${unidadeId ?? 'empresa'}:${usuarioId}`
+
+/** A recusa de sempre. Igual para tudo, para não ensinar nada a quem chuta. */
+const RECUSA_DO_PIN = 'O PIN não confere, ou é de quem não pode autorizar isto nesta loja.'
 
 export type Autorizacao =
   | { ok: true; autorizador: { usuarioId: string; nome: string } }
@@ -90,7 +107,12 @@ export async function autorizarComPin(p: {
   }
 
   // Conta ANTES de conferir, como o login: chutes simultâneos esperam a trava
-  // e já enxergam os erros uns dos outros (ver `reservarTentativa`).
+  // e já enxergam os erros uns dos outros (ver `reservarTentativa`). Duas
+  // contas: a de quem pede e a da loja. Qualquer uma travada, para.
+  const daPessoa = await reservarTentativa(p.orgId, chaveDeQuemPede(p.unidadeId, p.quemPediu.usuarioId), null)
+  if (daPessoa.bloqueado) {
+    return { ok: false, erro: `PIN errado muitas vezes. Espere ${daPessoa.esperarMin} min e tente de novo.` }
+  }
   const reserva = await reservarTentativa(p.orgId, chaveDoFreio(p.unidadeId), null)
   if (reserva.bloqueado) {
     return {
@@ -132,18 +154,17 @@ export async function autorizarComPin(p: {
   if (candidatas.length === 0) await conferirSenha(materialDoPin('ninguem', pin), HASH_ISCA)
 
   if (bateram.length !== 1) {
-    // A tentativa já nasceu erro (ver `reservarTentativa`): nada a fechar.
-    return {
-      ok: false,
-      erro:
-        bateram.length > 1
-          ? 'Duas pessoas que podem autorizar usam esse mesmo PIN. Peça para uma delas trocar o dela em Minha conta.'
-          : 'O PIN não confere, ou é de quem não pode autorizar isto nesta loja.',
-    }
+    // As tentativas já nasceram erro (ver `reservarTentativa`): nada a fechar.
+    // Dois que bateram (PIN repetido de antes da regra nova) cai na mesma
+    // recusa: quem autoriza não fica sabendo que aquele número é de alguém.
+    return { ok: false, erro: RECUSA_DO_PIN }
   }
 
   const autorizador = bateram[0]!
-  await concluirTentativa(p.orgId, reserva.tentativaId, true)
+  // Quem pede, acertando, zera a própria conta. A da LOJA não: o acerto só
+  // deixa de contar como erro, e os chutes de antes continuam valendo.
+  await concluirTentativa(p.orgId, daPessoa.tentativaId, true)
+  await desfazerTentativa(p.orgId, reserva.tentativaId)
 
   const motivo = p.motivo.trim().slice(0, 300) || 'autorização'
   await comoOrg(p.orgId, (db) =>
@@ -320,6 +341,9 @@ export async function definirMeuPin(
   const novo = String(pin ?? '').trim()
   const problema = problemaDoPin(novo)
   if (problema) return { ok: false, erro: problema }
+  // PIN novo tem seis números: quatro são 10 mil combinações. O de quatro
+  // que já existe continua conferindo (`autorizarComPin`), até a pessoa trocar.
+  if (novo.length < PIN_NOVO_MIN) return { ok: false, erro: `O PIN novo tem ${PIN_NOVO_MIN} números.` }
 
   const reserva = await reservarTentativa(sessao.orgId, `pin-conta:${sessao.usuarioId}`, null)
   if (reserva.bloqueado) {
@@ -330,6 +354,14 @@ export async function definirMeuPin(
   )
   const certa = await conferirSenha(String(senhaAtual ?? ''), eu?.senhaHash ?? HASH_ISCA)
   if (!eu?.senhaHash || !certa) return { ok: false, erro: 'A senha de entrar não confere.' }
+
+  // O mesmo PIN de outra pessoa que alcança alguma loja desta: no balcão, os
+  // dois batem e ninguém autoriza nada. Barrado aqui, com uma frase que não
+  // diz de quem — e a tentativa fica contada como erro (o freio desta tela),
+  // para isto não virar o jeito de testar PINs alheios.
+  if (await pinJaUsado(sessao, novo)) {
+    return { ok: false, erro: 'Esse PIN não pode ser usado. Escolha outro.' }
+  }
   await concluirTentativa(sessao.orgId, reserva.tentativaId, true)
 
   const hash = await guardarSenha(materialDoPin(sessao.usuarioId, novo))
@@ -348,6 +380,33 @@ export async function definirMeuPin(
     })
   })
   return { ok: true }
+}
+
+/**
+ * Alguém mais, que divide loja com esta pessoa (ou alcança a empresa
+ * inteira), já usa este PIN? Confere um a um (scrypt: lento de propósito) —
+ * é raro, só ao criar ou trocar o PIN, e a equipe de uma loja é pequena.
+ */
+async function pinJaUsado(sessao: Sessao, pin: string): Promise<boolean> {
+  const gente = await comoOrg(sessao.orgId, (db) =>
+    db.usuario.findMany({
+      where: { ativo: true, pinHash: { not: null }, id: { not: sessao.usuarioId } },
+      select: { id: true, pinHash: true, acessos: { select: { unidadeId: true, expiraEm: true } } },
+    }),
+  )
+  const agora = new Date()
+  const lojasDe = (acessos: { unidadeId: string | null; expiraEm: Date | null }[]) => {
+    const vivos = acessos.filter((a) => !a.expiraEm || a.expiraEm > agora)
+    return vivos.some((a) => a.unidadeId === null) ? 'todas' : new Set(vivos.map((a) => a.unidadeId!))
+  }
+  const minhas = lojasDe(sessao.acessos.map((a) => ({ unidadeId: a.unidadeId, expiraEm: a.expiraEm ?? null })))
+  for (const u of gente) {
+    const delas = lojasDe(u.acessos)
+    const dividem =
+      minhas === 'todas' || delas === 'todas' ? true : [...minhas].some((id) => delas.has(id))
+    if (dividem && (await conferirSenha(materialDoPin(u.id, pin), u.pinHash!))) return true
+  }
+  return false
 }
 
 /** Apaga o próprio PIN: daqui em diante ninguém autoriza nada com ele. */

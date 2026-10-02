@@ -2,33 +2,49 @@
 
 // A fábrica separa o pedido da loja e manda.
 //
-// Cada item já vem com o que a loja pediu e com o saldo na fábrica ao lado:
+// Cada item já vem com o que FALTA mandar e com o saldo na fábrica ao lado:
 // quem separa vê na hora o que não vai dar ("pediu 60, tem 48") e troca o
-// número. O lote é opcional — em branco, vai o da produção mais recente do
-// produto, que é o que provavelmente está na caixa.
+// número. O lote é opcional — em branco, vai o mais antigo que ainda tem
+// (o que vence primeiro sai primeiro).
+//
+// Mandar menos que o pedido deixa o pedido ABERTO esperando o resto — a não
+// ser que quem separa marque que o resto não vai.
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Aviso, Botao, cx } from '@/ui/base'
+import { Aviso, Botao, Marcar, cx } from '@/ui/base'
 import { Confirmar } from '@/ui/Confirmar'
+import { CampoDoPin } from '@/ui/Assinar'
 import { quantidade } from '@/ui/texto'
 import type { PedidoNaTela } from '@/servidor/fabrica'
 import { cancelarPedidoAcao, enviarPedidoAcao } from './acoes'
 import { LEGIVEL, ler, paraCampo } from './formato'
 
 export function MandarPedido({ slug, pedido: p }: { slug: string; pedido: PedidoNaTela }) {
-  const [mandar, setMandar] = useState<Record<string, string>>(() => Object.fromEntries(p.itens.map((i) => [i.id, paraCampo(i.pedida)])))
+  // O que ainda falta de cada item (o pedido menos o que já foi).
+  const resta = (i: PedidoNaTela['itens'][number]) => Math.max(0, Math.round((i.pedida - (i.enviada ?? 0)) * 1000) / 1000)
+  const jaFoiAlgo = p.itens.some((i) => (i.enviada ?? 0) > 0)
+  const [mandar, setMandar] = useState<Record<string, string>>(() => Object.fromEntries(p.itens.map((i) => [i.id, paraCampo(resta(i))])))
   const [lote, setLote] = useState<Record<string, string>>({})
+  const [encerrar, setEncerrar] = useState(false)
+  const [pedePin, setPedePin] = useState(false)
+  const [pin, setPin] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [indo, comecar] = useTransition()
   const router = useRouter()
+  const vaiFaltar = p.itens.some((i) => {
+    const v = ler(mandar[i.id] ?? '') ?? 0
+    return !Number.isNaN(v) && v < resta(i)
+  })
 
   function enviar() {
     const itens = p.itens.map((i) => ({ itemId: i.id, enviada: ler(mandar[i.id] ?? '') ?? 0, lote: (lote[i.id] ?? '').trim() || null }))
     if (itens.some((i) => Number.isNaN(i.enviada))) return setErro(LEGIVEL)
     setErro(null)
     comecar(async () => {
-      const r = await enviarPedidoAcao(slug, p.id, { itens })
+      const r = await enviarPedidoAcao(slug, p.id, { itens, encerrar: vaiFaltar && encerrar, pin: pin || null })
+      setPin('')
+      if (r.precisaPin) setPedePin(true)
       if (r.erro) setErro(r.erro)
       else router.refresh()
     })
@@ -47,7 +63,8 @@ export function MandarPedido({ slug, pedido: p }: { slug: string; pedido: Pedido
               <span className="col-span-2 flex min-w-0 flex-col sm:col-span-1">
                 <span className="truncate text-sm font-medium text-tinta">{i.nome}</span>
                 <span className="text-xs text-tinta-3">
-                  pediu <b className="text-tinta">{quantidade(i.pedida, i.medida)}</b> ·{' '}
+                  pediu <b className="text-tinta">{quantidade(i.pedida, i.medida)}</b>
+                  {(i.enviada ?? 0) > 0 && <> · já foram {quantidade(i.enviada ?? 0, i.medida)}</>} ·{' '}
                   <span className={cx(falta && 'font-semibold text-critico')}>a fábrica tem {quantidade(i.saldoNaFabrica, i.medida)}</span>
                 </span>
               </span>
@@ -83,17 +100,35 @@ export function MandarPedido({ slug, pedido: p }: { slug: string; pedido: Pedido
         })}
       </ul>
       <p className="text-xs text-tinta-3">
-        Zero num item = não vai agora. Ao mandar, sai do estoque da fábrica e entra no da loja; a loja confere quando chegar.
+        Zero num item = não vai agora. Ao mandar, sai do estoque da fábrica e entra no da loja. Mandou menos que o pedido? O pedido
+        continua aberto esperando o resto; a loja confere quando tudo tiver ido.
       </p>
+      {vaiFaltar && (
+        <Marcar
+          name="encerrar"
+          checked={encerrar}
+          onChange={(ev) => setEncerrar(ev.currentTarget.checked)}
+          titulo="O resto não vai"
+          resumo="Fecha o pedido com o que foi agora: a loja já pode conferir. Sem marcar, ele continua aberto para a próxima remessa."
+        />
+      )}
+      {pedePin && (
+        <div className="max-w-xs">
+          <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} aoEnviar={enviar} />
+        </div>
+      )}
       {erro && <Aviso nivel="critico">{erro}</Aviso>}
       <div className="flex flex-wrap justify-end gap-2">
-        <Confirmar pergunta="Cancelar o pedido da loja?" sim="Sim, cancelar" aoConfirmar={async () => {
-          const r = await cancelarPedidoAcao(slug, p.id)
-          if (r.ok) router.refresh()
-          return r
-        }}>
-          Cancelar pedido
-        </Confirmar>
+        {/* Parte já foi: não se cancela — fecha-se o envio ("o resto não vai"). */}
+        {!jaFoiAlgo && (
+          <Confirmar pergunta="Cancelar o pedido da loja?" sim="Sim, cancelar" aoConfirmar={async () => {
+            const r = await cancelarPedidoAcao(slug, p.id)
+            if (r.ok) router.refresh()
+            return r
+          }}>
+            Cancelar pedido
+          </Confirmar>
+        )}
         <Botao tom="confirmar" carregando={indo} onClick={enviar}>
           {indo ? 'Mandando…' : 'Mandar para a loja'}
         </Botao>

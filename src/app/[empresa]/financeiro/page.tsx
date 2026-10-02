@@ -139,9 +139,12 @@ export default async function Financeiro({
   ])
 
   // "Para onde foi o dinheiro": as linhas negativas do DRE que não são
-  // total nem informativa — CMV, cada grupo de despesa, financeiras.
+  // total nem informativa — CMV, cada grupo de despesa, financeiras. O que
+  // abate a receita (devolução, vale de troca sem a compra, desconto no
+  // crediário) não é dinheiro que saiu: é venda que não houve.
+  const ABATEM_RECEITA = ['devolucoes', 'semCompra', 'descontoCred']
   const saidas = dre.linhas
-    .filter((l) => !l.total && !l.fora && l.valor < 0 && l.chave !== 'devolucoes')
+    .filter((l) => !l.total && !l.fora && l.valor < 0 && !ABATEM_RECEITA.includes(l.chave))
     .map((l) => ({ rotulo: l.rotulo.replace('(−) ', ''), valor: -l.valor }))
 
   const categoriaL = categorias.some((c) => c.id === catPedida) ? catPedida : null
@@ -559,6 +562,12 @@ export default async function Financeiro({
             bate com o extrato. A mercadoria é a exceção: comprar não é despesa, vira custo
             quando a peça vende (a linha do CMV). Por isso a compra aparece separada, fora
             da conta do resultado.
+            {dre.linhas.some((l) => l.chave === 'empresa') && (
+              <>
+                {' '}As contas da empresa inteira (sem loja) entram no resultado de &ldquo;Todas as
+                unidades&rdquo;; olhando uma loja, aparecem à parte, para não pesarem em cada loja.
+              </>
+            )}
             {dre.taxasCalculadas > 0 ? (
               <>
                 {' '}As taxas de cartão e Pix ({brl(dre.taxasCalculadas)}) são calculadas venda a venda

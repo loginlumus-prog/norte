@@ -156,6 +156,7 @@ CREATE TABLE "orgs" (
     "crediario_multa_pct" DECIMAL(5,2) NOT NULL DEFAULT 0,
     "crediario_carencia_dias" INTEGER NOT NULL DEFAULT 0,
     "crediario_arredondar" BOOLEAN NOT NULL DEFAULT false,
+    "crediario_atraso_dias" INTEGER,
     "pin_nas_excecoes" BOOLEAN NOT NULL DEFAULT false,
     "balcao_ampliado" BOOLEAN NOT NULL DEFAULT false,
     "mensalidade_multa_pct" DECIMAL(5,2) NOT NULL DEFAULT 2,
@@ -166,6 +167,7 @@ CREATE TABLE "orgs" (
     "aviso_atraso_dias" INTEGER NOT NULL DEFAULT 5,
     "credito_ia_cent" INTEGER NOT NULL DEFAULT 0,
     "credito_aviso_cent" INTEGER NOT NULL DEFAULT 1000,
+    "farol_marcas" INTEGER NOT NULL DEFAULT 1,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizada_em" TIMESTAMP(3) NOT NULL,
 
@@ -433,7 +435,7 @@ CREATE TABLE "produtos" (
     "preco_vista" DECIMAL(12,2),
     "preco_cartao" DECIMAL(12,2),
     "preco_crediario" DECIMAL(12,2),
-    "custo" DECIMAL(12,2),
+    "custo" DECIMAL(12,4),
     "vendido_em" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "prazo_reposicao_dias" INTEGER,
     "servico" BOOLEAN NOT NULL DEFAULT false,
@@ -466,6 +468,7 @@ CREATE TABLE "variacoes" (
     "codigo" TEXT,
     "codigo_barras" TEXT,
     "ajuste_preco" DECIMAL(12,2),
+    "custo" DECIMAL(12,4),
     "padrao" BOOLEAN NOT NULL DEFAULT false,
     "ativa" BOOLEAN NOT NULL DEFAULT true,
     "criada_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -543,6 +546,7 @@ CREATE TABLE "clientes" (
     "cobranca_pausada_motivo" TEXT,
     "juntada_na_id" TEXT,
     "juntada_em" TIMESTAMP(3),
+    "limite_credito" DECIMAL(12,2),
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizado_em" TIMESTAMP(3) NOT NULL,
 
@@ -642,7 +646,7 @@ CREATE TABLE "venda_itens" (
     "preco_unit" DECIMAL(12,2) NOT NULL,
     "desconto" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "total" DECIMAL(12,2) NOT NULL,
-    "custo_unit" DECIMAL(12,2),
+    "custo_unit" DECIMAL(12,4),
     "saldo_na_venda" DECIMAL(14,3),
     "conferido_em" TIMESTAMP(3),
     "conferido_por" TEXT,
@@ -2085,6 +2089,9 @@ CREATE INDEX "ordens_producao_org_id_situacao_idx" ON "ordens_producao"("org_id"
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ordens_producao_org_id_numero_key" ON "ordens_producao"("org_id", "numero");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ordens_producao_org_id_lote_key" ON "ordens_producao"("org_id", "lote");
 
 -- CreateIndex
 CREATE INDEX "ordem_consumos_org_id_idx" ON "ordem_consumos"("org_id");

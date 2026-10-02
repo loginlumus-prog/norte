@@ -300,7 +300,13 @@ async function apagarRastros(
   if (idsEncomenda.length) {
     await db.encomenda.updateMany({
       where: { id: { in: idsEncomenda } },
-      data: { clienteNome: NOME_ANONIMO, telefone: null, endereco: null },
+      // A observação é texto livre (o troco, o recado do catálogo, "deixar com
+      // a vizinha do 12"): é dela, e sai junto — a descrição e os itens ficam.
+      data: { clienteNome: NOME_ANONIMO, telefone: null, endereco: null, observacao: null },
+    })
+    await db.encomendaItem.updateMany({
+      where: { encomendaId: { in: idsEncomenda }, observacao: { not: null } },
+      data: { observacao: null },
     })
   }
 

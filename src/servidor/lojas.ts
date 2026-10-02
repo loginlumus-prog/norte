@@ -27,7 +27,7 @@
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, type Sessao } from './permissao'
 import { SemCota } from './assinatura'
-import { podeCriarUnidade } from './planos'
+import { PLANOS, PRECOS, podeCriarUnidade } from './planos'
 import { RAMOS, type Ramo } from './modulos'
 
 export type DadosLoja = {
@@ -216,12 +216,24 @@ async function travarCota(db: BancoDaOrg, orgId: string, deposito = false) {
   return { custoExtra: v.custoExtra }
 }
 
+/**
+ * Quanto a fábrica soma à conta do mês: `PRECOS.fabrica` nos planos que
+ * cobram por unidade (a mesma regra de `mensalidade`). Abrir a fábrica
+ * devolvia custo zero — ela é depósito na cota — e a conta subia R$ 379 sem a
+ * tela dizer.
+ */
+async function custoDaFabrica(db: BancoDaOrg, orgId: string): Promise<number> {
+  const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } })
+  return PLANOS[org.plano].porUnidadeExtra !== null ? PRECOS.fabrica : 0
+}
+
 export async function criarLoja(sessao: Sessao, dados: DadosLoja) {
   exigir(sessao, 'empresa.configurar')
   const d = limparLoja(dados)
 
   return comoOrg(sessao.orgId, async (db) => {
     const cota = await travarCota(db, sessao.orgId, !!d.ehDeposito)
+    if (d.ehFabrica) cota.custoExtra += await custoDaFabrica(db, sessao.orgId)
     const org = await db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { ramo: true, modulos: true } })
     const loja = await db.unidade.create({ data: { orgId: sessao.orgId, ...d } })
 
@@ -268,7 +280,24 @@ export async function editarLoja(sessao: Sessao, id: string, dados: DadosLoja) {
         throw new LojaRecusada('Esta é a única loja que vende. Abra outra antes de transformar esta em depósito.')
       }
     }
+    // Depósito que vira loja de VENDA ocupa vaga, igual abrir: sem isto, abrir
+    // como depósito (fora da conta) e desmarcar depois passava por cima da
+    // cota do plano — e a conta subia sem a tela dizer. Fechada, não ocupa
+    // agora: reabrir é que confere (`mudarSituacaoLoja`).
+    let custoExtra = 0
+    if (antes.ehDeposito && !d.ehDeposito && antes.ativa) {
+      custoExtra += (await travarCota(db, sessao.orgId, false)).custoExtra
+    }
+    if (d.ehFabrica && !antes.ehFabrica && antes.ativa) custoExtra += await custoDaFabrica(db, sessao.orgId)
+
     const loja = await db.unidade.update({ where: { id }, data: d })
+
+    // Loja que vira depósito (ou fábrica) não vende: o catálogo público dela
+    // sai do ar junto — senão a cliente continuaria pedindo numa loja sem
+    // balcão. Religar é decisão da dona, na tela do catálogo, se voltar a vender.
+    if (d.ehDeposito && !antes.ehDeposito) {
+      await db.catalogoLoja.updateMany({ where: { unidadeId: id, ativo: true }, data: { ativo: false } })
+    }
 
     // Trocou o ramo: acrescenta o que o ramo novo pede. Não tira nada do
     // antigo — outra loja pode estar usando.
@@ -289,9 +318,10 @@ export async function editarLoja(sessao: Sessao, id: string, dados: DadosLoja) {
         alvoNome: loja.nome,
         antes: { nome: antes.nome, ramo: antes.ramo, ehDeposito: antes.ehDeposito, ehFabrica: antes.ehFabrica },
         depois: { nome: loja.nome, ramo: loja.ramo, ehDeposito: loja.ehDeposito, ehFabrica: loja.ehFabrica, ...semeado },
+        valor: custoExtra || undefined,
       },
     })
-    return { loja, ...semeado }
+    return { loja, ...semeado, custoExtra }
   })
 }
 
@@ -336,6 +366,14 @@ export async function pendenciasParaFechar(db: BancoDaOrg, unidadeId: string): P
   if (pedidos > 0) {
     faltam.push(
       `${pedidos === 1 ? 'há 1 pedido de compra em aberto' : `há ${pedidos} pedidos de compra em aberto`} — receba, encerre ou cancele`,
+    )
+  }
+  // Ordem de produção aberta na fábrica: encerrada depois, ela baixaria os
+  // insumos e daria entrada no que saiu num estoque que ninguém mais vê.
+  const ordens = await db.ordemProducao.count({ where: { unidadeId, situacao: 'ABERTA' } })
+  if (ordens > 0) {
+    faltam.push(
+      `${ordens === 1 ? 'há 1 ordem de produção aberta' : `há ${ordens} ordens de produção abertas`} — encerre ou cancele na Fábrica`,
     )
   }
   return faltam

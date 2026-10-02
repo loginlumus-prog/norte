@@ -23,6 +23,8 @@ import { exigir, soAsQuePode, type Sessao } from './permissao'
 import { PLANOS } from './planos'
 import { vencerTesteSeAcabou } from './assinatura'
 import type { Plano } from '@prisma/client'
+import { reais } from './dinheiro'
+import { receitaPorLoja, ticketMedio } from './receita'
 
 /** Número vindo do banco (Decimal, string ou nulo) em reais. */
 const n = (v: unknown) => Number(v ?? 0)
@@ -64,7 +66,7 @@ export type LojaComparada = {
   unidadeId: string
   nome: string
   vendas: number
-  /** Venda menos o que voltou em devolução na janela. */
+  /** Venda menos o que voltou em devolução na janela (a régua de `receita.ts`). */
   receita: number
   /** Custo do que ficou vendido: o das vendas menos o das peças devolvidas. */
   custo: number
@@ -98,16 +100,11 @@ export async function compararLojas(
       select: { id: true, nome: true },
     })
 
-    // Receita e contagem vêm da venda. O custo vem do ITEM, e por isso são
-    // duas consultas e não uma: juntar venda com item multiplicaria o total
-    // da venda pelo número de itens dela, e a receita sairia inflada.
-    const receitas = await db.$queryRaw<{ unidade_id: string; vendas: number; receita: string }[]>`
-      select v.unidade_id, count(*)::int as vendas, sum(v.total) as receita
-        from vendas v
-       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-         and v.criada_em >= ${de} and v.criada_em < ${ate}
-       group by 1
-    `
+    // Receita e contagem vêm da régua de `receita.ts` — venda menos devolução
+    // menos o vale de troca sem a compra, a mesma do painel e do DRE. O custo
+    // vem do ITEM, numa consulta à parte: juntar venda com item multiplicaria
+    // o total da venda pelo número de itens dela, e a receita sairia inflada.
+    const receitas = await receitaPorLoja(db, uni, de, ate)
 
     // `custo_unit` é a fotografia do custo NA HORA DA VENDA. Usar o custo de
     // hoje faria a margem de março mudar sozinha quando o fornecedor
@@ -146,16 +143,9 @@ export async function compararLojas(
        group by 1
     `
 
-    // O que voltou sai dos dois lados, pela data da devolução — a mesma régua
-    // do DRE. Sem isto a loja que mais troca parecia a que mais vende, e com
-    // a margem da venda cheia.
-    const devolucoes = await db.$queryRaw<{ unidade_id: string; valor: string }[]>`
-      select d.unidade_id, sum(d.valor) as valor
-        from devolucoes d
-       where d.unidade_id = any(${uni})
-         and d.criada_em >= ${de} and d.criada_em < ${ate}
-       group by 1
-    `
+    // O custo do que voltou sai, pela data da devolução — a mesma régua do
+    // DRE. Sem isto a loja que mais troca parecia a que mais vende, e com a
+    // margem da venda cheia.
     const custosDevolvidos = await db.$queryRaw<{ unidade_id: string; custo: string }[]>`
       select d.unidade_id, sum(di.quantidade * coalesce(vi.custo_unit, 0)) as custo
         from devolucao_itens di
@@ -166,15 +156,13 @@ export async function compararLojas(
        group by 1
     `
 
-    const receitaDe = new Map(receitas.map((r) => [r.unidade_id, r]))
-    const devolvidoDe = new Map(devolucoes.map((d) => [d.unidade_id, n(d.valor)]))
     const custoDevolvidoDe = new Map(custosDevolvidos.map((c) => [c.unidade_id, n(c.custo)]))
     const custoDe = new Map(custos.map((c) => [c.unidade_id, n(c.custo)]))
     const estoqueDe = new Map(estoques.map((e) => [e.unidade_id, e]))
 
     return lojas.map((l) => {
-      const r = receitaDe.get(l.id)
-      const receita = n(r?.receita) - (devolvidoDe.get(l.id) ?? 0)
+      const r = receitas.get(l.id)
+      const receita = r ? reais(r.liquidoCent) : 0
       const custo = (custoDe.get(l.id) ?? 0) - (custoDevolvidoDe.get(l.id) ?? 0)
       const vendas = r?.vendas ?? 0
       const est = estoqueDe.get(l.id)
@@ -186,7 +174,7 @@ export async function compararLojas(
         custo,
         margem: receita - custo,
         margemPct: receita > 0 ? ((receita - custo) / receita) * 100 : null,
-        ticket: vendas > 0 ? receita / vendas : 0,
+        ticket: r ? ticketMedio(r) : 0,
         parado: n(est?.parado),
         estoque: n(est?.estoque),
       }

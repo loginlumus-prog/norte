@@ -60,12 +60,20 @@ export async function salvarCrediario(
   if (carenciaDias !== undefined && (!Number.isInteger(carenciaDias) || carenciaDias < 0 || carenciaDias > 30)) {
     return { erro: 'A carência é em dias inteiros, de 0 a 30.' }
   }
+  // Atraso que pede autorização: vazio = desligado. Só quando a tela mostrou o campo.
+  const temAtrasoDias = form.has('atrasoDias')
+  const atrasoTexto = String(form.get('atrasoDias') ?? '').trim()
+  const atrasoDias = !temAtrasoDias ? undefined : atrasoTexto === '' ? null : Number(atrasoTexto)
+  if (atrasoDias != null && (!Number.isInteger(atrasoDias) || atrasoDias < 1 || atrasoDias > 365)) {
+    return { erro: 'Os dias de atraso que pedem autorização são um número inteiro de 1 a 365 — ou vazio, para desligar.' }
+  }
 
   const salvo = await salvarConfigCrediario(s, {
     jurosMes,
     maxParcelas,
     diasEntre,
     ...(temAtraso ? { multaPct, carenciaDias, arredondar: form.get('arredondar') === 'on' } : {}),
+    ...(temAtrasoDias ? { atrasoDias } : {}),
   })
   revalidatePath(`/${slug}/configuracoes`)
   revalidatePath(`/${slug}/balcao`)
@@ -75,7 +83,8 @@ export async function salvarCrediario(
       `Crediário: até ${salvo.maxParcelas}×, a cada ${plural(salvo.diasEntre, 'dia', 'dias')}; atraso de ${String(salvo.jurosMes).replace('.', ',')}% ao mês` +
       (multaPct !== undefined ? ` e multa de ${String(multaPct).replace('.', ',')}%` : '') +
       (carenciaDias ? `, com ${plural(carenciaDias, 'dia', 'dias')} de carência` : '') +
-      '.',
+      '.' +
+      (atrasoDias ? ` Parcela atrasada há mais de ${plural(atrasoDias, 'dia', 'dias')} pede autorização no crediário.` : ''),
   }
 }
 

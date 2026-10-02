@@ -7,6 +7,7 @@
 import { useCallback, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Selecao } from '@/ui/base'
+import { CampoDoPin } from '@/ui/Assinar'
 import type { ItemParaComprar } from '@/servidor/compras'
 import { buscarConsumoAcao, registrarConsumoAcao } from '../acoes'
 import { BuscaItem } from '../BuscaItem'
@@ -24,6 +25,9 @@ export function Consumo({ slug, lojas, lojaAtual }: { slug: string; lojas: { id:
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [motivo, setMotivo] = useState('')
   const [recado, setRecado] = useState<{ ok?: string; erro?: string } | null>(null)
+  // A baixa pede o PIN de quem anota quando a empresa assina as exceções.
+  const [pedePin, setPedePin] = useState(false)
+  const [pin, setPin] = useState('')
   const [indo, comecar] = useTransition()
   const router = useRouter()
   const buscar = useCallback((t: string) => buscarConsumoAcao(slug, loja, t), [slug, loja])
@@ -36,11 +40,14 @@ export function Consumo({ slug, lojas, lojaAtual }: { slug: string; lojas: { id:
     const itens = linhas.map((l) => ({ variacaoId: l.variacaoId, quantidade: paraNumero(l.quantidade) }))
     if (itens.some((i) => !(i.quantidade > 0))) return setRecado({ erro: 'Toda linha precisa de quantidade maior que zero.' })
     comecar(async () => {
-      const r = await registrarConsumoAcao(slug, { unidadeId: loja, itens, motivo })
+      const r = await registrarConsumoAcao(slug, { unidadeId: loja, itens, motivo, pin: pin || null })
+      setPin('')
       setRecado(r)
+      if (r.precisaPin) setPedePin(true)
       if (r.ok) {
         setLinhas([])
         setMotivo('')
+        setPedePin(false)
         router.refresh()
       }
     })
@@ -90,6 +97,11 @@ export function Consumo({ slug, lojas, lojaAtual }: { slug: string; lojas: { id:
           </ul>
         )}
         <Campo rotulo="Para quê" name="motivo" value={motivo} onChange={(ev) => setMotivo(ev.currentTarget.value)} placeholder="Atendimentos da manhã" dica="Opcional. Aparece no histórico do estoque." />
+        {pedePin && (
+          <div className="max-w-xs">
+            <CampoDoPin slug={slug} valor={pin} aoMudar={setPin} aoEnviar={anotar} />
+          </div>
+        )}
         <div className="flex justify-end">
           <Botao carregando={indo} disabled={linhas.length === 0} onClick={anotar}>
             {indo ? 'Anotando...' : 'Anotar consumo'}

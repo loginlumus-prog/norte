@@ -142,6 +142,9 @@ export async function perguntarAoGuiaAcao(
     const r = await perguntar({ sistema, mensagens: [{ papel: 'usuario', texto: p }] })
     return { modo: 'ia', texto: r.texto }
   } catch (e) {
-    return { modo: 'erro', texto: e instanceof Error ? e.message : 'O guia não conseguiu responder agora.' }
+    // A mensagem crua do fornecedor (status, modelo, corpo do erro) fica no
+    // log; a pessoa recebe a frase de sempre e o caminho que funciona sempre.
+    console.error('[guia] a IA não respondeu:', e instanceof Error ? e.message : e)
+    return { modo: 'erro', texto: 'O guia não conseguiu responder agora. Use a busca ao lado — ela funciona sempre.' }
   }
 }

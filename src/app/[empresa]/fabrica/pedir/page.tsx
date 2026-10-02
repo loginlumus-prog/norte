@@ -4,7 +4,7 @@ import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { moduloLigado } from '@/servidor/modulos'
 import { pode } from '@/servidor/permissao'
-import { catalogoParaPedir, listarPedidos, unidadesDaFabrica } from '@/servidor/fabrica'
+import { catalogoParaPedir, fabricasParaPedir, listarPedidos, unidadesDaFabrica } from '@/servidor/fabrica'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Fichas } from '@/ui/Busca'
@@ -47,7 +47,10 @@ export default async function PedirAFabrica({
   }
 
   const unidades = await unidadesDaFabrica(sessao)
-  const fabricas = unidades.filter((u) => u.ehFabrica)
+  // Para onde pedir: TODAS as fábricas abertas, e não só as que a pessoa vê
+  // no estoque — a gerente presa à loja dela não enxerga a fábrica, e a tela
+  // dizia que a empresa não tinha fábrica.
+  const fabricas = await fabricasParaPedir(sessao)
   // A fábrica não pede para ela mesma. As lojas em que a pessoa pode pedir vêm
   // primeiro; as outras que ela enxerga ficam para acompanhar.
   const lojas = unidades
@@ -137,7 +140,7 @@ async function Corpo({
           <ul className="flex flex-col gap-4">
             {[...abertos, ...fechados].map((p) => (
               <li key={p.id} className="flex flex-col gap-3 rounded-norte border border-borda bg-superficie p-4">
-                <CabecalhoDoPedido p={p} acao={p.situacao === 'ABERTO' && podePedir ? <CancelarPedido slug={slug} pedidoId={p.id} /> : undefined} />
+                <CabecalhoDoPedido p={p} acao={p.situacao === 'ABERTO' && podePedir && !p.itens.some((i) => (i.enviada ?? 0) > 0) ? <CancelarPedido slug={slug} pedidoId={p.id} /> : undefined} />
                 {p.situacao !== 'CANCELADO' && <ItensDoPedido p={p} />}
               </li>
             ))}

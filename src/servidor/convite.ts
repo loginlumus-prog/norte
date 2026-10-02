@@ -18,7 +18,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { comoOrg, acharOrgPorSlug } from './banco'
 import { guardarSenha } from './senha'
 import { normalizar } from './autenticacao'
-import { exigir, podeConcederAcesso, type Papel, type Sessao } from './permissao'
+import { exigir, podeConcederAcesso, unidadesQuePodem, type Papel, type Sessao } from './permissao'
 import { DONO_SO_DA_EMPRESA, recadoNaoConcede } from './equipe'
 
 export const VALE_DIAS = 7
@@ -223,11 +223,17 @@ export async function aceitarConvite(
 
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Os convites em aberto. O gerente preso a uma loja vê só os da loja dele —
+ * o convite da empresa inteira (sem loja) e o das outras lojas não são da
+ * conta dele, e traziam o e-mail de quem ainda nem entrou.
+ */
 export async function listarConvites(sessao: Sessao) {
   exigir(sessao, 'equipe.ver')
+  const alcance = unidadesQuePodem(sessao, 'equipe.ver')
   return comoOrg(sessao.orgId, (db) =>
     db.convite.findMany({
-      where: { aceitoEm: null },
+      where: { aceitoEm: null, ...(alcance === 'todas' ? {} : { unidadeId: { in: alcance } }) },
       select: { id: true, email: true, papel: true, unidadeId: true, expiraEm: true, criadoEm: true, cargo: { select: { nome: true } } },
       orderBy: { criadoEm: 'desc' },
     }),

@@ -5,8 +5,9 @@
 // uma conta uma história curta em laço (ver `.site-passo-N` em site.css) —
 // a cliente monta o pedido, o dono manda um áudio, o Farol escreve o roteiro.
 //
-// Tudo servidor, sem JavaScript: a animação é CSS, e quem pediu menos
-// movimento vê a história inteira parada, já no fim.
+// Tudo servidor, sem JavaScript: a animação é CSS. Desde 02/10/2026 (2)
+// tudo está SEMPRE na tela — o laço só destaca cada peça na sua vez (ver
+// site.css), então nenhum celular aparece vazio para quem chega no meio.
 
 import type { CSSProperties, ReactNode } from 'react'
 
@@ -29,58 +30,63 @@ export function Celular({ children, className = '' }: { children: ReactNode; cla
 }
 
 /* ── o catálogo da loja, no celular da cliente ──────────── */
-const SABORES: { nome: string; preco: number; cor: string; inicial: string }[] = [
-  { nome: 'Picolé de morango', preco: 4, cor: '#ff7aa2', inicial: 'M' },
-  { nome: 'Pote 1 L chocolate', preco: 32, cor: '#8b5a3c', inicial: 'C' },
-  { nome: 'Açaí 500 ml', preco: 19.9, cor: '#6d2e8f', inicial: 'A' },
-  { nome: 'Casquinha de pistache', preco: 9, cor: '#7cc576', inicial: 'P' },
+// Uma loja de presentes de exemplo, com foto de produto de verdade
+// (public/img/site/produto-*.webp) — o catálogo de qualquer ramo é isto:
+// foto, nome, preço, categoria e a sacola embaixo.
+const VITRINE: { nome: string; preco: number; foto: string; na: boolean }[] = [
+  { nome: 'Vela de âmbar', preco: 59.9, foto: 'vela', na: true },
+  { nome: 'Caneca artesanal', preco: 49.9, foto: 'caneca', na: true },
+  { nome: 'Bolsa de palha', preco: 129, foto: 'bolsa', na: true },
+  { nome: 'Kit hidratante', preco: 74.9, foto: 'creme', na: false },
 ]
 
 export function CelularCatalogo() {
+  const naSacola = VITRINE.filter((p) => p.na)
   return (
     <Celular>
       <div className="flex h-full flex-col">
         <div className="px-4 pt-11 pb-3">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--s-rosa)] text-sm font-extrabold text-white">S</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--s-rosa)] text-sm font-extrabold text-white">A</span>
             <div className="leading-tight">
-              <p className="text-[13px] font-extrabold">Sorveteria Exemplo</p>
-              <p className="text-[10px] text-[var(--s-tinta-2)]">Loja Centro · aberto até 22h</p>
+              <p className="text-[13px] font-extrabold">Casa Aurora</p>
+              <p className="flex items-center gap-1 text-[10px] text-[var(--s-tinta-2)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#13a05f]" /> Loja Centro · aberta até 19h
+              </p>
             </div>
           </div>
           <div className="mt-3 flex gap-1.5 text-[10px] font-bold">
             <span className="rounded-full bg-[var(--s-rosa)] px-2.5 py-1 text-white">Tudo</span>
-            <span className="rounded-full border border-[var(--s-borda)] px-2.5 py-1">Picolés</span>
-            <span className="rounded-full border border-[var(--s-borda)] px-2.5 py-1">Potes</span>
-            <span className="rounded-full border border-[var(--s-borda)] px-2.5 py-1">Açaí</span>
+            <span className="rounded-full border border-[var(--s-borda)] px-2.5 py-1">Casa</span>
+            <span className="rounded-full border border-[var(--s-borda)] px-2.5 py-1">Bolsas</span>
+            <span className="rounded-full border border-[var(--s-borda)] px-2.5 py-1">Cuidados</span>
           </div>
         </div>
-        <div className="grid flex-1 grid-cols-2 gap-2 px-3 content-start">
-          {SABORES.map((s, i) => (
-            <div key={s.nome} className="overflow-hidden rounded-2xl border border-[var(--s-borda)] bg-[var(--s-cartao)]">
-              <div className="relative flex aspect-square items-center justify-center text-2xl font-extrabold text-white" style={{ background: `linear-gradient(140deg, ${s.cor}, color-mix(in srgb, ${s.cor} 60%, #000))` }}>
-                {s.inicial}
-                {i < 3 ? (
-                  <span className={`site-passo-${i} absolute right-1.5 bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-black text-[#13a05f] shadow`}>
-                    ✓
+        <div className="grid flex-1 grid-cols-2 content-start gap-2 px-3">
+          {VITRINE.map((p, i) => (
+            <div key={p.nome} className="overflow-hidden rounded-2xl border border-[var(--s-borda)] bg-[var(--s-cartao)]">
+              <div className="relative aspect-square">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/img/site/produto-${p.foto}.webp`} alt="" loading="lazy" className="h-full w-full object-cover" />
+                {p.na ? (
+                  <span className={`site-passo-${i} absolute right-1.5 bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--s-rosa)] text-[11px] font-black text-white shadow`}>
+                    1
                   </span>
-                ) : null}
+                ) : (
+                  <span className="absolute right-1.5 bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm font-black text-[#0d1b45] shadow">+</span>
+                )}
               </div>
               <div className="p-2">
-                <p className="truncate text-[10px] font-bold">{s.nome}</p>
-                <p className="text-[11px] font-extrabold">{BRL(s.preco)}</p>
+                <p className="truncate text-[10px] font-bold">{p.nome}</p>
+                <p className="text-[11px] font-extrabold">{BRL(p.preco)}</p>
               </div>
             </div>
           ))}
         </div>
-        <div className="relative px-3 pb-4">
-          <div className="site-passo-1 flex items-center justify-between rounded-2xl bg-[var(--s-rosa)] px-4 py-3 text-[12px] font-bold text-white shadow-lg">
-            <span>Ver pedido · 3</span>
-            <span>{BRL(55.9)}</span>
-          </div>
-          <div className="site-passo-5 absolute inset-x-3 bottom-4 flex items-center gap-2 rounded-2xl bg-[#13a05f] px-4 py-3 text-[12px] font-bold text-white shadow-lg">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25">✓</span>
-            Pedido ENC-7Q2K enviado
+        <div className="px-3 pb-4">
+          <div className="site-passo-4 flex items-center justify-between rounded-2xl bg-[var(--s-rosa)] px-4 py-3 text-[12px] font-bold text-white shadow-lg">
+            <span>Ver sacola · {naSacola.length} itens</span>
+            <span>{BRL(naSacola.reduce((s, p) => s + p.preco, 0))}</span>
           </div>
         </div>
       </div>
@@ -93,7 +99,7 @@ function Balao({ eu, passo, children, className = '' }: { eu?: boolean; passo: n
   return (
     <div className={`site-passo-${passo} flex ${eu ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[86%] rounded-2xl px-3 py-2 text-[11.5px] leading-snug shadow-sm ${eu ? 'rounded-br-md bg-[var(--s-zap-eu)]' : 'rounded-bl-md bg-[var(--s-cartao)]'} ${className}`}
+        className={`max-w-[86%] rounded-2xl px-3 py-2 text-[12px] leading-snug shadow-sm ${eu ? 'rounded-br-md bg-[var(--s-zap-eu)]' : 'rounded-bl-md bg-[var(--s-cartao)]'} ${className}`}
       >
         {children}
       </div>
@@ -101,17 +107,18 @@ function Balao({ eu, passo, children, className = '' }: { eu?: boolean; passo: n
   )
 }
 
-export function ConversaAssistente({ moldura = true }: { moldura?: boolean }) {
-  const corpo = (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2.5 bg-[#0f6e47] px-4 pt-11 pb-3 text-white">
+/** A conversa inteira, já acontecida: o áudio, a proposta, o SIM e o resumo do dia. */
+export function ConversaAssistente() {
+  return (
+    <div className="w-[340px] max-w-full overflow-hidden rounded-[28px] border border-[var(--s-borda)] bg-[var(--s-zap)] shadow-[var(--s-sombra-alta)]">
+      <div className="flex items-center gap-2.5 bg-[#0f6e47] px-4 py-3 text-white">
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-xs font-black">N</span>
         <div className="leading-tight">
-          <p className="text-[12.5px] font-bold">Assistente da loja</p>
-          <p className="text-[10px] opacity-80">online</p>
+          <p className="text-[13px] font-bold">Assistente da loja</p>
+          <p className="text-[10.5px] opacity-80">online</p>
         </div>
       </div>
-      <div className="flex flex-1 flex-col gap-2 bg-[var(--s-zap)] p-3">
+      <div className="flex flex-col gap-1.5 p-3">
         <Balao eu passo={0}>
           <span className="flex items-center gap-2 text-[#13a05f]">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#13a05f] text-[10px] text-white">▶</span>
@@ -120,36 +127,32 @@ export function ConversaAssistente({ moldura = true }: { moldura?: boolean }) {
                 <i key={i} style={{ height: h, animationDelay: `${i * 0.07}s` }} />
               ))}
             </span>
-            <span className="text-[10px] text-[var(--s-tinta-2)]">0:06</span>
+            <span className="text-[10px] text-[var(--s-tinta-2)]">0:07</span>
           </span>
         </Balao>
         <Balao passo={1}>
-          <span className="text-[var(--s-tinta-2)]">Ouvi:</span> “comprei agora 10 kg de picanha a 39,90 o quilo”
+          <span className="text-[var(--s-tinta-2)]">Ouvi:</span> “chegaram 48 garrafas de água de 500 ml, paguei 1,20 cada”
         </Balao>
         <Balao passo={2} className="border-l-4 border-[#13a05f]">
           <b>Entrada na Loja Centro</b>
           <br />
-          10 kg Picanha — R$ 39,90/kg = <b>R$ 399,00</b>
+          48 un Água mineral 500 ml × R$ 1,20 = <b>R$ 57,60</b>
           <br />
           <span className="text-[var(--s-tinta-2)]">Responda SIM para lançar.</span>
         </Balao>
-        <Balao eu passo={4}>sim</Balao>
-        <Balao passo={5}>
-          Feito: entrada de 10 kg de Picanha lançada. <b>Saldo agora: 14 kg.</b>
-        </Balao>
-        <Balao passo={7}>
-          Bom dia! Ontem: <b>R$ 4.812</b> em 63 vendas. Acaba hoje: <b>linguiça toscana</b>. 2 contas vencem.
+        <Balao eu passo={3}>sim</Balao>
+        <Balao passo={4}>
+          Feito ✓ Entrada lançada. <b>Saldo agora: 60 un.</b>
         </Balao>
       </div>
     </div>
   )
-  return moldura ? <Celular>{corpo}</Celular> : corpo
 }
 
 /* ── o Farol escrevendo ─────────────────────────────────── */
 export function PecasFarol() {
   return (
-    <div className="relative mx-auto w-[340px] max-w-full">
+    <div className="relative mx-auto w-[340px] max-w-full pt-[6.5rem] pb-[7.5rem]">
       <div className="site-cartao rounded-3xl p-5" style={cor('var(--s-sol)')}>
         <div className="flex items-center justify-between">
           <span className="site-olho text-[var(--s-sol)]">Roteiro de Reels</span>
@@ -157,12 +160,14 @@ export function PecasFarol() {
         </div>
         <p className="mt-3 text-lg font-extrabold leading-snug">“O picolé que salva o calor de sábado”</p>
         <div className="mt-3 flex flex-col gap-1.5 text-[13px] text-[var(--s-tinta-2)]">
-          <p className="site-digita max-w-full">0–3s: close no picolé suando no balcão…</p>
+          <p>
+            0–3s: close no picolé suando no balcão<span className="site-digita" aria-hidden />
+          </p>
           <p className="site-passo-3">3–8s: a mão tira do freezer, o som do papel.</p>
           <p className="site-passo-4">8–15s: preço na tela e “só hoje, dois por R$ 7”.</p>
         </div>
       </div>
-      <div className="site-passo-5 site-cartao absolute -right-3 -bottom-10 w-48 rotate-3 rounded-2xl p-3.5 sm:-right-10">
+      <div className="site-passo-5 site-cartao absolute right-0 bottom-0 w-48 rotate-3 rounded-2xl p-3.5">
         <span className="site-olho text-[var(--s-violeta)]">Carrossel</span>
         <div className="mt-2 flex gap-1">
           {['#ff7aa2', '#ffb347', '#7cc576', '#6d4cf0', '#3fa7ff'].map((c) => (
@@ -171,7 +176,7 @@ export function PecasFarol() {
         </div>
         <p className="mt-2 text-[11px] font-semibold">5 lâminas · “sabores da semana”</p>
       </div>
-      <div className="site-passo-6 site-cartao absolute -top-8 -left-3 w-44 -rotate-3 rounded-2xl p-3.5 sm:-left-10">
+      <div className="site-passo-6 site-cartao absolute top-0 left-0 w-44 -rotate-3 rounded-2xl p-3.5">
         <span className="site-olho text-[var(--s-verde)]">Calendário</span>
         <div className="mt-2 grid grid-cols-7 gap-1">
           {Array.from({ length: 21 }, (_, i) => (
@@ -336,9 +341,9 @@ export function MiniEstoque() {
   return (
     <div className="flex flex-col gap-2 text-[12px]">
       {[
-        { n: 'Picanha', s: '14 kg', p: 70, c: 'var(--s-verde)', a: 'ok' },
-        { n: 'Linguiça toscana', s: '2 kg', p: 12, c: 'var(--s-rosa)', a: 'acaba hoje' },
-        { n: 'Fraldinha', s: '6 kg', p: 34, c: 'var(--s-sol)', a: 'pedir até sexta' },
+        { n: 'Água mineral 500 ml', s: '60 un', p: 70, c: 'var(--s-verde)', a: 'ok' },
+        { n: 'Café em grãos 1 kg', s: '2 un', p: 12, c: 'var(--s-rosa)', a: 'acaba hoje' },
+        { n: 'Pão de forma', s: '6 un', p: 34, c: 'var(--s-sol)', a: 'pedir até sexta' },
       ].map((x) => (
         <div key={x.n} className="site-cartao rounded-xl px-3 py-2">
           <div className="flex justify-between">

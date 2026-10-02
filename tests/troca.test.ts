@@ -39,7 +39,7 @@ const GER1 = sessao('usr-ger1', 'Gerente Centro', [{ papel: 'GERENTE', unidadeId
 const BALCAO = sessao('usr-bal1', 'Balcão Centro', [{ papel: 'BALCAO', unidadeId: 'uni-a1' }])
 
 const SENHA = 'senha-boa-123'
-const PIN_GER1 = '2580'
+const PIN_GER1 = '258014'
 
 const SEMENTE = `
   insert into orgs (id, nome, slug, plano, situacao, modulos, desconto_maximo, pontos_ativo, pontos_por_real, ponto_vale,
@@ -467,6 +467,50 @@ describe('troca sem a compra (comprada no sistema anterior)', () => {
   it('quem pode dar desconto não precisa de PIN; preço de dedo errado é recusado', async () => {
     expect(await trocar({ semCompra, leva: [] , clienteId: 'cli-2' }, DONA)).toMatchObject({ ok: true, vale: { saldo: 89.9 } })
     expect(await trocar({ semCompra: [{ variacaoId: 'var-blu', quantidade: 1, precoUnit: 899 }], leva: [] }, DONA)).toMatchObject({ ok: false, motivo: 'preco_errado' })
+  })
+
+  it('o preço vai até a etiqueta mais cara de hoje (não 5×): R$ 130 por uma blusa de até R$ 120 é recusado', async () => {
+    const antes = await contar('vales')
+    expect(await trocar({ semCompra: [{ variacaoId: 'var-blu', quantidade: 1, precoUnit: 130 }], leva: [] }, DONA)).toMatchObject({ ok: false, motivo: 'preco_errado' })
+    expect(await contar('vales')).toBe(antes)
+    // A etiqueta do crediário (120) é a mais cara: até ela, passa.
+    expect(await trocar({ semCompra: [{ variacaoId: 'var-blu', quantidade: 1, precoUnit: 120 }], leva: [], clienteId: 'cli-2' }, DONA)).toMatchObject({ ok: true, credito: 120 })
+  })
+
+  it('no máximo 20 peças de cada item, somadas as linhas', async () => {
+    const r = await trocar(
+      { semCompra: [{ variacaoId: 'var-len', quantidade: 15, precoUnit: 30 }, { variacaoId: 'var-len', quantidade: 6, precoUnit: 30 }], leva: [] },
+      DONA,
+    )
+    expect(r).toMatchObject({ ok: false, motivo: 'quantidade_demais' })
+  })
+
+  it('acima de R$ 2.000 de crédito, nem a dona autoriza sozinha: o PIN tem de ser de OUTRA pessoa', async () => {
+    // 12 vestidos a R$ 180 (a etiqueta do crediário) = R$ 2.160.
+    const semCompra = [{ variacaoId: 'var-ves', quantidade: 12, precoUnit: 180 }]
+    const antes = await contar('vales')
+    expect(await trocar({ semCompra, leva: [], clienteId: 'cli-2' }, DONA)).toMatchObject({ ok: false, motivo: 'precisa_pin', precisaPin: true })
+    // A gerente com o PIN dela mesma: recusado.
+    expect(await trocar({ semCompra, leva: [], clienteId: 'cli-2', pin: PIN_GER1 }, GER1)).toMatchObject({ ok: false, motivo: 'autorizacao_recusada' })
+    expect(await contar('vales')).toBe(antes)
+    // A dona com o PIN da gerente: passa, e fica escrito quem autorizou.
+    expect(await trocar({ semCompra, leva: [], clienteId: 'cli-2', pin: PIN_GER1 }, DONA)).toMatchObject({ ok: true, credito: 2160, autorizadoPor: 'Gerente Centro' })
+  })
+})
+
+describe('consultar o vale no balcão', () => {
+  it('pede a loja, e para depois de cinco códigos que não existem (mesmo o vale certo espera)', async () => {
+    const [vale] = await linha<{ codigo: string }>(`select codigo from vales where unidade_id = 'uni-a1' and saldo > 0 limit 1`)
+    expect(vale).toBeDefined()
+    await expect(m.devolucao.consultarVale(BALCAO, vale!.codigo)).rejects.toThrow(/Sem permissão/)
+    await expect(m.devolucao.consultarVale(BALCAO, vale!.codigo, 'uni-a2')).rejects.toThrow(/Sem permissão/)
+    expect(await m.devolucao.consultarVale(BALCAO, vale!.codigo, 'uni-a1')).toMatchObject({ ok: true })
+    for (let i = 0; i < 5; i++) {
+      expect(await m.devolucao.consultarVale(BALCAO, `VT-ZZZZZ-ZZZZ${'ABCDE'[i]}`, 'uni-a1')).toMatchObject({ ok: false, motivo: 'nao_achado' })
+    }
+    expect(await m.devolucao.consultarVale(BALCAO, vale!.codigo, 'uni-a1')).toMatchObject({ ok: false, motivo: 'bloqueado' })
+    // Por pessoa: a dona continua consultando.
+    expect(await m.devolucao.consultarVale(DONA, vale!.codigo, 'uni-a1')).toMatchObject({ ok: true })
   })
 })
 

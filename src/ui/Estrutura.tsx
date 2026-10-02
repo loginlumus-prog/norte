@@ -29,7 +29,8 @@ import { CAPACIDADES, pode, type Capacidade, type Sessao } from '@/servidor/perm
 import { moduloLigado, type Modulo } from '@/servidor/modulos'
 import { vocabularioDaEmpresa, nomesNoGuia, nomeDoGrupo, type PalavraDoMenu } from '@/servidor/vocabulario'
 import { sairAcao } from '@/app/[empresa]/acoes'
-import { TRANCA_MIN, AVISO_SEG } from '@/servidor/presenca'
+import { TRANCA_MIN, AVISO_SEG, trancadaAoAbrir } from '@/servidor/presenca'
+import { lerSessao, ultimoToque } from '@/servidor/sessao'
 import { TrocaTema, type Tema } from './TrocaTema'
 import { TrocaModo } from './TrocaModo'
 import { lerModo } from '@/servidor/modo'
@@ -105,6 +106,13 @@ export async function Estrutura({
     : null
 
   const modo = await lerModo()
+  // A tela já nasce trancada quando ninguém mexe neste aparelho há
+  // TRANCA_MIN — senão o F5 (ou uma aba nova) destrancava. Ver `marcarToque`.
+  const trancada = trancadaAoAbrir(
+    new Date(),
+    await ultimoToque(empresa.slug),
+    (await lerSessao(empresa.slug))?.nasceu ?? null,
+  )
   const iniciais =
     sessao.nome
       .split(/\s+/)
@@ -372,7 +380,7 @@ export async function Estrutura({
         <span
           aria-hidden
           className="h-3.5 w-1 shrink-0 rounded-full"
-          style={{ background: empresa.corMarca || 'var(--sol-claro)' }}
+          style={{ background: empresa.corMarca && /^#[0-9a-f]{6}$/i.test(empresa.corMarca) ? empresa.corMarca : 'var(--sol-claro)' }}
         />
         <span className="truncate text-xs font-semibold text-lado-tinta-2">{empresa.nome}</span>
       </div>
@@ -454,7 +462,13 @@ export async function Estrutura({
 
       {/* Trinta minutos parada, a tela tranca e pede a senha. Mora aqui
           porque aqui é por onde toda tela passa — ver Tranca.tsx. */}
-      <Tranca slug={empresa.slug} nome={sessao.nome} trancaMin={TRANCA_MIN} avisoSeg={AVISO_SEG} />
+      <Tranca
+        slug={empresa.slug}
+        nome={sessao.nome}
+        trancaMin={TRANCA_MIN}
+        avisoSeg={AVISO_SEG}
+        trancadaAoAbrir={trancada}
+      />
       {/* O Guia recebe o que esta pessoa abre: a busca não lista tela que
           daria "este endereço não abre" para ela. */}
       <Guia

@@ -339,7 +339,7 @@ function QuadroDoTeste({ a }: { a: Assinatura }) {
  */
 function ContaDoMes({ a }: { a: Assinatura }) {
   const p: Limite = PLANOS[a.plano]
-  const { total, extras, porExtra, fabricas, porFabrica } = a.mensal
+  const { total, extras, porExtra, fabricas, porFabrica, farol, farolMarcas } = a.mensal
 
   // Corporativo: não há conta de tabela para mostrar.
   if (total === null) {
@@ -375,6 +375,11 @@ function ContaDoMes({ a }: { a: Assinatura }) {
     linhas.push([`${fabricas === 1 ? 'Fábrica' : `${fabricas} fábricas`} × ${brl(porFabrica)}`, fabricas * porFabrica])
   }
   if (comAssistente) linhas.push(['Assistente, com o crédito de IA do mês', PRECOS.assistente])
+  // O Farol é contratado à parte, por marca: sem esta linha a conta "não
+  // fechava" e a tela escondia todas as parcelas, mostrando só o total.
+  if (farol > 0) {
+    linhas.push([`Farol, ${farolMarcas === 1 ? '1 marca' : `${farolMarcas} marcas`}`, farol])
+  }
   const fecha = linhas.reduce((soma, [, v]) => soma + v, 0) === total
 
   return (

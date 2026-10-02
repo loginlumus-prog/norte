@@ -313,16 +313,29 @@ export async function resumoCrediario(sessao: Sessao, unidadeIds: string[]): Pro
 /**
  * Quanto cada cliente deve, para o balcão avisar "EM DIA" ou "ATRASADO" na
  * hora de escolher a pessoa. Recebe o `db` de quem já está numa transação.
+ *
+ * Com a `sessao`, só as parcelas das lojas em que a pessoa vê o crediário
+ * (`crediario.ver`) — a mesma régua de `situacaoDeCredito`. Sem ela, a
+ * vendedora presa à loja do Centro via, na lista de clientes, na busca do
+ * balcão e no CSV, a dívida que a cliente tem no Shopping. Quem chama de uma
+ * tela PASSA a sessão; sem ela é só para quem já filtrou antes.
  */
 export async function situacaoDosClientes(
   db: BancoDaOrg,
   clienteIds: string[],
+  sessao?: Sessao,
 ): Promise<Map<string, { devendo: number; vencido: number }>> {
   const mapa = new Map<string, { devendo: number; vencido: number }>()
   if (clienteIds.length === 0) return mapa
+  const visiveis = sessao ? unidadesQuePodem(sessao, 'crediario.ver') : 'todas'
+  if (visiveis !== 'todas' && visiveis.length === 0) return mapa
   const hoje = diaEmSP()
   const abertas = await db.parcela.findMany({
-    where: { clienteId: { in: clienteIds }, quitadaEm: null },
+    where: {
+      clienteId: { in: clienteIds },
+      quitadaEm: null,
+      ...(visiveis === 'todas' ? {} : { unidadeId: { in: visiveis } }),
+    },
     select: { clienteId: true, vencimento: true, valor: true, pago: true, desconto: true },
   })
   for (const p of abertas) {
@@ -471,6 +484,10 @@ export async function receberParcela(
       formas: [{ forma: p.forma, valor: reais(valorC) }],
       descontoAtraso: reais(sugeridoC - jurosC),
       motivo: p.motivo ?? (jurosC < sugeridoC ? 'atraso combinado no recebimento' : null),
+      // O atraso que entra aqui é o da conta sem arredondar (`sugeridoC`):
+      // com o arredondamento da empresa por cima, os centavos dele saíam do
+      // valor e a parcela "quitada" ficava aberta com R$ 0,04.
+      semArredondar: true,
     },
     agora,
   )
@@ -489,6 +506,11 @@ export type ConfigCrediario = {
   multaPct: number
   carenciaDias: number
   arredondar: boolean
+  /**
+   * Parcela vencida há mais que isto (em dias) faz a venda nova no crediário
+   * pedir autorização (ver venda.ts). `null` = desligado.
+   */
+  atrasoDias: number | null
 }
 
 /** A configuração do crediário da empresa, para a tela e para o balcão. */
@@ -499,6 +521,7 @@ export async function configCrediario(sessao: Sessao): Promise<ConfigCrediario> 
       select: {
         crediarioJurosMes: true, crediarioMaxParcelas: true, crediarioDiasEntre: true,
         crediarioMultaPct: true, crediarioCarenciaDias: true, crediarioArredondar: true,
+        crediarioAtrasoDias: true,
       },
     }),
   )
@@ -509,16 +532,18 @@ export async function configCrediario(sessao: Sessao): Promise<ConfigCrediario> 
     multaPct: Number(org.crediarioMultaPct),
     carenciaDias: org.crediarioCarenciaDias,
     arredondar: org.crediarioArredondar,
+    atrasoDias: org.crediarioAtrasoDias,
   }
 }
 
 /**
- * Grava a regra. Os campos do atraso (multa, carência, arredondar) são
- * opcionais: quem não os manda (a tela antiga de Configurações) não os apaga.
+ * Grava a regra. Os campos do atraso (multa, carência, arredondar) e o
+ * `atrasoDias` são opcionais: quem não os manda (a tela do Crediário, a
+ * antiga de Configurações) não os apaga. `atrasoDias: null` desliga.
  */
 export async function salvarConfigCrediario(
   sessao: Sessao,
-  c: { jurosMes: number; maxParcelas: number; diasEntre: number; multaPct?: number; carenciaDias?: number; arredondar?: boolean },
+  c: { jurosMes: number; maxParcelas: number; diasEntre: number; multaPct?: number; carenciaDias?: number; arredondar?: boolean; atrasoDias?: number | null },
 ) {
   exigir(sessao, 'empresa.configurar')
   const jurosMes = Math.min(Math.max(Number(c.jurosMes) || 0, 0), 20)
@@ -530,6 +555,16 @@ export async function salvarConfigCrediario(
       : {}),
     ...(c.carenciaDias !== undefined ? { crediarioCarenciaDias: Math.min(Math.max(Math.round(Number(c.carenciaDias) || 0), 0), 30) } : {}),
     ...(c.arredondar !== undefined ? { crediarioArredondar: !!c.arredondar } : {}),
+    // Fora de 1–365 (ou não-número) é desligado: zero dias pediria
+    // autorização a toda cliente com parcela vencida ontem.
+    ...(c.atrasoDias !== undefined
+      ? {
+          crediarioAtrasoDias:
+            c.atrasoDias !== null && Number.isFinite(Number(c.atrasoDias)) && Math.round(Number(c.atrasoDias)) >= 1
+              ? Math.min(Math.round(Number(c.atrasoDias)), 365)
+              : null,
+        }
+      : {}),
   }
   await comoOrg(sessao.orgId, async (db) => {
     await db.org.update({

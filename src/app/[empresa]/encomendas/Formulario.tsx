@@ -406,6 +406,21 @@ export function Formulario({
           />
         )}
 
+        {/* Baixar o valor além do teto de desconto: o servidor pediu o PIN de
+            quem autoriza. O campo só aparece depois de pedido, e o PIN não
+            fica guardado em lugar nenhum da tela. */}
+        {estado.pedePin && (
+          <Campo
+            rotulo="PIN de quem autoriza o desconto"
+            name="pin"
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={12}
+            dica="Quem pode autorizar desconto digita o PIN dela aqui, e você salva de novo."
+          />
+        )}
+
         <div className="flex justify-end">
           <Botao type="submit" carregando={pendente} className={simples ? 'px-5 py-3 text-base' : undefined}>
             {pendente ? 'Salvando...' : editando ? 'Salvar mudanças' : 'Anotar encomenda'}

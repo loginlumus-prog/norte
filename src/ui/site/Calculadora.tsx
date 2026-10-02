@@ -75,7 +75,11 @@ export function Calculadora({ comecar }: { comecar: string }) {
     ...(marcas > 0 ? ([[`Farol · ${marcas} marca${marcas > 1 ? 's' : ''}`, PRECOS.farolMarca + (marcas - 1) * PRECOS.farolMarcaExtra]] as [string, number][]) : []),
   ]
   const mes = linhas.reduce((s, [, v]) => s + v, 0)
-  const noAnual = Math.round((mes * PRECOS.anualPagaMeses) / 12)
+  // O anual é `anualPagaMeses` mensalidades pagas de uma vez; o "por mês"
+  // é só essa conta dividida por 12 (arredondar o mês e multiplicar por 12
+  // inventava uns reais a mais no total).
+  const ano = mes * PRECOS.anualPagaMeses
+  const noAnual = Math.round(ano / 12)
   const mostrado = anual ? noAnual : mes
 
   return (
@@ -116,7 +120,7 @@ export function Calculadora({ comecar }: { comecar: string }) {
           <p className="text-[13px] text-white/80">{anual ? 'Por mês, no anual' : 'Por mês'}</p>
           <p className="font-[family-name:var(--font-display)] text-6xl font-extrabold tracking-tight tabular-nums">{reais(mostrado)}</p>
           <p className="mt-1 text-[13px] text-white/80">
-            {anual ? `${reais(noAnual * 12)} por ano · economia de ${reais(mes * 12 - noAnual * 12)}` : `Equipe sem limite · ${reais(Math.round(mostrado / lojas))} por loja`}
+            {anual ? `${reais(ano)} por ano, pago de uma vez · economia de ${reais(mes * 12 - ano)}` : `Equipe sem limite · ${reais(Math.round(mostrado / lojas))} por loja`}
           </p>
           <a href={comecar} className="site-botao mt-6 w-full bg-white px-6 py-3.5 text-[15px] text-[#0d1b45] hover:-translate-y-0.5">
             Testar {PRECOS.diasDeTeste} dias grátis

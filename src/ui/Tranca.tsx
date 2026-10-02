@@ -18,15 +18,21 @@
 // ── o que é do navegador e o que é do servidor ───────────────
 // A TRANCA em si mora só aqui, no navegador: quem abre as ferramentas do
 // navegador e apaga este quadro volta a mexer na tela. É uma escolha, não um
-// esquecimento. O servidor não sabe se a pessoa está mexendo — só sabe quando
-// ela PEDE alguma coisa —, e trancar pelo relógio do servidor derrubaria a
-// venda de quem passou meia hora montando um carrinho sem salvar nada. O que
-// é segurança de verdade está no servidor: a senha para destrancar passa pelo
-// freio do login (`destrancarAcao`), a vaga tomada por outra pessoa derruba a
-// sessão, e "Sair" mata o cookie no servidor. Se um dia a tranca precisar
-// valer contra quem mexe no navegador, o caminho é este componente mandar um
-// "ainda estou aqui" periódico enquanto há toque, e o servidor recusar ação
-// de sessão sem sinal há mais de TRANCA_MIN.
+// esquecimento. Trancar pelo servidor — recusar ação de quem está parado —
+// derrubaria a venda de quem passou meia hora montando um carrinho sem
+// salvar nada, justo na hora de cobrar. O que é segurança de verdade está no
+// servidor: a senha para destrancar passa pelo freio do login
+// (`destrancarAcao`), a vaga tomada por outra pessoa derruba a sessão, e
+// "Sair" mata o cookie no servidor.
+//
+// ── o F5 não destranca ───────────────────────────────────────
+// O relógio daqui nascia de novo a cada carregamento: trancada, bastava
+// apertar F5 ou abrir outra aba e a tela voltava aberta. Agora, enquanto
+// alguém mexe, esta tela manda um "ainda estou aqui" (`/<empresa>/sinal`, no
+// máximo um por minuto), que grava o último toque num cookie do aparelho. Ao
+// abrir, a moldura lê esse cookie e manda `trancadaAoAbrir` — parada há
+// TRANCA_MIN, a tela já nasce trancada. O mesmo sinal mantém a vaga da pessoa
+// viva enquanto ela lê sem trocar de tela.
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { destrancarAcao, sairAcao } from '@/app/[empresa]/acoes'
@@ -34,18 +40,29 @@ import { Botao, cx } from './base'
 
 const TOQUES = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'] as const
 
+/** Um "ainda estou aqui" por minuto basta: a régua da tranca é de meia hora. */
+const SINAL_MS = 60_000
+
+// Fora do componente: a moldura (e a tranca com ela) monta de novo a cada
+// tela, e o minuto entre um sinal e outro vale para a aba inteira.
+let enviadoEm = 0
+
 export function Tranca({
   slug,
   nome,
   trancaMin,
   avisoSeg,
+  trancadaAoAbrir = false,
 }: {
   slug: string
   nome: string
   trancaMin: number
   avisoSeg: number
+  /** Ninguém mexe neste aparelho há trancaMin: já abre pedindo a senha. */
+  trancadaAoAbrir?: boolean
 }) {
-  const [estado, setEstado] = useState<'ativo' | 'aviso' | 'trancado'>('ativo')
+  // Só vale ao montar: depois disso, quem decide é o relógio daqui.
+  const [estado, setEstado] = useState<'ativo' | 'aviso' | 'trancado'>(trancadaAoAbrir ? 'trancado' : 'ativo')
   const [restante, setRestante] = useState(avisoSeg)
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState<string | null>(null)
@@ -55,10 +72,32 @@ export function Tranca({
   const estadoRef = useRef(estado)
   estadoRef.current = estado
 
+  // "Ainda estou aqui." Sem esperar resposta, e sem reclamar se falhar (sem
+  // internet, o balcão continua vendendo): no pior caso, o próximo F5 pede a
+  // senha antes da hora. `keepalive` deixa o pedido sair mesmo se a pessoa
+  // estiver trocando de tela naquele instante.
+  const avisar = useRef((forcar = false) => {
+    const agora = Date.now()
+    if (!forcar && agora - enviadoEm < SINAL_MS) return
+    enviadoEm = agora
+    fetch(`/${slug}/sinal`, { method: 'POST', keepalive: true, credentials: 'same-origin' }).catch(() => {
+      enviadoEm = 0
+    })
+  })
+
+  // Sem internet, a tela só pode ser a cópia do balcão guardada no aparelho
+  // (public/sw.js) — e, se a cópia foi guardada trancada, a senha não tem
+  // como ser conferida: o balcão ficaria preso até a internet voltar, que é
+  // justamente quando ele mais precisa vender pela fila. Nesse caso abre.
+  useEffect(() => {
+    if (trancadaAoAbrir && !navigator.onLine) setEstado('ativo')
+  }, []) // só ao montar: depois disso, quem decide é o relógio daqui
+
   useEffect(() => {
     const tocou = () => {
       if (estadoRef.current === 'trancado') return
       ultimo.current = Date.now()
+      avisar.current()
       if (estadoRef.current === 'aviso') setEstado('ativo')
     }
     for (const t of TOQUES) window.addEventListener(t, tocou, { passive: true })
@@ -101,6 +140,9 @@ export function Tranca({
       const r = await destrancarAcao(slug, senha)
       if (r.ok) {
         ultimo.current = Date.now()
+        // Destrancou: o cookie do toque anda JÁ, senão um F5 logo em seguida
+        // pediria a senha de novo.
+        avisar.current(true)
         setSenha('')
         setErro(null)
         setErros(0)

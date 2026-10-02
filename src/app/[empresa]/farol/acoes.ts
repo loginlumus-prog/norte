@@ -44,7 +44,8 @@ export async function gerarAcao(
   d: { marcaId: string; tipo: string; pedido?: string; para?: string | null },
 ): Promise<EstadoFarol> {
   const sessao = await exigirSessao(slug)
-  if (!(d.tipo in TIPOS)) return { erro: 'Escolha o que o Farol vai escrever.' }
+  // `in` olha a cadeia de protótipos: "toString" e "constructor" passavam.
+  if (typeof d.tipo !== 'string' || !Object.hasOwn(TIPOS, d.tipo)) return { erro: 'Escolha o que o Farol vai escrever.' }
   try {
     const r = await gerarPeca(sessao, { marcaId: String(d.marcaId), tipo: d.tipo as TipoPecaFarol, pedido: d.pedido ?? null, para: d.para || null })
     revalidatePath(`/${slug}/farol`)

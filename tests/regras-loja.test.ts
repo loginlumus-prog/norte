@@ -148,14 +148,14 @@ describe('catálogo: o gerente de uma loja não decide pelas outras', () => {
     expect([r1.ok, r2.ok]).toEqual([false, false])
   })
 
-  it('corrige o NOME do produto de todas: a ficha manda o preço igual, e isso não é mexer em preço', async () => {
+  // Regra S8: o produto vendido em TODAS as lojas é da empresa inteira — nome
+  // e descrição também. Só quem edita produto na empresa inteira muda; o
+  // gerente de uma loja não renomeia o que as outras vendem.
+  it('não renomeia o produto de todas: a ficha é da empresa inteira', async () => {
     const r = await m.produto.editarProduto(GER_CENTRO, 'p-todas', fichaDe({ nome: 'Camiseta básica', preco: 50, custo: 20, vendidoEm: [] }))
-    expect(r.ok).toBe(true)
+    expect(r).toEqual({ ok: false, motivo: m.produto.MOTIVO_DE_OUTRA_LOJA })
     const [p] = await linha<{ nome: string }>(`select nome from produtos where id = 'p-todas'`)
-    expect(p!.nome).toBe('Camiseta básica')
-    // e o livro não diz que o preço mudou
-    const livro = await linha(`select id from auditoria where alvo_id = 'p-todas' and acao = 'produto.preco.alterou'`)
-    expect(livro).toHaveLength(0)
+    expect(p!.nome).toBe('Camiseta')
   })
 
   it('no que é só da loja dele, muda o preço', async () => {

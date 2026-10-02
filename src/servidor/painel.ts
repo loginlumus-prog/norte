@@ -22,6 +22,8 @@ import type { Plano } from '@prisma/client'
 import { exigir, soAsQuePode, type Sessao } from './permissao'
 import { janela, type Janela } from './periodo'
 import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
+import { reais } from './dinheiro'
+import { contaDoVendedor, realizadoPorVendedor, receitaPorLoja, somarReceita, ticketMedio } from './receita'
 
 export type PontoDoDia = { dia: string; total: number; vendas: number }
 
@@ -39,8 +41,14 @@ export type Resumo = {
    * `custo` é o custo da mercadoria que FICOU vendida: o das vendas menos o
    * das peças que voltaram em devolução na janela. A margem bruta é
    * (total − devoluções.valor − custo) sobre (total − devoluções.valor).
+   *
+   * `total` é o BRUTO (o que passou no balcão); `liquido` é a receita da
+   * régua de `receita.ts` — menos devolução e menos o vale de troca sem a
+   * compra. O ticket é o líquido sobre as vendas: o mesmo da Análise.
+   * (`liquido` é opcional só para quem monta um resumo à mão; `resumoDoPainel`
+   * sempre preenche.)
    */
-  atual: { vendas: number; total: number; ticket: number; custo: number }
+  atual: { vendas: number; total: number; liquido?: number; ticket: number; custo: number }
   /** A janela do MESMO tamanho, imediatamente antes. */
   anterior: { vendas: number; total: number }
   devolucoes: { quantas: number; valor: number }
@@ -52,6 +60,11 @@ export type Resumo = {
   /** `servico`: só serviço na categoria — a quantidade vira "24×", não "24 un". */
   porCategoria: { nome: string; total: number; quantidade: number; servico: boolean }[]
   porUnidade: { unidadeId: string; nome: string; total: number; vendas: number }[]
+  /**
+   * O líquido de cada vendedor, na conta da meta (`contaDoVendedor`): a troca
+   * paga com vale não conta de novo para quem registrou — a blusa trocada
+   * fica com quem a vendeu.
+   */
   porVendedor: { nome: string; total: number; vendas: number }[]
   maisVendidos: MaisVendido[]
   parados: { descricao: string; codigo: string | null; saldo: number; desde: number | null }[]
@@ -182,14 +195,30 @@ export async function resumoDoPainel(
        where u.id = any(${uni})
        group by u.id, u.nome order by 3 desc
     `
-    const porVendedor = await db.$queryRaw<{ nome: string; total: string; vendas: string }[]>`
-      select coalesce(v.vendedor_nome, 'sem vendedor') as nome,
-             sum(v.total) as total, count(*)::int as vendas
-        from vendas v
-       where v.unidade_id = any(${uni}) and v.situacao = 'CONCLUIDA'
-         and v.criada_em >= ${j.de} and v.criada_em < ${j.ate}
-       group by 1 order by 2 desc limit 8
-    `
+    // Por vendedor na conta da meta, e não o total bruto de cada um: a troca
+    // dava R$ 100 para quem vendeu a blusa e outros R$ 100 para quem
+    // registrou a troca — R$ 200 "vendidos" de uma blusa só.
+    const porVendedorLinhas = await realizadoPorVendedor(db, { de: j.de, ate: j.ate, unidadeIds: uni })
+    const idsVendedor = [...new Set(porVendedorLinhas.map((l) => l.vendedorId).filter((x): x is string => !!x))]
+    const nomesVendedor = new Map(
+      (await db.usuario.findMany({ where: { id: { in: idsVendedor } }, select: { id: true, nome: true } })).map((u) => [u.id, u.nome]),
+    )
+    const porPessoa = new Map<string, { nome: string; linhas: typeof porVendedorLinhas }>()
+    for (const l of porVendedorLinhas) {
+      const nome = l.vendedorId ? (nomesVendedor.get(l.vendedorId) ?? 'sem nome') : (l.nomeAvulso ?? 'sem vendedor')
+      const k = l.vendedorId ?? `avulso:${nome}`
+      const p = porPessoa.get(k) ?? { nome, linhas: [] }
+      p.linhas.push(l)
+      porPessoa.set(k, p)
+    }
+    const porVendedor = [...porPessoa.values()]
+      .map((p) => {
+        const c = contaDoVendedor(p.linhas)
+        return { nome: p.nome, total: reais(c.liquidoCent), vendas: c.vendas }
+      })
+      .filter((p) => p.total > 0 || p.vendas > 0)
+      .sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'))
+      .slice(0, 8)
     const maisVendidos = await db.$queryRaw<{ descricao: string; quantidade: string; total: string; servico: boolean }[]>`
       select i.descricao, sum(i.quantidade) as quantidade, sum(i.total) as total,
              bool_and(coalesce(p.servico, false)) as servico
@@ -217,7 +246,8 @@ export async function resumoDoPainel(
              -- erravam por um conforme a hora em que a tela abria.
              (select (${hoje}::date - max((v.criada_em at time zone 'UTC' at time zone 'America/Sao_Paulo')::date))::int
                 from venda_itens i join vendas v on v.id = i.venda_id
-               where i.variacao_id = va.id and v.unidade_id = any(${uni})) as dias
+               where i.variacao_id = va.id and v.unidade_id = any(${uni})
+                 and v.situacao = 'CONCLUIDA') as dias
         from variacoes va
         join produtos p on p.id = va.produto_id
         join estoque e on e.variacao_id = va.id and e.unidade_id = any(${uni})
@@ -226,6 +256,9 @@ export async function resumoDoPainel(
       having not exists (
                select 1 from venda_itens i join vendas v on v.id = i.venda_id
                 where i.variacao_id = va.id and v.unidade_id = any(${uni})
+                  -- Venda cancelada não é venda: a peça cuja única saída foi
+                  -- desfeita continua parada (a régua da Análise).
+                  and v.situacao = 'CONCLUIDA'
                   and v.criada_em >= ${trintaDias})
        order by saldo desc limit 8
     `
@@ -299,6 +332,7 @@ export async function resumoDoPainel(
     // custo dela tem de sair junto. Sem isto, a loja que devolveu muito
     // aparecia com margem PIOR do que a real — a receita caía e o custo não.
     const custoDevolvido = await custoDasDevolucoes(db, uni, j.de, j.ate)
+    const receita = somarReceita((await receitaPorLoja(db, uni, j.de, j.ate)).values())
 
     const total = n(totaisAtual._sum.total)
 
@@ -313,7 +347,8 @@ export async function resumoDoPainel(
       atual: {
         vendas: totaisAtual._count,
         total,
-        ticket: totaisAtual._count ? total / totaisAtual._count : 0,
+        liquido: reais(receita.liquidoCent),
+        ticket: ticketMedio(receita),
         custo: n(custoMes[0]?.custo) - custoDevolvido,
       },
       anterior: {
@@ -333,7 +368,7 @@ export async function resumoDoPainel(
       porUnidade: porUnidade.map((u) => ({
         unidadeId: u.unidadeId, nome: u.nome, total: n(u.total), vendas: n(u.vendas),
       })),
-      porVendedor: porVendedor.map((v) => ({ nome: v.nome, total: n(v.total), vendas: n(v.vendas) })),
+      porVendedor,
       maisVendidos: maisVendidos.map((i) => ({
         descricao: i.descricao, quantidade: n(i.quantidade), total: n(i.total), servico: !!i.servico,
       })),
@@ -385,6 +420,7 @@ export async function resumoDoPainel(
 
 export type ResumoDeHoje = {
   plano: Plano
+  /** `ticket` é o líquido sobre as vendas, a régua de `receita.ts` — a mesma do painel completo. */
   hoje: { total: number; vendas: number; ticket: number; ultima: Date | null }
   /** O mesmo dia da semana passada: até esta hora, e inteiro. */
   semanaPassada: { ateAgora: number; vendasAteAgora: number; diaInteiro: number }
@@ -465,12 +501,13 @@ export async function resumoDeHoje(
     `
 
     const total = n(hoje._sum.total)
+    const receitaHoje = somarReceita((await receitaPorLoja(db, uni, j.de, j.ate)).values())
     return {
       plano: org.plano,
       hoje: {
         total,
         vendas: hoje._count,
-        ticket: hoje._count ? total / hoje._count : 0,
+        ticket: ticketMedio(receitaHoje),
         ultima: hoje._max.criadaEm ?? null,
       },
       semanaPassada: {
@@ -514,7 +551,7 @@ export async function custoDasDevolucoes(
 
 const vazio = (): Resumo => ({
   plano: 'GRATIS',
-  atual: { vendas: 0, total: 0, ticket: 0, custo: 0 },
+  atual: { vendas: 0, total: 0, liquido: 0, ticket: 0, custo: 0 },
   anterior: { vendas: 0, total: 0 },
   devolucoes: { quantas: 0, valor: 0 },
   porDia: [], porDiaAnterior: [], porHora: [],

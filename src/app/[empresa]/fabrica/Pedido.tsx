@@ -19,7 +19,9 @@ export const SITUACAO_PEDIDO: Record<PedidoNaTela['situacao'], { rotulo: string;
 }
 
 export function CabecalhoDoPedido({ p, acao }: { p: PedidoNaTela; acao?: ReactNode }) {
-  const s = SITUACAO_PEDIDO[p.situacao]
+  // Aberto com parte já mandada: a remessa parcial deixa o pedido esperando o resto.
+  const emParte = p.situacao === 'ABERTO' && p.itens.some((i) => (i.enviada ?? 0) > 0)
+  const s = emParte ? { rotulo: 'parte já foi — esperando o resto', nivel: 'atencao' as Nivel } : SITUACAO_PEDIDO[p.situacao]
   const passos = [
     `pedido ${quando(p.criadoEm)} por ${p.pedidoPor}`,
     p.enviadoEm && `mandado ${quando(p.enviadoEm)}${p.enviadoPor ? ` por ${p.enviadoPor}` : ''}`,
@@ -45,7 +47,7 @@ export function CabecalhoDoPedido({ p, acao }: { p: PedidoNaTela; acao?: ReactNo
 
 /** Os itens de um pedido já mandado (ou recebido): pedido, foi, chegou, diferença. */
 export function ItensDoPedido({ p }: { p: PedidoNaTela }) {
-  const mandado = p.situacao === 'ENVIADO' || p.situacao === 'RECEBIDO'
+  const mandado = p.situacao === 'ENVIADO' || p.situacao === 'RECEBIDO' || p.itens.some((i) => (i.enviada ?? 0) > 0)
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[32rem] text-sm">
@@ -75,8 +77,8 @@ export function ItensDoPedido({ p }: { p: PedidoNaTela }) {
                   <td className="numero py-1.5 pr-3 text-right text-tinta">{i.recebida == null ? '—' : quantidade(i.recebida, i.medida)}</td>
                 )}
                 {p.situacao === 'RECEBIDO' && (
-                  <td className={cx('numero py-1.5 pr-3 text-right', falta > 0 ? 'font-semibold text-critico' : 'text-tinta-3')}>
-                    {falta > 0 ? `faltou ${quantidade(falta, i.medida)}` : 'ok'}
+                  <td className={cx('numero py-1.5 pr-3 text-right', falta > 0 ? 'font-semibold text-critico' : falta < 0 ? 'font-semibold text-atencao' : 'text-tinta-3')}>
+                    {falta > 0 ? `faltou ${quantidade(falta, i.medida)}` : falta < 0 ? `veio ${quantidade(-falta, i.medida)} a mais` : 'ok'}
                   </td>
                 )}
                 {mandado && <td className="py-1.5 font-mono text-xs text-tinta-3">{i.lote ?? '—'}</td>}

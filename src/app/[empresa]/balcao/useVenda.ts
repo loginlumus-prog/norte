@@ -177,6 +177,7 @@ function motivoEmPalavras(motivo: string): string {
     loja_nao_vende: 'A loja não vende (depósito ou fechada).',
     item_inativo: 'Um produto foi desativado no cadastro.',
     quantidade_fracionada: 'Quantidade quebrada em produto por unidade.',
+    crediario_pede_autorizacao: 'O crediário passa do limite da cliente ou ela tem parcela atrasada: precisa de autorização.',
   }
   return m[motivo] ?? 'O servidor recusou esta venda.'
 }
@@ -393,7 +394,7 @@ export function useVenda({
     )
     if (encomenda.faltaram) {
       setAviso(
-        `${encomenda.faltaram === 1 ? 'Um item' : `${encomenda.faltaram} itens`} do pedido de ${encomenda.clienteNome} não ${encomenda.faltaram === 1 ? 'é' : 'são'} mais vendido${encomenda.faltaram === 1 ? '' : 's'} nesta loja e ficou de fora. Confira com a cliente.`,
+        `${encomenda.faltaram === 1 ? 'Um item' : `${encomenda.faltaram} itens`} do pedido de ${encomenda.clienteNome} não ${encomenda.faltaram === 1 ? 'é' : 'são'} mais vendido${encomenda.faltaram === 1 ? '' : 's'} nesta loja e ficou de fora — e o pedido só fecha com todos os produtos dele. Combine com a cliente: cancele esta encomenda em Encomendas e venda o que ela levar.`,
       )
     }
     // Só na montagem: a encomenda é do endereço que abriu a tela.
@@ -842,6 +843,8 @@ export function useVenda({
           r.motivo === 'nao_achado' ? 'Vale não encontrado. Confira o código.'
           : r.motivo === 'zerado' ? 'Este vale já foi todo usado.'
           : r.motivo === 'outra_loja' ? `Este vale é da ${r.loja} e só vale lá.`
+          // Muitos códigos errados em seguida: a consulta trava por uns minutos.
+          : r.motivo === 'bloqueado' ? r.recado
           : 'Este vale venceu.',
         )
         if (codigoDireto) setValeAberto(true)
@@ -1055,7 +1058,7 @@ export function useVenda({
           texto: `Sem estoque: ${r.faltando.map((f) => `${f.descricao} (tem ${f.tem})`).join(', ')}`,
         })
       } else if (r.motivo === 'pagamento_nao_fecha') {
-        setRecado({ nivel: 'critico', texto: `A conta não fecha: falta ${brl(r.total - r.pago)}` })
+        setRecado({ nivel: 'critico', texto: r.recado ?? `A conta não fecha: falta ${brl(r.total - r.pago)}` })
       } else if (r.motivo === 'caixa_fechado') {
         // Volta quando o caixa desta loja fechou no meio do turno (outra aba,
         // outra pessoa) e quando a venda tem dinheiro sem caixa aberto: o
@@ -1113,6 +1116,11 @@ export function useVenda({
         setPagos((p) => p.filter((x) => x.forma !== 'VALE'))
       } else if (r.motivo === 'crediario_recusado') {
         setRecado({ nivel: 'critico', texto: r.recado })
+      } else if (r.motivo === 'crediario_pede_autorizacao') {
+        // Limite da cliente ou parcela atrasada além da regra: não é trava, é
+        // a gerente olhando. O mesmo pedido de PIN do desconto.
+        setRecado(null)
+        setPedidoDePin({ motivo: r.recado })
       } else if (r.motivo === 'agendamento_recusado') {
         // O horário sai da venda (a venda pode seguir sem ele), e a frase diz
         // por quê — quase sempre: já foi cobrado em outra aba.

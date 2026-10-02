@@ -52,9 +52,10 @@ const SEMENTE = `
     ('cli-pedro', 'org-a', 'Pedro Sem Aceite', '71999990002', 'NAO_PERGUNTADO', now()),
     ('cli-parou', 'org-a', 'Carla Parou', '71999990003', 'SIM', now());
   insert into optout_whatsapp (id, org_id, telefone, origem) values ('opt-1', 'org-a', '7199990003', 'parar');
-  insert into produtos (id, org_id, nome, preco_vista, preco_cartao, preco_crediario, servico, duracao_min, atualizado_em) values
-    ('p-mani', 'org-a', 'Manicure', 40, 40, 40, true, 45, now()),
-    ('p-esm', 'org-a', 'Esmalte vermelho', 15, 15, 15, false, null, now());
+  -- O esmalte é material de uso (uso_interno): só ele sai como consumo.
+  insert into produtos (id, org_id, nome, preco_vista, preco_cartao, preco_crediario, servico, duracao_min, uso_interno, atualizado_em) values
+    ('p-mani', 'org-a', 'Manicure', 40, 40, 40, true, 45, false, now()),
+    ('p-esm', 'org-a', 'Esmalte vermelho', 15, 15, 15, false, null, true, now());
   insert into variacoes (id, org_id, produto_id, codigo, padrao) values
     ('v-mani', 'org-a', 'p-mani', 'MAN001', true),
     ('v-esm', 'org-a', 'p-esm', 'ESM001', true);
