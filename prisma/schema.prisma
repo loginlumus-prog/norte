@@ -226,14 +226,17 @@ model Org {
 
   recargas RecargaIA[]
 
-  unidades  Unidade[]
-  usuarios  Usuario[]
-  presencas Presenca[]
-  acessos   Acesso[]
-  convites  Convite[]
-  cargos    Cargo[]
-  auditoria Auditoria[]
-  cobranca  Cobranca?
+  unidades       Unidade[]
+  usuarios       Usuario[]
+  presencas      Presenca[]
+  acessos        Acesso[]
+  convites       Convite[]
+  cargos         Cargo[]
+  receitas       Receita[]
+  ordensProducao OrdemProducao[]
+  pedidosFabrica PedidoFabrica[]
+  auditoria      Auditoria[]
+  cobranca       Cobranca?
 
   categorias            Categoria[]
   movimentosPontos      MovimentoPontos[]
@@ -339,6 +342,10 @@ model Unidade {
   ramo String?
 
   ehDeposito Boolean @default(false) @map("eh_deposito")
+  /// FÁBRICA: produz o que as lojas vendem (ficha técnica, ordem de produção,
+  /// lote). É também um depósito — não vende no balcão —, e as lojas pedem a
+  /// ela. Ver src/servidor/fabrica.ts.
+  ehFabrica  Boolean @default(false) @map("eh_fabrica")
   ativa      Boolean @default(true)
 
   /// Contador do número da venda desta unidade.
@@ -373,6 +380,9 @@ model Unidade {
   mensalidades          Mensalidade[]
   pagamentosMensalidade PagamentoMensalidade[]
   recibosCrediario      ReciboCrediario[]
+  ordensProducao        OrdemProducao[]
+  pedidosQueFez         PedidoFabrica[]        @relation("pedidoDaLoja")
+  pedidosQueAtende      PedidoFabrica[]        @relation("pedidoParaFabrica")
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -1028,11 +1038,16 @@ model Variacao {
   padrao Boolean @default(false)
   ativa  Boolean @default(true)
 
-  opcoes      VariacaoOpcao[]
-  estoques    Estoque[]
-  movimentos  MovimentoEstoque[]
-  vendaItens  VendaItem[]
-  itensCompra ItemCompra[]
+  opcoes          VariacaoOpcao[]
+  estoques        Estoque[]
+  movimentos      MovimentoEstoque[]
+  vendaItens      VendaItem[]
+  itensCompra     ItemCompra[]
+  receita         Receita?            @relation("receitaDoProduto")
+  usadaEmReceitas ReceitaItem[]
+  ordensProducao  OrdemProducao[]
+  consumosOrdem   OrdemConsumo[]
+  pedidosFabrica  PedidoFabricaItem[]
 
   criadaEm DateTime @default(now()) @map("criada_em")
 
@@ -3402,4 +3417,190 @@ model PagamentoMensalidade {
   @@index([orgId, unidadeId, criadoEm])
   @@index([orgId, caixaId])
   @@map("pagamentos_mensalidade")
+}
+
+// ═════════════════════════════════════════════════════════════
+// FÁBRICA — ficha técnica, produção e o pedido das lojas
+// ═════════════════════════════════════════════════════════════
+//
+// A fábrica é uma unidade (`Unidade.ehFabrica`). O que ela usa (leite, calda,
+// pote, palito) é produto de MATERIAL DE USO (`Produto.usoInterno`): tem
+// estoque, compra e custo, e não aparece no balcão. O que ela faz é produto
+// comum, vendido nas lojas. A receita liga os dois, e a ordem de produção é o
+// único jeito de o estoque andar de um para o outro: baixa os insumos e dá
+// entrada no pronto, com lote e validade, no mesmo instante.
+
+/// FICHA TÉCNICA: o que vai numa batelada de um produto feito na casa, e
+/// quanto ela rende. Uma por variação. Receita de vários níveis (a calda base
+/// que vira vários sabores) é a calda como produto de material de uso, com a
+/// receita dela.
+model Receita {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  variacaoId String   @unique @map("variacao_id")
+  variacao   Variacao @relation("receitaDoProduto", fields: [variacaoId], references: [id], onDelete: Cascade)
+
+  /// Quanto sai de UMA batelada, na medida do produto (36 picolés, 10 litros).
+  rendimento   Decimal @db.Decimal(14, 3)
+  /// Dias de validade do lote, contados do dia da produção. Nulo = sem validade.
+  validadeDias Int?    @map("validade_dias")
+  observacao   String?
+
+  itens ReceitaItem[]
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@index([orgId])
+  @@map("receitas")
+}
+
+model ReceitaItem {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+
+  receitaId  String   @map("receita_id")
+  receita    Receita  @relation(fields: [receitaId], references: [id], onDelete: Cascade)
+  /// O insumo, na medida DELE (kg de açúcar, litro de leite, unidade de palito).
+  insumoId   String   @map("insumo_id")
+  insumo     Variacao @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  quantidade Decimal  @db.Decimal(14, 3)
+  ordem      Int      @default(0)
+
+  @@index([orgId])
+  @@index([receitaId])
+  @@map("receita_itens")
+}
+
+enum SituacaoOrdem {
+  ABERTA
+  ENCERRADA
+  CANCELADA
+}
+
+/// ORDEM DE PRODUÇÃO: "fazer 3 bateladas de picolé de coco hoje". Aberta, ela
+/// é o plano; encerrada, ela baixa o que foi USADO de verdade (não o previsto)
+/// e dá entrada no que SAIU de verdade, com o custo apurado e o lote.
+model OrdemProducao {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// Número da ordem na empresa, para falar e imprimir.
+  numero Int
+
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: NoAction)
+
+  variacaoId String   @map("variacao_id")
+  variacao   Variacao @relation(fields: [variacaoId], references: [id], onDelete: NoAction)
+
+  bateladas           Decimal  @db.Decimal(10, 3)
+  quantidadePrevista  Decimal  @map("quantidade_prevista") @db.Decimal(14, 3)
+  quantidadeProduzida Decimal? @map("quantidade_produzida") @db.Decimal(14, 3)
+
+  /// O lote que vai na etiqueta e acompanha o pronto até a loja.
+  lote        String
+  fabricadaEm DateTime? @map("fabricada_em")
+  validade    DateTime? @db.Date
+
+  situacao SituacaoOrdem @default(ABERTA)
+
+  /// Custo dos insumos usados, e por unidade do que saiu. Apurado ao encerrar.
+  custoTotal    Decimal? @map("custo_total") @db.Decimal(14, 2)
+  custoUnitario Decimal? @map("custo_unitario") @db.Decimal(14, 4)
+
+  observacao   String?
+  quem         String
+  usuarioId    String? @map("usuario_id")
+  encerradaPor String? @map("encerrada_por")
+
+  consumos OrdemConsumo[]
+
+  criadaEm    DateTime  @default(now()) @map("criada_em")
+  encerradaEm DateTime? @map("encerrada_em")
+
+  @@unique([orgId, numero])
+  @@index([orgId, situacao])
+  @@map("ordens_producao")
+}
+
+/// O que a ordem leva de cada insumo: o previsto pela receita e o usado.
+model OrdemConsumo {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+
+  ordemId  String        @map("ordem_id")
+  ordem    OrdemProducao @relation(fields: [ordemId], references: [id], onDelete: Cascade)
+  insumoId String        @map("insumo_id")
+  insumo   Variacao      @relation(fields: [insumoId], references: [id], onDelete: NoAction)
+
+  previsto      Decimal  @db.Decimal(14, 3)
+  usado         Decimal? @db.Decimal(14, 3)
+  custoUnitario Decimal? @map("custo_unitario") @db.Decimal(14, 4)
+
+  @@index([orgId])
+  @@index([ordemId])
+  @@map("ordem_consumos")
+}
+
+enum SituacaoPedidoFabrica {
+  ABERTO
+  ENVIADO
+  RECEBIDO
+  CANCELADO
+}
+
+/// O PEDIDO DA LOJA À FÁBRICA: a loja pede, a fábrica separa e manda (a
+/// transferência de estoque acontece no envio), a loja confere ao receber.
+model PedidoFabrica {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  numero Int
+
+  lojaId    String  @map("loja_id")
+  loja      Unidade @relation("pedidoDaLoja", fields: [lojaId], references: [id], onDelete: NoAction)
+  fabricaId String  @map("fabrica_id")
+  fabrica   Unidade @relation("pedidoParaFabrica", fields: [fabricaId], references: [id], onDelete: NoAction)
+
+  situacao   SituacaoPedidoFabrica @default(ABERTO)
+  observacao String?
+
+  pedidoPor   String    @map("pedido_por")
+  enviadoPor  String?   @map("enviado_por")
+  enviadoEm   DateTime? @map("enviado_em")
+  recebidoPor String?   @map("recebido_por")
+  recebidoEm  DateTime? @map("recebido_em")
+
+  itens PedidoFabricaItem[]
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@unique([orgId, numero])
+  @@index([orgId, situacao])
+  @@map("pedidos_fabrica")
+}
+
+model PedidoFabricaItem {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+
+  pedidoId   String        @map("pedido_id")
+  pedido     PedidoFabrica @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  variacaoId String        @map("variacao_id")
+  variacao   Variacao      @relation(fields: [variacaoId], references: [id], onDelete: NoAction)
+
+  pedida   Decimal  @db.Decimal(14, 3)
+  enviada  Decimal? @db.Decimal(14, 3)
+  recebida Decimal? @db.Decimal(14, 3)
+  /// O lote que foi (o da ordem de produção mais antiga ainda com saldo, ou o que a fábrica escreveu).
+  lote     String?
+
+  @@index([orgId])
+  @@index([pedidoId])
+  @@map("pedido_fabrica_itens")
 }

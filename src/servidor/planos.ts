@@ -125,7 +125,7 @@ export const PRECOS = {
 } as const
 
 /** Os módulos da loja: tudo, menos o assistente — que é o que custa à parte. */
-const DA_LOJA: Modulo[] = ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola', 'metas', 'crediario']
+const DA_LOJA: Modulo[] = ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola', 'metas', 'crediario', 'fabrica']
 
 export const PLANOS: Record<Plano, Limite> = {
   GRATIS: {

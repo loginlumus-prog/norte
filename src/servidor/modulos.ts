@@ -101,6 +101,16 @@ export const MODULOS = {
     resumo: 'Turmas, matrículas com o responsável, e a mensalidade de cada mês — gerada sozinha, com multa, juros e recibo.',
     pergunta: 'Você tem alunos matriculados que pagam mensalidade?',
   },
+  // A décima primeira, e pelo mesmo motivo da Escola: tabelas próprias (ficha
+  // técnica, ordem de produção, pedido das lojas) e um jeito de o estoque
+  // andar que não é compra nem venda — o insumo vira produto. A mão continua
+  // única: a produção dá entrada pela MESMA função de estoque de tudo
+  // (estoque.ts), e o envio às lojas é a MESMA transferência entre unidades.
+  fabrica: {
+    titulo: 'Fábrica',
+    resumo: 'Ficha técnica com custo, ordem de produção com lote e validade, e o pedido das lojas à fábrica.',
+    pergunta: 'Você fabrica o que vende (sorvete, pão, doce) e abastece as suas lojas?',
+  },
 } as const
 
 export type Modulo = keyof typeof MODULOS
