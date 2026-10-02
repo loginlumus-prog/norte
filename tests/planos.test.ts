@@ -120,16 +120,16 @@ describe('a conta do mês', () => {
     expect(mensalidade('CORPORATIVO', 40).total).toBeNull()
   })
 
-  it('duas lojas com o assistente: 199 + 149 + 129', () => {
+  it('duas lojas com o assistente: 219 + 149 + 139', () => {
     expect(mensalidade('BALCAO_AGENTE', 2)).toMatchObject({
       base: PRECOS.primeiraLoja + PRECOS.assistente,
       extras: 1,
-      total: 477,
+      total: 507,
     })
   })
 
   it('cinco lojas sem o assistente', () => {
-    expect(mensalidade('BALCAO', 5).total).toBe(199 + 4 * 129)
+    expect(mensalidade('BALCAO', 5).total).toBe(219 + 4 * 139)
   })
 
   it('o plano de contrato mostra a conta da tabela', () => {

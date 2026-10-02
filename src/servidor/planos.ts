@@ -105,16 +105,16 @@ export type Limite = {
  * O modelo: a LOJA é o que se paga. Tudo o que a loja usa (balcão, estoque,
  * crediário, financeiro, equipe, relatórios) vem junto; à parte só o que tem
  * custo que varia de cliente para cliente (o assistente e a IA dele) e o que é
- * trabalho nosso (a implantação, o Farol). A conta: 199 a primeira loja, 129
+ * trabalho nosso (a implantação, o Farol). A conta: 219 a primeira loja, 139
  * cada loja a mais, 149 o assistente, com 100 de crédito de IA por mês.
  */
 export const PRECOS = {
-  primeiraLoja: 199,
-  lojaExtra: 129,
+  primeiraLoja: 219,
+  lojaExtra: 139,
   assistente: 149,
   creditoDoAssistente: 100,
   /** A fábrica (ficha técnica, produção, lote). Entra quando o módulo existir. */
-  fabrica: 349,
+  fabrica: 379,
   /** O Farol, por marca (perfil). A segunda marca do mesmo dono sai mais barata. */
   farolMarca: 497,
   farolMarcaExtra: 297,

@@ -275,7 +275,7 @@ describe('lojas: a cota conferida dentro, e fechar com pendência', () => {
   // valor para mostrar ANTES (a tela de Lojas diz "passa a custar").
   it('no Norte a loja a mais abre, com o custo dela dito', async () => {
     const r = await m.lojas.criarLoja(DONA, { nome: 'Quarta' })
-    expect(r.custoExtra).toBe(129)
+    expect(r.custoExtra).toBe(139)
     await m.lojas.mudarSituacaoLoja(DONA, r.loja.id, false)
     const [n] = await linha<{ n: number }>(`select count(*)::int n from unidades where org_id = 'org-a' and ativa`)
     expect(n!.n).toBe(3)
