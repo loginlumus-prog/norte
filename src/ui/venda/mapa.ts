@@ -93,7 +93,8 @@ export const LINKS_BARRA: { nome: string; href: string }[] = [
 
 /**
  * Para onde vai "Começar grátis": o cadastro pelo site (src/app/cadastro),
- * que cria a empresa no plano Grátis. Com CADASTRO_ABERTO=0 a mesma página
+ * que cria a empresa em teste, com tudo, por `PRECOS.diasDeTeste` dias (desde
+ * a tabela de 02/10/2026). Com CADASTRO_ABERTO=0 a mesma página
  * diz que está fechado e mostra o e-mail — o botão nunca leva a lugar vazio.
  */
 export const COMECAR = '/cadastro'

@@ -1,9 +1,15 @@
-// Quem pode ter campanhas: a mesma régua do assistente, porque a campanha
-// sai pelo número do assistente.
+// Quem pode ter campanhas.
 //
-// Quatro chaves, todas conferidas no servidor a cada ação e a cada mensagem:
-// o plano vende o assistente, o plano abre 'campanhas', a empresa ligou o
-// módulo, e ela não está suspensa. A tela mostra trancado; a ação recusa.
+// Desde 02/10/2026 a campanha é do FAROL (o direcionamento digital,
+// contratado à parte): o assistente cuida da loja por dentro — relatório,
+// avisos, perguntas —, e o que é para fora, crescer, é do Farol. Mas a
+// campanha continua saindo pelo número do assistente, e as respostas (o
+// PARAR) voltam por ele: por isso o assistente também é exigido.
+//
+// Cinco chaves, todas conferidas no servidor a cada ação e a cada mensagem:
+// o plano vende o assistente, o plano abre 'campanhas', a empresa tem o
+// assistente ligado, tem o Farol, e não está suspensa. A tela mostra
+// trancado; a ação recusa.
 
 import type { Plano, Situacao } from '@prisma/client'
 import { comoOrg } from '../banco'
@@ -14,7 +20,12 @@ export type OrgParaCampanha = { plano: Plano; situacao: Situacao; modulos: strin
 
 export function campanhasAptas(org: OrgParaCampanha): boolean {
   if (org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA') return false
-  return planoLibera(org.plano, 'agente') && liberado(org.plano, 'campanhas') && moduloLigado(org, 'agente')
+  return (
+    planoLibera(org.plano, 'agente') &&
+    liberado(org.plano, 'campanhas') &&
+    moduloLigado(org, 'agente') &&
+    moduloLigado(org, 'farol')
+  )
 }
 
 /** Por que não — a frase que a ação devolve para a tela. Nulo = pode. */
@@ -24,6 +35,7 @@ export function porQueNao(org: OrgParaCampanha): string | null {
     return `Campanhas são ${doPlano(planoQueAbre('campanhas').codigo)} para cima.`
   }
   if (!moduloLigado(org, 'agente')) return 'Ligue o módulo "Assistente no WhatsApp" em Configurações.'
+  if (!moduloLigado(org, 'farol')) return 'Campanhas fazem parte do Farol, o direcionamento digital. Fale com a gente para contratar.'
   return null
 }
 

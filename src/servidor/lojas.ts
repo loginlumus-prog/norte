@@ -39,6 +39,8 @@ export type DadosLoja = {
   inscricaoEstadual?: string | null
   ramo?: string | null
   ehDeposito?: boolean
+  /** Fábrica: produz o que as lojas vendem. É depósito também (não vende no balcão). */
+  ehFabrica?: boolean
   telefone?: string | null
   endereco?: string | null
   numero?: string | null
@@ -59,6 +61,7 @@ export type LojaNaLista = {
   inscricaoEstadual: string | null
   ramo: string | null
   ehDeposito: boolean
+  ehFabrica: boolean
   ativa: boolean
   telefone: string | null
   endereco: string | null
@@ -99,7 +102,9 @@ export function limparLoja(d: DadosLoja): DadosLoja {
     razaoSocial: t(d.razaoSocial, 120),
     inscricaoEstadual: t(d.inscricaoEstadual, 20),
     ramo: RAMO_VALIDO(d.ramo) ? d.ramo : null,
-    ehDeposito: !!d.ehDeposito,
+    // Fábrica é depósito: não tem balcão, e não entra na conta das lojas.
+    ehDeposito: !!d.ehDeposito || !!d.ehFabrica,
+    ehFabrica: !!d.ehFabrica,
     telefone: t(d.telefone, 30),
     endereco: t(d.endereco),
     numero: t(d.numero, 20),
@@ -139,6 +144,7 @@ export async function listarLojas(sessao: Sessao): Promise<LojaNaLista[]> {
       inscricaoEstadual: l.inscricaoEstadual,
       ramo: l.ramo,
       ehDeposito: l.ehDeposito,
+      ehFabrica: l.ehFabrica,
       ativa: l.ativa,
       telefone: l.telefone,
       endereco: l.endereco,
@@ -240,7 +246,7 @@ export async function criarLoja(sessao: Sessao, dados: DadosLoja) {
         alvoTipo: 'unidade',
         alvoId: loja.id,
         alvoNome: loja.nome,
-        depois: { ramo: d.ramo, ehDeposito: d.ehDeposito, ...semeado },
+        depois: { ramo: d.ramo, ehDeposito: d.ehDeposito, ehFabrica: d.ehFabrica, ...semeado },
         valor: cota.custoExtra || undefined,
       },
     })
@@ -281,8 +287,8 @@ export async function editarLoja(sessao: Sessao, id: string, dados: DadosLoja) {
         alvoTipo: 'unidade',
         alvoId: id,
         alvoNome: loja.nome,
-        antes: { nome: antes.nome, ramo: antes.ramo, ehDeposito: antes.ehDeposito },
-        depois: { nome: loja.nome, ramo: loja.ramo, ehDeposito: loja.ehDeposito, ...semeado },
+        antes: { nome: antes.nome, ramo: antes.ramo, ehDeposito: antes.ehDeposito, ehFabrica: antes.ehFabrica },
+        depois: { nome: loja.nome, ramo: loja.ramo, ehDeposito: loja.ehDeposito, ehFabrica: loja.ehFabrica, ...semeado },
       },
     })
     return { loja, ...semeado }

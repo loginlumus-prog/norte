@@ -354,7 +354,10 @@ export async function cancelarOrdem(sessao: Sessao, ordemId: string, motivo: str
 export type OrdemNaTela = {
   id: string
   numero: number
+  unidadeId: string
   unidade: string
+  /** O produto pronto — a tela acha a ficha técnica dele (validade em dias) por aqui. */
+  variacaoId: string
   produto: string
   codigo: string | null
   medida: string
@@ -384,7 +387,7 @@ export async function listarOrdens(sessao: Sessao, filtro: { situacao?: 'ABERTA'
       orderBy: { numero: 'desc' },
       take: filtro.limite ?? 50,
       select: {
-        id: true, numero: true, bateladas: true, quantidadePrevista: true, quantidadeProduzida: true, lote: true, validade: true,
+        id: true, numero: true, unidadeId: true, variacaoId: true, bateladas: true, quantidadePrevista: true, quantidadeProduzida: true, lote: true, validade: true,
         situacao: true, custoUnitario: true, quem: true, criadaEm: true, encerradaEm: true,
         unidade: { select: { nome: true } },
         variacao: { select: { codigo: true, produto: { select: { nome: true, medida: true } }, opcoes: { select: { opcao: { select: { valor: true } } } } } },
@@ -400,7 +403,9 @@ export async function listarOrdens(sessao: Sessao, filtro: { situacao?: 'ABERTA'
   return linhas.map((o) => ({
     id: o.id,
     numero: o.numero,
+    unidadeId: o.unidadeId,
     unidade: o.unidade.nome,
+    variacaoId: o.variacaoId,
     produto: nomeDaVariacao(o.variacao),
     codigo: o.variacao.codigo,
     medida: o.variacao.produto.medida,
@@ -422,6 +427,40 @@ export async function listarOrdens(sessao: Sessao, filtro: { situacao?: 'ABERTA'
       usado: c.usado == null ? null : n(c.usado),
     })),
   }))
+}
+
+/**
+ * Uma ordem só, com o que a etiqueta do lote pede: o produto, o lote, o dia
+ * em que saiu e a validade. Quem não vê o estoque da fábrica dela não acha.
+ */
+export async function acharOrdem(sessao: Sessao, ordemId: string) {
+  exigir(sessao, 'estoque.ver')
+  const o = await comoOrg(sessao.orgId, (db) =>
+    db.ordemProducao.findUnique({
+      where: { id: ordemId },
+      select: {
+        id: true, numero: true, unidadeId: true, situacao: true, lote: true, validade: true, fabricadaEm: true,
+        quantidadeProduzida: true, quantidadePrevista: true,
+        unidade: { select: { nome: true } },
+        variacao: { select: { codigo: true, produto: { select: { nome: true, medida: true } }, opcoes: { select: { opcao: { select: { valor: true } } } } } },
+      },
+    }),
+  )
+  if (!o || !pode(sessao, 'estoque.ver', o.unidadeId)) return null
+  return {
+    id: o.id,
+    numero: o.numero,
+    situacao: o.situacao,
+    unidade: o.unidade.nome,
+    produto: nomeDaVariacao(o.variacao),
+    codigo: o.variacao.codigo,
+    medida: o.variacao.produto.medida,
+    lote: o.lote,
+    /** AAAA-MM-DD, no dia de São Paulo. */
+    fabricadaEm: o.fabricadaEm ? diaEmSP(o.fabricadaEm) : null,
+    validade: o.validade ? o.validade.toISOString().slice(0, 10) : null,
+    quantidade: o.quantidadeProduzida == null ? n(o.quantidadePrevista) : n(o.quantidadeProduzida),
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -712,4 +751,71 @@ export async function catalogoParaPedir(sessao: Sessao, lojaId: string) {
       }))
       .sort((a, b) => (a.gaveta ?? '').localeCompare(b.gaveta ?? '', 'pt-BR') || a.nome.localeCompare(b.nome, 'pt-BR'))
   })
+}
+
+// ─────────────────────────────────────────────────────────────
+// LEITURAS PARA AS TELAS
+// ─────────────────────────────────────────────────────────────
+
+export type UnidadeDaFabrica = { id: string; nome: string; ehFabrica: boolean; ehDeposito: boolean }
+
+/**
+ * As unidades abertas que a pessoa enxerga no estoque, dizendo qual é fábrica.
+ * A tela separa daqui as fábricas (onde se produz) e as lojas (quem pede).
+ */
+export async function unidadesDaFabrica(sessao: Sessao): Promise<UnidadeDaFabrica[]> {
+  exigir(sessao, 'estoque.ver')
+  const permitidas = unidadesQuePodem(sessao, 'estoque.ver')
+  return comoOrg(sessao.orgId, (db) =>
+    db.unidade.findMany({
+      where: { ativa: true, ...(permitidas === 'todas' ? {} : { id: { in: permitidas } }) },
+      orderBy: [{ ehFabrica: 'desc' }, { ehDeposito: 'asc' }, { nome: 'asc' }],
+      select: { id: true, nome: true, ehFabrica: true, ehDeposito: true },
+    }),
+  )
+}
+
+export type ItemDoCatalogo = {
+  variacaoId: string
+  nome: string
+  codigo: string | null
+  medida: string
+  /** Material de uso (leite, palito, pote): o insumo típico. */
+  usoInterno: boolean
+  temReceita: boolean
+  /** Só para quem vê custo. */
+  custo: number | null
+}
+
+/**
+ * O catálogo inteiro que a fábrica usa ou faz: o que vira insumo e o que
+ * sai pronto. Uma leitura só, e a busca é na tela — a fábrica trabalha com
+ * algumas dezenas de itens, não com o catálogo de uma loja de roupa.
+ */
+export async function catalogoDaFabrica(sessao: Sessao): Promise<ItemDoCatalogo[]> {
+  exigir(sessao, 'estoque.ver')
+  const verCusto = pode(sessao, 'produto.preco') || pode(sessao, 'financeiro.ver')
+  const linhas = await comoOrg(sessao.orgId, (db) =>
+    db.variacao.findMany({
+      where: { ativa: true, produto: { ativo: true, servico: false } },
+      take: 5000,
+      select: {
+        id: true, codigo: true,
+        produto: { select: { nome: true, medida: true, usoInterno: true, custo: true } },
+        opcoes: { select: { opcao: { select: { valor: true } } } },
+        receita: { select: { id: true } },
+      },
+    }),
+  )
+  return linhas
+    .map((v) => ({
+      variacaoId: v.id,
+      nome: nomeDaVariacao(v),
+      codigo: v.codigo,
+      medida: v.produto.medida,
+      usoInterno: v.produto.usoInterno,
+      temReceita: !!v.receita,
+      custo: verCusto && v.produto.custo != null ? n(v.produto.custo) : null,
+    }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
 }

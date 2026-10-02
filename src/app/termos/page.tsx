@@ -28,8 +28,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { PaginaLegal, Secao, Itens, Destaque } from '@/ui/PaginaLegal'
 import { EMPRESA } from '@/servidor/legal'
-import { PLANOS, PLANOS_COM_PRECO } from '@/servidor/planos'
-import { plural } from '@/ui/texto'
+import { PLANOS, PRECOS } from '@/servidor/planos'
 
 export const metadata: Metadata = {
   title: 'Termos de uso · Norte',
@@ -89,38 +88,38 @@ export default function Termos() {
       </Secao>
 
       <Secao n={3} titulo="Planos e preço">
-        <p>Os planos com preço de tabela, por mês:</p>
+        {/* Os números saem de `PRECOS` e `PLANOS` (servidor/planos.ts), a
+            mesma fonte da página de venda e da tela de Assinatura: contrato
+            com número digitado à mão é contrato que diverge da tabela. */}
+        <p>A tabela, por mês. O que se paga é a loja; tudo o que a loja usa vem junto.</p>
         <Itens>
-          {PLANOS_COM_PRECO.map((p) => {
-            const l = PLANOS[p]
-            return (
-              <li key={p}>
-                <b>{l.titulo}</b> — {real(l.mensal!)}/mês.{' '}
-                {l.unidades === null ? 'Lojas sem limite' : `Até ${plural(l.unidades, 'loja', 'lojas')}`}, e{' '}
-                {l.vagas === null
-                  ? 'sem limite de pessoas dentro ao mesmo tempo'
-                  : `${plural(l.vagas, 'pessoa', 'pessoas')} dentro ao mesmo tempo`}
-                . Cadastrar a equipe inteira não tem custo em nenhum plano.
-                {' '}Precisando de mais gente dentro ao mesmo tempo, o plano de cima abre mais vagas.
-                {l.creditoMensal ? ` Inclui ${real(l.creditoMensal)} de crédito de IA por mês.` : ''}
-              </li>
-            )
-          })}
+          <li>
+            <b>{PLANOS.BALCAO.titulo}</b> — {real(PRECOS.primeiraLoja)}/mês a primeira loja e{' '}
+            {real(PRECOS.lojaExtra)}/mês cada loja a mais. Depósito não entra na conta. Cadastrar a
+            equipe inteira não tem custo, e não há limite de pessoas dentro ao mesmo tempo.
+          </li>
+          <li>
+            <b>{PLANOS.BALCAO_AGENTE.titulo}</b> — o {PLANOS.BALCAO.titulo} e mais{' '}
+            {real(PRECOS.assistente)}/mês pelo assistente no WhatsApp, com{' '}
+            {real(PRECOS.creditoDoAssistente)} de crédito de IA por mês (cláusula 7).
+          </li>
           <li>
             <b>{PLANOS.CORPORATIVO.titulo}</b> — preço fechado caso a caso, em contrato próprio que
             complementa este.
           </li>
         </Itens>
         <p>
-          Existe também o plano <b>Grátis</b>: uma loja, uma pessoa dentro por vez, sem nota
-          fiscal e sem assistente, com teto de {PLANOS.GRATIS.tetoVendasMes} vendas por mês. Ele
-          não tem prazo para acabar e não vira cobrança sozinho — mas também não tem suporte
-          garantido, e pode ser descontinuado com 30 dias de aviso. Seus dados continuam seus, e a
-          cláusula 12 vale igual.
+          A loja a mais tem preço de tabela, e a tela diz o valor e a conta nova antes de abrir: o que
+          está escrito aqui é o que se paga. Implantação — trazer dados de outro sistema, por exemplo —
+          é cobrada uma vez só quando houver, com o valor combinado por escrito antes de começar.
+          Serviços anunciados como “em breve” não fazem parte deste contrato até entrarem na tabela.
         </p>
         <p>
-          Não existe taxa de implantação, e pessoa a mais tem preço de tabela: o que está escrito
-          aqui é o que se paga.
+          Existe também o plano <b>{PLANOS.GRATIS.titulo}</b>, que não se contrata: é onde a empresa
+          fica quando o teste acaba sem assinatura. Uma loja, uma pessoa dentro por vez, sem nota
+          fiscal e sem assistente, com teto de {PLANOS.GRATIS.tetoVendasMes} vendas por mês. Ele não
+          vira cobrança sozinho — mas também não tem suporte garantido, e pode ser descontinuado com
+          30 dias de aviso. Seus dados continuam seus, e a cláusula 12 vale igual.
         </p>
         <p>
           O preço pode ser reajustado uma vez a cada doze meses, com <b>30 dias</b> de aviso. Se o
@@ -130,9 +129,14 @@ export default function Termos() {
 
       <Secao n={4} titulo="Teste">
         <p>
-          Empresa nova começa em teste, com o prazo dito na hora da criação. No teste o sistema é
-          inteiro — não é versão capada. Acabado o prazo sem contratação, a conta é suspensa
-          conforme a cláusula 6, e os dados seguem a cláusula 12.
+          Empresa criada pelo site começa em teste por <b>{PRECOS.diasDeTeste} dias</b>, com o
+          sistema inteiro — não é versão capada. O assistente vem junto, com um crédito de IA menor,
+          para conhecer. O teste não pede cartão e não vira cobrança sozinho.
+        </p>
+        <p>
+          Acabado o prazo sem contratação, a empresa passa para o plano {PLANOS.GRATIS.titulo}{' '}
+          (cláusula 3): o que ele não inclui desliga, e os dados ficam todos. Contratando, durante ou
+          depois do teste, o que foi lançado continua.
         </p>
       </Secao>
 
@@ -177,7 +181,7 @@ export default function Termos() {
           pagar o risco da grande.
         </p>
         <Itens>
-          <li>O plano dá um crédito por mês, que não acumula para o mês seguinte.</li>
+          <li>O plano dá um crédito por mês; o que sobra passa para o mês seguinte enquanto a assinatura estiver ativa.</li>
           <li>Cada conversa desconta o que ela custou, e o sistema mostra isso item a item.</li>
           <li>Crédito esgotado para o assistente. O resto do sistema continua inteiro.</li>
           <li>Recarga é avulsa e opcional, sem virar mensalidade nova.</li>

@@ -16,7 +16,7 @@ import { useRouter } from 'next/navigation'
 import type { Plano } from '@prisma/client'
 import { Aviso, Botao, Campo, Selecao, cx } from '@/ui/base'
 import { Trancado } from '@/ui/Cadeado'
-import { liberado } from '@/servidor/planos'
+import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 import type { Veredito } from '@/servidor/tarefas'
 import type { UnidadeVisivel } from '@/servidor/unidade'
 import { criarDeModeloAcao, criarQuadroAcao, type Resultado } from './acoes'
@@ -96,7 +96,7 @@ export function NovoQuadro({
               tom="secundario"
               className="py-1 text-xs"
               disabled={!temModelos || !cabe.pode}
-              title={!temModelos ? 'Modelos são do Assistente para cima' : !cabe.pode ? cabe.motivo : `Cria "${m.titulo}" com as tarefas prontas`}
+              title={!temModelos ? `Modelos são ${doPlano(planoQueAbre('tarefas.modelos').codigo)}` : !cabe.pode ? cabe.motivo : `Cria "${m.titulo}" com as tarefas prontas`}
               carregando={indo}
               onClick={() => comecar(async () => abrir(await criarDeModeloAcao(slug, m.chave, varios ? unidadeAtual : null)))}
             >
@@ -145,7 +145,7 @@ export function NovoQuadro({
             name="unidadeId"
             defaultValue={varios ? (unidadeAtual ?? '') : ''}
             disabled={!varios || !cabe.pode}
-            dica={varios ? 'Quadro de uma loja só aparece para quem tem acesso a ela.' : 'Quadro por loja é do Balcão para cima. Este vale para a empresa inteira.'}
+            dica={varios ? 'Quadro de uma loja só aparece para quem tem acesso a ela.' : `Quadro por loja é ${doPlano(planoQueAbre('tarefas.varios').codigo)}. Este vale para a empresa inteira.`}
             opcoes={[{ valor: '', titulo: 'Empresa inteira' }, ...unidades.map((u) => ({ valor: u.id, titulo: u.nome }))]}
           />
         </div>

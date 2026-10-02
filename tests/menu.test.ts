@@ -23,8 +23,8 @@ describe('o que cada perfil vê no menu', () => {
   it('o dono vê tudo', () => {
     expect(visiveis('DONO')).toEqual([
       'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
-      'Produtos', 'Estoque', 'Compras', 'Material usado', 'Preços', 'Clientes', 'Equipe', 'Tarefas', 'Financeiro', 'Análise', 'Assistente',
-      'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
+      'Produtos', 'Estoque', 'Fábrica', 'Compras', 'Material usado', 'Preços', 'Clientes', 'Equipe', 'Tarefas', 'Financeiro', 'Análise', 'Assistente',
+      'Farol', 'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
     ])
   })
 
@@ -38,9 +38,11 @@ describe('o que cada perfil vê no menu', () => {
     // Compras não: é onde mora o CUSTO do que se compra.
     // Mensalidades e Turmas entram: na escola o balcão é a secretaria, que
     // matricula e recebe a mensalidade com o pai na frente.
+    // Fábrica entra (ver o estoque basta para ver a produção e os pedidos);
+    // produzir, mandar e pedir é de quem mexe no estoque da unidade.
     expect(v).toEqual([
       'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
-      'Produtos', 'Estoque', 'Material usado', 'Clientes', 'Tarefas',
+      'Produtos', 'Estoque', 'Fábrica', 'Material usado', 'Clientes', 'Tarefas',
     ])
     expect(v).not.toContain('Compras')
     expect(v).not.toContain('Preços')

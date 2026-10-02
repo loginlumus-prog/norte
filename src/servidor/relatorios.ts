@@ -28,13 +28,15 @@ import type { Plano } from '@prisma/client'
 const n = (v: unknown) => Number(v ?? 0)
 
 /**
- * Estas leituras são do plano Rede para cima.
+ * Estas leituras são de todo plano pago: desde a tabela de 02/10/2026 a curva
+ * ABC, a comparação entre lojas e a escala vêm no Norte (a loja é o que se
+ * paga). Só o Grátis, onde a empresa cai quando o teste acaba, fica sem.
  *
  * Escrito como degrau, e não como lista de planos, porque plano novo acima do
- * Rede herda sozinho — lista precisaria ser lembrada.
+ * Norte herda sozinho — lista precisaria ser lembrada.
  */
 export function temAnaliseAvancada(plano: Plano): boolean {
-  return PLANOS[plano].degrau >= PLANOS.REDE.degrau
+  return PLANOS[plano].degrau >= PLANOS.BALCAO.degrau
 }
 
 /**

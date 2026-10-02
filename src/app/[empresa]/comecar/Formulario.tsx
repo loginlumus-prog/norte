@@ -3,7 +3,7 @@
 import { useActionState, useState } from 'react'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao } from '@/ui/base'
 import { PORTES, CATALOGOS, CANAIS, DORES } from '@/servidor/cadastro'
-import { MODULOS, RAMOS, TODOS, type Ramo } from '@/servidor/modulos'
+import { MODULOS, RAMOS, ESCOLHIVEIS as TODOS, type Ramo } from '@/servidor/modulos'
 import { terminarCadastro, type EstadoComeco } from './acoes'
 import { semApagar } from '@/ui/formulario'
 

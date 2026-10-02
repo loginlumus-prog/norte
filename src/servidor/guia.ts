@@ -23,7 +23,7 @@
 
 import type { Plano } from '@prisma/client'
 import type { Capacidade, Papel } from './permissao'
-import { LIBERACOES, doPlano, type Liberacao } from './planos'
+import { LIBERACOES, PLANOS, PRECOS, doPlano, type Liberacao } from './planos'
 
 export type Passo = {
   titulo: string
@@ -114,7 +114,19 @@ export const NOME_DO_PAPEL: Record<Papel, string> = {
   CARGO: 'Cargo',
 }
 
-/** "do Balcão para cima", "da Direção para cima" — ou "em todo plano". */
+/**
+ * "do Norte para cima" — ou "em todo plano".
+ *
+ * ── e os nomes e preços no texto do manual ───────────────────
+ * Saem de `PLANOS` e `PRECOS` (as constantes logo abaixo), nunca digitados:
+ * o manual dizia "Balcão (R$ 100/mês)" e "Direção (R$ 1.500/mês)" semanas
+ * depois de a tabela mudar. Número repetido em dois lugares fica para trás.
+ */
+const NORTE = PLANOS.BALCAO.titulo
+const COM_ASSISTENTE = PLANOS.BALCAO_AGENTE.titulo
+const GRATIS = PLANOS.GRATIS.titulo
+const real = (n: number) => `R$ ${n.toLocaleString('pt-BR')}`
+
 export function rotuloDoPlano(p: Liberacao | Plano): string {
   const codigo: Plano = p in LIBERACOES ? LIBERACOES[p as Liberacao].desde : (p as Plano)
   if (codigo === 'GRATIS') return 'em todo plano'
@@ -184,8 +196,8 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'O que o plano Grátis vê',
         passos: [
-          'No Grátis o painel mostra o essencial: total, média por dia, ticket, movimento por dia e os mais vendidos.',
-          'Forma de pagamento, hora do dia, venda por categoria e dinheiro parado por categoria são do relatório completo, do Balcão para cima — aparecem com o aviso e o link "Ver planos".',
+          'No Grátis (onde a empresa fica quando o teste acaba sem assinatura) o painel mostra o essencial: total, média por dia, ticket, movimento por dia e os mais vendidos.',
+          `Forma de pagamento, hora do dia, venda por categoria e dinheiro parado por categoria são do relatório completo, que vem no ${NORTE} — aparecem com o aviso e o link "Ver planos".`,
           'Comparar planos é em Assinatura.',
         ],
         plano: 'BALCAO',
@@ -197,7 +209,7 @@ export const GUIA: Entrada[] = [
           'Roupa, calçado e bijuteria: "Grade quebrada" lista, loja por loja, a peça em que acabou o que vendia no último mês e sobrou o resto da grade ("acabou M e G · sobrou PP e GG"), e diz se outra loja tem a peça para transferir. Ao lado, o tamanho (ou numeração) que mais saiu em 7 dias.',
           'Sorveteria: quilos vendidos hoje, vendas e a hora de pico; "O que está acabando" (acabou e vendia, sobra menos que um dia médio de venda, ou está no mínimo da loja) e o que mais saiu hoje, primeiro o que vai a peso.',
           'Padaria, lanchonete, floricultura e serviço: as encomendas atrasadas, de hoje e de amanhã (com o módulo Encomenda); a produção do dia pela MÉDIA DO MESMO DIA DA SEMANA — "média das últimas 4 quartas", ou de menos quartas se a loja vende há menos tempo — com o que já saiu hoje; e as horas fortes desse dia.',
-          'Mercearia, pet shop, papelaria, autopeças, construção, brinquedos e distribuidora: "Repor logo" — no plano Direção, pelo ritmo de venda e o prazo do fornecedor (a mesma conta do "Vai faltar"); nos outros, o que está no mínimo cadastrado — e o que mais gira em 7 dias contra os 7 anteriores.',
+          'Mercearia, pet shop, papelaria, autopeças, construção, brinquedos e distribuidora: "Repor logo" — nos planos pagos, pelo ritmo de venda e o prazo do fornecedor (a mesma conta do "Vai faltar"); nos outros, o que está no mínimo cadastrado — e o que mais gira em 7 dias contra os 7 anteriores.',
           'O que mostra saldo só aparece para quem pode ver o estoque; as encomendas, para quem vê vendas. Os links levam ao Estoque ou às Encomendas já na loja certa.',
           'É conta do que foi vendido, contado e anotado — não é previsão. Sem histórico, o bloco diz que ainda não há média, em vez de inventar uma.',
         ],
@@ -219,7 +231,7 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'Onde aparece o desempenho da equipe em estrelas?',
-        r: 'Num cartão do Painel e na tela Equipe, do plano Assistente para cima: de 0 a 5 estrelas por pessoa e mês, somando meta batida, tarefas no prazo e dias presente.',
+        r: 'Num cartão do Painel e na tela Equipe, em todo plano pago: de 0 a 5 estrelas por pessoa e mês, somando meta batida, tarefas no prazo e dias presente.',
       },
     ],
     palavras: ['dashboard', 'início', 'resumo', 'faturamento', 'ticket médio', 'margem', 'gráfico', 'visão geral', 'quanto vendi', 'comparação', 'ramo', 'grade quebrada', 'sabor', 'produção do dia', 'repor'],
@@ -494,7 +506,7 @@ export const GUIA: Entrada[] = [
     abre: ['crediario.ver'],
     modulo: 'crediario',
     oQueE:
-      'Quem deve, quanto e desde quando — e receber. A tela abre nas parcelas em aberto, vencidas primeiro, com o juro de atraso já sugerido. Só existe com o módulo Crediário ligado (plano Direção). Vender fiado é escolher a forma Crediário no Balcão, com cliente.',
+      'Quem deve, quanto e desde quando — e receber. A tela abre nas parcelas em aberto, vencidas primeiro, com o juro de atraso já sugerido. Só existe com o módulo Crediário ligado (todo plano pago). Vender fiado é escolher a forma Crediário no Balcão, com cliente.',
     comoFazer: [
       {
         titulo: 'Receber uma parcela',
@@ -546,7 +558,7 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'Não vejo Crediário no menu. Por quê?',
-        r: 'O módulo está desligado em Configurações, ou o plano não o inclui (é da Direção para cima), ou o seu papel não vê crediário.',
+        r: 'O módulo está desligado em Configurações, ou o plano não o inclui (só o Grátis fica sem), ou o seu papel não vê crediário.',
       },
     ],
     palavras: ['fiado', 'vender fiado', 'parcela', 'parcelas', 'carnê', 'cobrança', 'cobrar', 'juros', 'atraso', 'receber', 'dívida', 'devedor', 'inadimplente', 'a prazo'],
@@ -1035,11 +1047,11 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'Onde vejo margem e markup de tudo de uma vez?',
-        r: 'Na tela Preços (menu Catálogo), do Balcão para cima. O preço em si se muda na ficha do produto.',
+        r: 'Na tela Preços (menu Catálogo), em todo plano pago. O preço em si se muda na ficha do produto.',
       },
       {
         p: 'O que é "Prazo de reposição (dias)" na ficha?',
-        r: 'Quantos dias o fornecedor leva para repor. Sem informar, vale 7. A previsão "Vai faltar", em Estoque (plano Direção), usa esse prazo para dizer até quando pedir.',
+        r: 'Quantos dias o fornecedor leva para repor. Sem informar, vale 7. A previsão "Vai faltar", em Estoque, usa esse prazo para dizer até quando pedir.',
       },
     ],
     palavras: ['catálogo', 'cadastro de produto', 'cadastrar produto', 'mercadoria', 'peça', 'variação', 'grade', 'tamanho', 'cor', 'etiqueta', 'código de barras', 'ean', 'sku', 'preço', 'custo', 'categoria', 'marca', 'planilha', 'exportar', 'material de uso', 'insumo', 'não vende', 'feito no dia', 'produção'],
@@ -1052,7 +1064,7 @@ export const GUIA: Entrada[] = [
     caminho: '/estoque',
     abre: ['estoque.ver'],
     oQueE:
-      'O que tem em cada loja, o que acabou e o que está no mínimo — e tudo que entrou, saiu, foi corrigido ou transferido, com quem e quando. Entrada de mercadoria com custo e conta a pagar, correção pelo que foi contado, transferência entre lojas, a planilha do balanço e, na Direção, a previsão "Vai faltar".',
+      'O que tem em cada loja, o que acabou e o que está no mínimo — e tudo que entrou, saiu, foi corrigido ou transferido, com quem e quando. Entrada de mercadoria com custo e conta a pagar, correção pelo que foi contado, transferência entre lojas, a planilha do balanço e a previsão "Vai faltar".',
     comoFazer: [
       {
         titulo: 'Dar entrada na mercadoria que chegou',
@@ -1099,7 +1111,7 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Ver o que vai faltar',
         passos: [
-          'Seção "Vai faltar", do plano Direção: para cada item, quantos dias o saldo aguenta no ritmo de venda dos últimos 30 dias.',
+          'Seção "Vai faltar": para cada item, quantos dias o saldo aguenta no ritmo de venda dos últimos 30 dias.',
           'Compara com o prazo de reposição do produto (campo na ficha do produto; sem informar, vale 7 dias).',
           'A tela diz "pedir até" tal dia — o último dia em que dá para pedir e a peça chegar antes de faltar.',
           'Situações: já faltou, pedir agora (dura menos que o prazo), atenção, ok, e sem giro (não vendeu nos 30 dias).',
@@ -1263,7 +1275,7 @@ export const GUIA: Entrada[] = [
     caminho: '/precos',
     abre: ['produto.preco'],
     oQueE:
-      'Custo contra preço, item a item: margem (o que sobra do preço), markup (quanto se põe sobre o custo) e o preço sugerido para a margem alvo. Lista o que está abaixo do custo, abaixo do alvo e sem custo, e quanto cada item saiu em 30 dias. O preço se muda na ficha do produto. Exige a permissão de mexer em preço; margem e markup são do Balcão para cima, preço sugerido do Assistente.',
+      'Custo contra preço, item a item: margem (o que sobra do preço), markup (quanto se põe sobre o custo) e o preço sugerido para a margem alvo. Lista o que está abaixo do custo, abaixo do alvo e sem custo, e quanto cada item saiu em 30 dias. O preço se muda na ficha do produto. Exige a permissão de mexer em preço; margem, markup e preço sugerido vêm em todo plano pago.',
     comoFazer: [
       {
         titulo: 'Ler margem e markup',
@@ -1289,7 +1301,7 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Usar o preço sugerido',
         passos: [
-          'Do plano Assistente para cima: para cada item, o preço que dá a margem alvo sobre o custo atual.',
+          'Para cada item, o preço que dá a margem alvo sobre o custo atual.',
           'Compare com o preço de hoje e decida — a sugestão é conta, não ordem.',
           'Ajuste na ficha do produto (Produtos › editar).',
         ],
@@ -1304,7 +1316,7 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'A tela aparece trancada. Por quê?',
-        r: 'No plano Grátis a tela existe trancada, com o nome do plano que a abre e o botão "Ver os planos". Margem e markup são do Balcão para cima; o preço sugerido, do Assistente.',
+        r: 'No plano Grátis a tela existe trancada, com o nome do plano que a abre e o botão "Ver os planos". Margem, markup e preço sugerido abrem em todo plano pago.',
       },
       {
         p: 'Não vejo Preços no menu.',
@@ -1423,7 +1435,7 @@ export const GUIA: Entrada[] = [
     caminho: '/equipe',
     abre: ['equipe.ver'],
     oQueE:
-      'Quem tem acesso, com que papel e em qual loja; os convites esperando; metas e comissão por vendedor (módulo Metas); e o desempenho em estrelas (plano Assistente para cima). Tirar o acesso não apaga a pessoa: a venda que ela fez e as linhas dela no livro continuam com o nome dela.',
+      'Quem tem acesso, com que papel e em qual loja; os convites esperando; metas e comissão por vendedor (módulo Metas); e o desempenho em estrelas (todo plano pago). Tirar o acesso não apaga a pessoa: a venda que ela fez e as linhas dela no livro continuam com o nome dela.',
     comoFazer: [
       {
         titulo: 'Convidar alguém',
@@ -1433,7 +1445,7 @@ export const GUIA: Entrada[] = [
           'Com e-mail configurado no servidor, o convite também vai sozinho para o e-mail da pessoa — o link na tela continua valendo, para mandar pelo WhatsApp se preferir.',
           'O link vale 7 dias e serve uma vez. A pessoa abre, escolhe a senha e entra já com o papel que você deu.',
           'Você só concede papéis que pode: o gerente convida balcão, na loja dele; só o dono cria dono, gerente, financeiro e contador, e só quem tem todas as lojas convida para "todas as lojas".',
-          'Cadastrar gente é de graça em todo plano. O plano limita quantas ficam dentro ao mesmo tempo.',
+          'Cadastrar gente é de graça em todo plano, e nos planos pagos não há limite de gente dentro ao mesmo tempo. Só o Grátis deixa uma pessoa por vez.',
         ],
         capacidade: 'equipe.gerir',
       },
@@ -1499,7 +1511,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'De 0 a 5 estrelas por pessoa e por mês: 50% meta batida + 30% tarefas entregues no prazo + 20% dias presente.',
           'Quando falta um insumo (a pessoa não tem meta, ou não tem tarefa), os pesos são redistribuídos entre os que existem.',
-          'Na Direção, a leitura é completa: tendência de 3 meses e comparação por loja.',
+          'A leitura é completa: tendência de 3 meses e comparação por loja.',
         ],
         plano: 'desempenho.basico',
       },
@@ -1515,7 +1527,7 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'Quantas pessoas posso cadastrar?',
-        r: 'À vontade, em todo plano. O que o plano limita é quantas ficam dentro ao mesmo tempo — está em Assinatura.',
+        r: 'À vontade, em todo plano. E nos planos pagos não há limite de gente dentro ao mesmo tempo — só o Grátis deixa uma pessoa por vez.',
       },
       {
         p: 'Como escolho quem vendeu no balcão?',
@@ -1537,9 +1549,9 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Criar um quadro e a primeira tarefa',
         passos: [
-          'Crie o quadro: da loja ou da empresa inteira. No Grátis é um quadro só; do Balcão para cima, vários.',
+          'Crie o quadro: da loja ou da empresa inteira. No Grátis é um quadro só; nos planos pagos, vários.',
           'Dentro de um grupo, "+ Adicionar tarefa" no fim da lista.',
-          'Título; e, do Balcão para cima, responsável, prazo e prioridade em 5 estrelas.',
+          'Título; e, nos planos pagos, responsável, prazo e prioridade em 5 estrelas.',
           'A tarefa nasce em "A fazer".',
         ],
         capacidade: 'tarefa.gerir',
@@ -1558,7 +1570,7 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Usar um modelo pronto',
         passos: [
-          'Do Assistente para cima: Abertura e fechamento da loja, Inventário do mês, Campanha, Chegada de mercadoria.',
+          'Nos planos pagos: Abertura e fechamento da loja, Inventário do mês, Campanha, Chegada de mercadoria.',
           'O modelo cria o quadro com grupos e tarefas já escritos.',
           'Ajuste responsável e prazo nas tarefas e apague o que não se aplica.',
         ],
@@ -1568,8 +1580,8 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Acompanhar a linha do tempo e a rede',
         passos: [
-          'Do Assistente para cima, cada tarefa mostra a barra de progresso do início ao prazo.',
-          'Na Direção, o quadro da rede inteira mostra as lojas lado a lado.',
+          'Cada tarefa mostra a barra de progresso do início ao prazo.',
+          'Com mais de uma loja, o quadro da rede inteira mostra as lojas lado a lado.',
           'Tarefa entregue no prazo entra no desempenho em estrelas da pessoa (tela Equipe).',
         ],
         plano: 'tarefas.linhaDoTempo',
@@ -1578,7 +1590,7 @@ export const GUIA: Entrada[] = [
     perguntas: [
       {
         p: 'O que cabe no plano Grátis?',
-        r: 'Um quadro e 30 tarefas em aberto, sem responsável, prazo nem prioridade. O Balcão abre vários quadros com responsável, prazo e prioridade; o Assistente traz a linha do tempo e os modelos; a Direção, o quadro da rede.',
+        r: `Um quadro e 30 tarefas em aberto, sem responsável, prazo nem prioridade — o Grátis é onde a empresa fica quando o teste acaba sem assinatura. O ${NORTE} abre o resto: vários quadros, responsável, prazo, prioridade, linha do tempo, modelos e o quadro da rede.`,
       },
       {
         p: 'A balconista vê as tarefas?',
@@ -1744,7 +1756,7 @@ export const GUIA: Entrada[] = [
     caminho: '/analise',
     abre: ['relatorio.ver'],
     oQueE:
-      'Três leituras que o Painel não dá, do plano Direção para cima: as lojas lado a lado (vendas, o que entrou, margem, ticket, sem saída); a curva ABC dos produtos; o dinheiro parado — estoque que não vende há 30 dias ou mais; e a escala dos turnos de caixa. Sem seletor de loja, de propósito: compara tudo que você pode ver.',
+      'Três leituras que o Painel não dá, em todo plano pago: as lojas lado a lado (vendas, o que entrou, margem, ticket, sem saída); a curva ABC dos produtos; o dinheiro parado — estoque que não vende há 30 dias ou mais; e a escala dos turnos de caixa. Sem seletor de loja, de propósito: compara tudo que você pode ver.',
     comoFazer: [
       {
         titulo: 'Comparar as lojas',
@@ -1755,7 +1767,7 @@ export const GUIA: Entrada[] = [
           'Com uma loja só, não há o que comparar — a seção diz isso e espera a segunda.',
         ],
         capacidade: 'relatorio.ver',
-        plano: 'REDE',
+        plano: 'BALCAO',
       },
       {
         titulo: 'Ler a curva ABC',
@@ -1765,7 +1777,7 @@ export const GUIA: Entrada[] = [
           'Colunas: saiu (com a medida — quilo é quilo, peça é peça), entrou, margem, fatia e acumulado. Quem edita produto clica no nome para abrir a ficha; para os outros, o nome é só texto.',
           'Item avulso não entra: não tem produto e não se recompra. Mostra os 60 primeiros.',
         ],
-        plano: 'REDE',
+        plano: 'BALCAO',
       },
       {
         titulo: 'Achar o dinheiro parado',
@@ -1774,7 +1786,7 @@ export const GUIA: Entrada[] = [
           '"Sem vender há 90+ dias" e "nunca vendeu" são as candidatas a promoção.',
           'Não segue o período de cima, de propósito: parado é característica do produto, não do recorte que você escolheu para ler.',
         ],
-        plano: 'REDE',
+        plano: 'BALCAO',
       },
       {
         titulo: 'Turnos de caixa (a escala)',
@@ -1785,13 +1797,13 @@ export const GUIA: Entrada[] = [
           'Diferença de R$ 20 ou mais fica vermelha.',
         ],
         capacidade: 'caixa.ver',
-        plano: 'REDE',
+        plano: 'BALCAO',
       },
     ],
     perguntas: [
       {
         p: 'Meu plano não abre a Análise. E aí?',
-        r: 'Ela é da Direção para cima. A tela explica as três leituras e leva a Assinatura para comparar planos.',
+        r: 'Ela vem em todo plano pago; só o Grátis fica sem. A tela explica as três leituras e leva a Assinatura para escolher o plano.',
       },
       {
         p: 'A curva ABC é do período escolhido?',
@@ -1808,7 +1820,7 @@ export const GUIA: Entrada[] = [
     caminho: '/agente',
     abre: ['agente.configurar'],
     oQueE:
-      'O agente da loja, que conversa pelo WhatsApp com você e a equipe — e nunca solto com cliente: com cliente existem só as campanhas (roteiro com começo e fim, que a pessoa dispara com a palavra-chave ou pelo anúncio) e, se você ligar, um recado fixo; o resto quem responde é a loja, no próprio WhatsApp. Nesta tela: nome, jeito de falar, o manual (o que ele sabe de cor), os poderes (o que pode consultar e o que pode propor), o recado automático, os tetos (valor máximo de uma proposta, desconto máximo, gasto de IA por dia, mensagens por dia) e a chave de ligar. Em cima, o balanço do mês — o que ele trouxe contra o que custou — e as propostas esperando o seu sim. Módulo Agente, plano Assistente para cima: com o plano sem o assistente, ou com o módulo desligado, a tela diz só isso e o caminho — ligar em Configurações › O que sua empresa usa, ou trocar de plano em Assinatura.',
+      `O agente da loja, que conversa pelo WhatsApp com você e a equipe — e nunca solto com cliente: com cliente existem só as campanhas (roteiro com começo e fim, que a pessoa dispara com a palavra-chave ou pelo anúncio) e, se você ligar, um recado fixo; o resto quem responde é a loja, no próprio WhatsApp. Nesta tela: nome, jeito de falar, o manual (o que ele sabe de cor), os poderes (o que pode consultar e o que pode propor), o recado automático, os tetos (valor máximo de uma proposta, desconto máximo, gasto de IA por dia, mensagens por dia) e a chave de ligar. Em cima, o balanço do mês — o que ele trouxe contra o que custou — e as propostas esperando o seu sim. Módulo Agente, plano ${COM_ASSISTENTE}: com o plano sem o assistente, ou com o módulo desligado, a tela diz só isso e o caminho — ligar em Configurações › O que sua empresa usa, ou trocar de plano em Assinatura.`,
     comoFazer: [
       {
         titulo: 'Criar ou ajustar o assistente',
@@ -1865,7 +1877,7 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'O crédito de IA',
         passos: [
-          'Vem no plano: R$ 100 por mês no Assistente, R$ 300 na Direção, combinado em contrato no Corporativo.',
+          `Vem no plano: ${real(PRECOS.creditoDoAssistente)} por mês no ${COM_ASSISTENTE} (${real(PRECOS.creditoDoTeste)} durante o teste), combinado em contrato no Corporativo.`,
           'Cada conversa dele com a equipe desconta da carteira. Campanha e recado automático não usam IA e não gastam crédito.',
           'Acabou o crédito, ele para de responder a equipe até recarregar.',
           'Recarregar e ver o extrato é em Assinatura › Crédito do assistente.',
@@ -1893,15 +1905,123 @@ export const GUIA: Entrada[] = [
     palavras: ['assistente', 'agente', 'inteligência artificial', 'whatsapp', 'robô', 'bot', 'proposta', 'propostas', 'poderes', 'teto', 'crédito de ia', 'personalidade', 'manual da loja', 'chatbot', 'recado automático', 'resposta automática', 'atendimento'],
   },
 
+  // ── Farol ──
+  {
+    chave: 'farol',
+    titulo: 'Farol',
+    caminho: '/farol',
+    abre: ['agente.configurar'],
+    modulo: 'farol',
+    oQueE:
+      `O direcionamento digital da marca, contratado à parte (R$ ${PRECOS.farolMarca} por mês a primeira marca, R$ ${PRECOS.farolMarcaExtra} cada uma a mais). Uma marca é um perfil nas redes: a sorveteria de várias lojas com um Instagram só é uma marca. O Farol escreve com IA, a partir do que a loja vende de verdade: o diagnóstico, o calendário do mês, roteiros de Reels, carrosséis, legendas, comentários para você fazer em conteúdo do nicho, o roteiro de campanha no WhatsApp e o anúncio. Tudo nasce rascunho; quem edita, aprova e publica é você. Cada peça sai do crédito de IA da empresa, e cada marca traz R$ ${PRECOS.creditoDoFarol} de crédito por mês.`,
+    comoFazer: [
+      {
+        titulo: 'Cadastrar a marca',
+        passos: [
+          'Na primeira vez, preencha a marca: o nome, o nicho, a cidade e os bairros, o @ do Instagram e do TikTok, o tom de voz.',
+          'Conte para quem a marca fala, o que a diferencia e o que você quer nos próximos meses — é o que faz o texto sair com a sua cara.',
+          'Marque as lojas que o perfil cobre (nenhuma marcada = todas).',
+          'Com mais de um perfil, "+ marca" cadastra outro; cada um tem o seu conteúdo.',
+        ],
+        capacidade: 'agente.configurar',
+      },
+      {
+        titulo: 'Pedir um conteúdo',
+        passos: [
+          'Escolha o que escrever: diagnóstico, calendário do mês, roteiro de Reels, carrossel, legendas, comentários, campanha no WhatsApp ou anúncio.',
+          'Em uma frase, diga o que você quer ("picolé de coco para o calor de sábado") e, se quiser, a data em que vai ao ar.',
+          '"Escrever" leva até um minuto. Comece pelo diagnóstico: ele dá a direção do resto.',
+          'O que aparece embaixo, em "O que já foi escrito": abra, leia, "Editar", "Copiar", "Aprovar", "Marcar publicada" ou "Arquivar".',
+        ],
+        capacidade: 'agente.configurar',
+      },
+      {
+        titulo: 'O crédito do Farol',
+        passos: [
+          'Cada peça mostra quanto custou. Um roteiro custa centavos; o calendário do mês, um pouco mais.',
+          'O crédito do Farol cai todo mês, por marca, na mesma carteira do assistente. O que sobra passa para o mês seguinte.',
+          'Acabou o crédito, o Farol para de escrever até recarregar em Assinatura. O resto do sistema segue normal.',
+        ],
+      },
+    ],
+    perguntas: [
+      {
+        p: 'O Farol publica ou comenta sozinho?',
+        r: 'Não. Instagram e TikTok derrubam o perfil que posta ou comenta por automação — seria o seu perfil a cair. O Farol escreve o comentário e diz onde vale comentar; você publica, como pessoa.',
+      },
+      {
+        p: 'O que a IA sabe da minha loja?',
+        r: 'A ficha da marca e os números agregados: o que mais vende, o ticket médio, os horários de movimento, as lojas e os bairros. Nunca nome, telefone ou compra de cliente.',
+      },
+      {
+        p: 'Como contratar o Farol?',
+        r: 'Fale com a gente pelo WhatsApp do Norte. Quem liga o Farol é a nossa equipe — ele não aparece entre as chaves de Configurações.',
+      },
+    ],
+    palavras: ['marketing', 'instagram', 'tiktok', 'reels', 'carrossel', 'legenda', 'post', 'conteúdo', 'calendário', 'anúncio', 'tráfego', 'redes sociais', 'diagnóstico', 'roteiro', 'direcionamento', 'crescer'],
+  },
+
+  // ── Fábrica ──
+  {
+    chave: 'fabrica',
+    titulo: 'Fábrica',
+    caminho: '/fabrica',
+    abre: ['estoque.ver'],
+    modulo: 'fabrica',
+    oQueE:
+      `Para quem fabrica o que as lojas vendem (sorvete, pão, doce). A fábrica é uma unidade marcada como fábrica em Lojas (R$ ${PRECOS.fabrica} por mês cada). Os insumos (leite, açúcar, pote, palito) são produtos de "material de uso", com estoque e custo. A ficha técnica diz o que vai numa batelada e quanto rende; a ordem de produção baixa os insumos usados e dá entrada no pronto, com lote, validade e o custo apurado — que passa a ser o custo do produto nas lojas. As lojas pedem à fábrica, a fábrica manda e a loja confere o que chegou.`,
+    comoFazer: [
+      {
+        titulo: 'Montar a ficha técnica',
+        passos: [
+          'Cadastre os insumos em Produtos, marcando "Material de uso — não vende", com o custo de cada um (por kg, litro ou unidade).',
+          'Em Fábrica › Fichas técnicas, escolha o produto pronto, diga quanto sai de uma batelada e a validade em dias.',
+          'Ponha cada insumo com a quantidade de UMA batelada, na medida do insumo. A tela mostra o custo da batelada e de cada unidade.',
+        ],
+        capacidade: 'produto.editar',
+      },
+      {
+        titulo: 'Produzir',
+        passos: [
+          'Em Produção, "Nova ordem": o produto e quantas bateladas. A ordem nasce aberta, com o previsto e o lote do dia.',
+          'Ao terminar, "Encerrar": quanto saiu de verdade e quanto foi usado de cada insumo (vem preenchido com o previsto).',
+          'Encerrada, os insumos saem do estoque da fábrica, o pronto entra com lote e validade, e o custo do produto passa a ser o apurado.',
+          '"Etiquetas" imprime a etiqueta do lote: produto, lote, fabricação, validade e conservação.',
+        ],
+        capacidade: 'estoque.ajustar',
+      },
+      {
+        titulo: 'O pedido das lojas',
+        passos: [
+          'A loja, em Estoque › "Pedir à fábrica", vê o que vende, o saldo e quanto vendeu em 7 dias, e digita quanto quer.',
+          'A fábrica, em Fábrica › Pedidos, confere o saldo, ajusta o que vai e "Manda": sai da fábrica e entra na loja, com o lote.',
+          'A loja confere ao receber: o que veio a menos sai como perda na loja, com o número do pedido.',
+        ],
+        capacidade: 'estoque.ajustar',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'E se o insumo não tiver estoque lançado?',
+        r: 'A produção não trava: o insumo fica com saldo negativo, que é o aviso de que falta dar entrada na compra. O custo do pronto só é apurado quando todos os insumos têm custo.',
+      },
+      {
+        p: 'Quem pode produzir e mandar?',
+        r: 'Quem mexe no estoque da fábrica. Dá para criar um cargo (Equipe › Cargos) preso à fábrica, como "Produção da fábrica", que produz e manda sem mexer nas lojas.',
+      },
+    ],
+    palavras: ['produção', 'produzir', 'ficha técnica', 'receita', 'batelada', 'lote', 'validade', 'insumo', 'ordem de produção', 'OP', 'pedido da loja', 'reposição', 'fábrica'],
+  },
+
   // ── Campanhas ──
   {
     chave: 'campanhas',
     titulo: 'Campanhas',
     caminho: '/campanhas',
     abre: ['agente.configurar'],
-    modulo: 'agente',
+    modulo: 'farol',
     oQueE:
-      'Roteiros de WhatsApp para clientes, com começo e fim. A pessoa entra numa campanha escrevendo uma frase ("quero o catálogo") em qualquer parte da mensagem, ou chegando pelo anúncio de clique para WhatsApp cujo id você cadastrou. Daí ela recebe o que você desenhou — mensagem, foto, vídeo ou áudio, espera, pergunta, desvio pela resposta — e no fim para: depois do fim nada mais é enviado. Não há inteligência artificial em nenhum passo; tudo o que sai foi escrito por você. Mensagem que não abre nem continua campanha fica para alguém da loja responder. Na lista, cada campanha mostra quantos entraram, quantos estão dentro agora, quantos passaram para uma pessoa e quantos concluíram (o seu teste não conta). Sai pelo mesmo número do assistente: plano Assistente para cima, com o módulo "Assistente no WhatsApp" ligado.',
+      `Roteiros de WhatsApp para clientes, com começo e fim. Fazem parte do Farol (o direcionamento digital, contratado à parte). A pessoa entra numa campanha escrevendo uma frase ("quero o catálogo") em qualquer parte da mensagem, ou chegando pelo anúncio de clique para WhatsApp cujo id você cadastrou. Daí ela recebe o que você desenhou — mensagem, foto, vídeo ou áudio, espera, pergunta, desvio pela resposta — e no fim para: depois do fim nada mais é enviado. Não há inteligência artificial em nenhum passo; tudo o que sai foi escrito por você. Mensagem que não abre nem continua campanha fica para alguém da loja responder. Na lista, cada campanha mostra quantos entraram, quantos estão dentro agora, quantos passaram para uma pessoa e quantos concluíram (o seu teste não conta). Sai pelo mesmo número do assistente: precisa do Farol e do plano ${COM_ASSISTENTE}, com o módulo "Assistente no WhatsApp" ligado.`,
     comoFazer: [
       {
         titulo: 'Criar e desenhar uma campanha',
@@ -2037,13 +2157,14 @@ export const GUIA: Entrada[] = [
     caminho: '/lojas',
     abre: ['empresa.configurar'],
     oQueE:
-      'As lojas da empresa: abrir uma nova com o ramo dela, editar nome, endereço, telefone, CNPJ e horário, marcar depósito, fechar e reabrir. Cada loja tem o próprio estoque, caixa e balcão. Em cima, quantas lojas o plano comporta e quantas estão abertas.',
+      'As lojas da empresa: abrir uma nova com o ramo dela, editar nome, endereço, telefone, CNPJ e horário, marcar depósito, fechar e reabrir. Cada loja tem o próprio estoque, caixa e balcão. Em cima, quantas lojas estão abertas e quanto isso soma na conta do mês.',
     comoFazer: [
       {
         titulo: 'Abrir outra loja',
         passos: [
           'Em "Abrir outra loja", dê o nome e escolha o RAMO desta loja — pode ser diferente do da empresa (uma sorveteria numa empresa de roupa).',
-          'Se for só estoque, marque "É um depósito": ele recebe e transfere mercadoria, mas não tem balcão.',
+          'Se for só estoque, marque "É um depósito": ele recebe e transfere mercadoria, mas não tem balcão — e não entra na conta do mês.',
+          `No ${NORTE}, cada loja de venda a mais soma ${real(PRECOS.lojaExtra)} por mês. A tela diz o valor e a conta nova junto do botão, antes de abrir.`,
           'Endereço, contato e horário são opcionais.',
           '"Abrir a loja". Ela nasce com as categorias e os eixos do ramo que ainda não existiam na empresa (ex.: Picolé, Massa, Açaí e o eixo Sabor), sem mexer no que já existe.',
           'Depois, na ficha de cada produto, diga em "Vendido em" se ele é vendido na loja nova.',
@@ -2065,15 +2186,15 @@ export const GUIA: Entrada[] = [
           '"Fechar a loja" no cartão. Ela some do balcão e dos seletores; vendas, estoque e caixa antigos continuam guardados.',
           'Não fecha com o caixa aberto — feche o caixa antes, para a gaveta ser conferida.',
           'A última loja aberta não fecha: a empresa precisa de pelo menos uma.',
-          '"Reabrir" conta na cota do plano, igual a abrir uma nova.',
+          '"Reabrir" uma loja de venda soma na conta do mês, igual a abrir uma nova — a tela pergunta antes, com o valor.',
         ],
         capacidade: 'empresa.configurar',
       },
     ],
     perguntas: [
       {
-        p: 'O plano não deixa abrir mais uma loja. E agora?',
-        r: 'A tela diz quantas o plano comporta. Para abrir mais, troque de plano em Assinatura — ou feche uma loja que não usa mais.',
+        p: 'Quanto custa abrir mais uma loja?',
+        r: `No ${NORTE}, ${real(PRECOS.lojaExtra)} por mês cada loja de venda a mais; depósito não entra na conta. No ${GRATIS} cabe uma loja só: para abrir mais, assine em Assinatura — ou feche uma loja que não usa mais.`,
       },
       {
         p: 'Tenho uma loja de roupa e uma sorveteria. O balcão mistura os produtos?',
@@ -2092,31 +2213,40 @@ export const GUIA: Entrada[] = [
     caminho: '/assinatura',
     abre: ['empresa.configurar', 'financeiro.ver'],
     oQueE:
-      'O plano da empresa e o uso: lojas, pessoas cadastradas (à vontade), quantas podem estar dentro ao mesmo tempo (é isso que o plano limita), o crédito de IA e quanto dura. Recarga de crédito; trocar de plano vendo antes o preço, o que ganha, o que perde e o que impede; e a comparação item por item.',
+      `O plano da empresa e a conta do mês aberta, linha por linha: a primeira loja, as lojas a mais e o assistente. Em teste, quantos dias faltam e o que acontece depois. O crédito de IA e quanto dura; recarga; trocar de plano vendo antes o preço com as suas lojas, o que ganha e o que perde; e a comparação item por item.`,
     comoFazer: [
       {
-        titulo: 'Entender vagas e cadastro',
+        titulo: 'Entender a conta do mês',
         passos: [
-          'Cadastrar gente é de graça em todo plano.',
-          'O que se paga é quanta gente fica DENTRO ao mesmo tempo: Grátis 1, Balcão 3, Assistente 5, Direção e Corporativo sem limite. Plano cheio, a próxima pessoa espera uma vaga soltar — ainda não dá para comprar vaga avulsa pela tela; o caminho é subir de plano.',
-          'Quem para 10 minutos sem mexer solta a vaga sozinho. A tela de entrar mostra quem está ocupando e há quanto tempo cada um parou.',
-          'Cobrar por vaga, e não por conta, é o que evita senha emprestada — e senha emprestada faz o livro de auditoria mentir.',
+          `O que se paga é a loja: ${real(PRECOS.primeiraLoja)} a primeira e ${real(PRECOS.lojaExtra)} cada loja a mais, com tudo o que a loja usa dentro. Depósito não entra.`,
+          `O assistente soma ${real(PRECOS.assistente)} por mês, uma vez para a empresa inteira, com ${real(PRECOS.creditoDoAssistente)} de crédito de IA.`,
+          'Cadastrar gente é de graça, e nos planos pagos não há limite de gente dentro ao mesmo tempo.',
+          '"A conta do mês" mostra a soma aberta. No plano de contrato, ela é a referência da tabela; o que vale é o combinado.',
+        ],
+      },
+      {
+        titulo: 'O teste',
+        passos: [
+          `Quem cria a conta pelo site testa por ${PRECOS.diasDeTeste} dias com tudo, inclusive o assistente, com ${real(PRECOS.creditoDoTeste)} de crédito de IA para conhecer.`,
+          'O quadro no alto diz quantos dias faltam e até quando vai.',
+          `Para assinar, "Assinar este" no plano escolhido: vira pedido, a gente confirma o pagamento e o teste vira assinatura, com tudo o que foi lançado.`,
+          `Sem assinar, a empresa passa para o ${GRATIS}: uma loja, uma pessoa por vez, até ${PLANOS.GRATIS.tetoVendasMes} vendas no mês, sem o assistente. Os dados ficam; o resto volta ao assinar.`,
         ],
       },
       {
         titulo: 'Trocar de plano',
         passos: [
-          'Cada cartão mostra o preço, a diferença por mês, o que passa a ter e o que deixa de ter — antes do clique.',
-          'Descer com mais lojas do que o plano de baixo aceita é recusado: feche lojas antes, na tela Lojas. Vaga a mais não impede, só aperta.',
-          '"Mudar para este" ou "Voltar para este". Só quem configura a empresa troca.',
-          'O Corporativo é fechado por conversa: "Falar com a gente" abre o WhatsApp do Norte.',
+          'Cada cartão mostra a conta com as suas lojas, a diferença por mês, o que passa a ter e o que deixa de ter — antes do clique.',
+          `Subir para o ${COM_ASSISTENTE} é pedido: a gente confirma o pagamento e libera no mesmo dia. Descer para o ${NORTE} é na hora, e o assistente para de responder.`,
+          'Só quem configura a empresa troca.',
+          'O plano de contrato e o Corporativo mudam por conversa: "Falar com a gente" abre o WhatsApp do Norte.',
         ],
         capacidade: 'empresa.configurar',
       },
       {
         titulo: 'Recarregar crédito de IA',
         passos: [
-          'Em "Crédito do assistente": saldo, gasto em 30 dias e quantos dias dura no seu ritmo. A barra compara com a cota do mês.',
+          'Em "Crédito do assistente": saldo, gasto em 30 dias e quantos dias dura no seu ritmo. A barra compara com o crédito do mês.',
           'Digite o valor em reais (ou um atalho: R$ 20, 50, 100, 200) e "Adicionar". Até R$ 5.000 por vez.',
           'A recarga entra no extrato com o seu nome. Enquanto o pagamento automático não existe, ela é lançada aqui.',
         ],
@@ -2125,10 +2255,10 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'O que cada plano abre',
         passos: [
-          'Grátis (R$ 0): 1 loja, 1 pessoa dentro, 300 vendas por mês (a partir da 301ª o balcão recusa até o mês virar). Balcão e caixa, produto com grade, estoque, cliente, financeiro com DRE, contas a pagar e recorrentes, fechamento de mês, 1 quadro de tarefas, relatório simples, auditoria.',
-          'Balcão (R$ 100/mês): até 3 lojas, 3 dentro. Tudo do Grátis mais encomenda, programa de pontos, preços (margem e markup), vários quadros com responsável, prazo e prioridade, estoque e caixa por loja.',
-          'Assistente (R$ 350/mês): até 5 lojas, 5 dentro. Tudo do Balcão mais o assistente no WhatsApp com R$ 100 de crédito de IA, metas e comissão, desempenho básico, preço sugerido, linha do tempo e modelos de quadro.',
-          'Direção (R$ 1.500/mês): lojas e pessoas sem limite. Tudo do Assistente mais crediário, análise (lojas, ABC, dinheiro parado, escala), previsão de ruptura, desempenho completo, quadro da rede, R$ 300 de crédito.',
+          `${NORTE} (${real(PRECOS.primeiraLoja)}/mês a primeira loja, ${real(PRECOS.lojaExtra)} cada loja a mais): tudo da loja — balcão, estoque com grade, clientes e pontos, crediário com carnê, financeiro com DRE, fechamento, metas e comissão, desempenho, curva ABC, previsão de ruptura, comparação entre lojas, tarefas, etiquetas e relatórios. Equipe sem limite.`,
+          `${COM_ASSISTENTE} (+${real(PRECOS.assistente)}/mês): tudo do ${NORTE}, mais o assistente no WhatsApp com ${real(PRECOS.creditoDoAssistente)} de crédito de IA por mês.`,
+          `${GRATIS} (não se vende): onde a empresa fica quando o teste acaba sem assinatura — uma loja, uma pessoa por vez, até ${PLANOS.GRATIS.tetoVendasMes} vendas no mês, o essencial do balcão, do estoque e do financeiro.`,
+          `${PLANOS.REDE.titulo}: dos primeiros clientes, com tudo ligado e o valor combinado em contrato.`,
           'Corporativo: sob consulta — a operação inteira com a gente junto, crédito no contrato.',
         ],
       },
@@ -2136,7 +2266,7 @@ export const GUIA: Entrada[] = [
     perguntas: [
       {
         p: 'O que perco ao descer de plano?',
-        r: 'Os módulos que o plano de baixo não tem somem da tela (os dados ficam guardados) e as vagas apertam. O cartão diz "Deixa de ter" antes do clique.',
+        r: `Do ${COM_ASSISTENTE} para o ${NORTE}, só o assistente e o que sai pelo número dele: os dados ficam guardados. O cartão diz "Deixa de ter" antes do clique.`,
       },
       {
         p: 'Quem vê a Assinatura?',
@@ -2144,10 +2274,10 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'O período de teste acabou. E agora?',
-        r: 'Os avisos no alto da tela dizem quantos dias faltam e quando passou. Com a assinatura suspensa, ninguém da empresa entra até regularizar.',
+        r: `A empresa passou para o ${GRATIS}, com os dados todos. O aviso no alto diz quando acabou; para religar o que desligou, escolha um plano em "Mudar de plano".`,
       },
     ],
-    palavras: ['plano', 'planos', 'mensalidade', 'preço do sistema', 'upgrade', 'trocar de plano', 'vagas', 'limite', 'crédito', 'recarga', 'recarregar', 'teste', 'grátis', 'direção', 'corporativo', 'pagamento do norte', 'quanto custa'],
+    palavras: ['plano', 'planos', 'mensalidade', 'preço do sistema', 'upgrade', 'trocar de plano', 'conta do mês', 'loja a mais', 'limite', 'crédito', 'recarga', 'recarregar', 'teste', 'assinar', 'grátis', 'norte', 'corporativo', 'contrato', 'pagamento do norte', 'quanto custa'],
   },
 
   // ── Configurações ──
@@ -2172,7 +2302,7 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Programa de pontos',
         passos: [
-          'É do plano Balcão para cima: no Grátis, ligar é recusado.',
+          'Vem em todo plano pago: no Grátis, ligar é recusado.',
           'Ligue "Cliente junta pontos comprando".',
           'Pontos por R$ 1, quanto vale 1 ponto (em reais), e o mínimo para usar.',
           'A tela mostra na hora quanto isso devolve: em % e em reais sobre o faturamento do último mês. Acima de 5% costuma passar da margem de roupa; acima de 50% o sistema recusa.',
@@ -2262,7 +2392,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Criar a conta pelo site',
         passos: [
           'Na página do Norte, "Começar grátis": nome da empresa, o seu nome, e-mail, senha e o ramo da loja, e aceite os Termos e a Política de Privacidade.',
-          'A empresa nasce no plano Grátis, com você como dono e uma loja com o nome da empresa. O endereço sai do nome (/sorveteria-da-praca); se já estiver em uso, ganha um número no fim.',
+          `A empresa nasce em teste por ${PRECOS.diasDeTeste} dias, com tudo (o ${COM_ASSISTENTE}), com você como dono e uma loja com o nome da empresa. O endereço sai do nome (/sorveteria-da-praca); se já estiver em uso, ganha um número no fim.`,
           'Com e-mail configurado no servidor, chega um link para confirmar o e-mail. Sem confirmar, a conta não entra; o link vale 48 horas, e a tela de entrar oferece mandar outro.',
           'Confirmado, entre com a senha que escolheu: o primeiro acesso cai aqui, no cadastro inicial.',
           'Sem e-mail no servidor, a conta entra na hora e vem direto para cá.',
@@ -2307,7 +2437,7 @@ export const GUIA: Entrada[] = [
     titulo: 'Entrar, sair e a tela trancada',
     caminho: '/entrar',
     oQueE:
-      'Cada empresa entra pelo próprio endereço, com e-mail e senha. O plano limita quantas pessoas ficam dentro ao mesmo tempo, e a vaga solta com 10 minutos parada. Trinta minutos sem mexer, a tela tranca e pede a senha de novo — sem perder a venda em andamento. Quem só vende entra direto no Balcão; os outros, no Painel. "Esqueci a senha" fica na própria tela de entrar; trocar a senha, em "Minha conta" (o seu nome, no rodapé do menu). "Sair" fica no rodapé do menu; o tema claro/escuro, no alto da tela.',
+      'Cada empresa entra pelo próprio endereço, com e-mail e senha. No Grátis fica uma pessoa dentro por vez, e a vaga solta com 10 minutos parada; nos planos pagos, sem limite. Trinta minutos sem mexer, a tela tranca e pede a senha de novo — sem perder a venda em andamento. Quem só vende entra direto no Balcão; os outros, no Painel. "Esqueci a senha" fica na própria tela de entrar; trocar a senha, em "Minha conta" (o seu nome, no rodapé do menu). "Sair" fica no rodapé do menu; o tema claro/escuro, no alto da tela.',
     comoFazer: [
       {
         titulo: 'Entrar',
@@ -2338,11 +2468,11 @@ export const GUIA: Entrada[] = [
         ],
       },
       {
-        titulo: 'Quando o plano está cheio',
+        titulo: 'Quando o plano está cheio (Grátis)',
         passos: [
           'A tela diz "a senha está certa, mas o plano está cheio agora" e lista quem está dentro e há quanto tempo cada um parou.',
           'Peça para alguém sair — ou espere: 10 minutos sem mexer soltam a vaga, e aí é só entrar de novo.',
-          'Cabe mais gente ao mesmo tempo? É em Assinatura.',
+          'Nos planos pagos não há limite de gente dentro ao mesmo tempo. Assinar é em Assinatura.',
         ],
       },
       {

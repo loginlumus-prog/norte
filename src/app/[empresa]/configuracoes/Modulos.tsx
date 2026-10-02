@@ -18,7 +18,7 @@ import { useActionState } from 'react'
 import type { Plano } from '@prisma/client'
 import { Botao, Marcar, Aviso } from '@/ui/base'
 import { IconeCadeado } from '@/ui/Cadeado'
-import { MODULOS, TODOS, type Modulo } from '@/servidor/modulos'
+import { MODULOS, ESCOLHIVEIS, type Modulo } from '@/servidor/modulos'
 import { ORDEM, doPlano, planoLibera } from '@/servidor/planos'
 import { salvarModulos, type EstadoComeco } from '../comecar/acoes'
 import { semApagar } from '@/ui/formulario'
@@ -40,8 +40,9 @@ export function Modulos({
   plano: Plano
 }) {
   const [estado, agir, pendente] = useActionState<EstadoComeco, FormData>(salvarModulos, {})
-  const abertos = TODOS.filter((m) => planoLibera(plano, m))
-  const trancados = TODOS.filter((m) => !planoLibera(plano, m))
+  // O Farol (contratado à parte) não é chave daqui: quem liga é a equipe do Norte.
+  const abertos = ESCOLHIVEIS.filter((m) => planoLibera(plano, m))
+  const trancados = ESCOLHIVEIS.filter((m) => !planoLibera(plano, m))
 
   return (
     <form action={agir} onSubmit={semApagar(agir)} className="flex flex-col gap-4">
@@ -92,7 +93,7 @@ export function Modulos({
                         href={`/${empresa}/assinatura`}
                         className="mt-1 w-fit text-xs font-semibold text-marca underline-offset-2 hover:underline"
                       >
-                        {doPlano(abre)} para cima · ver os planos
+                        {doPlano(abre)} · ver os planos
                       </Link>
                     ) : (
                       <span className="mt-1 text-xs text-tinta-3">Ainda não está em nenhum plano.</span>

@@ -4,12 +4,10 @@ import type { Plano } from '@prisma/client'
 import {
   PLANOS as LIMITES,
   PLANOS_COM_PRECO,
+  PRECOS,
   RECOMENDADO,
   RECURSOS,
-  ORDEM,
-  doPlano,
-  planoQueAbre,
-  type Limite,
+  mensalidade,
 } from '@/servidor/planos'
 import { PODERES, TODOS_PODERES } from '@/servidor/poderes'
 import { Marca, Simbolo } from '@/ui/Marca'
@@ -86,12 +84,19 @@ import {
 //   não existe "mais pedido". O selo agora diz o que é verdade: é o plano
 //   que a gente RECOMENDA (`RECOMENDADO` em `servidor/planos.ts`).
 //
-// ── e o "grátis para sempre", que antes estava nessa lista ───
-// Ele saía porque cada cliente custava uma instância de WhatsApp desde o
-// primeiro dia. Isso deixou de ser verdade: o Grátis não tem assistente
-// (`modulos: []`, `creditoMensal: 0`), não custa instância nenhuma, e a
-// tabela de planos diz "sem prazo para acabar". O que tem limite é o volume
-// (`tetoVendasMes`), e a página diz o número.
+// ── e o "grátis para sempre", que esteve aqui até 02/10/2026 ─
+// Saiu com a tabela nova. Quem se cadastra pelo site ganha um teste com tudo
+// (`PRECOS.diasDeTeste` dias), e o Grátis deixou de ser vendido: ficou só
+// como o lugar onde a empresa cai quando o teste acaba sem assinatura. A
+// página diz isso com essas palavras — "grátis para sempre" seria vender o
+// que não se vende.
+//
+// ── a tabela de 02/10/2026, em uma frase ─────────────────────
+// A LOJA é o que se paga: a primeira, e cada loja a mais, com tudo o que a
+// loja usa dentro. À parte só o que tem custo que varia (o assistente e a IA
+// dele) e o que é trabalho nosso (a implantação, e o Farol e a Fábrica quando
+// existirem). Por isso a página quase não diz "do plano X para cima": quase
+// tudo é "incluso no Norte", e o resto é "com o assistente".
 //
 // ── de onde vem cada número ──────────────────────────────────
 // Preço, cota e crédito: `servidor/planos.ts`. Em que plano cada tela abre:
@@ -117,139 +122,136 @@ const reais = (v: number) =>
     maximumFractionDigits: 0,
   }).format(v)
 
-const MENOR_MENSAL = Math.min(...PLANOS_COM_PRECO.map((p) => LIMITES[p].mensal!))
-
-/** "Do Balcão", "Da Direção" — o `doPlano` com maiúscula, para começo de frase. */
-const DoPlano = (p: Plano) => doPlano(p).replace(/^d/, 'D')
+/** O plano de entrada da tabela (o Norte) e o de cima (com o assistente). */
+const [BASE, COM_ASSISTENTE] = PLANOS_COM_PRECO as [Plano, Plano]
 
 /**
- * Em que plano um recurso da tabela existe, dito em uma frase.
+ * Onde um recurso da tabela vem, dito em uma frase: "Incluso no Norte" ou
+ * "Com o assistente".
  *
  * Recebe o TÍTULO exato da linha em `RECURSOS`. Se alguém renomear a linha
  * lá e esquecer aqui, a página quebra na hora de montar — e é de propósito:
- * quebrar no build é melhor que mentir no ar.
+ * quebrar no build é melhor que mentir no ar. Recurso que nenhum plano à
+ * venda tem também quebra: a página de venda não cita o que não se vende.
  */
 function desde(titulo: string): string {
   const r = RECURSOS.find((x) => x.titulo === titulo)
   if (!r) throw new Error(`A página de venda cita "${titulo}", que não existe em RECURSOS.`)
-  if (r.em.length === ORDEM.length) return 'Em todos os planos, inclusive o Grátis'
-  const primeiro = ORDEM.find((p) => r.em.includes(p))!
-  return `${DoPlano(primeiro)} para cima`
+  if (r.em.includes(BASE)) return `Incluso no ${LIMITES[BASE].titulo}`
+  if (r.em.includes(COM_ASSISTENTE)) return 'Com o assistente'
+  throw new Error(`A página de venda cita "${titulo}", que nenhum plano à venda tem.`)
 }
 
+/**
+ * A implantação e o anual: condições comerciais que não são preço de tabela.
+ *
+ * Não moram em `PRECOS` porque não são mensalidade: a implantação é faixa de
+ * orçamento (fecha depois de ver o que vem de outro sistema), e o anual é
+ * desconto de forma de pagamento. Ficam aqui, num lugar só, e nunca soltos
+ * no meio do texto.
+ */
+const IMPLANTACAO = { de: PRECOS.implantacaoMigracao[0], ate: PRECOS.implantacaoFabrica[1] }
+const ANUAL = { meses: 12, paga: PRECOS.anualPagaMeses }
+
+/** O exemplo da conta: duas lojas, com o assistente. */
+const EXEMPLO_LOJAS = 2
+const EXEMPLO = mensalidade(COM_ASSISTENTE, EXEMPLO_LOJAS).total!
+
 /* ═══════════════════════════════════════════════════════════
-   O texto de venda de cada plano
+   O texto de venda dos dois cartões
    ═══════════════════════════════════════════════════════════
-   Só o que é TEXTO mora aqui. Preço, cota de loja, cota de gente e crédito
-   mensal vêm de `servidor/planos.ts`, que é a mesma fonte que a tela de
-   assinatura consulta para barrar a criação da sexta loja.
+   Só o que é TEXTO mora aqui. Preço, loja a mais e crédito mensal vêm de
+   `servidor/planos.ts`, que é a mesma fonte que a tela de assinatura e a de
+   lojas consultam para dizer a conta antes de abrir a loja.
+
+   São dois cartões porque são duas escolhas: a loja (tudo dela) e a loja com
+   o assistente. O Grátis não se vende, o plano de contrato é dos primeiros
+   clientes e o Corporativo tem faixa própria.
 
    O sufixo " · em breve" vira etiqueta. Toda linha que corresponde a um
    recurso com `quando: 'breve'` na tabela TEM que levar o sufixo — hoje, a
    nota fiscal e a análise do negócio. */
-const CARTOES: Record<
-  Plano,
-  {
-    selo?: string
-    /** A tradução do crédito para a unidade que o cliente entende. */
-    conta: string | null
-    nota: string
-    itens: string[]
-    fora: string[]
-  }
+const CARTOES: Partial<
+  Record<
+    Plano,
+    {
+      /** O título da lista: "Incluso no Norte", "Tudo do Norte, e com o assistente". */
+      lista: string
+      /** A tradução do crédito para a unidade que o cliente entende. */
+      conta: string | null
+      itens: string[]
+      fora: string[]
+    }
+  >
 > = {
-  GRATIS: {
-    conta: null,
-    nota: 'sem prazo para acabar e sem cartão',
-    itens: [],
-    fora: [],
-  },
   BALCAO: {
+    lista: `Incluso no ${LIMITES.BALCAO.titulo}`,
     conta: null,
-    nota: 'sem o assistente no WhatsApp',
     itens: [
-      'Tudo do Grátis, sem teto de vendas',
-      'Até três lojas, cada uma com seu estoque',
-      'Financeiro e o DRE do mês',
-      'Fechamento de mês guiado',
-      'Quadros de tarefas com responsável, prazo e prioridade',
-      'Preços: margem e markup item a item',
-      'Equipe sem limite de cadastro, cada pessoa com o seu papel e a sua loja',
-      // Estava sem a etiqueta — e a tabela marca a nota fiscal como
-      // "em breve" desde 24/09 (depende de emissor contratado e do
-      // certificado A1 de cada loja). Sem a etiqueta, o cartão prometia o que
-      // a tabela logo abaixo desmentia.
+      'Balcão e caixa, com várias formas de pagamento, troca e etiqueta',
+      'Estoque por loja, com grade de cor e tamanho',
+      'Clientes, programa de pontos e crediário com carnê',
+      'Financeiro com DRE do mês e fechamento guiado',
+      'Metas e comissão por vendedor, e o desempenho em estrelas',
+      'Curva ABC, previsão de ruptura e comparação entre lojas',
+      'Equipe sem limite: de pessoas e de gente dentro ao mesmo tempo',
+      'Encomenda, agenda, compras e ponto, se o seu ramo usa',
+      'Relatórios e o livro de auditoria de tudo que mexe',
+      // A tabela marca a nota fiscal como "em breve" desde 24/09 (depende de
+      // emissor contratado e do certificado A1 de cada loja). Sem a etiqueta,
+      // o cartão prometia o que a tabela logo abaixo desmente.
       'Nota fiscal no balcão · em breve',
     ],
-    fora: ['Assistente', 'Desempenho da equipe em estrelas', 'Crediário próprio'],
+    fora: ['Assistente no WhatsApp'],
   },
   BALCAO_AGENTE: {
+    lista: `Tudo do ${LIMITES.BALCAO.titulo}, e com o assistente`,
     // "R$ 100 de crédito" não diz nada para quem nunca comprou token. O número
     // sai do custo medido por conversa, com cache e roteamento de modelo.
     conta: '~1.650 conversas com o assistente',
-    // Dizia "renovado todo mês": não existe rotina que devolva o crédito na
-    // virada do mês (`recarregarCredito` só é chamada pela recarga). A recarga
-    // existe, pela tela de Assinatura.
-    nota: 'recarga quando quiser',
     itens: [
-      'Tudo do Balcão, e até cinco lojas',
-      'Assistente com o nome que você der, que conversa com você e a equipe',
-      'Campanhas no WhatsApp para clientes: roteiro fixo, com começo e fim',
-      // Dizia "cobrança de atraso": cobrar crediário é poder que ainda não
-      // existe (`servidor/poderes.ts`), e o crediário nem é deste plano.
-      'Aviso de peça acabando e relatório de manhã e à noite',
-      'Linha do tempo, modelos de quadro e desempenho da equipe em estrelas',
-      'Metas e comissão por vendedor',
-      'Preço sugerido para a margem alvo',
+      'Assistente com o nome que você der, no WhatsApp, para você e a equipe',
+      'Relatório de manhã e à noite, e aviso de peça acabando e de cliente sumido',
+      'Perguntas sobre o negócio, respondidas com os seus números',
+      'Propostas de compra e de conta que só valem com o seu sim',
       'Teto de valor e de gasto que você define',
       'Toda ação do assistente assinada no livro',
-      'Análise básica: o que aconteceu no dia e no mês · em breve',
+      'Análise do negócio: o que aconteceu no dia e no mês · em breve',
     ],
-    fora: [
-      'Previsão de ruptura contra o prazo do fornecedor',
-      'Curva ABC e comparação entre lojas',
-      'Crediário próprio',
-    ],
-  },
-  REDE: {
-    // Era "O mais pedido". Sem cliente, não existe "mais pedido" — ver o topo.
-    selo: 'Recomendado',
-    conta: '~5.000 conversas com o assistente',
-    nota: 'recarga quando quiser',
-    itens: [
-      'Tudo do Assistente, sem limite de loja nem de gente',
-      'Previsão de ruptura: quantos dias o saldo aguenta, e até quando pedir',
-      'Comparação entre lojas: venda, margem e estoque parado lado a lado',
-      'Curva ABC e dinheiro parado',
-      'Crediário próprio: parcelas, juros de atraso e a lista de quem deve',
-      'Quadro da rede inteira e desempenho completo, loja a loja',
-      'Turnos de caixa por pessoa: quem abriu, quanto tempo, quanto vendeu',
-      'Análise profunda: onde está perdendo e o que fazer · em breve',
-    ],
-    fora: [],
-  },
-  CORPORATIVO: {
-    conta: 'crédito combinado no contrato',
-    nota: 'junto com o preço, depois de olhar a operação',
-    itens: [],
     fora: [],
   },
 }
+
+/** O que vem à parte. O que ainda não existe diz "em breve", com o preço já dito. */
+const A_PARTE: { t: string; breve: boolean; d: string; preco: string; sub: string }[] = [
+  {
+    t: 'Farol',
+    breve: false,
+    d: `Direcionamento digital da marca: o perfil de Instagram e TikTok, com diagnóstico, calendário, roteiros, carrosséis, legendas e anúncios escritos com IA, e as campanhas no WhatsApp. ${reais(PRECOS.creditoDoFarol)} de crédito de IA por marca todo mês.`,
+    preco: `${reais(PRECOS.farolMarca)}/mês`,
+    sub: `a primeira marca · ${reais(PRECOS.farolMarcaExtra)} cada marca a mais do mesmo dono`,
+  },
+  {
+    t: 'Fábrica',
+    breve: false,
+    d: 'Para quem produz o que vende: ficha técnica, ordem de produção, lote e o pedido das lojas para a fábrica.',
+    preco: `${reais(PRECOS.fabrica)}/mês`,
+    sub: 'por fábrica',
+  },
+  {
+    t: 'Implantação',
+    breve: false,
+    d: 'Uma vez só, com o treinamento junto. Cadastro simples não paga nada; trazer os dados de outro sistema, ou montar a fábrica, tem orçamento antes de começar.',
+    preco: `De ${reais(0)}`,
+    sub: `a ${reais(IMPLANTACAO.de)}–${reais(IMPLANTACAO.ate)}, uma vez`,
+  },
+]
 
 const CORPORATIVO_EXTRAS: [string, string][] = [
   ['Site, tráfego e condução', 'A gente entra junto na operação, não só entrega o sistema.'],
   ['Atendimento direto', 'Uma pessoa nossa que conhece a sua operação pelo nome.'],
   ['Crédito sob medida', 'O volume de conversa de uma rede grande não cabe em número de tabela.'],
 ]
-
-const cotaLojas = (l: Limite) =>
-  l.unidades === null ? 'Sem limite' : l.unidades === 1 ? '1 loja' : `Até ${l.unidades}`
-
-// O número que se paga não é quanta gente existe, é quanta gente fica dentro
-// ao mesmo tempo. Cadastrar a equipe toda é de graça em qualquer plano — e
-// dizer isso no cartão é o que evita a pergunta na hora da venda.
-const cotaGente = (l: Limite) =>
-  l.vagas === null ? 'Sem limite' : l.vagas === 1 ? '1 por vez' : `${l.vagas} ao mesmo tempo`
 
 /* ═══════════════════════════════════════════════════════════
    O sistema por dentro
@@ -284,7 +286,7 @@ const TEXTOS: Record<TelaId, TextoTela> = {
       '“Vai faltar”: quantos dias o saldo aguenta no ritmo dos últimos 30 dias, contra o prazo de reposição — e até quando pedir.',
       'O histórico é a verdade: se o saldo divergir da soma dos movimentos, o sistema acusa em vez de esconder.',
     ],
-    plano: `Estoque: ${desde('Estoque, entrada de mercadoria e balanço').toLowerCase()}. “Vai faltar”: ${desde('Previsão de ruptura com prazo de reposição').toLowerCase()}.`,
+    plano: `${juntos('Estoque, entrada de mercadoria e balanço', 'Previsão de ruptura com prazo de reposição')}.`,
   },
   financeiro: {
     chamada: 'Saber quanto sobrou, e não só quanto vendeu.',
@@ -302,7 +304,7 @@ const TEXTOS: Record<TelaId, TextoTela> = {
       'Fichas prontas para o que vira ação: quem sumiu há mais de 60 dias e quem faz aniversário no mês.',
       'Programa de pontos: a venda com cliente escolhido soma os pontos na hora.',
     ],
-    plano: `Ficha do cliente: ${desde('Ficha do cliente com histórico').toLowerCase()}. Pontos: ${desde('Programa de pontos').toLowerCase()}.`,
+    plano: `${juntos('Ficha do cliente com histórico', 'Programa de pontos')}.`,
   },
   tarefas: {
     chamada: 'A equipe no mesmo quadro, e o mês em estrelas.',
@@ -311,7 +313,7 @@ const TEXTOS: Record<TelaId, TextoTela> = {
       'Meta e comissão por vendedor, contando o vendido já sem as devoluções.',
       'De 0 a 5 estrelas por pessoa e por mês: meta batida, tarefa no prazo e dias presente.',
     ],
-    plano: `Quadro de tarefas: ${desde('Quadro de tarefas da equipe').toLowerCase()}. Estrelas: ${desde('Desempenho da equipe em estrelas').toLowerCase()}.`,
+    plano: `${juntos('Quadro de tarefas da equipe', 'Desempenho da equipe em estrelas', 'Metas e comissão por vendedor')}.`,
   },
   analise: {
     chamada: 'Onde o dinheiro está parado, e qual loja puxa a rede.',
@@ -329,8 +331,19 @@ const TEXTOS: Record<TelaId, TextoTela> = {
       'Para agir — registrar uma compra, lançar uma conta, somar ao estoque a peça que apareceu — ele monta a proposta com o número e espera o seu sim, na tela.',
       'Os tetos moram no banco: valor máximo, desconto máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
     ],
-    plano: `${desde('Assistente no WhatsApp')}.`,
+    // Aqui o "com o assistente" seria redundante: diz o plano e o preço.
+    plano: `No ${LIMITES[COM_ASSISTENTE].titulo}: ${reais(PRECOS.assistente)} a mais por mês, com ${reais(PRECOS.creditoDoAssistente)} de crédito de IA.`,
   },
+}
+
+/**
+ * Vários recursos numa frase só. Quando todos vêm no mesmo lugar (o comum,
+ * agora que quase tudo é do Norte), uma frase; quando não, cada um com o seu.
+ */
+function juntos(...titulos: string[]): string {
+  const onde = titulos.map(desde)
+  if (new Set(onde).size === 1) return onde[0]!
+  return titulos.map((t, i) => `${t}: ${onde[i]!.replace(/^./, (c) => c.toLowerCase())}`).join('. ')
 }
 
 /** As telas no rodapé, na ordem do menu. */
@@ -499,9 +512,7 @@ const DORES: Dor[] = [
     t: 'Preço no chute',
     d: 'Margem e markup item a item, e o preço que a margem alvo pede. O que está abaixo do custo vem numa lista, antes de virar prejuízo.',
     tela: 'Preços',
-    // Esta tela abre em dois degraus (`LIBERACOES`): a margem num plano, a
-    // sugestão no seguinte. Os dois nomes vêm da escada.
-    plano: `Margem ${doPlano(planoQueAbre('precos.margem').codigo)} para cima; preço sugerido ${doPlano(planoQueAbre('precos.sugestao').codigo)}`,
+    plano: desde('Precificação: margem, markup e preço sugerido'),
     classe: '',
   },
   {
@@ -517,7 +528,7 @@ const DORES: Dor[] = [
     t: '“De quem era isso?”',
     d: 'O quadro diz quem está com o quê e o que parou; as estrelas do mês dizem quem entregou, com número e não impressão.',
     tela: 'Tarefas e Equipe',
-    plano: `Quadro ${desde('Quadro de tarefas da equipe').toLowerCase()}`,
+    plano: juntos('Quadro de tarefas da equipe', 'Desempenho da equipe em estrelas'),
     classe: '',
     peca: (
       <div className="flex items-center justify-between gap-2 rounded-lg border border-borda bg-superficie px-3 py-2">
@@ -618,11 +629,14 @@ const PERGUNTAS: { p: string; r: string }[] = [
     // A conexão existe no código (Z-API, `servidor/assistente/canal.ts`), mas
     // com UMA instância global: uma empresa conversa por vez. Dizer "sim" a
     // todo mundo seria prometer o número de cada loja, que ainda não há.
-    r: `A configuração dele — nome, jeito de falar, manual da loja, poderes e tetos — e as propostas esperando o seu sim já estão no sistema. A conversa pelo WhatsApp também já existe, e a conexão do número é montada junto com a nossa equipe — hoje uma loja de cada vez. Quando der para ligar o número de toda loja, a gente avisa; antes disso, não promete data. Ele entra ${doPlano('BALCAO_AGENTE')} para cima.`,
+    r: `A configuração dele — nome, jeito de falar, manual da loja, poderes e tetos — e as propostas esperando o seu sim já estão no sistema. A conversa pelo WhatsApp também já existe, e a conexão do número é montada junto com a nossa equipe — hoje uma loja de cada vez. Quando der para ligar o número de toda loja, a gente avisa; antes disso, não promete data. Ele vem no ${LIMITES[COM_ASSISTENTE].titulo}: ${reais(PRECOS.assistente)} a mais por mês, para a empresa inteira.`,
   },
   {
     p: 'O assistente responde os meus clientes?',
-    r: 'Não em conversa solta. Com cliente ele roda as campanhas — roteiro fixo, com começo e fim, que começa quando a pessoa manda a palavra-chave ou chega pelo anúncio. Qualquer outra mensagem fica para alguém da loja responder no WhatsApp, sem IA e sem custo. Se quiser, você liga um recado fixo avisando que a loja já vai responder. Com você e a equipe, sim: relatório de manhã e à noite, aviso do que vai faltar, propostas para confirmar na tela e resposta ao que vocês perguntarem.',
+    // As campanhas para cliente passaram para o Farol em 02/10/2026 (ver
+    // servidor/campanhas/acesso.ts): saem pelo número do assistente, mas se
+    // contratam com o Farol.
+    r: 'Não em conversa solta. Com cliente, só as campanhas, que vêm com o Farol — roteiro fixo, com começo e fim, que começa quando a pessoa manda a palavra-chave ou chega pelo anúncio. Qualquer outra mensagem fica para alguém da loja responder no WhatsApp, sem IA e sem custo. Se quiser, você liga um recado fixo avisando que a loja já vai responder. Com você e a equipe, sim: relatório de manhã e à noite, aviso do que vai faltar, propostas para confirmar na tela e resposta ao que vocês perguntarem.',
   },
   {
     p: 'O assistente pode dar desconto sozinho? Mexer no meu preço?',
@@ -633,11 +647,19 @@ const PERGUNTAS: { p: string; r: string }[] = [
     // na tabela desde 24/09 — responder "sim" aqui era a mentira mais cara da
     // página, porque é a pergunta que decide a assinatura de muita loja.
     p: 'Emite nota fiscal?',
-    r: `Ainda não — está marcada como “em breve” na tabela de planos. Ela depende de um emissor contratado e do certificado digital A1 de cada loja, e quando entrar vem em todo plano pago, ${doPlano('BALCAO')} para cima. Até lá, o comprovante do balcão é a via do cliente, não nota.`,
+    r: `Ainda não — está marcada como “em breve” na tabela de planos. Ela depende de um emissor contratado e do certificado digital A1 de cada loja, e quando entrar vem no ${LIMITES[BASE].titulo}. Até lá, o comprovante do balcão é a via do cliente, não nota.`,
   },
   {
     p: 'Tenho várias lojas. Cada uma com o estoque dela?',
-    r: 'Sim, e o consolidado num clique. O dono vê todas; o gerente de cada loja vê só a dele — inclusive se colar na barra de endereço o código de outra.',
+    r: `Sim, e o consolidado num clique. O dono vê todas; o gerente de cada loja vê só a dele — inclusive se colar na barra de endereço o código de outra. Cada loja a mais soma ${reais(PRECOS.lojaExtra)} por mês, e o sistema diz o valor antes de abrir; depósito não entra na conta.`,
+  },
+  {
+    p: 'Como funciona o teste?',
+    r: `São ${PRECOS.diasDeTeste} dias com tudo ligado — o assistente também, com ${reais(PRECOS.creditoDoTeste)} de crédito de IA para conhecer —, sem cartão. Assinando, nada muda: o que você lançou continua. Sem assinar, a conta não vira cobrança: ela fica no plano básico, de uma loja, uma pessoa por vez e até ${LIMITES.GRATIS.tetoVendasMes} vendas no mês, com os dados todos guardados.`,
+  },
+  {
+    p: 'Pago por usuário?',
+    r: 'Não. Cadastrar a equipe inteira é de graça, e não há limite de gente dentro ao mesmo tempo: cada pessoa entra com a própria senha, e o livro de auditoria diz quem fez o quê. O que se paga é a loja.',
   },
   {
     p: 'E os meus dados ficam misturados com os de outra empresa?',
@@ -675,7 +697,7 @@ export default function Inicio() {
         {/* ── o topo ──────────────────────────────────────────────
             Centrado, curto e com o produto logo embaixo. Título de duas
             linhas, uma frase, dois botões e a letra miúda que tira o medo
-            ("grátis, sem cartão"). A pílula de cima é a novidade de verdade
+            ("30 dias grátis, sem cartão"). A pílula de cima é a novidade de verdade
             desta semana — o modo simples — e leva até ela.
 
             ── vivo, desde 25/09 ──
@@ -730,7 +752,7 @@ export default function Inicio() {
                 </a>
               </div>
               <p className="chega mt-4 text-sm text-tinta-3" style={{ '--d': '.6s' } as CSSProperties}>
-                Grátis para sempre no plano de uma loja · sem cartão
+                {PRECOS.diasDeTeste} dias grátis com tudo · sem cartão
               </p>
             </div>
 
@@ -760,8 +782,8 @@ export default function Inicio() {
                     'Quem tem uma loja nem vê o seletor de loja: ele só aparece quando nasce a segunda. A mesma tela serve às duas.',
                   ],
                   [
-                    'Depósito conta como loja',
-                    'Cada unidade com estoque e caixa próprios, e o painel soma tudo num clique.',
+                    'Depósito fora da conta',
+                    'Cada unidade com estoque e caixa próprios, e o painel soma tudo num clique. O depósito guarda e transfere — e não entra na mensalidade.',
                   ],
                   [
                     'Cada gerente na sua loja',
@@ -868,7 +890,8 @@ export default function Inicio() {
                 <p className="text-[13px] leading-relaxed text-tinta-3">
                   A configuração dele e as propostas já funcionam dentro do sistema. A conversa
                   pelo WhatsApp também existe, e o número é conectado junto com a nossa equipe —
-                  hoje uma loja de cada vez. {desde('Assistente no WhatsApp')}.
+                  hoje uma loja de cada vez. Ele vem no {LIMITES[COM_ASSISTENTE].titulo}, por{' '}
+                  {reais(PRECOS.assistente)} a mais por mês.
                 </p>
               </div>
 
@@ -988,54 +1011,36 @@ export default function Inicio() {
           </div>
         </section>
 
-        {/* ── planos ──────────────────────────────────────────────
-            ── o Grátis e o Corporativo em faixas próprias ──
-            Quatro cartões de peso tão diferente numa fileira achatam os
-            pagos: o olho compara R$ 0 com R$ 1.500 e para de comparar o que
-            importa. O Grátis fica numa faixa quieta em cima; o Corporativo,
-            que não tem preço de tabela nem se assina sozinho, numa faixa
-            larga embaixo. Os três do meio são os que disputam de verdade.
+        {/* ── preço ───────────────────────────────────────────────
+            ── a ordem, e por quê ──
+            Primeiro os dois cartões (a loja; a loja com o assistente), que
+            são a escolha. Logo embaixo, a CONTA — porque a pergunta seguinte
+            de quem tem duas lojas é "e quanto fica para mim?", e a resposta
+            é uma soma que cabe num recibo. Depois o que vem à parte (o Farol,
+            a Fábrica e a implantação), o Corporativo em
+            faixa larga, e a tabela item por item.
 
             ── e por que o número vem do servidor ──
-            A MESMA fonte que a tela de assinatura lê para barrar a sexta
-            loja. Divergir aqui é prometer na venda o que o sistema não
-            entrega. */}
+            A MESMA fonte que a tela de lojas lê para dizer, antes de abrir a
+            terceira loja, quanto a conta passa a ser. Divergir aqui é
+            prometer na venda o que o sistema não cobra — ou cobrar o que a
+            venda não disse. */}
         <section id="planos" className="scroll-mt-16 bg-fundo">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
             <Titulo
               centro
-              olho="Planos"
-              titulo="Preço por tamanho de operação"
-              resumo={`A partir de ${reais(MENOR_MENSAL)} por mês, sem taxa de implantação. Precisa de mais gente dentro ao mesmo tempo? O próximo plano abre mais vagas.`}
+              olho="Preço"
+              titulo="A loja é o que se paga"
+              resumo={`${reais(PRECOS.primeiraLoja)} por mês a primeira loja e ${reais(PRECOS.lojaExtra)} cada loja a mais, com tudo o que a loja usa dentro. O assistente é à parte. E ${PRECOS.diasDeTeste} dias para testar com tudo, sem cartão.`}
             />
 
-            <div className="mx-auto mt-10 flex max-w-2xl flex-col gap-4 rounded-2xl border border-borda bg-superficie p-6 sm:flex-row sm:items-center sm:justify-between lg:max-w-none">
-              <div className="flex flex-col gap-1.5">
-                <div className="flex flex-wrap items-baseline gap-x-3">
-                  <h3 className="text-xl">{LIMITES.GRATIS.titulo}</h3>
-                  <span className="numero text-sm font-semibold text-bom">
-                    R$ 0 · {CARTOES.GRATIS.nota}
-                  </span>
-                </div>
-                <p className="max-w-2xl text-[15px] leading-relaxed text-tinta-2">
-                  Uma loja, uma pessoa por vez, até {LIMITES.GRATIS.tetoVendasMes} vendas no mês.
-                  Balcão, caixa, produto, estoque, cliente e um quadro de tarefas funcionam igual. É
-                  onde a loja pequena pode ficar — não uma demonstração com prazo.
-                </p>
-              </div>
-              <a
-                href={COMECAR}
-                className="shrink-0 rounded-norte border border-borda px-5 py-2.5 text-center text-sm font-semibold text-tinta hover:bg-superficie-2"
-              >
-                Começar de graça
-              </a>
-            </div>
-
-            <AoEntrar className="cascata mx-auto mt-5 grid max-w-2xl gap-5 lg:max-w-none lg:grid-cols-3 lg:items-stretch">
+            <AoEntrar className="cascata mx-auto mt-10 grid max-w-2xl gap-5 lg:max-w-4xl lg:grid-cols-2 lg:items-stretch">
               {PLANOS_COM_PRECO.map((codigo) => {
                 const l = LIMITES[codigo]
                 const c = CARTOES[codigo]
+                if (!c) throw new Error(`O plano ${l.titulo} está à venda e não tem cartão na página.`)
                 const eleito = codigo === RECOMENDADO
+                const comAssistente = l.modulos.includes('agente')
                 return (
                   <div
                     key={codigo}
@@ -1044,31 +1049,30 @@ export default function Inicio() {
                       (eleito ? 'shadow-norte-alta ring-2 ring-marca' : 'shadow-norte ring-1 ring-borda')
                     }
                   >
-                    {eleito && c.selo && (
+                    {/* "Recomendado", e não "o mais pedido": sem cliente não
+                        existe mais pedido — ver o topo. */}
+                    {eleito && (
                       <span className="absolute -top-3 left-6 rounded-full bg-marca px-3 py-1 text-[11px] font-bold tracking-[0.08em] text-marca-tinta uppercase">
-                        {c.selo}
+                        Recomendado
                       </span>
                     )}
                     <h3 className="text-2xl">{l.titulo}</h3>
-                    <p className="mt-2 min-h-[3em] text-[14px] leading-relaxed text-tinta-2">{l.resumo}</p>
 
-                    <p className="mt-6 flex items-baseline gap-1.5">
+                    <p className="mt-5 flex items-baseline gap-1.5">
                       <span className="numero font-display text-[2.75rem] leading-none font-bold tracking-[-0.03em] text-titulo">
                         {reais(l.mensal!)}
                       </span>
                       <span className="text-sm text-tinta-3">/mês</span>
                     </p>
-                    <p className="mt-2 text-xs text-tinta-3">
-                      {/* Dizia "+ R$ 40 por pessoa a mais dentro ao mesmo
-                          tempo" — e a vaga extra não se compra: o login só
-                          olha a cota (`ocuparVaga`). O caminho hoje é subir. */}
-                      {l.vagas !== null
-                        ? 'Mais gente dentro ao mesmo tempo? O próximo plano abre mais vagas.'
-                        : 'Sem taxa de implantação'}
+                    <p className="mt-2 text-[13px] leading-snug text-tinta-2">
+                      {comAssistente
+                        ? `A primeira loja (${reais(PRECOS.primeiraLoja)}) e o assistente (${reais(PRECOS.assistente)}).`
+                        : 'A primeira loja, com tudo dela.'}{' '}
+                      Cada loja a mais: <b className="numero text-tinta">+{reais(l.porUnidadeExtra!)}</b>.
                     </p>
 
                     <a
-                      href={mailto(`Quero o plano ${l.titulo}`)}
+                      href={COMECAR}
                       className={
                         'mt-5 rounded-norte px-4 py-2.5 text-center text-sm font-semibold ' +
                         (eleito
@@ -1076,21 +1080,26 @@ export default function Inicio() {
                           : 'border border-borda text-tinta hover:bg-superficie-2')
                       }
                     >
-                      Quero {l.artigo} {l.titulo}
+                      Testar {PRECOS.diasDeTeste} dias grátis
                     </a>
 
                     <dl className="mt-6">
-                      <Ficha rotulo="Lojas" valor={cotaLojas(l)} />
-                      <Ficha rotulo="Pessoas dentro" valor={cotaGente(l)} />
+                      <Ficha rotulo="Lojas" valor={`1 incluída, +${reais(l.porUnidadeExtra!)} cada`} />
+                      <Ficha rotulo="Equipe" valor={l.vagas === null ? 'Sem limite' : `${l.vagas} por vez`} />
                       <Ficha
                         rotulo="Crédito de IA"
                         valor={l.creditoMensal ? `${reais(l.creditoMensal)}/mês` : 'Sem assistente'}
                         nota={c.conta}
-                        rodape={c.nota}
+                        // O crédito existe: cai todo mês (`garantirCreditoDoMes`),
+                        // e acabou antes, recarrega pela tela de Assinatura.
+                        rodape={l.creditoMensal ? 'cai todo mês · recarga quando acabar' : undefined}
                       />
                     </dl>
 
-                    <ul className="mt-5 flex flex-1 flex-col gap-2 border-t border-borda-suave pt-4">
+                    <p className="mt-5 border-t border-borda-suave pt-4 text-[12px] font-bold tracking-[0.1em] text-tinta-3 uppercase">
+                      {c.lista}
+                    </p>
+                    <ul className="mt-3 flex flex-1 flex-col gap-2">
                       {c.itens.map((x) => {
                         const breve = x.endsWith(' · em breve')
                         const texto = breve ? x.slice(0, -' · em breve'.length) : x
@@ -1124,6 +1133,111 @@ export default function Inicio() {
               })}
             </AoEntrar>
 
+            {/* ── a conta ──
+                Um recibo de verdade, montado pelo `mensalidade` do servidor —
+                o mesmo que a tela de assinatura soma. As linhas são as peças
+                de `PRECOS`; o total é o da função. Se um dia não fecharem, o
+                build quebra aqui antes de a página mentir. */}
+            <div className="mx-auto mt-16 grid max-w-2xl gap-8 lg:max-w-4xl lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-start">
+              <div className="flex flex-col gap-4">
+                <h3 className="text-[1.75rem] leading-tight">A conta, loja por loja</h3>
+                <p className="text-[15px] leading-relaxed text-tinta-2">
+                  A primeira loja custa {reais(PRECOS.primeiraLoja)} e cada loja a mais{' '}
+                  {reais(PRECOS.lojaExtra)}, sempre com tudo dentro. O assistente soma{' '}
+                  {reais(PRECOS.assistente)} uma vez só, para a empresa inteira — não por loja. Depósito
+                  não entra na conta, e gente também não: a equipe é à vontade.
+                </p>
+                <p className="text-[15px] leading-relaxed text-tinta-2">
+                  Abrir a terceira loja não é surpresa na fatura: antes do clique, a tela de lojas diz
+                  quanto ela soma e como fica o mês.
+                </p>
+                <table className="mt-1 w-full border-collapse text-sm">
+                  <caption className="sr-only">Quanto fica por mês, pelo número de lojas.</caption>
+                  <thead>
+                    <tr className="text-left text-xs text-tinta-3">
+                      <th scope="col" className="py-2 font-medium">Lojas</th>
+                      {PLANOS_COM_PRECO.map((p) => (
+                        <th key={p} scope="col" className="py-2 text-right font-medium">
+                          {LIMITES[p].titulo}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[1, 2, 3, 5].map((n) => (
+                      <tr key={n} className="border-t border-borda-suave">
+                        <th scope="row" className="py-2 text-left font-normal text-tinta-2">
+                          {n === 1 ? '1 loja' : `${n} lojas`}
+                        </th>
+                        {PLANOS_COM_PRECO.map((p) => (
+                          <td key={p} className="numero py-2 text-right font-semibold text-tinta">
+                            {reais(mensalidade(p, n).total!)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="rounded-2xl border border-borda bg-superficie p-6 shadow-norte">
+                <p className="text-[12px] font-bold tracking-[0.1em] text-tinta-3 uppercase">
+                  Exemplo · {EXEMPLO_LOJAS} lojas com o assistente
+                </p>
+                <dl className="mt-4 flex flex-col text-[15px]">
+                  {(
+                    [
+                      ['Primeira loja', PRECOS.primeiraLoja],
+                      ...Array.from({ length: EXEMPLO_LOJAS - 1 }, (_, i) => [
+                        i === 0 ? 'Segunda loja' : `Loja ${i + 2}`,
+                        PRECOS.lojaExtra,
+                      ]),
+                      ['Assistente, com o crédito de IA', PRECOS.assistente],
+                    ] as [string, number][]
+                  ).map(([t, v]) => (
+                    <div key={t} className="flex items-baseline justify-between gap-4 border-b border-borda-suave py-2">
+                      <dt className="text-tinta-2">{t}</dt>
+                      <dd className="numero text-tinta">{reais(v)}</dd>
+                    </div>
+                  ))}
+                  <div className="flex items-baseline justify-between gap-4 pt-3">
+                    <dt className="font-semibold text-tinta">Por mês</dt>
+                    <dd className="numero font-display text-[1.75rem] leading-none font-bold text-titulo">
+                      {reais(EXEMPLO)}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="mt-4 text-[13px] leading-relaxed text-tinta-3">
+                  No anual, {ANUAL.meses} meses pelo preço de {ANUAL.paga}:{' '}
+                  <span className="numero font-semibold text-tinta-2">{reais(EXEMPLO * ANUAL.paga)}</span>{' '}
+                  por ano.
+                </p>
+              </div>
+            </div>
+
+            {/* ── à parte ──
+                O Farol e a Fábrica ainda não existem, e a etiqueta diz isso
+                com o preço já dito: é expectativa, não promessa. Quem assina
+                pelo que não encontra cancela — ver `quando` em planos.ts. */}
+            <div className="mx-auto mt-16 max-w-2xl lg:max-w-none">
+              <h3 className="text-[1.75rem] leading-tight">À parte</h3>
+              <AoEntrar className="cascata mt-6 grid gap-4 sm:grid-cols-3">
+                {A_PARTE.map((x) => (
+                  <div key={x.t} className="flex flex-col gap-3 rounded-2xl border border-borda bg-superficie p-5">
+                    <div className="flex items-center">
+                      <h4 className="font-display text-lg leading-snug font-bold text-titulo">{x.t}</h4>
+                      {x.breve && <EmBreve />}
+                    </div>
+                    <p className="text-[14px] leading-relaxed text-tinta-2">{x.d}</p>
+                    <div className="mt-auto border-t border-borda-suave pt-3">
+                      <p className="numero text-lg font-bold text-tinta">{x.preco}</p>
+                      <p className="text-[12.5px] leading-snug text-tinta-3">{x.sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </AoEntrar>
+            </div>
+
             {/* O Corporativo, em faixa larga e clara. O que se contrata aqui
                 é a condução do negócio junto com o sistema — por isso o lado
                 direito não tem preço: tem o convite para conversar. */}
@@ -1148,7 +1262,7 @@ export default function Inicio() {
               <div className="flex shrink-0 flex-col gap-3 lg:w-56 lg:items-end lg:text-right">
                 <p className="font-display text-2xl leading-none font-bold text-titulo">Sob consulta</p>
                 <p className="text-[13px] leading-relaxed text-tinta-2">
-                  Sem limite de loja nem de gente, com {CARTOES.CORPORATIVO.conta}.
+                  Sem limite de loja nem de gente, com o crédito de IA combinado no contrato.
                 </p>
                 <a
                   href={mailto('Quero conversar sobre o Corporativo')}
@@ -1160,9 +1274,8 @@ export default function Inicio() {
             </div>
 
             <p className="mt-5 text-center text-xs text-tinta-3">
-              Valores mensais, por empresa. Cadastrar a equipe é livre em todo plano; o que se paga
-              é quanta gente fica dentro ao mesmo tempo. {LIMITES.REDE.artigo === 'a' ? 'A' : 'O'}{' '}
-              {LIMITES.REDE.titulo} não tem teto.
+              Valores mensais, por empresa. O teste não pede cartão e não vira cobrança sozinho:
+              acabado sem assinatura, a conta segue no plano básico, de uma loja, com os dados todos.
             </p>
 
             {/* A tabela item por item. Cartão vende, tabela decide: quem está
@@ -1171,8 +1284,8 @@ export default function Inicio() {
             <div className="mt-20">
               <h3 className="text-[1.75rem] leading-tight sm:text-[2rem]">Item por item</h3>
               <p className="mt-2 mb-6 max-w-[60ch] text-[15px] text-tinta-2">
-                Tudo que muda de um plano para o outro, sem asterisco. O que ainda não existe está
-                marcado “em breve”.
+                O que vem no {LIMITES[BASE].titulo} e o que vem com o assistente, sem asterisco. O que
+                ainda não existe está marcado “em breve”.
               </p>
               <CompararPlanos />
             </div>
@@ -1217,9 +1330,9 @@ export default function Inicio() {
 
         {/* ── o fechamento ────────────────────────────────────────
             Grande e claro: um painel no azul mais suave da marca, com o
-            símbolo e uma frase. O botão principal abre um e-mail — e o texto
-            diz isso antes do clique, porque ainda não existe cadastro
-            sozinho: a gente monta o ambiente junto. */}
+            símbolo e uma frase. O botão principal leva ao cadastro pelo site
+            (`COMECAR`), que abre o teste; com o cadastro fechado, a mesma
+            página mostra o e-mail. */}
         <section id="comecar" className="scroll-mt-16 bg-superficie">
           <div className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 md:pb-24">
             <div className="relative isolate overflow-hidden rounded-3xl border border-borda bg-marca-suave px-6 py-14 text-center sm:px-12 md:py-20">
@@ -1236,8 +1349,8 @@ export default function Inicio() {
                 Comece pelo que dói mais.
               </h2>
               <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-tinta-2">
-                A gente monta o seu ambiente, sobe o catálogo junto com você e, no plano com
-                assistente, liga ele com o nome que você escolher. Em duas semanas você sabe se
+                Crie a conta, suba o catálogo — a gente ajuda — e ligue o assistente com o nome
+                que você escolher. Em {PRECOS.diasDeTeste} dias de teste, com tudo, você sabe se
                 vale.
               </p>
               <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
@@ -1255,8 +1368,7 @@ export default function Inicio() {
                 </a>
               </div>
               <p className="mt-4 text-sm text-tinta-3">
-                Grátis para sempre no plano de uma loja · sem cartão · o botão abre um e-mail para
-                a gente
+                {PRECOS.diasDeTeste} dias grátis com tudo · sem cartão · não vira cobrança sozinho
               </p>
             </div>
           </div>

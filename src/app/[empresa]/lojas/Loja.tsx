@@ -14,6 +14,7 @@ import { Aviso, Botao, Campo, Marcar, Selecao, Situacao, cx } from '@/ui/base'
 import { criarLojaAcao, editarLojaAcao, situacaoLojaAcao, type EstadoLoja } from './acoes'
 import { semApagar } from '@/ui/formulario'
 import { Confirmar } from '@/ui/Confirmar'
+import { PRECOS } from '@/servidor/planos'
 
 export type LojaNaTela = {
   id: string
@@ -25,6 +26,7 @@ export type LojaNaTela = {
   ramo: string | null
   ramoTitulo: string | null
   ehDeposito: boolean
+  ehFabrica: boolean
   ativa: boolean
   telefone: string | null
   endereco: string | null
@@ -47,12 +49,15 @@ function Formulario({
   ramos,
   ramoDaEmpresa,
   aoTerminar,
+  custo,
 }: {
   slug: string
   loja?: LojaNaTela
   ramos: Opcao[]
   ramoDaEmpresa: string | null
   aoTerminar?: () => void
+  /** Quanto a loja nova soma ao mês, dito ANTES do clique. Só na loja nova. */
+  custo?: string | null
 }) {
   const acao = loja ? editarLojaAcao.bind(null, slug, loja.id) : criarLojaAcao.bind(null, slug)
   const [estado, agir, indo] = useActionState<EstadoLoja, FormData>(acao, {})
@@ -88,6 +93,25 @@ function Formulario({
         titulo="É um depósito"
         resumo="Guarda estoque e recebe mercadoria, mas não tem balcão de venda."
         defaultChecked={d?.ehDeposito ?? false}
+        onChange={(e) => {
+          // Fábrica é depósito: desmarcar o depósito desmarca a fábrica junto.
+          const fab = document.getElementById(`fab-${d?.id ?? 'nova'}`) as HTMLInputElement | null
+          if (!e.currentTarget.checked && fab) fab.checked = false
+        }}
+      />
+      {/* Fábrica é depósito também: o servidor marca os dois juntos
+          (servidor/lojas.ts, `limparLoja`). */}
+      <Marcar
+        name="ehFabrica"
+        id={`fab-${d?.id ?? 'nova'}`}
+        titulo="É fábrica (produz o que as lojas vendem)"
+        resumo={`Faz a produção com ficha técnica e lote, e as lojas pedem a ela. Não vende no balcão. Cobrada à parte: R$ ${PRECOS.fabrica} por mês.`}
+        defaultChecked={d?.ehFabrica ?? false}
+        onChange={(e) => {
+          // E marcar a fábrica marca o depósito, como o servidor grava.
+          const dep = document.getElementById(`dep-${d?.id ?? 'nova'}`) as HTMLInputElement | null
+          if (e.currentTarget.checked && dep) dep.checked = true
+        }}
       />
 
       <details className="group rounded-norte border border-borda-suave px-3 py-2" open={!!d}>
@@ -135,6 +159,8 @@ function Formulario({
         </div>
       </details>
 
+      {!d && custo && <p className="text-xs leading-relaxed text-tinta-2">{custo}</p>}
+
       <div className="flex flex-wrap items-center justify-end gap-2">
         {aoTerminar && (
           <Botao type="button" tom="discreto" onClick={aoTerminar}>
@@ -153,12 +179,15 @@ export function NovaLoja({
   slug,
   ramos,
   ramoDaEmpresa,
+  custo,
 }: {
   slug: string
   ramos: Opcao[]
   ramoDaEmpresa: string | null
+  /** "Uma loja de venda a mais soma R$ X por mês…" — ou nada, quando não soma. */
+  custo?: string | null
 }) {
-  return <Formulario slug={slug} ramos={ramos} ramoDaEmpresa={ramoDaEmpresa} />
+  return <Formulario slug={slug} ramos={ramos} ramoDaEmpresa={ramoDaEmpresa} custo={custo} />
 }
 
 export function CartaoLoja({
@@ -166,11 +195,14 @@ export function CartaoLoja({
   loja,
   ramos,
   ramoDaEmpresa,
+  custoAoReabrir,
 }: {
   slug: string
   loja: LojaNaTela
   ramos: Opcao[]
   ramoDaEmpresa: string | null
+  /** Reabrir loja de venda soma ao mês como abrir: a frase vai na pergunta. */
+  custoAoReabrir?: string | null
 }) {
   const [aberta, setAberta] = useState(false)
   const [recado, setRecado] = useState<EstadoLoja | null>(null)
@@ -207,7 +239,7 @@ export function CartaoLoja({
         <div className="flex min-w-0 flex-col gap-1">
           <h3 className="text-lg font-bold tracking-tight">{loja.nome}</h3>
           <p className="text-sm text-tinta-2">
-            {loja.ehDeposito ? 'Depósito' : (loja.ramoTitulo ?? 'Mesmo ramo da empresa')}
+            {loja.ehFabrica ? 'Fábrica' : loja.ehDeposito ? 'Depósito' : (loja.ramoTitulo ?? 'Mesmo ramo da empresa')}
             {loja.horario ? ` · ${loja.horario}` : ''}
           </p>
           {endereco && <p className="text-xs text-tinta-3">{endereco}</p>}
@@ -251,6 +283,21 @@ export function CartaoLoja({
               }}
             >
               Fechar a loja
+            </Confirmar>
+          ) : custoAoReabrir ? (
+            // Reabrir soma à conta: pergunta antes, com o valor na pergunta.
+            <Confirmar
+              tom="secundario"
+              tomSim="principal"
+              pergunta={custoAoReabrir.replace('Uma loja de venda a mais', 'Reabrir')}
+              sim="Sim, reabrir"
+              aoConfirmar={async () => {
+                const r = await situacaoLojaAcao(slug, loja.id, true)
+                setRecado(r)
+                if (r.ok) router.refresh()
+              }}
+            >
+              Reabrir
             </Confirmar>
           ) : (
             <Botao tom="secundario" carregando={indo} onClick={() => trocar(true)}>

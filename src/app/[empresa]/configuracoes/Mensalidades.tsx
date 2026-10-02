@@ -10,6 +10,7 @@
 import { useActionState } from 'react'
 import { Aviso, Botao, Campo, Marcar } from '@/ui/base'
 import { semApagar } from '@/ui/formulario'
+import { PLANOS } from '@/servidor/planos'
 import { salvarMensalidadesAcao, type EstadoMensalidades } from './acoesMensalidades'
 
 const virgula = (n: number) => String(n).replace('.', ',')
@@ -52,7 +53,7 @@ export function Mensalidades({
         resumo={
           temAssistente
             ? 'Texto fixo, sem IA, só para o responsável que aceitou (anotado na ficha do aluno). Nunca para o aluno. Responder PARAR tira o número.'
-            : 'Sai pelo WhatsApp do assistente: ligue o assistente (plano Assistente para cima) para o aviso sair.'
+            : `Sai pelo WhatsApp do assistente: ligue o assistente (plano ${PLANOS.BALCAO_AGENTE.titulo}) para o aviso sair.`
         }
       />
       <div className="grid gap-4 sm:grid-cols-2">

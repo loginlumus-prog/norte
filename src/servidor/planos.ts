@@ -118,6 +118,13 @@ export const PRECOS = {
   /** O Farol, por marca (perfil). A segunda marca do mesmo dono sai mais barata. */
   farolMarca: 497,
   farolMarcaExtra: 297,
+  /** Crédito de IA que vem com cada marca do Farol, por mês (escrever conteúdo gasta IA). */
+  creditoDoFarol: 200,
+  /** A implantação, uma vez: trazer dados de outro sistema; fábrica com fichas e várias unidades. */
+  implantacaoMigracao: [1500, 2500] as const,
+  implantacaoFabrica: [3000, 3500] as const,
+  /** No anual, 12 meses pelo preço de tantos. */
+  anualPagaMeses: 10,
   /** Dias de teste com tudo, para quem se cadastra pelo site. */
   diasDeTeste: 30,
   /** Crédito de IA de quem está em teste: o bastante para conhecer, não para gastar o nosso. */
@@ -125,7 +132,10 @@ export const PRECOS = {
 } as const
 
 /** Os módulos da loja: tudo, menos o assistente — que é o que custa à parte. */
-const DA_LOJA: Modulo[] = ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola', 'metas', 'crediario', 'fabrica']
+// O Farol entra aqui para o plano PERMITIR (trocar entre planos pagos não o
+// desliga); quem liga é a equipe do Norte, quando o cliente contrata — ele
+// não aparece entre as chaves que a empresa liga sozinha (`ESCOLHIVEIS`).
+const DA_LOJA: Modulo[] = ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola', 'metas', 'crediario', 'fabrica', 'farol']
 
 export const PLANOS: Record<Plano, Limite> = {
   GRATIS: {
@@ -325,17 +335,22 @@ export function podeAbrirVaga(plano: Plano, jaDentro: number): Veredito {
 }
 
 /** O que esta empresa deve pagar hoje, com as unidades que ela tem. */
-export function mensalidade(plano: Plano, unidades: number) {
+export function mensalidade(plano: Plano, unidades: number, fabricas = 0) {
   const p = PLANOS[plano]
-  if (p.mensal === null) return { base: null, extras: 0, porExtra: null, total: null }
+  if (p.mensal === null) return { base: null, extras: 0, porExtra: null, fabricas: 0, porFabrica: null, total: null }
 
   const cota = p.unidades ?? unidades
   const extras = p.porUnidadeExtra !== null ? Math.max(0, unidades - cota) : 0
+  // A fábrica (unidade marcada como fábrica) é cobrada à parte, por fábrica,
+  // nos planos que cobram por unidade. No Grátis ela nem existe.
+  const fab = p.porUnidadeExtra !== null ? Math.max(0, fabricas) : 0
   return {
     base: p.mensal,
     extras,
     porExtra: p.porUnidadeExtra,
-    total: p.mensal + extras * (p.porUnidadeExtra ?? 0),
+    fabricas: fab,
+    porFabrica: fab > 0 ? PRECOS.fabrica : null,
+    total: p.mensal + extras * (p.porUnidadeExtra ?? 0) + fab * PRECOS.fabrica,
   }
 }
 

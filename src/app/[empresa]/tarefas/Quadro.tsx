@@ -84,7 +84,7 @@ export type SituacaoNaTela = { chave: SituacaoTarefa; rotulo: string; nivel: Niv
 const SO_QUEM_GERE = 'Só quem gere a equipe altera isto.'
 const NAO_E_SUA = 'Esta tarefa é de outra pessoa. Você muda só as suas e as que não têm responsável.'
 
-const trancado = (chave: Liberacao) => `${LIBERACOES[chave].titulo}: ${doPlano(planoQueAbre(chave).codigo)} para cima`
+const trancado = (chave: Liberacao) => `${LIBERACOES[chave].titulo}: ${doPlano(planoQueAbre(chave).codigo)}`
 
 /** "2026-09-16" → "16/09". A chave já vem validada do servidor. */
 const ddmm = (chave: string) => `${chave.slice(8, 10)}/${chave.slice(5, 7)}`

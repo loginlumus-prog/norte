@@ -235,6 +235,8 @@ model Org {
   receitas       Receita[]
   ordensProducao OrdemProducao[]
   pedidosFabrica PedidoFabrica[]
+  marcasFarol    MarcaFarol[]
+  pecasFarol     PecaFarol[]
   auditoria      Auditoria[]
   cobranca       Cobranca?
 
@@ -3603,4 +3605,94 @@ model PedidoFabricaItem {
   @@index([orgId])
   @@index([pedidoId])
   @@map("pedido_fabrica_itens")
+}
+
+// ═════════════════════════════════════════════════════════════
+// FAROL — o direcionamento digital, por marca
+// ═════════════════════════════════════════════════════════════
+//
+// Contratado à parte, por MARCA (um perfil nas redes): a sorveteria de cinco
+// lojas com um Instagram só é uma marca; a empresa com loja de roupa e loja de
+// calçado, cada uma com o seu perfil, são duas. A IA conhece a marca (o que
+// ela é, para quem fala, o tom) e o negócio por números agregados — o que mais
+// vende, o ticket, o horário que lota —, nunca dado de cliente.
+
+/// Uma marca no Farol: o que a IA precisa saber para escrever por ela.
+model MarcaFarol {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  nome         String
+  nicho        String?
+  cidade       String?
+  instagram    String?
+  tiktok       String?
+  /// Para quem a marca fala: idade, bairro, ocasião ("família no fim de semana").
+  publico      String?
+  /// O jeito de falar: "leve e engraçado", "sofisticado".
+  tom          String?
+  diferenciais String?
+  objetivos    String?
+  /// As lojas que este perfil cobre. Vazio = todas.
+  unidadeIds   String[] @default([]) @map("unidade_ids")
+  ativa        Boolean  @default(true)
+
+  pecas PecaFarol[]
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@index([orgId])
+  @@map("marcas_farol")
+}
+
+enum TipoPecaFarol {
+  DIAGNOSTICO
+  CALENDARIO
+  ROTEIRO
+  CARROSSEL
+  LEGENDA
+  COMENTARIOS
+  WHATSAPP
+  ANUNCIO
+}
+
+enum SituacaoPecaFarol {
+  RASCUNHO
+  APROVADA
+  PUBLICADA
+  ARQUIVADA
+}
+
+/// O que o Farol escreveu: o diagnóstico, o calendário do mês, um roteiro de
+/// Reels, um carrossel. Nasce rascunho; a pessoa edita, aprova e marca quando
+/// publicou — o Farol escreve, quem publica é gente.
+model PecaFarol {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  marcaId String     @map("marca_id")
+  marca   MarcaFarol @relation(fields: [marcaId], references: [id], onDelete: Cascade)
+
+  tipo      TipoPecaFarol
+  titulo    String
+  /// O que a pessoa pediu ("Reels do picolé de coco para o calor de sábado").
+  pedido    String?
+  conteudo  String
+  situacao  SituacaoPecaFarol @default(RASCUNHO)
+  /// Quando vai ao ar, se tem data.
+  para      DateTime?         @db.Date
+  /// O que saiu da carteira de crédito por esta peça, em centavos.
+  custoCent Int               @default(0) @map("custo_cent")
+
+  quem      String
+  usuarioId String? @map("usuario_id")
+
+  criadaEm     DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+
+  @@index([orgId, marcaId, criadaEm])
+  @@map("pecas_farol")
 }

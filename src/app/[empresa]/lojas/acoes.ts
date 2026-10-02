@@ -10,6 +10,7 @@ import { SemCota } from '@/servidor/assinatura'
 import { SemPermissao } from '@/servidor/permissao'
 import { PLANOS } from '@/servidor/planos'
 import { RAMOS, type Ramo } from '@/servidor/modulos'
+import { mostrar } from '@/servidor/dinheiro'
 
 export type EstadoLoja = { erro?: string; ok?: string }
 
@@ -24,6 +25,7 @@ function dadosDo(form: FormData): DadosLoja {
     inscricaoEstadual: texto(form, 'inscricaoEstadual'),
     ramo: texto(form, 'ramo') || null,
     ehDeposito: form.get('ehDeposito') === 'on',
+    ehFabrica: form.get('ehFabrica') === 'on',
     telefone: texto(form, 'telefone'),
     endereco: texto(form, 'endereco'),
     numero: texto(form, 'numero'),
@@ -39,7 +41,7 @@ function dadosDo(form: FormData): DadosLoja {
 function recado(e: unknown): string {
   if (e instanceof LojaRecusada) return e.message
   if (e instanceof SemCota) {
-    return `${e.motivo} Para abrir mais uma, o caminho é o plano ${PLANOS[e.sugestao].titulo} — veja em Assinatura.`
+    return `${e.motivo} Para abrir mais uma, o caminho é assinar o ${PLANOS[e.sugestao].titulo} — veja em Assinatura.`
   }
   if (e instanceof SemPermissao) return 'Só quem configura a empresa mexe nas lojas.'
   return 'Não deu para salvar. Tente de novo em alguns segundos.'
@@ -63,6 +65,8 @@ export async function criarLojaAcao(slug: string, _anterior: EstadoLoja, form: F
       ok:
         `${r.loja.nome} aberta${ramo ? ` como ${ramo.toLowerCase()}` : ''}.` +
         oQueNasceu(r) +
+        // O valor já estava na tela antes do clique; aqui ele se confirma.
+        (r.custoExtra > 0 ? ` Ela soma ${mostrar(Math.round(r.custoExtra * 100))} à conta do mês.` : '') +
         ' Agora diga, na ficha de cada produto, se ele é vendido nela.',
     }
   } catch (e) {

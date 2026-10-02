@@ -232,7 +232,7 @@ export function Formulario({
       </label>
 
       <Botao type="submit" largo carregando={pendente} className="mt-1 h-12 rounded-xl text-[15px]">
-        {pendente ? 'Criando…' : 'Criar a conta grátis'}
+        {pendente ? 'Criando…' : 'Criar a conta e começar o teste'}
       </Botao>
     </form>
   )

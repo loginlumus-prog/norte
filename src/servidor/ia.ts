@@ -42,6 +42,8 @@ export async function perguntar(p: {
   mensagens: Mensagem[]
   modelo?: string
   maxTokens?: number
+  /** Texto longo (o Farol escreve um calendário do mês) pede mais que os 20 s do Guia. */
+  timeoutMs?: number
 }): Promise<Resposta> {
   const chave = (process.env.ANTHROPIC_API_KEY ?? '').trim()
   if (!chave) throw new Error(RECADO_FALHA)
@@ -64,7 +66,7 @@ export async function perguntar(p: {
           content: m.texto,
         })),
       }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(p.timeoutMs ?? TIMEOUT_MS),
     })
   } catch {
     // Rede fora, timeout, DNS: tudo a mesma frase. O detalhe vai para o log

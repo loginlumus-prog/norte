@@ -11,7 +11,7 @@ import { metasDoMes, mesChave } from '@/servidor/metas'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { moduloLigado } from '@/servidor/modulos'
 import { desempenhoDoMes, semDados } from '@/servidor/desempenho'
-import { liberado, planoQueAbre } from '@/servidor/planos'
+import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 import { lerModo } from '@/servidor/modo'
 import {
   nichoDoPainel,
@@ -467,7 +467,7 @@ async function Avancado({ slug, empresa, sessao, tema, onde, pedido }: Base & { 
   const Bloqueado = ({ titulo, oQue }: { titulo: string; oQue: string }) => (
     <Bloco titulo={titulo}>
       <p className="py-4 text-center text-sm text-tinta-2">
-        {oQue} faz parte do relatório completo, do plano Balcão para cima.{' '}
+        {oQue} faz parte do relatório completo, {doPlano('BALCAO')}.{' '}
         <Link href={`/${slug}/assinatura`} className="font-semibold text-marca underline-offset-2 hover:underline">
           Ver planos
         </Link>

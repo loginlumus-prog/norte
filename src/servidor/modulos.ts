@@ -111,11 +111,27 @@ export const MODULOS = {
     resumo: 'Ficha técnica com custo, ordem de produção com lote e validade, e o pedido das lojas à fábrica.',
     pergunta: 'Você fabrica o que vende (sorvete, pão, doce) e abastece as suas lojas?',
   },
+  // CONTRATADO À PARTE: o direcionamento digital, cobrado por marca e com
+  // trabalho nosso junto. Não aparece entre as chaves que a empresa liga
+  // sozinha (`ESCOLHIVEIS`); quem liga é a equipe do Norte, e trocar de plano
+  // pago não o desliga.
+  farol: {
+    titulo: 'Farol',
+    resumo: 'Direcionamento digital por marca: diagnóstico, calendário, roteiros, carrosséis, comentários, anúncios e campanhas no WhatsApp, escritos com IA.',
+    pergunta: 'Você quer crescer nas redes com conteúdo feito para o seu nicho?',
+    contratado: true,
+  },
 } as const
 
 export type Modulo = keyof typeof MODULOS
 
 export const TODOS = Object.keys(MODULOS) as Modulo[]
+
+/** O módulo é contratado à parte (o Farol): a empresa não liga sozinha. */
+export const ehContratado = (m: Modulo): boolean => 'contratado' in MODULOS[m]
+
+/** As chaves que a empresa liga e desliga sozinha, em Configurações e no cadastro inicial. */
+export const ESCOLHIVEIS = TODOS.filter((m) => !ehContratado(m))
 
 /** Empresa desta requisição — só o que decide visibilidade. */
 export type ComModulos = { modulos: string[] }

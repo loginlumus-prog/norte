@@ -60,7 +60,7 @@ const ESPERA = grafo(
 
 const SEMENTE = `
   insert into orgs (id, nome, slug, plano, situacao, modulos, atualizada_em) values
-    ('org-a', 'Loja A', 'loja-a', 'BALCAO_AGENTE', 'ATIVA', '{agente}', now());
+    ('org-a', 'Loja A', 'loja-a', 'BALCAO_AGENTE', 'ATIVA', '{agente,farol}', now());
   insert into unidades (id, org_id, nome, atualizada_em) values ('uni-a1', 'org-a', 'Centro A', now());
   insert into usuarios (id, org_id, nome, email, telefone, telefone_confirmado, telefone_confirmado_em, atualizado_em) values
     ('usr-ana', 'org-a', 'Ana Dona', 'ana@a.com', '(71) 99999-0001', '7199990001', now(), now());

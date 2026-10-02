@@ -49,7 +49,7 @@ export type Assinatura = {
   diasDeTeste: number | null
   uso: Uso
   limite: { unidades: number | null; vagas: number | null }
-  mensal: { base: number | null; extras: number; porExtra: number | null; total: number | null }
+  mensal: { base: number | null; extras: number; porExtra: number | null; fabricas: number; porFabrica: number | null; total: number | null }
   credito: {
     saldoCent: number
     avisoCent: number
@@ -84,7 +84,7 @@ const DIA = 864e5
  * mês passa para o outro — o crédito é da loja, não vence.
  *
  * Empresa suspensa ou cancelada não recebe. Corporativo (`creditoMensal`
- * nulo) tem o crédito no contrato, e o Grátis e o Balcão não têm assistente.
+ * nulo) tem o crédito no contrato, e o Grátis e o Norte sem assistente não têm.
  */
 export async function garantirCreditoDoMes(orgId: string, agora = new Date()): Promise<number> {
   const mes = diaEmSP(agora).slice(0, 7)
@@ -198,6 +198,8 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
     const usuarios = await db.usuario.count({
       where: { ativo: true, acessos: { some: { papel: { not: 'SUPORTE' } } } },
     })
+    // A fábrica é cobrada à parte (PRECOS.fabrica), por unidade marcada.
+    const fabricas = await db.unidade.count({ where: { ativa: true, ehFabrica: true } })
     // O que a LOJA pagou, nao o que o fornecedor cobrou da gente: e o
     // consumo dela que a tela dela mostra.
     const gasto = await db.consumoIA.aggregate({
@@ -214,7 +216,12 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
     const credito = {
       saldoCent,
       avisoCent: org.creditoAvisoCent,
-      inclusoMensal: p.creditoMensal,
+      // Em teste, o que cai no mês é o crédito de conhecer, não o do plano —
+      // a mesma regra de `garantirCreditoDoMes`. A barra mede contra isto.
+      inclusoMensal:
+        p.creditoMensal && org.situacao === 'TESTE'
+          ? Math.min(p.creditoMensal, PRECOS.creditoDoTeste)
+          : p.creditoMensal,
       gasto30Cent,
       diasQueDura: porDia > 0 ? Math.floor(saldoCent / porDia) : null,
       // `creditoMensal` nulo é o Corporativo: ele TEM assistente, o crédito
@@ -231,15 +238,14 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
 
     const alertas: Assinatura['alertas'] = []
 
-    if (org.situacao === 'TESTE' && diasDeTeste !== null) {
-      alertas.push(
-        diasDeTeste <= 3
-          ? {
-              nivel: 'critico',
-              texto: diasDeTeste <= 0 ? 'O teste acaba hoje.' : `O teste acaba em ${plural(diasDeTeste, 'dia', 'dias')}.`,
-            }
-          : { nivel: 'atencao', texto: `Teste até o fim: faltam ${diasDeTeste} dias.` },
-      )
+    // Só a reta final vira aviso: os dias que faltam e o que acontece depois já
+    // estão no quadro do teste, no alto da tela (assinatura/page.tsx). Aviso
+    // amarelo durante trinta dias seguidos deixa de ser lido no terceiro.
+    if (org.situacao === 'TESTE' && diasDeTeste !== null && diasDeTeste <= 3) {
+      alertas.push({
+        nivel: 'critico',
+        texto: diasDeTeste <= 0 ? 'O teste acaba hoje.' : `O teste acaba em ${plural(diasDeTeste, 'dia', 'dias')}.`,
+      })
     }
     // O teste acabou há pouco: a loja precisa saber por que o menu encolheu.
     if (
@@ -274,8 +280,10 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
       })
     }
     // Uso acima da cota acontece de verdade: o plano pode ter sido rebaixado
-    // por um gateway, ou o limite pode ter mudado depois da venda.
-    if (p.unidades !== null && unidades > p.unidades) {
+    // por um gateway, ou o limite pode ter mudado depois da venda. Plano que
+    // cobra loja a mais não tem "acima da cota" — a conta é que cresce, e ela
+    // já está na tela.
+    if (p.unidades !== null && p.porUnidadeExtra === null && unidades > p.unidades) {
       alertas.push({
         nivel: 'atencao',
         texto: `Você usa ${unidades} unidades e o plano atende ${p.unidades}.`,
@@ -291,7 +299,7 @@ export async function assinaturaDaEmpresa(orgId: string): Promise<Assinatura> {
       diasDeTeste,
       uso,
       limite: { unidades: p.unidades, vagas: p.vagas },
-      mensal: mensalidade(org.plano, unidades),
+      mensal: mensalidade(org.plano, unidades, fabricas),
       credito,
       alertas,
     }
@@ -500,12 +508,19 @@ export async function trocarPlanoComoEquipe(
   quem: string,
   opcoes: { pedidoId?: string | null } = {},
 ): Promise<Mudanca> {
-  return aplicarTroca(orgId, para, {
+  const m = await aplicarTroca(orgId, para, {
     usuarioId: null,
     quem: quemDaEquipe(quem),
     autor: 'SISTEMA',
     pedidoId: opcoes.pedidoId ?? null,
   })
+  // A equipe aplicando um plano PAGO a quem está em teste é a assinatura
+  // confirmada: o teste acaba ali, e a empresa fica ATIVA — senão o prazo do
+  // teste venceria depois e desceria para o Grátis quem já pagou.
+  if (PLANOS[para].mensal !== 0) {
+    await comoOrg(orgId, (db) => db.org.updateMany({ where: { id: orgId, situacao: 'TESTE' }, data: { situacao: 'ATIVA' } }))
+  }
+  return m
 }
 
 /**

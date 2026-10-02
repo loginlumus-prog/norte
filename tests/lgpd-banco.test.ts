@@ -65,8 +65,8 @@ const EMAIL = 'rosalia.teste@exemplo.com'
 
 const SEMENTE = `
   insert into orgs (id, nome, slug, plano, situacao, modulos, atualizada_em) values
-    ('org-a', 'Loja A', 'loja-a', 'BALCAO_AGENTE', 'ATIVA', '{agente}', now()),
-    ('org-b', 'Vizinha B', 'vizinha-b', 'BALCAO_AGENTE', 'ATIVA', '{agente}', now());
+    ('org-a', 'Loja A', 'loja-a', 'BALCAO_AGENTE', 'ATIVA', '{agente,farol}', now()),
+    ('org-b', 'Vizinha B', 'vizinha-b', 'BALCAO_AGENTE', 'ATIVA', '{agente,farol}', now());
   insert into unidades (id, org_id, nome, atualizada_em) values
     ('uni-a1', 'org-a', 'Centro A', now()), ('uni-b1', 'org-b', 'Sul B', now());
   insert into usuarios (id, org_id, nome, email, telefone, telefone_confirmado, telefone_confirmado_em, atualizado_em) values

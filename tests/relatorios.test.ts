@@ -57,13 +57,14 @@ describe('a curva ABC', () => {
 })
 
 describe('quem vê a análise avançada', () => {
-  it('é do Rede para cima', () => {
+  it('é de todo plano pago, desde o Norte', () => {
+    expect(temAnaliseAvancada('BALCAO')).toBe(true)
+    expect(temAnaliseAvancada('BALCAO_AGENTE')).toBe(true)
     expect(temAnaliseAvancada('REDE')).toBe(true)
+    expect(temAnaliseAvancada('CORPORATIVO')).toBe(true)
   })
 
-  it('e não é dos planos abaixo', () => {
+  it('e não é do Grátis', () => {
     expect(temAnaliseAvancada('GRATIS')).toBe(false)
-    expect(temAnaliseAvancada('BALCAO')).toBe(false)
-    expect(temAnaliseAvancada('BALCAO_AGENTE')).toBe(false)
   })
 })

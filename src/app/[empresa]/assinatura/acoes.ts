@@ -39,20 +39,44 @@ export async function trocar(
     return { erro: 'O plano Corporativo é fechado por conversa. Use o botão de contato.' }
   }
 
+  // Fora da tabela (o Grátis, o plano de contrato) não se escolhe por clique:
+  // o Grátis é onde a empresa cai quando o teste acaba, e o de contrato é o
+  // combinado com os primeiros clientes. A tela nem oferece; isto é para quem
+  // chama a ação direto.
+  if (!PLANOS[alvo].aVenda) {
+    return { erro: `O plano ${PLANOS[alvo].titulo} não está à venda. Fale com a gente em ${EMPRESA.email}.` }
+  }
+
+  exigir(s, 'empresa.configurar')
+  const a = await assinaturaDe(s)
+
+  // Quem está no plano de contrato troca falando com a gente: trocar por
+  // clique desfaria o valor e as condições que foram combinados.
+  if (!PLANOS[a.plano].aVenda && a.plano !== 'GRATIS') {
+    return {
+      erro: `O seu plano (${a.titulo}) é de contrato. Para mudar, fale com a gente em ${EMPRESA.email}.`,
+    }
+  }
+
   // Subir é pedido, enquanto não há cobrança automática: ver `assinaturaLivre`.
+  // Em teste, QUALQUER escolha é pedido — inclusive a do plano que está sendo
+  // testado e a de descer: o que a loja está dizendo é "quero assinar", e
+  // assinar passa pelo pagamento. Descer na hora, em teste, só tiraria o
+  // assistente de quem ainda não pagou nada.
   if (!assinaturaLivre()) {
-    exigir(s, 'empresa.configurar')
-    const a = await assinaturaDe(s)
     const previa = mudanca(a.plano, alvo, a.uso)
     if (previa.impedimentos.length > 0) return { erro: previa.impedimentos.join(' ') }
-    if (previa.sentido === 'subir') {
+    if (previa.sentido === 'subir' || a.situacao === 'TESTE') {
       await registrarPedido(s, { tipo: 'plano', para: alvo })
       // A tela passa a mostrar "aguardando confirmação" (ver page.tsx).
       revalidatePath(`/${slug}/assinatura`)
       return {
         ok:
-          `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você ` +
-          `e libera no mesmo dia — ou fale direto em ${EMPRESA.email}. Até lá, nada muda.`,
+          a.situacao === 'TESTE'
+            ? `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você e o ` +
+              `teste vira assinatura, com tudo o que já foi lançado — ou fale direto em ${EMPRESA.email}.`
+            : `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você ` +
+              `e libera no mesmo dia — ou fale direto em ${EMPRESA.email}. Até lá, nada muda.`,
       }
     }
   }

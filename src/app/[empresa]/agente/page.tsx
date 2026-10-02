@@ -102,7 +102,7 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
               </p>
             ) : (
               <p>
-                Ele existe {quemAbre ? `${doPlano(quemAbre)} para cima` : 'em planos acima do seu'}.{' '}
+                Ele é {quemAbre ? doPlano(quemAbre) : 'de planos acima do seu'}.{' '}
                 {podeVerPlanos(sessao) ? (
                   <Link href={`/${slug}/assinatura`} className="font-medium text-marca underline-offset-2 hover:underline">
                     Ver os planos em Assinatura

@@ -10,7 +10,7 @@
 // cinza sem explicação, nada de botão que não responde.
 //
 // ── duas peças ───────────────────────────────────────────────
-//   Cadeado   a etiqueta miúda: "do Balcão para cima". Para cabeçalho de
+//   Cadeado   a etiqueta miúda: "do Norte + Assistente". Para cabeçalho de
 //             coluna, botão desligado, linha de formulário.
 //   Trancado  o bloco inteiro: o EXEMPLO por trás, embaçado, e o convite na
 //             frente. O que vai dentro é amostra — dado inventado para mostrar
@@ -25,6 +25,12 @@
 // caía em "este endereço não abre" — trancado que parece QUEBRADO, o que a
 // regra acima proíbe. Com `verPlanos` falso, o cadeado continua dizendo o
 // plano, sem link, e o bloco diz quem troca de plano.
+//
+// ── e por que não diz mais "para cima" ───────────────────────
+// Dizia "do Balcão para cima" quando a tabela era uma escada de quatro
+// degraus à venda. Desde 02/10/2026 são dois (o Norte e o Norte +
+// Assistente), e o que fica acima deles é contrato, que já tem tudo. "Do
+// Norte + Assistente para cima" mandaria procurar um degrau que não se vende.
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
@@ -51,7 +57,7 @@ export function IconeCadeado({ className }: { className?: string }) {
   )
 }
 
-/** A etiqueta miúda: "do Balcão para cima". Leva aos planos. */
+/** A etiqueta miúda: "do Norte + Assistente". Leva aos planos. */
 export function Cadeado({
   chave,
   slug,
@@ -65,7 +71,7 @@ export function Cadeado({
   className?: string
 }) {
   const p = planoQueAbre(chave)
-  const titulo = `${LIBERACOES[chave].titulo}: ${doPlano(p.codigo)} para cima`
+  const titulo = `${LIBERACOES[chave].titulo}: ${doPlano(p.codigo)}`
   const classe = cx(
     'inline-flex items-center gap-1 rounded-full border border-borda bg-superficie-2 px-1.5 py-0.5',
     'text-[10px] font-semibold whitespace-nowrap text-tinta-3',
@@ -75,7 +81,7 @@ export function Cadeado({
   const miolo = (
     <>
       <IconeCadeado className="size-3 shrink-0" />
-      {doPlano(p.codigo)} para cima
+      {doPlano(p.codigo)}
     </>
   )
   return verPlanos ? (
@@ -123,7 +129,7 @@ export function Trancado({
     <div
       className="relative overflow-hidden rounded-norte"
       role="group"
-      aria-label={`${titulo} — ${doPlano(p.codigo)} para cima`}
+      aria-label={`${titulo} — ${doPlano(p.codigo)}`}
     >
       {/* A amostra: embaçada e sem cor, mas com a forma inteira. É ela que
           diz "isto existe" antes de qualquer texto. `inert` tira do teclado
@@ -144,7 +150,7 @@ export function Trancado({
             <IconeCadeado className="size-4" />
           </span>
           <p className="text-sm font-bold text-tinta">
-            {titulo} é {doPlano(p.codigo)} para cima
+            {titulo} é {doPlano(p.codigo)}
           </p>
           {resumo && <p className="text-xs leading-relaxed text-tinta-2">{resumo}</p>}
           {verPlanos ? (

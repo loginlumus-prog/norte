@@ -3,7 +3,7 @@ import { cadastroAberto, carimbar } from '@/servidor/autocadastro'
 import { emailConfigurado } from '@/servidor/email'
 import { enderecoPublico } from '@/servidor/requisicao'
 import { EMPRESA } from '@/servidor/legal'
-import { PLANOS } from '@/servidor/planos'
+import { PLANOS, PRECOS } from '@/servidor/planos'
 import { RAMOS } from '@/servidor/modulos'
 import { Marca } from '@/ui/Marca'
 import { TrocaTema } from '@/ui/TrocaTema'
@@ -18,17 +18,24 @@ import { Formulario } from './Formulario'
 //
 // Com CADASTRO_ABERTO=0 a página não some — ela diz a verdade: o cadastro
 // está fechado, e o caminho é o e-mail.
+//
+// ── o que a página promete ───────────────────────────────────
+// Desde a tabela de 02/10/2026 a empresa nasce em TESTE, com tudo, por
+// `PRECOS.diasDeTeste` dias (autocadastro.ts) — e não mais no plano Grátis,
+// que deixou de ser vendido. A página diz o prazo e o que acontece depois,
+// porque "grátis" sem prazo escrito é a promessa que vira reclamação no dia
+// em que o teste acaba.
 
 export const metadata: Metadata = {
-  title: 'Criar conta grátis · Norte',
-  description: 'Crie a conta da sua loja no Norte, no plano Grátis: balcão, caixa, produtos, estoque e clientes.',
+  title: 'Testar grátis · Norte',
+  description: `Crie a conta da sua loja no Norte e use tudo por ${PRECOS.diasDeTeste} dias, sem cartão: balcão, estoque, crediário, financeiro e o assistente no WhatsApp.`,
 }
 
 const INCLUI = [
-  'Balcão e caixa, produtos, estoque e clientes',
-  'Uma loja, uma pessoa por vez',
-  `Até ${PLANOS.GRATIS.tetoVendasMes} vendas no mês`,
-  'Sem cartão de crédito, sem prazo para acabar',
+  'Balcão e caixa, produto com grade, estoque e clientes',
+  'Crediário com carnê, financeiro com DRE e fechamento do mês',
+  `O assistente no WhatsApp, com ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(PRECOS.creditoDoTeste)} de crédito de IA para conhecer`,
+  'Sem cartão de crédito. Não vira cobrança sozinho',
 ]
 
 export default async function Cadastro() {
@@ -63,13 +70,17 @@ export default async function Cadastro() {
       >
         <div className="grid w-full max-w-5xl items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:gap-16">
           <section className="flex flex-col gap-6 lg:pt-6">
-            <span className="text-xs font-bold tracking-[0.14em] text-tinta-3 uppercase">Plano Grátis</span>
+            <span className="text-xs font-bold tracking-[0.14em] text-tinta-3 uppercase">
+              {PRECOS.diasDeTeste} dias grátis com tudo
+            </span>
             <h1 className="text-[clamp(1.9rem,3.4vw,2.8rem)] leading-[1.08] font-extrabold tracking-[-0.03em] text-balance text-titulo">
               A sua loja no Norte em dois minutos.
             </h1>
             <p className="max-w-md text-[15px] leading-relaxed text-tinta-2">
-              Crie a conta, escolha o ramo e comece a vender no balcão hoje. Quando a loja crescer, o plano
-              acompanha — é só subir em Assinatura.
+              Crie a conta, escolha o ramo e comece a vender no balcão hoje. São {PRECOS.diasDeTeste} dias com
+              tudo ligado, sem cartão. Quando acabar, você assina em Assinatura — ou a conta segue no plano{' '}
+              {PLANOS.GRATIS.titulo}, de uma loja e até {PLANOS.GRATIS.tetoVendasMes} vendas no mês, com os dados
+              todos guardados.
             </p>
             <ul className="flex flex-col gap-2.5">
               {INCLUI.map((i) => (

@@ -14,6 +14,8 @@ import { Planos } from './Planos'
 import { Credito } from './Credito'
 import { Comparar } from './Comparar'
 import { plural } from '@/ui/texto'
+import { PLANOS, PRECOS, mensalidade, type Limite } from '@/servidor/planos'
+import type { Assinatura } from '@/servidor/assinatura'
 
 export const metadata: Metadata = { title: 'Assinatura' }
 
@@ -22,11 +24,18 @@ export const metadata: Metadata = { title: 'Assinatura' }
 // Ela responde três perguntas, nesta ordem, porque é a ordem em que elas
 // aparecem na cabeça de quem abre:
 //
-//   1. o que eu tenho, e estou perto de estourar alguma coisa?
+//   1. o que eu tenho, e quanto ele custa por mês?
 //   2. quanto de crédito de IA me resta, e dura quanto?
 //   3. e se eu quiser mudar?
 //
 // O extrato fica por último e recolhido: ele é prova, não é notícia.
+//
+// ── a conta, linha por linha ─────────────────────────────────
+// Desde a tabela de 02/10/2026 a mensalidade é uma soma: a primeira loja,
+// cada loja a mais, o assistente. A tela mostra a soma aberta, e não só o
+// total, pela regra de ouro de `planos.ts`: o cliente nunca descobre a
+// cobrança na fatura. Quem abre a terceira loja e vê o total subir precisa
+// ver, na mesma tela, de onde veio o aumento.
 
 const SITUACAO: Record<string, { texto: string; nivel: 'bom' | 'atencao' | 'critico' | 'neutro' }> = {
   TESTE: { texto: 'em teste', nivel: 'atencao' },
@@ -42,6 +51,12 @@ const TIPO: Record<string, string> = {
   AJUSTE: 'Ajuste',
   ESTORNO: 'Estorno',
 }
+
+const diaMes = (d: Date) =>
+  new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(d)
+
+/** Plano de contrato: tem conta de tabela, mas o valor é o combinado. */
+const deContrato = (a: Assinatura) => !PLANOS[a.plano].aVenda && a.plano !== 'GRATIS'
 
 const data = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', {
@@ -95,41 +110,55 @@ export default async function AssinaturaPagina({
         </Aviso>
       ))}
 
+      {a.situacao === 'TESTE' && a.testeAte && <QuadroDoTeste a={a} />}
+
       <Secao titulo="O que você tem">
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Duas colunas para o plano: "Norte + Assistente" e "Norte sob
+              contrato" não cabem numa ficha de um quarto — o número encolhe
+              até onde dá e depois corta. */}
+          <div className="grid sm:col-span-2">
+            <Numero
+              principal
+              rotulo="Plano"
+              valor={a.titulo}
+              detalhe={
+                a.situacao === 'TESTE' && a.testeAte
+                  ? `em teste até ${diaMes(a.testeAte)}`
+                  : deContrato(a) || a.mensal.total === null
+                    ? 'valor combinado em contrato'
+                    : a.mensal.total === 0
+                      ? 'sem mensalidade'
+                      : `${brl(a.mensal.total)} por mês`
+              }
+            />
+          </div>
+          {/* Lojas de VENDA: o depósito não entra na conta (menos no Grátis,
+              que é de uma unidade só, seja ela qual for). */}
           <Numero
-            principal
-            rotulo="Plano"
-            valor={a.titulo}
-            detalhe={
-              a.mensal.total !== null
-                ? `${brl(a.mensal.total)} por mês`
-                : 'preço fechado por contrato'
-            }
-          />
-          <Numero
-            rotulo="Unidades"
+            rotulo="Lojas"
             valor={
-              a.limite.unidades === null
-                ? String(a.uso.unidades)
-                : `${a.uso.unidades} de ${a.limite.unidades}`
+              a.limite.unidades !== null && a.mensal.porExtra === null
+                ? `${a.uso.unidades} de ${a.limite.unidades}`
+                : String(a.uso.unidades)
             }
             detalhe={
-              a.mensal.extras > 0
-                ? `${plural(a.mensal.extras, 'extra', 'extras')} · ${brl(a.mensal.extras * (a.mensal.porExtra ?? 0))}`
-                : 'dentro da cota'
+              a.mensal.porExtra === null
+                ? a.limite.unidades === null
+                  ? 'sem limite'
+                  : 'é o que o plano comporta'
+                : a.mensal.extras > 0
+                  ? `${a.limite.unidades} incluída · ${a.mensal.extras} a mais`
+                  : 'depósito não entra na conta'
             }
             nivel={
-              a.limite.unidades !== null && a.uso.unidades >= a.limite.unidades
+              a.limite.unidades !== null && a.mensal.porExtra === null && a.uso.unidades >= a.limite.unidades
                 ? 'atencao'
                 : undefined
             }
           />
-          {/* Dois números diferentes, e a diferença é o modelo de cobrança
-              inteiro: cadastrar gente é de graça, o que se paga é quanta
-              gente fica dentro ao mesmo tempo. Mostrar só um dos dois faria a
-              conta parecer errada para quem tem doze cadastrados e paga por
-              três. */}
+          {/* Cadastrar gente é de graça em todo plano. Quanto fica dentro ao
+              mesmo tempo só tem limite no Grátis — nos pagos, à vontade. */}
           <Numero
             rotulo="Pessoas cadastradas"
             valor={String(a.uso.usuarios)}
@@ -138,7 +167,7 @@ export default async function AssinaturaPagina({
           <Numero
             rotulo="Dentro ao mesmo tempo"
             valor={a.limite.vagas === null ? 'Sem limite' : `Até ${a.limite.vagas}`}
-            detalhe="é isto que o plano limita"
+            detalhe={a.limite.vagas === null ? 'a equipe toda, à vontade' : `é o que o ${a.titulo} limita`}
           />
           <Numero
             rotulo="Crédito de IA"
@@ -151,6 +180,7 @@ export default async function AssinaturaPagina({
             nivel={a.credito.acabou ? 'critico' : a.credito.baixo ? 'atencao' : 'bom'}
           />
         </div>
+        <ContaDoMes a={a} />
       </Secao>
 
       <Secao titulo="Crédito do assistente">
@@ -219,6 +249,8 @@ export default async function AssinaturaPagina({
         <Planos
           slug={slug}
           atual={a.plano}
+          situacao={a.situacao}
+          lojas={a.uso.unidades}
           opcoes={opcoes}
           podeTrocar={podeMexer}
           // O número é nosso, não da empresa cliente, e vem do ambiente: número
@@ -226,9 +258,9 @@ export default async function AssinaturaPagina({
           whatsapp={process.env.NORTE_WHATSAPP ?? null}
         />
 
-        {/* Cartao vende, tabela decide. Quem esta quase trocando quer a
-            pergunta especifica respondida, e procurar isso em quatro cartoes
-            de bala e onde a pessoa desiste e vai perguntar no WhatsApp. */}
+        {/* Cartão vende, tabela decide. Quem está quase trocando quer a
+            pergunta específica respondida, e procurar isso nos cartões é
+            onde a pessoa desiste e vai perguntar no WhatsApp. */}
         <Cartao titulo="Item por item">
           <Comparar atual={a.plano} />
         </Cartao>
@@ -260,5 +292,113 @@ function AvisoDoPedido({ pedido }: { pedido: Pedido }) {
     <Aviso nivel="atencao">
       Pedido {oQue} enviado em {quando(pedido.criadoEm)}, aguardando confirmação da equipe do Norte.
     </Aviso>
+  )
+}
+
+/**
+ * O teste: quantos dias faltam e o que acontece depois.
+ *
+ * As duas respostas juntas, no alto, porque são as duas perguntas de quem
+ * está testando — e a segunda é a que mais assusta. "Acabou o teste, perco
+ * tudo?" Não: os dados ficam, o básico continua, e o resto volta ao assinar.
+ */
+function QuadroDoTeste({ a }: { a: Assinatura }) {
+  const dias = Math.max(0, a.diasDeTeste ?? 0)
+  const g = PLANOS.GRATIS
+  return (
+    <Cartao caixa titulo="Teste com tudo">
+      <div className="flex flex-col gap-3 text-sm leading-relaxed text-tinta-2">
+        <p>
+          <b className="text-tinta">{dias === 0 ? 'O teste acaba hoje' : `Faltam ${plural(dias, 'dia', 'dias')}`}</b>{' '}
+          — vai até {diaMes(a.testeAte!)}. Você está usando o {a.titulo}: tudo da loja e o assistente,
+          com {brl(PRECOS.creditoDoTeste)} de crédito de IA para conhecer.
+        </p>
+        <ul className="flex list-disc flex-col gap-1.5 pl-5">
+          <li>
+            <b className="text-tinta">Assinando,</b> nada muda: o que foi lançado continua, e o crédito
+            de IA passa a ser o do plano. Escolha em &ldquo;Mudar de plano&rdquo;, mais abaixo.
+          </li>
+          <li>
+            <b className="text-tinta">Sem assinar,</b> a empresa passa para o plano {g.titulo}:{' '}
+            {g.unidades === 1 ? 'uma loja' : `${g.unidades} lojas`}, {g.vagas === 1 ? 'uma pessoa por vez' : `${g.vagas} pessoas por vez`}
+            {g.tetoVendasMes !== null ? `, até ${g.tetoVendasMes} vendas no mês` : ''} e sem o assistente. Os
+            dados ficam todos, e o resto volta no dia em que assinar.
+          </li>
+        </ul>
+      </div>
+    </Cartao>
+  )
+}
+
+/**
+ * A conta do mês, aberta: a primeira loja, as lojas a mais, o assistente.
+ *
+ * As parcelas saem de `PRECOS`, e o total de `mensalidade` — a mesma conta
+ * que o servidor usa. Se um dia as duas não fecharem (um plano novo com outra
+ * regra), a tela mostra só o total em vez de uma soma que não bate.
+ */
+function ContaDoMes({ a }: { a: Assinatura }) {
+  const p: Limite = PLANOS[a.plano]
+  const { total, extras, porExtra, fabricas, porFabrica } = a.mensal
+
+  // Corporativo: não há conta de tabela para mostrar.
+  if (total === null) {
+    return (
+      <Cartao titulo="A conta do mês">
+        <p className="text-sm text-tinta-2">Preço fechado em contrato, depois de olhar a operação.</p>
+      </Cartao>
+    )
+  }
+
+  // Grátis: não há o que somar. O útil é dizer quanto daria assinar.
+  if (total === 0) {
+    const lojas = Math.max(1, a.uso.unidades)
+    return (
+      <Cartao titulo="A conta do mês">
+        <p className="text-sm leading-relaxed text-tinta-2">
+          O {a.titulo} não tem mensalidade. Com {lojas === 1 ? 'uma loja' : `${lojas} lojas`}, o{' '}
+          {PLANOS.BALCAO.titulo} sai por{' '}
+          <b className="numero text-tinta">{brl(mensalidade('BALCAO', lojas).total ?? 0)}</b> e o{' '}
+          {PLANOS.BALCAO_AGENTE.titulo} por{' '}
+          <b className="numero text-tinta">{brl(mensalidade('BALCAO_AGENTE', lojas).total ?? 0)}</b> por mês.
+        </p>
+      </Cartao>
+    )
+  }
+
+  const comAssistente = p.modulos.includes('agente')
+  const linhas: [string, number][] = [['Primeira loja', PRECOS.primeiraLoja]]
+  if (extras > 0 && porExtra !== null) {
+    linhas.push([`${extras === 1 ? '1 loja a mais' : `${extras} lojas a mais`} × ${brl(porExtra)}`, extras * porExtra])
+  }
+  if (fabricas > 0 && porFabrica !== null) {
+    linhas.push([`${fabricas === 1 ? 'Fábrica' : `${fabricas} fábricas`} × ${brl(porFabrica)}`, fabricas * porFabrica])
+  }
+  if (comAssistente) linhas.push(['Assistente, com o crédito de IA do mês', PRECOS.assistente])
+  const fecha = linhas.reduce((soma, [, v]) => soma + v, 0) === total
+
+  return (
+    <Cartao titulo="A conta do mês">
+      <dl className="flex max-w-md flex-col text-sm">
+        {fecha &&
+          linhas.map(([rotulo, valor]) => (
+            <div key={rotulo} className="flex items-baseline justify-between gap-4 border-b border-borda-suave py-1.5">
+              <dt className="text-tinta-2">{rotulo}</dt>
+              <dd className="numero text-tinta">{brl(valor)}</dd>
+            </div>
+          ))}
+        <div className="flex items-baseline justify-between gap-4 py-1.5">
+          <dt className="font-semibold text-tinta">{deContrato(a) ? 'Pela tabela, por mês' : 'Por mês'}</dt>
+          <dd className="numero font-bold text-tinta">{brl(total)}</dd>
+        </div>
+      </dl>
+      <p className="mt-1 text-xs leading-relaxed text-tinta-3">
+        {deContrato(a)
+          ? 'É a conta da tabela, para referência: o que você paga é o valor combinado em contrato.'
+          : a.situacao === 'TESTE'
+            ? 'É o que passa a valer quando o teste virar assinatura. Durante o teste, nada é cobrado.'
+            : 'Cada loja a mais soma ao mês, e a tela de Lojas diz o valor antes de abrir. Depósito não entra na conta.'}
+      </p>
+    </Cartao>
   )
 }

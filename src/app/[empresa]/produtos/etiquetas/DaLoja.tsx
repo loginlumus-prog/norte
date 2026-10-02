@@ -41,7 +41,7 @@ const ficha = (ativa: boolean) =>
  * o endereço some (o "Cabeçalhos e rodapés" do diálogo ainda precisa estar
  * desmarcado).
  */
-function imprimirHTML(html: string): boolean {
+export function imprimirHTML(html: string): boolean {
   try {
     document.getElementById('etiqueta-impressao')?.remove()
     const frame = document.createElement('iframe')
@@ -75,7 +75,7 @@ function imprimirHTML(html: string): boolean {
  * bilhete certo (a propriedade `nonce` continua legível, mesmo escondida do
  * atributo).
  */
-function bilheteDoDocumento(doServidor?: string): string | undefined {
+export function bilheteDoDocumento(doServidor?: string): string | undefined {
   if (typeof document === 'undefined') return doServidor
   return document.querySelector<HTMLScriptElement>('script[nonce]')?.nonce || doServidor
 }

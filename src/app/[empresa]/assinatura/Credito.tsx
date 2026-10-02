@@ -49,8 +49,8 @@ export function Credito({
   const tom = acabou ? 'text-critico' : saldoCent <= 1000 ? 'text-atencao' : 'text-tinta'
 
   // A barra mede o saldo contra a COTA DO MÊS, não contra um teto inventado.
-  // É a régua que a pessoa já tem na cabeça: "o plano me dá R$ 120, e eu
-  // estou com quanto disso?". Passar da cota (recarregou a mais) enche a
+  // É a régua que a pessoa já tem na cabeça: "o plano me dá tanto por mês, e
+  // eu estou com quanto disso?". Passar da cota (recarregou a mais) enche a
   // barra e continua legível, em vez de estourar para fora.
   const cotaCent = Math.max((inclusoMensal ?? 0) * 100, 1)
   const cheio = Math.max(0, Math.min(100, (saldoCent / cotaCent) * 100))
@@ -99,7 +99,7 @@ export function Credito({
             {inclusoMensal === null
               ? 'combinado no contrato'
               : inclusoMensal > 0
-                ? 'por mês, renovado no ciclo'
+                ? 'por mês, para o assistente'
                 : 'seu plano não tem assistente'}
           </span>
         </div>

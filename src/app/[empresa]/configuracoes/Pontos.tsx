@@ -65,7 +65,7 @@ export function Pontos({
         </span>
         <span className="flex min-w-0 flex-col gap-1">
           <span className="text-sm font-semibold text-tinta">
-            O programa de pontos é {quemAbre} para cima
+            O programa de pontos é {quemAbre}
           </span>
           <span className="text-xs leading-relaxed text-tinta-2">
             O cliente junta pontos a cada compra e troca por desconto no balcão — o motivo de
@@ -98,7 +98,7 @@ export function Pontos({
 
       {!aberto && (
         <Aviso nivel="atencao">
-          O programa de pontos é {quemAbre} para cima e ficou ligado de um plano anterior. Você
+          O programa de pontos é {quemAbre} e ficou ligado de um plano anterior. Você
           pode desligar aqui; para mudar os valores, <Link href={`/${empresa}/assinatura`} className="font-semibold underline">veja os planos</Link>.
         </Aviso>
       )}

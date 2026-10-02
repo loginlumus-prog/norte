@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { comoOrg } from '@/servidor/banco'
 import { sessaoViva } from '@/servidor/pagina'
 import { exigir } from '@/servidor/permissao'
-import { TODOS, RAMOS, MODULOS, type Modulo, type Ramo } from '@/servidor/modulos'
+import { TODOS, ESCOLHIVEIS, ehContratado, RAMOS, MODULOS, type Modulo, type Ramo } from '@/servidor/modulos'
 import { PLANOS, planoLibera } from '@/servidor/planos'
 import { PORTES, DORES, CATALOGOS, CANAIS_VALIDOS, daLista } from '@/servidor/cadastro'
 import type { Regime } from '@prisma/client'
@@ -38,7 +38,8 @@ export async function terminarCadastro(
   // que o PLANO abre: o ramo sugere crediário e metas até para quem está no
   // Grátis, e ligar aqui era ganhar de presente o que a tabela vende no
   // plano de cima (ver `planoLibera`).
-  const pedidos = TODOS.filter((m) => form.get(`modulo_${m}`) === 'on')
+  // O Farol (contratado à parte) não liga pelo cadastro inicial.
+  const pedidos = ESCOLHIVEIS.filter((m) => form.get(`modulo_${m}`) === 'on')
   const plano = await comoOrg(sessao.orgId, (db) =>
     db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { plano: true } }),
   ).then((o) => o.plano)
@@ -202,7 +203,9 @@ export async function salvarModulos(_anterior: EstadoComeco, form: FormData): Pr
   if (!sessao) redirect(`/${slug}/entrar`)
   exigir(sessao, 'empresa.configurar')
 
-  const modulos = TODOS.filter((m) => form.get(`modulo_${m}`) === 'on') as Modulo[]
+  // Só as chaves que a empresa liga sozinha vêm do formulário; o que é
+  // contratado à parte (o Farol) fica como estava — ver o update abaixo.
+  const escolhidos = ESCOLHIVEIS.filter((m) => form.get(`modulo_${m}`) === 'on') as Modulo[]
   const balcaoGrade = form.get('balcaoGrade') === 'on'
 
   // O módulo que o plano não abre não liga — nem pela tela, nem mandando o
@@ -211,7 +214,7 @@ export async function salvarModulos(_anterior: EstadoComeco, form: FormData): Pr
   const plano = await comoOrg(sessao.orgId, (db) =>
     db.org.findUniqueOrThrow({ where: { id: sessao.orgId }, select: { plano: true } }),
   ).then((o) => o.plano)
-  const trancados = modulos.filter((m) => !planoLibera(plano, m))
+  const trancados = escolhidos.filter((m) => !planoLibera(plano, m))
   if (trancados.length > 0) {
     return {
       erro:
@@ -225,6 +228,7 @@ export async function salvarModulos(_anterior: EstadoComeco, form: FormData): Pr
       where: { id: sessao.orgId },
       select: { modulos: true, balcaoGrade: true },
     })
+    const modulos = [...escolhidos, ...(antes?.modulos ?? []).filter((m) => TODOS.includes(m as Modulo) && ehContratado(m as Modulo))] as Modulo[]
     await db.org.update({ where: { id: sessao.orgId }, data: { modulos, balcaoGrade } })
     await db.auditoria.create({
       data: {

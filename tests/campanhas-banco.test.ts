@@ -51,9 +51,9 @@ const gatilho = (frases: string[], reentrada = 'nunca') => JSON.stringify({ tipo
 
 const SEMENTE = `
   insert into orgs (id, nome, slug, plano, situacao, modulos, atualizada_em) values
-    ('org-a', 'Loja A', 'loja-a', 'BALCAO_AGENTE', 'ATIVA', '{agente}', now()),
-    ('org-b', 'Vizinha B', 'vizinha-b', 'REDE', 'ATIVA', '{agente}', now()),
-    ('org-c', 'Sem Plano', 'sem-plano', 'BALCAO', 'ATIVA', '{agente}', now());
+    ('org-a', 'Loja A', 'loja-a', 'BALCAO_AGENTE', 'ATIVA', '{agente,farol}', now()),
+    ('org-b', 'Vizinha B', 'vizinha-b', 'REDE', 'ATIVA', '{agente,farol}', now()),
+    ('org-c', 'Sem Plano', 'sem-plano', 'BALCAO', 'ATIVA', '{agente,farol}', now());
 
   insert into unidades (id, org_id, nome, horario, atualizada_em) values
     ('uni-a1', 'org-a', 'Centro A', 'Seg a sex 9h-18h', now()),

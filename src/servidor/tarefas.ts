@@ -28,7 +28,7 @@ import type { Plano, SituacaoTarefa } from '@prisma/client'
 import type { Ramo } from './modulos'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, exigirNoAlcance, pode, podeNoAlcance, SemPermissao, unidadesQuePodem, PODERES, type Papel, type Sessao } from './permissao'
-import { liberado, PLANOS, TAREFAS_ABERTAS_NO_GRATIS } from './planos'
+import { doPlano, liberado, planoQueAbre, PLANOS, TAREFAS_ABERTAS_NO_GRATIS } from './planos'
 import { colunaDoDia, diaDaColuna, diaEmSP, inicioDoDiaEmSP, mostrarDiaDaColuna, primeiroDoMes } from './dia'
 
 export type { SituacaoTarefa }
@@ -916,7 +916,7 @@ export async function criarQuadro(sessao: Sessao, dados: NovoQuadro): Promise<{ 
     // Quadro POR LOJA é a mesma liberação de "vários quadros": no plano de um
     // quadro só, ele é da empresa inteira — não há o que separar.
     if (unidadeId && !liberado(plano, 'tarefas.varios')) {
-      throw new Error(`Quadro por loja é ${PLANOS[plano].titulo === 'Grátis' ? 'do Balcão' : 'de outro plano'} para cima. Este quadro vale para a empresa inteira.`)
+      throw new Error(`Quadro por loja é ${doPlano(planoQueAbre('tarefas.varios').codigo)}. Este quadro vale para a empresa inteira.`)
     }
     if (unidadeId) {
       const u = await db.unidade.findFirst({ where: { id: unidadeId, ativa: true }, select: { id: true } })
@@ -975,7 +975,7 @@ export async function alterarQuadro(sessao: Sessao, quadroId: string, dados: Alt
       exigirNoAlcance(sessao, 'tarefa.gerir', alvo)
       if (alvo) {
         const plano = await planoDe(db, sessao.orgId)
-        if (!liberado(plano, 'tarefas.varios')) throw new Error('Quadro por loja é do Balcão para cima.')
+        if (!liberado(plano, 'tarefas.varios')) throw new Error(`Quadro por loja é ${doPlano(planoQueAbre('tarefas.varios').codigo)}.`)
         const u = await db.unidade.findFirst({ where: { id: alvo, ativa: true }, select: { id: true } })
         if (!u) throw new Error('Essa loja não existe.')
       }
@@ -1142,19 +1142,19 @@ export async function alterarTarefa(sessao: Sessao, tarefaId: string, dados: Alt
       legivel.grupo = grupo
     }
     if (dados.responsavelId !== undefined) {
-      if (!liberado(plano, 'tarefas.responsavel')) throw new Error('Responsável pela tarefa é do Balcão para cima.')
+      if (!liberado(plano, 'tarefas.responsavel')) throw new Error(`Responsável pela tarefa é ${doPlano(planoQueAbre('tarefas.responsavel').codigo)}.`)
       const p = await conferirResponsavel(db, t.quadro.unidadeId, dados.responsavelId || null)
       novo.responsavelId = p?.id ?? null
       legivel.responsavel = p?.nome ?? null
     }
     if (dados.prioridade !== undefined) {
-      if (!liberado(plano, 'tarefas.prioridade')) throw new Error('Prioridade em estrelas é do Balcão para cima.')
+      if (!liberado(plano, 'tarefas.prioridade')) throw new Error(`Prioridade em estrelas é ${doPlano(planoQueAbre('tarefas.prioridade').codigo)}.`)
       if (!prioridadeValida(dados.prioridade)) throw new Error('Prioridade vai de 0 a 5.')
       novo.prioridade = dados.prioridade
       legivel.prioridade = dados.prioridade
     }
     if (dados.prazo !== undefined) {
-      if (!liberado(plano, 'tarefas.prazo')) throw new Error('Prazo da tarefa é do Balcão para cima.')
+      if (!liberado(plano, 'tarefas.prazo')) throw new Error(`Prazo da tarefa é ${doPlano(planoQueAbre('tarefas.prazo').codigo)}.`)
       if (dados.prazo && !dataSemHora(dados.prazo)) throw new Error('Prazo inválido.')
       novo.prazo = dataSemHora(dados.prazo)
       legivel.prazo = dados.prazo || null

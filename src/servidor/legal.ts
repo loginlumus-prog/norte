@@ -39,7 +39,7 @@ export const IDENTIDADE_COMPLETA =
   EMPRESA.razaoSocial !== null && EMPRESA.cnpj !== null && EMPRESA.endereco !== null
 
 /** Última revisão dos documentos. Mudou o texto, mude a data. */
-export const REVISADO_EM = '25 de setembro de 2026'
+export const REVISADO_EM = '2 de outubro de 2026'
 
 // ─────────────────────────────────────────────────────────────
 // QUEM MAIS TOCA NOS DADOS

@@ -475,6 +475,17 @@ export default async function TelaEstoque({
       acao={
         <span className="flex items-center gap-2">
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
+          {/* Com fábrica, a loja repõe pedindo a ela — e é aqui, no estoque,
+              que a gerente percebe que está acabando. A tela de pedir confere
+              em que loja a pessoa pode pedir. */}
+          {moduloLigado(empresa, 'fabrica') && pode(sessao, 'estoque.ajustar') && (
+            <Link
+              href={`/${slug}/fabrica/pedir${onde.unidadeId ? `?loja=${onde.unidadeId}` : ''}`}
+              className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"
+            >
+              Pedir à fábrica
+            </Link>
+          )}
           <a
             href={`/${slug}/estoque/exportar${onde.unidadeId ? `?unidade=${onde.unidadeId}` : ''}`}
             className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"

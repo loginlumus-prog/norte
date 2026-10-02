@@ -245,7 +245,9 @@ export default async function Analise({
         <Cartao>
           <div className="flex flex-col gap-3 py-6 text-center">
             <p className="text-base font-semibold text-tinta">
-              A análise é do plano {PLANOS.REDE.titulo} para cima.
+              {/* Desde a tabela de 02/10/2026 a análise vem em todo plano pago
+                  (`temAnaliseAvancada`): quem vê esta tranca é o Grátis. */}
+              A análise vem no plano {PLANOS.BALCAO.titulo}.
             </p>
             <p className="mx-auto max-w-prose text-sm text-tinta-2">
               São três leituras que o painel não dá: as suas lojas lado a lado com venda, margem

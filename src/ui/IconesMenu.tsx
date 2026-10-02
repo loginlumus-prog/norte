@@ -167,6 +167,21 @@ const D: Record<string, ReactNode> = {
       <path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a7.5 7.5 0 0 1 0 11" />
     </>
   ),
+  // Farol: a torre e o facho — ser visto de longe.
+  farol: (
+    <>
+      <path d="M10 9h4l1.5 11.5h-7L10 9Z" />
+      <path d="M9.5 9h5V6.5L12 4.5l-2.5 2V9Z" />
+      <path d="M8.5 20.5h7M15.5 6.5 20 5M15.5 8.5 20 10" />
+    </>
+  ),
+  // Fábrica: o galpão com a chaminé.
+  fabrica: (
+    <>
+      <path d="M3.5 20.5V11l5 3v-3l5 3v-3l5 3V4.5h2v16Z" />
+      <path d="M7.5 17.5h2M12.5 17.5h2" />
+    </>
+  ),
   auditoria: (
     <>
       <path d="M12 3.5 19 6v5.5c0 4.3-2.9 7.8-7 9-4.1-1.2-7-4.7-7-9V6l7-2.5Z" />

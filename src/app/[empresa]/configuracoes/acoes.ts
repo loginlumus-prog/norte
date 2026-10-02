@@ -112,7 +112,7 @@ export async function salvarPontos(
       db.org.findUniqueOrThrow({ where: { id: s.orgId }, select: { plano: true } }),
     ).then((o) => o.plano)
     if (!liberado(plano, 'pontos.programa')) {
-      return { erro: `O programa de pontos é ${doPlano(planoQueAbre('pontos.programa').codigo)} para cima.` }
+      return { erro: `O programa de pontos é ${doPlano(planoQueAbre('pontos.programa').codigo)}.` }
     }
   }
 

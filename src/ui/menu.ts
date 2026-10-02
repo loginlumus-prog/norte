@@ -65,6 +65,10 @@ export const MENU = (slug: string): ItemMenu[] => [
   // "Serviços e materiais" na clínica (vocabulario.ts).
   { grupo: 'Catálogo', href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver', vocabulario: 'Produtos' },
   { grupo: 'Catálogo', href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },
+  // A fábrica: ficha técnica, ordem de produção com lote e o pedido das
+  // lojas. Exige só ver o estoque — produzir e mandar é mexer no estoque DA
+  // fábrica, e isso a própria tela confere por unidade (servidor/fabrica.ts).
+  { grupo: 'Catálogo', href: `/${slug}/fabrica`, titulo: 'Fábrica', exige: 'estoque.ver', modulo: 'fabrica' },
   // O pedido ao fornecedor, com o custo. Receber é dar entrada no estoque.
   { grupo: 'Catálogo', href: `/${slug}/compras`, titulo: 'Compras', exige: 'compra.ver', modulo: 'compras' },
   // O esmalte, a luva, o algodão: quem atende anota o que gastou. Item
@@ -97,7 +101,10 @@ export const MENU = (slug: string): ItemMenu[] => [
   // O roteiro de WhatsApp para CLIENTES (frase → mensagens → fim). Ao lado do
   // Assistente porque sai pelo mesmo número e pede o mesmo módulo; o plano
   // sem campanhas vê a tela trancada, com o plano que abre.
-  { grupo: 'Empresa', href: `/${slug}/campanhas`, titulo: 'Campanhas', exige: 'agente.configurar', modulo: 'agente' },
+  // As campanhas são do Farol (o direcionamento digital, contratado à parte);
+  // saem pelo número do assistente, que o servidor também exige (campanhas/acesso.ts).
+  { grupo: 'Empresa', href: `/${slug}/farol`, titulo: 'Farol', exige: 'agente.configurar', modulo: 'farol' },
+  { grupo: 'Empresa', href: `/${slug}/campanhas`, titulo: 'Campanhas', exige: 'agente.configurar', modulo: 'farol' },
   // O livro de tudo que mexeu. Ele é escrito por todo canto do sistema desde
   // o primeiro dia e não tinha onde ser lido — o que é o mesmo que não ter.
   { grupo: 'Empresa', href: `/${slug}/auditoria`, titulo: 'Auditoria', exige: 'auditoria.ver', avancado: true },
