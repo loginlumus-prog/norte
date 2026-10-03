@@ -150,44 +150,115 @@ export function ConversaAssistente() {
 }
 
 /* ── o Farol escrevendo ─────────────────────────────────── */
+// 03/10/2026: era três cartões tortos soltos no painel. Virou UMA janela do
+// Farol, na ordem em que ele trabalha: a semana planejada em cima, o post do
+// dia no meio (a prévia do Reels rodando ao lado do roteiro sendo escrito) e,
+// embaixo, de onde veio a ideia — os números da loja — com o "Aprovar".
+const SEMANA: { d: string; tipo: string; c: string }[] = [
+  { d: 'Seg', tipo: '', c: '' },
+  { d: 'Ter', tipo: 'Story', c: 'var(--s-rosa)' },
+  { d: 'Qua', tipo: '', c: '' },
+  { d: 'Qui', tipo: 'Carrossel', c: 'var(--s-violeta)' },
+  { d: 'Sex', tipo: '', c: '' },
+  { d: 'Sáb', tipo: 'Reels', c: 'var(--s-sol)' },
+  { d: 'Dom', tipo: 'Story', c: 'var(--s-rosa)' },
+]
+
+const ROTEIRO = [
+  ['0–3s', 'Close no picolé suando no balcão.'],
+  ['3–8s', 'A mão tira do freezer, o som do papel.'],
+  ['8–15s', 'Preço na tela: “só hoje, dois por R$ 7”.'],
+]
+
 export function PecasFarol() {
   return (
-    <div className="relative mx-auto w-[340px] max-w-full pt-[6.5rem] pb-[7.5rem]">
-      <div className="site-cartao rounded-3xl p-5" style={cor('var(--s-sol)')}>
-        <div className="flex items-center justify-between">
-          <span className="site-olho text-[var(--s-sol)]">Roteiro de Reels</span>
-          <span className="rounded-full bg-[var(--s-sol-claro)] px-2.5 py-1 text-[11px] font-bold text-[var(--s-sol)]">para sábado</span>
-        </div>
-        <p className="mt-3 text-lg font-extrabold leading-snug">“O picolé que salva o calor de sábado”</p>
-        <div className="mt-3 flex flex-col gap-1.5 text-[13px] text-[var(--s-tinta-2)]">
-          <p>
-            0–3s: close no picolé suando no balcão<span className="site-digita" aria-hidden />
+    <div className="site-cartao w-[380px] max-w-full overflow-hidden" style={cor('var(--s-sol)')}>
+      {/* a barra da janela */}
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--s-borda)] px-4 py-2.5">
+        <span className="flex items-center gap-2 text-[12px] font-bold">
+          <span className="flex h-5 w-5 items-center justify-center rounded-[3px] bg-[var(--s-sol)] text-[10px] font-black text-white">F</span>
+          Farol · Outubro
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--s-sol)]">
+          <span className="site-pulsa h-1.5 w-1.5 rounded-full bg-[var(--s-sol)]" style={cor('var(--s-sol)')} />
+          escrevendo
+        </span>
+      </div>
+
+      {/* a semana */}
+      <div className="grid grid-cols-7 border-b border-[var(--s-borda)]">
+        {SEMANA.map((s, i) => {
+          const hoje = s.d === 'Sáb'
+          return (
+            <div
+              key={s.d}
+              className={`flex flex-col items-center gap-1 py-2 ${i > 0 ? 'border-l border-[var(--s-borda)]' : ''} ${hoje ? 'bg-[var(--s-sol-claro)]' : ''}`}
+            >
+              <span className={`text-[10px] font-bold ${hoje ? 'text-[var(--s-sol)]' : 'text-[var(--s-tinta-2)]'}`}>{s.d}</span>
+              <span
+                className={`h-1.5 w-6 rounded-[2px] ${s.tipo ? `site-passo-${i % 8}` : ''}`}
+                style={{ background: s.tipo ? s.c : 'var(--s-borda)' }}
+                title={s.tipo || undefined}
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      {/* o post do dia: a prévia e o roteiro */}
+      <div className="grid grid-cols-[104px_1fr] gap-3.5 p-4">
+        <div className="relative aspect-[9/16] overflow-hidden rounded-[6px] bg-[linear-gradient(160deg,#ffcf6b,#f2780c_55%,#c2410c)]">
+          {/* as três partes do vídeo, como no Instagram */}
+          <div className="absolute inset-x-1.5 top-1.5 flex gap-0.5">
+            {[0, 1, 2].map((n) => (
+              <span key={n} className="h-[2px] flex-1 overflow-hidden rounded-full bg-white/40">
+                <span className={`site-reel site-reel-${n} block h-full bg-white`} />
+              </span>
+            ))}
+          </div>
+          {/* o picolé */}
+          <div aria-hidden className="site-boia absolute top-[26%] left-1/2 -translate-x-1/2">
+            <span className="block h-14 w-9 rounded-t-[18px] rounded-b-[6px] bg-[linear-gradient(180deg,#fff3c4,#ffe066)] shadow-[inset_-4px_0_0_rgb(0_0_0/0.06)]" />
+            <span className="mx-auto block h-5 w-1.5 rounded-b-[2px] bg-[#e8c48a]" />
+          </div>
+          <p className="absolute inset-x-1.5 bottom-2 rounded-[3px] bg-black/35 px-1.5 py-1 text-center text-[9px] leading-tight font-bold text-white">
+            só hoje · 2 por R$ 7
           </p>
-          <p className="site-passo-3">3–8s: a mão tira do freezer, o som do papel.</p>
-          <p className="site-passo-4">8–15s: preço na tela e “só hoje, dois por R$ 7”.</p>
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <span className="site-olho text-[10px] text-[var(--s-sol)]">Reels · sábado 15h</span>
+          <p className="mt-1 text-[15px] leading-snug font-extrabold">“O picolé que salva o calor de sábado”</p>
+          <ol className="mt-2.5 flex flex-col gap-1.5">
+            {ROTEIRO.map(([t, l], i) => (
+              <li key={t} className={`site-passo-${i + 1} flex gap-2 text-[11.5px] leading-snug text-[var(--s-tinta-2)]`}>
+                <span className="numero w-9 shrink-0 font-bold text-[var(--s-tinta)]">{t}</span>
+                <span>
+                  {l}
+                  {i === ROTEIRO.length - 1 && <span className="site-digita" aria-hidden />}
+                </span>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
-      <div className="site-passo-5 site-cartao absolute right-0 bottom-0 w-48 rotate-3 rounded-2xl p-3.5">
-        <span className="site-olho text-[var(--s-violeta)]">Carrossel</span>
-        <div className="mt-2 flex gap-1">
-          {['#ff7aa2', '#ffb347', '#7cc576', '#6d4cf0', '#3fa7ff'].map((c) => (
-            <span key={c} className="h-10 flex-1 rounded-md" style={{ background: c }} />
-          ))}
-        </div>
-        <p className="mt-2 text-[11px] font-semibold">5 lâminas · “sabores da semana”</p>
-      </div>
-      <div className="site-passo-6 site-cartao absolute top-0 left-0 w-44 -rotate-3 rounded-2xl p-3.5">
-        <span className="site-olho text-[var(--s-verde)]">Calendário</span>
-        <div className="mt-2 grid grid-cols-7 gap-1">
-          {Array.from({ length: 21 }, (_, i) => (
+
+      {/* de onde veio a ideia, e a decisão */}
+      <div className="flex flex-col gap-2.5 border-t border-[var(--s-borda)] bg-[var(--s-fundo)] p-4">
+        <p className="text-[10px] font-bold tracking-[0.12em] text-[var(--s-tinta-2)] uppercase">Por que este post</p>
+        <div className="flex flex-wrap gap-1.5">
+          {['Picolé: +38% aos sábados', 'Pico das 14h às 17h', 'Mais pedidos no Centro'].map((t, i) => (
             <span
-              key={i}
-              className="aspect-square rounded-[4px]"
-              style={{ background: [2, 5, 9, 12, 16, 19].includes(i) ? 'var(--s-sol)' : 'var(--s-borda)' }}
-            />
+              key={t}
+              className={`site-passo-${i + 4} rounded-[3px] border border-[var(--s-borda)] bg-[var(--s-cartao)] px-2 py-1 text-[11px] font-semibold`}
+            >
+              {t}
+            </span>
           ))}
         </div>
-        <p className="mt-2 text-[11px] font-semibold">6 posts no mês</p>
+        <div className="mt-1 flex gap-2">
+          <span className="site-passo-7 flex-1 rounded-[4px] bg-[var(--s-sol)] py-2 text-center text-[12px] font-bold text-white">Aprovar e agendar</span>
+          <span className="rounded-[4px] border border-[var(--s-borda)] px-3 py-2 text-[12px] font-semibold text-[var(--s-tinta-2)]">Editar</span>
+        </div>
       </div>
     </div>
   )
