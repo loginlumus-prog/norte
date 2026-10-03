@@ -43,6 +43,122 @@ function notas(total: number): number[] {
   return r
 }
 
+/** "Preto · G" → cor e tamanho. Sem o separador, o texto inteiro vira a "cor". */
+const partes = (grade: string) => {
+  const [a = grade, b = ''] = grade.split(' · ')
+  return { cor: a, tam: b }
+}
+
+function eixos(g: Produto[]) {
+  const unicos = (xs: string[]) => [...new Set(xs.filter(Boolean))]
+  return {
+    cores: unicos(g.map((p) => partes(p.grade).cor)),
+    tamanhos: unicos(g.map((p) => partes(p.grade).tam)),
+  }
+}
+
+/** A escolha de cor e tamanho de um produto, no lugar da grade de cartões. */
+function Escolha({
+  g,
+  estoque,
+  pedido,
+  cor,
+  tam,
+  setCor,
+  setTam,
+  bloqueado,
+  aoVoltar,
+  aoAdicionar,
+}: {
+  g: Produto[]
+  estoque: Record<string, number>
+  pedido: Record<string, number>
+  cor: string | null
+  tam: string | null
+  setCor: (v: string | null) => void
+  setTam: (v: string | null) => void
+  bloqueado: boolean
+  aoVoltar: () => void
+  aoAdicionar: (p: Produto) => void
+}) {
+  const topo = g[0]!
+  const { cores, tamanhos } = eixos(g)
+  const saldoDe = (p: Produto) => (estoque[p.id] ?? 0) - (pedido[p.id] ?? 0)
+  const casa = (p: Produto, c: string | null, t: string | null) =>
+    (!c || partes(p.grade).cor === c) && (!t || partes(p.grade).tam === t)
+  const achada = cor && tam ? (g.find((p) => casa(p, cor, tam)) ?? null) : null
+  const faltam = [!cor && cores.length > 1 ? 'a cor' : '', !tam && tamanhos.length > 1 ? 'o tamanho' : ''].filter(Boolean)
+
+  const grupos = [
+    { nome: 'Cor', opcoes: cores, valor: cor, marcar: setCor, par: (o: string) => [o, tam] as const },
+    { nome: 'Tamanho', opcoes: tamanhos, valor: tam, marcar: setTam, par: (o: string) => [cor, o] as const },
+  ].filter((e) => e.opcoes.length > 0)
+
+  return (
+    <div className="pousa flex flex-col gap-3 rounded-xl border border-borda bg-superficie p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className={'grid size-10 shrink-0 place-items-center rounded-lg font-display text-base font-bold ' + COR[topo.categoria]}>
+            {topo.sigla}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[13px] font-semibold text-tinta">{topo.nome}</span>
+            <span className="block text-[11px] text-tinta-3">Escolha cor e tamanho</span>
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={aoVoltar}
+          className="shrink-0 rounded-md border border-borda px-2 py-1 text-[11.5px] font-semibold text-tinta-2 hover:text-tinta"
+        >
+          Voltar
+        </button>
+      </div>
+
+      {grupos.map((e) => (
+        <div key={e.nome} role="group" aria-label={e.nome} className="flex flex-col gap-1.5">
+          <p className="text-[10.5px] font-bold tracking-[0.1em] text-tinta-3 uppercase">{e.nome}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {e.opcoes.map((o) => {
+              const [c, t] = e.par(o)
+              const existe = g.some((p) => casa(p, c, t))
+              const acabou = existe && !g.some((p) => casa(p, c, t) && saldoDe(p) > 0)
+              const marcada = e.valor === o
+              return (
+                <button
+                  key={o}
+                  type="button"
+                  disabled={!existe || acabou}
+                  aria-pressed={marcada}
+                  onClick={() => e.marcar(marcada ? null : o)}
+                  className={
+                    'numero min-h-9 min-w-11 rounded-lg border-2 px-3 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:border-dashed disabled:opacity-45 ' +
+                    (marcada
+                      ? 'border-marca bg-marca-suave text-marca'
+                      : 'border-borda bg-superficie text-tinta hover:border-tinta-3')
+                  }
+                >
+                  {o}
+                  {acabou && <span className="ml-1 text-[9.5px] font-bold text-critico">acabou</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        disabled={!achada || saldoDe(achada) <= 0 || bloqueado}
+        onClick={() => achada && aoAdicionar(achada)}
+        className={botaoMarca + ' w-full py-2.5 text-[13px]'}
+      >
+        {achada ? `Adicionar ${achada.grade} · ${reais(achada.preco)}` : `Escolha ${faltam.join(' e ')}`}
+      </button>
+    </div>
+  )
+}
+
 export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao) => void }) {
   const [busca, setBusca] = useState('')
   const [categoria, setCategoria] = useState<Categoria>('Todos')
@@ -60,6 +176,24 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
         (!b || `${p.nome} ${p.grade} ${p.sigla}`.toLowerCase().includes(b)),
     )
   }, [busca, categoria])
+
+  // Um cartão por PRODUTO: as peças do mesmo nome (cor e tamanho) se escolhem
+  // dentro dele, como na tela de verdade — nunca uma peça por cartão.
+  const grupos = useMemo(() => {
+    const m = new Map<string, Produto[]>()
+    for (const p of lista) m.set(p.nome, [...(m.get(p.nome) ?? []), p])
+    return [...m.values()]
+  }, [lista])
+  const [aberto, setAberto] = useState<string | null>(null)
+  const [cor, setCor] = useState<string | null>(null)
+  const [tam, setTam] = useState<string | null>(null)
+
+  function abrir(g: Produto[]) {
+    const { cores, tamanhos } = eixos(g)
+    setAberto(g[0]!.nome)
+    setCor(cores.length === 1 ? cores[0]! : null)
+    setTam(tamanhos.length === 1 ? tamanhos[0]! : null)
+  }
 
   const itens = Object.entries(pedido).filter(([, q]) => q > 0)
   const total = Math.round(itens.reduce((s, [id, q]) => s + produto(id).preco * q, 0) * 100) / 100
@@ -116,6 +250,22 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
         <div className="relative max-h-[25rem] overflow-y-auto pr-1">
           {lista.length === 0 ? (
             <p className="py-10 text-center text-[12.5px] text-tinta-3">Nenhum produto com “{busca}”.</p>
+          ) : aberto && grupos.some((g) => g[0]!.nome === aberto) ? (
+            <Escolha
+              g={grupos.find((x) => x[0]!.nome === aberto)!}
+              estoque={estado.estoque}
+              pedido={pedido}
+              cor={cor}
+              tam={tam}
+              setCor={setCor}
+              setTam={setTam}
+              bloqueado={!!feita}
+              aoVoltar={() => setAberto(null)}
+              aoAdicionar={(p) => {
+                por(p, 1)
+                setAberto(null)
+              }}
+            />
           ) : (
             <ul
               className={
@@ -123,18 +273,23 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
                 (simples ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4')
               }
             >
-              {lista.map((p) => {
-                const saldo = estado.estoque[p.id] ?? 0
-                const no = pedido[p.id] ?? 0
+              {grupos.map((g) => {
+                const p = g[0]!
+                const varias = g.length > 1
+                const saldo = g.reduce((s, x) => s + (estado.estoque[x.id] ?? 0), 0)
+                const no = g.reduce((s, x) => s + (pedido[x.id] ?? 0), 0)
                 const acabou = saldo <= 0
-                const esgotou = no >= saldo
+                const esgotou = !varias && no >= saldo
+                const menor = Math.min(...g.map((x) => x.preco))
+                const aPartirDe = g.some((x) => x.preco !== menor)
+                const pouco = !varias && saldo <= p.minimo
                 return (
-                  <li key={p.id}>
+                  <li key={p.nome}>
                     <button
                       type="button"
                       disabled={acabou || esgotou || !!feita}
-                      onClick={() => por(p, 1)}
-                      aria-label={`${p.nome} ${p.grade}, ${reais(p.preco)}${acabou ? ', acabou' : saldo <= p.minimo ? `, só ${saldo}` : ''}${no ? `, ${no} no pedido` : ''}`}
+                      onClick={() => (varias ? abrir(g) : por(p, 1))}
+                      aria-label={`${p.nome}${varias ? `, ${g.length} opções` : ` ${p.grade}`}, ${aPartirDe ? 'a partir de ' : ''}${reais(menor)}${acabou ? ', acabou' : pouco ? `, só ${saldo}` : ''}${no ? `, ${no} no pedido` : ''}`}
                       className={
                         'relative flex h-full w-full flex-col overflow-hidden rounded-xl border bg-superficie text-left transition-[transform,box-shadow,border-color] ' +
                         (acabou
@@ -155,14 +310,17 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
                       </span>
                       <span className="flex flex-1 flex-col gap-0.5 p-2">
                         <span className="text-[12px] leading-tight font-semibold text-tinta">{p.nome}</span>
-                        <span className="text-[10.5px] text-tinta-3">{p.grade}</span>
+                        <span className="text-[10.5px] text-tinta-3">{varias ? `${g.length} opções` : p.grade}</span>
                         <span className="mt-auto flex items-baseline justify-between gap-1 pt-1">
-                          <span className="numero text-[12.5px] font-bold text-titulo">{reais(p.preco)}</span>
+                          <span className="numero text-[12.5px] font-bold text-titulo">
+                            {aPartirDe && <span className="mr-1 text-[10px] font-medium text-tinta-3">a partir de</span>}
+                            {reais(menor)}
+                          </span>
                           {acabou ? (
                             <span className="rounded-full bg-critico-fundo px-1.5 text-[9.5px] font-bold text-critico">acabou</span>
-                          ) : saldo <= p.minimo ? (
+                          ) : pouco ? (
                             <span className="text-[10px] font-semibold text-atencao">só {saldo}</span>
-                          ) : !simples ? (
+                          ) : !simples && !varias ? (
                             <span className="numero text-[10px] text-tinta-3">tem {saldo}</span>
                           ) : null}
                         </span>
