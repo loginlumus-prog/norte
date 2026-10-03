@@ -53,7 +53,7 @@ export async function mudarPinNaVendaAcao(slug: string, ligar: boolean): Promise
     revalidatePath(`/${slug}/balcao`)
     return {
       ok: ligar
-        ? 'Ligado: toda venda do balcão se confirma com o PIN de quem vendeu, e fica no nome dela.'
+        ? 'Ligado: toda venda do balcão se confirma com o PIN de quem vendeu, e fica no nome dela. Quem ainda não tem PIN cria o dele na hora de registrar.'
         : 'Desligado: a venda fecha sem PIN, no nome de quem está na conta (ou de quem for escolhido como vendedor).',
     }
   } catch (e) {

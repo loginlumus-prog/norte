@@ -2,12 +2,14 @@
 //
 // O PIN é a confirmação (nada é gravado sem ele) e a assinatura (a venda vai
 // para o nome de quem digitou, mesmo no tablet logado numa conta só). Ninguém
-// fica preso: quem está na conta aberta e não tem PIN confirma sem ele; o
+// fica preso: quem está na conta aberta e não tem PIN cria o dele na hora; o
 // freio travado deixa registrar no nome da conta aberta, marcado; e sem
 // internet a venda que já aconteceu nunca é recusada — fica para conferir.
 // E o convite já cria o PIN, no mesmo passo da senha.
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import type { PGlite } from '@electric-sql/pglite'
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
 import { subirBanco } from './banco'
@@ -35,6 +37,7 @@ const ANA = sessao('usr-ana', 'Ana Vendedora', 'BALCAO', 'u-1')
 const BIA = sessao('usr-bia', 'Bia Praia', 'BALCAO', 'u-2')
 const NOVA = sessao('usr-nova', 'Nova Sem Pin', 'BALCAO', 'u-1')
 const DONA = sessao('usr-dona', 'Dona', 'DONO', null)
+const GER = sessao('usr-ger', 'Gerente Sem Pin', 'GERENTE', 'u-1')
 
 const SENHA = 'senha-boa-123'
 const PIN = { caixa: '4826', ana: '7395', bia: '6142' }
@@ -49,12 +52,14 @@ const SEMENTE = `
     ('usr-ana', 'org-v', 'Ana Vendedora', 'ana@v.com', now()),
     ('usr-bia', 'org-v', 'Bia Praia', 'bia@v.com', now()),
     ('usr-nova', 'org-v', 'Nova Sem Pin', 'nova@v.com', now()),
+    ('usr-ger', 'org-v', 'Gerente Sem Pin', 'ger@v.com', now()),
     ('usr-dona', 'org-v', 'Dona', 'dona@v.com', now());
   insert into acessos (id, org_id, usuario_id, unidade_id, papel) values
     ('a-cx', 'org-v', 'usr-cx', 'u-1', 'BALCAO'),
     ('a-ana', 'org-v', 'usr-ana', 'u-1', 'BALCAO'),
     ('a-bia', 'org-v', 'usr-bia', 'u-2', 'BALCAO'),
     ('a-nova', 'org-v', 'usr-nova', 'u-1', 'BALCAO'),
+    ('a-ger', 'org-v', 'usr-ger', 'u-1', 'GERENTE'),
     ('a-dona', 'org-v', 'usr-dona', null, 'DONO');
   insert into produtos (id, org_id, nome, medida, preco_vista, ativo, atualizado_em) values
     ('p-1', 'org-v', 'Camiseta', 'UN', 50.00, true, now());
@@ -67,7 +72,7 @@ const SEMENTE = `
 beforeAll(async () => {
   process.env.POOL_MAX = '1'
   process.env.POOL_PORTARIA = '1'
-  db = await subirBanco()
+  db = await subirBanco({ pinEmTodaVenda: true })
   await db.exec(SEMENTE)
   const porta = 46000 + Math.floor(Math.random() * 2000)
   servidor = new PGLiteSocketServer({ db, port: porta, host: '127.0.0.1', maxConnections: 10 })
@@ -127,8 +132,15 @@ async function gravada(vendaId: string) {
 }
 
 describe('a empresa pede o PIN em toda venda (o padrão)', () => {
-  it('nasce ligado, inclusive para quem já existia', async () => {
+  it('nasce ligado, inclusive para quem já existia — no schema, na migração e no banco', async () => {
     expect(await m.autorizacao.pedePinNaVenda('org-v')).toBe(true)
+    const raiz = join(import.meta.dirname, '..')
+    expect(readFileSync(join(raiz, 'prisma/schema.prisma'), 'utf8')).toMatch(/pinEmTodaVenda\s+Boolean\s+@default\(true\)/)
+    expect(readFileSync(join(raiz, 'prisma/sql/tabelas.sql'), 'utf8')).toMatch(/"pin_em_toda_venda" BOOLEAN NOT NULL DEFAULT true/)
+    // A migração dá o padrão ligado também às empresas que já existem.
+    const migracao = readdirSync(join(raiz, 'prisma/migrations')).filter((d) => d.endsWith('_pin-em-toda-venda'))
+    expect(migracao).toHaveLength(1)
+    expect(readFileSync(join(raiz, 'prisma/migrations', migracao[0]!, 'migration.sql'), 'utf8')).toMatch(/"pin_em_toda_venda" BOOLEAN NOT NULL DEFAULT true/)
   })
 
   it('sem o PIN, nada é gravado — o toque sem querer não vira venda', async () => {
@@ -173,14 +185,151 @@ describe('a empresa pede o PIN em toda venda (o padrão)', () => {
     for (let i = 0; i < 8; i++) expect(await vender(CAIXA, { assinatura: { pin: '12' } })).toMatchObject({ ok: false, motivo: 'assinatura_pedida' })
     expect((await linhas<{ n: number }>(`select count(*)::int n from tentativas_login`))[0]!.n).toBe(0)
   })
+})
 
-  it('quem está na conta aberta e ainda não criou o PIN confirma sem ele, no próprio nome', async () => {
+describe('quem ainda não tem PIN cria na hora de registrar', () => {
+  const pinDe = async (id: string) => (await linhas<{ pin_hash: string | null }>(`select pin_hash from usuarios where id = $1`, [id]))[0]!.pin_hash
+  const semPinDeNovo = async () => {
+    await db.query(`update usuarios set pin_hash = null, pin_definido_em = null where id = 'usr-nova'`)
+    await db.query(`delete from auditoria where acao like 'conta.pin.%' and usuario_id = 'usr-nova'`)
+  }
+  const criando = (pin: string, senha = SENHA) => ({ assinatura: { criarPin: { pin, senha } } })
+
+  it('sem PIN e sem criar: nada grava, e a recusa manda criar (não há "confirmar sem PIN")', async () => {
+    const antes = await quantasVendas()
     const r = await vender(NOVA)
+    expect(r).toMatchObject({ ok: false, motivo: 'assinatura_pedida', pinNovo: 'criar', recado: /Crie o seu PIN/ })
+    // Nem o "travado" abre a porta: sem PIN não há trava de PIN.
+    expect(await vender(NOVA, { assinatura: { travado: true } })).toMatchObject({ ok: false, pinNovo: 'criar' })
+    expect(await quantasVendas()).toBe(antes)
+  })
+
+  it('PIN fraco, PIN de colega da loja e senha errada são recusados, cada um voltando ao passo certo — e nada nasce', async () => {
+    const antes = await quantasVendas()
+    expect(await vender(NOVA, criando('1234'))).toMatchObject({ ok: false, pinNovo: 'refazer_pin', recado: /Sequência/ })
+    expect(await vender(NOVA, criando('0000'))).toMatchObject({ ok: false, pinNovo: 'refazer_pin', recado: /repetido/ })
+    // O PIN do Tablet do Caixa (mesma loja): frase que não diz de quem.
+    expect(await vender(NOVA, criando(PIN.caixa))).toMatchObject({
+      ok: false, pinNovo: 'refazer_pin', recado: 'Esse PIN não pode ser usado. Escolha outro.',
+    })
+    // Quem pode autorizar (gerente): a senha errada, ou faltando, volta ao passo da senha.
+    expect(await vender(GER, criando('5829', 'senha-errada'))).toMatchObject({ ok: false, pinNovo: 'refazer_senha', recado: /senha de entrar/ })
+    expect(await vender(GER, criando('5829', ''))).toMatchObject({ ok: false, pinNovo: 'refazer_senha' })
+    expect(await pinDe('usr-nova')).toBeNull()
+    expect(await pinDe('usr-ger')).toBeNull()
+    expect(await quantasVendas()).toBe(antes)
+  })
+
+  it('o balcão cria SÓ com o PIN, sem senha — qualquer senha que vier é ignorada', async () => {
+    const r = await vender(NOVA, criando('5829', ''))
+    expect(r).toMatchObject({ ok: true, vendedor: 'Nova Sem Pin' })
+    expect(await pinDe('usr-nova')).not.toBeNull()
+    await semPinDeNovo()
+    expect(await vender(NOVA, criando('5829', 'qualquer-coisa'))).toMatchObject({ ok: true })
+    await semPinDeNovo()
+  })
+
+  it('o PIN do balcão NUNCA autoriza: nem desconto acima do teto, nem pedido de autorização direto', async () => {
+    expect(await vender(NOVA, criando('5829', ''))).toMatchObject({ ok: true })
+    // Desconto de 20% (teto 10%) autorizado com o PIN dela: recusado.
+    const r = await vender(CAIXA, { desconto: 10, pagamentos: [{ forma: 'PIX', valor: 40 }], autorizacao: { pin: '5829' }, assinatura: { pin: PIN.caixa } })
+    expect(r).toMatchObject({ ok: false, motivo: 'autorizacao_recusada' })
+    for (const capacidade of ['venda.desconto', 'venda.cancelar', 'crediario.cobrar'] as const) {
+      expect(
+        await m.autorizacao.autorizarComPin({
+          orgId: 'org-v', unidadeId: 'u-1', pin: '5829', capacidade, motivo: 't',
+          quemPediu: { usuarioId: 'usr-cx', nome: 'Tablet do Caixa' },
+        }),
+      ).toMatchObject({ ok: false })
+    }
+    expect(m.autorizacao.podeAutorizar(NOVA)).toBe(false)
+    expect(m.autorizacao.podeAutorizar(GER)).toBe(true)
+    expect(m.autorizacao.podeAutorizar(DONA)).toBe(true)
+    await semPinDeNovo()
+  })
+
+  it('o gerente continua com a senha: com ela, cria e registra; o PIN dele AUTORIZA', async () => {
+    const r = await vender(GER, criando('6317', SENHA))
+    expect(r).toMatchObject({ ok: true, vendedor: 'Gerente Sem Pin' })
+    expect(await pinDe('usr-ger')).not.toBeNull()
+    const d = await vender(CAIXA, { desconto: 10, pagamentos: [{ forma: 'PIX', valor: 40 }], autorizacao: { pin: '6317' }, assinatura: { pin: PIN.caixa } })
+    expect(d, JSON.stringify(d)).toMatchObject({ ok: true })
+    await db.query(`update usuarios set pin_hash = null, pin_definido_em = null where id = 'usr-ger'`)
+    await db.query(`delete from auditoria where acao like 'conta.pin.%' and usuario_id = 'usr-ger'`)
+  })
+
+  it('sem a senha de barreira, o freio segura quem testa PINs de colegas: cinco recusas travam o balcão', async () => {
+    for (let i = 0; i < 5; i++) expect((await vender(NOVA, criando(PIN.caixa, ''))).ok).toBe(false)
+    expect(await vender(NOVA, criando('5829', ''))).toMatchObject({ ok: false, recado: /muitas vezes.*Espere/ })
+    expect(await pinDe('usr-nova')).toBeNull()
+  })
+
+  it('o PIN do colega de OUTRA loja pode (não dividem balcão)', async () => {
+    const r = await vender(NOVA, criando(PIN.bia))
+    expect(r).toMatchObject({ ok: true })
+    await semPinDeNovo()
+  })
+
+  it('cria e registra numa chamada só: PIN gravado, venda no nome dela, livro com "PIN criado na hora"', async () => {
+    const r = await vender(NOVA, criando('5829'))
     expect(r).toMatchObject({ ok: true, vendedor: 'Nova Sem Pin' })
     if (!r.ok) return
     const g = await gravada(r.vendaId)
     expect(g.vendedor_id).toBe('usr-nova')
-    expect(g.assinatura).toMatchObject({ como: 'sem_pin', conferir: false })
+    expect(g.assinatura).toMatchObject({ como: 'pin_criado', por: 'Nova Sem Pin', conferir: false })
+    expect(g.motivo).toMatch(/PIN criado na hora/)
+    expect(await pinDe('usr-nova')).not.toBeNull()
+    const [l] = await linhas<{ n: number; motivo: string }>(
+      `select count(*)::int n, max(motivo) motivo from auditoria where acao = 'conta.pin.criou' and usuario_id = 'usr-nova'`,
+    )
+    expect(l).toMatchObject({ n: 1, motivo: 'PIN criado na hora, ao registrar a venda' })
+
+    // Já tem PIN: a próxima venda é a confirmação de sempre, com o PIN criado.
+    expect(await vender(NOVA)).toMatchObject({ ok: false, motivo: 'assinatura_pedida', recado: /Confirme a venda/ })
+    expect(await vender(NOVA, { assinatura: { pin: '5829' } })).toMatchObject({ ok: true, vendedor: 'Nova Sem Pin' })
+  })
+
+  it('quem já tem PIN e manda "criar" é recusado: o servidor olha o banco, não a tela — e o PIN não muda', async () => {
+    const antes = await pinDe('usr-nova')
+    const n = await quantasVendas()
+    expect(await vender(NOVA, criando('7316'))).toMatchObject({ ok: false, pinNovo: 'ja_tem' })
+    expect(await pinDe('usr-nova')).toBe(antes)
+    expect(await quantasVendas()).toBe(n)
+    await semPinDeNovo()
+  })
+
+  it('a venda que estoura desfaz o PIN junto: nada fica pela metade', async () => {
+    const antes = await quantasVendas()
+    const r = await vender(NOVA, { ...criando('5829'), itens: [{ variacaoId: 'v-1', quantidade: 5000 }], pagamentos: [{ forma: 'PIX', valor: 250000 }] }).catch((e) => e)
+    expect(r && 'ok' in r && r.ok).toBeFalsy()
+    expect(await pinDe('usr-nova')).toBeNull()
+    expect(await quantasVendas()).toBe(antes)
+  })
+
+  it('o freio da senha vale: cinco senhas erradas travam a criação do gerente, até com a senha certa', async () => {
+    for (let i = 0; i < 5; i++) expect((await vender(GER, criando('5829', `errada-${i}`))).ok).toBe(false)
+    expect(await vender(GER, criando('5829'))).toMatchObject({ ok: false, pinNovo: 'refazer_senha', recado: /muitas vezes.*Espere/ })
+    expect(await pinDe('usr-ger')).toBeNull()
+  })
+
+  it('sem internet o caixa não trava: a venda entra no nome da conta, marcada para conferir — e o PIN novo é ignorado', async () => {
+    const r = await vender(NOVA, { offline: { quando: new Date(Date.now() - 60_000) }, chave: 'off-nova-0009', ...criando('5829') })
+    expect(r).toMatchObject({ ok: true, vendedor: 'Nova Sem Pin' })
+    if (!r.ok) return
+    expect((await gravada(r.vendaId)).assinatura).toMatchObject({ como: 'sem_internet', conferir: true })
+    expect(await pinDe('usr-nova')).toBeNull()
+  })
+
+  it('com a chave desligada, é a venda de antes: sem PIN, sem criar', async () => {
+    await db.exec(`update orgs set pin_em_toda_venda = false where id = 'org-v'`)
+    try {
+      expect(await vender(NOVA)).toMatchObject({ ok: true, vendedor: 'Nova Sem Pin' })
+      // E o PIN que viesse mesmo assim é ignorado: nada nasce.
+      expect(await vender(NOVA, criando('5829'))).toMatchObject({ ok: true })
+      expect(await pinDe('usr-nova')).toBeNull()
+    } finally {
+      await db.exec(`update orgs set pin_em_toda_venda = true where id = 'org-v'`)
+    }
   })
 })
 

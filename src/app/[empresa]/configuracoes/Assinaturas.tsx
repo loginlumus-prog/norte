@@ -52,9 +52,10 @@ export function Assinaturas({
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
 
-      {/* O PIN em toda venda: liga mesmo com gente sem PIN — quem não tem
-          confirma sem ele (no próprio nome), então ninguém trava. A lista
-          de quem falta é para a dona cobrar, não uma trava. */}
+      {/* O PIN em toda venda: nasce ligado. Quem ainda não tem PIN usa o
+          sistema normalmente e cria o dele na hora de registrar a primeira
+          venda (o balcão abre a criação ali mesmo), então ninguém trava. A
+          lista de quem falta é só informação. */}
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex max-w-xl flex-col gap-1">
@@ -72,8 +73,8 @@ export function Assinaturas({
         <p className="text-xs font-semibold text-tinta-2">{venda ? 'Ligado.' : 'Desligado.'}</p>
         {venda && faltam.length > 0 && (
           <Aviso nivel="atencao">
-            Ainda sem PIN: <b>{faltam.map((f) => f.nome).join(', ')}</b>. Até criarem, confirmam a venda sem PIN, no
-            próprio nome. Cada uma cria o seu em{' '}
+            Ainda sem PIN: <b>{faltam.map((f) => f.nome).join(', ')}</b>. Na primeira venda no balcão, o sistema pede
+            para criar o PIN na hora (leva meio minuto). Quem preferir cria antes em{' '}
             <Link href={`/${slug}/conta#pin`} className="underline underline-offset-2">
               Minha conta
             </Link>

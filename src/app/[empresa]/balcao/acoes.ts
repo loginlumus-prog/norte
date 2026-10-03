@@ -519,7 +519,7 @@ export async function fecharVenda(
      * A assinatura de quem vendeu (a empresa pede o PIN em toda venda — ver
      * venda.ts). Também só vai nesta chamada; a tela não guarda.
      */
-    assinatura?: { pin?: string | null; travado?: boolean } | null
+    assinatura?: { pin?: string | null; travado?: boolean; criarPin?: { pin: string; senha: string } | null } | null
     /** O CPF que a cliente ditou no crediário, para a ficha sem CPF. */
     clienteCpf?: string | null
     clienteId?: string | null
@@ -609,6 +609,11 @@ async function registrarVendaDoBalcao(
       ? {
           pin: typeof dados.assinatura.pin === 'string' && dados.assinatura.pin.trim() ? dados.assinatura.pin.trim().slice(0, 12) : null,
           travado: dados.assinatura.travado === true,
+          // O PIN novo de quem ainda não tem, e a senha de entrar que o autoriza.
+          criarPin:
+            dados.assinatura.criarPin && typeof dados.assinatura.criarPin.pin === 'string'
+              ? { pin: dados.assinatura.criarPin.pin.trim().slice(0, 12), senha: String(dados.assinatura.criarPin.senha ?? '').slice(0, 200) }
+              : null,
         }
       : null,
     clienteCpf: typeof dados.clienteCpf === 'string' && dados.clienteCpf.trim() ? dados.clienteCpf.trim().slice(0, 20) : null,

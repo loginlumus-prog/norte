@@ -40,32 +40,35 @@
 // NÃO chame de dentro de `comoOrg`: esta função abre as próprias transações
 // (o freio e o livro), e transação não aninha.
 
-import { comoOrg } from './banco'
+import { comoOrg, type BancoDaOrg } from './banco'
 import { SELECT_ACESSO, acessosDoBanco } from './cargos'
 import { exigir, exigirQueNaoSejaSuporte, pode, podeNoAlcance, type Capacidade, type Papel, type Sessao } from './permissao'
 import { conferirSenha, guardarSenha, HASH_ISCA } from './senha'
 import { concluirTentativa, desfazerTentativa, estaTravada, reservarTentativa } from './limite'
+import { PIN_MIN, PIN_MAX, problemaDoPin } from './pin-regra'
 
-/** O PIN tem de 4 a 6 números — para criar e para conferir. */
-export const PIN_MIN = 4
-export const PIN_MAX = 6
+export { PIN_MIN, PIN_MAX, problemaDoPin }
 
 /**
- * O que está errado neste PIN, ou `null` quando ele serve.
- *
- * Além do tamanho, recusa o que todo mundo chuta primeiro: número repetido
- * (0000, 1111) e escada (1234, 4321, 123456). Com 10 mil combinações e um
- * freio de cinco tentativas, o chute só funciona se o PIN for desses.
+ * O que faz de alguém "quem pode autorizar": qualquer uma destas, em alguma
+ * loja. Quem tem uma delas cria o PIN com a senha de entrar (a tela esquecida
+ * aberta não vira "criei um PIN na conta da gerente e me autorizei 40%"). Quem
+ * não tem nenhuma — o balcão — cria só com o PIN, e o PIN dela serve para
+ * assinar as PRÓPRIAS vendas: `autorizarComPin` só aceita o PIN de quem tem a
+ * capacidade que o pedido exige, então o PIN dela nunca autoriza nada de ninguém.
  */
-export function problemaDoPin(pin: string): string | null {
-  if (!/^\d+$/.test(pin)) return 'O PIN é só de números.'
-  if (pin.length < PIN_MIN || pin.length > PIN_MAX) return `O PIN tem de ${PIN_MIN} a ${PIN_MAX} números.`
-  if (/^(\d)\1+$/.test(pin)) return 'Número repetido (como 0000) é o primeiro que alguém chuta. Escolha outro.'
-  const d = [...pin].map(Number)
-  const sobe = d.every((x, i) => i === 0 || x === (d[i - 1]! + 1) % 10)
-  const desce = d.every((x, i) => i === 0 || x === (d[i - 1]! + 9) % 10)
-  if (sobe || desce) return 'Sequência (como 1234) é o primeiro que alguém chuta. Escolha outro.'
-  return null
+export const CAPACIDADES_DE_AUTORIZAR: readonly Capacidade[] = [
+  'venda.desconto',
+  'venda.cancelar',
+  'crediario.cobrar',
+  'financeiro.lancar',
+  'equipe.gerir',
+  'empresa.configurar',
+]
+
+/** Esta sessão pode autorizar exceção de alguém? */
+export function podeAutorizar(sessao: Sessao, agora = new Date()): boolean {
+  return CAPACIDADES_DE_AUTORIZAR.some((c) => pode(sessao, c, undefined, agora))
 }
 
 /** O que vai para o scrypt: o PIN amarrado à pessoa (e com o tamanho que `guardarSenha` exige). */
@@ -337,45 +340,83 @@ export async function definirMeuPin(
   senhaAtual: string,
   pin: string,
 ): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const v = await conferirPinNovo(sessao, senhaAtual, pin)
+  if (!v.ok) return { ok: false, erro: v.erro }
+  await comoOrg(sessao.orgId, (db) => gravarPin(db, sessao, v.hash, v.tinhaPin, null))
+  return { ok: true }
+}
+
+/**
+ * Tudo o que decide se este PIN novo serve, ANTES de gravar: o formato, a
+ * senha de entrar (no freio do login, por pessoa) e o PIN já usado por quem
+ * divide loja. É o miolo de `definirMeuPin` e da criação na hora da venda
+ * (ver `NovaVenda.assinatura.criarPin`): as duas têm a mesma proteção. Fora
+ * de `comoOrg` (o freio abre as próprias transações). `etapa` diz à tela a
+ * que passo voltar: o PIN ou a senha.
+ */
+export async function conferirPinNovo(
+  sessao: Sessao,
+  senhaAtual: string,
+  pin: string,
+  /** Na criação na hora da venda: quem não pode autorizar nada dispensa a senha. */
+  opcoes: { dispensaSenhaDeQuemNaoAutoriza?: boolean } = {},
+): Promise<{ ok: true; hash: string; tinhaPin: boolean } | { ok: false; erro: string; etapa: 'pin' | 'senha' }> {
   const novo = String(pin ?? '').trim()
   const problema = problemaDoPin(novo)
-  if (problema) return { ok: false, erro: problema }
+  if (problema) return { ok: false, erro: problema, etapa: 'pin' }
 
   const reserva = await reservarTentativa(sessao.orgId, `pin-conta:${sessao.usuarioId}`, null)
   if (reserva.bloqueado) {
-    return { ok: false, erro: `Senha errada muitas vezes. Espere ${reserva.esperarMin} min e tente de novo.` }
+    return { ok: false, erro: `Tentativas erradas muitas vezes. Espere ${reserva.esperarMin} min e tente de novo.`, etapa: 'senha' }
   }
   const eu = await comoOrg(sessao.orgId, (db) =>
     db.usuario.findUnique({ where: { id: sessao.usuarioId }, select: { senhaHash: true, pinHash: true } }),
   )
-  const certa = await conferirSenha(String(senhaAtual ?? ''), eu?.senhaHash ?? HASH_ISCA)
-  if (!eu?.senhaHash || !certa) return { ok: false, erro: 'A senha de entrar não confere.' }
+  // Sem a senha só para quem não autoriza ninguém. O freio acima conta do mesmo
+  // jeito: sem a senha de barreira, é ele que segura quem testa PINs alheios.
+  const semSenha = opcoes.dispensaSenhaDeQuemNaoAutoriza === true && !podeAutorizar(sessao)
+  if (!semSenha) {
+    const certa = await conferirSenha(String(senhaAtual ?? ''), eu?.senhaHash ?? HASH_ISCA)
+    if (!eu?.senhaHash || !certa) return { ok: false, erro: 'A senha de entrar não confere.', etapa: 'senha' }
+  }
 
   // O mesmo PIN de outra pessoa que alcança alguma loja desta: no balcão, os
   // dois batem e ninguém autoriza nada. Barrado aqui, com uma frase que não
   // diz de quem — e a tentativa fica contada como erro (o freio desta tela),
   // para isto não virar o jeito de testar PINs alheios.
   if (await pinJaUsado(sessao.orgId, sessao.usuarioId, sessao.acessos, novo)) {
-    return { ok: false, erro: 'Esse PIN não pode ser usado. Escolha outro.' }
+    return { ok: false, erro: 'Esse PIN não pode ser usado. Escolha outro.', etapa: 'pin' }
   }
   await concluirTentativa(sessao.orgId, reserva.tentativaId, true)
 
-  const hash = await guardarSenha(materialDoPin(sessao.usuarioId, novo))
-  await comoOrg(sessao.orgId, async (db) => {
-    await db.usuario.update({ where: { id: sessao.usuarioId }, data: { pinHash: hash, pinDefinidoEm: new Date() } })
-    await db.auditoria.create({
-      data: {
-        orgId: sessao.orgId,
-        usuarioId: sessao.usuarioId,
-        quem: sessao.nome,
-        acao: eu.pinHash ? 'conta.pin.trocou' : 'conta.pin.criou',
-        alvoTipo: 'usuario',
-        alvoId: sessao.usuarioId,
-        alvoNome: sessao.nome,
-      },
-    })
+  return { ok: true, hash: await guardarSenha(materialDoPin(sessao.usuarioId, novo)), tinhaPin: !!eu?.pinHash }
+}
+
+/**
+ * Grava o PIN e o livro, dentro da transação de quem chamou. `motivo`: o
+ * porquê, quando não é a pessoa em Minha conta ("criado na hora, ao registrar
+ * a venda").
+ */
+export async function gravarPin(
+  db: BancoDaOrg,
+  sessao: Sessao,
+  hash: string,
+  tinhaPin: boolean,
+  motivo: string | null,
+): Promise<void> {
+  await db.usuario.update({ where: { id: sessao.usuarioId }, data: { pinHash: hash, pinDefinidoEm: new Date() } })
+  await db.auditoria.create({
+    data: {
+      orgId: sessao.orgId,
+      usuarioId: sessao.usuarioId,
+      quem: sessao.nome,
+      acao: tinhaPin ? 'conta.pin.trocou' : 'conta.pin.criou',
+      alvoTipo: 'usuario',
+      alvoId: sessao.usuarioId,
+      alvoNome: sessao.nome,
+      ...(motivo ? { motivo } : {}),
+    },
   })
-  return { ok: true }
 }
 
 /**
@@ -456,8 +497,11 @@ export async function tirarMeuPin(sessao: Sessao): Promise<void> {
 // quem vende não pode travar o desconto da gerente.
 //
 // ── ninguém fica preso ───────────────────────────────────────
-// - Quem está na conta aberta e ainda não criou o PIN confirma sem ele (a
-//   venda fica no nome dela, com "sem PIN" no livro). A tela leva a criar.
+// - Quem está na conta aberta e ainda não criou o PIN CRIA na hora, na própria
+//   janela do balcão (`assinatura.criarPin` em venda.ts): o PIN e a senha de
+//   entrar vão na mesma chamada que grava a venda, e o livro marca "PIN criado
+//   na hora". O PIN é a assinatura de quem vendeu — sem ele a venda não grava.
+//   Fora do balcão o sistema segue normal: só o registrar da venda pede.
 // - Freio travado: a venda pode ir no nome da conta aberta, marcada para
 //   conferir. Só quando a trava é de verdade (`pinTravadoNaVenda`) — quem
 //   trava de propósito não ganha nada com isso: a venda não vai para o nome
@@ -563,9 +607,10 @@ export async function pinTravadoNaVenda(sessao: Sessao, unidadeId: string): Prom
 }
 
 /**
- * Liga ou desliga "Pedir o PIN de quem vendeu em toda venda". Liga sempre,
- * mesmo com gente sem PIN: ninguém fica preso (quem não tem confirma sem ele,
- * e a tela de Equipe mostra quem falta). Desligado, a venda é a de antes.
+ * Liga ou desliga "Pedir o PIN de quem vendeu em toda venda". Nasce ligado e
+ * liga sempre, mesmo com gente sem PIN: ninguém fica preso (quem não tem cria
+ * o dele na hora de registrar, e a tela de Equipe mostra quem falta).
+ * Desligado, a venda é a de antes.
  */
 export async function mudarPinNaVenda(sessao: Sessao, ligar: boolean): Promise<void> {
   exigir(sessao, 'empresa.configurar')

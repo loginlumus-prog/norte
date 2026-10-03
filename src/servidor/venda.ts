@@ -54,6 +54,7 @@ import {
   autorizarComPin,
   identificarQuemVendeu,
   pedePinNaVenda,
+  conferirPinNovo,
   pinTravadoNaVenda,
   temPin,
 } from './autorizacao'
@@ -149,7 +150,21 @@ export type NovaVenda = {
    * conferir offline foi descartado: PIN de 4 números se acha em segundos a
    * partir do resumo, e o mesmo PIN autoriza desconto.
    */
-  assinatura?: { pin?: string | null; travado?: boolean } | null
+  assinatura?: {
+    pin?: string | null
+    travado?: boolean
+    /**
+     * Quem ainda não tem PIN cria o dele AQUI, na mesma chamada que registra a
+     * venda: o PIN e a senha de entrar (a mesma de Minha conta — a tela
+     * esquecida aberta não vira "criei um PIN na conta da gerente"). A senha
+     * só é exigida de quem PODE autorizar exceção (`podeAutorizar`): o PIN do
+     * balcão assina só as vendas dele, então ele cria só com o PIN. O PIN novo
+     * só é gravado se a venda também for (a mesma transação), e é ele a
+     * assinatura dela ("PIN criado na hora" no livro). Quem já tem PIN que
+     * mande isto é recusado: o servidor olha o banco, não a tela.
+     */
+    criarPin?: { pin: string; senha: string } | null
+  } | null
   /**
    * O CPF que a cliente ditou no crediário, quando a ficha não tem. Vai para
    * a ficha na mesma transação da venda (só se a ficha estiver sem CPF).
@@ -220,7 +235,18 @@ export type ResultadoVenda =
    * Nada foi gravado. `travado`: o freio travou — a tela oferece registrar
    * no nome da conta aberta, marcada para conferir.
    */
-  | { ok: false; motivo: 'assinatura_pedida'; recado: string; travado?: boolean }
+  | {
+      ok: false
+      motivo: 'assinatura_pedida'
+      recado: string
+      travado?: boolean
+      /**
+       * Quem não tem PIN: `criar` (a tela abre a criação), `refazer_pin` e
+       * `refazer_senha` (volta ao passo certo da criação). `ja_tem`: o PIN já
+       * existe (criado em Minha conta, em outra tela) — a tela pede o PIN.
+       */
+      pinNovo?: 'criar' | 'refazer_pin' | 'refazer_senha' | 'ja_tem'
+    }
   /** Parcelas do crédito, maquininha ou acréscimo fora do que a loja aceita. */
   | { ok: false; motivo: 'pagamento_recusado'; recado: string }
   | { ok: false; motivo: 'pontos_recusados'; recado: string }
@@ -390,20 +416,41 @@ export async function registrarVenda(
   // freio abre as próprias). A troca (`dentro`) não pede: a venda dela nasce
   // dentro da devolução, que já tem quem a fez.
   let assinatura: { como: ComoAssinou; vendedor: { usuarioId: string; nome: string } | null } | null = null
+  // O PIN criado na hora: validado aqui (fora da transação), gravado dentro dela.
+  let pinNovo: { hash: string; tinhaPin: boolean } | null = null
   if (!dentro && (await pedePinNaVenda(sessao.orgId))) {
     const pinDaVenda = String(v.assinatura?.pin ?? '').trim()
-    if (pinDaVenda) {
+    const criar = v.assinatura?.criarPin
+    if (v.offline) {
+      // A venda sem internet já aconteceu: não se recusa, marca para conferir.
+      if (pinDaVenda) {
+        const r = await identificarQuemVendeu({ sessao, unidadeId: v.unidadeId, pin: pinDaVenda })
+        assinatura = r.ok ? { como: 'pin', vendedor: r.vendedor } : { como: 'pin_nao_conferiu', vendedor: null }
+      } else {
+        assinatura = { como: 'sem_internet', vendedor: null }
+      }
+    } else if (criar) {
+      // Sem PIN, na hora: o servidor olha o banco. Quem já tem PIN não cria
+      // outro por aqui (trocar é em Minha conta), e quem não tem não passa sem.
+      if (await temPin(sessao.orgId, sessao.usuarioId)) {
+        return { ok: false, motivo: 'assinatura_pedida', pinNovo: 'ja_tem', recado: 'Você já tem um PIN. Digite o seu para registrar.' }
+      }
+      const c = await conferirPinNovo(sessao, String(criar.senha ?? ''), String(criar.pin ?? ''), {
+        dispensaSenhaDeQuemNaoAutoriza: true,
+      })
+      if (!c.ok) {
+        return { ok: false, motivo: 'assinatura_pedida', pinNovo: c.etapa === 'pin' ? 'refazer_pin' : 'refazer_senha', recado: c.erro }
+      }
+      pinNovo = { hash: c.hash, tinhaPin: c.tinhaPin }
+      assinatura = { como: 'pin_criado', vendedor: null }
+    } else if (pinDaVenda) {
       const r = await identificarQuemVendeu({ sessao, unidadeId: v.unidadeId, pin: pinDaVenda })
       if (r.ok) assinatura = { como: 'pin', vendedor: r.vendedor }
-      // A venda sem internet já aconteceu: não se recusa, marca para conferir.
-      else if (v.offline) assinatura = { como: 'pin_nao_conferiu', vendedor: null }
       else return { ok: false, motivo: 'assinatura_pedida', recado: r.erro, ...(r.travado ? { travado: true } : {}) }
-    } else if (v.offline) {
-      assinatura = { como: 'sem_internet', vendedor: null }
     } else if (!(await temPin(sessao.orgId, sessao.usuarioId))) {
-      // Quem está na conta aberta ainda não criou o PIN: confirma sem ele,
-      // no próprio nome. Ninguém fica preso na transição.
-      assinatura = { como: 'sem_pin', vendedor: null }
+      // Quem está na conta aberta não tem PIN: não confirma sem ele. Cria na
+      // hora, na tela do balcão — o PIN é a assinatura de quem vendeu.
+      return { ok: false, motivo: 'assinatura_pedida', pinNovo: 'criar', recado: 'Crie o seu PIN para registrar vendas.' }
     } else if (v.assinatura?.travado && (await pinTravadoNaVenda(sessao, v.unidadeId))) {
       assinatura = { como: 'travado', vendedor: null }
     } else {
@@ -1138,6 +1185,30 @@ export async function registrarVenda(
     // em Configurações amanhã não reescreve o mês que já fechou.
     const taxas = await lerTaxas(db)
 
+    // ── 3.5 o PIN criado na hora ──
+    // Na mesma transação da venda: ou os dois entram, ou nenhum. O `where`
+    // com `pinHash: null` é a corrida: se o PIN nasceu em outra tela neste
+    // meio-tempo, para tudo (a tela volta a pedir o PIN que já existe).
+    if (pinNovo) {
+      const antes = await db.usuario.updateMany({
+        where: { id: sessao.usuarioId, pinHash: null },
+        data: { pinHash: pinNovo.hash, pinDefinidoEm: new Date() },
+      })
+      if (antes.count === 0) throw new Error('O PIN foi criado em outra tela. Digite o seu PIN para registrar a venda.')
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          acao: 'conta.pin.criou',
+          alvoTipo: 'usuario',
+          alvoId: sessao.usuarioId,
+          alvoNome: sessao.nome,
+          motivo: 'PIN criado na hora, ao registrar a venda',
+        },
+      })
+    }
+
     // ── 4. o número, sem corrida ──
     // O banco incrementa e devolve numa operação só.
     const linhas = await db.$queryRaw<{ numero: number }[]>`
@@ -1417,6 +1488,7 @@ export async function registrarVenda(
             jurosCent > 0 ? `juro do crédito ${mostrar(jurosCent)}` : null,
             vendedor.id !== sessao.usuarioId ? `vendedor: ${vendedor.nome}` : null,
             assinatura?.como === 'pin' ? `assinada com o PIN de ${vendedor.nome}` : null,
+            assinatura?.como === 'pin_criado' ? `assinada com o PIN criado na hora por ${vendedor.nome}` : null,
             assinatura && CONFERIR.has(assinatura.como) ? `conferir assinatura: ${ROTULO_ASSINATURA[assinatura.como]}` : null,
             tabela !== 'vista' ? `preço ${ROTULO_TABELA[tabela]}` : null,
             fiado.length > 0 ? `crediário em ${fiado[0]!.parcelas ?? 1}×` : null,
@@ -1445,16 +1517,17 @@ export async function registrarVenda(
 }
 
 /** Como a venda foi confirmada, com a empresa pedindo o PIN em toda venda. */
-export type ComoAssinou = 'pin' | 'sem_pin' | 'sem_internet' | 'pin_nao_conferiu' | 'travado'
+export type ComoAssinou = 'pin' | 'pin_criado' | 'sem_pin' | 'sem_internet' | 'pin_nao_conferiu' | 'travado'
 
 /**
  * As que ficam no livro para o dono conferir: a venda entrou no nome da conta
- * aberta sem o PIN dizer quem foi. "sem_pin" não entra: é a própria conta
- * aberta, que ainda não criou o PIN — a Equipe mostra quem falta.
+ * aberta sem o PIN dizer quem foi. "sem_pin" não entra (só existe nas vendas
+ * de antes de o PIN ser exigido): é a própria conta aberta.
  */
 const CONFERIR = new Set<ComoAssinou>(['sem_internet', 'pin_nao_conferiu', 'travado'])
 const ROTULO_ASSINATURA: Record<ComoAssinou, string> = {
   pin: 'assinada com PIN',
+  pin_criado: 'PIN criado na hora, ao registrar a venda',
   sem_pin: 'quem estava na conta ainda não tem PIN',
   sem_internet: 'feita sem internet, subiu sem o PIN para conferir',
   pin_nao_conferiu: 'feita sem internet, e o PIN digitado não conferiu',

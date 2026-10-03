@@ -19,11 +19,19 @@ const ler = (p: string) => readFileSync(join(raiz, p), 'utf8')
 /** Papel da aplicação: sem privilégio, sujeito a RLS. */
 export const PAPEL_APP = 'app_norte'
 
-export async function subirBanco(): Promise<PGlite> {
+/**
+ * `pinEmTodaVenda`: o padrão REAL é ligado (toda venda do balcão pede o PIN de
+ * quem vendeu — ver autorizacao.ts), mas a maioria dos testes é de outra coisa
+ * (estoque, pagamento, troca…) e vende com uma conta sem PIN. Por isso o banco
+ * de teste nasce com o padrão desligado, e só os testes do PIN pedem o real.
+ */
+export async function subirBanco(opcoes: { pinEmTodaVenda?: boolean } = {}): Promise<PGlite> {
   const db = new PGlite()
 
   // 1. tabelas (geradas do schema.prisma — fonte única da verdade)
   await db.exec(ler('prisma/sql/tabelas.sql'))
+
+  await db.exec(`alter table orgs alter column pin_em_toda_venda set default ${opcoes.pinEmTodaVenda ? 'true' : 'false'}`)
 
   // 2. o papel da aplicação, sem privilégio nenhum de sistema
   await db.exec(`

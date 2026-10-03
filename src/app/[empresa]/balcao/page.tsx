@@ -29,7 +29,7 @@ import { AvisoVersao } from './AvisoVersao'
 import { AvisoDaEncomenda } from './AvisoDaEncomenda'
 import { versaoDoBuild } from './versaoDoBuild'
 import { lerMaquininhas } from '@/servidor/maquininhas'
-import { meuPin } from '@/servidor/autorizacao'
+import { meuPin, podeAutorizar } from '@/servidor/autorizacao'
 import type { ConfigDoBalcao } from './useVenda'
 
 // "Recepção" na clínica e no salão, "Secretaria" na escola (vocabulario.ts).
@@ -153,9 +153,9 @@ export default async function BalcaoPagina({
 
   // O PIN de quem vendeu, em toda venda (Configurações → Assinaturas): é ele
   // quem diz em nome de quem a venda fica. A tela precisa saber se quem está
-  // na conta aberta já criou o dela — sem, ela oferece confirmar sem PIN.
+  // na conta aberta já criou o dela — sem, ela abre a criação do PIN na hora.
   const assinatura = conf?.pinEmTodaVenda
-    ? { tenhoPin: (await meuPin(sessao)).tem, meuNome: sessao.nome }
+    ? { tenhoPin: (await meuPin(sessao)).tem, meuNome: sessao.nome, pedeSenhaParaCriar: podeAutorizar(sessao) }
     : null
 
   // "Quem vendeu" só existe com o módulo de metas: sem meta e sem comissão,

@@ -95,12 +95,27 @@ export type ConfigDoBalcao = {
 /**
  * O PIN de quem vendeu, no fim de toda venda (ver "ASSINAR A VENDA" em
  * servidor/autorizacao.ts). `tenhoPin`: quem está na conta aberta já criou o
- * dela — sem ele, a tela oferece confirmar sem PIN e leva a criar.
+ * dela — sem ele, a janela vira "Crie o seu PIN para registrar vendas": o PIN
+ * é a assinatura de quem vendeu, então a venda não grava sem ele.
  */
-export type AssinaturaDoBalcao = { tenhoPin: boolean; meuNome: string }
+export type AssinaturaDoBalcao = {
+  tenhoPin: boolean
+  meuNome: string
+  /**
+   * Criar o PIN na hora pede a senha de entrar? Só de quem pode autorizar
+   * exceção (dono, gerente…); o balcão cria só com o PIN. O servidor decide
+   * de novo (`podeAutorizar`): isto só poupa um passo na tela.
+   */
+  pedeSenhaParaCriar: boolean
+}
 
 /** A janela do PIN da venda aberta: o porquê da última recusa, e se o freio travou. */
-export type PedidoDeAssinatura = { erro?: string; travado?: boolean }
+export type PedidoDeAssinatura = {
+  erro?: string
+  travado?: boolean
+  /** Na criação do PIN: a que passo voltar depois da recusa (o PIN ou a senha de entrar). */
+  refazer?: 'pin' | 'senha'
+}
 
 /**
  * O PIN digitado sem internet, à espera de a venda subir — SÓ na memória da
@@ -291,7 +306,16 @@ export function useVenda({
    * perguntar duas vezes. Some ao fechar, ao cancelar e ao limpar — nada
    * passa de uma venda para a outra.
    */
-  const assinaturaDaVenda = useRef<{ pin?: string; travado?: boolean; semPin?: boolean } | null>(null)
+  const assinaturaDaVenda = useRef<{
+    pin?: string
+    travado?: boolean
+    /** Sem internet e sem PIN: sobe na fila, no nome da conta aberta, para conferir. */
+    semInternet?: boolean
+    criarPin?: { pin: string; senha: string }
+  } | null>(null)
+  // Quem está na conta aberta tem PIN? Nasce do servidor e vira quando o PIN
+  // nasce aqui, ou quando o servidor conta que já existe (criado em outra tela).
+  const [tenhoPin, setTenhoPin] = useState(assinatura?.tenhoPin ?? true)
   /** "O sistema diz que acabou — vende assim mesmo?", antes de mandar a venda. */
   const [perguntaSemEstoque, setPerguntaSemEstoque] = useState<string[] | null>(null)
   const [pontosUsar, setPontosUsar] = useState(0)
@@ -967,8 +991,11 @@ export function useVenda({
       setAssinando({})
       return
     }
-    setAssinando(null)
     const assinaturaAgora = assinaturaDaVenda.current
+    // A janela do PIN fecha ao mandar — menos a da criação do PIN: ela guarda o
+    // que a pessoa digitou (o PIN novo), para a recusa do servidor (senha que não
+    // confere) não obrigar a digitar tudo de novo. Fecha quando a venda entra.
+    if (!assinaturaAgora?.criarPin) setAssinando(null)
     // A foto do que a tela mostrou: o troco e as formas vão para a tela de
     // sucesso depois que o carrinho já foi limpo.
     const trocoAgora = trocoCent
@@ -994,11 +1021,13 @@ export function useVenda({
         acrescimo: conta.acrescimoCent / 100,
         // O PIN vai só nesta chamada e não fica em lugar nenhum da tela.
         pin: o.pin ?? null,
-        assinatura: assinaturaAgora?.pin
-          ? { pin: assinaturaAgora.pin }
-          : assinaturaAgora?.travado
-            ? { travado: true }
-            : null,
+        assinatura: assinaturaAgora?.criarPin
+          ? { criarPin: assinaturaAgora.criarPin }
+          : assinaturaAgora?.pin
+            ? { pin: assinaturaAgora.pin }
+            : assinaturaAgora?.travado
+              ? { travado: true }
+              : null,
         clienteCpf: temCrediario && cpf.trim() && cpfConfere(cpf) ? cpf : null,
         clienteId: cliente?.id ?? null,
         vendedorId: vendedores ? vendedorId : null,
@@ -1024,6 +1053,7 @@ export function useVenda({
         troco: trocoAgora / 100,
         })
       } catch {
+        setAssinando(null)
         // Caiu a rede. Com a chave, mandar de novo não duplica: a venda vai
         // para a fila do aparelho e sobe sozinha quando a conexão voltar — se
         // for uma venda que se faz sem internet (dinheiro, Pix, cartão).
@@ -1077,6 +1107,8 @@ export function useVenda({
 
       // Recusada: o servidor não gravou nada, então a marca sai.
       if (!r.ok) guardar(chave, guardado)
+      // A janela da criação do PIN só continua aberta para a recusa dela mesma.
+      if (!r.ok && r.motivo !== 'assinatura_pedida') setAssinando(null)
 
       // A autorização foi usada (ou recusada): o pedido de PIN fecha, ou
       // fica aberto com a frase do porquê.
@@ -1091,6 +1123,9 @@ export function useVenda({
       ) {
         assinaturaDaVenda.current = null
       }
+
+      // O PIN nasceu junto com a venda: daqui em diante a conta tem PIN.
+      if (r.ok && assinaturaAgora?.criarPin) setTenhoPin(true)
 
       if (r.ok) {
         chaveDaVenda.current = null
@@ -1188,7 +1223,15 @@ export function useVenda({
         // O PIN de quem vendeu não conferiu (ou o freio travou): a janela
         // volta, com o porquê. Nada foi gravado.
         setRecado(null)
-        setAssinando({ erro: r.recado, travado: r.travado })
+        // O servidor é quem sabe se há PIN: a tela acompanha (criado em outra
+        // tela, ou ainda sem).
+        if (r.pinNovo === 'ja_tem') setTenhoPin(true)
+        if (r.pinNovo === 'criar') setTenhoPin(false)
+        setAssinando({
+          erro: r.pinNovo === 'criar' ? undefined : r.recado,
+          travado: r.travado,
+          refazer: r.pinNovo === 'refazer_pin' ? 'pin' : r.pinNovo === 'refazer_senha' ? 'senha' : undefined,
+        })
       } else if (r.motivo === 'autorizacao_recusada') {
         setPedidoDePin((x) => ({ motivo: x?.motivo ?? 'Esta venda precisa de autorização.', erro: r.recado }))
       } else if (r.motivo === 'pagamento_recusado') {
@@ -1268,9 +1311,20 @@ export function useVenda({
     assinaturaDaVenda.current = { pin }
     concluir({ semEstoqueOk: true })
   }
-  /** Quem está na conta aberta ainda não tem PIN: confirma sem ele, no próprio nome. */
-  function confirmarSemPin() {
-    assinaturaDaVenda.current = { semPin: true }
+  /**
+   * Quem não tem PIN cria o seu aqui: o PIN novo e a senha de entrar vão na
+   * mesma chamada que registra a venda — o servidor grava os dois juntos.
+   */
+  function criarPinEVender(pin: string, senha: string) {
+    assinaturaDaVenda.current = { criarPin: { pin, senha } }
+    concluir({ semEstoqueOk: true })
+  }
+  /**
+   * Sem internet não há como criar o PIN (nem conferir): a venda que já
+   * aconteceu sobe na fila, no nome da conta aberta, marcada para conferir.
+   */
+  function registrarSemInternet() {
+    assinaturaDaVenda.current = { semInternet: true }
     concluir({ semEstoqueOk: true })
   }
   /** O freio travou: registra no nome da conta aberta, marcada para conferir. */
@@ -1442,10 +1496,11 @@ export function useVenda({
     cancelarAutorizacao,
     autorizar: (pin: string) => concluir({ pin }),
     // o PIN de quem vendeu
-    assinatura,
+    assinatura: assinatura ? { ...assinatura, tenhoPin } : null,
     assinando,
     assinar,
-    confirmarSemPin,
+    criarPinEVender,
+    registrarSemInternet,
     registrarTravado,
     cancelarAssinatura,
     perguntaSemEstoque,

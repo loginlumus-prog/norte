@@ -13,11 +13,11 @@
 // no que o balcão guarda no aparelho (guardar.ts), nem volta preenchido.
 
 import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
 import { Aviso, Botao } from '@/ui/base'
 import { palavra, plural } from '@/ui/texto'
 import { brl, rotuloDoPagamento } from './conta'
 import type { Venda } from './useVenda'
+import { problemaDoPin } from '@/servidor/pin-regra'
 
 export function PedirPin({ v }: { v: Venda }) {
   const pedido = v.pedidoDePin
@@ -160,7 +160,16 @@ export function PerguntaSemEstoque({ v }: { v: Venda }) {
 /** A pausa depois do 4º número antes de mandar sozinho. Digitou o 5º, espera o resto. */
 const PAUSA_DO_PIN_MS = 600
 
-export function AssinarVenda({ v, slug }: { v: Venda; slug: string }) {
+/**
+ * A janela do PIN no fim da venda. Quem ainda não tem PIN não confirma sem
+ * ele: a janela vira a criação do PIN, ali mesmo (`CriarPinNaVenda`).
+ */
+export function AssinarVenda({ v }: { v: Venda; slug?: string }) {
+  if (v.assinando && v.assinatura && !v.assinatura.tenhoPin) return <CriarPinNaVenda v={v} />
+  return <ConfirmarComPin v={v} />
+}
+
+function ConfirmarComPin({ v }: { v: Venda }) {
   const pedido = v.assinando
   const [pin, setPin] = useState('')
   const campo = useRef<HTMLInputElement>(null)
@@ -199,7 +208,7 @@ export function AssinarVenda({ v, slug }: { v: Venda; slug: string }) {
   }, [pin, pedido, indo])
 
   if (!pedido || !v.assinatura) return null
-  const { tenhoPin, meuNome } = v.assinatura
+  const { meuNome } = v.assinatura
   const primeiro = meuNome.trim().split(/\s+/)[0] || meuNome
   const formas = rotuloDoPagamento(v.pagos)
   const itens = v.itensNaVenda
@@ -263,52 +272,14 @@ export function AssinarVenda({ v, slug }: { v: Venda; slug: string }) {
         {/* O teclado da janela: alvos grandes, para o dedo. O foco fica no
             campo (o toque nos botões não o rouba), então o teclado de verdade
             continua valendo junto. */}
-        <div className="grid grid-cols-3 gap-2" aria-label="Teclado do PIN">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-            <button
-              key={d}
-              type="button"
-              tabIndex={-1}
-              disabled={indo}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => tecla(d)}
-              className="numero h-14 rounded-xl border border-borda bg-superficie-2 text-2xl font-bold text-tinta active:bg-borda disabled:opacity-50"
-            >
-              {d}
-            </button>
-          ))}
-          <button
-            type="button"
-            tabIndex={-1}
-            disabled={indo || pin.length === 0}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={apagar}
-            aria-label="Apagar um número"
-            className="h-14 rounded-xl border border-borda bg-superficie text-lg font-semibold text-tinta-2 disabled:opacity-40"
-          >
-            ⌫
-          </button>
-          <button
-            type="button"
-            tabIndex={-1}
-            disabled={indo}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => tecla('0')}
-            className="numero h-14 rounded-xl border border-borda bg-superficie-2 text-2xl font-bold text-tinta active:bg-borda disabled:opacity-50"
-          >
-            0
-          </button>
-          <Botao
-            tom="confirmar"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => mandar(pin)}
-            carregando={indo}
-            disabled={pin.length < 4}
-            className="h-14 rounded-xl text-base"
-          >
-            OK
-          </Botao>
-        </div>
+        <TecladoDoPin
+          indo={indo}
+          vazio={pin.length === 0}
+          onTecla={tecla}
+          onApagar={apagar}
+          onOk={() => mandar(pin)}
+          okDesligado={pin.length < 4}
+        />
 
         {semRede && (
           <p className="text-center text-xs text-tinta-3">
@@ -317,32 +288,295 @@ export function AssinarVenda({ v, slug }: { v: Venda; slug: string }) {
           </p>
         )}
 
-        {!tenhoPin && (
-          <Aviso nivel="atencao">
-            <span className="flex flex-col gap-2">
-              <span>
-                {primeiro}, você ainda não criou o seu PIN. Crie em Minha conta — leva um minuto. Por enquanto, dá para
-                confirmar sem ele.
-              </span>
-              <span className="flex flex-wrap gap-2">
-                <Botao tom="confirmar" onClick={v.confirmarSemPin} carregando={indo} className="min-h-10 rounded-lg text-sm">
-                  Confirmar sem PIN
-                </Botao>
-                <Link
-                  href={`/${slug}/conta#pin`}
-                  className="inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-semibold text-marca underline-offset-2 hover:underline"
-                >
-                  Criar meu PIN
-                </Link>
-              </span>
-            </span>
-          </Aviso>
-        )}
-
         {pedido.travado && (
           <Botao tom="secundario" onClick={v.registrarTravado} carregando={indo} className="min-h-11 rounded-xl text-sm">
             Registrar no nome de {primeiro} (fica marcada para conferir)
           </Botao>
+        )}
+
+        <Botao tom="discreto" onClick={v.cancelarAssinatura} disabled={indo} className="min-h-11 rounded-xl">
+          Voltar ao pedido
+        </Botao>
+      </div>
+    </div>
+  )
+}
+
+/** O teclado grande da janela do PIN, igual na confirmação e na criação. */
+function TecladoDoPin({
+  indo,
+  vazio,
+  onTecla,
+  onApagar,
+  onOk,
+  okDesligado,
+  rotuloOk = 'OK',
+}: {
+  indo: boolean
+  vazio: boolean
+  onTecla: (d: string) => void
+  onApagar: () => void
+  onOk: () => void
+  okDesligado: boolean
+  rotuloOk?: string
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-2" aria-label="Teclado do PIN">
+      {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+        <button
+          key={d}
+          type="button"
+          tabIndex={-1}
+          disabled={indo}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onTecla(d)}
+          className="numero h-14 rounded-xl border border-borda bg-superficie-2 text-2xl font-bold text-tinta active:bg-borda disabled:opacity-50"
+        >
+          {d}
+        </button>
+      ))}
+      <button
+        type="button"
+        tabIndex={-1}
+        disabled={indo || vazio}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onApagar}
+        aria-label="Apagar um número"
+        className="h-14 rounded-xl border border-borda bg-superficie text-lg font-semibold text-tinta-2 disabled:opacity-40"
+      >
+        ⌫
+      </button>
+      <button
+        type="button"
+        tabIndex={-1}
+        disabled={indo}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => onTecla('0')}
+        className="numero h-14 rounded-xl border border-borda bg-superficie-2 text-2xl font-bold text-tinta active:bg-borda disabled:opacity-50"
+      >
+        0
+      </button>
+      <Botao
+        tom="confirmar"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onOk}
+        carregando={indo}
+        disabled={okDesligado}
+        className="h-14 rounded-xl text-base"
+      >
+        {rotuloOk}
+      </Botao>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// "CRIE O SEU PIN" — quem ainda não tem, na hora de registrar
+// ─────────────────────────────────────────────────────────────
+//
+// O PIN assina a venda: sem ele, nada grava. Quem ainda não criou o dele não
+// é mandado para Minha conta (a cliente espera no balcão): cria aqui, em dois
+// passos curtos — o PIN e o PIN de novo. Quem PODE autorizar exceção (dono,
+// gerente…) ganha um terceiro, uma vez na vida: a senha de entrar (a mesma de
+// Minha conta: a tela esquecida aberta não vira "criei um PIN na conta da
+// gerente e me autorizei 40%"). O PIN de quem só vende assina só as vendas dela. Ao final, UMA chamada grava o PIN e a
+// venda juntos (ver `assinatura.criarPin` em servidor/venda.ts): nada fica
+// pela metade. Esc volta ao pedido, intocado.
+//
+// O PIN fraco (0000, 1234) é recusado aqui mesmo, na hora; o PIN já usado por
+// alguém da loja só o servidor sabe, e a frase não diz de quem.
+
+type Etapa = 'pin' | 'repetir' | 'senha'
+
+function CriarPinNaVenda({ v }: { v: Venda }) {
+  const pedido = v.assinando
+  const [etapa, setEtapa] = useState<Etapa>('pin')
+  const [pin, setPin] = useState('')
+  const [repetido, setRepetido] = useState('')
+  const [senha, setSenha] = useState('')
+  const [erroLocal, setErroLocal] = useState<string | null>(null)
+  const [toque, setToque] = useState(false)
+  const [semRede, setSemRede] = useState(false)
+  const campo = useRef<HTMLInputElement>(null)
+  const campoSenha = useRef<HTMLInputElement>(null)
+
+  // A recusa do servidor leva ao passo certo: o PIN (já usado por alguém) ou
+  // a senha de entrar (não confere). Janela que acabou de abrir: do começo.
+  useEffect(() => {
+    if (!pedido) return
+    setErroLocal(null)
+    if (pedido.refazer === 'senha') {
+      setSenha('')
+      setEtapa('senha')
+    } else {
+      setPin('')
+      setRepetido('')
+      setSenha('')
+      setEtapa('pin')
+    }
+    setToque(window.matchMedia?.('(pointer: coarse)').matches ?? false)
+    setSemRede(navigator.onLine === false)
+  }, [pedido])
+
+  // Depois de pintar: o foco num campo que ainda não existe se perde.
+  useEffect(() => {
+    if (!pedido || semRede) return
+    const t = setTimeout(() => (etapa === 'senha' ? campoSenha : campo).current?.focus(), 30)
+    return () => clearTimeout(t)
+  }, [pedido, etapa, semRede])
+
+  if (!pedido || !v.assinatura) return null
+  const indo = v.indo
+  const primeiro = v.assinatura.meuNome.trim().split(/\s+/)[0] || v.assinatura.meuNome
+  const formas = rotuloDoPagamento(v.pagos)
+  const itens = v.itensNaVenda
+
+  const valor = etapa === 'repetir' ? repetido : pin
+  const mudar = (f: (x: string) => string) => {
+    setErroLocal(null)
+    const limpo = (x: string) => f(x).replace(/\D/g, '').slice(0, 6)
+    if (etapa === 'repetir') setRepetido(limpo)
+    else setPin(limpo)
+  }
+
+  function avancar() {
+    if (indo) return
+    if (etapa === 'pin') {
+      const problema = problemaDoPin(pin)
+      if (problema) {
+        setPin('')
+        setErroLocal(problema)
+        return
+      }
+      setEtapa('repetir')
+    } else if (etapa === 'repetir') {
+      if (repetido !== pin) {
+        setPin('')
+        setRepetido('')
+        setEtapa('pin')
+        setErroLocal('Os dois PINs não são iguais. Digite o PIN de novo, com calma.')
+        return
+      }
+      // Quem só vende cria com o PIN e pronto; quem autoriza exceção confirma a senha, uma vez.
+      if (v.assinatura?.pedeSenhaParaCriar) setEtapa('senha')
+      else v.criarPinEVender(pin, '')
+    }
+  }
+
+  function criar() {
+    if (indo || !senha) return
+    const s = senha
+    setSenha('')
+    v.criarPinEVender(pin, s)
+  }
+
+  const erro = erroLocal ?? pedido.erro
+  const titulo = etapa === 'pin' ? 'Crie o seu PIN para registrar vendas' : etapa === 'repetir' ? 'Repita o PIN' : 'Só mais um passo'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="criar-pin-titulo"
+        className="flex max-h-[96dvh] w-full max-w-sm flex-col gap-3 overflow-y-auto rounded-2xl border border-borda bg-superficie p-5 shadow-norte-alta"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            v.cancelarAssinatura()
+          }
+        }}
+      >
+        <div className="flex flex-col items-center gap-0.5 text-center">
+          <h2 id="criar-pin-titulo" className="text-lg font-bold text-tinta">
+            {titulo}
+          </h2>
+          <p className="text-sm text-tinta-2">
+            {etapa === 'senha'
+              ? `${primeiro}, digite a sua senha de entrar para confirmar que é você. É só esta vez.`
+              : 'O PIN assina cada venda com o seu nome.'}
+          </p>
+          <p className="numero mt-1 text-2xl font-extrabold tracking-tight text-titulo">{brl(v.conta.aPagarCent / 100)}</p>
+          <p className="text-xs text-tinta-3">
+            {plural(itens, 'item', 'itens')}
+            {formas ? ` · ${formas}` : ''}
+          </p>
+        </div>
+
+        {erro && <Aviso nivel="critico">{erro}</Aviso>}
+
+        {semRede ? (
+          <>
+            <Aviso nivel="atencao">
+              Sem internet não dá para criar o PIN agora. A venda fica guardada neste aparelho, no nome de {primeiro},
+              marcada para conferir — e sobe sozinha quando a conexão voltar.
+            </Aviso>
+            <Botao tom="confirmar" onClick={v.registrarSemInternet} carregando={indo} className="min-h-12 rounded-xl">
+              Registrar sem internet
+            </Botao>
+          </>
+        ) : etapa === 'senha' ? (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-semibold text-tinta">Sua senha de entrar</span>
+              <input
+                ref={campoSenha}
+                type="password"
+                autoComplete="current-password"
+                value={senha}
+                disabled={indo}
+                onChange={(e) => setSenha(e.target.value.slice(0, 200))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    criar()
+                  }
+                }}
+                className="h-14 rounded-xl border-2 border-borda bg-superficie px-4 text-lg text-tinta focus:border-marca focus:outline-none"
+              />
+            </label>
+            <Botao tom="confirmar" onClick={criar} carregando={indo} disabled={!senha} className="min-h-12 rounded-xl">
+              Criar o PIN e registrar a venda
+            </Botao>
+          </>
+        ) : (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="sr-only">{etapa === 'pin' ? 'Escolha o seu PIN' : 'Repita o PIN'}</span>
+              <input
+                ref={campo}
+                type="password"
+                inputMode={toque ? 'none' : 'numeric'}
+                autoComplete="off"
+                maxLength={6}
+                value={valor}
+                disabled={indo}
+                onChange={(e) => mudar(() => e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    if (valor.length >= 4) avancar()
+                  }
+                }}
+                aria-describedby="criar-pin-dica"
+                className="numero h-14 rounded-xl border-2 border-borda bg-superficie px-4 text-center text-3xl font-bold tracking-[0.6em] text-tinta focus:border-marca focus:outline-none"
+              />
+              <span id="criar-pin-dica" className="text-center text-xs text-tinta-3">
+                {etapa === 'pin'
+                  ? 'De 4 a 6 números. Nada de 1234 nem 0000 — é o primeiro que alguém chuta.'
+                  : 'Digite o mesmo PIN de novo.'}
+              </span>
+            </label>
+            <TecladoDoPin
+              indo={indo}
+              vazio={valor.length === 0}
+              onTecla={(d) => mudar((x) => x + d)}
+              onApagar={() => mudar((x) => x.slice(0, -1))}
+              onOk={avancar}
+              okDesligado={valor.length < 4}
+              rotuloOk={etapa === 'pin' ? 'Seguir' : v.assinatura.pedeSenhaParaCriar ? 'Seguir' : 'Criar e registrar'}
+            />
+          </>
         )}
 
         <Botao tom="discreto" onClick={v.cancelarAssinatura} disabled={indo} className="min-h-11 rounded-xl">
