@@ -266,6 +266,8 @@ export async function editarProduto(
   sessao: Sessao,
   produtoId: string,
   dados: Partial<DadosProduto> & { ativo?: boolean },
+  /** Nome do que o livro de auditoria escreve, quando não é "alterou" (ver `excluirProduto`). */
+  acaoNoLivro?: 'produto.excluiu' | 'produto.reativou',
 ): Promise<ResultadoProduto> {
   exigir(sessao, 'produto.editar')
 
@@ -399,7 +401,7 @@ export async function editarProduto(
         orgId: sessao.orgId,
         usuarioId: sessao.usuarioId,
         quem: sessao.nome,
-        acao: mexeuNoPreco ? 'produto.preco.alterou' : 'produto.alterou',
+        acao: acaoNoLivro ?? (mexeuNoPreco ? 'produto.preco.alterou' : 'produto.alterou'),
         alvoTipo: 'produto',
         alvoId: produtoId,
         alvoNome: dados.nome?.trim() ?? antes.nome,
@@ -415,6 +417,20 @@ export async function editarProduto(
     return { ok: true as const, produtoId, variacoes: 0 }
   })
 }
+
+/**
+ * "Excluir produto": o produto nunca é apagado de verdade (venda, estoque e
+ * relatório antigos apontam para ele) — sai de venda, e some do balcão, da
+ * lista, do catálogo e do estoque. É `ativo = false` pela mesma regra de
+ * `editarProduto` (permissão, alcance de loja), só que o livro diz "excluiu"
+ * em vez de "alterou", e a pessoa o acha pelo nome que ela usa.
+ */
+export const excluirProduto = (sessao: Sessao, produtoId: string) =>
+  editarProduto(sessao, produtoId, { ativo: false }, 'produto.excluiu')
+
+/** O contrário de `excluirProduto`: de volta ao balcão, com a grade e o saldo. */
+export const reativarProduto = (sessao: Sessao, produtoId: string) =>
+  editarProduto(sessao, produtoId, { ativo: true }, 'produto.reativou')
 
 /** A grade não pode mudar como pedido — a mensagem diz o que resolver antes. */
 export class GradeRecusada extends Error {

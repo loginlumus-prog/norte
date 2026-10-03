@@ -18,6 +18,7 @@ import { Linhas } from '@/ui/Graficos'
 import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ProdutoNaTela } from '../Editor'
+import { Excluir } from '../Excluir'
 import { fotoUrl } from '@/servidor/catalogo'
 import { FotoDoProduto } from './FotoDoProduto'
 import { palavra, plural, quantidade } from '@/ui/texto'
@@ -37,6 +38,8 @@ const custoNoCampo = (v: unknown) => {
   const n = Number(v)
   return (Math.round(n * 100) === Math.round(n * 10_000) / 100 ? n.toFixed(2) : String(Math.round(n * 10_000) / 10_000)).replace('.', ',')
 }
+
+const MEDIDA: Record<string, string> = { UN: 'un', KG: 'kg', G: 'g', L: 'L', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx' }
 
 const quando = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }).format(d)
@@ -384,6 +387,29 @@ export default async function FichaProduto({
       <Secao titulo="Editar">
         <Editor slug={slug} eixos={eixos} categorias={categorias} lojas={lojasQueVendem} produto={naTela} />
       </Secao>
+
+      {/* ── EXCLUIR ──
+          Fora do formulário e longe do "Salvar": é a ação que a equipe procura
+          e não achava (antes era desmarcar "Produto à venda"). */}
+      {produto.ativo && !naTela.travado && (
+        <Secao titulo="Excluir produto">
+          <Cartao>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="max-w-xl text-sm text-tinta-2">
+                Tira o produto do balcão, da lista, do catálogo e do estoque. As vendas antigas e os
+                relatórios continuam com ele, e dá para trazê-lo de volta.
+              </p>
+              <Excluir
+                slug={slug}
+                produtoId={produto.id}
+                nome={produto.nome}
+                medida={MEDIDA[produto.medida] ?? ''}
+                estoque={porLoja.reduce((t, l) => t + Number(l.quantidade), 0)}
+              />
+            </div>
+          </Cartao>
+        </Secao>
+      )}
     </Estrutura>
   )
 }

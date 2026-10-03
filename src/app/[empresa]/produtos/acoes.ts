@@ -7,7 +7,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { criarProduto, editarProduto, ajustarGrade, GradeRecusada, type EixoEscolhido } from '@/servidor/produto'
+import { criarProduto, editarProduto, excluirProduto, reativarProduto, ajustarGrade, GradeRecusada, type EixoEscolhido } from '@/servidor/produto'
 import { SemPermissao, pode, unidadesQuePodem, type Sessao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { alcanceComum, normalizarVendidoEm, vendidoEmDoGerente } from '@/servidor/catalogo-loja'
@@ -357,7 +357,7 @@ export async function editar(
 export async function voltarAVenda(slug: string, produtoId: string): Promise<EstadoProduto> {
   const sessao = await exigirSessao(slug)
   try {
-    const r = await editarProduto(sessao, produtoId, { ativo: true })
+    const r = await reativarProduto(sessao, produtoId)
     if (!r.ok) return { erro: r.motivo }
     revalidatePath(`/${slug}/produtos`)
     revalidatePath(`/${slug}/produtos/${produtoId}`)
@@ -366,4 +366,22 @@ export async function voltarAVenda(slug: string, produtoId: string): Promise<Est
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para mexer neste produto.' }
     return { erro: recadoDoErro(e, 'Não deu para pôr de volta à venda.') }
   }
+}
+
+/**
+ * "Excluir produto". Não apaga nada do banco — ver `excluirProduto`. Dá certo,
+ * volta à lista com o recado; dá errado, devolve a frase para a janela.
+ */
+export async function excluir(slug: string, produtoId: string): Promise<EstadoProduto> {
+  const sessao = await exigirSessao(slug)
+  try {
+    const r = await excluirProduto(sessao, produtoId)
+    if (!r.ok) return { erro: r.motivo }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para excluir este produto.' }
+    return { erro: recadoDoErro(e, 'Não deu para excluir.') }
+  }
+  revalidatePath(`/${slug}/produtos`)
+  revalidatePath(`/${slug}/produtos/${produtoId}`)
+  redirect(`/${slug}/produtos?excluido=1`)
 }

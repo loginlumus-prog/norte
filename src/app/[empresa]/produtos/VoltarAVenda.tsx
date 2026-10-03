@@ -1,6 +1,6 @@
 'use client'
 
-// Pôr de volta no balcão o produto que alguém tirou de venda.
+// "Reativar": pôr de volta no balcão o produto excluído ou tirado de venda.
 //
 // Sem pergunta de confirmação: voltar a vender não perde nada e se desfaz na
 // própria ficha. O que precisa de cuidado é o contrário — tirar de venda —, e
@@ -32,9 +32,10 @@ export function VoltarAVenda({ slug, produtoId }: { slug: string; produtoId: str
             router.refresh()
           })
         }
-        className="font-semibold text-marca underline-offset-2 hover:underline disabled:opacity-55"
+        title="Volta ao balcão, com a grade e o saldo"
+        className="rounded-norte border border-marca px-2.5 py-1 text-xs font-semibold text-marca hover:bg-marca-suave disabled:opacity-55"
       >
-        {indo ? 'voltando…' : 'voltar à venda'}
+        {indo ? 'reativando…' : 'Reativar'}
       </button>
       {erro && <span className="font-medium text-critico">{erro}</span>}
     </span>

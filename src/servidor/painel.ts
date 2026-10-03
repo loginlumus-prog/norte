@@ -253,7 +253,7 @@ export async function resumoDoPainel(
         from variacoes va
         join produtos p on p.id = va.produto_id
         join estoque e on e.variacao_id = va.id and e.unidade_id = any(${uni})
-       where va.ativa and e.quantidade > 0 and not p.uso_interno
+       where va.ativa and p.ativo and e.quantidade > 0 and not p.uso_interno
        group by va.id, p.nome, va.codigo
       having not exists (
                select 1 from venda_itens i join vendas v on v.id = i.venda_id
@@ -300,7 +300,7 @@ export async function resumoDoPainel(
         from estoque e
         join variacoes va on va.id = e.variacao_id
         join produtos p on p.id = va.produto_id
-       where e.unidade_id = any(${uni}) and e.quantidade > 0 and not p.servico
+       where e.unidade_id = any(${uni}) and e.quantidade > 0 and not p.servico and p.ativo
     `
     const estoquePorCategoria = await db.$queryRaw<{ nome: string; valor: string }[]>`
       select coalesce(c.nome, 'Sem categoria') as nome,
@@ -309,7 +309,7 @@ export async function resumoDoPainel(
         join variacoes va on va.id = e.variacao_id
         join produtos p on p.id = va.produto_id
         left join categorias c on c.id = p.categoria_id
-       where e.unidade_id = any(${uni}) and e.quantidade > 0
+       where e.unidade_id = any(${uni}) and e.quantidade > 0 and p.ativo
        group by 1 order by 2 desc limit 8
     `
     const clientesTotal = await db.cliente.count({ where: { ativo: true } })

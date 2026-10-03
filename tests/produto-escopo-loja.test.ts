@@ -133,3 +133,49 @@ describe('o custo da ficha', () => {
     expect(depois).toBe(antes)
   })
 })
+
+describe('excluir e reativar o produto', () => {
+  const ativoDe = async (id: string) => (await um<{ a: boolean }>(`select ativo a from produtos where id = '${id}'`)).a
+
+  it('o gerente da roupa não exclui o picolé que só a sorveteria vende', async () => {
+    const r = await m.produto.excluirProduto(GER_ROUPA, 'p-picole')
+    // Situação é decisão de toda loja onde o produto vende: cai na regra do alcance.
+    expect(r).toEqual({ ok: false, motivo: m.produto.MOTIVO_FORA_DO_ALCANCE })
+    expect(await ativoDe('p-picole')).toBe(true)
+  })
+
+  it('excluir tira de venda (ativo = false), grava "produto.excluiu" no livro e não apaga nada', async () => {
+    const r = await m.produto.excluirProduto(DONA, 'p-picole')
+    expect(r.ok).toBe(true)
+    expect(await ativoDe('p-picole')).toBe(false)
+    const l = await um<{ acao: string; quem: string }>(`select acao, quem from auditoria where alvo_id = 'p-picole' and acao = 'produto.excluiu'`)
+    expect(l.quem).toBe('Dona')
+    expect(Number((await um<{ n: string }>(`select count(*) n from variacoes where produto_id = 'p-picole'`)).n)).toBe(1)
+  })
+
+  it('o gerente exclui o produto da loja dele', async () => {
+    const r = await m.produto.excluirProduto(GER_ROUPA, 'p-blusa')
+    expect(r.ok).toBe(true)
+    expect(await ativoDe('p-blusa')).toBe(false)
+  })
+
+  it('o gerente não reativa o que é só de outra loja; a dona reativa e o livro diz "reativou"', async () => {
+    expect((await m.produto.reativarProduto(GER_ROUPA, 'p-picole')).ok).toBe(false)
+    expect(await ativoDe('p-picole')).toBe(false)
+    expect((await m.produto.reativarProduto(DONA, 'p-picole')).ok).toBe(true)
+    expect(await ativoDe('p-picole')).toBe(true)
+    expect(Number((await um<{ n: string }>(`select count(*) n from auditoria where alvo_id = 'p-picole' and acao = 'produto.reativou'`)).n)).toBe(1)
+  })
+
+  it('quem só vende (sem produto.editar) não exclui', async () => {
+    const VENDEDORA: Sessao = { orgId: 'org-p', usuarioId: 'usr-ger', nome: 'V', acessos: [{ papel: 'BALCAO', unidadeId: 'uni-roupa', expiraEm: null }] }
+    await expect(m.produto.excluirProduto(VENDEDORA, 'p-bone')).rejects.toThrow()
+    expect(await ativoDe('p-bone')).toBe(true)
+  })
+
+  it('as duas ações do livro têm rótulo em português', async () => {
+    const { ACOES } = await import('../src/servidor/auditoria')
+    expect(ACOES['produto.excluiu']).toBe('excluiu um produto')
+    expect(ACOES['produto.reativou']).toBeTruthy()
+  })
+})

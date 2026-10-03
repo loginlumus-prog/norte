@@ -34,6 +34,8 @@ export const ACOES: Record<string, string> = {
   'caixa.suprimento': 'pôs dinheiro no caixa',
   'produto.criou': 'cadastrou um produto',
   'produto.alterou': 'alterou um produto',
+  'produto.excluiu': 'excluiu um produto',
+  'produto.reativou': 'pôs um produto de volta à venda',
   'produto.preco.alterou': 'mudou um preço',
   'produto.grade.alterou': 'mexeu na grade',
   'estoque.entrada': 'deu entrada de mercadoria',

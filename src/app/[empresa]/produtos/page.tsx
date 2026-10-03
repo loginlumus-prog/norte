@@ -9,9 +9,10 @@ import { pode, textoDaBusca, unidadesQuePodem } from '@/servidor/permissao'
 import { podeVerCustoDe, saldoNaVista } from '@/servidor/produto'
 import { palavra, plural } from '@/ui/texto'
 import { VoltarAVenda } from './VoltarAVenda'
+import { Excluir } from './Excluir'
 import { EtiquetasEmLote } from './etiquetas/EmLote'
 import { Estrutura } from '@/ui/Estrutura'
-import { Cartao, Situacao, Vazio, Ponto, cx } from '@/ui/base'
+import { Aviso, Cartao, Situacao, Vazio, Ponto, cx } from '@/ui/base'
 import { Tabela } from '@/ui/Tabela'
 import { MENU } from '@/ui/menu'
 import { escolherUnidade } from '@/servidor/unidade'
@@ -63,13 +64,14 @@ export default async function Produtos({
     pendencia?: string
     mostrar?: string
     pagina?: string
+    excluido?: string
   }>
 }) {
   const { empresa: slug } = await params
   const {
     unidade: pedida, q: qBruto, categoria: categoriaPedida, situacao: sitPedida,
     marca: marcaPedida, ordem: ordemPedida, pendencia: pendenciaPedida, mostrar: mostrarPedido,
-    pagina: paginaPedida,
+    pagina: paginaPedida, excluido,
   } = await searchParams
   // `?q=a&q=b` chega como lista; ver `textoDaBusca`.
   const q = textoDaBusca(qBruto)
@@ -345,6 +347,13 @@ export default async function Produtos({
       {/* Sem a tira de contagens no topo: as mesmas contas já estão nas
           fichas do filtro logo abaixo (acabaram, no mínimo, com estoque). */}
 
+      {excluido === '1' && (
+        <Aviso nivel="bom">
+          Produto excluído. Se precisar dele de novo: filtro &ldquo;fora de venda&rdquo; → Editar → Produto à venda
+          (ou o botão Reativar).
+        </Aviso>
+      )}
+
       {/* ── busca e filtros ── */}
       <div className="flex flex-col gap-2">
         <Busca
@@ -435,7 +444,7 @@ export default async function Produtos({
 
       {fora && (
         <p className="text-sm text-tinta-2">
-          Fora de venda: somem do balcão e continuam nos relatórios. &ldquo;Voltar à venda&rdquo; devolve
+          Fora de venda: somem do balcão e continuam nos relatórios. &ldquo;Reativar&rdquo; devolve
           com a grade e o saldo.
         </p>
       )}
@@ -519,6 +528,9 @@ export default async function Produtos({
                   </Link>
                 )}
                 {fora && podeEditar && <VoltarAVenda slug={slug} produtoId={p.id} />}
+                {!fora && podeEditar && (
+                  <Excluir slug={slug} produtoId={p.id} nome={p.nome} medida={MEDIDA[p.medida] ?? ''} estoque={p.servico ? 0 : total} compacto />
+                )}
                 {/* Também no simples: a vendedora etiqueta a peça que chegou. */}
                 {!fora && (
                   <>

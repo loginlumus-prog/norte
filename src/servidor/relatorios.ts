@@ -140,6 +140,8 @@ export async function compararLojas(
            limit 1
         ) x on true
        where e.unidade_id = any(${uni}) and e.quantidade > 0
+         -- Produto excluído (inativo) sai da conta do estoque.
+         and p.ativo
        group by 1
     `
 
@@ -381,7 +383,7 @@ export async function dinheiroParado(
              and v.unidade_id = any(${uni})
              and v.situacao = 'CONCLUIDA'
         ) x on true
-       where e.unidade_id = any(${uni}) and e.quantidade > 0
+       where e.unidade_id = any(${uni}) and e.quantidade > 0 and p.ativo
          -- Material de uso sai pelo consumo, nunca pela venda: "parado há 90
          -- dias" seria verdade inútil sobre a luva da clínica.
          and not p.uso_interno
