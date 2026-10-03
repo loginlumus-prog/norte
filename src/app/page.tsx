@@ -427,47 +427,55 @@ function Destaque({
   /** Para onde a foto olha (object-position), para a pessoa não ficar atrás da telinha. */
   foco?: string
 }) {
-  // 03/10/2026: a telinha não fica mais POR CIMA da foto. Ela tapava a
-  // pessoa (no Farol, o rosto). Agora são três colunas — o texto, a foto
-  // inteira e a tela do sistema num painel da cor da função — como a página
-  // de PDV das grandes faz: foto da loja de um lado, sistema do outro.
+  // 03/10/2026: a telinha não fica mais POR CIMA da foto (tapava a pessoa).
+  // Duas faixas: em cima, o título e a foto larga; embaixo, a janela do
+  // sistema com espaço e, ao lado, os pontos que dizem o que se vê nela —
+  // o texto sinaliza a tela, em vez de ficar longe dela.
+  const ordem = invertido ? 'md:order-2' : ''
   return (
     <section id={id} className="relative scroll-mt-20 overflow-hidden py-20 sm:py-28">
-      <div className="mx-auto grid max-w-6xl items-stretch gap-6 px-4 sm:px-6 lg:grid-cols-12">
-        <div className={`flex flex-col justify-center gap-6 pb-4 lg:col-span-5 lg:pb-0 ${invertido ? 'lg:order-3 lg:pl-6' : 'lg:pr-6'}`}>
-          <Cabeca olho={olho} cor={cor} titulo={titulo} texto={texto} />
-          <ul className="site-revela flex flex-col gap-3">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 sm:px-6">
+        {/* ── o título e a foto ── */}
+        <div className="grid items-stretch gap-6 lg:grid-cols-12">
+          <div className={`flex flex-col justify-center gap-6 pb-2 lg:col-span-5 lg:py-6 ${invertido ? 'lg:order-2 lg:pl-4' : 'lg:pr-4'}`}>
+            <Cabeca olho={olho} cor={cor} titulo={titulo} texto={texto} />
+            {fichas ? (
+              <div className="site-revela flex flex-wrap gap-2">
+                {fichas.map((f) => (
+                  <Ficha key={f} cor={cor}>
+                    {f}
+                  </Ficha>
+                ))}
+              </div>
+            ) : null}
+            {rodape}
+          </div>
+          <div className="site-revela relative aspect-[4/3] overflow-hidden rounded-[var(--s-raio)] sm:aspect-[16/9] lg:col-span-7 lg:aspect-auto lg:min-h-[440px]">
+            <Foto src={foto} alt={alt} foco={foco} className="absolute inset-0 h-full w-full" />
+            <span className="absolute bottom-0 left-0 h-1 w-full" style={{ background: cor }} aria-hidden />
+          </div>
+        </div>
+
+        {/* ── a tela do sistema e o que ela mostra ── */}
+        <div className="grid overflow-hidden rounded-[var(--s-raio)] border border-[var(--s-borda)] md:grid-cols-12">
+          <div
+            className={`site-revela flex items-center justify-center px-4 py-10 sm:px-8 md:col-span-7 lg:py-14 ${ordem}`}
+            style={{
+              backgroundColor: `color-mix(in srgb, ${cor} 9%, var(--s-cartao))`,
+              backgroundImage: `linear-gradient(to right, color-mix(in srgb, ${cor} 14%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, ${cor} 14%, transparent) 1px, transparent 1px)`,
+              backgroundSize: '32px 32px',
+            }}
+          >
+            {tela}
+          </div>
+          <ul className={`flex flex-col justify-center divide-y divide-[var(--s-borda)] bg-[var(--s-cartao)] md:col-span-5 ${invertido ? 'md:border-r' : 'md:border-l'} border-t border-[var(--s-borda)] md:border-t-0`}>
             {itens.map((i) => (
-              <li key={i} className="flex gap-3 text-[15px] leading-relaxed">
-                <Visto cor={cor} />
+              <li key={i} className="site-revela flex gap-3.5 px-6 py-5 text-[15px] leading-relaxed sm:px-8">
+                <span aria-hidden className="mt-2 h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ background: cor }} />
                 <span>{i}</span>
               </li>
             ))}
           </ul>
-          {fichas ? (
-            <div className="site-revela flex flex-wrap gap-2">
-              {fichas.map((f) => (
-                <Ficha key={f} cor={cor}>
-                  {f}
-                </Ficha>
-              ))}
-            </div>
-          ) : null}
-          {rodape}
-        </div>
-        <div className={`site-revela relative aspect-[4/3] overflow-hidden rounded-[var(--s-raio)] sm:aspect-[16/10] lg:col-span-3 lg:aspect-auto lg:min-h-[600px] ${invertido ? 'lg:order-2' : ''}`}>
-          <Foto src={foto} alt={alt} foco={foco} className="absolute inset-0 h-full w-full" />
-          <span className="absolute bottom-0 left-0 h-1 w-full" style={{ background: cor }} aria-hidden />
-        </div>
-        <div
-          className={`site-revela flex items-center justify-center overflow-hidden rounded-[var(--s-raio)] border border-[var(--s-borda)] px-4 py-8 lg:col-span-4 ${invertido ? 'lg:order-1' : ''}`}
-          style={{
-            backgroundColor: `color-mix(in srgb, ${cor} 9%, var(--s-cartao))`,
-            backgroundImage: `linear-gradient(to right, color-mix(in srgb, ${cor} 14%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, ${cor} 14%, transparent) 1px, transparent 1px)`,
-            backgroundSize: '32px 32px',
-          }}
-        >
-          {tela}
         </div>
       </div>
     </section>

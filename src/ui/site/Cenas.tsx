@@ -35,7 +35,7 @@ export function CelularCatalogo() {
   const naSacola = VITRINE.filter((p) => p.na)
   const total = naSacola.reduce((s, p) => s + p.preco, 0)
   return (
-    <div className="site-cartao w-[380px] max-w-full overflow-hidden" style={cor('var(--s-rosa)')}>
+    <div className="site-cartao w-[420px] max-w-full overflow-hidden" style={cor('var(--s-rosa)')}>
       {/* a barra, e o link que a loja manda */}
       <div className="flex items-center justify-between gap-2 border-b border-[var(--s-borda)] px-4 py-2.5">
         <span className="flex min-w-0 items-center gap-2 text-[12px] font-bold">
@@ -146,7 +146,7 @@ function Balao({ eu, passo, children, className = '' }: { eu?: boolean; passo: n
  */
 export function ConversaAssistente() {
   return (
-    <div className="site-cartao w-[380px] max-w-full overflow-hidden" style={cor('var(--s-verde)')}>
+    <div className="site-cartao w-[420px] max-w-full overflow-hidden" style={cor('var(--s-verde)')}>
       <div className="flex items-center justify-between gap-2 bg-[#0f6e47] px-4 py-2.5 text-white">
         <span className="flex items-center gap-2 text-[12px] font-bold">
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-[10px] font-black">N</span>
@@ -236,7 +236,7 @@ const ROTEIRO = [
 
 export function PecasFarol() {
   return (
-    <div className="site-cartao w-[380px] max-w-full overflow-hidden" style={cor('var(--s-sol)')}>
+    <div className="site-cartao w-[420px] max-w-full overflow-hidden" style={cor('var(--s-sol)')}>
       {/* a barra da janela */}
       <div className="flex items-center justify-between gap-2 border-b border-[var(--s-borda)] px-4 py-2.5">
         <span className="flex items-center gap-2 text-[12px] font-bold">
