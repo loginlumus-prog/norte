@@ -140,8 +140,23 @@ export async function comoOrg<T>(
     // 'true' = vale só nesta transação, não vaza para a próxima requisição
     await tx.$queryRaw`select set_config('app.org_id', ${orgId}, true)`
     return fn(tx as unknown as BancoDaOrg)
-  }))
+  }, TEMPO_DA_TRANSACAO))
 }
+
+/**
+ * O prazo de uma transação por empresa.
+ *
+ * O padrão do Prisma é 5 s para a transação inteira e 2 s para conseguir uma
+ * conexão — e a transação morre com "Transaction already closed", que na tela
+ * vira "Deu problema aqui do nosso lado". Com o banco do lado do servidor (o
+ * laptop) isso nunca aparecia. Com o servidor longe do banco (a VPS nos
+ * Estados Unidos e o Supabase em São Paulo, ~150 ms por consulta), uma tela
+ * com 40 consultas em fila leva 6 s só de ida e volta, e estoura. F5 passava
+ * porque a segunda vez o caminho estava quente. Esperar mais é a rede de
+ * segurança; o conserto de verdade é o servidor perto do banco e menos
+ * consultas por tela.
+ */
+const TEMPO_DA_TRANSACAO = { maxWait: 10_000, timeout: 30_000 } as const
 
 // ─────────────────────────────────────────────────────────────
 // A ÚNICA EXCEÇÃO
