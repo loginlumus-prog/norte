@@ -19,13 +19,13 @@ function Contador({ rotulo, dica, valor, min, max, mudar }: { rotulo: string; di
         <p className="text-[15px] font-bold">{rotulo}</p>
         <p className="text-[13px] text-[var(--s-tinta-2)]">{dica}</p>
       </div>
-      <div className="flex shrink-0 items-center rounded-full border border-[var(--s-borda)] bg-[var(--s-fundo)]">
+      <div className="flex shrink-0 items-center rounded-[var(--s-raio)] border border-[var(--s-borda)] bg-[var(--s-fundo)]">
         <button
           type="button"
           aria-label={`Menos ${rotulo.toLowerCase()}`}
           disabled={valor <= min}
           onClick={() => mudar(Math.max(min, valor - 1))}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold disabled:opacity-30"
+          className="flex h-10 w-10 items-center justify-center rounded-[var(--s-raio)] text-lg font-bold disabled:opacity-30"
         >
           −
         </button>
@@ -37,7 +37,7 @@ function Contador({ rotulo, dica, valor, min, max, mudar }: { rotulo: string; di
           aria-label={`Mais ${rotulo.toLowerCase()}`}
           disabled={valor >= max}
           onClick={() => mudar(Math.min(max, valor + 1))}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold disabled:opacity-30"
+          className="flex h-10 w-10 items-center justify-center rounded-[var(--s-raio)] text-lg font-bold disabled:opacity-30"
         >
           +
         </button>
@@ -78,7 +78,7 @@ export function Calculadora({ comecar }: { comecar: string }) {
   const mes = linhas.reduce((s, [, v]) => s + v, 0)
 
   return (
-    <div className="grid overflow-hidden rounded-[32px] border border-[var(--s-borda)] bg-[var(--s-cartao)] shadow-[var(--s-sombra-alta)] lg:grid-cols-[1.15fr_1fr]">
+    <div className="grid overflow-hidden rounded-[var(--s-raio)] border border-[var(--s-borda)] bg-[var(--s-cartao)] shadow-[var(--s-sombra-alta)] lg:grid-cols-[1.15fr_1fr]">
       <div className="divide-y divide-[var(--s-borda)] p-6 sm:p-8">
         <Contador rotulo="Lojas" dica={`${reais(PRECOS.primeiraLoja)} a primeira, ${reais(PRECOS.lojaExtra)} cada uma a mais. Depósito não conta.`} valor={lojas} min={1} max={30} mudar={setLojas} />
         <Chave

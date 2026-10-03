@@ -361,7 +361,7 @@ function Cabeca({ olho, cor, titulo, texto, centro = false }: { olho: string; co
 function Ficha({ cor, children }: { cor: string; children: ReactNode }) {
   return (
     <span
-      className="rounded-full border px-3.5 py-1.5 text-[13px] font-semibold"
+      className="rounded-[var(--s-raio)] border px-3.5 py-1.5 text-[13px] font-semibold"
       style={{ borderColor: `color-mix(in srgb, ${cor} 30%, transparent)`, background: `color-mix(in srgb, ${cor} 9%, transparent)`, color: cor }}
     >
       {children}
@@ -389,9 +389,9 @@ function Foto({ src, alt, className = '', prioridade = false, foco = '' }: { src
 /** Uma foto do mosaico do topo, com o nome do ramo no canto. */
 function Mosaico({ src, alt, rotulo, proporcao, foco = '', prioridade = false }: { src: string; alt: string; rotulo: string; proporcao: string; foco?: string; prioridade?: boolean }) {
   return (
-    <div className={`relative overflow-hidden rounded-[24px] shadow-[var(--s-sombra)] sm:rounded-[28px] ${proporcao}`}>
+    <div className={`relative overflow-hidden rounded-[var(--s-raio)] shadow-[var(--s-sombra)] sm:rounded-[var(--s-raio)] ${proporcao}`}>
       <Foto src={src} alt={alt} prioridade={prioridade} foco={foco} className="h-full w-full" />
-      <span className="absolute bottom-2.5 left-2.5 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-[#0d1b45] backdrop-blur sm:text-[12px]">{rotulo}</span>
+      <span className="absolute bottom-2.5 left-2.5 rounded-[var(--s-raio)] bg-white/90 px-2.5 py-1 text-[11px] font-bold text-[#0d1b45] backdrop-blur sm:text-[12px]">{rotulo}</span>
     </div>
   )
 }
@@ -427,11 +427,14 @@ function Destaque({
   /** Para onde a foto olha (object-position), para a pessoa não ficar atrás da telinha. */
   foco?: string
 }) {
+  // 03/10/2026: a telinha não fica mais POR CIMA da foto. Ela tapava a
+  // pessoa (no Farol, o rosto). Agora são três colunas — o texto, a foto
+  // inteira e a tela do sistema num painel da cor da função — como a página
+  // de PDV das grandes faz: foto da loja de um lado, sistema do outro.
   return (
     <section id={id} className="relative scroll-mt-20 overflow-hidden py-20 sm:py-28">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10" style={{ background: `radial-gradient(60% 60% at ${invertido ? '15%' : '85%'} 40%, color-mix(in srgb, ${cor} 10%, transparent), transparent 70%)` }} />
-      <div className={`mx-auto grid max-w-6xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-2 lg:gap-20 ${invertido ? 'lg:[&>*:first-child]:order-2' : ''}`}>
-        <div className="flex flex-col gap-6">
+      <div className="mx-auto grid max-w-6xl items-stretch gap-6 px-4 sm:px-6 lg:grid-cols-12">
+        <div className={`flex flex-col justify-center gap-6 pb-4 lg:col-span-5 lg:pb-0 ${invertido ? 'lg:order-3 lg:pl-6' : 'lg:pr-6'}`}>
           <Cabeca olho={olho} cor={cor} titulo={titulo} texto={texto} />
           <ul className="site-revela flex flex-col gap-3">
             {itens.map((i) => (
@@ -452,16 +455,19 @@ function Destaque({
           ) : null}
           {rodape}
         </div>
-        <div className="site-revela relative overflow-hidden rounded-[36px] shadow-[var(--s-sombra-alta)]">
+        <div className={`site-revela relative aspect-[4/3] overflow-hidden rounded-[var(--s-raio)] sm:aspect-[16/10] lg:col-span-3 lg:aspect-auto lg:min-h-[600px] ${invertido ? 'lg:order-2' : ''}`}>
           <Foto src={foto} alt={alt} foco={foco} className="absolute inset-0 h-full w-full" />
-          <div
-            aria-hidden
-            className="absolute inset-0"
-            style={{
-              background: `linear-gradient(${invertido ? '90deg' : '270deg'}, color-mix(in srgb, ${cor} 30%, rgb(11 18 48 / 0.6)) 0%, transparent 70%)`,
-            }}
-          />
-          <div className={`relative flex min-h-[520px] items-end p-5 pt-44 sm:p-8 sm:pt-8 lg:h-[660px] ${invertido ? 'justify-start' : 'justify-end'}`}>{tela}</div>
+          <span className="absolute bottom-0 left-0 h-1 w-full" style={{ background: cor }} aria-hidden />
+        </div>
+        <div
+          className={`site-revela flex items-center justify-center overflow-hidden rounded-[var(--s-raio)] border border-[var(--s-borda)] px-4 py-8 lg:col-span-4 ${invertido ? 'lg:order-1' : ''}`}
+          style={{
+            backgroundColor: `color-mix(in srgb, ${cor} 9%, var(--s-cartao))`,
+            backgroundImage: `linear-gradient(to right, color-mix(in srgb, ${cor} 14%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, ${cor} 14%, transparent) 1px, transparent 1px)`,
+            backgroundSize: '32px 32px',
+          }}
+        >
+          {tela}
         </div>
       </div>
     </section>
@@ -496,32 +502,32 @@ export default function Inicio() {
           </a>
           <nav aria-label="Seções" className="hidden items-center gap-1 lg:flex">
             {NAV.map(([n, h]) => (
-              <a key={h} href={h} className="rounded-full px-3.5 py-2 text-[14px] font-semibold text-[var(--s-tinta-2)] transition-colors hover:bg-[var(--s-borda)] hover:text-[var(--s-tinta)]">
+              <a key={h} href={h} className="rounded-[var(--s-raio)] px-3.5 py-2 text-[14px] font-semibold text-[var(--s-tinta-2)] transition-colors hover:bg-[var(--s-borda)] hover:text-[var(--s-tinta)]">
                 {n}
               </a>
             ))}
           </nav>
           <div className="flex items-center gap-2">
-            <a href={ENTRAR} className="hidden rounded-full px-3.5 py-2 text-[14px] font-semibold text-[var(--s-tinta-2)] hover:text-[var(--s-tinta)] sm:block">
+            <a href={ENTRAR} className="hidden rounded-[var(--s-raio)] px-3.5 py-2 text-[14px] font-semibold text-[var(--s-tinta-2)] hover:text-[var(--s-tinta)] sm:block">
               Entrar
             </a>
             <a href={COMECAR} className="site-botao site-botao-principal px-5 py-2.5 text-[14px]">
               Testar grátis
             </a>
             <details className="group relative lg:hidden">
-              <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-[var(--s-borda)] [&::-webkit-details-marker]:hidden" aria-label="Abrir menu">
+              <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-[var(--s-raio)] border border-[var(--s-borda)] [&::-webkit-details-marker]:hidden" aria-label="Abrir menu">
                 <span aria-hidden className="flex flex-col gap-1">
                   <i className="block h-0.5 w-4 rounded bg-current" />
                   <i className="block h-0.5 w-4 rounded bg-current" />
                 </span>
               </summary>
-              <nav aria-label="Seções" className="site-cartao absolute right-0 mt-2 flex w-56 flex-col rounded-2xl p-2">
+              <nav aria-label="Seções" className="site-cartao absolute right-0 mt-2 flex w-56 flex-col rounded-[var(--s-raio)] p-2">
                 {NAV.map(([n, h]) => (
-                  <a key={h} href={h} className="rounded-xl px-3 py-2.5 text-[15px] font-semibold hover:bg-[var(--s-borda)]">
+                  <a key={h} href={h} className="rounded-[var(--s-raio)] px-3 py-2.5 text-[15px] font-semibold hover:bg-[var(--s-borda)]">
                     {n}
                   </a>
                 ))}
-                <a href={ENTRAR} className="rounded-xl px-3 py-2.5 text-[15px] font-semibold text-[var(--s-tinta-2)] hover:bg-[var(--s-borda)]">
+                <a href={ENTRAR} className="rounded-[var(--s-raio)] px-3 py-2.5 text-[15px] font-semibold text-[var(--s-tinta-2)] hover:bg-[var(--s-borda)]">
                   Entrar
                 </a>
               </nav>
@@ -544,9 +550,9 @@ export default function Inicio() {
             <div className="flex flex-col items-start">
               <a
                 href="#catalogo"
-                className="site-chega group inline-flex items-center gap-2 rounded-full border border-[var(--s-borda)] bg-[var(--s-cartao)] py-1 pr-3.5 pl-1 text-[13px] font-semibold text-[var(--s-tinta-2)] shadow-[var(--s-sombra)]"
+                className="site-chega group inline-flex items-center gap-2 rounded-[var(--s-raio)] border border-[var(--s-borda)] bg-[var(--s-cartao)] py-1 pr-3.5 pl-1 text-[13px] font-semibold text-[var(--s-tinta-2)] shadow-[var(--s-sombra)]"
               >
-                <span className="rounded-full bg-[var(--s-rosa)] px-2.5 py-0.5 text-[11px] font-extrabold text-white">Novo</span>
+                <span className="rounded-[var(--s-raio)] bg-[var(--s-rosa)] px-2.5 py-0.5 text-[11px] font-extrabold text-white">Novo</span>
                 <span className="sm:hidden">Catálogo e estoque por áudio</span>
                 <span className="hidden sm:inline">Catálogo no WhatsApp e estoque por áudio</span>
                 <span aria-hidden className="transition-transform group-hover:translate-x-0.5">→</span>
@@ -596,14 +602,14 @@ export default function Inicio() {
                   <Mosaico src="/img/site/balcao.webp" alt="Dona de sorveteria lançando a venda no tablet, no balcão" rotulo="Sorveteria" proporcao="aspect-[4/5]" foco="object-[70%_50%]" />
                 </div>
               </div>
-              <div className="site-boia site-cartao absolute top-6 -left-3 flex items-center gap-3 rounded-2xl px-4 py-3 sm:-left-8" style={{ animationDelay: '-1s' }}>
+              <div className="site-boia site-cartao absolute top-6 -left-3 flex items-center gap-3 rounded-[var(--s-raio)] px-4 py-3 sm:-left-8" style={{ animationDelay: '-1s' }}>
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--s-verde)] text-sm font-black text-white">✓</span>
                 <div className="leading-tight">
                   <p className="text-[11px] text-[var(--s-tinta-2)]">Venda concluída · Pix</p>
                   <p className="text-lg font-extrabold tabular-nums">R$ 38,00</p>
                 </div>
               </div>
-              <div className="site-boia site-cartao absolute top-[42%] -right-3 w-52 rounded-2xl p-3.5 sm:-right-8" style={{ animationDelay: '-3s' }}>
+              <div className="site-boia site-cartao absolute top-[42%] -right-3 w-52 rounded-[var(--s-raio)] p-3.5 sm:-right-8" style={{ animationDelay: '-3s' }}>
                 <p className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--s-rosa)]">
                   <span className="site-pulsa h-2 w-2 rounded-full bg-[var(--s-rosa)]" style={{ '--cor': 'var(--s-rosa)' } as CSSProperties} />
                   Pedido novo pelo catálogo
@@ -611,7 +617,7 @@ export default function Inicio() {
                 <p className="mt-1 text-[13px] font-bold">ENC-7Q2K · 3 itens</p>
                 <p className="text-[12px] text-[var(--s-tinta-2)]">Retirada às 15h · Pix</p>
               </div>
-              <div className="site-boia site-cartao absolute -bottom-5 left-2 flex max-w-[16rem] items-center gap-2.5 rounded-2xl px-3.5 py-3 sm:-left-6" style={{ animationDelay: '-2s' }}>
+              <div className="site-boia site-cartao absolute -bottom-5 left-2 flex max-w-[16rem] items-center gap-2.5 rounded-[var(--s-raio)] px-3.5 py-3 sm:-left-6" style={{ animationDelay: '-2s' }}>
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0f6e47] text-[11px] font-black text-white">▶</span>
                 <p className="text-[12px] leading-snug">
                   <span className="text-[var(--s-tinta-2)]">Ouvi:</span> “chegaram 48 águas de 500 ml”
@@ -650,7 +656,7 @@ export default function Inicio() {
               texto="Tudo o que hoje mora em cinco lugares diferentes passa a morar num só — e conversa entre si."
             />
             <div className="site-revela mt-14 grid gap-4 md:grid-cols-2">
-              <div className="rounded-[28px] border border-[var(--s-borda)] bg-[var(--s-cartao)] p-6 sm:p-8">
+              <div className="rounded-[var(--s-raio)] border border-[var(--s-borda)] bg-[var(--s-cartao)] p-6 sm:p-8">
                 <p className="site-olho text-[var(--s-tinta-2)]">Sem o Norte</p>
                 <ul className="mt-5 flex flex-col gap-4">
                   {ANTES_DEPOIS.map(([a]) => (
@@ -663,7 +669,7 @@ export default function Inicio() {
                   ))}
                 </ul>
               </div>
-              <div className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(150deg,#1f4fd8,#6d4cf0)] p-6 text-white shadow-[var(--s-sombra-alta)] sm:p-8">
+              <div className="relative overflow-hidden rounded-[var(--s-raio)] bg-[linear-gradient(150deg,#1f4fd8,#6d4cf0)] p-6 text-white shadow-[var(--s-sombra-alta)] sm:p-8">
                 <span aria-hidden className="pointer-events-none absolute -right-16 -bottom-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
                 <p className="site-olho text-white/80">Com o Norte</p>
                 <ul className="mt-5 flex flex-col gap-4">
@@ -884,8 +890,8 @@ export default function Inicio() {
                 ['2', 'Traga o que você já tem', 'Excel, CSV ou colar da planilha. Para migração grande, a nossa equipe faz junto com você.'],
                 ['3', 'Abra o caixa e mande o link', 'Comece a vender no balcão e mande o catálogo para as clientes no mesmo dia.'],
               ].map(([n, t, d]) => (
-                <div key={n} className="site-revela site-cartao rounded-[24px] p-6">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--s-azul-claro)] text-lg font-extrabold text-[var(--s-azul)]">{n}</span>
+                <div key={n} className="site-revela site-cartao rounded-[var(--s-raio)] p-6">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-[var(--s-raio)] bg-[var(--s-azul-claro)] text-lg font-extrabold text-[var(--s-azul)]">{n}</span>
                   <h3 className="mt-4 text-xl font-extrabold">{t}</h3>
                   <p className="mt-1.5 text-[15px] text-[var(--s-tinta-2)]">{d}</p>
                 </div>
@@ -904,7 +910,7 @@ export default function Inicio() {
               titulo="Clique e explore o sistema de verdade."
               texto="Uma tarde numa loja de exemplo. Troque de tela, abra o balcão, veja o estoque e o financeiro — sem cadastro."
             />
-            <div className="site-cresce mt-12 overflow-hidden rounded-[28px]">
+            <div className="site-cresce mt-12 overflow-hidden rounded-[var(--s-raio)]">
               <SistemaPorDentro textos={TEXTOS} consulta={CONSULTA_EXEMPLO} />
             </div>
           </div>
@@ -946,7 +952,7 @@ export default function Inicio() {
             </div>
             <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               {SEGURANCA.map(({ Icone, t, d }) => (
-                <div key={t} className="site-revela rounded-[24px] border border-white/10 bg-white/[0.04] p-5">
+                <div key={t} className="site-revela rounded-[var(--s-raio)] border border-white/10 bg-white/[0.04] p-5">
                   <Icone tamanho={36} className="text-[#8fb0ff]" />
                   <h3 className="mt-4 text-[17px] font-extrabold" style={{ color: 'white' }}>
                     {t}
@@ -981,7 +987,7 @@ export default function Inicio() {
                 "Norte + Assistente") e a pergunta "qual é a diferença?"; o
                 assistente é uma chave, e a página passou a dizer isso. */}
             <div className="mt-10 grid gap-4 lg:grid-cols-[1.05fr_1fr]">
-              <article className="site-revela relative flex flex-col gap-5 rounded-[28px] border-2 border-[var(--s-verde)] bg-[var(--s-cartao)] p-7 shadow-[var(--s-sombra-alta)]">
+              <article className="site-revela relative flex flex-col gap-5 rounded-[var(--s-raio)] border-2 border-[var(--s-verde)] bg-[var(--s-cartao)] p-7 shadow-[var(--s-sombra-alta)]">
                 <div>
                   <h3 className="text-2xl font-extrabold">{O_PLANO.nome}</h3>
                   <p className="mt-2">
@@ -997,7 +1003,7 @@ export default function Inicio() {
                         <Visto cor="var(--s-verde)" />
                         <span>
                           {breve ? i.replace(' · em breve', '') : i}
-                          {breve ? <span className="ml-2 rounded-full bg-[var(--s-sol-claro)] px-2 py-0.5 text-[11px] font-bold text-[var(--s-sol)]">em breve</span> : null}
+                          {breve ? <span className="ml-2 rounded-[var(--s-raio)] bg-[var(--s-sol-claro)] px-2 py-0.5 text-[11px] font-bold text-[var(--s-sol)]">em breve</span> : null}
                         </span>
                       </li>
                     )
@@ -1011,7 +1017,7 @@ export default function Inicio() {
               <div className="flex flex-col gap-3">
                 <p className="site-olho px-1 text-[var(--s-tinta-2)]">Liga se quiser, para a empresa inteira</p>
                 {POR_CIMA.map((a) => (
-                  <div key={a.t} className="site-revela site-cartao flex items-start justify-between gap-4 rounded-[24px] p-5">
+                  <div key={a.t} className="site-revela site-cartao flex items-start justify-between gap-4 rounded-[var(--s-raio)] p-5">
                     <div className="min-w-0">
                       <Olho cor={a.cor}>{a.t}</Olho>
                       <p className="mt-2 text-[14px] text-[var(--s-tinta-2)]">{a.d}</p>
@@ -1020,7 +1026,7 @@ export default function Inicio() {
                     <p className="shrink-0 text-right text-xl font-extrabold tabular-nums">{a.preco}</p>
                   </div>
                 ))}
-                <div className="site-revela flex items-start justify-between gap-4 rounded-[24px] border border-dashed border-[var(--s-borda)] p-5">
+                <div className="site-revela flex items-start justify-between gap-4 rounded-[var(--s-raio)] border border-dashed border-[var(--s-borda)] p-5">
                   <div className="min-w-0">
                     <Olho cor="var(--s-azul)">Implantação</Olho>
                     <p className="mt-2 text-[13px] text-[var(--s-tinta-2)]">
@@ -1049,7 +1055,7 @@ export default function Inicio() {
             <Cabeca olho="Dúvidas" cor="var(--s-violeta)" titulo="O que costumam perguntar antes de assinar." texto="Não achou a sua? Escreva para a gente — quem responde é quem faz o sistema." />
             <div className="site-revela flex flex-col gap-3">
               {PERGUNTAS.map((q) => (
-                <details key={q.p} className="group site-cartao rounded-2xl px-5 py-4 open:shadow-[var(--s-sombra-alta)]">
+                <details key={q.p} className="group site-cartao rounded-[var(--s-raio)] px-5 py-4 open:shadow-[var(--s-sombra-alta)]">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-bold [&::-webkit-details-marker]:hidden">
                     {q.p}
                     <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--s-violeta-claro)] text-[var(--s-violeta)] transition-transform group-open:rotate-45">
@@ -1065,7 +1071,7 @@ export default function Inicio() {
 
         {/* ── o fechamento ── */}
         <section className="px-4 py-20 sm:px-6 sm:py-28">
-          <div className="site-cresce relative mx-auto max-w-6xl overflow-hidden rounded-[40px]">
+          <div className="site-cresce relative mx-auto max-w-6xl overflow-hidden rounded-[var(--s-raio)]">
             <Foto src="/img/site/fimdodia.webp" alt="Dona de loja tranquila no fim do dia, olhando os números no notebook" className="absolute inset-0 h-full w-full" />
             <div className="absolute inset-0 bg-[linear-gradient(100deg,rgb(11_18_48/0.92)_20%,rgb(11_18_48/0.55)_60%,rgb(11_18_48/0.15))]" />
             <div className="relative flex max-w-2xl flex-col items-start gap-6 p-8 py-16 sm:p-14 sm:py-24">

@@ -46,7 +46,7 @@ export function Ramos({ ramos }: { ramos: RamoNaVitrine[] }) {
               aria-selected={ativo}
               aria-controls="ramo-painel"
               onClick={() => setId(x.id)}
-              className={`flex shrink-0 items-center gap-3 rounded-2xl border px-4 py-3 text-left text-[15px] font-bold transition-all lg:py-3.5 ${
+              className={`flex shrink-0 items-center gap-3 rounded-[var(--s-raio)] border px-4 py-3 text-left text-[15px] font-bold transition-all lg:py-3.5 ${
                 ativo ? 'border-transparent bg-[var(--s-cartao)] shadow-[var(--s-sombra-alta)]' : 'border-[var(--s-borda)] text-[var(--s-tinta-2)] hover:bg-[var(--s-cartao)] hover:text-[var(--s-tinta)]'
               }`}
             >
@@ -60,7 +60,7 @@ export function Ramos({ ramos }: { ramos: RamoNaVitrine[] }) {
         })}
       </div>
 
-      <div id="ramo-painel" role="tabpanel" key={r.id} className="site-troca-painel site-cartao flex flex-col gap-6 rounded-[32px] p-6 sm:p-8">
+      <div id="ramo-painel" role="tabpanel" key={r.id} className="site-troca-painel site-cartao flex flex-col gap-6 rounded-[var(--s-raio)] p-6 sm:p-8">
         <div>
           <p className="site-olho" style={{ color: r.cor }}>
             {r.titulo}
@@ -69,12 +69,12 @@ export function Ramos({ ramos }: { ramos: RamoNaVitrine[] }) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-2xl bg-[var(--s-fundo)] p-4">
+          <div className="rounded-[var(--s-raio)] bg-[var(--s-fundo)] p-4">
             <p className="text-[12px] font-bold text-[var(--s-tinta-2)]">No balcão</p>
             <p className="mt-1 text-[15px] font-bold">{r.balcao === 'grade' ? 'Botões grandes na tela' : 'Bipa o código ou busca pelo nome'}</p>
             <p className="text-[13px] text-[var(--s-tinta-2)]">Vende {MEDIDA[r.medida] ?? 'por unidade'}</p>
           </div>
-          <div className="rounded-2xl bg-[var(--s-fundo)] p-4">
+          <div className="rounded-[var(--s-raio)] bg-[var(--s-fundo)] p-4">
             <p className="text-[12px] font-bold text-[var(--s-tinta-2)]">{r.eixos.length ? 'Variações prontas' : 'Variações'}</p>
             {r.eixos.length ? (
               r.eixos.map((e) => (
@@ -96,7 +96,7 @@ export function Ramos({ ramos }: { ramos: RamoNaVitrine[] }) {
           <p className="text-[12px] font-bold text-[var(--s-tinta-2)]">Já abre com estas categorias</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {r.categorias.map((c) => (
-              <span key={c} className="rounded-full border border-[var(--s-borda)] px-3 py-1.5 text-[13px] font-semibold">
+              <span key={c} className="rounded-[var(--s-raio)] border border-[var(--s-borda)] px-3 py-1.5 text-[13px] font-semibold">
                 {c}
               </span>
             ))}
@@ -110,7 +110,7 @@ export function Ramos({ ramos }: { ramos: RamoNaVitrine[] }) {
               {r.funcoes.map((f) => (
                 <span
                   key={f}
-                  className="rounded-full px-3 py-1.5 text-[13px] font-bold"
+                  className="rounded-[var(--s-raio)] px-3 py-1.5 text-[13px] font-bold"
                   style={{ background: `color-mix(in srgb, ${r.cor} 12%, transparent)`, color: r.cor }}
                 >
                   {f}
