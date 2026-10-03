@@ -10,10 +10,14 @@
 // pular. Sem texto inventado e sem número de mentira: só blocos.
 
 import { cx } from './base'
+import { menuRecolhido } from '@/servidor/menu-lateral'
 
 const bloco = 'rounded-norte bg-superficie-2 motion-safe:animate-pulse'
 
-export function Esqueleto({ recolhida = false }: { recolhida?: boolean }) {
+export async function Esqueleto({ recolhida = false }: { recolhida?: boolean }) {
+  // A lateral segue a escolha da pessoa (o botão do menu), como a Estrutura:
+  // senão ela piscava larga e encolhia quando a tela chegava.
+  const lateral = await menuRecolhido(recolhida)
   return (
     <div className={cx('flex', recolhida ? 'h-dvh overflow-hidden' : 'min-h-dvh')} role="status" aria-live="polite">
       <span className="sr-only">Carregando…</span>
@@ -21,13 +25,13 @@ export function Esqueleto({ recolhida = false }: { recolhida?: boolean }) {
         aria-hidden
         className={cx(
           'sticky top-0 hidden h-dvh shrink-0 flex-col gap-2 border-r border-lado-borda bg-lado md:flex',
-          recolhida ? 'w-[68px] px-2 py-3' : 'w-60 p-2.5',
+          lateral ? 'w-[68px] px-2 py-3' : 'w-60 p-2.5',
         )}
       >
-        {Array.from({ length: recolhida ? 9 : 12 }, (_, i) => (
+        {Array.from({ length: lateral ? 9 : 12 }, (_, i) => (
           <span
             key={i}
-            className={cx('rounded-norte bg-lado-2 motion-safe:animate-pulse', recolhida ? 'mx-auto size-10' : 'h-8 w-full')}
+            className={cx('rounded-norte bg-lado-2 motion-safe:animate-pulse', lateral ? 'mx-auto size-10' : 'h-8 w-full')}
           />
         ))}
       </aside>

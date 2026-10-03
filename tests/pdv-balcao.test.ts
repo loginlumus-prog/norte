@@ -391,8 +391,8 @@ describe('o pagamento', () => {
     const morango = await p.criarOpcaoDoEixo(DONA, eixo.id, ' Morango ')
     expect(morango.valor).toBe('Morango')
     expect((await p.criarOpcaoDoEixo(DONA, eixo.id, 'MORANGO')).id).toBe(morango.id)
-    const [{ n }] = await linha<{ n: number }>(`select count(*)::int n from opcoes where eixo_id = $1`, [eixo.id])
-    expect(n).toBe(1)
+    const [contagem] = await linha<{ n: number }>(`select count(*)::int n from opcoes where eixo_id = $1`, [eixo.id])
+    expect(contagem?.n).toBe(1)
 
     // Cor guarda o hex; hex torto vira nulo em vez de quebrar a tela.
     const cor = await p.criarEixoDaEmpresa(DONA, 'Cor', true)

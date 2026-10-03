@@ -36,6 +36,8 @@ import { lerSessao, ultimoToque } from '@/servidor/sessao'
 import { TrocaTema, type Tema } from './TrocaTema'
 import { TrocaModo } from './TrocaModo'
 import { lerModo } from '@/servidor/modo'
+import { menuRecolhido } from '@/servidor/menu-lateral'
+import { BarraLateral } from './BarraLateral'
 import { itemNaEmpresa, noModo, podeVerItem } from './menu'
 import { Simbolo } from './Marca'
 import { Gaveta } from './Gaveta'
@@ -109,6 +111,10 @@ export async function Estrutura({
     : null
 
   const modo = await lerModo()
+  // A lateral: a escolha da pessoa neste aparelho; sem escolha, o padrão da
+  // tela (o balcão abre recolhido). `recolhida` continua mandando no resto
+  // da moldura (altura da janela, sem rolar a página); a lateral é só dela.
+  const barraRecolhida = await menuRecolhido(recolhida)
   // A tela já nasce trancada quando ninguém mexe neste aparelho há
   // TRANCA_MIN — senão o F5 (ou uma aba nova) destrancava. Ver `marcarToque`.
   const trancada = trancadaAoAbrir(
@@ -400,30 +406,22 @@ export async function Estrutura({
           tela — e numa tela longa ela acaba no meio, deixando um pedaço branco
           embaixo do azul. Grudada, ela também continua à mão depois de rolar,
           que é o que se espera de navegação de sistema. */}
-      {recolhida ? (
-        <aside className="sticky top-0 hidden h-dvh w-[68px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-lado-borda bg-lado px-2 py-3 md:flex">
-          <Link
-            href={`/${empresa.slug}`}
-            aria-label={`Norte · ${empresa.nome}`}
-            title={empresa.nome}
-            className="mx-auto mb-1"
-          >
+      {/* A lateral tem um botão que a recolhe num trilho de ícones e a abre de
+          novo, em toda tela. Quem escolheu, escolheu para todas (cookie do
+          aparelho); sem escolha, o balcão abre recolhido e o resto aberto. */}
+      <BarraLateral
+        inicial={barraRecolhida}
+        marcaCompleta={marca('marca-barra')}
+        navegacao={navegacao}
+        rodape={rodape}
+        marcaTrilho={
+          <Link href={`/${empresa.slug}`} aria-label={`Norte · ${empresa.nome}`} title={empresa.nome} className="mx-auto mb-1">
             <Simbolo tamanho={30} id="marca-trilho" />
           </Link>
-          {trilho}
-          {rodapeTrilho}
-        </aside>
-      ) : (
-        // Só a lista rola; a marca em cima e a pessoa embaixo ficam presas.
-        // Antes a barra inteira rolava, e numa tela de 900px o dono (que vê
-        // tudo) perdia Assinatura, Configurações e o "Sair" para baixo da
-        // dobra, sem nenhum sinal de que havia mais.
-        <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-0.5 border-r border-lado-borda bg-lado p-2.5 md:flex">
-          <div className="shrink-0">{marca('marca-barra')}</div>
-          <div className="lista-rola -mx-2.5 min-h-0 flex-1 overflow-y-auto px-2.5 pb-2">{navegacao}</div>
-          {rodape}
-        </aside>
-      )}
+        }
+        trilho={trilho}
+        rodapeTrilho={rodapeTrilho}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* A barra de cima do celular: azul-noite como a lateral, para a

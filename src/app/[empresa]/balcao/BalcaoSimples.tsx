@@ -185,6 +185,20 @@ export function BalcaoSimples({
     return () => window.removeEventListener('resize', medir)
   })
 
+  // O botão do menu abre e fecha a lateral SEM redesenhar o balcão e sem
+  // mudar a janela: o balcão só muda de largura. Observar a largura dele é o
+  // que mantém a barra do pedido (celular e tablet em pé) começando onde o
+  // balcão começa, em vez de ficar por cima do menu que acabou de abrir.
+  useEffect(() => {
+    const el = v.raiz.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      el.style.setProperty('--esquerda', `${Math.round(el.getBoundingClientRect().left)}px`)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [v.raiz])
+
   const emUso = opcoesEmUso(v, usuarioId)
   // O crediário no pedido: o "ela já deve" da cliente escolhida e o "veio só
   // pagar". Enquanto "Mais opções" está aberta, o aviso mora lá (onde a
