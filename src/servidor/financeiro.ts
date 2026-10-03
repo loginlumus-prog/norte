@@ -396,6 +396,97 @@ const ROTULO: Record<GrupoDRE, string> = {
   OUTRA: 'Outras despesas',
 }
 
+/* ── o recebido, por forma e por maquininha ───────────────── */
+
+export type RecebidoNaMaquininha = {
+  unidadeId: string
+  unidade: string
+  /** O nome como no cadastro da loja. Nulo = pagamento sem maquininha marcada. */
+  maquininha: string | null
+  formas: { forma: string; total: number; vendas: number; taxa: number }[]
+  total: number
+  taxa: number
+}
+
+export type RecebidoNoPeriodo = {
+  /** Dinheiro, Pix, débito, crédito, vale… — o total de cada forma, para a empresa inteira lida. */
+  porForma: { forma: string; total: number; vendas: number }[]
+  /** Pix, débito e crédito separados por loja e por maquininha. */
+  maquininhas: RecebidoNaMaquininha[]
+  total: number
+}
+
+/**
+ * O que entrou nas vendas do período, por forma de pagamento e, nas formas que
+ * passam por maquininha ou conta do Pix, por maquininha.
+ *
+ * Por LOJA e por nome: duas lojas com "Mercado Pago" são duas contas, e o
+ * extrato de cada uma só bate com a sua. A taxa é a gravada em cada pagamento
+ * (a do dia da venda), a mesma conta do DRE.
+ */
+export async function recebidoPorForma(
+  sessao: Sessao,
+  pedidas: string[],
+  de: Date,
+  ate: Date,
+): Promise<RecebidoNoPeriodo> {
+  exigir(sessao, 'financeiro.ver')
+  const unidadeIds = soAsQuePode(sessao, 'financeiro.ver', pedidas)
+  return comoOrg(sessao.orgId, async (db) => {
+    const linhas = await db.$queryRaw<
+      { unidade_id: string; unidade: string; forma: string; maquininha: string | null; total: string; vendas: number; taxa: string }[]
+    >`
+      select v.unidade_id, u.nome as unidade, p.forma::text as forma, p.maquininha,
+             sum(p.valor) as total, count(distinct v.id)::int as vendas,
+             sum(p.valor * coalesce(p.taxa_pct, 0) / 100) as taxa
+        from pagamentos p
+        join vendas v on v.id = p.venda_id
+        join unidades u on u.id = v.unidade_id
+       where v.unidade_id = any(${unidadeIds}) and v.situacao = 'CONCLUIDA'
+         and v.criada_em >= ${de} and v.criada_em <= ${ate}
+       group by 1, 2, 3, 4
+    `
+    const ORDEM = ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'CREDIARIO', 'VALE', 'TRANSFERENCIA']
+    const forma = new Map<string, { totalC: number; vendas: number }>()
+    const maq = new Map<string, RecebidoNaMaquininha & { totalC: number; taxaC: number }>()
+    for (const l of linhas) {
+      const c = centavos(l.total)
+      const f = forma.get(l.forma) ?? forma.set(l.forma, { totalC: 0, vendas: 0 }).get(l.forma)!
+      f.totalC += c
+      f.vendas += l.vendas
+      if (!['PIX', 'DEBITO', 'CREDITO', 'TRANSFERENCIA'].includes(l.forma)) continue
+      const nome = l.maquininha?.trim() || null
+      const chave = `${l.unidade_id}\u0000${nome ?? ''}`
+      const g =
+        maq.get(chave) ??
+        maq
+          .set(chave, { unidadeId: l.unidade_id, unidade: l.unidade, maquininha: nome, formas: [], total: 0, taxa: 0, totalC: 0, taxaC: 0 })
+          .get(chave)!
+      const t = centavos(l.taxa)
+      g.formas.push({ forma: l.forma, total: reais(c), vendas: l.vendas, taxa: reais(t) })
+      g.totalC += c
+      g.taxaC += t
+    }
+    const pos = (f: string) => (ORDEM.indexOf(f) < 0 ? 99 : ORDEM.indexOf(f))
+    const porForma = [...forma.entries()]
+      .map(([f, x]) => ({ forma: f, total: reais(x.totalC), vendas: x.vendas }))
+      .sort((a, b) => pos(a.forma) - pos(b.forma))
+    const maquininhas = [...maq.values()]
+      .map(({ totalC, taxaC, ...g }) => ({
+        ...g,
+        formas: g.formas.sort((a, b) => pos(a.forma) - pos(b.forma)),
+        total: reais(totalC),
+        taxa: reais(taxaC),
+      }))
+      .sort(
+        (a, b) =>
+          a.unidade.localeCompare(b.unidade, 'pt-BR') ||
+          (a.maquininha === null ? 1 : b.maquininha === null ? -1 : a.maquininha.localeCompare(b.maquininha, 'pt-BR')),
+      )
+    return { porForma, maquininhas, total: reais(porForma.reduce((s, f) => s + centavos(f.total), 0)) }
+  })
+}
+
 /**
  * O DRE do período, no formato que a contabilidade usa.
  *

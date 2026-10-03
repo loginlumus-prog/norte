@@ -368,6 +368,16 @@ describe('o pagamento', () => {
     expect(p).toMatchObject({ maquininha: 'Pague Fácil', parcelas: 3 })
     expect(Number(p!.juros)).toBe(0)
     expect(Number(p!.valor)).toBe(55)
+
+    // O Financeiro enxerga a venda: a forma e a maquininha, por loja.
+    const { recebidoPorForma } = await import('../src/servidor/financeiro')
+    const rec = await recebidoPorForma(DONA, ['uni-a1', 'uni-a2'], new Date(Date.now() - 3_600_000), new Date(Date.now() + 3_600_000))
+    expect(rec.porForma.find((f) => f.forma === 'CREDITO')?.total).toBeGreaterThanOrEqual(55)
+    const pf = rec.maquininhas.find((x) => x.maquininha === 'Pague Fácil' && x.unidadeId === 'uni-a1')
+    expect(pf?.unidade).toBe('Loja Centro')
+    expect(pf?.formas.find((f) => f.forma === 'CREDITO')?.total).toBeGreaterThanOrEqual(55)
+    // Outra loja não recebe nada do que passou nesta.
+    expect(rec.maquininhas.some((x) => x.maquininha === 'Pague Fácil' && x.unidadeId === 'uni-a2')).toBe(false)
   })
 
   it('maquininha que não é desta loja (ou desta forma) é recusada', async () => {

@@ -3,7 +3,8 @@ import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { escolherUnidade } from '@/servidor/unidade'
 import {
-  aVencer, janelaDoMes, lerMes, listarLancamentos, mesDeAgora, montarDRE, outroMes, prepararFinanceiro, resultadoPorMes,
+  aVencer, janelaDoMes, lerMes, listarLancamentos, mesDeAgora, montarDRE, outroMes, prepararFinanceiro, recebidoPorForma,
+  resultadoPorMes,
 } from '@/servidor/financeiro'
 import { diaEmSP } from '@/servidor/dia'
 import { garantirRecorrentes, listarRecorrentes, situacaoDoVencimento } from '@/servidor/recorrentes'
@@ -37,6 +38,11 @@ const MES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ]
+
+const FORMA: Record<string, string> = {
+  DINHEIRO: 'Dinheiro', PIX: 'Pix', DEBITO: 'Débito', CREDITO: 'Crédito',
+  CREDIARIO: 'Crediário', VALE: 'Vale de troca', TRANSFERENCIA: 'Transferência',
+}
 
 /** Porcentagem com vírgula, do jeito brasileiro: "-47,5%". */
 const pct = (v: number) => `${v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
@@ -108,9 +114,10 @@ export default async function Financeiro({
     await garantirRecorrentes(sessao, mesOlhado).catch((e) => registrarErro('financeiro.recorrentes', e))
   }
 
-  const [contas, dre, categorias, unidades, lancamentos, meses, recorrentes] = await Promise.all([
+  const [contas, dre, recebido, categorias, unidades, lancamentos, meses, recorrentes] = await Promise.all([
     aVencer(sessao, onde.ids),
     montarDRE(sessao, onde.ids, de, ate),
+    recebidoPorForma(sessao, onde.ids, de, ate),
     comoOrg(sessao.orgId, (db) =>
       db.categoriaFinanceira.findMany({
         where: { ativa: true },
@@ -595,6 +602,67 @@ export default async function Financeiro({
             )}
           </p>
         </Cartao>
+
+        {recebido.total > 0 && (
+          <Cartao titulo={`Recebido em ${nomeDoMes}, por forma de pagamento`}>
+            <ul className="flex flex-col">
+              {recebido.porForma.map((f) => (
+                <li key={f.forma} className="flex items-baseline justify-between gap-4 border-b border-borda-suave py-2 text-sm">
+                  <span className="text-tinta">
+                    {FORMA[f.forma] ?? f.forma}{' '}
+                    <span className="text-xs text-tinta-3">
+                      {pct((f.total / recebido.total) * 100)} · {f.vendas} {f.vendas === 1 ? 'venda' : 'vendas'}
+                    </span>
+                  </span>
+                  <span className="numero font-semibold text-tinta">{brl(f.total)}</span>
+                </li>
+              ))}
+              <li className="flex items-baseline justify-between gap-4 pt-2 text-sm font-bold text-tinta">
+                <span>Total recebido</span>
+                <span className="numero">{brl(recebido.total)}</span>
+              </li>
+            </ul>
+
+            {recebido.maquininhas.length > 0 && (
+              <div className="mt-4 flex flex-col gap-2">
+                <p className="text-xs font-semibold tracking-wide text-tinta-3 uppercase">Por maquininha e conta do Pix</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {recebido.maquininhas.map((m) => (
+                    <div key={`${m.unidadeId}-${m.maquininha ?? ''}`} className="rounded-norte border border-borda bg-superficie-2 p-3">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="min-w-0 text-sm font-semibold text-tinta">
+                          {m.maquininha ?? 'Sem maquininha marcada'}
+                          {onde.ids.length > 1 && (
+                            <span className="block truncate text-xs font-normal text-tinta-3">{m.unidade}</span>
+                          )}
+                        </span>
+                        <span className="numero shrink-0 text-base font-bold text-tinta">{brl(m.total)}</span>
+                      </div>
+                      <ul className="mt-2 flex flex-col gap-0.5">
+                        {m.formas.map((f) => (
+                          <li key={f.forma} className="flex justify-between gap-3 text-xs text-tinta-2">
+                            <span>{FORMA[f.forma] ?? f.forma}</span>
+                            <span className="numero">{brl(f.total)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {m.taxa > 0 && (
+                        <p className="mt-2 border-t border-borda-suave pt-1.5 text-xs text-tinta-3">
+                          Taxa <span className="numero">{brl(m.taxa)}</span> · cai{' '}
+                          <span className="numero font-semibold text-tinta-2">{brl(m.total - m.taxa)}</span>
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-tinta-3">
+                  É o que as vendas registraram. Para conferir com o extrato, some o mês da maquininha. A venda sem
+                  maquininha marcada aparece junto, para ninguém ficar sem conta.
+                </p>
+              </div>
+            )}
+          </Cartao>
+        )}
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Cartao caixa titulo="Entrou × saiu, nos últimos 6 meses">
