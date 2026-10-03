@@ -380,6 +380,36 @@ describe('o pagamento', () => {
     expect(rec.maquininhas.some((x) => x.maquininha === 'Pague Fácil' && x.unidadeId === 'uni-a2')).toBe(false)
   })
 
+  it('a ficha cria o eixo e a opção na hora: sem repetir, e só quem edita produto', async () => {
+    const p = await import('../src/servidor/produto')
+    // A sorveteria tinha o eixo "Sabor" e nenhum sabor — e não havia tela para criar.
+    const eixo = await p.criarEixoDaEmpresa(DONA, '  Sabor  ')
+    expect(eixo).toMatchObject({ nome: 'Sabor', ehCor: false, opcoes: [] })
+    // O mesmo nome (até em outra caixa) devolve o que já existe.
+    expect((await p.criarEixoDaEmpresa(DONA, 'sabor')).id).toBe(eixo.id)
+
+    const morango = await p.criarOpcaoDoEixo(DONA, eixo.id, ' Morango ')
+    expect(morango.valor).toBe('Morango')
+    expect((await p.criarOpcaoDoEixo(DONA, eixo.id, 'MORANGO')).id).toBe(morango.id)
+    const [{ n }] = await linha<{ n: number }>(`select count(*)::int n from opcoes where eixo_id = $1`, [eixo.id])
+    expect(n).toBe(1)
+
+    // Cor guarda o hex; hex torto vira nulo em vez de quebrar a tela.
+    const cor = await p.criarEixoDaEmpresa(DONA, 'Cor', true)
+    expect((await p.criarOpcaoDoEixo(DONA, cor.id, 'Azul', '#1f4fd8')).hex).toBe('#1f4fd8')
+    expect((await p.criarOpcaoDoEixo(DONA, cor.id, 'Verde', 'verde')).hex).toBeNull()
+
+    // Nome vazio, eixo que não existe e quem só vende: recusados.
+    await expect(p.criarOpcaoDoEixo(DONA, eixo.id, '   ')).rejects.toThrow('Escreva o nome')
+    await expect(p.criarOpcaoDoEixo(DONA, 'nao-existe', 'X')).rejects.toThrow('não existe mais')
+    await expect(p.criarEixoDaEmpresa(BALCAO, 'Tamanho')).rejects.toThrow()
+    await expect(p.criarOpcaoDoEixo(BALCAO, eixo.id, 'Chocolate')).rejects.toThrow()
+
+    // E fica no livro, para saber quem criou.
+    const livro = await linha<{ acao: string }>(`select acao from auditoria where acao like 'produto.%criou' and acao in ('produto.eixo.criou','produto.opcao.criou')`)
+    expect(livro.map((l) => l.acao)).toEqual(expect.arrayContaining(['produto.eixo.criou', 'produto.opcao.criou']))
+  })
+
   it('maquininha que não é desta loja (ou desta forma) é recusada', async () => {
     expect(await vender({ pagamentos: [{ forma: 'PIX', valor: 50, maquininha: 'Pague Fácil' }] })).toMatchObject({
       ok: false,

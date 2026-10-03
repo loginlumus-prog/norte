@@ -432,6 +432,109 @@ export const excluirProduto = (sessao: Sessao, produtoId: string) =>
 export const reativarProduto = (sessao: Sessao, produtoId: string) =>
   editarProduto(sessao, produtoId, { ativo: true }, 'produto.reativou')
 
+// ─────────────────────────────────────────────────────────────
+// OS EIXOS E AS OPÇÕES DA EMPRESA (Sabor, Tamanho, Cor…)
+// ─────────────────────────────────────────────────────────────
+// Até 03/10/2026 eles só nasciam do ramo escolhido no cadastro ou da
+// importação — não havia tela. A sorveteria tinha o eixo "Sabor" sem nenhum
+// sabor, e quem abria um produto via "Como varia" vazio e não achava como
+// adicionar variação. Agora a ficha cria os dois na hora.
+//
+// São da EMPRESA, não da loja (o Sabor "Morango" serve nas duas), então valem
+// para todo produto: por isso pedem a capacidade `produto.editar` sem loja.
+// Criar não mexe em produto nenhum — a grade só muda quando a pessoa marca a
+// opção e salva a ficha.
+
+export class EixoRecusado extends Error {
+  constructor(motivo: string) {
+    super(motivo)
+    this.name = 'EixoRecusado'
+  }
+}
+
+const limpo = (s: string) => s.replace(/\s+/g, ' ').trim()
+const HEX = /^#[0-9a-fA-F]{6}$/
+const MAX_OPCOES_POR_EIXO = 200
+const MAX_EIXOS = 10
+
+/** Cria uma opção num eixo existente (um sabor, um tamanho). Repetida (mesmo nome) devolve a que já existe. */
+export async function criarOpcaoDoEixo(
+  sessao: Sessao,
+  eixoId: string,
+  valorBruto: string,
+  hex?: string | null,
+): Promise<{ id: string; valor: string; hex: string | null }> {
+  exigir(sessao, 'produto.editar')
+  const valor = limpo(valorBruto).slice(0, 40)
+  if (!valor) throw new EixoRecusado('Escreva o nome da opção.')
+  const cor = hex && HEX.test(hex) ? hex : null
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const eixo = await db.eixo.findUnique({ where: { id: eixoId }, select: { id: true, nome: true } })
+    if (!eixo) throw new EixoRecusado('Este eixo não existe mais. Recarregue a página.')
+    const todas = await db.opcao.findMany({ where: { eixoId }, select: { id: true, valor: true, hex: true, ordem: true } })
+    const igual = todas.find((o) => o.valor.toLocaleLowerCase('pt-BR') === valor.toLocaleLowerCase('pt-BR'))
+    if (igual) return { id: igual.id, valor: igual.valor, hex: igual.hex }
+    if (todas.length >= MAX_OPCOES_POR_EIXO) throw new EixoRecusado(`Já são ${MAX_OPCOES_POR_EIXO} opções neste eixo.`)
+
+    const nova = await db.opcao.create({
+      data: { orgId: sessao.orgId, eixoId, valor, hex: cor, ordem: Math.max(-1, ...todas.map((o) => o.ordem)) + 1 },
+      select: { id: true, valor: true, hex: true },
+    })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'produto.opcao.criou',
+        alvoTipo: 'eixo',
+        alvoId: eixo.id,
+        alvoNome: `${eixo.nome}: ${valor}`,
+        depois: { valor, hex: cor },
+      },
+    })
+    return nova
+  })
+}
+
+/** Cria um eixo novo (Sabor, Tamanho…) para a empresa. Mesmo nome devolve o que já existe. */
+export async function criarEixoDaEmpresa(
+  sessao: Sessao,
+  nomeBruto: string,
+  ehCor = false,
+): Promise<{ id: string; nome: string; ehCor: boolean; opcoes: { id: string; valor: string; hex: string | null }[] }> {
+  exigir(sessao, 'produto.editar')
+  const nome = limpo(nomeBruto).slice(0, 30)
+  if (!nome) throw new EixoRecusado('Escreva o nome do eixo (Sabor, Tamanho, Cor…).')
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const todos = await db.eixo.findMany({
+      select: { id: true, nome: true, ehCor: true, ordem: true, opcoes: { select: { id: true, valor: true, hex: true }, orderBy: { ordem: 'asc' } } },
+    })
+    const igual = todos.find((e) => e.nome.toLocaleLowerCase('pt-BR') === nome.toLocaleLowerCase('pt-BR'))
+    if (igual) return { id: igual.id, nome: igual.nome, ehCor: igual.ehCor, opcoes: igual.opcoes }
+    if (todos.length >= MAX_EIXOS) throw new EixoRecusado(`A empresa já tem ${MAX_EIXOS} eixos. Use um dos que existem.`)
+
+    const novo = await db.eixo.create({
+      data: { orgId: sessao.orgId, nome, ehCor, ordem: Math.max(-1, ...todos.map((e) => e.ordem)) + 1 },
+      select: { id: true, nome: true, ehCor: true },
+    })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'produto.eixo.criou',
+        alvoTipo: 'eixo',
+        alvoId: novo.id,
+        alvoNome: nome,
+        depois: { ehCor },
+      },
+    })
+    return { ...novo, opcoes: [] }
+  })
+}
+
 /** A grade não pode mudar como pedido — a mensagem diz o que resolver antes. */
 export class GradeRecusada extends Error {
   constructor(motivo: string) {

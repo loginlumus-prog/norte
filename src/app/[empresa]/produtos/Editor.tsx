@@ -16,7 +16,7 @@
 import { useActionState, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao, cx } from '@/ui/base'
-import { criar, editar, type EstadoProduto } from './acoes'
+import { criar, editar, novaOpcao, novoEixo, type EstadoProduto } from './acoes'
 import { semApagar } from '@/ui/formulario'
 import { CampoDoPin } from '@/ui/Assinar'
 
@@ -77,9 +77,130 @@ const MEDIDAS = [
   { valor: 'CX', titulo: 'Caixa' },
 ]
 
+/** Os eixos que a ficha sugere criar quando a empresa não tem nenhum. */
+const SUGESTOES_DE_EIXO = [
+  { nome: 'Sabor', ehCor: false },
+  { nome: 'Tamanho', ehCor: false },
+  { nome: 'Cor', ehCor: true },
+]
+
+const CAMPO_PEQUENO =
+  'h-9 min-w-0 rounded-norte border border-borda bg-superficie px-2.5 text-sm text-tinta placeholder:text-tinta-3 focus:border-marca focus:outline-none'
+
+/** "+ Sabor": uma linha para escrever o nome e criar a opção na hora. Enter cria, não salva a ficha. */
+function NovaOpcao({
+  eixo,
+  aoCriar,
+  slug,
+}: {
+  eixo: EixoNaTela
+  slug: string
+  aoCriar: (eixoId: string, opcao: { id: string; valor: string; hex: string | null }) => void
+}) {
+  const [texto, setTexto] = useState('')
+  const [hex, setHex] = useState('#1f4fd8')
+  const [erro, setErro] = useState<string | null>(null)
+  const [indo, setIndo] = useState(false)
+
+  async function criarAgora() {
+    if (!texto.trim() || indo) return
+    setIndo(true)
+    setErro(null)
+    const r = await novaOpcao(slug, eixo.id, texto, eixo.ehCor ? hex : null).catch(() => ({ erro: 'Sem conexão. Tente de novo.' }))
+    setIndo(false)
+    if ('erro' in r) return setErro(r.erro)
+    aoCriar(eixo.id, r.opcao)
+    setTexto('')
+  }
+
+  return (
+    <div className="mt-2.5 flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-2">
+        {eixo.ehCor && (
+          <input
+            type="color"
+            value={hex}
+            onChange={(e) => setHex(e.target.value)}
+            aria-label={`Cor de ${eixo.nome.toLowerCase()}`}
+            className="h-9 w-10 shrink-0 cursor-pointer rounded-norte border border-borda bg-superficie p-0.5"
+          />
+        )}
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void criarAgora()
+            }
+          }}
+          maxLength={40}
+          placeholder={`Novo ${eixo.nome.toLowerCase()}: escreva e toque em Adicionar`}
+          aria-label={`Novo ${eixo.nome.toLowerCase()}`}
+          className={cx(CAMPO_PEQUENO, 'w-full max-w-xs flex-1')}
+        />
+        <Botao type="button" tom="secundario" onClick={criarAgora} carregando={indo} disabled={!texto.trim()} className="h-9 py-0">
+          + Adicionar
+        </Botao>
+      </div>
+      {erro && <p className="text-xs text-critico">{erro}</p>}
+    </div>
+  )
+}
+
+/** Sem eixo nenhum: escolhe Sabor, Tamanho ou Cor, ou escreve o nome do eixo. */
+function NovoEixo({ slug, aoCriar }: { slug: string; aoCriar: (e: EixoNaTela) => void }) {
+  const [nome, setNome] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+  const [indo, setIndo] = useState(false)
+
+  async function criarAgora(n: string, ehCor: boolean) {
+    if (!n.trim() || indo) return
+    setIndo(true)
+    setErro(null)
+    const r = await novoEixo(slug, n, ehCor).catch(() => ({ erro: 'Sem conexão. Tente de novo.' }))
+    setIndo(false)
+    if ('erro' in r) return setErro(r.erro)
+    aoCriar(r.eixo)
+    setNome('')
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {SUGESTOES_DE_EIXO.map((s) => (
+          <Botao key={s.nome} type="button" tom="secundario" disabled={indo} onClick={() => criarAgora(s.nome, s.ehCor)} className="h-9 py-0">
+            + {s.nome}
+          </Botao>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void criarAgora(nome, false)
+            }
+          }}
+          maxLength={30}
+          placeholder="Ou outro: Voltagem, Peso, Sabor da calda…"
+          aria-label="Nome do novo eixo"
+          className={cx(CAMPO_PEQUENO, 'w-full max-w-xs flex-1')}
+        />
+        <Botao type="button" tom="secundario" onClick={() => criarAgora(nome, false)} disabled={!nome.trim() || indo} className="h-9 py-0">
+          Criar
+        </Botao>
+      </div>
+      {erro && <p className="text-xs text-critico">{erro}</p>}
+    </div>
+  )
+}
+
 export function Editor({
   slug,
-  eixos,
+  eixos: eixosDaPagina,
   categorias,
   lojas = [],
   sugestao,
@@ -108,6 +229,9 @@ export function Editor({
   /** Quem cadastra assina com o PIN (a vendedora, quando a empresa deixa — ver EXTRAS_DO_BALCAO). */
   pedePin?: boolean
 }) {
+  // Os eixos moram aqui, e não só na página, porque a ficha cria sabor e eixo
+  // na hora — sem recarregar e sem perder o que já foi digitado.
+  const [eixos, setEixos] = useState<EixoNaTela[]>(eixosDaPagina)
   const idsDosEixos = useMemo(() => eixos.map((e) => e.id), [eixos])
   const travado = produto?.travado === true
 
@@ -153,6 +277,16 @@ export function Editor({
       const atual = m[eixoId] ?? []
       return { ...m, [eixoId]: on ? [...atual, opcaoId] : atual.filter((x) => x !== opcaoId) }
     })
+
+  // Opção criada na hora: entra no eixo e já vem marcada — quem escreveu
+  // "Morango" quer o Morango neste produto.
+  const opcaoCriada = (eixoId: string, opcao: { id: string; valor: string; hex: string | null }) => {
+    setEixos((es) =>
+      es.map((e) => (e.id === eixoId && !e.opcoes.some((o) => o.id === opcao.id) ? { ...e, opcoes: [...e.opcoes, opcao] } : e)),
+    )
+    setMarcadas((m) => ((m[eixoId] ?? []).includes(opcao.id) ? m : { ...m, [eixoId]: [...(m[eixoId] ?? []), opcao.id] }))
+  }
+  const eixoCriado = (novo: EixoNaTela) => setEixos((es) => (es.some((e) => e.id === novo.id) ? es : [...es, novo]))
 
   // A conta que a pessoa precisa ver ANTES de salvar.
   const usados = eixos.filter((e) => (marcadas[e.id] ?? []).length > 0)
@@ -359,11 +493,13 @@ export function Editor({
         }
       >
         {eixos.length === 0 ? (
-          <Aviso nivel="neutro">
-            Sua empresa ainda não criou nenhum eixo de variação (Cor, Tamanho, Numeração,
-            Sabor…). Sem eixo, o produto entra como item único — que é o certo para quem
-            vende a granel.
-          </Aviso>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-tinta-2">
+              Este produto é um item único. Para ele variar (sabor, tamanho, cor…), crie primeiro
+              <b> como ele varia</b> — é só uma vez, depois vale para todos os produtos.
+            </p>
+            {travado ? null : <NovoEixo slug={slug} aoCriar={eixoCriado} />}
+          </div>
         ) : (
           <>
             {travado && <input type="hidden" name="gradeTravada" value="1" />}
@@ -420,10 +556,27 @@ export function Editor({
                         )
                       })}
                     </div>
+                    {e.opcoes.length === 0 && (
+                      <p className="text-sm text-tinta-2">
+                        Ainda não há nenhum {e.nome.toLowerCase()} cadastrado. Escreva o primeiro abaixo.
+                      </p>
+                    )}
+                    {!travado && <NovaOpcao eixo={e} slug={slug} aoCriar={opcaoCriada} />}
                   </section>
                 )
               })}
             </div>
+
+            {!travado && (
+              <details className="mt-4 text-sm">
+                <summary className="cursor-pointer font-semibold text-marca underline-offset-2 hover:underline">
+                  Variar de outro jeito também (tamanho, cor…)
+                </summary>
+                <div className="mt-2.5">
+                  <NovoEixo slug={slug} aoCriar={eixoCriado} />
+                </div>
+              </details>
+            )}
 
             {usados.length > 1 && (
               <p className="mt-4 text-sm text-tinta-2">

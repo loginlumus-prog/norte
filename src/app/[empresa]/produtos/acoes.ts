@@ -7,7 +7,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { criarProduto, editarProduto, excluirProduto, reativarProduto, ajustarGrade, GradeRecusada, type EixoEscolhido } from '@/servidor/produto'
+import { criarProduto, editarProduto, excluirProduto, reativarProduto, ajustarGrade, criarOpcaoDoEixo, criarEixoDaEmpresa, GradeRecusada, type EixoEscolhido } from '@/servidor/produto'
 import { SemPermissao, pode, unidadesQuePodem, type Sessao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { alcanceComum, normalizarVendidoEm, vendidoEmDoGerente } from '@/servidor/catalogo-loja'
@@ -346,6 +346,40 @@ export async function editar(
       return { erro: 'Você não tem permissão para essa alteração. O preço exige permissão própria.' }
     }
     return { erro: recadoDoErro(e, 'Não deu para salvar.') }
+  }
+}
+
+/** O que a ficha recebe de volta ao criar um eixo ou uma opção na hora. */
+export type EixoCriado = { id: string; nome: string; ehCor: boolean; opcoes: { id: string; valor: string; hex: string | null }[] }
+
+/** "+ Novo sabor": cria a opção no eixo e devolve para a ficha já marcar. */
+export async function novaOpcao(
+  slug: string,
+  eixoId: string,
+  valor: string,
+  hex?: string | null,
+): Promise<{ opcao: { id: string; valor: string; hex: string | null } } | { erro: string }> {
+  const sessao = await exigirSessao(slug)
+  try {
+    return { opcao: await criarOpcaoDoEixo(sessao, eixoId, valor, hex) }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para criar opções.' }
+    return { erro: recadoDoErro(e, 'Não deu para criar a opção.') }
+  }
+}
+
+/** "+ Novo eixo": cria Sabor, Tamanho, Cor… quando a empresa ainda não tem. */
+export async function novoEixo(
+  slug: string,
+  nome: string,
+  ehCor: boolean,
+): Promise<{ eixo: EixoCriado } | { erro: string }> {
+  const sessao = await exigirSessao(slug)
+  try {
+    return { eixo: await criarEixoDaEmpresa(sessao, nome, ehCor) }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para criar eixos.' }
+    return { erro: recadoDoErro(e, 'Não deu para criar o eixo.') }
   }
 }
 
