@@ -803,7 +803,7 @@ export default function Inicio() {
           fichas={['Retirada ou entrega', 'Taxa e pedido mínimo', 'Chave Pix', 'Esgotado some sozinho', 'Um link por loja']}
           foto="/img/site/catalogo.webp"
           alt="Cliente escolhendo produtos pelo catálogo da loja no celular, numa mesa de café"
-          foco="object-[25%_50%]"
+          foco="object-[22%_20%]"
           tela={<CelularCatalogo />}
         />
 

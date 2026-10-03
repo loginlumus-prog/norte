@@ -15,20 +15,6 @@ const cor = (c: string) => ({ '--cor': c }) as CSSProperties
 
 const BRL = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-/* ── moldura de celular ─────────────────────────────────── */
-export function Celular({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return (
-    <div
-      className={`relative mx-auto w-[270px] rounded-[44px] border border-[var(--s-borda)] bg-[#0b1020] p-[9px] shadow-[var(--s-sombra-alta)] ${className}`}
-    >
-      <div className="relative h-[540px] overflow-hidden rounded-[36px] bg-[var(--s-cartao)]">
-        <span aria-hidden className="absolute top-2 left-1/2 z-20 h-[22px] w-[86px] -translate-x-1/2 rounded-full bg-[#0b1020]" />
-        {children}
-      </div>
-    </div>
-  )
-}
-
 /* ── o catálogo da loja, no celular da cliente ──────────── */
 // Uma loja de presentes de exemplo, com foto de produto de verdade
 // (public/img/site/produto-*.webp) — o catálogo de qualquer ramo é isto:
@@ -40,57 +26,101 @@ const VITRINE: { nome: string; preco: number; foto: string; na: boolean }[] = [
   { nome: 'Kit hidratante', preco: 74.9, foto: 'creme', na: false },
 ]
 
+// 03/10/2026: era um celular sozinho no painel. Virou a janela do catálogo
+// contando o caminho inteiro: o link da loja, a vitrine, o pedido que chega,
+// as etapas andando e o que o sistema faz sozinho.
+const ETAPAS = ['Recebido', 'Aceito', 'Pronto', 'Retirado']
+
 export function CelularCatalogo() {
   const naSacola = VITRINE.filter((p) => p.na)
+  const total = naSacola.reduce((s, p) => s + p.preco, 0)
   return (
-    <Celular>
-      <div className="flex h-full flex-col">
-        <div className="px-4 pt-11 pb-3">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--s-rosa)] text-sm font-extrabold text-white">A</span>
-            <div className="leading-tight">
-              <p className="text-[13px] font-extrabold">Casa Aurora</p>
-              <p className="flex items-center gap-1 text-[10px] text-[var(--s-tinta-2)]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#13a05f]" /> Loja Centro · aberta até 19h
-              </p>
+    <div className="site-cartao w-[380px] max-w-full overflow-hidden" style={cor('var(--s-rosa)')}>
+      {/* a barra, e o link que a loja manda */}
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--s-borda)] px-4 py-2.5">
+        <span className="flex min-w-0 items-center gap-2 text-[12px] font-bold">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] bg-[var(--s-rosa)] text-[10px] font-black text-white">A</span>
+          <span className="truncate">Casa Aurora · Loja Centro</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold text-[#13a05f]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#13a05f]" />
+          aberta
+        </span>
+      </div>
+      <div className="flex items-center gap-2 border-b border-[var(--s-borda)] bg-[var(--s-fundo)] px-4 py-2">
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--s-tinta-2)]">gestornorte.com/casa-aurora</span>
+        <span className="rounded-[3px] border border-[var(--s-borda)] bg-[var(--s-cartao)] px-2 py-0.5 text-[10px] font-bold">Copiar link</span>
+      </div>
+
+      {/* a vitrine */}
+      <div className="grid grid-cols-4 gap-2 p-4 pb-3">
+        {VITRINE.map((p, i) => (
+          <div key={p.nome} className="flex min-w-0 flex-col gap-1">
+            <div className="relative aspect-square overflow-hidden rounded-[4px] border border-[var(--s-borda)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/img/site/produto-${p.foto}.webp`} alt="" loading="lazy" className="h-full w-full object-cover" />
+              {p.na && (
+                <span className={`site-passo-${i} absolute right-1 bottom-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--s-rosa)] text-[9px] font-black text-white`}>
+                  1
+                </span>
+              )}
             </div>
+            <p className="truncate text-[9.5px] font-semibold text-[var(--s-tinta-2)]">{p.nome}</p>
+            <p className="numero -mt-1 text-[10.5px] font-extrabold">{BRL(p.preco)}</p>
           </div>
-          <div className="mt-3 flex gap-1.5 text-[10px] font-bold">
-            <span className="rounded-full bg-[var(--s-rosa)] px-2.5 py-1 text-white">Tudo</span>
-            <span className="rounded-full border border-[var(--s-borda)] px-2.5 py-1">Casa</span>
-            <span className="rounded-full border border-[var(--s-borda)] px-2.5 py-1">Bolsas</span>
-            <span className="rounded-full border border-[var(--s-borda)] px-2.5 py-1">Cuidados</span>
-          </div>
+        ))}
+      </div>
+
+      {/* o pedido que chegou */}
+      <div className="mx-4 rounded-[4px] border border-[var(--s-borda)]">
+        <div className="flex items-center justify-between border-b border-[var(--s-borda)] px-3 py-2">
+          <span className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--s-rosa)]">
+            <span className="site-pulsa h-1.5 w-1.5 rounded-full bg-[var(--s-rosa)]" style={cor('var(--s-rosa)')} />
+            Pedido novo · ENC-7Q2K
+          </span>
+          <span className="text-[10px] text-[var(--s-tinta-2)]">agora</span>
         </div>
-        <div className="grid flex-1 grid-cols-2 content-start gap-2 px-3">
-          {VITRINE.map((p, i) => (
-            <div key={p.nome} className="overflow-hidden rounded-2xl border border-[var(--s-borda)] bg-[var(--s-cartao)]">
-              <div className="relative aspect-square">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/img/site/produto-${p.foto}.webp`} alt="" loading="lazy" className="h-full w-full object-cover" />
-                {p.na ? (
-                  <span className={`site-passo-${i} absolute right-1.5 bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--s-rosa)] text-[11px] font-black text-white shadow`}>
-                    1
-                  </span>
-                ) : (
-                  <span className="absolute right-1.5 bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm font-black text-[#0d1b45] shadow">+</span>
-                )}
-              </div>
-              <div className="p-2">
-                <p className="truncate text-[10px] font-bold">{p.nome}</p>
-                <p className="text-[11px] font-extrabold">{BRL(p.preco)}</p>
-              </div>
-            </div>
+        <ul className="flex flex-col gap-1 px-3 py-2">
+          {naSacola.map((p) => (
+            <li key={p.nome} className="flex justify-between text-[11px]">
+              <span>1 × {p.nome}</span>
+              <span className="numero font-semibold">{BRL(p.preco)}</span>
+            </li>
+          ))}
+          <li className="mt-1 flex justify-between border-t border-[var(--s-borda)] pt-1.5 text-[11.5px] font-extrabold">
+            <span>Retirada 15h · Pix</span>
+            <span className="numero">{BRL(total)}</span>
+          </li>
+        </ul>
+        {/* as etapas, uma de cada vez */}
+        <div className="grid grid-cols-4 border-t border-[var(--s-borda)]">
+          {ETAPAS.map((e, i) => (
+            <span
+              key={e}
+              className={`site-passo-${i + 4} flex flex-col items-center gap-1 py-2 text-[9.5px] font-bold ${i > 0 ? 'border-l border-[var(--s-borda)]' : ''} ${i < 2 ? 'text-[var(--s-rosa)]' : 'text-[var(--s-tinta-2)]'}`}
+            >
+              <span className={`h-1 w-7 rounded-[2px] ${i < 2 ? 'bg-[var(--s-rosa)]' : 'bg-[var(--s-borda)]'}`} />
+              {e}
+            </span>
           ))}
         </div>
-        <div className="px-3 pb-4">
-          <div className="site-passo-4 flex items-center justify-between rounded-2xl bg-[var(--s-rosa)] px-4 py-3 text-[12px] font-bold text-white shadow-lg">
-            <span>Ver sacola · {naSacola.length} itens</span>
-            <span>{BRL(naSacola.reduce((s, p) => s + p.preco, 0))}</span>
-          </div>
+      </div>
+
+      {/* o que o sistema faz sozinho */}
+      <div className="mt-3 flex flex-col gap-2 border-t border-[var(--s-borda)] bg-[var(--s-fundo)] p-4">
+        <div className="flex flex-wrap gap-1.5">
+          {['Avisado no WhatsApp da loja', 'Estoque baixa ao receber', 'Cliente acompanha pelo link'].map((t, i) => (
+            <span key={t} className={`site-passo-${i + 1} rounded-[3px] border border-[var(--s-borda)] bg-[var(--s-cartao)] px-2 py-1 text-[11px] font-semibold`}>
+              {t}
+            </span>
+          ))}
+        </div>
+        <div className="mt-1 flex gap-2">
+          <span className="site-passo-7 flex-1 rounded-[4px] bg-[var(--s-rosa)] py-2 text-center text-[12px] font-bold text-white">Marcar como pronto</span>
+          <span className="rounded-[4px] border border-[var(--s-borda)] px-3 py-2 text-[12px] font-semibold text-[var(--s-tinta-2)]">Chamar</span>
         </div>
       </div>
-    </Celular>
+    </div>
   )
 }
 
@@ -107,18 +137,27 @@ function Balao({ eu, passo, children, className = '' }: { eu?: boolean; passo: n
   )
 }
 
-/** A conversa inteira, já acontecida: o áudio, a proposta, o SIM e o resumo do dia. */
+/**
+ * A conversa e, embaixo, o que mudou no sistema na mesma hora.
+ *
+ * 03/10/2026: era só o balão do WhatsApp no painel. Agora a janela mostra as
+ * duas pontas — o áudio que o dono mandou e o saldo que subiu, assinado no
+ * livro — e o que mais dá para perguntar.
+ */
 export function ConversaAssistente() {
   return (
-    <div className="w-[340px] max-w-full overflow-hidden rounded-[28px] border border-[var(--s-borda)] bg-[var(--s-zap)] shadow-[var(--s-sombra-alta)]">
-      <div className="flex items-center gap-2.5 bg-[#0f6e47] px-4 py-3 text-white">
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-xs font-black">N</span>
-        <div className="leading-tight">
-          <p className="text-[13px] font-bold">Assistente da loja</p>
-          <p className="text-[10.5px] opacity-80">online</p>
-        </div>
+    <div className="site-cartao w-[380px] max-w-full overflow-hidden" style={cor('var(--s-verde)')}>
+      <div className="flex items-center justify-between gap-2 bg-[#0f6e47] px-4 py-2.5 text-white">
+        <span className="flex items-center gap-2 text-[12px] font-bold">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-[10px] font-black">N</span>
+          Assistente da loja
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] opacity-90">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#7dffb8]" />
+          online
+        </span>
       </div>
-      <div className="flex flex-col gap-1.5 p-3">
+      <div className="flex flex-col gap-1.5 bg-[var(--s-zap)] p-3">
         <Balao eu passo={0}>
           <span className="flex items-center gap-2 text-[#13a05f]">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#13a05f] text-[10px] text-white">▶</span>
@@ -144,6 +183,31 @@ export function ConversaAssistente() {
         <Balao passo={4}>
           Feito ✓ Entrada lançada. <b>Saldo agora: 60 un.</b>
         </Balao>
+      </div>
+
+      {/* a outra ponta: o sistema */}
+      <div className="flex flex-col gap-2.5 border-t border-[var(--s-borda)] p-4">
+        <p className="text-[10px] font-bold tracking-[0.12em] text-[var(--s-tinta-2)] uppercase">No sistema, na mesma hora</p>
+        <div className="site-passo-5 rounded-[4px] border border-[var(--s-borda)] px-3 py-2">
+          <div className="flex items-baseline justify-between text-[11.5px]">
+            <span className="font-semibold">Água mineral 500 ml</span>
+            <span className="numero">
+              <span className="text-[var(--s-tinta-2)] line-through">12</span> <b className="text-[var(--s-verde)]">60 un</b>
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-[2px] bg-[var(--s-borda)]">
+            <div className="site-barra-x h-full w-[80%] bg-[var(--s-verde)]" />
+          </div>
+          <p className="mt-1.5 text-[10px] text-[var(--s-tinta-2)]">Assinado no livro: entrada pelo WhatsApp · 14:02</p>
+        </div>
+        <p className="mt-1 text-[10px] font-bold tracking-[0.12em] text-[var(--s-tinta-2)] uppercase">Pergunte também</p>
+        <div className="flex flex-wrap gap-1.5">
+          {['“Quanto vendi ontem?”', '“O que vai faltar?”', '“Contas de hoje”'].map((t, i) => (
+            <span key={t} className={`site-passo-${i + 5} rounded-[3px] border border-[var(--s-borda)] bg-[var(--s-fundo)] px-2 py-1 text-[11px] font-semibold`}>
+              {t}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   )
