@@ -697,7 +697,10 @@ export function useVenda({
     // com a pessoa na frente, não depois de escolher o pagamento. Na loja que
     // vende o que o sistema diz que acabou, o aviso não trava: a peça está na
     // mão, e quem confere o estoque depois é a gerente.
-    if (novaQtd > a.saldo) {
+    // Item que NUNCA teve estoque lançado (a sorveteria que não conta o estoque)
+    // não "acabou": não é controlado. Na loja que vende sem estoque, ele não
+    // gera aviso — avisar "acabou" em toda venda ensina a ignorar o aviso.
+    if (novaQtd > a.saldo && !(vendeSemEstoque && a.semLancamento)) {
       setAlerta(
         vendeSemEstoque
           ? `O sistema diz que ${a.saldo <= 0 ? `acabou ${a.descricao}` : `só tem ${a.saldo} de ${a.descricao}`}. Se a peça está na mão, pode vender — fica anotado para conferir o estoque.`
@@ -974,7 +977,10 @@ export function useVenda({
   }
 
   /** As linhas que passam do que o sistema diz ter (não conta avulso nem encomenda). */
-  const curtas = carrinho.filter((l) => !l.avulso && l.quantidade > l.saldo)
+  // O item que nunca teve estoque lançado não entra na conta: não é "acabou",
+  // é sem controle (ver `lancar`). Sem isto, toda venda da sorveteria perguntava
+  // "vende assim mesmo?" — e a pergunta, abaixo da tela, parecia botão quebrado.
+  const curtas = carrinho.filter((l) => !l.avulso && l.quantidade > l.saldo && !(vendeSemEstoque && l.semLancamento))
 
   function concluir(o: { pin?: string; semEstoqueOk?: boolean } = {}) {
     if (!podeConcluir) return

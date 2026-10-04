@@ -118,8 +118,23 @@ export function PedirPin({ v }: { v: Venda }) {
  */
 export function PerguntaSemEstoque({ v }: { v: Venda }) {
   const itens = v.perguntaSemEstoque
+  const caixa = useRef<HTMLDivElement>(null)
+  const confirmar = useRef<HTMLButtonElement>(null)
+
+  // A pergunta nasce LOGO ACIMA do "Fechar venda", que no balcão avançado
+  // mora no pé de uma coluna comprida — muitas vezes abaixo da dobra da tela.
+  // Sem rolar até ela, quem clicava em "Fechar venda" via o botão se mexer e
+  // nada mais: "não consigo lançar a venda". Agora ela vem para o meio da tela,
+  // com o "Vender assim mesmo" já em foco (Enter confirma).
+  useEffect(() => {
+    if (!itens) return
+    caixa.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    confirmar.current?.focus({ preventScroll: true })
+  }, [itens])
+
   if (!itens) return null
   return (
+    <div ref={caixa} role="alert">
     <Aviso nivel="atencao">
       <span className="flex flex-col gap-2">
         <span>
@@ -128,7 +143,7 @@ export function PerguntaSemEstoque({ v }: { v: Venda }) {
           “Vendido sem estoque — conferir”, em Estoque.
         </span>
         <span className="flex flex-wrap gap-2">
-          <Botao tom="confirmar" onClick={v.venderSemEstoque} carregando={v.indo} className="min-h-10 rounded-lg text-sm">
+          <Botao tom="confirmar" botaoRef={confirmar} onClick={v.venderSemEstoque} carregando={v.indo} className="min-h-10 rounded-lg text-sm">
             Vender assim mesmo
           </Botao>
           <Botao tom="secundario" onClick={() => v.setPerguntaSemEstoque(null)} className="min-h-10 rounded-lg text-sm">
@@ -137,6 +152,7 @@ export function PerguntaSemEstoque({ v }: { v: Venda }) {
         </span>
       </span>
     </Aviso>
+    </div>
   )
 }
 

@@ -360,8 +360,8 @@ export function Balcao({
                           <span className="font-mono text-xs text-tinta-3">{a.codigo}</span>
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
-                          <Situacao nivel={a.saldo <= 0 ? 'critico' : 'bom'}>
-                            {a.servico ? 'serviço' : a.saldo <= 0 ? 'acabou' : `${a.saldo}`}
+                          <Situacao nivel={a.saldo <= 0 ? (a.semLancamento ? 'neutro' : 'critico') : 'bom'}>
+                            {a.servico ? 'serviço' : a.saldo <= 0 ? (a.semLancamento ? 'sem estoque lançado' : 'acabou') : `${a.saldo}`}
                           </Situacao>
                           <span className="numero text-sm font-semibold text-tinta">{brl(precoDe(a as Linha, tabela))}</span>
                           {/* Só no item que o Enter lança de fato: na grade de
@@ -417,7 +417,14 @@ export function Balcao({
 
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
                 {botoes.itens.map((a) => {
-                  const acabou = a.saldo <= 0
+                  // Sem saldo, o botão SÓ trava na loja que não vende o que o sistema
+                  // diz que acabou. Na que vende (a sorveteria que nunca lançou
+                  // estoque), travar deixava todo botão morto e a venda impossível:
+                  // ali o item sem estoque lançado é o normal, e o que acabou de
+                  // verdade só avisa (a pergunta "vende assim mesmo?" vem ao fechar).
+                  const semSaldo = a.saldo <= 0 && !a.servico
+                  const acabou = semSaldo && !v.vendeSemEstoque
+                  const semControle = semSaldo && !!a.semLancamento
                   return (
                     <button
                       key={a.id}
@@ -435,8 +442,8 @@ export function Balcao({
                       <span className="line-clamp-2 text-[13px] leading-snug font-medium">{a.descricao}</span>
                       <span className="flex items-baseline justify-between gap-2 pt-1">
                         <span className="numero text-sm font-bold">{brl(precoDe(a as Linha, tabela))}</span>
-                        <span className={cx('numero text-[11px]', acabou ? 'font-semibold' : 'text-tinta-3')}>
-                          {a.servico ? 'serviço' : acabou ? 'acabou' : a.saldo}
+                        <span className={cx('numero text-[11px]', semSaldo && !semControle ? 'font-semibold text-atencao' : 'text-tinta-3')}>
+                          {a.servico ? 'serviço' : semControle ? '' : semSaldo ? 'acabou' : a.saldo}
                         </span>
                       </span>
                     </button>
@@ -487,7 +494,8 @@ export function Balcao({
                   </thead>
                   <tbody>
                     {carrinho.map((l) => {
-                      const passou = !l.avulso && l.quantidade > l.saldo
+                      // Sem estoque lançado não "passou": não é controlado (ver `curtas` em useVenda).
+                      const passou = !l.avulso && l.quantidade > l.saldo && !(v.vendeSemEstoque && l.semLancamento)
                       return (
                         <tr key={l.id} className={cx('border-b border-borda-suave last:border-0', passou && 'bg-atencao-fundo/50')}>
                           <td className="hidden px-3 py-2 font-mono text-xs text-tinta-3 sm:table-cell">

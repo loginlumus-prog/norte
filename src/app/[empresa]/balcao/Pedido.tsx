@@ -83,7 +83,8 @@ function ItemDoPedido({ l, v }: { l: Linha; v: Venda }) {
   const { nome, detalhe } = partesDaDescricao(l.descricao)
   const pedaco = fracionado(l.medida)
   const un = UNIDADE[l.medida] ?? l.medida.toLowerCase()
-  const passou = !l.avulso && l.quantidade > l.saldo
+  // Sem estoque lançado nunca "passou": não é controlado (ver `curtas` em useVenda).
+  const passou = !l.avulso && l.quantidade > l.saldo && !(v.vendeSemEstoque && l.semLancamento)
   const unit = precoDe(l, v.conta.tabela)
   const botao =
     'flex size-11 shrink-0 items-center justify-center rounded-xl border border-borda bg-superficie text-tinta hover:bg-superficie-2 active:scale-95 touch-manipulation'
