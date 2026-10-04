@@ -1,6 +1,6 @@
 'use client'
 
-// "Tem versão nova — recarregar", no balcão.
+// "Tem versão nova — recarregar", em toda tela do sistema (nasceu no balcão).
 //
 // O balcão fica aberto o dia todo: a página das 8h não sabe da versão que
 // subiu às 14h, e a primeira ação que mudou quebra no meio de uma venda. A
@@ -58,7 +58,7 @@ export function AvisoVersao({ slug, versao }: { slug: string; versao: string | n
       >
         <span className="text-tinta">
           <b className="font-semibold">Tem versão nova do sistema.</b>{' '}
-          <span className="text-tinta-2">Recarregue quando puder — o pedido montado não se perde.</span>
+          <span className="text-tinta-2">Recarregue quando puder. O que já está salvo não se perde — se estiver no meio de uma edição, salve antes.</span>
         </span>
         <span className="flex items-center gap-2">
           <button

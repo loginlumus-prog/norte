@@ -25,9 +25,7 @@ import { programaNoPlano, DESLIGADO } from '@/servidor/pontos'
 import { AbrirCaixa, FecharCaixa, Movimento } from './Caixa'
 import { paraCobrarHorario } from './acoes'
 import { ComPalavras } from './palavras'
-import { AvisoVersao } from './AvisoVersao'
 import { AvisoDaEncomenda } from './AvisoDaEncomenda'
-import { versaoDoBuild } from './versaoDoBuild'
 import { lerMaquininhas } from '@/servidor/maquininhas'
 import { meuPin, podeAutorizar } from '@/servidor/autorizacao'
 import type { ConfigDoBalcao } from './useVenda'
@@ -220,7 +218,6 @@ export default async function BalcaoPagina({
     >
       <ComPalavras palavras={palavras}>
         {/* O balcão fica aberto o dia todo: subiu versão nova, ele avisa. */}
-        <AvisoVersao slug={slug} versao={versaoDoBuild()} />
         {recebendo && aba !== 'fechar' && <AvisoDaEncomenda texto={recebendo.ok ? null : recebendo.erro} />}
         {!unidadeId ? (
           <Aviso nivel="atencao">

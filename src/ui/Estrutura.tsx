@@ -38,6 +38,8 @@ import { TrocaModo } from './TrocaModo'
 import { lerModo } from '@/servidor/modo'
 import { menuRecolhido } from '@/servidor/menu-lateral'
 import { BarraLateral } from './BarraLateral'
+import { AvisoVersao } from '@/app/[empresa]/balcao/AvisoVersao'
+import { versaoDoBuild } from '@/app/[empresa]/balcao/versaoDoBuild'
 import { itemNaEmpresa, noModo, podeVerItem } from './menu'
 import { Simbolo } from './Marca'
 import { Gaveta } from './Gaveta'
@@ -479,6 +481,10 @@ export async function Estrutura({
         </main>
       </div>
 
+      {/* A página aberta antes de uma atualização chama o servidor pelo endereço
+          antigo e quebra no primeiro Salvar. O aviso de versão nova antes
+          disso mora aqui, em toda tela (nasceu só no balcão). */}
+      <AvisoVersao slug={empresa.slug} versao={versaoDoBuild()} />
       {/* Trinta minutos parada, a tela tranca e pede a senha. Mora aqui
           porque aqui é por onde toda tela passa — ver Tranca.tsx. */}
       <Tranca
