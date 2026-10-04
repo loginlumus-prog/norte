@@ -14,7 +14,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, cx } from '@/ui/base'
 import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
-import { criarLinha, salvarEstoque, salvarLinha, type LinhaEditada } from './acoes'
+import { criarLinha, salvarEstoque, salvarLinhas, type LinhaEditada } from './acoes'
 
 export type LinhaDaPlanilha = {
   id: string
@@ -140,23 +140,45 @@ export function Planilha({
       const novosErros: Record<string, string> = {}
       let salvas = 0
       let pediuPin = false
+      // Nome, gaveta e preços de TODAS as linhas numa ida só ao servidor.
+      let porLinha: Awaited<ReturnType<typeof salvarLinhas>> = {}
+      const comDados = mudancas.filter((m) => Object.keys(m.dados).length > 0)
+      if (comDados.length > 0) {
+        try {
+          porLinha = await salvarLinhas(slug, comDados.map((m) => ({ produtoId: m.l.id, dados: m.dados })))
+        } catch {
+          // Rede caída, ou o sistema foi atualizado com esta página aberta:
+          // nada foi perdido do que está na tela — é só recarregar e salvar de novo.
+          setRecado({
+            nivel: 'critico',
+            texto: 'Não deu para falar com o servidor agora (a internet caiu, ou o sistema acabou de ser atualizado). Aperte Ctrl+F5 para recarregar a página e salve de novo.',
+          })
+          return
+        }
+      }
       for (const m of mudancas) {
         if (Object.keys(m.dados).length > 0) {
-          const r = await salvarLinha(slug, m.l.id, m.dados)
-          if (r.erro) {
-            novosErros[m.l.id] = r.erro
+          const r = porLinha[m.l.id]
+          if (!r || r.erro) {
+            novosErros[m.l.id] = r?.erro ?? 'Não deu para salvar.'
             continue
           }
         }
         if (m.estoque !== null && m.l.variacaoId && loja) {
-          const r = await salvarEstoque(slug, {
-            variacaoId: m.l.variacaoId,
-            unidadeId: loja.id,
-            contado: m.estoque,
-            motivo,
-            visto: m.l.estoque ?? 0,
-            pin: pin || null,
-          })
+          let r
+          try {
+            r = await salvarEstoque(slug, {
+              variacaoId: m.l.variacaoId,
+              unidadeId: loja.id,
+              contado: m.estoque,
+              motivo,
+              visto: m.l.estoque ?? 0,
+              pin: pin || null,
+            })
+          } catch {
+            novosErros[m.l.id] = 'Não deu para falar com o servidor. Recarregue a página (Ctrl+F5) e salve de novo.'
+            continue
+          }
           if (r.erro) {
             novosErros[m.l.id] = r.erro
             if (r.precisaPin) {

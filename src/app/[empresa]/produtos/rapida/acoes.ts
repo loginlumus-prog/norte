@@ -30,9 +30,8 @@ export type LinhaEditada = {
   custo?: string | number | null
 }
 
-/** Grava nome, gaveta e preços de UM produto. Só os campos que vieram mudam. */
-export async function salvarLinha(slug: string, produtoId: string, d: LinhaEditada): Promise<EstadoLinha> {
-  const sessao = await exigirSessao(slug)
+/** O que uma linha da planilha muda, validado e gravado — sem mexer em cache de página. */
+async function gravarLinha(sessao: Awaited<ReturnType<typeof exigirSessao>>, produtoId: string, d: LinhaEditada): Promise<EstadoLinha> {
   const dados: Parameters<typeof editarProduto>[2] = {}
   if (d.nome !== undefined) dados.nome = String(d.nome).slice(0, 200)
   if (d.categoriaId !== undefined) dados.categoriaId = d.categoriaId ? String(d.categoriaId) : null
@@ -50,12 +49,43 @@ export async function salvarLinha(slug: string, produtoId: string, d: LinhaEdita
   try {
     const r = await editarProduto(sessao, produtoId, dados)
     if (!r.ok) return { erro: r.motivo }
-    revalidatePath(`/${slug}/produtos`)
     return { ok: 'Salvo.' }
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode mudar isto (preço e custo pedem permissão própria).' }
     return { erro: recadoDoErro(e, 'Não deu para salvar.') }
   }
+}
+
+/** Grava nome, gaveta e preços de UM produto. Só os campos que vieram mudar. */
+export async function salvarLinha(slug: string, produtoId: string, d: LinhaEditada): Promise<EstadoLinha> {
+  const sessao = await exigirSessao(slug)
+  const r = await gravarLinha(sessao, produtoId, d)
+  if (r.ok) revalidatePath(`/${slug}/produtos`)
+  return r
+}
+
+/**
+ * Grava VÁRIAS linhas numa chamada só — o "Salvar" da planilha.
+ *
+ * Antes o navegador chamava `salvarLinha` uma vez por linha, em fila, e cada
+ * chamada recarregava a lista de produtos inteira no servidor (a lista da
+ * Donna tem milhares). Com dezenas de linhas, a conta virava minutos, e
+ * qualquer queda no meio mostrava a tela de erro com metade já salva. Agora é
+ * uma ida ao servidor: cada linha com a sua resposta (a que falhou não leva as
+ * outras junto), e a lista recarrega uma vez no fim.
+ */
+export async function salvarLinhas(
+  slug: string,
+  linhas: { produtoId: string; dados: LinhaEditada }[],
+): Promise<Record<string, EstadoLinha>> {
+  const sessao = await exigirSessao(slug)
+  const saida: Record<string, EstadoLinha> = {}
+  // Um teto: a planilha mostra uma página de cada vez, e este endereço é público.
+  for (const l of linhas.slice(0, 300)) {
+    saida[String(l.produtoId)] = await gravarLinha(sessao, String(l.produtoId), l.dados ?? {})
+  }
+  if (Object.values(saida).some((r) => r.ok)) revalidatePath(`/${slug}/produtos`)
+  return saida
 }
 
 /** O saldo NESTA loja pelo que foi contado — a mesma correção da tela de Estoque. */
