@@ -48,6 +48,7 @@ export const GRUPOS_DE_CARGO: {
       { capacidade: 'produto.preco', titulo: 'Mudar preço' },
       { capacidade: 'estoque.ver', titulo: 'Ver o estoque' },
       { capacidade: 'estoque.ajustar', titulo: 'Dar entrada, transferir e corrigir o estoque' },
+      { capacidade: 'estoque.perda', titulo: 'Lançar avaria (tirar o que quebrou ou estragou, sem poder corrigir o estoque)' },
       { capacidade: 'estoque.consumir', titulo: 'Anotar o material usado' },
     ],
   },
@@ -129,6 +130,17 @@ export const MODELOS_DE_CARGO: { nome: string; capacidades: Capacidade[] }[] = [
       'cliente.ver', 'cliente.editar', 'crediario.ver', 'crediario.receber',
       'ponto.proprio', 'agenda.ver', 'agenda.marcar',
       'relatorio.ver', 'equipe.ver', 'tarefa.ver', 'tarefa.gerir',
+    ],
+  },
+  {
+    // O balcão de sempre, mais a avaria: vende, abre o caixa e tira do estoque o
+    // que quebrou — sem dar entrada, transferir nem corrigir o saldo.
+    nome: 'Atendente com avaria',
+    capacidades: [
+      'venda.criar', 'venda.ver', 'caixa.ver', 'caixa.operar',
+      'produto.ver', 'estoque.ver', 'estoque.perda',
+      'cliente.ver', 'cliente.editar', 'crediario.ver', 'crediario.receber',
+      'tarefa.ver',
     ],
   },
   {

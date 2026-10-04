@@ -19,6 +19,7 @@ export type Excecao =
   | 'crediario.baixa'
   | 'crediario.quitou'
   | 'estoque.ajuste'
+  | 'estoque.perda'
   | 'produto.cadastrar'
   | 'cliente.juntar'
 
@@ -50,6 +51,10 @@ export const EXCECOES: Record<Excecao, { rotulo: string; motivos: readonly strin
   'estoque.ajuste': {
     rotulo: 'Corrigiu o estoque',
     motivos: ['Contei a arara e estava diferente', 'Peça com defeito, saiu de venda', 'Peça sumiu / não achei', 'Estava lançado errado', 'Peça foi para outra loja'],
+  },
+  'estoque.perda': {
+    rotulo: 'Lançou uma avaria',
+    motivos: ['Quebrou', 'Amassou', 'Derreteu', 'Venceu a validade', 'Caiu no chão', 'Estragou', 'Uso da casa / degustação'],
   },
   'produto.cadastrar': {
     rotulo: 'Cadastrou um produto',

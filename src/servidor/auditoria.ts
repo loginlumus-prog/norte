@@ -42,6 +42,7 @@ export const ACOES: Record<string, string> = {
   'produto.eixo.criou': 'criou um eixo de variação',
   'estoque.entrada': 'deu entrada de mercadoria',
   'estoque.ajustou': 'ajustou o estoque',
+  'estoque.perda': 'lançou uma avaria',
   'estoque.transferiu': 'transferiu estoque entre lojas',
   'cliente.criou': 'cadastrou um cliente',
   'cliente.alterou': 'alterou um cliente',

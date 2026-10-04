@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto'
 import { comoOrg } from './banco'
 import { exigir, pode, SemPermissao, soPelaEmpresa, textoDaBusca, unidadesQuePodem, type Capacidade, type Sessao } from './permissao'
 import { assinarExcecao } from './autorizacao'
+import { motivoServe } from './excecoes'
 import type { TipoMovimento } from '@prisma/client'
 import { vendidoNaLoja } from './catalogo-loja'
 
@@ -32,7 +33,9 @@ const EXIGE: Record<TipoMovimento, Capacidade> = {
   DEVOLUCAO: 'venda.criar',
   ENTRADA: 'estoque.ajustar',
   AJUSTE: 'estoque.ajustar',
-  PERDA: 'estoque.ajustar',
+  // Avaria: quem pode lançar avaria, ou quem já pode ajustar o estoque inteiro
+  // (ver `podeLancarPerda`). A tabela diz a permissão própria.
+  PERDA: 'estoque.perda',
   TRANSFERENCIA: 'estoque.ajustar',
   BALANCO: 'estoque.ajustar',
   // O material que se gasta atendendo (esmalte, luva, algodão). Quem atende
@@ -78,7 +81,8 @@ export async function mexerEstoque(
   // O `!` é seguro: EXIGE é Record sobre o enum inteiro, então o TypeScript
   // já garante que todo tipo tem entrada. O aviso vem de noUncheckedIndexedAccess,
   // que trata toda indexação como possivelmente vazia.
-  exigir(sessao, EXIGE[m.tipo]!, m.unidadeId)
+  if (m.tipo === 'PERDA') exigirPerda(sessao, m.unidadeId)
+  else exigir(sessao, EXIGE[m.tipo]!, m.unidadeId)
   return comoOrg(sessao.orgId, async (db) => {
     // A variação e a loja vêm da tela. Procurar as duas aqui passa pelo RLS:
     // id de outra empresa não aparece — e a linha de saldo não nasce
@@ -107,7 +111,7 @@ export async function mexerEstoque(
           unidadeId: m.unidadeId,
           usuarioId: sessao.usuarioId,
           quem: sessao.nome,
-          acao: 'estoque.ajustou',
+          acao: m.tipo === 'PERDA' ? 'estoque.perda' : 'estoque.ajustou',
           alvoTipo: 'variacao',
           alvoId: m.variacaoId,
           alvoNome: `${v.produto.nome}${v.codigo ? ` (${v.codigo})` : ''}`,
@@ -196,6 +200,94 @@ export async function corrigirPeloContado(
         motivo,
         antes: { saldo: antes },
         depois: { saldo: r.saldo, tipo: 'BALANCO' },
+        assinado: assinatura.assinou,
+      },
+    })
+    return { ok: true as const, saldo: r.saldo, antes }
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
+// AVARIA: tirar do estoque o que quebrou, sem poder mexer no resto
+// ─────────────────────────────────────────────────────────────
+// Dez picolés amassaram no freezer e não vão ser vendidos. Quem lança isso
+// precisa TIRAR do estoque — e só tirar: não dá entrada, não transfere, não
+// corrige o saldo pelo contado. Por isso é uma permissão própria
+// (`estoque.perda`), que o dono dá a quem quiser pelo cargo, sem dar a
+// `estoque.ajustar`. Quem já ajusta o estoque (dono, gerente) também lança
+// avaria: seria absurdo o gerente poder zerar um item e não poder anotar uma
+// quebra.
+//
+// O motivo é obrigatório e fica no livro com o nome de quem lançou; o saldo
+// nunca fica negativo (tirar mais do que tem é recusado, com o número que há).
+
+/** Pode lançar avaria nesta loja: a permissão própria, ou a de ajustar o estoque. */
+export function podeLancarPerda(sessao: Sessao, unidadeId?: string): boolean {
+  return pode(sessao, 'estoque.perda', unidadeId) || pode(sessao, 'estoque.ajustar', unidadeId)
+}
+
+function exigirPerda(sessao: Sessao, unidadeId?: string): void {
+  if (!pode(sessao, 'estoque.perda', unidadeId)) exigir(sessao, 'estoque.ajustar', unidadeId)
+}
+
+export type Perda =
+  | { ok: true; saldo: number; antes: number }
+  | { ok: false; motivo: 'sem_saldo'; saldo: number; erro: string }
+  | { ok: false; motivo: 'assinatura'; erro: string }
+
+/** Lança uma avaria: tira `quantidade` do item, na loja, com o motivo. */
+export async function lancarPerda(
+  sessao: Sessao,
+  p: { variacaoId: string; unidadeId: string; quantidade: number; motivo: string; pin?: string | null },
+): Promise<Perda> {
+  exigirPerda(sessao, p.unidadeId)
+  if (!Number.isFinite(p.quantidade) || p.quantidade <= 0) {
+    throw new Error('Diga quantas foram: um número maior que zero.')
+  }
+  const motivo = p.motivo.replace(/\s+/g, ' ').trim().slice(0, 200)
+  if (!motivoServe(motivo)) throw new Error('Diga o motivo da avaria (quebrou, venceu, derreteu…). Sem isso não dá para conferir depois.')
+
+  const assinatura = await assinarExcecao(sessao, { pin: p.pin })
+  if (!assinatura.ok) return { ok: false, motivo: 'assinatura', erro: assinatura.erro }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const v = await db.variacao.findUnique({
+      where: { id: p.variacaoId },
+      select: { codigo: true, produto: { select: { nome: true, vendidoEm: true } } },
+    })
+    const loja = await db.unidade.findUnique({ where: { id: p.unidadeId }, select: { id: true } })
+    if (!v || !loja) throw new Error('Produto ou loja não encontrado nesta empresa.')
+
+    // Travado: uma venda que chegar agora espera a avaria terminar.
+    const antes = await saldoDe(db, p.variacaoId, p.unidadeId, true)
+    const r = await mexerEstoqueEm(db, sessao, {
+      variacaoId: p.variacaoId,
+      unidadeId: p.unidadeId,
+      tipo: 'PERDA',
+      quantidade: p.quantidade,
+      motivo,
+    })
+    if (!r.ok) {
+      return {
+        ok: false as const,
+        motivo: 'sem_saldo' as const,
+        saldo: r.saldo,
+        erro: `Só tem ${r.saldo.toLocaleString('pt-BR')} no estoque desta loja — não dá para tirar ${p.quantidade.toLocaleString('pt-BR')}.`,
+      }
+    }
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: p.unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'estoque.perda',
+        alvoTipo: 'variacao',
+        alvoId: p.variacaoId,
+        alvoNome: `${v.produto.nome}${v.codigo ? ` (${v.codigo})` : ''}`,
+        motivo,
+        antes: { saldo: antes },
+        depois: { saldo: r.saldo, tipo: 'PERDA', quantidade: p.quantidade },
         assinado: assinatura.assinou,
       },
     })
@@ -443,7 +535,7 @@ export const ROTULO_MOVIMENTO: Record<TipoMovimento, string> = {
   VENDA: 'Venda',
   DEVOLUCAO: 'Devolução',
   AJUSTE: 'Ajuste',
-  PERDA: 'Perda',
+  PERDA: 'Avaria',
   TRANSFERENCIA: 'Transferência',
   BALANCO: 'Balanço',
   CONSUMO: 'Consumo interno',

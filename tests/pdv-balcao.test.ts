@@ -447,6 +447,49 @@ describe('o pagamento', () => {
     await db.exec(`delete from variacoes where id = 'var-cam-b'`)
   })
 
+  it('o cargo "lança avaria" tira do estoque sem poder corrigir, dar entrada nem transferir', async () => {
+    const e = await import('../src/servidor/estoque')
+    // Um cargo da loja do Centro: vende, vê o estoque e lança avaria. Nada mais.
+    const ATENDENTE: Sessao = {
+      ...sessao('usr-bal1', 'Atendente Centro', []),
+      acessos: [{ papel: 'CARGO', unidadeId: 'uni-a1', expiraEm: null, capacidades: ['venda.criar', 'estoque.ver', 'estoque.perda'] }],
+    }
+    const antes = await saldo('var-cam')
+
+    // Lança 3 amassados: o saldo cai 3, vira movimento de avaria e fica no livro, com o motivo e o nome.
+    const r = await e.lancarPerda(ATENDENTE, { variacaoId: 'var-cam', unidadeId: 'uni-a1', quantidade: 3, motivo: 'Amassou no freezer' })
+    expect(r).toMatchObject({ ok: true, saldo: antes - 3, antes })
+    expect(await saldo('var-cam')).toBe(antes - 3)
+    const [mov] = await linha<{ tipo: string; quantidade: string; motivo: string; quem: string }>(
+      `select tipo::text, quantidade::text, motivo, quem from movimentos_estoque where variacao_id = 'var-cam' and tipo = 'PERDA' order by criado_em desc limit 1`,
+    )
+    expect(mov).toMatchObject({ tipo: 'PERDA', motivo: 'Amassou no freezer', quem: 'Atendente Centro' })
+    expect(Number(mov!.quantidade)).toBe(-3)
+    const [livro] = await linha<{ acao: string; motivo: string }>(`select acao, motivo from auditoria where acao = 'estoque.perda' order by criado_em desc limit 1`)
+    expect(livro).toMatchObject({ acao: 'estoque.perda', motivo: 'Amassou no freezer' })
+
+    // Mas NÃO mexe no resto do estoque: corrigir, dar entrada e transferir são de quem ajusta.
+    await expect(e.corrigirPeloContado(ATENDENTE, { variacaoId: 'var-cam', unidadeId: 'uni-a1', contado: 500, motivo: 'contei errado' })).rejects.toThrow()
+    await expect(e.mexerEstoque(ATENDENTE, { variacaoId: 'var-cam', unidadeId: 'uni-a1', tipo: 'ENTRADA', quantidade: 10 })).rejects.toThrow()
+    await expect(e.mexerEstoque(ATENDENTE, { variacaoId: 'var-cam', unidadeId: 'uni-a1', tipo: 'AJUSTE', quantidade: 10 })).rejects.toThrow()
+    expect(await saldo('var-cam')).toBe(antes - 3)
+
+    // O motivo é obrigatório, e quantidade tem de ser um número maior que zero.
+    await expect(e.lancarPerda(ATENDENTE, { variacaoId: 'var-cam', unidadeId: 'uni-a1', quantidade: 1, motivo: 'ok' })).rejects.toThrow('motivo')
+    await expect(e.lancarPerda(ATENDENTE, { variacaoId: 'var-cam', unidadeId: 'uni-a1', quantidade: 0, motivo: 'Quebrou' })).rejects.toThrow('maior que zero')
+    // Não tira mais do que tem (o saldo nunca fica negativo), e diz quanto há.
+    expect(await e.lancarPerda(ATENDENTE, { variacaoId: 'var-cam', unidadeId: 'uni-a1', quantidade: 9999, motivo: 'Quebrou tudo' })).toMatchObject({ ok: false, motivo: 'sem_saldo', saldo: antes - 3 })
+    // Só na loja do cargo: a outra loja não é dele.
+    await expect(e.lancarPerda(ATENDENTE, { variacaoId: 'var-cam', unidadeId: 'uni-a2', quantidade: 1, motivo: 'Quebrou' })).rejects.toThrow()
+    // O balcão de sempre (sem o cargo) não lança avaria, e o gerente lança (ele já ajusta o estoque).
+    await expect(e.lancarPerda(BALCAO, { variacaoId: 'var-cam', unidadeId: 'uni-a1', quantidade: 1, motivo: 'Quebrou' })).rejects.toThrow()
+    expect(await e.lancarPerda(GER1, { variacaoId: 'var-cam', unidadeId: 'uni-a1', quantidade: 1, motivo: 'Venceu a validade' })).toMatchObject({ ok: true })
+
+    // Devolve o que o teste tirou, para os outros testes do arquivo.
+    await db.exec(`update estoque set quantidade = quantidade + 4 where id = 'e1'`)
+    expect(await saldo('var-cam')).toBe(antes)
+  })
+
   it('maquininha que não é desta loja (ou desta forma) é recusada', async () => {
     expect(await vender({ pagamentos: [{ forma: 'PIX', valor: 50, maquininha: 'Pague Fácil' }] })).toMatchObject({
       ok: false,

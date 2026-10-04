@@ -74,6 +74,7 @@ export const NOME_DA_CAPACIDADE: Record<Capacidade, string> = {
   'estoque.ver': 'ver o estoque',
   'estoque.ajustar': 'ajustar o estoque',
   'estoque.consumir': 'anotar o material usado',
+  'estoque.perda': 'lançar avaria (tirar do estoque o que quebrou ou estragou)',
   'compra.ver': 'ver as compras e os fornecedores',
   'compra.gerir': 'fazer e receber pedidos de compra',
   'agenda.ver': 'ver a agenda',

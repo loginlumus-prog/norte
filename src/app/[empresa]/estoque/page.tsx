@@ -8,7 +8,7 @@ import { pode, podeVerPlanos, textoDaBusca, unidadesQuePodem } from '@/servidor/
 import { saldoNaVista } from '@/servidor/produto'
 import { plural } from '@/ui/texto'
 import { escolherUnidade } from '@/servidor/unidade'
-import { conferirSaldos, listarMovimentos, ROTULO_MOVIMENTO, type MovimentoNaLista } from '@/servidor/estoque'
+import { conferirSaldos, listarMovimentos, podeLancarPerda, ROTULO_MOVIMENTO, type MovimentoNaLista } from '@/servidor/estoque'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { moduloLigado } from '@/servidor/modulos'
 import { planoDaEmpresa } from '@/servidor/relatorios'
@@ -32,6 +32,7 @@ import type { TipoMovimento } from '@prisma/client'
 type SituacaoItem = 'acabaram' | 'minimo' | 'ok'
 import { Entrada } from './Entrada'
 import { Corrigir } from './Corrigir'
+import { Avaria } from './Avaria'
 import { Minimo } from './Minimo'
 import { Transferir } from './Transferir'
 import { VendidoSemEstoque } from './VendidoSemEstoque'
@@ -148,6 +149,8 @@ export default async function TelaEstoque({
 
   // Corrigir, mínimo e transferir são da loja escolhida no alto.
   const podeMexer = onde.unidadeId ? pode(sessao, 'estoque.ajustar', onde.unidadeId) : false
+  // Avaria: quem pode ajustar o estoque, ou quem tem só a permissão de lançar avaria.
+  const podeAvariar = onde.unidadeId ? podeLancarPerda(sessao, onde.unidadeId) : false
 
   const [variacoes, categorias, divergencia] = await Promise.all([
     // Por VARIAÇÃO, e não por linha de saldo: o item que nunca teve entrada
@@ -466,7 +469,7 @@ export default async function TelaEstoque({
     // Corrigir só existe COM loja escolhida. No consolidado a coluna "Tem"
     // é a SOMA das lojas, e corrigir por ela gravaria o total de todas no
     // saldo de uma só. O erro passaria despercebido até o balanço.
-    ...(podeMexer && onde.unidadeId
+    ...((podeMexer || podeAvariar) && onde.unidadeId
       ? [
           {
             chave: 'acao',
@@ -474,8 +477,9 @@ export default async function TelaEstoque({
             largura: '17rem',
             celula: (i: (typeof itens)[number]) => (
               <div className="flex flex-col gap-1">
-                <Corrigir slug={slug} variacaoId={i.id} unidadeId={onde.unidadeId!} saldo={i.saldo} />
-                {destinos.length > 0 && (
+                {podeMexer && <Corrigir slug={slug} variacaoId={i.id} unidadeId={onde.unidadeId!} saldo={i.saldo} />}
+                {podeAvariar && <Avaria slug={slug} variacaoId={i.id} unidadeId={onde.unidadeId!} saldo={i.saldo} />}
+                {podeMexer && destinos.length > 0 && (
                   <Transferir
                     slug={slug}
                     variacaoId={i.id}

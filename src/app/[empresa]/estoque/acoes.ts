@@ -7,12 +7,39 @@ import { revalidatePath } from 'next/cache'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { exigir, SemPermissao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
-import { corrigirPeloContado, marcarConferido, transferir } from '@/servidor/estoque'
+import { corrigirPeloContado, lancarPerda, marcarConferido, transferir } from '@/servidor/estoque'
 import { colunaDoDia } from '@/servidor/dia'
 import { registrarEntrada, definirMinimo, type ItemEntrada } from '@/servidor/entrada'
 import { podeVerCustoDe } from '@/servidor/produto'
 import { soDaLoja } from '@/servidor/catalogo-loja'
 import { plural } from '@/ui/texto'
+
+/**
+ * "Avaria": tirar do estoque o que quebrou, amassou, venceu. Quem lança não
+ * precisa poder corrigir o estoque (permissão `estoque.perda`, ver
+ * `lancarPerda`); o motivo é obrigatório e a quantidade nunca passa do saldo.
+ */
+export async function avariaAcao(
+  slug: string,
+  dados: { variacaoId: string; unidadeId: string; quantidade: number; motivo: string; pin?: string | null },
+): Promise<EstadoEntrada & { precisaPin?: boolean; saldo?: number }> {
+  const s = await exigirSessao(slug)
+  try {
+    const r = await lancarPerda(s, {
+      variacaoId: String(dados.variacaoId),
+      unidadeId: String(dados.unidadeId),
+      quantidade: Number(dados.quantidade),
+      motivo: typeof dados.motivo === 'string' ? dados.motivo : '',
+      pin: dados.pin ? String(dados.pin).replace(/\D/g, '') : null,
+    })
+    if (!r.ok) return r.motivo === 'assinatura' ? { erro: r.erro, precisaPin: true } : { erro: r.erro, saldo: r.saldo }
+    revalidatePath(`/${slug}/estoque`)
+    return { ok: `Avaria lançada. Ficaram ${r.saldo.toLocaleString('pt-BR')}.` }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para lançar avaria.' }
+    return { erro: recadoDoErro(e, 'Não deu para lançar a avaria.') }
+  }
+}
 
 /** Tirar de uma loja e pôr na outra. A trava inteira está em `transferir`. */
 export async function transferirAcao(

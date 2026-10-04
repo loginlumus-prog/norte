@@ -33,6 +33,10 @@ export const CAPACIDADES = [
   'estoque.ver',
   'estoque.ajustar',
   'estoque.consumir', // anotar o material usado dentro de casa (esmalte, luva)
+  // Lançar AVARIA: tirar do estoque o que quebrou, amassou, venceu ou derreteu, com
+  // o motivo. Separada de `estoque.ajustar` de propósito: quem lança a avaria NÃO
+  // dá entrada, não transfere e não corrige o saldo — só tira, e fica no livro.
+  'estoque.perda',
   // compras
   'compra.ver', // ver pedidos e fornecedores — com o CUSTO do que se compra
   'compra.gerir', // montar, mandar, receber e cancelar pedido; cadastrar fornecedor
@@ -102,7 +106,7 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
     'venda.ver', 'venda.criar', 'venda.cancelar', 'venda.desconto',
     'caixa.ver', 'caixa.operar',
     'produto.ver', 'produto.editar', 'produto.preco', 'produto.cadastrar',
-    'estoque.ver', 'estoque.ajustar', 'estoque.consumir',
+    'estoque.ver', 'estoque.ajustar', 'estoque.consumir', 'estoque.perda',
     'compra.ver', 'compra.gerir',
     'agenda.ver', 'agenda.marcar',
     'ponto.proprio', 'ponto.ver', 'ponto.gerir',
