@@ -410,6 +410,43 @@ describe('o pagamento', () => {
     expect(livro.map((l) => l.acao)).toEqual(expect.arrayContaining(['produto.eixo.criou', 'produto.opcao.criou']))
   })
 
+  it('cada item da grade pode ter o seu preço: guarda a diferença, e só para quem mexe em preço', async () => {
+    const p = await import('../src/servidor/produto')
+    // A casquinha comum a R$ 50 (o preço do produto) e a recheada a R$ 57.
+    await db.exec(`insert into variacoes (id, org_id, produto_id, codigo, ativa) values ('var-cam-b', 'org-a', 'p-cam', 'CAM-2', true)`)
+    const ajuste = async () =>
+      (await linha<{ a: string | null }>(`select ajuste_preco::text a from variacoes where id = 'var-cam-b'`))[0]!.a
+
+    expect(await p.definirPrecosDosItens(DONA, 'p-cam', [{ variacaoId: 'var-cam-b', preco: 57 }])).toBe(1)
+    expect(Number(await ajuste())).toBe(7)
+
+    // O mesmo preço de novo não é mudança (e não suja o livro).
+    expect(await p.definirPrecosDosItens(DONA, 'p-cam', [{ variacaoId: 'var-cam-b', preco: 57 }])).toBe(0)
+
+    // O preço do produto, na tabela de cartão e no crediário, soma a mesma diferença.
+    const [prod] = await linha<{ v: string; c: string }>(`select preco_vista::text v, preco_cartao::text c from produtos where id = 'p-cam'`)
+    expect(Number(prod!.v) + Number(await ajuste())).toBe(57)
+    expect(Number(prod!.c) + Number(await ajuste())).toBe(62)
+
+    // Item de OUTRO produto é ignorado (o navegador é do usuário).
+    expect(await p.definirPrecosDosItens(DONA, 'p-cam', [{ variacaoId: 'var-ult', preco: 10 }])).toBe(0)
+    const [ult] = await linha<{ a: string | null }>(`select ajuste_preco::text a from variacoes where id = 'var-ult'`)
+    expect(ult!.a).toBeNull()
+
+    // Preço zero ou negativo: recusado. Quem só vende (balcão): recusado.
+    await expect(p.definirPrecosDosItens(DONA, 'p-cam', [{ variacaoId: 'var-cam-b', preco: 0 }])).rejects.toThrow('maior que zero')
+    await expect(p.definirPrecosDosItens(BALCAO, 'p-cam', [{ variacaoId: 'var-cam-b', preco: 60 }])).rejects.toThrow()
+    expect(Number(await ajuste())).toBe(7)
+
+    // Igual ao preço do produto: sem diferença, e o item volta a acompanhá-lo.
+    expect(await p.definirPrecosDosItens(DONA, 'p-cam', [{ variacaoId: 'var-cam-b', preco: 50 }])).toBe(1)
+    expect(await ajuste()).toBeNull()
+
+    const livro = await linha<{ n: number }>(`select count(*)::int n from auditoria where acao = 'produto.preco.alterou' and alvo_id = 'p-cam'`)
+    expect(livro[0]!.n).toBeGreaterThanOrEqual(2)
+    await db.exec(`delete from variacoes where id = 'var-cam-b'`)
+  })
+
   it('maquininha que não é desta loja (ou desta forma) é recusada', async () => {
     expect(await vender({ pagamentos: [{ forma: 'PIX', valor: 50, maquininha: 'Pague Fácil' }] })).toMatchObject({
       ok: false,

@@ -54,6 +54,10 @@ export type ProdutoNaTela = {
   ativo: boolean
   /** As opções já marcadas hoje, por eixo. */
   marcadas: Record<string, string[]>
+  /** Os itens da grade e o preço à vista de cada um (o do produto + a diferença dele). */
+  itens?: { id: string; rotulo: string; preco: string }[]
+  /** Pode mexer em preço: só então a ficha mostra o preço de cada item. */
+  podePreco?: boolean
   /** Combinações que já têm venda ou movimento — não somem, desativam. */
   comHistorico: number
   /** Falso = quem abre não vê o custo deste produto; o campo nem aparece. */
@@ -481,6 +485,35 @@ export function Editor({
               As lojas travadas não são suas: ligar ou desligar o produto nelas é de quem cuida delas.
             </p>
           )}
+        </Cartao>
+      )}
+
+      {/* O mesmo produto, o mesmo estoque, preços diferentes: a casquinha
+          comum a R$ 4 e a recheada a R$ 7. Aparece para quem mexe em preço e
+          quando a grade já existe (salvou as variações): é sobre cada item. */}
+      {produto && !travado && produto.podePreco && (produto.itens?.length ?? 0) >= 2 && (
+        <Cartao titulo="Preço de cada item">
+          <p className="mb-3 text-sm text-tinta-2">
+            Algum item custa diferente? Escreva o preço dele aqui — o estoque continua junto, no mesmo produto.
+            Item que fica igual ao preço de cima acompanha o produto quando você mudar o preço.
+            No cartão e no crediário, soma a mesma diferença.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {produto.itens!.map((i) => (
+              <div key={i.id}>
+                <Campo
+                  rotulo={i.rotulo || 'Item'}
+                  name={`precoItem_${i.id}`}
+                  defaultValue={i.preco}
+                  placeholder="0,00"
+                  inputMode="decimal"
+                  erro={estado.campos?.[`precoItem_${i.id}`]}
+                />
+                {/* O que estava na tela ao abrir: só vai para o servidor quem mudou. */}
+                <input type="hidden" name={`precoItemAntes_${i.id}`} value={i.preco} readOnly />
+              </div>
+            ))}
+          </div>
         </Cartao>
       )}
 

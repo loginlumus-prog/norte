@@ -7,7 +7,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { criarProduto, editarProduto, excluirProduto, reativarProduto, ajustarGrade, criarOpcaoDoEixo, criarEixoDaEmpresa, GradeRecusada, type EixoEscolhido } from '@/servidor/produto'
+import { criarProduto, editarProduto, excluirProduto, reativarProduto, ajustarGrade, criarOpcaoDoEixo, criarEixoDaEmpresa, definirPrecosDosItens, GradeRecusada, PrecoDoItemRecusado, type EixoEscolhido } from '@/servidor/produto'
 import { SemPermissao, pode, unidadesQuePodem, type Sessao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { alcanceComum, normalizarVendidoEm, vendidoEmDoGerente } from '@/servidor/catalogo-loja'
@@ -62,6 +62,36 @@ function precosDo(
     campos.precoVista = 'Informe o preço à vista, maior que zero.'
   }
   return Object.keys(campos).length > 0 ? { campos } : { valores }
+}
+
+/**
+ * O preço de cada item da grade ("Casquinha recheada: 7,00").
+ *
+ * Os campos chegam como `precoItem_<variacaoId>` (o que está na tela agora) e
+ * `precoItemAntes_<variacaoId>` (o que estava quando a ficha abriu). Só vai
+ * quem mudou: mandar todos de volta "congelava" o preço de item que seguia o
+ * do produto, e o item deixava de acompanhar quando o preço do produto subia.
+ */
+function precosDosItensDo(
+  f: FormData,
+): { itens: { variacaoId: string; preco: number }[] } | { campos: Record<string, string> } {
+  const itens: { variacaoId: string; preco: number }[] = []
+  const campos: Record<string, string> = {}
+  for (const [chave, bruto] of f.entries()) {
+    if (!chave.startsWith('precoItem_')) continue
+    const id = chave.slice('precoItem_'.length)
+    const texto = String(bruto ?? '').trim()
+    if (!texto) continue
+    const preco = lerDinheiro(texto)
+    if (preco === null || !(preco > 0)) {
+      campos[chave] = 'Informe um preço maior que zero, como 7,00.'
+      continue
+    }
+    const antes = lerDinheiro(String(f.get(`precoItemAntes_${id}`) ?? '').trim())
+    if (antes !== null && Math.round(antes * 100) === Math.round(preco * 100)) continue
+    itens.push({ variacaoId: id, preco })
+  }
+  return Object.keys(campos).length > 0 ? { campos } : { itens }
 }
 
 /** O erro geral que acompanha os erros de campo: diz onde olhar. */
@@ -276,6 +306,8 @@ export async function editar(
   }
   const p = precos.valores
   const vista = p.precoVista!
+  const doItem = precosDosItensDo(form)
+  if ('campos' in doItem) return { erro: ERRO_NOS_CAMPOS, campos: doItem.campos }
   const atual = await comoOrg(sessao.orgId, (db) =>
     db.produto.findUnique({ where: { id: produtoId }, select: { vendidoEm: true } }),
   )
@@ -327,6 +359,21 @@ export async function editar(
       }
     }
 
+    // O preço de cada item vem DEPOIS do preço do produto: a diferença é
+    // medida sobre o preço à vista que acabou de ser gravado.
+    let precosMudaram = 0
+    if (doItem.itens.length > 0) {
+      try {
+        precosMudaram = await definirPrecosDosItens(sessao, produtoId, doItem.itens)
+      } catch (e) {
+        if (e instanceof PrecoDoItemRecusado) {
+          revalidatePath(`/${slug}/produtos/${produtoId}`)
+          return { erro: `O resto da ficha foi salvo, mas o preço dos itens não mudou. ${e.message}` }
+        }
+        throw e
+      }
+    }
+
     revalidatePath(`/${slug}/produtos`)
     revalidatePath(`/${slug}/produtos/${produtoId}`)
 
@@ -338,6 +385,7 @@ export async function editar(
       g.reativadas && `${plural(g.reativadas, 'reativada', 'reativadas')}`,
       g.desativadas && `${plural(g.desativadas, 'desativada', 'desativadas')} (${palavra(g.desativadas, 'tinha', 'tinham')} histórico)`,
       g.apagadas && `${plural(g.apagadas, 'removida', 'removidas')}`,
+      precosMudaram > 0 && `${plural(precosMudaram, 'preço de item mudou', 'preços de itens mudaram')}`,
     ].filter(Boolean)
 
     return { ok: partes.length > 0 ? `Salvo. ${partes.join(', ')}.` : 'Salvo.' }

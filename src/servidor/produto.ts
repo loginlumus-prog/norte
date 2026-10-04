@@ -433,6 +433,97 @@ export const reativarProduto = (sessao: Sessao, produtoId: string) =>
   editarProduto(sessao, produtoId, { ativo: true }, 'produto.reativou')
 
 // ─────────────────────────────────────────────────────────────
+// O PREÇO DE CADA ITEM DA GRADE
+// ─────────────────────────────────────────────────────────────
+// Casquinha comum R$ 4, casquinha recheada R$ 7: o mesmo produto (e o mesmo
+// estoque, que é o que importa), preços diferentes. O banco guarda isso como
+// uma DIFERENÇA em reais sobre o preço do produto (`Variacao.ajustePreco`),
+// somada em todas as tabelas (à vista, cartão e crediário) — balcão, catálogo,
+// troca e etiqueta já liam essa diferença; faltava a tela que a gravasse.
+//
+// A tela mostra e recebe o preço FINAL do item ("7,00"), que é como a pessoa
+// pensa; a conta da diferença é daqui. Quem não mexeu no item não entra: o
+// item sem diferença continua acompanhando o preço do produto quando ele muda.
+
+export type PrecoDoItem = { variacaoId: string; preco: number }
+
+export class PrecoDoItemRecusado extends Error {
+  constructor(motivo: string) {
+    super(motivo)
+    this.name = 'PrecoDoItemRecusado'
+  }
+}
+
+/**
+ * Grava o preço à vista final de cada item pedido. Devolve quantos mudaram.
+ * Exige `produto.preco` e que a pessoa alcance TODAS as lojas onde o produto é
+ * vendido — o preço vale em cada uma delas, como o do produto.
+ */
+export async function definirPrecosDosItens(
+  sessao: Sessao,
+  produtoId: string,
+  itens: PrecoDoItem[],
+): Promise<number> {
+  exigir(sessao, 'produto.preco')
+  if (itens.length === 0) return 0
+  if (itens.some((i) => !Number.isFinite(i.preco) || i.preco <= 0)) {
+    throw new PrecoDoItemRecusado('O preço de cada item precisa ser maior que zero.')
+  }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const produto = await db.produto.findUnique({
+      where: { id: produtoId },
+      select: { nome: true, precoVista: true, vendidoEm: true },
+    })
+    if (!produto) throw new PrecoDoItemRecusado('Produto não encontrado.')
+    if (!alcancaOProduto(alcanceDe(sessao, 'produto.preco'), produto.vendidoEm)) {
+      throw new PrecoDoItemRecusado(MOTIVO_FORA_DO_ALCANCE)
+    }
+
+    const base = Math.round(Number(produto.precoVista ?? 0) * 100)
+    const variacoes = await db.variacao.findMany({
+      where: { produtoId, id: { in: itens.map((i) => i.variacaoId) } },
+      select: { id: true, codigo: true, ajustePreco: true },
+    })
+    const porId = new Map(variacoes.map((v) => [v.id, v]))
+
+    let mudaram = 0
+    const depois: { codigo: string | null; preco: number }[] = []
+    for (const i of itens) {
+      const v = porId.get(i.variacaoId)
+      // Variação de outro produto (o navegador é do usuário): ignora, não grava.
+      if (!v) continue
+      const novoCent = Math.round(i.preco * 100) - base
+      const antesCent = Math.round(Number(v.ajustePreco ?? 0) * 100)
+      if (novoCent === antesCent) continue
+      await db.variacao.update({
+        where: { id: v.id },
+        // Sem diferença = nulo: o item volta a acompanhar o preço do produto.
+        data: { ajustePreco: novoCent === 0 ? null : novoCent / 100 },
+      })
+      mudaram++
+      depois.push({ codigo: v.codigo, preco: i.preco })
+    }
+
+    if (mudaram > 0) {
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          acao: 'produto.preco.alterou',
+          alvoTipo: 'produto',
+          alvoId: produtoId,
+          alvoNome: produto.nome,
+          depois: { itens: depois },
+        },
+      })
+    }
+    return mudaram
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
 // OS EIXOS E AS OPÇÕES DA EMPRESA (Sabor, Tamanho, Cor…)
 // ─────────────────────────────────────────────────────────────
 // Até 03/10/2026 eles só nasciam do ramo escolhido no cadastro ou da

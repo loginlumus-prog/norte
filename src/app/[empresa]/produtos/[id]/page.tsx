@@ -145,6 +145,16 @@ export default async function FichaProduto({
     vendidoEm: produto.vendidoEm ?? [],
     ativo: produto.ativo,
     marcadas,
+    // O preço de cada item da grade (a casquinha recheada a R$ 7): o preço do
+    // produto mais a diferença de cada um. Só para quem mexe em preço.
+    podePreco: pode(sessao, 'produto.preco'),
+    itens: produto.variacoes
+      .filter((v) => v.ativa && !v.padrao)
+      .map((v) => ({
+        id: v.id,
+        rotulo: v.opcoes.map((o) => valorDe.get(o.opcaoId)?.valor ?? '—').join(' · '),
+        preco: emReais(Number(produto.precoVista ?? 0) + Number(v.ajustePreco ?? 0)),
+      })),
     // Só as combinações que já venderam ou mexeram no estoque. Contar todas
     // fazia o aviso "já tem venda" aparecer no produto recém-cadastrado.
     comHistorico: produto.variacoes.filter((v) => v._count.vendaItens > 0 || v._count.movimentos > 0).length,
