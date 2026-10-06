@@ -394,7 +394,7 @@ declare
     'sobre', 'contato', 'blog', 'status', 'seguranca', 'lgpd', 'admin', 'app', 'painel',
     'entrar', 'sair', 'conta', 'assinatura', 'convite', 'cadastro', 'cadastrar', 'criar',
     'nova', 'novo', 'norte', 'www', 'mail', 'email', 'redefinir-senha', 'confirmar-email',
-    'esqueci-a-senha', 'comecar', 'login', 'parceiros', 'parceiro', 'indique'
+    'esqueci-a-senha', 'comecar', 'login', 'parceiros', 'parceiro', 'indique', '.well-known'
   ];
   v_nome text := btrim(p_nome);
   v_dono text := btrim(p_dono);
