@@ -44,7 +44,7 @@ import {
 } from 'react'
 import { Botao, Situacao, cx } from '@/ui/base'
 import { vitrine, type Achado, type Vitrine } from './acoes'
-import { baixarCatalogo, vitrineGuardada } from './semInternet'
+import { baixarCatalogo, EVENTO_CATALOGO_MUDOU, vitrineGuardada } from './semInternet'
 import { brl, precoDe, linhaCent } from './conta'
 import type { Venda } from './useVenda'
 import {
@@ -172,6 +172,24 @@ export function Produtos({
       vivo = false
     }
   }, [slug, unidadeId, categoriaId, tentativa])
+
+  // A vitrine é lida uma vez ao abrir — e o balcão fica aberto o dia todo. Sem
+  // renovar, preço mudado no cadastro só chegava ao caixa depois de recarregar
+  // a página. Renova: ao voltar para a aba, a cada 3 minutos com internet, e
+  // quando a venda volta dizendo que um preço mudou (useVenda).
+  useEffect(() => {
+    const renovar = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) setTentativa((t) => t + 1)
+    }
+    const relogio = setInterval(renovar, 3 * 60_000)
+    document.addEventListener('visibilitychange', renovar)
+    window.addEventListener(EVENTO_CATALOGO_MUDOU, renovar)
+    return () => {
+      clearInterval(relogio)
+      document.removeEventListener('visibilitychange', renovar)
+      window.removeEventListener(EVENTO_CATALOGO_MUDOU, renovar)
+    }
+  }, [])
 
   async function mostrarMais() {
     if (!pagina || maisIndo) return

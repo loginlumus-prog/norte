@@ -258,6 +258,16 @@ export type ResultadoVenda =
   | { ok: false; motivo: 'crediario_recusado'; recado: string }
   /** Produto que não é vendido nesta loja — ver `catalogo-loja.ts`. */
   | { ok: false; motivo: 'fora_da_loja'; itens: string[] }
+  /**
+   * O preço da tela é de antes de alguém mudar a tabela (o balcão ficou
+   * aberto). Nada foi gravado: a tela troca os preços pelos de agora, mostra
+   * o total novo e a pessoa cobra de novo. Os preços vão nas três tabelas.
+   */
+  | {
+      ok: false
+      motivo: 'preco_mudou'
+      itens: { variacaoId: string; descricao: string; de: number; para: number; precos: { vista: number; cartao: number; crediario: number } }[]
+    }
   /** Material de uso (a luva, a acetona): tem estoque, não se vende. */
   | { ok: false; motivo: 'uso_interno'; itens: string[] }
   /** O plano tem teto de vendas no mês (o Grátis) e ele foi alcançado. */
@@ -927,6 +937,29 @@ export async function registrarVenda(
           ) + centavos(va?.ajustePreco ?? 0)
       const pedidoCent = i.precoUnit != null ? centavos(i.precoUnit) : tabelaCent
       const precoCent = Math.max(0, Math.min(pedidoCent, tabelaCent))
+      // O balcão não edita o preço do item de catálogo (desconto vai à
+      // parte): preço diferente da tabela é tela desatualizada. Sem isto, o
+      // preço que SUBIU virava desconto — a venda saía pelo preço velho ou
+      // travava pedindo autorização de um desconto que ninguém deu.
+      const defasado =
+        !v.offline && i.precoUnit != null && !precoDoPedido.has(i.variacaoId) && pedidoCent !== tabelaCent
+          ? (() => {
+              const base = {
+                vista: centavos(p?.precoVista ?? 0),
+                cartao: p?.precoCartao != null ? centavos(p.precoCartao) : null,
+                crediario: p?.precoCrediario != null ? centavos(p.precoCrediario) : null,
+              }
+              const aj = centavos(va?.ajustePreco ?? 0)
+              const em = (t: Tabela) => reais(precoNaTabela(base, t) + aj)
+              return {
+                variacaoId: i.variacaoId,
+                descricao: descrever(va),
+                de: reais(pedidoCent),
+                para: reais(tabelaCent),
+                precos: { vista: em('vista'), cartao: em('cartao'), crediario: em('crediario') },
+              }
+            })()
+          : null
       const descontoCent = centavos(i.desconto ?? 0)
       const totalCent = multiplicar(precoCent, i.quantidade) - descontoCent
       return {
@@ -952,8 +985,12 @@ export async function registrarVenda(
         saldoNaVenda: saldoQueFaltou.has(i.variacaoId) ? saldoQueFaltou.get(i.variacaoId)! : null,
         _cent: totalCent,
         _tabelaCent: multiplicar(tabelaCent, i.quantidade),
+        _defasado: defasado,
       }
     })
+
+    const defasados = itens.flatMap((x) => ('_defasado' in x && x._defasado ? [x._defasado] : []))
+    if (defasados.length > 0) return { ok: false as const, motivo: 'preco_mudou' as const, itens: defasados }
 
     // A linha da encomenda: o que falta, lido lá em cima com a encomenda
     // travada. Entra como tabela dela mesma — não é desconto de ninguém. No
@@ -1266,7 +1303,10 @@ export async function registrarVenda(
         ...(quandoDaVenda ? { criadaEm: quandoDaVenda } : {}),
         concluidaEm: quandoDaVenda ?? new Date(),
         itens: {
-          create: itens.map(({ _cent, _tabelaCent, ...i }) => ({ orgId: sessao.orgId, ...i })),
+          create: itens.map(({ _cent, _tabelaCent, ...i }) => {
+            const { _defasado, ...linha } = i as typeof i & { _defasado?: unknown }
+            return { orgId: sessao.orgId, ...linha }
+          }),
         },
         pagamentos: {
           create: v.pagamentos.map((p, i) => {

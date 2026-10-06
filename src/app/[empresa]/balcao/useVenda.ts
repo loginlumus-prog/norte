@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import type { ClienteNoBalcao, Achado, InicialDoBalcao } from './acoes'
 import { procurar, fecharVenda, consultarValeAcao, fichaNoBalcao } from './acoes'
+import { EVENTO_CATALOGO_MUDOU } from './semInternet'
 import { lerFila, marcarErro, novaChave, podeIrParaFila, porNaFila, procurarGuardado, tirarDaFila, type VendaNaFila } from './semInternet'
 import { chaveDoBalcao, guardar, recuperar, esquecer, lembrar, lembrado } from './guardar'
 import { contar, cpfConfere, faltaCom, pagamentosParaEnviar, precoDe, brl, cent, NOME_DA_FORMA, rotuloDoPagamento } from './conta'
@@ -202,6 +203,7 @@ function motivoEmPalavras(motivo: string): string {
   const m: Record<string, string> = {
     sem_itens: 'A venda chegou sem itens.',
     pagamento_nao_fecha: 'A conta não fecha com o preço de agora (o preço mudou?).',
+    preco_mudou: 'O preço de um produto mudou depois que a venda foi montada.',
     caixa_fechado: 'Não há caixa aberto na loja: abra o caixa para esta venda subir.',
     desconto_acima_do_teto: 'O desconto passa do teto da loja: precisa de autorização.',
     avulso_negado: 'Item fora do cadastro precisa de autorização.',
@@ -1203,6 +1205,15 @@ export function useVenda({
         if (r.soltar === 'pontos') setPontosUsar(0)
       } else if (r.motivo === 'loja_nao_vende') {
         setRecado({ nivel: 'critico', texto: 'Esta unidade não vende: é depósito ou foi desativada. Escolha uma loja.' })
+      } else if (r.motivo === 'preco_mudou') {
+        // A tabela mudou com o balcão aberto: troca os preços no pedido pelos
+        // de agora, avisa, e a vitrine se renova. Nada foi gravado.
+        const novos = new Map(r.itens.map((i) => [i.variacaoId, i.precos]))
+        setCarrinho((c) => c.map((l) => (!l.avulso && novos.has(l.id) ? { ...l, preco: novos.get(l.id)!.vista, precos: novos.get(l.id)! } : l)))
+        setAviso(
+          `Preço atualizado: ${r.itens.map((i) => `${i.descricao} ${brl(i.de)} → ${brl(i.para)}`).join(', ')}. Confira o total novo e conclua de novo.`,
+        )
+        window.dispatchEvent(new Event(EVENTO_CATALOGO_MUDOU))
       } else if (r.motivo === 'item_inativo') {
         const fora = new Set(r.itens)
         setCarrinho((c) => c.filter((l) => l.avulso || !fora.has(l.descricao)))

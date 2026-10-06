@@ -43,6 +43,9 @@ export type VendaNaFila = {
 
 const chaveDaFila = (slug: string) => `norte:fila:${slug}`
 
+/** O servidor disse que um preço mudou: a vitrine aberta se renova. */
+export const EVENTO_CATALOGO_MUDOU = 'norte:catalogo-mudou'
+
 export function lerFila(slug: string): VendaNaFila[] {
   try {
     const cru = localStorage.getItem(chaveDaFila(slug))

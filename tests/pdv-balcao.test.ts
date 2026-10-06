@@ -258,6 +258,22 @@ describe('desconto acima do teto e item avulso: a gerente autoriza na hora', () 
     expect(r).toMatchObject({ ok: true, autorizadoPor: null })
   })
 
+  // O caso da sorveteria: o dono subiu o preço de 4 para 5 com o balcão
+  // aberto. A tela ainda mandava 4, e o servidor lia a diferença como
+  // desconto (vendia pelo velho ou pedia autorização de um desconto que
+  // ninguém deu). Agora volta "o preço mudou", com os preços de agora.
+  it('preço da tela desatualizado: nada é gravado e volta o preço de agora, nas três tabelas', async () => {
+    const r = await vender({ itens: [{ variacaoId: 'var-cam', quantidade: 1, precoUnit: 45 }], pagamentos: [{ forma: 'PIX', valor: 45 }] })
+    expect(r).toEqual({
+      ok: false,
+      motivo: 'preco_mudou',
+      itens: [{ variacaoId: 'var-cam', descricao: expect.stringContaining('Camiseta'), de: 45, para: 50, precos: { vista: 50, cartao: 55, crediario: 60 } }],
+    })
+    // O preço certo passa; sem preço da tela, vale a tabela.
+    expect(await vender({ itens: [{ variacaoId: 'var-cam', quantidade: 1, precoUnit: 50 }] })).toMatchObject({ ok: true })
+    expect(await vender()).toMatchObject({ ok: true })
+  })
+
   it('item avulso: sem PIN recusa; com o PIN da gerente passa', async () => {
     const avulso = { variacaoId: null, quantidade: 1, avulso: { descricao: 'Ajuste de barra', precoUnit: 20 } }
     expect(await vender({ itens: [avulso], pagamentos: [{ forma: 'DINHEIRO', valor: 20 }] }, BALCAO)).toMatchObject({
