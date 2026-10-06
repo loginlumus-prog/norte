@@ -24,7 +24,7 @@ describe('o que cada perfil vê no menu', () => {
     expect(visiveis('DONO')).toEqual([
       'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Catálogo', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
       'Produtos', 'Estoque', 'Fábrica', 'Compras', 'Material usado', 'Preços', 'Clientes', 'Equipe', 'Tarefas', 'Financeiro', 'Análise', 'Assistente',
-      'Farol', 'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Configurações',
+      'Farol', 'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Indique e ganhe', 'Configurações',
     ])
   })
 

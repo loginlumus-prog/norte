@@ -28,6 +28,8 @@ export const RESERVADOS: ReadonlySet<string> = new Set([
   'admin', 'app', 'painel', 'entrar', 'sair', 'conta', 'assinatura', 'convite',
   'cadastro', 'cadastrar', 'criar', 'nova', 'novo', 'norte', 'www', 'mail', 'email',
   'redefinir-senha', 'confirmar-email', 'esqueci-a-senha', 'comecar', 'login',
+  // o programa de parceiros
+  'parceiros', 'parceiro', 'indique',
 ])
 
 /** De 3 a 40: minúsculas, números e hífen, sem hífen nas pontas. */

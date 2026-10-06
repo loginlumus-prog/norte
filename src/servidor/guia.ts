@@ -2447,6 +2447,57 @@ export const GUIA: Entrada[] = [
     palavras: ['plano', 'planos', 'mensalidade', 'preço do sistema', 'upgrade', 'trocar de plano', 'conta do mês', 'loja a mais', 'limite', 'crédito', 'recarga', 'recarregar', 'teste', 'assinar', 'grátis', 'norte', 'corporativo', 'contrato', 'pagamento do norte', 'quanto custa'],
   },
 
+  // ── Indique e ganhe ──
+  {
+    chave: 'indique',
+    titulo: 'Indique e ganhe',
+    caminho: '/indique',
+    abre: ['empresa.configurar'],
+    oQueE:
+      'O programa de parceiros do Norte, do lado de quem já é cliente: você manda o seu link para outra loja e recebe, no Pix, uma parte de cada mensalidade que ela pagar. A loja indicada testa 30 dias grátis e paga metade da primeira mensalidade. Aqui ficam o seu link, a sua porcentagem, o que está liberado e as lojas que você indicou.',
+    comoFazer: [
+      {
+        titulo: 'Ativar',
+        passos: [
+          'Escolha uma senha para a conta de parceiro e aceite os termos do programa. A conta usa o seu e-mail.',
+          'Já é parceiro com o mesmo e-mail? Digite a senha de lá: a conta é vinculada à empresa.',
+          'Só quem configura a empresa ativa.',
+        ],
+        capacidade: 'empresa.configurar',
+      },
+      {
+        titulo: 'Indicar e receber',
+        passos: [
+          'Copie o link (ou passe o código, que a loja digita no cadastro). Quem abre o link fica marcado como seu por 90 dias.',
+          'Você recebe de 10% a 30% de cada mensalidade paga pela loja indicada, nos primeiros 12 meses. A porcentagem sobe com o número de lojas suas pagando.',
+          'A comissão libera 30 dias depois do pagamento e cai no Pix no dia 10, a partir de R$ 50.',
+          '"Abrir o painel completo" leva ao painel de parceiro: copiar link e mensagem pronta, ver comissão por comissão e convidar outros parceiros (5% sobre as lojas deles).',
+        ],
+        capacidade: 'empresa.configurar',
+      },
+      {
+        titulo: 'Receber no Pix',
+        passos: [
+          'No painel completo, em "Dados para receber", cadastre a chave Pix e o CPF ou CNPJ de quem recebe.',
+          'Sem chave Pix, o dinheiro fica guardado e não sai.',
+          'Cada Pix recebido aparece em "Pix recebidos", com a data e a chave usada.',
+        ],
+        capacidade: 'empresa.configurar',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'A loja que eu indiquei sabe quanto eu ganho?',
+        r: 'Não. Ela vê só que chegou por indicação e o desconto da primeira mensalidade. E você vê dela só o nome, se está em teste ou pagando e quanto ganhou com ela — nada de dentro do sistema dela.',
+      },
+      {
+        p: 'Posso indicar a minha própria empresa ou uma filial?',
+        r: 'Não. A indicação vale para empresa nova, de outro dono. Loja nova da sua empresa é aberta em Lojas.',
+      },
+    ],
+    palavras: ['indicar', 'indicação', 'indique', 'parceiro', 'parceiros', 'afiliado', 'comissão', 'ganhar', 'link', 'pix', 'código'],
+  },
+
   // ── Configurações ──
   {
     chave: 'configuracoes',

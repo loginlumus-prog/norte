@@ -20,8 +20,9 @@ import {
 } from './guarda'
 import { ESTILO } from './estilo'
 import { SCRIPT } from './cliente'
-import { detalheEmpresa, filtrar, listarEmpresas, pedidosAbertosDeTodas, resumir } from './leitura'
-import { paginaDeErro, telaEmpresa, telaEmpresas, telaPedidos, dataHora, type Aviso, type Contexto } from './telas'
+import { detalheEmpresa, filtrar, listarEmpresas, listarParceiros, pedidosAbertosDeTodas, resumir } from './leitura'
+import { paginaDeErro, telaEmpresa, telaEmpresas, telaParceiros, telaPedidos, dataHora, type Aviso, type Contexto } from './telas'
+import * as parceiros from '../servidor/parceiros'
 import * as op from '../servidor/operacao'
 import { PLANOS, PRECOS, milhar } from '../servidor/planos'
 import { quemDaEquipe, SemCota } from '../servidor/assinatura'
@@ -138,6 +139,7 @@ export function criarConsole(cfg: ConfigDoConsole): Server {
       return enviar(res, 200, telaEmpresas(c, filtrar(linhas, f), resumir(linhas), f))
     }
     if (url.pathname === '/pedidos') return enviar(res, 200, telaPedidos(c, pedidosAbertosDeTodas(linhas)))
+    if (url.pathname === '/parceiros') return enviar(res, 200, telaParceiros(c, await listarParceiros(cfg.admin, agora)))
     const m = /^\/empresa\/([a-z0-9-]{1,60})$/.exec(url.pathname)
     if (m) {
       const d = await detalheEmpresa(cfg.admin, m[1]!, agora, linhas)
@@ -168,7 +170,37 @@ export function criarConsole(cfg: ConfigDoConsole): Server {
     return aberto.id
   }
 
+  /** As ações do programa de parceiros: não são de uma empresa, são de um parceiro. */
+  async function executarParceiro(campos: URLSearchParams, quem: string): Promise<Aviso> {
+    const id = campos.get('parceiro') ?? ''
+    const p = await cfg.admin.parceiro.findUnique({ where: { id }, select: { id: true, nome: true, codigo: true } })
+    if (!p) throw new Error('Parceiro não encontrado.')
+    if (cfg.producao && (campos.get('confirmacao') ?? '').trim().toUpperCase() !== p.codigo) {
+      throw new Error(`Em produção, digite o código do parceiro (${p.codigo}) para aplicar. Nada foi feito.`)
+    }
+    if (campos.get('acao') === 'repasse') {
+      try {
+        const r = await parceiros.registrarRepasse(p.id, {
+          quem,
+          comprovante: campos.get('comprovante'),
+          ignorarMinimo: campos.get('abaixoDoMinimo') === '1',
+        })
+        return { tipo: 'ok', texto: `Pix de ${mostrar(r.valorCent)} para ${p.nome} registrado (${r.comissoes} comissão(ões) marcadas como pagas).` }
+      } catch (e) {
+        if (e instanceof parceiros.RepasseRecusado) throw new Error(e.message)
+        throw e
+      }
+    }
+    if (campos.get('acao') === 'parceiro-situacao') {
+      const para = campos.get('para') === 'BLOQUEADO' ? 'BLOQUEADO' : 'ATIVO'
+      await parceiros.mudarSituacaoDoParceiro(p.id, para)
+      return { tipo: 'ok', texto: `${p.nome}: ${para === 'BLOQUEADO' ? 'bloqueado (as sessões abertas caíram)' : 'desbloqueado'}.` }
+    }
+    throw new Error('Ação desconhecida.')
+  }
+
   async function executar(campos: URLSearchParams, quem: string): Promise<Aviso> {
+    if (campos.get('acao') === 'repasse' || campos.get('acao') === 'parceiro-situacao') return executarParceiro(campos, quem)
     const slug = campos.get('slug') ?? ''
     const org = await cfg.admin.org.findUnique({ where: { slug }, select: { id: true, slug: true, nome: true, situacao: true } })
     if (!org) throw new Error(`Não existe empresa em /${slug}.`)
@@ -225,6 +257,32 @@ export function criarConsole(cfg: ConfigDoConsole): Server {
             `Pacote de respostas em /${org.slug}.` +
             (r.total !== null ? ` Agora: ${milhar(r.usadas)} usadas de ${milhar(r.total)} no mês.` : '') +
             (pedidoId ? ' O pedido foi atendido.' : ''),
+        }
+      }
+      case 'pagamento': {
+        const cheio = op.lerValorEmReais(campos.get('cheio') ?? '')
+        const pago = op.lerValorEmReais(campos.get('pago') ?? '')
+        if (cheio === null || pago === null || pago <= 0) throw new Error('Diga os valores em reais: 149,90 ou 1.234,56.')
+        const dia = campos.get('pagoEm') ?? ''
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) throw new Error('Diga a data do pagamento.')
+        const forma = campos.get('forma') as parceiros.FormaDePagamento
+        try {
+          const r = await parceiros.registrarPagamento(org.id, {
+            referencia: campos.get('referencia') ?? '',
+            valorCheioCent: cheio,
+            valorPagoCent: pago,
+            forma,
+            pagoEm: new Date(`${dia}T12:00:00-03:00`),
+            quem,
+            observacao: motivo,
+          })
+          const com = r.comissoes.length
+            ? ` Comissões: ${r.comissoes.map((c) => `nível ${c.nivel} ${c.pct}% = ${mostrar(c.valorCent)}`).join('; ')} (liberam em ${parceiros.CARENCIA_DIAS} dias).`
+            : ''
+          return { tipo: 'ok', texto: `Mensalidade ${campos.get('referencia')} de /${org.slug}: ${mostrar(r.valorPagoCent)} registrada.${com}` }
+        } catch (e) {
+          if (e instanceof parceiros.PagamentoRepetido) throw new Error(e.message)
+          throw e
         }
       }
       case 'recusar': {
@@ -317,7 +375,7 @@ export function criarConsole(cfg: ConfigDoConsole): Server {
   /** Para onde voltar depois da ação: só caminhos nossos. */
   function destino(campos: URLSearchParams): string {
     const v = campos.get('voltar')
-    if (v === '/pedidos' || v === '/') return v
+    if (v === '/pedidos' || v === '/' || v === '/parceiros') return v
     const slug = campos.get('slug') ?? ''
     return /^[a-z0-9-]{1,60}$/.test(slug) ? `/empresa/${slug}` : '/'
   }
@@ -354,7 +412,7 @@ export function criarConsole(cfg: ConfigDoConsole): Server {
     }
 
     let aviso: Aviso
-    const rotulo = `${campos.get('acao')} /${campos.get('slug')}`
+    const rotulo = `${campos.get('acao')} ${campos.get('slug') ? `/${campos.get('slug')}` : `parceiro ${campos.get('parceiro')}`}`
     try {
       aviso = await executar(campos, quem)
       console.log(cfg.limpar(`  [${new Date().toLocaleTimeString('pt-BR')}] ${quem}: ${rotulo} — ${aviso.texto}`))

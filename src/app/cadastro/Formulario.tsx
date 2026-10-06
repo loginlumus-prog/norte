@@ -20,6 +20,7 @@ export function Formulario({
   ramos,
   dominio,
   comEmail,
+  codigo,
 }: {
   /** A hora em que a página abriu, assinada (ver autocadastro.ts). */
   carimbo: string
@@ -28,10 +29,13 @@ export function Formulario({
   dominio: string
   /** O servidor manda e-mail? Muda o que acontece depois do botão. */
   comEmail: boolean
+  /** O código do parceiro que mandou o link, já conferido. */
+  codigo: string
 }) {
   const [estado, agir, pendente] = useActionState<EstadoCadastro, FormData>(criarContaAcao, {})
   const [nome, setNome] = useState(estado.valores?.empresa ?? '')
   const [ver, setVer] = useState(false)
+  const [comCodigo, setComCodigo] = useState(!!codigo || !!estado.valores?.ref)
 
   // ── criada: falta o e-mail ──
   if (estado.criada) {
@@ -212,6 +216,32 @@ export function Formulario({
           Pelo menos 8 caracteres. Não use a mesma de outro lugar.
         </p>
       </div>
+
+      {comCodigo ? (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="cadastro-ref" className={ROTULO}>
+            Código de indicação
+          </label>
+          <input
+            id="cadastro-ref"
+            name="ref"
+            maxLength={20}
+            autoComplete="off"
+            defaultValue={estado.valores?.ref || codigo}
+            placeholder="Ex.: MARIA"
+            className={cx(CAMPO, 'uppercase')}
+          />
+          <p className="text-xs text-tinta-3">Com indicação, a primeira mensalidade sai pela metade.</p>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setComCodigo(true)}
+          className="self-start text-sm font-semibold text-marca underline-offset-2 hover:underline"
+        >
+          Tenho um código de indicação
+        </button>
+      )}
 
       {/* O aceite e a linha da LGPD. A caixa começa DESMARCADA: aceite
           marcado de fábrica não é aceite. */}

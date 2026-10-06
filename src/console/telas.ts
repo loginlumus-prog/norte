@@ -14,7 +14,9 @@ import {
   TETO_RECARGA_CENT,
   FAROL_MARCAS_MAX,
 } from '../servidor/operacao'
-import { contaDoMes, type DetalheEmpresa, type LinhaEmpresa, type Resumo } from './leitura'
+import { contaDoMes, type DetalheEmpresa, type LinhaEmpresa, type LinhaParceiro, type Resumo } from './leitura'
+import { DESCONTO_PRIMEIRA_PCT, FORMAS_DE_PAGAMENTO, MINIMO_REPASSE, mostrarDocumento, valorDaMensalidade } from '../servidor/parceiros'
+import { diaEmSP } from '../servidor/dia'
 import type { Pedido } from '../servidor/pedidos'
 
 
@@ -108,7 +110,7 @@ function campoCsrf(c: Contexto) {
   return `<input type="hidden" name="csrf" value="${esc(c.csrf)}">`
 }
 
-export function pagina(c: Contexto, titulo: string, ativo: 'empresas' | 'pedidos' | null, corpo: string): string {
+export function pagina(c: Contexto, titulo: string, ativo: 'empresas' | 'pedidos' | 'parceiros' | null, corpo: string): string {
   const quem = c.operador ? c.operador.replace(/^Equipe Norte \((.*)\)$/, '$1') : null
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -122,6 +124,7 @@ ${c.producao ? '<div class="faixa-prod">PRODUÇÃO — cada ação muda a conta 
   <nav>
     <a href="/" class="${ativo === 'empresas' ? 'ativo' : ''}">Empresas</a>
     <a href="/pedidos" class="${ativo === 'pedidos' ? 'ativo' : ''}">Pedidos${c.pedidosAbertos ? `<span class="bolha">${c.pedidosAbertos}</span>` : ''}</a>
+    <a href="/parceiros" class="${ativo === 'parceiros' ? 'ativo' : ''}">Parceiros</a>
   </nav>
   <div class="dir">
     ${quem ? `<span class="quem">Assina como <b>${esc(quem)}</b>${c.operadorFixo ? '' : `<form method="post" action="/operador">${campoCsrf(c)}<input type="hidden" name="nome" value=""><button type="submit" title="Trocar quem assina">trocar</button></form>`}</span>` : ''}
@@ -309,6 +312,24 @@ export function telaEmpresa(c: Contexto, d: DetalheEmpresa, dominioDaEquipe: str
     </dl>
     <p class="dica">${l.situacao === 'TESTE' && l.testeAte ? `Teste até ${dataHora(l.testeAte)} (${prazo(l.testeAte, c.agora)}).` : l.proximaCobranca ? `Próxima cobrança: ${data(l.proximaCobranca)}.` : 'Sem cobrança automática (gateway ainda desligado).'}${d.org.suspensaEm ? ` Suspensa desde ${dataHora(d.org.suspensaEm)}.` : ''}</p></div>`
 
+  // A mensalidade a cobrar: a da tabela, com os 50% da primeira quando a
+  // empresa veio por indicação e ainda não pagou nada.
+  const totalCent = conta.total === null ? null : Math.round(conta.total * 100)
+  const sugerido = totalCent === null ? null : valorDaMensalidade(totalCent, !!d.indicacao?.descontoDisponivel)
+  const mesAtual = diaEmSP(c.agora).slice(0, 7)
+  const reaisCampo = (cent: number) => (cent / 100).toFixed(2).replace('.', ',')
+  const tabelaPagamentos = d.pagamentos.length
+    ? `<div class="tabela-caixa"><table><thead><tr><th>Mês</th><th>Pago em</th><th>Forma</th><th>Cheio</th><th>Desconto</th><th>Pago</th><th>Quem</th></tr></thead><tbody>${d.pagamentos
+        .map(
+          (pg) =>
+            `<tr><td>${esc(pg.referencia)}</td><td>${data(pg.pagoEm)}</td><td>${esc(pg.forma)}</td><td>${mostrar(pg.valorCheioCent)}</td><td>${pg.descontoCent ? mostrar(pg.descontoCent) : '—'}</td><td><b>${mostrar(pg.valorPagoCent)}</b></td><td class="mini">${esc(pg.quem)}</td></tr>`,
+        )
+        .join('')}</tbody></table></div>`
+    : '<p class="mini">Nenhuma mensalidade registrada como paga.</p>'
+  const cardIndicacao = d.indicacao
+    ? `<p class="dica">Indicada por <b>${esc(d.indicacao.parceiro)}</b> (${esc(d.indicacao.codigo)}) em ${data(d.indicacao.desde)}. ${d.indicacao.descontoDisponivel ? `A primeira mensalidade tem ${DESCONTO_PRIMEIRA_PCT}% de desconto.` : 'O desconto da primeira já foi usado.'}</p>`
+    : '<p class="dica">Sem indicação de parceiro.</p>'
+
   const r = l.respostas
   const margem = margemCent(l)
   const cardCredito = `<div class="cartao"><h2>Assistente e IA</h2><dl class="pares">
@@ -453,6 +474,21 @@ export function telaEmpresa(c: Contexto, d: DetalheEmpresa, dominioDaEquipe: str
         'sec',
       )}
     </div></details>
+    <details class="acao"${d.indicacao?.descontoDisponivel ? ' open' : ''}><summary>Mensalidade paga <span class="mini">${d.pagamentos[0] ? `última ${esc(d.pagamentos[0].referencia)}` : 'nenhuma'}</span></summary><div class="corpo">
+      ${cardIndicacao}
+      ${form(
+        c, slug, 'pagamento',
+        `Registrar a mensalidade de /${slug} como paga? Isso gera a comissão de quem indicou (se houver) e não se desfaz pela tela.`,
+        `<div class="lado"><label>Mês pago<input type="month" name="referencia" value="${mesAtual}" required></label>
+         <label>Pago em<input type="date" name="pagoEm" value="${diaEmSP(c.agora)}" required></label></div>
+         <div class="lado"><label>Valor cheio (R$)<input name="cheio" required inputmode="decimal" value="${sugerido ? reaisCampo(sugerido.cheioCent) : ''}"></label>
+         <label>Valor pago (R$)<input name="pago" required inputmode="decimal" value="${sugerido ? reaisCampo(sugerido.pagarCent) : ''}"></label></div>
+         <label>Forma<select name="forma">${FORMAS_DE_PAGAMENTO.map((f) => `<option value="${f}">${f}</option>`).join('')}</select></label>
+         <p class="dica">${sugerido ? `Tabela: ${mostrar(sugerido.cheioCent)}${sugerido.descontoCent ? ` − ${DESCONTO_PRIMEIRA_PCT}% da primeira (indicação) = <b>${mostrar(sugerido.pagarCent)}</b>` : ''}.` : 'Plano sob contrato: digite o valor combinado.'} A comissão é sobre o valor pago.</p>${campoMotivo('Observação — ex.: Pix recebido, id do comprovante')}`,
+        'Registrar pagamento',
+        'ok',
+      )}
+    </div></details>
     <details class="acao"><summary>Pacote de respostas <span class="mini">${respostasTxt(l.respostas)}</span></summary><div class="corpo">
       ${form(
         c, slug, 'respostas',
@@ -520,6 +556,7 @@ export function telaEmpresa(c: Contexto, d: DetalheEmpresa, dominioDaEquipe: str
       <div class="tres">${cardConta}${cardCredito}${cardDono}</div>
       ${secao('Lojas e depósitos', `${d.unidades.filter((u) => u.ativa).length} ativa(s)`, tabelaLojas)}
       ${secao('Equipe', 'só dados de conta', tabelaEquipe)}
+      ${secao('Mensalidades pagas', d.indicacao ? `indicada por ${esc(d.indicacao.parceiro)}` : 'sem indicação', tabelaPagamentos)}
       ${secao('Pedidos de plano e de respostas', 'últimos 180 dias', tabelaPedidos)}
       ${secao('Extrato do cofre de IA', 'últimos 12 lançamentos', tabelaRecargas)}
       ${secao('O que a equipe do Norte fez aqui', 'livro da loja, linhas "Equipe Norte (...)"', livro)}
@@ -566,5 +603,68 @@ export function telaPedidos(c: Contexto, itens: { empresa: LinhaEmpresa; pedido:
     `<div class="linha-titulo"><h1>Pedidos</h1><span class="sub">planos e pacotes de respostas que as lojas pediram na tela da Assinatura e esperam resposta</span></div>
     <p class="dica abaixo">O pedido fecha pela própria resposta: a troca de plano, o pacote de respostas ou a recarga apontam para ele, e a recusa leva o motivo que a loja lê.</p>
     ${corpo}`,
+  )
+}
+
+// ── 4. PARCEIROS ─────────────────────────────────────────────
+
+function formParceiro(c: Contexto, p: LinhaParceiro, acao: string, confirmar: string, dentro: string, botao: string, classe = '') {
+  return `<form class="f" method="post" action="/acao" data-confirmar="${esc(confirmar)}">
+    ${campoCsrf(c)}<input type="hidden" name="acao" value="${esc(acao)}"><input type="hidden" name="parceiro" value="${esc(p.id)}"><input type="hidden" name="voltar" value="/parceiros">
+    ${dentro}${c.producao ? `<label>Digite o código (${esc(p.codigo)}) para aplicar<input name="confirmacao" required autocomplete="off"></label>` : ''}
+    <button type="submit" class="${classe}"${c.operador ? '' : ' disabled title="Diga quem está operando, no alto da página"'}>${esc(botao)}</button>
+  </form>`
+}
+
+export function telaParceiros(c: Contexto, linhas: LinhaParceiro[]): string {
+  const aPagar = linhas.filter((l) => l.situacao === 'ATIVO' && l.liberadoCent >= MINIMO_REPASSE * 100)
+  const total = (f: (l: LinhaParceiro) => number) => linhas.reduce((t, l) => t + f(l), 0)
+  const resumo = `<div class="cartoes">
+    <div class="cartao"><div class="rot">Parceiros</div><div class="num">${linhas.length}</div><div class="det">${linhas.filter((l) => l.situacao !== 'ATIVO').length} bloqueado(s)</div></div>
+    <div class="cartao"><div class="rot">Empresas indicadas</div><div class="num">${total((l) => l.indicadas)}</div><div class="det">${total((l) => l.pagando)} pagando</div></div>
+    <div class="cartao"><div class="rot">Pix a fazer</div><div class="num">${aPagar.length}</div><div class="det">${mostrar(aPagar.reduce((t, l) => t + l.liberadoCent, 0))} liberado</div></div>
+    <div class="cartao"><div class="rot">Em carência</div><div class="num">${mostrar(total((l) => l.carenciaCent))}</div><div class="det">já pago: ${mostrar(total((l) => l.pagoCent))}</div></div>
+  </div>`
+  const corpo = linhas.length
+    ? `<div class="tabela-caixa"><table><thead><tr><th>Parceiro</th><th>Código</th><th>Clientes</th><th>Rede</th><th>Liberado</th><th>Carência</th><th>Pago</th><th>Pix</th><th>Ações</th></tr></thead><tbody>${linhas
+        .map((l) => {
+          const repassar =
+            l.liberadoCent > 0 && l.pix && l.situacao === 'ATIVO'
+              ? formParceiro(
+                  c, l, 'repasse',
+                  `Marcar como PAGO o Pix de ${mostrar(l.liberadoCent)} para ${l.nome}? Faça o Pix ANTES, na chave ${l.pix}.`,
+                  `<input name="comprovante" maxlength="120" placeholder="Id do Pix (E2E) ou nota">${l.liberadoCent < MINIMO_REPASSE * 100 ? `<label class="marcar"><input type="checkbox" name="abaixoDoMinimo" value="1"> Pagar abaixo do mínimo (${mostrar(MINIMO_REPASSE * 100)})</label>` : ''}`,
+                  `Pix feito: ${mostrar(l.liberadoCent)}`,
+                  'ok',
+                )
+              : ''
+          const bloquear = formParceiro(
+            c, l, 'parceiro-situacao',
+            l.situacao === 'ATIVO' ? `Bloquear ${l.nome}? Ele sai do painel e não gera comissão nova.` : `Desbloquear ${l.nome}?`,
+            `<input type="hidden" name="para" value="${l.situacao === 'ATIVO' ? 'BLOQUEADO' : 'ATIVO'}">`,
+            l.situacao === 'ATIVO' ? 'Bloquear' : 'Desbloquear',
+            l.situacao === 'ATIVO' ? 'perigo' : 'sec',
+          )
+          return `<tr>
+            <td><b>${esc(l.nome)}</b>${l.situacao !== 'ATIVO' ? ' <span class="pilula vermelho">bloqueado</span>' : ''}<div class="mini">${esc(l.email)}${l.telefone ? ` · ${esc(l.telefone)}` : ''}</div><div class="mini">desde ${data(l.criadoEm)}${l.patrocinador ? ` · rede de ${esc(l.patrocinador)}` : ''}</div></td>
+            <td><span class="copiar">${esc(l.codigo)}</span></td>
+            <td>${l.indicadas}<div class="mini">${l.pagando} pagando</div></td>
+            <td>${l.rede}</td>
+            <td><b>${mostrar(l.liberadoCent)}</b></td>
+            <td>${mostrar(l.carenciaCent)}</td>
+            <td>${mostrar(l.pagoCent)}</td>
+            <td>${l.pix ? `<span class="copiar">${esc(l.pix)}</span>` : '<span class="pilula ambar">sem Pix</span>'}${l.documento ? `<div class="mini">${esc(mostrarDocumento(l.documento))}</div>` : ''}</td>
+            <td>${repassar}${bloquear}</td>
+          </tr>`
+        })
+        .join('')}</tbody></table></div>`
+    : '<p class="mini">Nenhum parceiro ainda. O cadastro é em /parceiros/cadastro, no site.</p>'
+  return pagina(
+    c,
+    'Parceiros',
+    'parceiros',
+    `<div class="linha-titulo"><h1>Parceiros</h1></div>
+    <div class="sub">O Pix sai no dia 10, para quem tem ${mostrar(MINIMO_REPASSE * 100)} ou mais liberado. Faça o Pix no banco e depois marque aqui — a marcação não transfere dinheiro.</div>
+    ${resumo}${corpo}`,
   )
 }

@@ -14,6 +14,8 @@ import type { PrismaClient, Plano, Situacao, Papel } from '@prisma/client'
 import { mensalidade } from '../servidor/planos'
 import { contaDeRespostas, franquiaDeRespostas, mesEmSP, respostasDaReferencia, type Respostas } from '../servidor/assinatura'
 import { diaEmSP } from '../servidor/dia'
+import { centavos } from '../servidor/dinheiro'
+import { ATIVO_DIAS } from '../servidor/parceiros'
 import {
   ACOES_DE_PEDIDO,
   JANELA_PEDIDOS_DIAS,
@@ -307,6 +309,10 @@ export type DetalheEmpresa = {
   recargas: { centavos: number; saldoDepois: number; tipo: string; motivo: string | null; quem: string; criadoEm: Date }[]
   livroDaEquipe: { acao: string; quem: string; alvoNome: string | null; motivo: string | null; criadoEm: Date }[]
   agente: { canal: string | null; ativo: boolean } | null
+  /** As mensalidades do Norte que a empresa pagou (o que gera comissão). */
+  pagamentos: { referencia: string; valorCheioCent: number; descontoCent: number; valorPagoCent: number; forma: string; pagoEm: Date; quem: string }[]
+  /** Quem indicou a empresa, e se os 50% da primeira ainda valem. */
+  indicacao: { parceiro: string; codigo: string; descontoDisponivel: boolean; desde: Date } | null
 }
 
 export async function detalheEmpresa(
@@ -359,6 +365,16 @@ export async function detalheEmpresa(
   })
   const agente = await db.agente.findUnique({ where: { orgId }, select: { canal: true, ativo: true } })
   const eventos = (await eventosDeTodas(db, agora, orgId)).get(orgId) ?? []
+  const pagamentos = await db.pagamentoNorte.findMany({
+    where: { orgId },
+    orderBy: { referencia: 'desc' },
+    take: 24,
+    select: { referencia: true, valorCheio: true, desconto: true, valorPago: true, forma: true, pagoEm: true, quem: true },
+  })
+  const ind = await db.indicacao.findUnique({
+    where: { orgId },
+    select: { criadaEm: true, descontoUsadoEm: true, parceiro: { select: { nome: true, codigo: true } } },
+  })
 
   const nomeDaUnidade = new Map(unidades.map((u) => [u.id, u.nome]))
   return {
@@ -385,7 +401,84 @@ export async function detalheEmpresa(
     recargas,
     livroDaEquipe,
     agente: agente ? { canal: agente.canal ?? null, ativo: agente.ativo } : null,
+    pagamentos: pagamentos.map((pg) => ({
+      referencia: pg.referencia,
+      valorCheioCent: centavos(pg.valorCheio),
+      descontoCent: centavos(pg.desconto),
+      valorPagoCent: centavos(pg.valorPago),
+      forma: pg.forma,
+      pagoEm: pg.pagoEm,
+      quem: pg.quem,
+    })),
+    indicacao: ind
+      ? { parceiro: ind.parceiro.nome, codigo: ind.parceiro.codigo, descontoDisponivel: !ind.descontoUsadoEm && pagamentos.length === 0, desde: ind.criadaEm }
+      : null,
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// OS PARCEIROS (o programa de indicação)
+// ─────────────────────────────────────────────────────────────
+
+export type LinhaParceiro = {
+  id: string
+  nome: string
+  email: string
+  telefone: string | null
+  codigo: string
+  situacao: string
+  pix: string | null
+  documento: string | null
+  criadoEm: Date
+  patrocinador: string | null
+  indicadas: number
+  pagando: number
+  rede: number
+  liberadoCent: number
+  carenciaCent: number
+  pagoCent: number
+}
+
+/** Todos os parceiros, com o que têm a receber. Liberado primeiro: é quem espera Pix. */
+export async function listarParceiros(db: Admin, agora = new Date()): Promise<LinhaParceiro[]> {
+  const parceiros = await db.parceiro.findMany({
+    orderBy: { criadoEm: 'desc' },
+    select: {
+      id: true, nome: true, email: true, telefone: true, codigo: true, situacao: true, pixTipo: true,
+      pixChave: true, documento: true, criadoEm: true, patrocinadorId: true,
+    },
+  })
+  const indicacoes = await db.indicacao.findMany({ select: { parceiroId: true, ultimoPagamentoEm: true } })
+  const comissoes = await db.comissao.findMany({
+    where: { estornadaEm: null },
+    select: { parceiroId: true, valor: true, liberaEm: true, repasseId: true },
+  })
+  const corte = new Date(agora.getTime() - ATIVO_DIAS * 864e5)
+  const nome = new Map(parceiros.map((p) => [p.id, p.nome]))
+  const linhas = parceiros.map((p) => {
+    const minhas = indicacoes.filter((i) => i.parceiroId === p.id)
+    const cs = comissoes.filter((c) => c.parceiroId === p.id)
+    const soma = (f: (c: (typeof cs)[number]) => boolean) => cs.filter(f).reduce((t, c) => t + centavos(c.valor), 0)
+    return {
+      id: p.id,
+      nome: p.nome,
+      email: p.email,
+      telefone: p.telefone,
+      codigo: p.codigo,
+      situacao: p.situacao,
+      pix: p.pixChave ? `${p.pixTipo ?? 'pix'}: ${p.pixChave}` : null,
+      documento: p.documento,
+      criadoEm: p.criadoEm,
+      patrocinador: p.patrocinadorId ? (nome.get(p.patrocinadorId) ?? '?') : null,
+      indicadas: minhas.length,
+      pagando: minhas.filter((i) => i.ultimoPagamentoEm && i.ultimoPagamentoEm > corte).length,
+      rede: parceiros.filter((x) => x.patrocinadorId === p.id).length,
+      liberadoCent: soma((c) => !c.repasseId && c.liberaEm <= agora),
+      carenciaCent: soma((c) => !c.repasseId && c.liberaEm > agora),
+      pagoCent: soma((c) => !!c.repasseId),
+    }
+  })
+  return linhas.sort((a, b) => b.liberadoCent - a.liberadoCent || b.criadoEm.getTime() - a.criadoEm.getTime())
 }
 
 /** Todos os pedidos abertos, de todas as empresas, do mais antigo ao mais novo. */

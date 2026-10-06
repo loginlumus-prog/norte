@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
+import { DESCONTO_PRIMEIRA_PCT, nomePeloCodigo } from '@/servidor/parceiros'
 import { cadastroAberto, carimbar } from '@/servidor/autocadastro'
 import { emailConfigurado } from '@/servidor/email'
 import { enderecoPublico } from '@/servidor/requisicao'
@@ -44,6 +46,9 @@ export default async function Cadastro() {
   const dominio = (publico ?? 'https://gestornorte.com').replace(/^https?:\/\//, '')
   const comEmail = emailConfigurado() && !!publico
   const ramos = Object.entries(RAMOS).map(([valor, r]) => ({ valor, titulo: r.titulo }))
+  // Veio pelo link de um parceiro? O código fica no cookie (proxy.ts) por 90 dias.
+  const ref = (await cookies()).get('norte_ref')?.value ?? ''
+  const indicou = ref ? await nomePeloCodigo(ref) : null
 
   return (
     <div className="flex min-h-dvh flex-col bg-fundo">
@@ -82,6 +87,12 @@ export default async function Cadastro() {
               {PLANOS.GRATIS.titulo}, de uma loja e até {PLANOS.GRATIS.tetoVendasMes} vendas no mês, com os dados
               todos guardados.
             </p>
+            {indicou && (
+              <div className="max-w-md rounded-2xl border border-bom-borda bg-bom-fundo px-4 py-3 text-[14px] leading-relaxed text-tinta">
+                <b>Indicação de {indicou}.</b> Você testa {PRECOS.diasDeTeste} dias grátis como todo mundo e, quando
+                assinar, a primeira mensalidade sai com <b>{DESCONTO_PRIMEIRA_PCT}% de desconto</b>.
+              </div>
+            )}
             <ul className="flex flex-col gap-2.5">
               {INCLUI.map((i) => (
                 <li key={i} className="flex items-start gap-2.5 text-sm text-tinta">
@@ -99,7 +110,7 @@ export default async function Cadastro() {
                   <h2 className="text-xl font-bold tracking-tight text-titulo">Criar a conta da loja</h2>
                   <p className="text-sm text-tinta-2">Você entra como dono. A equipe você convida depois.</p>
                 </header>
-                <Formulario carimbo={carimbar()} ramos={ramos} dominio={dominio} comEmail={comEmail} />
+                <Formulario carimbo={carimbar()} ramos={ramos} dominio={dominio} comEmail={comEmail} codigo={indicou ? ref : ''} />
               </>
             ) : (
               <div className="flex flex-col gap-4">

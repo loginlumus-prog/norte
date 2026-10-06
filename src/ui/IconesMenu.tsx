@@ -209,6 +209,13 @@ const D: Record<string, ReactNode> = {
       <path d="M3 9.5h18M7 14.5h4" />
     </>
   ),
+  indique: (
+    <>
+      <rect x="3.5" y="9" width="17" height="11.5" rx="1.5" />
+      <path d="M2.5 9h19v-3.5h-19ZM12 5.5v15" />
+      <path d="M12 5.5C10.5 2.5 6.5 2.8 7.3 5.5M12 5.5c1.5-3 5.5-2.7 4.7 0" />
+    </>
+  ),
   configuracoes: (
     <>
       <path d="M4 7h10M18 7h2M4 17h3M11 17h9" />

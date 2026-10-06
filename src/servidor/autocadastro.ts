@@ -91,6 +91,8 @@ export type DadosCadastro = {
   senha: string
   ramo: string
   aceitou: boolean
+  /** O código do parceiro que indicou (link ou digitado). Opcional. */
+  ref?: string | null
 }
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
@@ -113,6 +115,12 @@ export function conferirDados(d: DadosCadastro): string | null {
   if (d.senha.length < 8) return 'A senha precisa de pelo menos 8 caracteres.'
   if (!d.aceitou) return 'Para criar a conta, é preciso aceitar os Termos de Uso e a Política de Privacidade.'
   return null
+}
+
+/** O código de indicação no formato que o banco aceita, ou null. */
+const refValido = (r: string | null | undefined) => {
+  const c = String(r ?? '').trim().toUpperCase()
+  return /^[A-Z0-9]{3,20}$/.test(c) ? c : null
 }
 
 export type Criacao =
@@ -146,7 +154,7 @@ export async function criarEmpresaPeloCadastro(
       from public.criar_empresa_cadastro(
         ${d.empresa.trim()}::text, ${enderecoDoNome(d.empresa)}::text, ${d.dono.trim()}::text,
         ${normalizar(d.email)}::text, ${senhaHash}::text, ${d.ramo}::text, ${ip}::text,
-        ${opcoes.emailPendente}::boolean, ${VERSAO_TERMOS}::text
+        ${opcoes.emailPendente}::boolean, ${VERSAO_TERMOS}::text, ${refValido(d.ref)}::text
       )
   `
   const l = linhas[0]

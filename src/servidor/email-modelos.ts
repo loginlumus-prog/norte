@@ -248,3 +248,22 @@ export function emailConvite(d: {
     motivo: `Você recebeu este e-mail porque alguém de ${d.empresa} convidou este endereço.`,
   })
 }
+
+export function emailParceiroSenha(d: { para: string; nome: string; link: string; validadeMin: number }): Email {
+  return montar({
+    para: d.para,
+    assunto: 'Senha nova · Parceiros do Norte',
+    resumo: `O link vale por ${d.validadeMin} minutos e serve uma vez.`,
+    titulo: 'Escolha a senha nova',
+    paragrafos: [
+      `Olá, ${primeiroNome(d.nome)}. Alguém pediu uma senha nova para a sua conta de parceiro do Norte.`,
+      'Se foi você, é só escolher a senha nova:',
+    ],
+    botao: { texto: 'Escolher a senha nova', link: d.link },
+    depois: [
+      `O link vale por ${d.validadeMin} minutos e serve uma vez só. Pediu de novo? Vale só o último.`,
+      'Não foi você? Pode ignorar: a sua senha continua a mesma.',
+    ],
+    motivo: 'Você recebeu este e-mail porque este endereço tem conta no programa de parceiros do Norte.',
+  })
+}

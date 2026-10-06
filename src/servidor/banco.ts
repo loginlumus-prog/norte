@@ -144,6 +144,34 @@ export async function comoOrg<T>(
 }
 
 /**
+ * Roda `fn` no contexto de um PARCEIRO (o programa de indicação): ele só
+ * enxerga a própria conta, as próprias indicações, comissões e repasses — e
+ * nenhuma empresa (`app.org_id` vai vazio). Ver o fim de prisma/sql/rls.sql.
+ */
+export async function comoParceiro<T>(
+  parceiroId: string,
+  fn: (db: BancoDaOrg) => Promise<T>,
+): Promise<T> {
+  if (!parceiroId) throw new Error('comoParceiro exige um parceiro.')
+  const jaCarimbada = emTransacao.getStore()
+  if (jaCarimbada) throw new Error(`comoParceiro foi chamado dentro de outra transação (${jaCarimbada}). Leia antes, fora dela.`)
+  return emTransacao.run(`parceiro:${parceiroId}`, () => cliente().$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`set local role ${PAPEL_APP}`)
+    await tx.$queryRaw`select set_config('app.org_id', '', true), set_config('app.parceiro_id', ${parceiroId}, true)`
+    return fn(tx as unknown as BancoDaOrg)
+  }, TEMPO_DA_TRANSACAO))
+}
+
+/**
+ * Dentro de um `comoOrg`, passa a enxergar TAMBÉM o que é de um parceiro —
+ * só para o registro do pagamento, que precisa da empresa que pagou e do
+ * parceiro que a indicou na mesma transação (as políticas somam).
+ */
+export async function carimbarParceiro(db: BancoDaOrg, parceiroId: string | null): Promise<void> {
+  await db.$queryRaw`select set_config('app.parceiro_id', ${parceiroId ?? ''}, true)`
+}
+
+/**
  * O prazo de uma transação por empresa.
  *
  * O padrão do Prisma é 5 s para a transação inteira e 2 s para conseguir uma

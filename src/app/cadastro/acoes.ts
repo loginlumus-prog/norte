@@ -4,6 +4,7 @@
 // src/servidor/autocadastro.ts e, a última, dentro do banco.
 
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import {
   cadastroAberto,
   conferirCarimbo,
@@ -20,7 +21,7 @@ import { recadoDoErro } from '@/servidor/pagina'
 export type EstadoCadastro = {
   erro?: string
   /** O que a pessoa digitou, para não precisar digitar de novo. Nunca a senha. */
-  valores?: { empresa: string; dono: string; email: string; ramo: string }
+  valores?: { empresa: string; dono: string; email: string; ramo: string; ref?: string }
   /** Criada, esperando a confirmação do e-mail. */
   criada?: { endereco: string; email: string; enviado: boolean }
 }
@@ -35,8 +36,10 @@ export async function criarContaAcao(_anterior: EstadoCadastro, form: FormData):
     senha: String(form.get('senha') ?? ''),
     ramo: String(form.get('ramo') ?? ''),
     aceitou: form.get('aceite') === 'on',
+    // O código digitado vale mais que o do link: foi a pessoa que escolheu.
+    ref: String(form.get('ref') ?? '').trim().slice(0, 30) || (await cookies()).get('norte_ref')?.value || null,
   }
-  const valores = { empresa: dados.empresa, dono: dados.dono, email: dados.email, ramo: dados.ramo }
+  const valores = { empresa: dados.empresa, dono: dados.dono, email: dados.email, ramo: dados.ramo, ref: String(form.get('ref') ?? '') }
 
   if (!cadastroAberto()) return { erro: 'O cadastro pelo site está fechado agora. Fale com a gente pelo e-mail.', valores }
 

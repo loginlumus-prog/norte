@@ -150,6 +150,26 @@ export function proxy(request: NextRequest) {
   // (ver TELA_DA_META lá em cima).
   resposta.headers.set('Cross-Origin-Opener-Policy', comMeta ? 'same-origin-allow-popups' : 'same-origin')
 
+  // ── o link do parceiro (?ref=CODIGO) ──────────────────────
+  // Guardado por 90 dias no navegador de quem clicou: a pessoa olha o site
+  // hoje e se cadastra semana que vem, e a indicação continua de quem
+  // mandou o link. Quem vale é o PRIMEIRO link (não sobrescreve), e só o
+  // código no formato certo — o cadastro confere de novo, no banco. No
+  // /parceiros o mesmo ?ref= é o "quem me trouxe" do segundo nível.
+  const ref = request.nextUrl.searchParams.get('ref')?.trim().toUpperCase() ?? ''
+  if (/^[A-Z0-9]{3,20}$/.test(ref)) {
+    const nome = caminho.startsWith('/parceiros') ? 'norte_ref_parceiro' : 'norte_ref'
+    if (!request.cookies.get(nome)?.value) {
+      resposta.cookies.set(nome, ref, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: !DEV,
+        path: '/',
+        maxAge: 90 * 86400,
+      })
+    }
+  }
+
   // Só HTTPS, por dois anos, incluindo subdomínio. Em desenvolvimento não —
   // travaria o http://localhost do navegador por dois anos.
   if (!DEV) {

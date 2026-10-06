@@ -16,6 +16,8 @@ import { Comparar } from './Comparar'
 import { plural } from '@/ui/texto'
 import { PACOTES, PLANOS, PRECOS, milhar, mudanca, somar } from '@/servidor/planos'
 import type { Assinatura } from '@/servidor/assinatura'
+import { DESCONTO_PRIMEIRA_PCT, indicacaoDaEmpresa, parte } from '@/servidor/parceiros'
+import { centavos, mostrar } from '@/servidor/dinheiro'
 
 export const metadata: Metadata = { title: 'Assinatura' }
 
@@ -81,6 +83,8 @@ export default async function AssinaturaPagina({
   // uma vez e depois não tinha como saber se alguém viu — nem por que foi
   // recusado.
   const pedidos = pedidosParaTela(await eventosDePedido(sessao.orgId))
+  // Veio pelo link de um parceiro e ainda não pagou nada: metade da primeira.
+  const indicacao = await indicacaoDaEmpresa(sessao.orgId)
 
   return (
     <Estrutura
@@ -102,6 +106,16 @@ export default async function AssinaturaPagina({
       ))}
 
       {a.situacao === 'TESTE' && a.testeAte && <QuadroDoTeste a={a} />}
+
+      {indicacao?.descontoDisponivel && (
+        <Aviso nivel="bom">
+          Você chegou por indicação: a primeira mensalidade paga sai com {DESCONTO_PRIMEIRA_PCT}% de desconto
+          {a.mensal.total
+            ? ` — ${mostrar(centavos(a.mensal.total) - parte(centavos(a.mensal.total), DESCONTO_PRIMEIRA_PCT))} em vez de ${mostrar(centavos(a.mensal.total))}`
+            : ''}
+          . Depois dela, o valor normal.
+        </Aviso>
+      )}
 
       <Secao titulo="O que você tem">
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

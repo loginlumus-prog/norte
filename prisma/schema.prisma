@@ -322,6 +322,13 @@ model Org {
   mensalidades          Mensalidade[]
   pagamentosMensalidade PagamentoMensalidade[]
   recibosCrediario      ReciboCrediario[]
+  pagamentosNorte       PagamentoNorte[]
+  indicacao             Indicacao?
+  comissoes             Comissao[]
+
+  /// A conta de PARCEIRO da própria empresa: o cliente que indica o Norte e
+  /// recebe a comissão no Pix (tela Indique e ganhe). Nulo = não ativou.
+  parceiroId String? @map("parceiro_id")
 
   criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
@@ -750,6 +757,175 @@ model Cobranca {
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
 
   @@map("cobranca")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PARCEIROS (o programa de indicação)
+// ─────────────────────────────────────────────────────────────
+//
+// Quem indica o Norte e recebe por isso. As regras (faixas, segundo nível,
+// carência, mínimo) moram em src/servidor/parceiros.ts; o isolamento, em
+// prisma/sql/rls.sql: cada parceiro só enxerga o que é dele
+// (`app.parceiro_id`), como cada empresa só enxerga o que é dela.
+
+/// A conta do parceiro. SEM org_id, de propósito: o parceiro não é de
+/// empresa nenhuma (e pode ser uma pessoa que nem cliente é). Quem lê é o
+/// próprio parceiro, pelo `comoParceiro`; o login e o cadastro passam por
+/// funções do banco (a portaria não lê esta tabela).
+model Parceiro {
+  id        String  @id @default(cuid())
+  nome      String
+  email     String  @unique
+  senhaHash String  @map("senha_hash")
+  telefone  String?
+  /// O código do link (?ref=CODIGO). Maiúsculas e números, único.
+  codigo    String  @unique
+  /// ATIVO | BLOQUEADO. Bloqueado não entra e não gera comissão nova.
+  situacao  String  @default("ATIVO")
+
+  /// Quem trouxe este parceiro para o programa (o segundo nível).
+  patrocinadorId String?    @map("patrocinador_id")
+  patrocinador   Parceiro?  @relation("Rede", fields: [patrocinadorId], references: [id], onDelete: SetNull)
+  rede           Parceiro[] @relation("Rede")
+
+  /// Para onde vai o dinheiro.
+  pixTipo   String? @map("pix_tipo") // cpf | cnpj | email | telefone | aleatoria
+  pixChave  String? @map("pix_chave")
+  /// CPF ou CNPJ de quem recebe — o recibo do repasse precisa.
+  documento String?
+
+  /// A versão dos termos do programa que a pessoa aceitou.
+  termos       String
+  /// Corte de sessão: trocou a senha, as sessões de antes caem.
+  sessoesDesde DateTime  @default(now()) @map("sessoes_desde")
+  /// "Esqueci a senha": o RESUMO do código que foi por e-mail, e o prazo.
+  trocaResumo  String?   @map("troca_resumo")
+  trocaAte     DateTime? @map("troca_ate")
+
+  indicacoes Indicacao[]
+  comissoes  Comissao[]
+  repasses   Repasse[]
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([patrocinadorId])
+  @@map("parceiros")
+}
+
+/// O freio do login e do cadastro de parceiro. Sem org_id e trancada: só as
+/// funções do banco leem e escrevem. Guarda o RESUMO do e-mail e do IP.
+model ParceiroTentativa {
+  id          String   @id @default(cuid())
+  tipo        String // entrar | cadastro | senha
+  emailResumo String?  @map("email_resumo")
+  ipResumo    String?  @map("ip_resumo")
+  ok          Boolean  @default(false)
+  criadoEm    DateTime @default(now()) @map("criado_em")
+
+  @@index([emailResumo, criadoEm])
+  @@index([ipResumo, criadoEm])
+  @@map("parceiros_tentativas")
+}
+
+/// A empresa que chegou pelo link de um parceiro. Uma por empresa, para
+/// sempre: quem indicou primeiro fica com a indicação.
+model Indicacao {
+  id          String   @id @default(cuid())
+  orgId       String   @unique @map("org_id")
+  org         Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  parceiroId  String   @map("parceiro_id")
+  parceiro    Parceiro @relation(fields: [parceiroId], references: [id], onDelete: Cascade)
+  /// O nome da empresa no dia da indicação — é o que o parceiro vê.
+  empresaNome String   @map("empresa_nome")
+
+  primeiroPagamentoEm DateTime? @map("primeiro_pagamento_em")
+  ultimoPagamentoEm   DateTime? @map("ultimo_pagamento_em")
+  /// Quando os 50% da primeira mensalidade foram usados.
+  descontoUsadoEm     DateTime? @map("desconto_usado_em")
+
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@index([parceiroId])
+  @@map("indicacoes")
+}
+
+/// Uma mensalidade do Norte paga por uma empresa. É daqui que a comissão
+/// nasce: sem pagamento registrado, não há comissão.
+model PagamentoNorte {
+  id         String   @id @default(cuid())
+  orgId      String   @map("org_id")
+  org        Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// O mês pago, "AAAA-MM".
+  referencia String
+  valorCheio Decimal  @map("valor_cheio") @db.Decimal(10, 2)
+  desconto   Decimal  @default(0) @db.Decimal(10, 2)
+  valorPago  Decimal  @map("valor_pago") @db.Decimal(10, 2)
+  forma      String // pix | boleto | cartao | transferencia | dinheiro
+  pagoEm     DateTime @map("pago_em")
+  quem       String
+  observacao String?
+
+  comissoes Comissao[]
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@unique([orgId, referencia])
+  @@index([orgId])
+  @@map("pagamentos_norte")
+}
+
+/// O que um parceiro ganhou sobre um pagamento. Nível 1 = o cliente é dele;
+/// nível 2 = o cliente é de um parceiro que ele trouxe.
+model Comissao {
+  id          String         @id @default(cuid())
+  orgId       String         @map("org_id")
+  org         Org            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  pagamentoId String         @map("pagamento_id")
+  pagamento   PagamentoNorte @relation(fields: [pagamentoId], references: [id], onDelete: Cascade)
+  parceiroId  String         @map("parceiro_id")
+  parceiro    Parceiro       @relation(fields: [parceiroId], references: [id], onDelete: Cascade)
+
+  nivel       Int
+  percentual  Decimal   @db.Decimal(5, 2)
+  base        Decimal   @db.Decimal(10, 2)
+  valor       Decimal   @db.Decimal(10, 2)
+  referencia  String
+  empresaNome String    @map("empresa_nome")
+  /// Fim da carência: antes disso a comissão não entra no repasse.
+  liberaEm    DateTime  @map("libera_em")
+  /// Estornada (pagamento devolvido): não conta, nunca é paga.
+  estornadaEm DateTime? @map("estornada_em")
+
+  repasseId String?  @map("repasse_id")
+  repasse   Repasse? @relation(fields: [repasseId], references: [id], onDelete: SetNull)
+
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@unique([pagamentoId, nivel])
+  @@index([orgId])
+  @@index([parceiroId])
+  @@map("comissoes")
+}
+
+/// Um Pix que a equipe mandou ao parceiro, pagando as comissões liberadas.
+model Repasse {
+  id          String   @id @default(cuid())
+  parceiroId  String   @map("parceiro_id")
+  parceiro    Parceiro @relation(fields: [parceiroId], references: [id], onDelete: Cascade)
+  valor       Decimal  @db.Decimal(10, 2)
+  pixChave    String   @map("pix_chave")
+  /// O identificador do Pix (E2E) ou outra marca do comprovante.
+  comprovante String?
+  quem        String
+  pagoEm      DateTime @map("pago_em")
+
+  comissoes Comissao[]
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([parceiroId])
+  @@map("repasses")
 }
 
 // ─────────────────────────────────────────────────────────────

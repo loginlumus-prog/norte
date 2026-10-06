@@ -186,6 +186,10 @@ export const ACOES: Record<string, string> = {
   'empresa.farol_marcas': 'o Norte mudou o limite de marcas do Farol',
   // Feitas pelo nosso script de criar empresa (scripts/criar-empresa.ts).
   'empresa.criou': 'a empresa foi criada',
+  // O programa de parceiros (src/servidor/parceiros.ts).
+  'empresa.indicada': 'a empresa chegou pela indicação de um parceiro',
+  'parceiro.ativou': 'ativou o Indique e ganhe',
+  'mensalidade.pagou': 'o Norte registrou a mensalidade paga',
   'empresa.reconvidou': 'o Norte mandou um convite novo ao dono',
   'venda.trocou': 'fez uma troca',
   'crediario.estornou': 'estornou um recebimento do crediário',

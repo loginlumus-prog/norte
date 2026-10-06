@@ -116,6 +116,9 @@ export const MENU = (slug: string): ItemMenu[] => [
   // mora o endereço, o horário e o ramo dela — e onde a segunda nasce.
   { grupo: 'Empresa', href: `/${slug}/lojas`, titulo: 'Lojas', exige: 'empresa.configurar' },
   { grupo: 'Empresa', href: `/${slug}/assinatura`, titulo: 'Assinatura', exige: 'empresa.configurar' },
+  // O programa de parceiros do lado do cliente: o dono indica o Norte e
+  // recebe a comissão no Pix (src/servidor/parceiros.ts).
+  { grupo: 'Empresa', href: `/${slug}/indique`, titulo: 'Indique e ganhe', exige: 'empresa.configurar' },
   { grupo: 'Empresa', href: `/${slug}/configuracoes`, titulo: 'Configurações', exige: 'empresa.configurar' },
 ]
 
