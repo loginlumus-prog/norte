@@ -35,6 +35,8 @@ import { Trancado } from '@/ui/Cadeado'
 import { Secao, Tira } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Cabecalho } from './Cabecalho'
+import { ParaHoje } from './ParaHoje'
+import { tarefasDeHoje } from '@/servidor/tarefas'
 import { NovoQuadro, type ModeloNaTela } from './NovoQuadro'
 import { LojaALoja, AMOSTRA_DA_REDE } from './LojaALoja'
 import { Quadro, type QuadroNaTela, type SituacaoNaTela } from './Quadro'
@@ -186,6 +188,10 @@ export default async function TelaTarefas({
           : i,
   )
 
+  // O que é para hoje, nesta loja: as diárias (abrir e fechar) e as de quem
+  // abriu a tela. Saiu da barra do caixa e mora aqui, no alto.
+  const paraHoje = onde.unidadeId ? await tarefasDeHoje(sessao, onde.unidadeId) : []
+
   const semQuadro = quadros.length === 0
   const mostrarNovo = podeGerir && (novo === '1' || semQuadro)
 
@@ -222,6 +228,12 @@ export default async function TelaTarefas({
             { rotulo: resumo.atrasadas === 1 ? 'atrasada' : 'atrasadas', quantos: resumo.atrasadas, nivel: 'critico' },
           ]}
         />
+      )}
+
+      {paraHoje.length > 0 && (
+        <Secao titulo="Para hoje" resumo={`${paraHoje.filter((t) => !t.feita).length} de ${paraHoje.length} por fazer. Toque para marcar.`}>
+          <ParaHoje slug={slug} tarefas={paraHoje} />
+        </Secao>
       )}
 
       {mostrarNovo && (

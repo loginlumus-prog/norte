@@ -48,6 +48,7 @@ import { VendaIncerta, AvisoFixo } from './VendaIncerta'
 import { ROTULO_TABELA, type Tabela } from '@/servidor/preco'
 import type { Programa } from '@/servidor/pontos'
 import type { Vendedor } from '@/servidor/equipe'
+import { IrParaPagamento, VoltarAosProdutos } from './Etapas'
 import { Botao, Aviso, Situacao, cx } from '@/ui/base'
 import { grade, type Grade, type InicialDoBalcao } from './acoes'
 import { brl, precoDe, linhaCent } from './conta'
@@ -267,10 +268,14 @@ export function Balcao({
             </span>
             <select
               ref={vendedorRef}
-              value={vendedorId}
+              value={v.precisaVendedor && !v.vendedorEscolhido ? '' : vendedorId}
               onChange={(e) => setVendedorId(e.target.value)}
-              className="rounded border border-borda bg-superficie px-2 py-1.5 text-sm font-semibold text-tinta"
+              className={cx(
+                'rounded border bg-superficie px-2 py-1.5 text-sm font-semibold text-tinta',
+                v.precisaVendedor && !v.vendedorEscolhido && carrinho.length > 0 ? 'border-atencao-vivo' : 'border-borda',
+              )}
             >
+              {v.precisaVendedor && !v.vendedorEscolhido && <option value="">Escolha…</option>}
               {!vendedores.some((v) => v.id === usuarioId) && <option value={usuarioId}>Eu</option>}
               {vendedores.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -286,6 +291,7 @@ export function Balcao({
       <div className="grid gap-4 lg:grid-cols-[1fr_21rem]">
         {/* ── esquerda: buscar e lançar ── */}
         <div className="flex flex-col gap-3">
+          {v.etapa === 'produtos' ? (<>
           <div className="flex items-stretch gap-2">
             {/* A quantidade fica À ESQUERDA, antes do produto, porque é essa a
                 ordem em que se fala: "vinte picolés", não "picolé, vinte".
@@ -459,6 +465,8 @@ export function Balcao({
               )}
             </div>
           )}
+
+          </>) : <VoltarAosProdutos v={v} />}
 
           {/* ── os itens da venda ── */}
           <div className="realce overflow-hidden rounded-norte border border-borda bg-superficie">
@@ -638,7 +646,23 @@ export function Balcao({
           </div>
         </div>
 
-        {/* ── direita: pagamento, sempre visível ── */}
+        {/* ── direita: na etapa dos produtos, o pedido em resumo e o botão
+            de ir para o pagamento; na do pagamento, as formas e o concluir ── */}
+        {v.etapa === 'produtos' ? (
+          <aside className="realce flex h-fit flex-col gap-3 rounded-norte border border-borda bg-superficie p-4 lg:sticky lg:top-4">
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs font-medium text-tinta-3">{unidadeNome}</span>
+              {!caixaId && <Situacao nivel="critico">caixa fechado</Situacao>}
+            </div>
+            <span className="text-sm text-tinta-2">
+              {carrinho.length} {carrinho.length === 1 ? 'item' : 'itens'} no pedido
+            </span>
+            {v.precisaVendedor && !v.vendedorEscolhido && carrinho.length > 0 && (
+              <span className="text-xs font-semibold text-atencao">Escolha {p.Vendedor.toLowerCase()} no alto antes de pagar.</span>
+            )}
+            <IrParaPagamento v={v} />
+          </aside>
+        ) : (
         <aside className="realce flex h-fit flex-col gap-3 rounded-norte border border-borda bg-superficie p-4 lg:sticky lg:top-4">
           <div className="flex items-baseline justify-between">
             <span className="text-xs font-medium text-tinta-3">{unidadeNome}</span>
@@ -944,6 +968,7 @@ export function Balcao({
             )}
           </Botao>
         </aside>
+        )}
       </div>
     </div>
   )

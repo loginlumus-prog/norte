@@ -11,6 +11,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
+import { avisosDoBalcao, type AvisoDoBalcao } from '@/servidor/avisos-balcao'
 import { exigir, pode, SemPermissao } from '@/servidor/permissao'
 import { horarioParaCobrar } from '@/servidor/agenda'
 import { comoOrg, type BancoDaOrg } from '@/servidor/banco'
@@ -1008,4 +1009,10 @@ export async function cadastrarNoBalcao(
       vencido: 0,
     },
   }
+}
+
+/** O sino do balcão: o que aconteceu longe da tela de venda (avisos-balcao.ts). */
+export async function avisosAcao(slug: string, unidadeId: string): Promise<AvisoDoBalcao[]> {
+  const s = await exigirSessao(slug)
+  return avisosDoBalcao(s, slug, unidadeId).catch(() => [])
 }

@@ -41,6 +41,7 @@ import { Folha } from './Folha'
 import { FichaDaCliente } from './FichaDaCliente'
 import { usePalavras } from './palavras'
 import { contagemDoPedido } from './ramo'
+import { EscolherVendedor, IrParaPagamento, VoltarAosProdutos } from './Etapas'
 
 const CHAVE_TELA_CHEIA = 'norte:balcao:tela-cheia'
 
@@ -224,19 +225,18 @@ export function BalcaoSimples({
     : ''
 
   const pedido = (
-    <PainelDoPedido
+    <PainelDaSelecao
       v={v}
-      caixaId={caixaId}
-      crediario={crediario}
+      vendedores={vendedores}
       unidadeNome={unidadeNome}
       emUso={emUso}
       aoOpcoes={abrirOpcoes}
-      aoPedirCliente={pedirCliente}
       aoNova={novaVenda}
       fiado={fiado}
       ramo={ramo}
     />
   )
+  const naPagina = v.etapa === 'pagamento' && !v.fechada
 
   return (
     <div
@@ -290,6 +290,9 @@ export function BalcaoSimples({
         </Aviso>
       )}
 
+      {naPagina ? (
+        <TelaDePagamento v={v} caixaId={caixaId} crediario={crediario} emUso={emUso} aoOpcoes={abrirOpcoes} aoPedirCliente={pedirCliente} fiado={fiado} ramo={ramo} />
+      ) : (
       <div className="grid min-h-0 min-w-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
         <Produtos
           v={v}
@@ -306,6 +309,7 @@ export function BalcaoSimples({
           {pedido}
         </aside>
       </div>
+      )}
 
       {/* ── celular e tablet em pé: a barra do pedido ──
           Presa no pé da tela (fixed), sempre no mesmo lugar, com o pedido
@@ -314,8 +318,8 @@ export function BalcaoSimples({
           dele — a esquerda é medida, ver "a altura". O canto direito fica
           livre para o botão do Guia. O espaço vazio embaixo impede que ela
           cubra a última fileira. */}
-      <div aria-hidden className="h-20 lg:hidden" />
-      <div className="fixed right-[4.5rem] bottom-3 left-[calc(var(--esquerda,0px)+0.75rem)] z-20 lg:hidden">
+      {!naPagina && <div aria-hidden className="h-20 lg:hidden" />}
+      <div className={cx('fixed right-[4.5rem] bottom-3 left-[calc(var(--esquerda,0px)+0.75rem)] z-20 lg:hidden', naPagina && 'hidden')}>
         <button
           type="button"
           onClick={() => setPedidoAberto(true)}
@@ -328,7 +332,7 @@ export function BalcaoSimples({
             <span className="text-xs font-semibold opacity-80">
               {v.fechada ? p.vendaConcluida : v.carrinho.length === 0 ? `${p.Pedido} vazio` : contagemDoPedido(ramo, v.itensNaVenda)}
             </span>
-            <span className="text-base font-bold">{v.fechada ? 'Ver o troco' : `Ver ${p.Pedido.toLowerCase()} e pagar`}</span>
+            <span className="text-base font-bold">{v.fechada ? 'Ver o troco' : `Ver ${p.Pedido.toLowerCase()}`}</span>
           </span>
           <span className="numero text-2xl font-extrabold">{brl(v.conta.aPagarCent / 100)}</span>
         </button>
@@ -340,19 +344,15 @@ export function BalcaoSimples({
           aoFechar={() => setPedidoAberto(false)}
           titulo={v.fechada ? p.vendaConcluida : p.Pedido}
           inteira
-          pagamento
-          rodape={v.fechada ? undefined : <Concluir v={v} caixaId={caixaId} />}
+          rodape={v.fechada ? undefined : <IrParaPagamento v={v} aoIr={() => setPedidoAberto(false)} />}
         >
           {v.fechada ? (
             <Sucesso v={v} aoNova={novaVenda} />
           ) : (
             <div className="flex flex-col gap-4">
               <CabecaDoPedido v={v} emUso={emUso} aoOpcoes={abrirOpcoes} fiado={fiado} />
+              <EscolherVendedor v={v} vendedores={vendedores} />
               <Itens v={v} vazio={fiado && !v.cliente && <ReceberNoVazio fiado={fiado} />} />
-              <div className="flex flex-col gap-4 border-t border-borda pt-4">
-                <Total v={v} />
-                <Pagamento v={v} crediario={crediario} aoPedirCliente={pedirCliente} />
-              </div>
             </div>
           )}
         </Folha>
@@ -543,38 +543,32 @@ function Limpar({ aoLimpar }: { aoLimpar: () => void }) {
   )
 }
 
-/** O pedido na coluna da direita (tablet deitado para cima). */
-function PainelDoPedido({
+/**
+ * A etapa dos produtos, na coluna da direita (tablet deitado para cima): o
+ * que vai no pedido, quem vendeu e o botão de ir para o pagamento. Sem forma
+ * de pagamento nem escada de preços — isso é da tela seguinte.
+ */
+function PainelDaSelecao({
   v,
-  caixaId,
-  crediario,
+  vendedores,
   unidadeNome,
   emUso,
   aoOpcoes,
-  aoPedirCliente,
   aoNova,
   fiado,
   ramo,
 }: {
-  /** O ramo da loja: "3 peças" na loja de roupa, "3 itens" no resto (ramo.ts). */
   ramo: string | null
   v: Venda
-  caixaId: string | null
-  crediario: { maxParcelas: number; diasEntre?: number } | null
+  vendedores: Vendedor[] | null
   fiado: Fiado | null
   unidadeNome: string
   emUso: number
   aoOpcoes: () => void
-  aoPedirCliente: () => void
   aoNova: () => void
 }) {
   const p = usePalavras()
   return (
-    // A coluna inteira rola, com o cabeçalho preso em cima e o pagamento preso
-    // embaixo. Os itens ficam no meio e encolhem primeiro; se nem o pagamento
-    // couber (tela baixa, desconto, cliente, pagamento dividido), a coluna
-    // rola em vez de cortar — botão de concluir cortado é o pior defeito que
-    // esta tela pode ter.
     <div className="realce relative flex min-h-0 w-full flex-col overflow-y-auto overscroll-contain rounded-2xl border border-borda bg-superficie">
       {v.fechada ? (
         <div className="relative min-h-0 flex-1 overflow-y-auto">
@@ -604,19 +598,70 @@ function PainelDoPedido({
             <Itens v={v} vazio={fiado && !v.cliente && <ReceberNoVazio fiado={fiado} />} />
           </div>
 
-          <footer className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-4 border-t border-borda bg-superficie px-4 pt-3 pb-4">
-            <Total v={v} />
-            <Pagamento v={v} crediario={crediario} aoPedirCliente={aoPedirCliente} />
-            <Concluir v={v} caixaId={caixaId} />
-            {/* As teclas, para quem usa teclado — e o espaço que deixa o botão
-                redondo do Guia, no canto, sem cobrir o "Concluir". */}
-            <p className="hidden truncate pr-14 text-xs text-tinta-3 [@media(pointer:fine)]:block">
-              <kbd className="font-mono">F10</kbd> conclui · <kbd className="font-mono">F2</kbd>–<kbd className="font-mono">F8</kbd> formas · <kbd className="font-mono">Esc</kbd> volta · <kbd className="font-mono">Ctrl P</kbd> busca
-            </p>
-            <span aria-hidden className="block h-5 [@media(pointer:fine)]:hidden" />
+          <footer className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-3 border-t border-borda bg-superficie px-4 pt-3 pb-4">
+            <EscolherVendedor v={v} vendedores={vendedores} />
+            <IrParaPagamento v={v} />
+            {/* O espaço do botão redondo do Guia, no canto, para não cobrir o total. */}
+            <span aria-hidden className="block h-10" />
           </footer>
         </>
       )}
     </div>
   )
 }
+
+/**
+ * A etapa do pagamento: a tela inteira, só para isso. À esquerda o que se
+ * está pagando (para conferir com a cliente), à direita como paga e o botão
+ * de concluir. Do lg para baixo, um embaixo do outro.
+ */
+function TelaDePagamento({
+  v,
+  caixaId,
+  crediario,
+  emUso,
+  aoOpcoes,
+  aoPedirCliente,
+  fiado,
+  ramo,
+}: {
+  v: Venda
+  caixaId: string | null
+  crediario: { maxParcelas: number; diasEntre?: number } | null
+  emUso: number
+  aoOpcoes: () => void
+  aoPedirCliente: () => void
+  fiado: Fiado | null
+  ramo: string | null
+}) {
+  const p = usePalavras()
+  return (
+    <div className="grid min-h-0 min-w-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
+      <section aria-label={p.Pedido} className="realce flex min-h-0 flex-col gap-3 overflow-y-auto rounded-2xl border border-borda bg-superficie p-4">
+        <VoltarAosProdutos v={v} />
+        <CabecaDoPedido
+          v={v}
+          emUso={emUso}
+          aoOpcoes={aoOpcoes}
+          fiado={fiado}
+          titulo={
+            <h2 className="flex min-w-0 items-baseline gap-2 text-lg font-bold">
+              {p.Pedido}
+              <span className="numero text-sm font-semibold text-tinta-3">{contagemDoPedido(ramo, v.itensNaVenda)}</span>
+            </h2>
+          }
+        />
+        <Itens v={v} />
+      </section>
+      <section aria-label="Pagamento" className="realce flex min-h-0 flex-col gap-4 overflow-y-auto rounded-2xl border border-borda bg-superficie p-4">
+        <Total v={v} />
+        <Pagamento v={v} crediario={crediario} aoPedirCliente={aoPedirCliente} />
+        <Concluir v={v} caixaId={caixaId} />
+        <p className="hidden truncate pr-14 text-xs text-tinta-3 [@media(pointer:fine)]:block">
+          <kbd className="font-mono">F10</kbd> conclui · <kbd className="font-mono">F2</kbd>–<kbd className="font-mono">F8</kbd> formas · <kbd className="font-mono">Esc</kbd> volta aos produtos
+        </p>
+      </section>
+    </div>
+  )
+}
+

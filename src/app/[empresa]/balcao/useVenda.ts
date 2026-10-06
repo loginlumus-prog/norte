@@ -296,6 +296,16 @@ export function useVenda({
   /** O CPF ditado no crediário, para a ficha sem CPF. Vai com a venda. */
   const [cpf, setCpf] = useState('')
   const [vendedorId, setVendedorId_] = useState(usuarioId)
+  // ── as duas etapas ───────────────────────────────────────
+  // Primeiro se escolhe o que leva (e quem vendeu); depois, numa tela só
+  // dela, como paga. Com o pagamento sempre ao lado, a escada de preços e as
+  // formas confundiam quem só estava lançando o pedido.
+  const [etapa, setEtapa] = useState<'produtos' | 'pagamento'>('produtos')
+  // Loja com mais de um vendedor: quem vendeu é escolhido a cada venda, antes
+  // de ir para o pagamento — a comissão é dele, e "ficou no nome de quem
+  // estava logado" era o erro mais comum.
+  const precisaVendedor = !!vendedores && vendedores.length > 1
+  const [vendedorEscolhido, setVendedorEscolhido] = useState(false)
   /** Dividindo o pagamento em duas formas (F8). */
   const [dividindo, setDividindo] = useState(false)
   /** O PIN pedido — aberto quando o servidor diz que a venda precisa de autorização. */
@@ -484,6 +494,7 @@ export function useVenda({
   }, [chaveVendedor])
   function setVendedorId(id: string) {
     setVendedorId_(id)
+    setVendedorEscolhido(!!id)
     lembrar(chaveVendedor, id)
   }
 
@@ -658,7 +669,30 @@ export function useVenda({
   const temCrediario = pagos.some((p) => p.forma === 'CREDIARIO')
 
   const podeConcluir =
+    etapa === 'pagamento' &&
     carrinho.length > 0 && faltaCent <= 0 && !sobrouSemDinheiro && !!caixaId && !indo && !(temCrediario && cpfRuim)
+
+  const podeIrParaPagamento = carrinho.length > 0 && (!precisaVendedor || vendedorEscolhido)
+  /** "Ir para o pagamento": recusa com o motivo à vista quando falta algo. */
+  function irParaPagamento(): boolean {
+    if (carrinho.length === 0) return false
+    if (precisaVendedor && !vendedorEscolhido) {
+      setAlerta('Escolha quem vendeu antes de ir para o pagamento.')
+      ;(vendedorRef.current ?? document.querySelector<HTMLElement>('[data-escolher-vendedor] button'))?.focus()
+      return false
+    }
+    setAlerta(null)
+    setEtapa('pagamento')
+    return true
+  }
+  function voltarAosProdutos() {
+    setEtapa('produtos')
+    focarBusca()
+  }
+  // O pedido esvaziou (tirou o último item): não há o que pagar.
+  useEffect(() => {
+    if (carrinho.length === 0 && etapa === 'pagamento') setEtapa('produtos')
+  }, [carrinho.length, etapa])
 
   // ── cada loja só vende o que é dela ──────────────────────
   // (catalogo-loja.ts) Uma linha de outra loja só chega ao pedido de um jeito:
@@ -955,6 +989,8 @@ export function useVenda({
   const valeDaCliente = ficha?.vales.find((x) => !pagos.some((p) => p.referencia === x.codigo)) ?? null
 
   function limpar() {
+    setEtapa('produtos')
+    setVendedorEscolhido(false)
     setAviso(null)
     setVoltou(null)
     setIncerta(false)
@@ -1298,6 +1334,8 @@ export function useVenda({
   // campo do código); F8 liga e desliga o "dividir em duas formas".
   function teclaDeForma(tecla: string) {
     if (carrinho.length === 0 || fechada) return
+    // Na tela dos produtos, a forma leva ao pagamento já escolhida.
+    if (etapa === 'produtos' && !irParaPagamento()) return
     if (tecla === 'F7') {
       if (valeDaCliente) void usarVale(valeDaCliente.codigo)
       else setValeAberto(true)
@@ -1367,11 +1405,13 @@ export function useVenda({
     if (perguntaSemEstoque) return setPerguntaSemEstoque(null)
     if (valeAberto) return setValeAberto(false)
     if (avulsoAberto) return setAvulsoAberto(false)
+    // Nada aberto por cima, na tela de pagamento: volta aos produtos.
+    if (etapa === 'pagamento') return voltarAosProdutos()
   }
 
-  const estado = useRef({ podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc, temCliente: !!cliente })
+  const estado = useRef({ podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc, temCliente: !!cliente, etapa, irParaPagamento })
   useEffect(() => {
-    estado.current = { podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc, temCliente: !!cliente }
+    estado.current = { podeConcluir, concluir, temItens: carrinho.length > 0, teclaDeForma, esc, temCliente: !!cliente, etapa, irParaPagamento }
   })
   useEffect(() => {
     // Uma janela por cima que NÃO é o pedido (o tamanho, o PIN, as opções):
@@ -1401,6 +1441,11 @@ export function useVenda({
         // Com o PIN aberto, quem conclui é o "Autorizar" dele (Enter).
         if (janelaAlheia()) return
         const s = estado.current
+        // F10 na tela dos produtos é "ir para o pagamento".
+        if (s.etapa === 'produtos') {
+          s.irParaPagamento()
+          return
+        }
         if (s.podeConcluir) s.concluir()
         else if (s.temItens) primeiraForma.current?.focus()
         return
@@ -1564,6 +1609,13 @@ export function useVenda({
     setFichaAberta,
     vendedorId,
     setVendedorId,
+    precisaVendedor,
+    vendedorEscolhido,
+    // as duas etapas
+    etapa,
+    podeIrParaPagamento,
+    irParaPagamento,
+    voltarAosProdutos,
     pontosUsar,
     setPontosUsar,
     observacoes,

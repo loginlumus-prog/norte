@@ -19,7 +19,6 @@ import { Balcao } from './Balcao'
 import { BalcaoSimples } from './BalcaoSimples'
 import { lerModo } from '@/servidor/modo'
 import { BarraCaixa } from './BarraCaixa'
-import { tarefasDeHoje } from '@/servidor/tarefas'
 import { comoOrg } from '@/servidor/banco'
 import { vocabularioDaEmpresa, vocabularioDoEndereco, vocabularioDoRamo } from '@/servidor/vocabulario'
 import { programaNoPlano, DESLIGADO } from '@/servidor/pontos'
@@ -136,7 +135,6 @@ export default async function BalcaoPagina({
       : null
   const conferencia = caixa ? await conferirCaixa(sessao, caixa.id) : null
   // A lista de hoje na barra do caixa: a dela e as diárias da loja.
-  const tarefasHoje = caixa && unidadeId ? await tarefasDeHoje(sessao, unidadeId) : []
 
   const podeOperarCaixa = unidadeId ? pode(sessao, 'caixa.operar', unidadeId) : false
   // Quanto a loja vendeu e quanto deveria ter na gaveta são números de dono
@@ -290,7 +288,6 @@ export default async function BalcaoPagina({
                 podeOperar={podeOperarCaixa}
                 veReceita={veReceita}
                 meta={meta && meta.valor > 0 ? { valor: meta.valor, vendido: meta.vendido } : null}
-                tarefas={tarefasHoje}
               />
             }
           />
@@ -304,7 +301,6 @@ export default async function BalcaoPagina({
               podeOperar={podeOperarCaixa}
               veReceita={veReceita}
               meta={meta && meta.valor > 0 ? { valor: meta.valor, vendido: meta.vendido } : null}
-              tarefas={tarefasHoje}
             />
             <Balcao
               slug={slug}
