@@ -48,6 +48,8 @@
 // some com as turmas e as mensalidades da vista; o dinheiro que já entrou
 // continua no DRE, porque entrou.
 
+import type { Plano } from '@prisma/client'
+
 export const MODULOS = {
   crediario: {
     titulo: 'Crediário',
@@ -134,7 +136,8 @@ export const ehContratado = (m: Modulo): boolean => 'contratado' in MODULOS[m]
 export const ESCOLHIVEIS = TODOS.filter((m) => !ehContratado(m))
 
 /** Empresa desta requisição — só o que decide visibilidade. */
-export type ComModulos = { modulos: string[] }
+/** A empresa como os filtros a veem. Com o `plano`, o assistente básico do Essencial também filtra (ver `planoPermitePoder`). */
+export type ComModulos = { modulos: string[]; plano?: Plano }
 
 export function moduloLigado(empresa: ComModulos, modulo: Modulo): boolean {
   return empresa.modulos.includes(modulo)

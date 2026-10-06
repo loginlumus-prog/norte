@@ -130,7 +130,7 @@ export const NOME_DO_PAPEL: Record<Papel, string> = {
 const NORTE = PLANOS.BALCAO.titulo
 const COM_ASSISTENTE = PLANOS.BALCAO_AGENTE.titulo
 const GRATIS = PLANOS.GRATIS.titulo
-const real = (n: number) => `R$ ${n.toLocaleString('pt-BR')}`
+const real = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2 })}`
 
 export function rotuloDoPlano(p: Liberacao | Plano): string {
   const codigo: Plano = p in LIBERACOES ? LIBERACOES[p as Liberacao].desde : (p as Plano)
@@ -2043,9 +2043,10 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'As respostas do mês',
         passos: [
-          `Com o assistente ligado, o mês vem com ${milhar(PRECOS.respostasDoAssistente)} respostas (${milhar(PRECOS.respostasDoTeste)} no teste inteiro); no Corporativo, o combinado em contrato.`,
+          `O mês vem com ${milhar(PRECOS.respostasEssencial)} respostas no ${NORTE} e ${milhar(PRECOS.respostasProfissional)} no ${COM_ASSISTENTE}, mais ${milhar(PRECOS.respostasPorLojaExtra)} por loja a mais (${milhar(PRECOS.respostasDoTeste)} no teste inteiro); no Corporativo, o combinado em contrato.`,
+          `No ${NORTE} o assistente é o básico: manda o relatório, avisa e responde perguntas, mas não lança estoque, não cadastra produto nem propõe compra — isso é do ${COM_ASSISTENTE}.`,
           'Conta como resposta cada mensagem que ele escreve com IA para você ou a equipe. Relatório, avisos, recado automático, campanhas e o "sim"/"não" das propostas não contam.',
-          `Quando faltam 10%, ele avisa no fim da resposta. Acabou, ele para de responder a equipe até o dia 1º — ou até um pacote de +${milhar(PRECOS.pacoteRespostas)} (${real(PRECOS.pacotePreco)}), pedido em Assinatura › Respostas do assistente.`,
+          `Quando faltam 10%, ele avisa no fim da resposta. Acabou, ele para de responder a equipe até o dia 1º — ou até um pacote de +${milhar(PRECOS.pacoteRespostas)} (${real(PRECOS.pacotePreco)}) ou +${milhar(PRECOS.pacoteGrandeRespostas)} (${real(PRECOS.pacoteGrandePreco)}), pedido em Assinatura › Respostas do assistente.`,
           'O pacote vale para o mês em que entra; o que sobra não passa para o mês seguinte.',
         ],
       },
@@ -2330,7 +2331,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Em "Abrir outra loja", dê o nome e escolha o RAMO desta loja — pode ser diferente do da empresa (uma sorveteria numa empresa de roupa).',
           'Se for só estoque, marque "É um depósito": ele recebe e transfere mercadoria, mas não tem balcão — e não entra na conta do mês.',
-          `No ${NORTE}, cada loja de venda a mais soma ${real(PRECOS.lojaExtra)} por mês. A tela diz o valor e a conta nova junto do botão, antes de abrir.`,
+          `Cada loja de venda a mais soma ${real(PRECOS.essencialLojaExtra)} por mês no ${NORTE} e ${real(PRECOS.profissionalLojaExtra)} no ${COM_ASSISTENTE}, e ${milhar(PRECOS.respostasPorLojaExtra)} respostas do assistente. A tela diz o valor e a conta nova junto do botão, antes de abrir.`,
           'Endereço, contato e horário são opcionais.',
           '"Abrir a loja". Ela nasce com as categorias e os eixos do ramo que ainda não existiam na empresa (ex.: Picolé, Massa, Açaí e o eixo Sabor), sem mexer no que já existe.',
           'Depois, na ficha de cada produto, diga em "Vendido em" se ele é vendido na loja nova.',
@@ -2360,7 +2361,7 @@ export const GUIA: Entrada[] = [
     perguntas: [
       {
         p: 'Quanto custa abrir mais uma loja?',
-        r: `No ${NORTE}, ${real(PRECOS.lojaExtra)} por mês cada loja de venda a mais; depósito não entra na conta. No ${GRATIS} cabe uma loja só: para abrir mais, assine em Assinatura — ou feche uma loja que não usa mais.`,
+        r: `${real(PRECOS.essencialLojaExtra)} por mês cada loja de venda a mais no ${NORTE}, ${real(PRECOS.profissionalLojaExtra)} no ${COM_ASSISTENTE}; depósito não entra na conta. No ${GRATIS} cabe uma loja só: para abrir mais, assine em Assinatura — ou feche uma loja que não usa mais.`,
       },
       {
         p: 'Tenho uma loja de roupa e uma sorveteria. O balcão mistura os produtos?',
@@ -2379,14 +2380,13 @@ export const GUIA: Entrada[] = [
     caminho: '/assinatura',
     abre: ['empresa.configurar', 'financeiro.ver'],
     oQueE:
-      `O plano da empresa e a conta do mês aberta, linha por linha: a primeira loja, as lojas a mais, o assistente, a fábrica e o Farol. Em teste, quantos dias faltam e o que acontece depois. Quantas respostas do assistente faltam no mês, e o pacote de respostas a mais; ligar ou desligar o assistente vendo antes a conta nova; e o que vem no ${NORTE}, item por item.`,
+      `O plano da empresa e a conta do mês aberta, linha por linha: a primeira loja, as lojas a mais, a fábrica e o Farol. Em teste, quantos dias faltam e o que acontece depois. Quantas respostas do assistente faltam no mês, e os pacotes de respostas a mais; trocar entre o ${NORTE} e o ${COM_ASSISTENTE} vendo antes a conta nova; e o que vem em cada um, item por item.`,
     comoFazer: [
       {
         titulo: 'Entender a conta do mês',
         passos: [
-          `O que se paga é a loja: ${real(PRECOS.primeiraLoja)} a primeira e ${real(PRECOS.lojaExtra)} cada loja a mais, com tudo o que a loja usa dentro. Depósito não entra.`,
-          `O assistente soma ${real(PRECOS.assistente)} por mês, uma vez para a empresa inteira, com ${milhar(PRECOS.respostasDoAssistente)} respostas no mês.`,
-          `A fábrica soma ${real(PRECOS.fabrica)} por mês, uma vez, com quantas unidades de fábrica houver. O Farol, ${real(PRECOS.farolMarca)} a marca e ${real(PRECOS.farolMarcaExtra)} cada marca a mais.`,
+          `O que se paga é a loja, com o assistente dentro: no ${NORTE}, ${real(PRECOS.essencial)} a primeira e ${real(PRECOS.essencialLojaExtra)} cada loja a mais; no ${COM_ASSISTENTE}, ${real(PRECOS.profissional)} e ${real(PRECOS.profissionalLojaExtra)}. Depósito não entra.`,
+          `A fábrica (no ${COM_ASSISTENTE}) soma ${real(PRECOS.fabrica)} por mês, uma vez, com quantas unidades de fábrica houver. O Farol, ${real(PRECOS.farolMarca)} a marca e ${real(PRECOS.farolMarcaExtra)} cada marca a mais.`,
           'Cadastrar gente é de graça, e nos planos pagos não há limite de gente dentro ao mesmo tempo.',
           '"A conta do mês" mostra a soma aberta. No plano de contrato, ela é a referência da tabela; o que vale é o combinado.',
         ],
@@ -2396,15 +2396,15 @@ export const GUIA: Entrada[] = [
         passos: [
           `Quem cria a conta pelo site testa por ${PRECOS.diasDeTeste} dias com tudo, inclusive o assistente, com ${milhar(PRECOS.respostasDoTeste)} respostas para conhecer. Sem cartão.`,
           'O quadro no alto diz quantos dias faltam e até quando vai.',
-          `Para assinar, "Assinar" no ${NORTE} com ou sem o assistente: vira pedido, a gente confirma o pagamento e o teste vira assinatura, com tudo o que foi lançado.`,
+          `Para assinar, "Assinar" no ${NORTE} ou no ${COM_ASSISTENTE}: vira pedido, a gente confirma o pagamento e o teste vira assinatura, com tudo o que foi lançado.`,
           `Sem assinar, a empresa passa para o ${GRATIS}: uma loja, uma pessoa por vez, até ${PLANOS.GRATIS.tetoVendasMes} vendas no mês, sem o assistente. Os dados ficam; o resto volta ao assinar.`,
         ],
       },
       {
-        titulo: 'Ligar ou desligar o assistente',
+        titulo: `Trocar entre o ${NORTE} e o ${COM_ASSISTENTE}`,
         passos: [
           'Em "Mudar", a tela diz a conta de hoje e a conta nova com as suas lojas — antes do clique.',
-          `Ligar é pedido: a gente confirma o pagamento e liga no mesmo dia. Desligar é na hora, e o assistente para de responder.`,
+          `Subir para o ${COM_ASSISTENTE} é pedido: a gente confirma o pagamento e libera no mesmo dia. Voltar para o ${NORTE} é na hora: o assistente passa a só consultar, e os módulos do ${COM_ASSISTENTE} desligam (os dados ficam).`,
           'Só quem configura a empresa troca.',
           'O plano de contrato e o Corporativo mudam por conversa: "Falar com a gente" abre o WhatsApp do Norte.',
         ],
@@ -2414,7 +2414,7 @@ export const GUIA: Entrada[] = [
         titulo: 'Comprar mais respostas',
         passos: [
           `Em "Respostas do assistente": quantas faltam, quantas já foram e quando voltam (dia 1º). A barra mostra o mês.`,
-          `"Comprar +${milhar(PRECOS.pacoteRespostas)} respostas" (${real(PRECOS.pacotePreco)}) vira pedido: a gente confirma o pagamento e o pacote entra no mesmo dia, somado a este mês.`,
+          `"+${milhar(PRECOS.pacoteRespostas)} respostas" (${real(PRECOS.pacotePreco)}) ou "+${milhar(PRECOS.pacoteGrandeRespostas)} respostas" (${real(PRECOS.pacoteGrandePreco)}) vira pedido: a gente confirma o pagamento e o pacote entra no mesmo dia, somado a este mês.`,
           'O que sobrar do pacote não passa para o mês seguinte.',
         ],
         capacidade: 'empresa.configurar',
@@ -2422,8 +2422,8 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'O que cada plano abre',
         passos: [
-          `${NORTE} (${real(PRECOS.primeiraLoja)}/mês a primeira loja, ${real(PRECOS.lojaExtra)} cada loja a mais): tudo da loja — balcão, estoque com grade, clientes e pontos, crediário com carnê, financeiro com DRE, fechamento, metas e comissão, desempenho, curva ABC, previsão de ruptura, comparação entre lojas, tarefas, etiquetas e relatórios. Equipe sem limite.`,
-          `Assistente (+${real(PRECOS.assistente)}/mês, chave da empresa inteira): o assistente no WhatsApp com ${milhar(PRECOS.respostasDoAssistente)} respostas por mês.`,
+          `${NORTE} (${real(PRECOS.essencial)}/mês a primeira loja, ${real(PRECOS.essencialLojaExtra)} cada loja a mais): balcão, estoque com grade, catálogo com encomendas, clientes e pontos, ponto da equipe, financeiro com DRE, fechamento, desempenho, curva ABC, previsão de ruptura, tarefas, etiquetas e relatórios — e o assistente básico (relatório, avisos e ${milhar(PRECOS.respostasEssencial)} respostas). Equipe sem limite.`,
+          `${COM_ASSISTENTE} (${real(PRECOS.profissional)}/mês a primeira loja, ${real(PRECOS.profissionalLojaExtra)} cada loja a mais): tudo do ${NORTE}, mais crediário com carnê, agenda, compras e fornecedores, metas e comissão, escola, fábrica (à parte) e campanhas — e o assistente completo, que lança estoque por áudio, cadastra e propõe, com ${milhar(PRECOS.respostasProfissional)} respostas.`,
           `${GRATIS} (não se vende): onde a empresa fica quando o teste acaba sem assinatura — uma loja, uma pessoa por vez, até ${PLANOS.GRATIS.tetoVendasMes} vendas no mês, o essencial do balcão, do estoque e do financeiro.`,
           `${PLANOS.REDE.titulo}: dos primeiros clientes, com tudo ligado e o valor combinado em contrato.`,
           'Corporativo: sob consulta — a operação inteira com a gente junto, respostas no contrato.',
@@ -2441,7 +2441,7 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'O período de teste acabou. E agora?',
-        r: `A empresa passou para o ${GRATIS}, com os dados todos. O aviso no alto diz quando acabou; para religar o que desligou, assine o ${NORTE} em "Assinar".`,
+        r: `A empresa passou para o ${GRATIS}, com os dados todos. O aviso no alto diz quando acabou; para religar o que desligou, assine o ${NORTE} ou o ${COM_ASSISTENTE} em "Assinar".`,
       },
     ],
     palavras: ['plano', 'planos', 'mensalidade', 'preço do sistema', 'upgrade', 'trocar de plano', 'conta do mês', 'loja a mais', 'limite', 'crédito', 'recarga', 'recarregar', 'teste', 'assinar', 'grátis', 'norte', 'corporativo', 'contrato', 'pagamento do norte', 'quanto custa'],

@@ -32,6 +32,7 @@
 import { type Capacidade } from './permissao'
 import { moduloLigado, type ComModulos, type Modulo } from './modulos'
 import { reais } from './dinheiro'
+import { PLANOS, planoPermitePoder } from './planos'
 
 // ─────────────────────────────────────────────────────────────
 // OS PODERES
@@ -331,6 +332,8 @@ export function ferramentasDe(agente: AgenteConfig, empresa: ComModulos): ChaveP
     if (!p.disponivel || p.semIA) return false
     if (!p.sempre && !agente.poderes.includes(chave)) return false
     if (p.modulo && !moduloLigado(empresa, p.modulo)) return false
+    // O assistente básico (Essencial) lê e explica; o que mexe é do completo.
+    if (empresa.plano && !planoPermitePoder(empresa.plano, chave)) return false
     return true
   })
 }
@@ -371,6 +374,9 @@ export function conferirPoder(
   if (!agente.poderes.includes(chave)) throw new PoderNegado(chave, 'não está ligado nesta empresa')
   if (p.modulo && !moduloLigado(empresa, p.modulo)) {
     throw new PoderNegado(chave, `o módulo ${p.modulo} está desligado`)
+  }
+  if (empresa.plano && !planoPermitePoder(empresa.plano, chave)) {
+    throw new PoderNegado(chave, `o assistente do plano ${PLANOS[empresa.plano].titulo} só consulta; lançar e propor é do ${PLANOS.BALCAO_AGENTE.titulo}`)
   }
 
   if (p.teto === 'valor' && valorCent != null && valorCent > agente.valorMaxCent) {

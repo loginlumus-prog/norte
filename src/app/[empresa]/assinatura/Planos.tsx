@@ -35,7 +35,7 @@ import { trocar, type EstadoAssinatura } from './acoes'
 const nomes = (lista: string[]) => lista.map((x) => MODULOS[x as Modulo]?.titulo ?? x).join(', ')
 
 const brl = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
 /** Uma linha: o que é, quanto fica por mês, e o botão — número alinhado à direita. */
 function Linha({ titulo, detalhe, valor, children }: { titulo: string; detalhe: string; valor: number | null; children: ReactNode }) {
@@ -129,15 +129,15 @@ export function Planos({
       ) : emTeste || atual === 'GRATIS' ? (
         <>
           <Linha
-            titulo={`${PLANOS.BALCAO.titulo} com o assistente`}
-            detalhe={`Tudo da loja e o assistente no WhatsApp, com ${milhar(PRECOS.respostasDoAssistente)} respostas por mês.`}
+            titulo={PLANOS.BALCAO_AGENTE.titulo}
+            detalhe={`Tudo do Norte e o assistente completo: lança estoque por áudio, cadastra e propõe reposição, com ${milhar(PRECOS.respostasProfissional)} respostas por mês (+${milhar(PRECOS.respostasPorLojaExtra)} por loja a mais).`}
             valor={comAssistente.novoMensal}
           >
             {botao('BALCAO_AGENTE', 'Assinar', true)}
           </Linha>
           <Linha
             titulo={PLANOS.BALCAO.titulo}
-            detalhe="Tudo da loja, sem o assistente. Dá para ligar depois."
+            detalhe={`Balcão, estoque, catálogo, financeiro e o assistente básico: relatório, avisos e ${milhar(PRECOS.respostasEssencial)} perguntas por mês. Sem crediário, agenda, compras e fábrica.`}
             valor={semAssistente.novoMensal}
           >
             {botao('BALCAO', 'Assinar')}
@@ -153,16 +153,16 @@ export function Planos({
         </>
       ) : atual === 'BALCAO' ? (
         <Linha
-          titulo="Ligar o assistente"
-          detalhe={`+${brl(PRECOS.assistente)} por mês para a empresa inteira, com ${milhar(PRECOS.respostasDoAssistente)} respostas. Sua conta passa de ${mensalHoje !== null ? brl(mensalHoje) : '—'} para:`}
+          titulo={`Passar para o ${PLANOS.BALCAO_AGENTE.titulo}`}
+          detalhe={`Crediário, agenda, compras, metas, fábrica e o assistente completo (lança estoque por áudio, cadastra, propõe), com ${milhar(PRECOS.respostasProfissional)} respostas. Sua conta passa de ${mensalHoje !== null ? brl(mensalHoje) : '—'} para:`}
           valor={comAssistente.novoMensal}
         >
-          {botao('BALCAO_AGENTE', 'Ligar o assistente', true)}
+          {botao('BALCAO_AGENTE', `Passar para o ${PLANOS.BALCAO_AGENTE.titulo}`, true)}
         </Linha>
       ) : (
         <Linha
-          titulo="Desligar o assistente"
-          detalhe={`Sai ${brl(PRECOS.assistente)} da conta. Sua conta passa de ${mensalHoje !== null ? brl(mensalHoje) : '—'} para:`}
+          titulo={`Voltar para o ${PLANOS.BALCAO.titulo}`}
+          detalhe={`O assistente passa a ser o básico, e saem o que é do ${PLANOS.BALCAO_AGENTE.titulo}. Sua conta passa de ${mensalHoje !== null ? brl(mensalHoje) : '—'} para:`}
           valor={semAssistente.novoMensal}
         >
           {podeTrocar ? (
@@ -173,22 +173,22 @@ export function Planos({
               tomSim="perigo"
               pergunta={
                 <span className="block text-left">
-                  O assistente para de responder agora
+                  O assistente passa a só consultar
                   {semAssistente.perde.length > 0 ? `, e sai: ${nomes(semAssistente.perde)}` : ''}. Trocar mesmo?
                 </span>
               }
-              sim="Sim, desligar"
+              sim="Sim, trocar"
               aoConfirmar={() => {
                 const fd = new FormData()
                 fd.set('plano', 'BALCAO')
                 agir(fd)
               }}
             >
-              Desligar
+              Trocar
             </Confirmar>
           ) : (
             <Botao tom="secundario" disabled>
-              Desligar
+              Trocar
             </Botao>
           )}
         </Linha>

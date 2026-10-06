@@ -259,12 +259,16 @@ describe('fase 2: o que o funcionário vê', () => {
         ('q-out', 'org-z', null, 'Campanha', 'Vitor', now());
       insert into tarefas (id, org_id, quadro_id, grupo, titulo, situacao, progresso, concluida_em, diaria, quem, atualizado_em) values
         ('t-ontem', 'org-z', 'q-ab', 'Ao abrir', 'Conferir o troco', 'FEITO', 100, now() - interval '2 days', true, 'Vitor', now()),
-        ('t-hoje', 'org-z', 'q-ab', 'Ao abrir', 'Ligar a maquininha', 'FEITO', 100, now(), true, 'Vitor', now()),
+        ('t-hoje', 'org-z', 'q-ab', 'Ao abrir', 'Ligar a maquininha', 'FEITO', 100, null, true, 'Vitor', now()),
         ('t-aberta', 'org-z', 'q-ab', 'Ao fechar', 'Sangria', 'A_FAZER', 0, null, true, 'Vitor', now()),
         ('t-camp', 'org-z', 'q-out', '', 'Montar a vitrine da campanha', 'A_FAZER', 0, null, false, 'Vitor', now()),
         ('t-minha', 'org-z', 'q-out', '', 'Ligar para o fornecedor', 'A_FAZER', 0, null, false, 'Vitor', now());
       update tarefas set responsavel_id = 'usr-bal' where id = 't-minha';
     `)
+    // A hora de "feita hoje" vem do relógio do sistema, como o app grava: o
+    // now() do banco de teste fica no fuso local e, logo depois da meia-noite
+    // de São Paulo, cairia em "ontem".
+    await db.query(`update tarefas set concluida_em = $1 where id = 't-hoje'`, [new Date()])
     const tarefas = await import('../src/servidor/tarefas')
     const hoje = await tarefas.tarefasDeHoje(BALCAO, 'uni-z1')
     // Diárias sem dono + as dela; a da campanha sem dono não entra no balcão.

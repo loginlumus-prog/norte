@@ -27,9 +27,9 @@ import type { Plano } from '@prisma/client'
 import { comoOrg } from './banco'
 import { normalizar } from './autenticacao'
 import { adicionarPacoteDeRespostas, creditarNaTransacao, quemDaEquipe, trocarPlanoComoEquipe, type Respostas } from './assinatura'
-import { PLANOS, PRECOS, milhar, planoLibera } from './planos'
+import { PACOTES, PLANOS, PRECOS, milhar, planoLibera, type Pacote } from './planos'
 import { MODULOS } from './modulos'
-import { eventosDePedido, pedidoAberto, type Pedido, type TipoPedido } from './pedidos'
+import { eventosDePedido, pacoteDoPedido, pedidoAberto, type Pedido, type TipoPedido } from './pedidos'
 import { lerDinheiro, centavos as paraCentavos, mostrar } from './dinheiro'
 
 // ─────────────────────────────────────────────────────────────
@@ -254,12 +254,14 @@ export function lerTipoPedido(v: unknown): TipoPedido | null {
  */
 export async function atenderPacoteDeRespostas(
   orgId: string,
-  dados: { motivo: string; quem: string; pedidoId?: string | null },
+  dados: { motivo: string; quem: string; pedidoId?: string | null; pacote?: Pacote },
   agora = new Date(),
 ): Promise<Respostas> {
   const quem = quemDaEquipe(dados.quem)
   const motivo = validarMotivo(dados.motivo)
-  const r = await adicionarPacoteDeRespostas(orgId, { quem, autor: 'SISTEMA', pedidoId: dados.pedidoId ?? null }, agora)
+  // Atendendo um pedido, entra o pacote que a loja pediu (há dois tamanhos).
+  const pacote = dados.pacote ?? (dados.pedidoId ? await pacoteDoPedido(orgId, dados.pedidoId) : 'pequeno')
+  const r = await adicionarPacoteDeRespostas(orgId, { quem, autor: 'SISTEMA', pedidoId: dados.pedidoId ?? null, pacote }, agora)
   await comoOrg(orgId, (db) =>
     db.auditoria.create({
       data: {
@@ -269,7 +271,7 @@ export async function atenderPacoteDeRespostas(
         acao: 'equipe.anotou',
         alvoTipo: 'empresa',
         alvoId: orgId,
-        alvoNome: `+${milhar(PRECOS.pacoteRespostas)} respostas`,
+        alvoNome: `+${milhar(PACOTES[pacote].respostas)} respostas`,
         motivo,
         depois: { sobre: 'respostas.adicionou', ...(dados.pedidoId ? { pedidoId: dados.pedidoId } : {}) },
       },

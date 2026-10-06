@@ -86,6 +86,15 @@ export type Limite = {
    * um número de tabela viraria promessa antes de alguém olhar a operação.
    */
   respostasMes: number | null
+  /** Respostas a mais por loja de venda além da primeira (a rede conversa mais). */
+  respostasPorLojaExtra: number
+  /**
+   * O assistente deste plano. `'basico'` conta e avisa (relatório, alerta,
+   * pergunta respondida) e não MEXE em nada pelo WhatsApp: não lança
+   * estoque, não cadastra, não propõe compra nem despesa — ver
+   * `PODERES_DO_BASICO`. `'completo'` faz tudo. `null` = sem assistente.
+   */
+  assistente: 'basico' | 'completo' | null
   /**
    * Ordem comercial. É ela que define o que é SUBIR e o que é DESCER — e
    * comparar por preço não serviria, porque o Corporativo não tem preço.
@@ -100,36 +109,48 @@ export type Limite = {
 }
 
 /**
- * Os preços da tabela de outubro de 2026, num lugar só.
+ * Os preços da tabela de outubro de 2026 (revisada em 06/10), num lugar só.
  *
- * O modelo (aprovado em 02/10/2026): UM plano, o Norte, cobrado por loja de
- * venda — 219 a primeira, 139 cada loja a mais, depósito fora, equipe sem
- * limite, tudo o que a loja usa dentro. Por cima, chaves que valem para a
- * empresa inteira: o assistente (149, com 1.000 respostas por mês; pacote de
- * +500 por 49), a fábrica (379, uma vez, quantas unidades de fábrica houver)
- * e o Farol (497 a marca, 297 cada marca a mais). A implantação é à parte, uma
- * vez, quando houver.
+ * O modelo: DOIS planos, cobrados por loja de venda, com o assistente dentro.
+ *   • Essencial — 89,90 a primeira loja, 59,90 cada loja a mais. Balcão,
+ *     estoque, catálogo, financeiro e o assistente BÁSICO (relatório, aviso e
+ *     150 respostas; não mexe em nada pelo WhatsApp).
+ *   • Profissional — 149,90 a primeira loja, 99,90 cada a mais. Tudo, com o
+ *     assistente COMPLETO (lança estoque por áudio, cadastra, propõe) e 600
+ *     respostas.
+ * Cada loja a mais soma 200 respostas. Depósito não conta. Equipe sem limite.
+ * Por cima: a fábrica (199,90, uma vez, no Profissional), o Farol e os
+ * pacotes de respostas (300 por 49,90; 1.000 por 129,90 — com margem, ver
+ * "o assistente, em respostas"). A implantação é à parte, uma vez.
  *
  * Toda página que fala de preço lê daqui: a de venda, a calculadora, os
  * termos, a tela de Assinatura, o guia. Número repetido em dois lugares é
- * número que diverge.
+ * número que diverge. Os valores têm centavos: some com `somar` e escreva com
+ * `rs` — "R$ ${89.9}" sai "R$ 89.9".
  */
 export const PRECOS = {
-  primeiraLoja: 219,
-  lojaExtra: 139,
-  /** O assistente: uma chave para a empresa inteira, não por loja. */
-  assistente: 149,
-  /** Respostas do assistente que vêm no mês, com ele ligado. */
-  respostasDoAssistente: 1000,
-  /** O pacote avulso: +`pacoteRespostas` respostas por `pacotePreco`, somadas ao mês em que entra. */
-  pacoteRespostas: 500,
-  pacotePreco: 49,
+  essencial: 89.9,
+  essencialLojaExtra: 59.9,
+  profissional: 149.9,
+  profissionalLojaExtra: 99.9,
+  /** Respostas do assistente no mês, na primeira loja. */
+  respostasEssencial: 150,
+  respostasProfissional: 600,
+  /** O plano de contrato dos primeiros clientes mantém o que foi combinado. */
+  respostasContrato: 1000,
+  /** Cada loja de venda a mais soma isto à franquia do mês. */
+  respostasPorLojaExtra: 200,
+  /** O pacote pequeno: +`pacoteRespostas` por `pacotePreco`, somadas ao mês em que entra. */
+  pacoteRespostas: 300,
+  pacotePreco: 49.9,
+  /** O pacote grande, mais barato por resposta, para quem usa muito. */
+  pacoteGrandeRespostas: 1000,
+  pacoteGrandePreco: 129.9,
   /**
    * A fábrica (ficha técnica, produção, lote): UMA vez por empresa, com
-   * quantas unidades de fábrica ela tiver. Por unidade, a segunda cozinha
-   * custava mais que uma loja — e ninguém abre a segunda por causa disso.
+   * quantas unidades de fábrica ela tiver.
    */
-  fabrica: 379,
+  fabrica: 199.9,
   /** O Farol, por marca (perfil). A segunda marca do mesmo dono sai mais barata. */
   farolMarca: 497,
   farolMarcaExtra: 297,
@@ -153,6 +174,21 @@ export const PRECOS = {
   /** Respostas do assistente durante o teste inteiro: o bastante para conhecer, não para gastar o nosso. */
   respostasDoTeste: 200,
 } as const
+
+/** Os pacotes de respostas que se compram. */
+export const PACOTES = {
+  pequeno: { respostas: PRECOS.pacoteRespostas, preco: PRECOS.pacotePreco },
+  grande: { respostas: PRECOS.pacoteGrandeRespostas, preco: PRECOS.pacoteGrandePreco },
+} as const
+export type Pacote = keyof typeof PACOTES
+export const ehPacote = (v: unknown): v is Pacote => v === 'pequeno' || v === 'grande'
+
+/** Soma em centavos: 89,90 + 59,90 em ponto flutuante dá 149,79999… */
+export const somar = (...v: number[]) => Math.round(v.reduce((t, x) => t + Math.round(x * 100), 0)) / 100
+
+/** "R$ 89,90", "R$ 1.299,00" — o preço como a tela escreve. */
+export const rs = (v: number) =>
+  `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 /** "1.000" — o número de respostas como a tela escreve. */
 export const milhar = (n: number) => n.toLocaleString('pt-BR')
@@ -214,34 +250,70 @@ export const milhar = (n: number) => n.toLocaleString('pt-BR')
 // trava antes, e no pior caso a IA do mês custa R$ 104 + R$ 52 por pacote —
 // sempre menos do que o assistente e os pacotes cobram juntos.
 
-/** Quanto do preço do assistente pode virar custo de IA, no pior caso. */
-export const PARCELA_MAX_DE_IA = 0.7
+/**
+ * O custo de IA que a gente aceita por resposta prometida, no pior caso, em
+ * reais. Era 70% dos R$ 149 do assistente antigo ÷ 1.000 respostas (R$ 0,1043);
+ * ficou o mesmo número, agora sozinho, porque o assistente deixou de ter preço
+ * próprio (vem dentro do plano, com franquia por plano e por loja).
+ */
+export const CUSTO_MAX_POR_RESPOSTA = 0.1043
 
 /** A trava por resposta prometida, na escala da carteira (cobrado = custo × MARGEM), em centavos. Fracionária de propósito. */
-export const TETO_IA_POR_RESPOSTA_CENT =
-  (PRECOS.assistente * PARCELA_MAX_DE_IA * MARGEM * 100) / PRECOS.respostasDoAssistente
+export const TETO_IA_POR_RESPOSTA_CENT = CUSTO_MAX_POR_RESPOSTA * MARGEM * 100
 
 /** O teto da carteira para N respostas prometidas, em centavos inteiros. */
 export const tetoDeIaCent = (respostas: number) => Math.round(respostas * TETO_IA_POR_RESPOSTA_CENT)
 
-/** O teto do mês com o assistente ligado (R$ 312,90 na carteira = R$ 104,30 de custo). */
-export const TETO_IA_DO_MES_CENT = tetoDeIaCent(PRECOS.respostasDoAssistente)
+/** O teto do mês de um plano com N lojas de venda: a franquia inteira × a régua. */
+export const tetoDoMesCent = (plano: Plano, lojas: number) => tetoDeIaCent(respostasDoPlano(plano, lojas) ?? 0)
 /** O que cada pacote soma à carteira. */
-export const TETO_IA_DO_PACOTE_CENT = tetoDeIaCent(PRECOS.pacoteRespostas)
+export const tetoDoPacoteCent = (pacote: Pacote) => tetoDeIaCent(PACOTES[pacote].respostas)
 /** O teto do teste inteiro. */
 export const TETO_IA_DO_TESTE_CENT = tetoDeIaCent(PRECOS.respostasDoTeste)
 
-/** Os módulos da loja: tudo, menos o assistente — que é o que custa à parte. */
+/** Os módulos da loja inteira: o Profissional e os de cima. */
 // O Farol entra aqui para o plano PERMITIR (trocar entre planos pagos não o
 // desliga); quem liga é a equipe do Norte, quando o cliente contrata — ele
 // não aparece entre as chaves que a empresa liga sozinha (`ESCOLHIVEIS`).
 const DA_LOJA: Modulo[] = ['notaFiscal', 'encomenda', 'multiUnidade', 'agenda', 'ponto', 'compras', 'escola', 'metas', 'crediario', 'fabrica', 'farol']
 
+/**
+ * O Essencial: vender, controlar o estoque, o catálogo com encomenda, o
+ * ponto, várias lojas — e o assistente básico. Fora ficam o que é de operação
+ * maior: crediário, agenda, compras, escola, metas, fábrica e o Farol.
+ */
+const DO_ESSENCIAL: Modulo[] = ['notaFiscal', 'encomenda', 'multiUnidade', 'ponto', 'agente']
+
+/**
+ * O que o assistente BÁSICO faz pelo WhatsApp: ler e explicar. Tudo o que
+ * mexe (entrada e ajuste de estoque, compra, despesa, encomenda, agenda) é do
+ * completo. Os relatórios e avisos automáticos não passam por aqui — são texto
+ * fixo, e saem em todo plano com assistente.
+ */
+export const PODERES_DO_BASICO: readonly string[] = [
+  'ver.resumo',
+  'ver.estoque',
+  'ver.caixa',
+  'ver.contas',
+  'explicar.sistema',
+  'consultar.produto',
+  'encomendas.ver',
+  'pagamentos.consultar',
+  'ponto.consultar',
+]
+
+/** Este poder do assistente existe neste plano? */
+export function planoPermitePoder(plano: Plano, poder: string): boolean {
+  const a = PLANOS[plano].assistente
+  if (a === null) return false
+  return a === 'completo' || PODERES_DO_BASICO.includes(poder)
+}
+
 export const PLANOS: Record<Plano, Limite> = {
   GRATIS: {
-    // Não se vende mais (desde 02/10/2026): quem se cadastra ganha o teste de
-    // 30 dias com tudo. Este é o lugar onde a empresa fica quando o teste acaba
-    // sem assinatura — vendendo, mas com o básico, até assinar.
+    // Não se vende: quem se cadastra ganha o teste de 30 dias com tudo. Este é
+    // o lugar onde a empresa fica quando o teste acaba sem assinatura —
+    // vendendo, mas com o básico, até assinar.
     titulo: 'Grátis',
     artigo: 'o',
     resumo: 'Uma loja, uma pessoa por vez, até 300 vendas no mês. É onde a empresa fica quando o teste acaba sem assinatura.',
@@ -252,68 +324,74 @@ export const PLANOS: Record<Plano, Limite> = {
     porVagaExtra: null,
     modulos: [],
     respostasMes: 0,
+    respostasPorLojaExtra: 0,
+    assistente: null,
     tetoVendasMes: 300,
     degrau: 0,
     aVenda: false,
   },
   BALCAO: {
-    titulo: 'Norte',
+    // O valor do enum ficou (BALCAO) para não mexer no banco: é o Essencial.
+    titulo: 'Essencial',
     artigo: 'o',
     resumo:
-      `Tudo da loja: balcão, estoque, crediário, financeiro, equipe e relatórios. R$ ${PRECOS.primeiraLoja} a primeira loja, R$ ${PRECOS.lojaExtra} cada loja a mais, equipe sem limite.`,
+      `Balcão, estoque, catálogo online, financeiro e o assistente básico no WhatsApp (relatório, avisos e ${milhar(PRECOS.respostasEssencial)} perguntas por mês). ${rs(PRECOS.essencial)} a primeira loja, ${rs(PRECOS.essencialLojaExtra)} cada loja a mais.`,
     // Uma loja vem na base; cada loja a mais custa `porUnidadeExtra`, e a tela
     // diz o valor ANTES de abrir (ver `podeCriarUnidade`). Depósito não conta.
     unidades: 1,
-    // Gente dentro ao mesmo tempo: à vontade. Cobrar por vaga era mais uma
-    // conta para o lojista fazer; a loja já é o que se paga.
+    // Gente dentro ao mesmo tempo: à vontade. A loja já é o que se paga.
     vagas: null,
-    mensal: PRECOS.primeiraLoja,
-    porUnidadeExtra: PRECOS.lojaExtra,
+    mensal: PRECOS.essencial,
+    porUnidadeExtra: PRECOS.essencialLojaExtra,
     porVagaExtra: null,
-    modulos: DA_LOJA,
-    respostasMes: 0,
+    modulos: DO_ESSENCIAL,
+    respostasMes: PRECOS.respostasEssencial,
+    respostasPorLojaExtra: PRECOS.respostasPorLojaExtra,
+    assistente: 'basico',
     tetoVendasMes: null,
     degrau: 1,
     aVenda: true,
   },
   BALCAO_AGENTE: {
-    // É o MESMO Norte com a chave do assistente ligada — a tabela vende um
-    // plano só, e o assistente é chave da empresa inteira. O valor do enum
-    // fica (BALCAO_AGENTE) para não mexer no banco: trocar de "sem" para "com"
-    // assistente continua sendo trocar de plano por baixo, com tudo o que a
-    // troca já faz (pedido, módulo que liga e desliga, linha no livro).
-    titulo: 'Norte + Assistente',
+    // O valor do enum ficou (BALCAO_AGENTE) para não mexer no banco: é o
+    // Profissional. Trocar de um para o outro continua sendo trocar de plano
+    // por baixo, com tudo o que a troca já faz (pedido, módulo que liga e
+    // desliga, linha no livro).
+    titulo: 'Profissional',
     artigo: 'o',
     resumo:
-      `Tudo do Norte, mais o assistente no WhatsApp para você e a equipe: ${milhar(PRECOS.respostasDoAssistente)} respostas por mês.`,
+      `Tudo do Norte — crediário, agenda, compras, metas, fábrica — e o assistente completo: lança estoque por áudio, cadastra e propõe reposição, com ${milhar(PRECOS.respostasProfissional)} respostas por mês. ${rs(PRECOS.profissional)} a primeira loja, ${rs(PRECOS.profissionalLojaExtra)} cada loja a mais.`,
     unidades: 1,
     vagas: null,
-    mensal: PRECOS.primeiraLoja + PRECOS.assistente,
-    porUnidadeExtra: PRECOS.lojaExtra,
+    mensal: PRECOS.profissional,
+    porUnidadeExtra: PRECOS.profissionalLojaExtra,
     porVagaExtra: null,
     modulos: [...DA_LOJA, 'agente'],
     // A conta da margem está em "o assistente, em respostas", lá em cima.
-    respostasMes: PRECOS.respostasDoAssistente,
+    respostasMes: PRECOS.respostasProfissional,
+    respostasPorLojaExtra: PRECOS.respostasPorLojaExtra,
+    assistente: 'completo',
     tetoVendasMes: null,
     degrau: 2,
     aVenda: true,
   },
   REDE: {
     // Os primeiros clientes: tudo ligado, valor combinado por fora. A conta que
-    // a tela mostra é a da tabela (Norte com o assistente, por loja) — é a
-    // referência para a conversa. Não se vende mais com este nome. As
-    // respostas são as da tabela: contrato que quiser outro número, a equipe
-    // põe pacote.
+    // a tela mostra é a da tabela (o Profissional, por loja) — é a referência
+    // para a conversa. Não se vende mais com este nome. As respostas são as
+    // combinadas no começo (1.000), mais as de cada loja a mais.
     titulo: 'Norte sob contrato',
     artigo: 'o',
-    resumo: 'Tudo do Norte e o assistente, com o valor combinado em contrato.',
+    resumo: 'Tudo do Norte e o assistente completo, com o valor combinado em contrato.',
     unidades: 1,
     vagas: null,
-    mensal: PRECOS.primeiraLoja + PRECOS.assistente,
-    porUnidadeExtra: PRECOS.lojaExtra,
+    mensal: PRECOS.profissional,
+    porUnidadeExtra: PRECOS.profissionalLojaExtra,
     porVagaExtra: null,
     modulos: [...DA_LOJA, 'agente'],
-    respostasMes: PRECOS.respostasDoAssistente,
+    respostasMes: PRECOS.respostasContrato,
+    respostasPorLojaExtra: PRECOS.respostasPorLojaExtra,
+    assistente: 'completo',
     tetoVendasMes: null,
     degrau: 3,
     aVenda: false,
@@ -336,10 +414,22 @@ export const PLANOS: Record<Plano, Limite> = {
     // de um cliente Corporativo nao se parece com o de outro. A trava dele é
     // só a carteira, posta pela equipe conforme o contrato.
     respostasMes: null,
+    respostasPorLojaExtra: 0,
+    assistente: 'completo',
     tetoVendasMes: null,
     degrau: 4,
     aVenda: false,
   },
+}
+
+/**
+ * A franquia de respostas do mês: a do plano, mais as das lojas a mais. `null`
+ * = no contrato (Corporativo); 0 = sem assistente.
+ */
+export function respostasDoPlano(plano: Plano, lojas: number): number | null {
+  const p = PLANOS[plano]
+  if (p.respostasMes === null || p.respostasMes === 0) return p.respostasMes
+  return p.respostasMes + Math.max(0, Math.floor(lojas) - 1) * p.respostasPorLojaExtra
 }
 
 /** Os que têm preço na tabela. O Corporativo passa por conversa. */
@@ -390,7 +480,7 @@ export function podeCriarUnidade(plano: Plano, jaTem: number): Veredito {
     return {
       pode: true,
       custoExtra: p.porUnidadeExtra,
-      novoTotal: (p.mensal ?? 0) + extras * p.porUnidadeExtra,
+      novoTotal: somar(p.mensal ?? 0, extras * p.porUnidadeExtra),
     }
   }
 
@@ -460,31 +550,26 @@ export function precoDoFarol(marcas: number): number {
 export function mensalidade(plano: Plano, unidades: number, fabricas = 0, farolMarcas = 0) {
   const p = PLANOS[plano]
   if (p.mensal === null) {
-    return { base: null, extras: 0, porExtra: null, assistente: 0, fabricas: 0, fabrica: 0, farolMarcas: 0, farol: 0, total: null }
+    return { base: null, extras: 0, porExtra: null, fabricas: 0, fabrica: 0, farolMarcas: 0, farol: 0, total: null }
   }
 
   const cota = p.unidades ?? unidades
   const extras = p.porUnidadeExtra !== null ? Math.max(0, unidades - cota) : 0
   // A fábrica é UMA chave para a empresa: com uma ou com quatro unidades de
-  // fábrica, `PRECOS.fabrica` uma vez. Só nos planos que cobram por loja — no
-  // Grátis ela nem existe.
-  const fab = p.porUnidadeExtra !== null ? Math.max(0, fabricas) : 0
+  // fábrica, `PRECOS.fabrica` uma vez. Só onde o plano tem a fábrica (o
+  // Essencial não tem, o Grátis também não).
+  const fab = planoLibera(plano, 'fabrica') ? Math.max(0, fabricas) : 0
   const fabrica = fab > 0 ? PRECOS.fabrica : 0
-  // O assistente já está dentro de `mensal` (é o que separa os dois valores do
-  // enum); aqui ele sai como parcela para a conta aberta.
-  const assistente = p.mensal > 0 && p.modulos.includes('agente') ? PRECOS.assistente : 0
   // O Farol é contratado à parte e só existe onde o plano deixa ligar o
-  // módulo (no Grátis, não). Sem esta linha a tela de Assinatura mostrava a
-  // conta sem o Farol — que é a maior parcela de quem o contrata.
+  // módulo. Sem esta linha a tela de Assinatura mostrava a conta sem o Farol
+  // — que é a maior parcela de quem o contrata.
   const marcas = planoLibera(plano, 'farol') ? Math.max(0, Math.floor(farolMarcas)) : 0
   const farol = precoDoFarol(marcas)
   return {
-    /** O plano, com o assistente quando ligado: a primeira loja (+ o assistente). */
+    /** O plano: a primeira loja, com o assistente do plano dentro. */
     base: p.mensal,
     extras,
     porExtra: p.porUnidadeExtra,
-    /** A parcela do assistente, já contida em `base`. */
-    assistente,
     /** Unidades de fábrica ativas (só para a tela dizer quantas). */
     fabricas: fab,
     /** A fábrica, em reais por mês: uma vez, ou zero. */
@@ -492,7 +577,8 @@ export function mensalidade(plano: Plano, unidades: number, fabricas = 0, farolM
     farolMarcas: marcas,
     /** O Farol inteiro, em reais por mês (todas as marcas). */
     farol,
-    total: p.mensal + extras * (p.porUnidadeExtra ?? 0) + fabrica + farol,
+    // Em centavos por dentro: 89,90 + 59,90 em ponto flutuante dá 149,79999…
+    total: somar(p.mensal, extras * (p.porUnidadeExtra ?? 0), fabrica, farol),
   }
 }
 
@@ -572,7 +658,7 @@ export function mudanca(
     sentido:
       alvo.degrau > atual.degrau ? 'subir' : alvo.degrau < atual.degrau ? 'descer' : 'igual',
     novoMensal: mensalNovo,
-    diferenca: mensalNovo !== null && mensalAtual !== null ? mensalNovo - mensalAtual : null,
+    diferenca: mensalNovo !== null && mensalAtual !== null ? somar(mensalNovo, -mensalAtual) : null,
     ganha: alvo.modulos.filter((m) => !atual.modulos.includes(m)),
     perde: atual.modulos.filter((m) => !alvo.modulos.includes(m)),
     respostasMes: alvo.respostasMes,
@@ -635,7 +721,10 @@ export type Recurso = {
 const TODOS_OS_PLANOS: Plano[] = ['GRATIS', 'BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
 const PAGOS: Plano[] = ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
 const SEM_GRATIS = PAGOS
-const COM_AGENTE: Plano[] = ['BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
+// Desde 06/10/2026 o assistente vem em todo plano pago: no Essencial, o
+// básico (conta e avisa); do Profissional para cima, o completo (mexe).
+const COM_AGENTE: Plano[] = PAGOS
+const COMPLETOS: Plano[] = ['BALCAO_AGENTE', 'REDE', 'CORPORATIVO']
 // O que era só da Direção agora vem em todo plano pago: a loja é o que se paga.
 const DE_REDE: Plano[] = PAGOS
 
@@ -677,24 +766,25 @@ export const RECURSOS: Recurso[] = [
   },
   { titulo: 'Encomenda e entrega', grupo: 'Operação', em: PAGOS },
   // Para quem vende serviço com hora marcada: salão, clínica, escola.
-  { titulo: 'Agenda por profissional, com falta e "atender e cobrar"', grupo: 'Operação', em: PAGOS },
+  { titulo: 'Agenda por profissional, com falta e "atender e cobrar"', grupo: 'Operação', em: COMPLETOS },
   {
     // Texto fixo, sem IA, só para quem aceitou — e sai pelo WhatsApp do
     // assistente, então existe onde ele existe.
     titulo: 'Lembrete do horário no WhatsApp do cliente',
     grupo: 'Assistente',
-    em: COM_AGENTE,
+    em: COMPLETOS,
   },
-  { titulo: 'Compras, fornecedores e material usado', grupo: 'Operação', em: PAGOS },
+  { titulo: 'Compras, fornecedores e material usado', grupo: 'Operação', em: COMPLETOS },
+  { titulo: 'Fábrica: ficha técnica, produção e pedido das lojas', grupo: 'Operação', em: COMPLETOS },
   // Para escola e curso: turma, matrícula com o responsável, e a mensalidade
   // do mês gerada sozinha, com multa, juros, recibo e o caixa.
-  { titulo: 'Turmas, matrículas e mensalidades', grupo: 'Dinheiro', em: PAGOS },
+  { titulo: 'Turmas, matrículas e mensalidades', grupo: 'Dinheiro', em: COMPLETOS },
   {
     // Texto fixo, só para o responsável que aceitou — e sai pelo WhatsApp do
     // assistente, então existe onde ele existe.
     titulo: 'Aviso da mensalidade no WhatsApp do responsável',
     grupo: 'Assistente',
-    em: COM_AGENTE,
+    em: COMPLETOS,
   },
   // Controle interno de entrada e saída — não é REP certificado, e a tela diz.
   { titulo: 'Ponto de quem trabalha, com ou sem login', grupo: 'Equipe', em: PAGOS },
@@ -730,7 +820,7 @@ export const RECURSOS: Recurso[] = [
   // errada (decidido em 25/09, na auditoria de promessas).
   { titulo: 'Financeiro com DRE do mês', grupo: 'Dinheiro', em: TODOS_OS_PLANOS, destaque: true },
   { titulo: 'Contas a pagar e recorrentes', grupo: 'Dinheiro', em: TODOS_OS_PLANOS },
-  { titulo: 'Metas e comissão por vendedor', grupo: 'Equipe', em: PAGOS },
+  { titulo: 'Metas e comissão por vendedor', grupo: 'Equipe', em: COMPLETOS },
   { titulo: 'Fechamento de mês guiado', grupo: 'Dinheiro', em: TODOS_OS_PLANOS },
   {
     titulo: 'Curva ABC e dinheiro parado',
@@ -741,7 +831,7 @@ export const RECURSOS: Recurso[] = [
   {
     titulo: 'Crediário próprio, com juros de atraso e a lista de quem deve',
     grupo: 'Dinheiro',
-    em: DE_REDE,
+    em: COMPLETOS,
     destaque: true,
   },
 
@@ -780,6 +870,7 @@ export const RECURSOS: Recurso[] = [
     titulo: 'Assistente no WhatsApp',
     grupo: 'Assistente',
     em: COM_AGENTE,
+    detalhe: porPlano(COM_AGENTE, (l) => (l.assistente === 'basico' ? 'básico' : 'completo')),
     destaque: true,
   },
   {
@@ -787,23 +878,32 @@ export const RECURSOS: Recurso[] = [
     grupo: 'Assistente',
     em: COM_AGENTE,
     detalhe: porPlano(COM_AGENTE, (l) =>
-      l.respostasMes === null ? 'no contrato' : `${milhar(l.respostasMes)}/mês`,
+      l.respostasMes === null
+        ? 'no contrato'
+        : `${milhar(l.respostasMes)}/mês${l.respostasPorLojaExtra ? ` (+${milhar(l.respostasPorLojaExtra)} por loja)` : ''}`,
     ),
     destaque: true,
   },
   { titulo: 'Relatório sozinho, de manhã e à noite', grupo: 'Assistente', em: COM_AGENTE },
   { titulo: 'Ele avisa quando falta peça ou some cliente', grupo: 'Assistente', em: COM_AGENTE },
-  { titulo: 'Ele propõe reposição e você confirma', grupo: 'Assistente', em: COM_AGENTE },
+  {
+    // A linha que separa o básico do completo: o básico conta e avisa; o
+    // completo mexe — sempre com o "sim" de quem pediu.
+    titulo: 'Lança estoque por áudio, cadastra produto e propõe reposição',
+    grupo: 'Assistente',
+    em: COMPLETOS,
+    destaque: true,
+  },
   {
     // A linha que separa os dois planos de cima, e ela e uma so: um conta o
     // que aconteceu, o outro diz o que fazer a respeito.
     titulo: 'Análise do negócio',
     grupo: 'Assistente',
-    em: COM_AGENTE,
     // Uma palavra por coluna. A tabela COMPARA; quem explica e o cartao do
      // plano, que tem largura para isso. Frase de cinquenta caracteres numa
      // celula de comparacao estoura a linha e empurra a tabela para fora da
      // tela — aconteceu, e o print mostrou.
+    em: COMPLETOS,
     detalhe: {
       BALCAO_AGENTE: 'básica',
       REDE: 'profunda',
@@ -820,7 +920,7 @@ export const RECURSOS: Recurso[] = [
     em: TODOS_OS_PLANOS,
     detalhe: porPlano(TODOS_OS_PLANOS, (l) =>
       aVontade(l.unidades, (n) =>
-        l.porUnidadeExtra !== null ? `${n} incluída, +R$ ${l.porUnidadeExtra} cada` : n === 1 ? '1' : `até ${n}`,
+        l.porUnidadeExtra !== null ? `${n} incluída, +${rs(l.porUnidadeExtra)} cada` : n === 1 ? '1' : `até ${n}`,
       ),
     ),
     destaque: true,

@@ -27,7 +27,7 @@
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, exigirQueNaoSejaSuporte, type Sessao } from './permissao'
 import { SemCota } from './assinatura'
-import { PLANOS, PRECOS, podeCriarUnidade } from './planos'
+import { PLANOS, PRECOS, planoLibera, podeCriarUnidade } from './planos'
 import { RAMOS, type Ramo } from './modulos'
 
 export type DadosLoja = {
@@ -227,7 +227,8 @@ async function travarCota(db: BancoDaOrg, orgId: string, deposito = false) {
  */
 async function custoDaFabrica(db: BancoDaOrg, orgId: string): Promise<number> {
   const org = await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } })
-  if (PLANOS[org.plano].porUnidadeExtra === null) return 0
+  // A mesma regra de `mensalidade`: só onde o plano tem a fábrica.
+  if (!planoLibera(org.plano, 'fabrica')) return 0
   const jaTem = await db.unidade.count({ where: { ativa: true, ehFabrica: true } })
   return jaTem > 0 ? 0 : PRECOS.fabrica
 }

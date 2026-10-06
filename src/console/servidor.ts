@@ -222,7 +222,7 @@ export function criarConsole(cfg: ConfigDoConsole): Server {
         return {
           tipo: 'ok',
           texto:
-            `Pacote de +${milhar(PRECOS.pacoteRespostas)} respostas em /${org.slug}.` +
+            `Pacote de respostas em /${org.slug}.` +
             (r.total !== null ? ` Agora: ${milhar(r.usadas)} usadas de ${milhar(r.total)} no mês.` : '') +
             (pedidoId ? ' O pedido foi atendido.' : ''),
         }

@@ -28,8 +28,20 @@
 
 import type { Plano } from '@prisma/client'
 import { comoOrg } from './banco'
-import { PLANOS, PRECOS, milhar } from './planos'
+import { PLANOS, PRECOS, milhar, type Pacote } from './planos'
 import { mostrar } from './dinheiro'
+
+/** O pacote que corresponde a um número de respostas pedido (o de 500, antigo, vira o pequeno). */
+export const pacoteDeRespostas = (n: number): Pacote => (n >= PRECOS.pacoteGrandeRespostas ? 'grande' : 'pequeno')
+
+/** O pacote que um pedido do livro pediu — a equipe atende o que foi pedido. */
+export async function pacoteDoPedido(orgId: string, pedidoId: string): Promise<Pacote> {
+  const linha = await comoOrg(orgId, (db) =>
+    db.auditoria.findFirst({ where: { id: pedidoId, acao: 'respostas.pediu' }, select: { depois: true } }),
+  )
+  const n = (linha?.depois as { respostas?: unknown } | null)?.respostas
+  return pacoteDeRespostas(typeof n === 'number' ? n : PRECOS.pacoteRespostas)
+}
 
 /** As ações do livro que contam a história de um pedido. */
 export const ACOES_DE_PEDIDO = [
@@ -65,6 +77,8 @@ export type Pedido = {
   plano: Plano | null
   /** O valor pedido, em centavos, quando o pedido é de crédito. */
   centavos: number | null
+  /** O pacote pedido, quando o pedido é de respostas. */
+  pacote?: Pacote | null
   /** "plano Norte" / "pacote de +500 respostas" / "R$ 200,00 de crédito de IA" */
   oQue: string
   estado: 'aberto' | 'atendido' | 'recusado' | 'substituido'
@@ -96,6 +110,9 @@ const TITULOS_ANTIGOS: Record<string, Plano> = {
   Assistente: 'BALCAO_AGENTE',
   Rede: 'REDE',
   Direção: 'REDE',
+  // A tabela de 02/10/2026 a 06/10/2026: um plano e o assistente por cima.
+  Norte: 'BALCAO',
+  'Norte + Assistente': 'BALCAO_AGENTE',
 }
 
 /** "R$ 1234,56" (o formato de `mostrar`) → 123456. Para as linhas antigas. */
@@ -126,6 +143,7 @@ function abrir(e: EventoPedido): Pedido {
     const n = typeof d.respostas === 'number' ? d.respostas : PRECOS.pacoteRespostas
     return {
       id: e.id, tipo: 'respostas', criadoEm: e.criadoEm, plano: null, centavos: null,
+      pacote: pacoteDeRespostas(n),
       oQue: `pacote de +${milhar(n)} respostas`,
       estado: 'aberto', fechadoEm: null, motivoRecusa: null,
     }

@@ -92,7 +92,9 @@ export const metadata: Metadata = {
    Os números, lidos da tabela
    ═══════════════════════════════════════════════════════════ */
 
-const reais = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+// Com centavos quando há (89,90); sem ",00" quando não há (497).
+const reais = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: Number.isInteger(v) ? 0 : 2 }).format(v)
 
 const [BASE, COM_ASSISTENTE] = PLANOS_COM_PRECO as [Plano, Plano]
 
@@ -101,7 +103,7 @@ function desde(titulo: string): string {
   const r = RECURSOS.find((x) => x.titulo === titulo)
   if (!r) throw new Error(`A página de venda cita "${titulo}", que não existe em RECURSOS.`)
   if (r.em.includes(BASE)) return `Incluso no ${LIMITES[BASE].titulo}`
-  if (r.em.includes(COM_ASSISTENTE)) return 'Com o assistente'
+  if (r.em.includes(COM_ASSISTENTE)) return `No ${LIMITES[COM_ASSISTENTE].titulo}`
   throw new Error(`A página de venda cita "${titulo}", que nenhum plano à venda tem.`)
 }
 function juntos(...titulos: string[]): string {
@@ -186,7 +188,7 @@ const TEXTOS: Record<TelaId, TextoTela> = {
       'Para agir — lançar uma compra, uma conta, aceitar um pedido — ele monta a proposta com o número e espera o seu SIM, ali mesmo na conversa.',
       'Os tetos moram no banco: valor máximo, gasto de IA e mensagens por dia. Nenhuma mensagem convence ele a passar.',
     ],
-    plano: `Assistente: ${reais(PRECOS.assistente)} a mais por mês para a empresa inteira, com ${milhar(PRECOS.respostasDoAssistente)} respostas.`,
+    plano: `O assistente vem no plano: básico no ${LIMITES[BASE].titulo} (relatório, avisos e ${milhar(PRECOS.respostasEssencial)} perguntas por mês) e completo no ${LIMITES[COM_ASSISTENTE].titulo}, que lança e propõe, com ${milhar(PRECOS.respostasProfissional)} respostas.`,
   },
 }
 
@@ -216,43 +218,62 @@ const SEGURANCA: { Icone: ComponentType<{ tamanho?: number; className?: string }
   { Icone: IconeTranca, t: 'A tela que tranca', d: 'Parada por meia hora, ela pede a senha de novo — sem perder a venda do balcão.' },
 ]
 
-/** O plano que se vende: um só, por loja. Tudo o que a loja usa vem dentro. */
-const O_PLANO = {
-  nome: LIMITES[BASE].titulo,
-  preco: reais(PRECOS.primeiraLoja),
-  sub: `por mês, a primeira loja · ${reais(PRECOS.lojaExtra)} cada loja a mais · depósito não conta`,
-  itens: [
-    'Frente de caixa (PDV) que funciona sem internet',
-    'Estoque por loja, com grade de cor e tamanho',
-    'Catálogo online de cada loja, para mandar no WhatsApp',
-    'Encomendas, agenda, compras e fornecedores',
-    'Clientes, programa de pontos e crediário com carnê',
-    'Financeiro com DRE do mês e fechamento guiado',
-    'Metas, comissão e equipe sem limite de usuários',
-    'Nota fiscal no balcão · em breve',
-  ],
-}
+/** Os dois planos que se vendem, por loja, com o assistente dentro. Os números saem de PRECOS. */
+const OS_PLANOS: { nome: string; preco: string; sub: string; para: string; itens: string[]; destaque: boolean }[] = [
+  {
+    nome: LIMITES[BASE].titulo,
+    preco: reais(PRECOS.essencial),
+    sub: `por mês, a primeira loja · ${reais(PRECOS.essencialLojaExtra)} cada loja a mais`,
+    para: 'Para a loja que quer sair do caderno e da planilha.',
+    itens: [
+      'Frente de caixa (PDV) que funciona sem internet',
+      'Estoque por loja, com grade de cor e tamanho',
+      'Catálogo online com encomendas, para mandar no WhatsApp',
+      'Clientes, programa de pontos e ponto da equipe',
+      'Financeiro com DRE do mês e fechamento guiado',
+      `Assistente básico no WhatsApp: relatório, avisos e ${milhar(PRECOS.respostasEssencial)} perguntas por mês`,
+      'Equipe sem limite de usuários',
+    ],
+    destaque: false,
+  },
+  {
+    nome: LIMITES[COM_ASSISTENTE].titulo,
+    preco: reais(PRECOS.profissional),
+    sub: `por mês, a primeira loja · ${reais(PRECOS.profissionalLojaExtra)} cada loja a mais`,
+    para: 'Para quem quer o Norte inteiro trabalhando junto.',
+    itens: [
+      `Tudo do ${LIMITES[BASE].titulo}`,
+      'Crediário com carnê, juros de atraso e quem deve',
+      'Agenda, compras, fornecedores, metas e comissão',
+      'Fábrica com ficha técnica e pedido das lojas (à parte)',
+      `Assistente completo: lança estoque por áudio, cadastra e propõe reposição — ${milhar(PRECOS.respostasProfissional)} respostas por mês`,
+      'Campanhas no WhatsApp',
+      'Nota fiscal no balcão · em breve',
+    ],
+    destaque: true,
+  },
+]
 
-/** O que liga por cima, para a empresa inteira. Os números saem de PRECOS. */
+/** O que se soma por cima, para a empresa inteira. Os números saem de PRECOS. */
 const POR_CIMA: { t: string; cor: string; d: string; preco: string; sub: string }[] = [
   {
-    t: 'Assistente',
+    t: 'Mais respostas',
     cor: 'var(--s-verde)',
-    d: 'IA no WhatsApp para você e a equipe: relatório, avisos, perguntas e lançamentos por áudio.',
-    preco: `${reais(PRECOS.assistente)}/mês`,
-    sub: `${milhar(PRECOS.respostasDoAssistente)} respostas por mês · +${milhar(PRECOS.pacoteRespostas)} por ${reais(PRECOS.pacotePreco)} se precisar`,
+    d: `Cada loja a mais já soma ${milhar(PRECOS.respostasPorLojaExtra)} respostas. Usou tudo? Compre um pacote, vale no mês.`,
+    preco: `${reais(PRECOS.pacotePreco)}`,
+    sub: `+${milhar(PRECOS.pacoteRespostas)} respostas · ou +${milhar(PRECOS.pacoteGrandeRespostas)} por ${reais(PRECOS.pacoteGrandePreco)}`,
   },
   {
     t: 'Fábrica',
     cor: 'var(--s-violeta)',
-    d: 'Ficha técnica, produção com lote e validade, e o pedido das lojas.',
+    d: `Ficha técnica, produção com lote e validade, e o pedido das lojas. No ${LIMITES[COM_ASSISTENTE].titulo}.`,
     preco: `${reais(PRECOS.fabrica)}/mês`,
     sub: 'uma vez, com quantas cozinhas você tiver',
   },
   {
     t: 'Farol',
     cor: 'var(--s-sol)',
-    d: 'Marketing com IA para o Instagram e o TikTok da marca.',
+    d: `Marketing com IA para o Instagram e o TikTok da marca. No ${LIMITES[COM_ASSISTENTE].titulo}.`,
     preco: `${reais(PRECOS.farolMarca)}/mês`,
     sub: `por marca · ${reais(PRECOS.farolMarcaExtra)} cada marca a mais`,
   },
@@ -273,7 +294,7 @@ const PERGUNTAS: { p: string; r: string }[] = [
   },
   {
     p: 'O catálogo cobra taxa por pedido?',
-    r: `Não. O catálogo de cada loja vem no ${LIMITES[BASE].titulo}, sem taxa por pedido. O pagamento é combinado com a loja (Pix, dinheiro ou cartão na entrega ou na retirada), e o pedido entra em Encomendas e no WhatsApp da loja.`,
+    r: `Não. O catálogo de cada loja vem nos dois planos, sem taxa por pedido. O pagamento é combinado com a loja (Pix, dinheiro ou cartão na entrega ou na retirada), e o pedido entra em Encomendas e no WhatsApp da loja.`,
   },
   {
     p: 'O assistente faz alguma coisa sozinho?',
@@ -281,7 +302,7 @@ const PERGUNTAS: { p: string; r: string }[] = [
   },
   {
     p: 'Emite nota fiscal?',
-    r: `Ainda não — está como “em breve”. Ela depende de um emissor contratado e do certificado digital A1 de cada loja, e quando entrar vem no ${LIMITES[BASE].titulo}, sem custo a mais de plano.`,
+    r: 'Ainda não — está como “em breve”. Ela depende de um emissor contratado e do certificado digital A1 de cada loja. Quando entrar, o valor aparece aqui antes, para você decidir.',
   },
   {
     p: 'Pago por usuário?',
@@ -293,7 +314,7 @@ const PERGUNTAS: { p: string; r: string }[] = [
   },
   {
     p: 'O que conta como resposta do assistente?',
-    r: `Cada mensagem que ele escreve com IA para você ou a equipe. Relatório, avisos e campanhas não contam. O mês vem com ${milhar(PRECOS.respostasDoAssistente)}; acabou, ele avisa antes, e você compra +${milhar(PRECOS.pacoteRespostas)} por ${reais(PRECOS.pacotePreco)} ou espera o dia 1º.`,
+    r: `Cada mensagem que ele escreve com IA para você ou a equipe. Relatório, avisos e campanhas não contam. O mês vem com ${milhar(PRECOS.respostasEssencial)} no ${LIMITES[BASE].titulo} e ${milhar(PRECOS.respostasProfissional)} no ${LIMITES[COM_ASSISTENTE].titulo}, mais ${milhar(PRECOS.respostasPorLojaExtra)} por loja a mais. Acabou, ele avisa antes, e você compra +${milhar(PRECOS.pacoteRespostas)} por ${reais(PRECOS.pacotePreco)} (ou +${milhar(PRECOS.pacoteGrandeRespostas)} por ${reais(PRECOS.pacoteGrandePreco)}) ou espera o dia 1º.`,
   },
   {
     p: 'Meus dados ficam misturados com os de outra empresa?',
@@ -845,7 +866,8 @@ export default function Inicio() {
             invertido
             rodape={
               <p className="site-revela text-[14px] text-[var(--s-tinta-2)]">
-                Assistente: {reais(PRECOS.assistente)} a mais por mês para a empresa inteira, com {milhar(PRECOS.respostasDoAssistente)} respostas.
+                O assistente vem no plano: básico no {LIMITES[BASE].titulo}, completo no {LIMITES[COM_ASSISTENTE].titulo}, com{' '}
+                {milhar(PRECOS.respostasProfissional)} respostas por mês.
               </p>
             }
           />
@@ -990,60 +1012,73 @@ export default function Inicio() {
               <Calculadora comecar={COMECAR} />
             </div>
 
-            {/* Um plano, por loja — e, ao lado, o que liga por cima para a
-                empresa inteira. Antes eram dois cartões de plano ("Norte" e
-                "Norte + Assistente") e a pergunta "qual é a diferença?"; o
-                assistente é uma chave, e a página passou a dizer isso. */}
-            <div className="mt-10 grid gap-4 lg:grid-cols-[1.05fr_1fr]">
-              <article className="site-revela relative flex flex-col gap-5 rounded-[var(--s-raio)] border-2 border-[var(--s-verde)] bg-[var(--s-cartao)] p-7 shadow-[var(--s-sombra-alta)]">
-                <div>
-                  <h3 className="text-2xl font-extrabold">{O_PLANO.nome}</h3>
-                  <p className="mt-2">
-                    <span className="font-[family-name:var(--font-display)] text-4xl font-extrabold tabular-nums">{O_PLANO.preco}</span>
-                  </p>
-                  <p className="text-[14px] text-[var(--s-tinta-2)]">{O_PLANO.sub}</p>
-                </div>
-                <ul className="flex flex-col gap-2.5">
-                  {O_PLANO.itens.map((i) => {
-                    const breve = i.endsWith(' · em breve')
-                    return (
-                      <li key={i} className="flex gap-2.5 text-[15px]">
-                        <Visto cor="var(--s-verde)" />
-                        <span>
-                          {breve ? i.replace(' · em breve', '') : i}
-                          {breve ? <span className="ml-2 rounded-[var(--s-raio)] bg-[var(--s-sol-claro)] px-2 py-0.5 text-[11px] font-bold text-[var(--s-sol)]">em breve</span> : null}
-                        </span>
-                      </li>
-                    )
-                  })}
-                </ul>
-                <a href={COMECAR} className="site-botao site-botao-principal mt-auto px-6 py-3.5 text-[15px]">
-                  Testar {PRECOS.diasDeTeste} dias grátis
-                </a>
-              </article>
-
-              <div className="flex flex-col gap-3">
-                <p className="site-olho px-1 text-[var(--s-tinta-2)]">Liga se quiser, para a empresa inteira</p>
-                {POR_CIMA.map((a) => (
-                  <div key={a.t} className="site-revela site-cartao flex items-start justify-between gap-4 rounded-[var(--s-raio)] p-5">
-                    <div className="min-w-0">
-                      <Olho cor={a.cor}>{a.t}</Olho>
-                      <p className="mt-2 text-[14px] text-[var(--s-tinta-2)]">{a.d}</p>
-                      <p className="mt-1 text-[13px] text-[var(--s-tinta-2)]">{a.sub}</p>
-                    </div>
-                    <p className="shrink-0 text-right text-xl font-extrabold tabular-nums">{a.preco}</p>
-                  </div>
-                ))}
-                <div className="site-revela flex items-start justify-between gap-4 rounded-[var(--s-raio)] border border-dashed border-[var(--s-borda)] p-5">
-                  <div className="min-w-0">
-                    <Olho cor="var(--s-azul)">Implantação</Olho>
-                    <p className="mt-2 text-[13px] text-[var(--s-tinta-2)]">
-                      Cadastro simples não paga nada. Trazer de outro sistema ou montar a fábrica: de {reais(IMPLANTACAO.de)} a{' '}
-                      {reais(IMPLANTACAO.ate)}, uma vez, com orçamento antes.
+            {/* Dois planos, por loja, com o assistente DENTRO: o básico conta e
+                avisa, o completo mexe. Embaixo, o que se soma por cima. */}
+            <div className="mt-10 grid gap-4 md:grid-cols-2">
+              {OS_PLANOS.map((pl) => (
+                <article
+                  key={pl.nome}
+                  className={
+                    'site-revela relative flex flex-col gap-5 rounded-[var(--s-raio)] bg-[var(--s-cartao)] p-7 ' +
+                    (pl.destaque
+                      ? 'border-2 border-[var(--s-verde)] shadow-[var(--s-sombra-alta)]'
+                      : 'border border-[var(--s-borda)]')
+                  }
+                >
+                  {pl.destaque && (
+                    <span className="absolute -top-3 left-6 rounded-[var(--s-raio)] bg-[var(--s-verde)] px-2.5 py-1 text-[11px] font-bold tracking-wide text-white uppercase">
+                      O mais escolhido
+                    </span>
+                  )}
+                  <div>
+                    <h3 className="text-2xl font-extrabold">{pl.nome}</h3>
+                    <p className="mt-1 text-[14px] text-[var(--s-tinta-2)]">{pl.para}</p>
+                    <p className="mt-3">
+                      <span className="font-[family-name:var(--font-display)] text-4xl font-extrabold tabular-nums">{pl.preco}</span>
                     </p>
+                    <p className="text-[14px] text-[var(--s-tinta-2)]">{pl.sub}</p>
                   </div>
-                  <p className="shrink-0 text-right text-xl font-extrabold">Grátis</p>
+                  <ul className="flex flex-col gap-2.5">
+                    {pl.itens.map((i) => {
+                      const breve = i.endsWith(' · em breve')
+                      return (
+                        <li key={i} className="flex gap-2.5 text-[15px]">
+                          <Visto cor="var(--s-verde)" />
+                          <span>
+                            {breve ? i.replace(' · em breve', '') : i}
+                            {breve ? <span className="ml-2 rounded-[var(--s-raio)] bg-[var(--s-sol-claro)] px-2 py-0.5 text-[11px] font-bold text-[var(--s-sol)]">em breve</span> : null}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  <a
+                    href={COMECAR}
+                    className={'site-botao mt-auto px-6 py-3.5 text-[15px] ' + (pl.destaque ? 'site-botao-principal' : 'site-botao-claro')}
+                  >
+                    Testar {PRECOS.diasDeTeste} dias grátis
+                  </a>
+                </article>
+              ))}
+            </div>
+
+            <p className="site-olho mt-10 px-1 text-[var(--s-tinta-2)]">Se precisar, por cima</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {POR_CIMA.map((x) => (
+                <div key={x.t} className="site-revela site-cartao flex flex-col gap-2 rounded-[var(--s-raio)] p-5">
+                  <Olho cor={x.cor}>{x.t}</Olho>
+                  <p className="text-xl font-extrabold tabular-nums">{x.preco}</p>
+                  <p className="text-[14px] text-[var(--s-tinta-2)]">{x.d}</p>
+                  <p className="text-[13px] text-[var(--s-tinta-2)]">{x.sub}</p>
                 </div>
+              ))}
+              <div className="site-revela flex flex-col gap-2 rounded-[var(--s-raio)] border border-dashed border-[var(--s-borda)] p-5">
+                <Olho cor="var(--s-azul)">Implantação</Olho>
+                <p className="text-xl font-extrabold">Grátis</p>
+                <p className="text-[13px] text-[var(--s-tinta-2)]">
+                  Cadastro simples não paga nada. Trazer de outro sistema ou montar a fábrica: de {reais(IMPLANTACAO.de)} a{' '}
+                  {reais(IMPLANTACAO.ate)}, uma vez, com orçamento antes.
+                </p>
               </div>
             </div>
 

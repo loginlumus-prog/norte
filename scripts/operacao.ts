@@ -72,7 +72,7 @@ for (const saida of [process.stdout, process.stderr]) {
 }
 
 const { acharOrgPorSlug, fechar } = await import('../src/servidor/banco')
-const { PLANOS, PRECOS, milhar, precoDoFarol } = await import('../src/servidor/planos')
+const { PACOTES, PLANOS, PRECOS, milhar, precoDoFarol } = await import('../src/servidor/planos')
 const { mostrar } = await import('../src/servidor/dinheiro')
 const { previaDeTroca, trocarPlanoComoEquipe, quemDaEquipe, respostasDoMes, SemCota } = await import('../src/servidor/assinatura')
 const ped = await import('../src/servidor/pedidos')
@@ -367,8 +367,8 @@ async function respostas() {
   titulo(`Pacote de respostas em /${org.slug}`)
   resumo([
     ['Empresa', `${org.nome} (${org.situacao.toLowerCase()})`],
-    ['Pacote', `+${milhar(PRECOS.pacoteRespostas)} respostas neste mês (${mostrar(PRECOS.pacotePreco * 100)})`],
-    ['Respostas', agora.total === null ? 'sob contrato' : `${milhar(agora.usadas)} usadas de ${milhar(agora.total)} → de ${milhar(agora.total + PRECOS.pacoteRespostas)}`],
+    ['Pacote', `${pedido?.pacote === 'grande' ? `+${milhar(PACOTES.grande.respostas)}` : `+${milhar(PACOTES.pequeno.respostas)}`} respostas neste mês (${mostrar(Math.round(PACOTES[pedido?.pacote ?? 'pequeno'].preco * 100))})`],
+    ['Respostas', agora.total === null ? 'sob contrato' : `${milhar(agora.usadas)} usadas de ${milhar(agora.total)} → de ${milhar(agora.total + PACOTES[pedido?.pacote ?? 'pequeno'].respostas)}`],
     ['Motivo', `"${motivo}" — vai para o livro da loja`],
     ['Pedido', pedido ? `atende o pedido de ${pedido.oQue}, de ${dataHora(pedido.criadoEm)}` : 'nenhum aberto — pacote por decisão da equipe'],
   ])

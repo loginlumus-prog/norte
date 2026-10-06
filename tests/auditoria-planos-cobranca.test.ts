@@ -13,7 +13,9 @@ import type { PGlite } from '@electric-sql/pglite'
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
 import { subirBanco } from './banco'
 import type { Sessao } from '../src/servidor/permissao'
-import { PRECOS, TETO_IA_DO_MES_CENT, TETO_IA_DO_TESTE_CENT, mensalidade, mudanca } from '../src/servidor/planos'
+import { PRECOS, TETO_IA_DO_TESTE_CENT, mensalidade, mudanca, somar, tetoDoMesCent } from '../src/servidor/planos'
+
+const TETO_IA_DO_MES_CENT = tetoDoMesCent('BALCAO_AGENTE', 1)
 import type { DadosLoja } from '../src/servidor/lojas'
 
 vi.mock('../src/servidor/ia', async (original) => {
@@ -40,7 +42,7 @@ const dono = (orgId: string): Sessao => ({
 const SEMENTE = `
   insert into orgs (id, nome, slug, plano, situacao, modulos, credito_ia_cent, teste_ate, atualizada_em, configurada_em) values
     -- Farol contratado (para UMA marca, pela tabela: R$ 497)
-    ('org-farol', 'Gelados', 'gelados', 'BALCAO', 'ATIVA', '{farol}', 0, null, now(), now()),
+    ('org-farol', 'Gelados', 'gelados', 'BALCAO_AGENTE', 'ATIVA', '{farol}', 0, null, now(), now()),
     -- teste do site que atravessa a virada do mes
     ('org-teste', 'Teste Virada', 'teste-virada', 'BALCAO_AGENTE', 'TESTE', '{agente}', 0, now() + interval '25 days', now(), now()),
     -- teste que a equipe confirma como assinatura paga no mesmo mes
@@ -48,7 +50,7 @@ const SEMENTE = `
     -- criada por scripts/criar-empresa.ts com --dias 0
     ('org-eterno', 'Teste Eterno', 'teste-eterno', 'BALCAO_AGENTE', 'TESTE', '{agente}', 0, null, now(), now()),
     -- loja paga de uma unidade, para o deposito que vira loja
-    ('org-loja', 'Roupas', 'roupas', 'BALCAO', 'ATIVA', '{}', 0, null, now(), now());
+    ('org-loja', 'Roupas', 'roupas', 'BALCAO_AGENTE', 'ATIVA', '{}', 0, null, now(), now());
   insert into usuarios (id, org_id, nome, email, atualizado_em) values
     ('dono-org-farol', 'org-farol', 'Dono', 'd@farol.com', now()),
     ('dono-org-loja', 'org-loja', 'Dono', 'd@loja.com', now());
@@ -104,12 +106,12 @@ describe('Farol: cobrado por marca na tabela, e a marca respeita o contratado', 
 
   it('CORRIGIDO: a mensalidade tem a linha do Farol, pelas marcas contratadas', async () => {
     let a = await m.assinatura.assinaturaDaEmpresa('org-farol')
-    expect(a.mensal.total).toBe(PRECOS.primeiraLoja + PRECOS.farolMarca)
+    expect(a.mensal.total).toBe(somar(PRECOS.profissional, PRECOS.farolMarca))
     expect(a.mensal).toMatchObject({ farolMarcas: 1, farol: PRECOS.farolMarca })
     // a equipe amplia o contrato para 3: a conta acompanha (497 + 2 × 297)
     await db.exec(`update orgs set farol_marcas = 3 where id = 'org-farol'`)
     a = await m.assinatura.assinaturaDaEmpresa('org-farol')
-    expect(a.mensal.total).toBe(PRECOS.primeiraLoja + PRECOS.farolMarca + 2 * PRECOS.farolMarcaExtra)
+    expect(a.mensal.total).toBe(somar(PRECOS.profissional, PRECOS.farolMarca, 2 * PRECOS.farolMarcaExtra))
   })
 })
 
@@ -136,7 +138,7 @@ describe('Teste de 30 dias e a trava de IA', () => {
     expect(await saldo('org-paga')).toBe(TETO_IA_DO_MES_CENT)
     // E as respostas viram as do mês: 1.000, não as 200 do teste.
     const a = await m.assinatura.assinaturaDaEmpresa('org-paga')
-    expect(a.respostas.total).toBe(PRECOS.respostasDoAssistente)
+    expect(a.respostas.total).toBe(PRECOS.respostasProfissional)
     expect(a.respostas.periodo).toBe('mes')
   })
 
@@ -163,23 +165,23 @@ describe('Lojas: a regra de ouro ("a tela diz o valor ANTES") tem porta lateral'
     const r = await m.lojas.criarLoja(dono('org-loja'), { nome: 'Depósito', ehDeposito: true } as DadosLoja)
     depositoId = r.loja.id
     expect(r.custoExtra).toBe(0)
-    expect((await m.assinatura.assinaturaDaEmpresa('org-loja')).mensal.total).toBe(PRECOS.primeiraLoja)
+    expect((await m.assinatura.assinaturaDaEmpresa('org-loja')).mensal.total).toBe(PRECOS.profissional)
   })
 
   it('CORRIGIDO: desmarcar "é depósito" passa pela cota e devolve o custo da loja a mais', async () => {
     const r = await m.lojas.editarLoja(dono('org-loja'), depositoId, { nome: 'Depósito', ehDeposito: false } as DadosLoja)
     expect(r.loja.ehDeposito).toBe(false)
-    expect(r.custoExtra).toBe(PRECOS.lojaExtra)
+    expect(r.custoExtra).toBe(PRECOS.profissionalLojaExtra)
     const a = await m.assinatura.assinaturaDaEmpresa('org-loja')
     expect(a.uso.unidades).toBe(2)
-    expect(a.mensal.total).toBe(PRECOS.primeiraLoja + PRECOS.lojaExtra)
+    expect(a.mensal.total).toBe(somar(PRECOS.profissional, PRECOS.profissionalLojaExtra))
   })
 
-  it('CORRIGIDO: abrir uma fábrica devolve o custo dela (R$ 379), o mesmo que a conta soma', async () => {
+  it('CORRIGIDO: abrir uma fábrica devolve o custo dela, o mesmo que a conta soma', async () => {
     const r = await m.lojas.criarLoja(dono('org-loja'), { nome: 'Fábrica', ehFabrica: true } as DadosLoja)
     expect(r.custoExtra).toBe(PRECOS.fabrica)
     const a = await m.assinatura.assinaturaDaEmpresa('org-loja')
-    expect(a.mensal.total).toBe(PRECOS.primeiraLoja + PRECOS.lojaExtra + PRECOS.fabrica)
+    expect(a.mensal.total).toBe(somar(PRECOS.profissional, PRECOS.profissionalLojaExtra, PRECOS.fabrica))
   })
 
   it('a segunda unidade de fábrica não soma nada: a fábrica é uma parcela da empresa', async () => {
@@ -187,7 +189,7 @@ describe('Lojas: a regra de ouro ("a tela diz o valor ANTES") tem porta lateral'
     expect(r.custoExtra).toBe(0)
     const a = await m.assinatura.assinaturaDaEmpresa('org-loja')
     expect(a.mensal.fabricas).toBe(2)
-    expect(a.mensal.total).toBe(PRECOS.primeiraLoja + PRECOS.lojaExtra + PRECOS.fabrica)
+    expect(a.mensal.total).toBe(somar(PRECOS.profissional, PRECOS.profissionalLojaExtra, PRECOS.fabrica))
   })
 
   it('CORRIGIDO: a loja que vira depósito sai do catálogo da internet', async () => {
@@ -199,14 +201,15 @@ describe('Lojas: a regra de ouro ("a tela diz o valor ANTES") tem porta lateral'
 })
 
 describe('Contas puras que divergem', () => {
-  it('CORRIGIDO: a prévia de troca de plano conta a fábrica (e o Farol) — R$ 747, não R$ 368', () => {
+  it('CORRIGIDO: a prévia de troca de plano conta a fábrica (e o Farol)', () => {
+    // No Essencial a fábrica não existe; subindo, ela entra na prévia.
     const hoje = mensalidade('BALCAO', 1, 1).total
-    expect(hoje).toBe(PRECOS.primeiraLoja + PRECOS.fabrica)
+    expect(hoje).toBe(PRECOS.essencial)
     const m2 = mudanca('BALCAO', 'BALCAO_AGENTE', { unidades: 1, fabricas: 1 })
-    expect(m2.novoMensal).toBe(PRECOS.primeiraLoja + PRECOS.assistente + PRECOS.fabrica)
-    expect(m2.diferenca).toBe(PRECOS.assistente)
+    expect(m2.novoMensal).toBe(somar(PRECOS.profissional, PRECOS.fabrica))
+    expect(m2.diferenca).toBe(somar(PRECOS.profissional, PRECOS.fabrica, -PRECOS.essencial))
     const m3 = mudanca('BALCAO', 'BALCAO_AGENTE', { unidades: 1, fabricas: 1, farolMarcas: 2 })
-    expect(m3.novoMensal).toBe(PRECOS.primeiraLoja + PRECOS.assistente + PRECOS.fabrica + PRECOS.farolMarca + PRECOS.farolMarcaExtra)
+    expect(m3.novoMensal).toBe(somar(PRECOS.profissional, PRECOS.fabrica, PRECOS.farolMarca, PRECOS.farolMarcaExtra))
   })
 
   // A chave "Pagar no anual" saiu da calculadora (02/10/2026): o anual é

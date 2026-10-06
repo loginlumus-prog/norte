@@ -2,7 +2,7 @@
 //
 // O que está provado aqui:
 //   • a conta é pura e fecha: franquia + pacotes − usadas; acabou e "baixo"
-//   • os tetos de IA saem do preço (70% de R$ 149 por 1.000 respostas)
+//   • os tetos de IA saem da régua por resposta (CUSTO_MAX_POR_RESPOSTA), por plano e por loja
 //   • conta só a mensagem marcada `resposta_ia` — relatório, aviso e recado
 //     não contam
 //   • o mês é o de calendário em São Paulo: vira no dia 1º, e o pacote vale
@@ -21,11 +21,15 @@ import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
 import { subirBanco } from './banco'
 import {
   PRECOS,
-  TETO_IA_DO_MES_CENT,
-  TETO_IA_DO_PACOTE_CENT,
   TETO_IA_DO_TESTE_CENT,
-  PARCELA_MAX_DE_IA,
+  CUSTO_MAX_POR_RESPOSTA,
+  tetoDoMesCent,
+  tetoDoPacoteCent,
 } from '../src/servidor/planos'
+
+// O Profissional com uma loja: 600 respostas no mês; o pacote pequeno, +300.
+const TETO_IA_DO_MES_CENT = tetoDoMesCent('BALCAO_AGENTE', 1)
+const TETO_IA_DO_PACOTE_CENT = tetoDoPacoteCent('pequeno')
 import { MARGEM } from '../src/servidor/custo-ia'
 
 vi.hoisted(() => {
@@ -62,7 +66,7 @@ const SEMENTE = `
     ('org-r', 'Loja R', 'loja-r', 'BALCAO_AGENTE', 'ATIVA', '{agente}', 0, null, now() - interval '1 year', now()),
     ('org-x', 'Loja X', 'loja-x', 'BALCAO_AGENTE', 'ATIVA', '{agente}', 0, null, now() - interval '1 year', now()),
     ('org-t', 'Loja T', 'loja-t', 'BALCAO_AGENTE', 'TESTE', '{agente}', 0, now() + interval '20 days', now() - interval '10 days', now()),
-    ('org-s', 'Loja S', 'loja-s', 'BALCAO', 'ATIVA', '{}', 0, null, now() - interval '1 year', now()),
+    ('org-s', 'Loja S', 'loja-s', 'GRATIS', 'ATIVA', '{}', 0, null, now() - interval '1 year', now()),
     ('org-e', 'Loja E', 'loja-e', 'BALCAO_AGENTE', 'ATIVA', '{agente}', 0, null, now() - interval '1 year', now());
 
   insert into unidades (id, org_id, nome, atualizada_em) values
@@ -142,7 +146,7 @@ describe('a conta das respostas', () => {
     // Passar do total (a resposta que já estava a caminho) não vira negativo.
     expect(contaDeRespostas(1000, 0, 1003)).toMatchObject({ restam: 0, acabou: true })
     // O pacote soma ao total do mês.
-    expect(contaDeRespostas(1000, 2, 1000)).toMatchObject({ total: 2000, restam: 1000, acabou: false })
+    expect(contaDeRespostas(1000, 2, 1000)).toMatchObject({ total: 1600, restam: 600, acabou: false })
     // Sem assistente não "acaba" nada; no contrato não há número.
     expect(contaDeRespostas(0, 0, 0)).toMatchObject({ total: 0, acabou: false })
     expect(contaDeRespostas(null, 0, 50)).toMatchObject({ total: null, restam: null, acabou: false })
@@ -150,10 +154,11 @@ describe('a conta das respostas', () => {
 
   it('a franquia vem do plano, e no teste é a do teste', () => {
     const { franquiaDeRespostas } = m.assinatura
-    expect(franquiaDeRespostas('BALCAO_AGENTE', 'ATIVA')).toBe(PRECOS.respostasDoAssistente)
+    expect(franquiaDeRespostas('BALCAO_AGENTE', 'ATIVA')).toBe(PRECOS.respostasProfissional)
+    expect(franquiaDeRespostas('BALCAO_AGENTE', 'ATIVA', 3)).toBe(PRECOS.respostasProfissional + 2 * PRECOS.respostasPorLojaExtra)
     expect(franquiaDeRespostas('BALCAO_AGENTE', 'TESTE')).toBe(PRECOS.respostasDoTeste)
-    expect(franquiaDeRespostas('REDE', 'ATIVA')).toBe(PRECOS.respostasDoAssistente)
-    expect(franquiaDeRespostas('BALCAO', 'ATIVA')).toBe(0)
+    expect(franquiaDeRespostas('REDE', 'ATIVA')).toBe(PRECOS.respostasContrato)
+    expect(franquiaDeRespostas('BALCAO', 'ATIVA')).toBe(PRECOS.respostasEssencial)
     expect(franquiaDeRespostas('GRATIS', 'ATIVA')).toBe(0)
     expect(franquiaDeRespostas('CORPORATIVO', 'ATIVA')).toBeNull()
   })
@@ -163,19 +168,22 @@ describe('a conta das respostas', () => {
     expect(avisoDeRespostas(100, 1000, 'mes')).toBe('Faltam 100 respostas este mês.')
     expect(avisoDeRespostas(99, 1000, 'mes')).toBeNull()
     expect(avisoDeRespostas(101, 1000, 'mes')).toBeNull()
-    expect(avisoDeRespostas(0, 1000, 'mes')).toMatch(/última resposta do mês.*\+500.*dia 1º/)
+    expect(avisoDeRespostas(0, 1000, 'mes')).toMatch(/última resposta do mês.*pacote.*dia 1º/)
     expect(avisoDeRespostas(20, 200, 'teste')).toBe('Faltam 20 respostas no teste.')
     expect(avisoDeRespostas(0, 200, 'teste')).toMatch(/última resposta do teste.*assine/)
     expect(avisoDeRespostas(null, null, 'mes')).toBeNull()
   })
 
-  it('os tetos de IA saem do preço: 70% de R$ 149 para 1.000 respostas, a mesma régua no pacote e no teste', () => {
-    expect(TETO_IA_DO_MES_CENT).toBe(Math.round(PRECOS.assistente * PARCELA_MAX_DE_IA * MARGEM * 100))
-    expect(TETO_IA_DO_MES_CENT).toBe(31290)
-    expect(TETO_IA_DO_PACOTE_CENT).toBe(Math.round(TETO_IA_DO_MES_CENT / 2))
-    expect(TETO_IA_DO_TESTE_CENT).toBe(Math.round((TETO_IA_DO_MES_CENT * 200) / 1000))
-    // No pior caso o custo de IA do mês (teto ÷ MARGEM) fica abaixo do que o assistente cobra.
-    expect(TETO_IA_DO_MES_CENT / MARGEM / 100).toBeLessThan(PRECOS.assistente)
+  it('os tetos de IA saem da régua por resposta, a mesma no mês, no pacote e no teste', () => {
+    expect(TETO_IA_DO_MES_CENT).toBe(Math.round(600 * CUSTO_MAX_POR_RESPOSTA * MARGEM * 100))
+    expect(TETO_IA_DO_PACOTE_CENT).toBe(Math.round(300 * CUSTO_MAX_POR_RESPOSTA * MARGEM * 100))
+    expect(TETO_IA_DO_TESTE_CENT).toBe(Math.round(200 * CUSTO_MAX_POR_RESPOSTA * MARGEM * 100))
+    // No pior caso o custo de IA do mês (teto ÷ MARGEM) fica abaixo do que o plano cobra — nos dois planos.
+    expect(tetoDoMesCent('BALCAO', 1) / MARGEM / 100).toBeLessThan(PRECOS.essencial)
+    expect(TETO_IA_DO_MES_CENT / MARGEM / 100).toBeLessThan(PRECOS.profissional)
+    // E o pacote dá lucro: o custo máximo dele fica abaixo do preço.
+    expect(TETO_IA_DO_PACOTE_CENT / MARGEM / 100).toBeLessThan(PRECOS.pacotePreco)
+    expect(tetoDoPacoteCent('grande') / MARGEM / 100).toBeLessThan(PRECOS.pacoteGrandePreco)
   })
 
   it('o mês vira no dia 1º de São Paulo, também na virada do ano', () => {
@@ -205,35 +213,35 @@ describe('o que conta, e o mês que vira', () => {
     await mensagens('org-r', 'cv-r', 1, new Date('2026-09-30T23:00:00-03:00'))
 
     const r = await m.assinatura.respostasDoMes('org-r', OUT_20)
-    expect(r).toMatchObject({ incluidas: 1000, pacotes: 0, total: 1000, usadas: 3, restam: 997, periodo: 'mes' })
+    expect(r).toMatchObject({ incluidas: 600, pacotes: 0, total: 600, usadas: 3, restam: 597, periodo: 'mes' })
     expect(r.renovaEm?.toISOString()).toBe('2026-11-01T03:00:00.000Z')
   })
 
   it('no dia 1º a franquia volta inteira', async () => {
     const r = await m.assinatura.respostasDoMes('org-r', NOV_02)
-    expect(r).toMatchObject({ usadas: 0, restam: 1000, total: 1000 })
+    expect(r).toMatchObject({ usadas: 0, restam: 600, total: 600 })
   })
 
-  it('o pacote soma +500 ao mês em que entra, põe o teto dele na carteira, e não passa para o mês seguinte', async () => {
+  it('o pacote soma +300 ao mês em que entra, põe o teto dele na carteira, e não passa para o mês seguinte', async () => {
     const antes = await saldo('org-r')
     const r = await m.assinatura.adicionarPacoteDeRespostas('org-r', { quem: 'Equipe Norte (Teste)', autor: 'SISTEMA' }, OUT_20)
-    expect(r).toMatchObject({ pacotes: 1, total: 1500, restam: 1497 })
+    expect(r).toMatchObject({ pacotes: 1, total: 900, restam: 897 })
     // O teto de outubro caiu antes (a carteira estava em zero), e o do pacote por cima.
     expect(await saldo('org-r')).toBe(antes + TETO_IA_DO_MES_CENT + TETO_IA_DO_PACOTE_CENT)
     // Novembro: o pacote ficou em outubro.
-    expect(await m.assinatura.respostasDoMes('org-r', NOV_02)).toMatchObject({ pacotes: 0, total: 1000 })
+    expect(await m.assinatura.respostasDoMes('org-r', NOV_02)).toMatchObject({ pacotes: 0, total: 600 })
     // No livro, com o que a equipe precisa para fechar o pedido.
     const livro = await db.query<{ acao: string; depois: { respostas: number; mes: string } }>(
       `select acao, depois from auditoria where org_id = 'org-r' and acao = 'respostas.adicionou'`,
     )
     expect(livro.rows).toHaveLength(1)
-    expect(livro.rows[0]!.depois).toMatchObject({ respostas: 500, mes: '2026-10' })
+    expect(livro.rows[0]!.depois).toMatchObject({ respostas: 300, mes: '2026-10' })
   })
 
   it('sem o assistente, não há pacote', async () => {
     await expect(
       m.assinatura.adicionarPacoteDeRespostas('org-s', { quem: 'Equipe Norte (Teste)', autor: 'SISTEMA' }, OUT_20),
-    ).rejects.toThrow(/assistente ligado/)
+    ).rejects.toThrow(/assistente/)
   })
 
   it('a carteira é COMPLETADA até o teto no mês, não somada: sobra não vira poupança', async () => {
@@ -256,12 +264,12 @@ describe('a trava', () => {
   const agora = new Date()
 
   it('acabou a franquia: para, com o recado em respostas; o pacote destrava', async () => {
-    await mensagens('org-x', 'cv-x', PRECOS.respostasDoAssistente, agora)
+    await mensagens('org-x', 'cv-x', PRECOS.respostasProfissional, agora)
     const v = await m.agente.podeGastarHoje('org-x', agora)
     expect(v.pode).toBe(false)
     expect(v.motivo).toBe('sem_respostas')
     expect(v.recado).toBe(
-      'As respostas do mês acabaram — compre um pacote de +500 em Assinatura ou espere o dia 1º.',
+      'As respostas do mês acabaram — compre um pacote de respostas em Assinatura ou espere o dia 1º.',
     )
     // A carteira tem dinheiro: quem parou foi a franquia.
     expect(v.saldoCent).toBeGreaterThan(0)
@@ -273,7 +281,7 @@ describe('a trava', () => {
     await m.assinatura.adicionarPacoteDeRespostas('org-x', { quem: 'Equipe Norte (Teste)', autor: 'SISTEMA' }, agora)
     const depois = await m.agente.podeGastarHoje('org-x', agora)
     expect(depois.pode).toBe(true)
-    expect(depois.respostas).toMatchObject({ total: 1500, restam: 500 })
+    expect(depois.respostas).toMatchObject({ total: 900, restam: 300 })
   })
 
   it('a carteira acabou antes da franquia: para pela trava de custo, dizendo limite de uso', async () => {
@@ -324,9 +332,9 @@ describe('de ponta a ponta, pelo WhatsApp', () => {
     Number((await db.query<{ n: string }>(`select count(*) n from mensagens_agente where org_id = 'org-e' and resposta_ia`)).rows[0]!.n)
 
   it('a resposta da IA conta uma; a que cruza os 10% avisa no fim', async () => {
-    // 899 já usadas este mês (noutra conversa): esta resposta é a 900ª, e
-    // depois dela faltam 100 — os 10%.
-    await mensagens('org-e', 'cv-e-outra', 899, new Date())
+    // O Profissional com uma loja tem 600. 539 já usadas este mês (noutra
+    // conversa): esta resposta é a 540ª, e depois dela faltam 60 — os 10%.
+    await mensagens('org-e', 'cv-e-outra', 539, new Date())
     const canal = new m.canal.CanalFalso()
     const api = apiQueDiz('Ontem a loja vendeu R$ 300.')
     const r = await m.conversa.processarMensagem(
@@ -335,17 +343,17 @@ describe('de ponta a ponta, pelo WhatsApp', () => {
     )
     expect(r).toMatchObject({ tipo: 'respondida', enviada: true })
     expect(api.chamadas()).toBe(1)
-    expect(await marcadas()).toBe(900)
+    expect(await marcadas()).toBe(540)
     const saiu = canal.enviadas.at(-1)!.texto
     expect(saiu).toContain('Ontem a loja vendeu R$ 300.')
-    expect(saiu).toContain('Faltam 100 respostas este mês.')
+    expect(saiu).toContain('Faltam 60 respostas este mês.')
 
     // A próxima não repete o aviso.
     await m.conversa.processarMensagem(
       { orgId: 'org-e', telefone: DONA, nome: null, texto: 'e hoje?', idExterno: 'E2' },
       { canal, buscar: api.buscar },
     )
-    expect(await marcadas()).toBe(901)
+    expect(await marcadas()).toBe(541)
     expect(canal.enviadas.at(-1)!.texto).not.toContain('Faltam')
   })
 

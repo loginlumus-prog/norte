@@ -35,7 +35,7 @@ export const metadata: Metadata = {
   description: 'O que a gente entrega, o que você paga e o que acontece quando algo dá errado.',
 }
 
-const real = (n: number) => `R$ ${n.toLocaleString('pt-BR')}`
+const real = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2 })}`
 
 /** O que o jurídico ainda precisa decidir. Em vermelho, para ninguém confundir com texto pronto. */
 function Pendente({ children }: { children: ReactNode }) {
@@ -92,24 +92,34 @@ export default function Termos() {
             mesma fonte da página de venda e da tela de Assinatura: contrato
             com número digitado à mão é contrato que diverge da tabela. */}
         <p>
-          A tabela, por mês. Existe um plano, o <b>{PLANOS.BALCAO.titulo}</b>, e o que se paga é a loja;
-          tudo o que a loja usa vem junto. O que vale para a empresa inteira entra por cima, só se você ligar.
+          A tabela, por mês. São dois planos, o <b>{PLANOS.BALCAO.titulo}</b> e o{' '}
+          <b>{PLANOS.BALCAO_AGENTE.titulo}</b>, e o que se paga é a loja; o assistente vem dentro do plano. O que
+          vale para a empresa inteira entra por cima, só se você contratar.
         </p>
         <Itens>
           <li>
-            <b>{PLANOS.BALCAO.titulo}</b> — {real(PRECOS.primeiraLoja)}/mês a primeira loja e{' '}
-            {real(PRECOS.lojaExtra)}/mês cada loja a mais. Depósito não entra na conta. Cadastrar a
-            equipe inteira não tem custo, e não há limite de pessoas dentro ao mesmo tempo.
+            <b>{PLANOS.BALCAO.titulo}</b> — {real(PRECOS.essencial)}/mês a primeira loja e{' '}
+            {real(PRECOS.essencialLojaExtra)}/mês cada loja a mais, com o assistente básico (relatório,
+            avisos e {milhar(PRECOS.respostasEssencial)} respostas por mês; ele consulta, não lança).
           </li>
           <li>
-            <b>Assistente</b> — {real(PRECOS.assistente)}/mês para a empresa inteira, com{' '}
-            {milhar(PRECOS.respostasDoAssistente)} respostas por mês. Pacote avulso de +
-            {milhar(PRECOS.pacoteRespostas)} respostas por {real(PRECOS.pacotePreco)}, que vale para o mês
-            em que entra (cláusula 7).
+            <b>{PLANOS.BALCAO_AGENTE.titulo}</b> — {real(PRECOS.profissional)}/mês a primeira loja e{' '}
+            {real(PRECOS.profissionalLojaExtra)}/mês cada loja a mais, com todos os módulos e o assistente
+            completo ({milhar(PRECOS.respostasProfissional)} respostas por mês).
           </li>
           <li>
-            <b>Fábrica</b> — {real(PRECOS.fabrica)}/mês, uma vez para a empresa, com quantas unidades
-            de fábrica ela tiver.
+            Nos dois, cada loja a mais soma {milhar(PRECOS.respostasPorLojaExtra)} respostas ao mês. Depósito
+            não entra na conta. Cadastrar a equipe inteira não tem custo, e não há limite de pessoas dentro
+            ao mesmo tempo.
+          </li>
+          <li>
+            <b>Pacotes de respostas</b> — +{milhar(PRECOS.pacoteRespostas)} por {real(PRECOS.pacotePreco)} ou +
+            {milhar(PRECOS.pacoteGrandeRespostas)} por {real(PRECOS.pacoteGrandePreco)}, que valem para o mês
+            em que entram (cláusula 7).
+          </li>
+          <li>
+            <b>Fábrica</b> — {real(PRECOS.fabrica)}/mês no {PLANOS.BALCAO_AGENTE.titulo}, uma vez para a
+            empresa, com quantas unidades de fábrica ela tiver.
           </li>
           <li>
             <b>Farol</b> — {real(PRECOS.farolMarca)}/mês a primeira marca e{' '}
@@ -188,20 +198,23 @@ export default function Termos() {
 
       <Secao n={7} titulo="O assistente e as respostas">
         <p>
-          O assistente é opcional: você liga e desliga quando quiser, e ele vale para a empresa
-          inteira. Ele é medido em <b>respostas</b> — cada mensagem que ele escreve com
+          O assistente vem com o plano e vale para a empresa inteira: básico no{' '}
+          {PLANOS.BALCAO.titulo}, completo no {PLANOS.BALCAO_AGENTE.titulo}. Ele é medido em <b>respostas</b> — cada mensagem que ele escreve com
           inteligência artificial para você ou a sua equipe conta uma. Relatórios, avisos, recado
           automático e campanhas são texto fixo e não contam.
         </p>
         <Itens>
           <li>
-            Ligado, o mês vem com {milhar(PRECOS.respostasDoAssistente)} respostas. O mês é o de
+            O mês vem com {milhar(PRECOS.respostasEssencial)} respostas no {PLANOS.BALCAO.titulo} e{' '}
+            {milhar(PRECOS.respostasProfissional)} no {PLANOS.BALCAO_AGENTE.titulo}, mais{' '}
+            {milhar(PRECOS.respostasPorLojaExtra)} por loja a mais. O mês é o de
             calendário, no horário de Brasília, e a franquia volta no dia 1º; o que sobra não passa
             para o mês seguinte.
           </li>
           <li>
             Acabaram as respostas, o assistente para de responder até o dia 1º ou até um pacote
-            avulso (+{milhar(PRECOS.pacoteRespostas)} por {real(PRECOS.pacotePreco)}, para o mês em que
+            avulso (+{milhar(PRECOS.pacoteRespostas)} por {real(PRECOS.pacotePreco)} ou +
+            {milhar(PRECOS.pacoteGrandeRespostas)} por {real(PRECOS.pacoteGrandePreco)}, para o mês em que
             entra). O resto do sistema continua inteiro, e a tela avisa quando faltam 10%.
           </li>
           <li>

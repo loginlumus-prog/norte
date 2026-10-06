@@ -10,7 +10,7 @@
 // Daqui só sai o pedido, já validado e com a senha em hash.
 //
 // ── o que nasce ──────────────────────────────────────────────
-// Desde a tabela de 02/10/2026: o Norte + Assistente em TESTE, por 30 dias
+// Desde a tabela de 02/10/2026: o Profissional (BALCAO_AGENTE) em TESTE, por 30 dias
 // (PRECOS.diasDeTeste). Não há mais plano grátis à venda. Quando o prazo
 // vence, `vencerTesteSeAcabou` (assinatura.ts) desce a empresa para o Grátis
 // na primeira tela que alguém abrir — os dados ficam, o básico continua, e o

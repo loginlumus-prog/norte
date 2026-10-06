@@ -53,7 +53,7 @@ export function Mensalidades({
         resumo={
           temAssistente
             ? 'Texto fixo, sem IA, só para o responsável que aceitou (anotado na ficha do aluno). Nunca para o aluno. Responder PARAR tira o número.'
-            : `Sai pelo WhatsApp do assistente: ligue o assistente (plano ${PLANOS.BALCAO_AGENTE.titulo}) para o aviso sair.`
+            : `Sai pelo WhatsApp do assistente: vem no plano ${PLANOS.BALCAO_AGENTE.titulo}.`
         }
       />
       <div className="grid gap-4 sm:grid-cols-2">

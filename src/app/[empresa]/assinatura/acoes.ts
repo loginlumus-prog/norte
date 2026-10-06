@@ -16,11 +16,10 @@ import {
   assinaturaLivre,
   registrarPedido,
 } from '@/servidor/assinatura'
-import { PLANOS, PRECOS, milhar, mudanca } from '@/servidor/planos'
+import { PACOTES, PLANOS, PRECOS, ehPacote, milhar, mudanca, rs, type Pacote } from '@/servidor/planos'
 import { EMPRESA } from '@/servidor/legal'
 
-const reais = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+const reais = rs
 
 export type EstadoAssinatura = { erro?: string; ok?: string }
 
@@ -77,10 +76,7 @@ export async function trocar(
           a.situacao === 'TESTE'
             ? `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você e o ` +
               `teste vira assinatura, com tudo o que já foi lançado — ou fale direto em ${EMPRESA.email}.`
-            : a.plano === 'BALCAO' && alvo === 'BALCAO_AGENTE'
-              ? `Pedido para ligar o assistente registrado. A gente confirma o pagamento com você e liga ` +
-                `no mesmo dia — ou fale direto em ${EMPRESA.email}. Até lá, nada muda.`
-              : `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você ` +
+            : `Pedido do plano ${PLANOS[alvo].titulo} registrado. A gente confirma o pagamento com você ` +
                 `e libera no mesmo dia — ou fale direto em ${EMPRESA.email}. Até lá, nada muda.`,
       }
     }
@@ -92,9 +88,10 @@ export async function trocar(
     if (m.de === 'BALCAO_AGENTE' && alvo === 'BALCAO') {
       return {
         ok:
-          'Assistente desligado.' +
+          `Plano alterado para ${PLANOS.BALCAO.titulo}: o assistente passa a ser o básico (relatório, avisos e perguntas).` +
           (m.novoMensal !== null ? ` A conta passa a ${reais(m.novoMensal)} por mês.` : '') +
-          ' Os dados e as conversas ficam guardados para quando religar.',
+          (m.perde.length > 0 ? ` Módulos desligados: ${m.perde.map((x) => MODULOS[x as Modulo]?.titulo ?? x).join(', ')}.` : '') +
+          ' Os dados ficam guardados para quando voltar.',
       }
     }
     return {
@@ -123,7 +120,7 @@ export async function trocar(
 export async function comprarPacote(
   slug: string,
   _antes: EstadoAssinatura,
-  _form: FormData,
+  form: FormData,
 ): Promise<EstadoAssinatura> {
   const s = await exigirSessao(slug)
   exigir(s, 'empresa.configurar')
@@ -131,26 +128,29 @@ export async function comprarPacote(
   // não só em `registrarPedido`.
   exigirQueNaoSejaSuporte(s, 'mexe na Assinatura')
   const a = await assinaturaDe(s)
-  const pacote = `+${milhar(PRECOS.pacoteRespostas)} respostas`
+  // Dois tamanhos: o pequeno é o padrão; o grande sai mais barato por resposta.
+  const qual: Pacote = ehPacote(form.get('pacote')) ? (form.get('pacote') as Pacote) : 'pequeno'
+  const pac = PACOTES[qual]
+  const pacote = `+${milhar(pac.respostas)} respostas`
 
   if (!a.respostas.total) {
-    return { erro: 'O pacote é para quem tem o assistente ligado. Ligue o assistente primeiro.' }
+    return { erro: 'O pacote é para quem tem o assistente no plano. Assine o Essencial ou o Profissional primeiro.' }
   }
   if (a.situacao === 'TESTE') {
-    return { erro: 'No teste, o caminho é assinar: com o assistente ligado, o mês vem com 1.000 respostas.' }
+    return { erro: 'No teste, o caminho é assinar: o mês passa a vir com as respostas do plano.' }
   }
 
   if (!assinaturaLivre()) {
-    await registrarPedido(s, { tipo: 'respostas' })
+    await registrarPedido(s, { tipo: 'respostas', pacote: qual })
     revalidatePath(`/${slug}/assinatura`)
     return {
       ok:
-        `Pedido do pacote de ${pacote} (${reais(PRECOS.pacotePreco)}) registrado. A gente confirma o ` +
+        `Pedido do pacote de ${pacote} (${rs(pac.preco)}) registrado. A gente confirma o ` +
         `pagamento com você e o pacote entra no mesmo dia — ou fale direto em ${EMPRESA.email}.`,
     }
   }
 
-  const r = await adicionarPacoteDeRespostas(s.orgId, { quem: s.nome, autor: 'PESSOA', usuarioId: s.usuarioId })
+  const r = await adicionarPacoteDeRespostas(s.orgId, { quem: s.nome, autor: 'PESSOA', usuarioId: s.usuarioId, pacote: qual })
   revalidatePath(`/${slug}/assinatura`)
   return { ok: `Pacote de ${pacote} adicionado. Faltam ${milhar(r.restam ?? 0)} respostas este mês.` }
 }

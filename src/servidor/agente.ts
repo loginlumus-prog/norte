@@ -27,7 +27,7 @@ import {
   type Poder,
 } from './poderes'
 import { garantirCreditoDoMes, recadoSemRespostas, respostasDoMes, vencerTesteSeAcabou, type Respostas } from './assinatura'
-import { PLANOS, PRECOS, milhar, planoLibera } from './planos'
+import { PLANOS, PRECOS, milhar, planoLibera, rs } from './planos'
 import { inicioDeHojeEmSP } from './dia'
 import { MAXIMO_RECADO } from './assistente/recado'
 
@@ -50,6 +50,11 @@ export type ConfigAgente = {
   gastoDiaCent: number
   mensagensDia: number
   ativo: boolean
+}
+
+/** O plano de agora — a trava do assistente básico lê daqui, não do que a tela mandou. */
+async function planoDaEmpresa(orgId: string) {
+  return comoOrg(orgId, async (db) => (await db.org.findUniqueOrThrow({ where: { id: orgId }, select: { plano: true } })).plano)
 }
 
 export async function acharAgente(orgId: string) {
@@ -162,7 +167,7 @@ export async function propor(orgId: string, empresa: ComModulos, p: NovaProposta
 
   const cfg = paraConfig(agente)
   const valorCent = p.valor != null ? centavos(p.valor) : undefined
-  conferirPoder(cfg, empresa, p.poder, valorCent, p.descontoPct)
+  conferirPoder(cfg, { ...empresa, plano: empresa.plano ?? (await planoDaEmpresa(orgId)) }, p.poder, valorCent, p.descontoPct)
 
   return comoOrg(orgId, (db) =>
     db.propostaAgente.create({
@@ -259,7 +264,7 @@ export async function responderProposta(
   try {
     conferirPoder(
       paraConfig(agente),
-      empresa,
+      { ...empresa, plano: empresa.plano ?? (await planoDaEmpresa(sessao.orgId)) },
       proposta.poder,
       proposta.valor != null ? centavos(proposta.valor) : undefined,
     )
@@ -944,7 +949,7 @@ export async function podeGastarHoje(orgId: string, agora: Date = new Date()): P
   if (!(await planoTemAssistente(orgId))) {
     return {
       pode: false, motivo: 'sem_agente', gastoCent: 0, tetoCent: agente.gastoDiaCent, saldoCent: 0, respostas: null,
-      recado: `O assistente está desligado no plano desta empresa. Ligue em Assinatura (+R$ ${PRECOS.assistente} por mês, ${milhar(PRECOS.respostasDoAssistente)} respostas).`,
+      recado: `O plano desta empresa não tem o assistente. Assine o ${PLANOS.BALCAO.titulo} (${rs(PRECOS.essencial)} por mês, com o assistente básico) ou o ${PLANOS.BALCAO_AGENTE.titulo} em Assinatura.`,
     }
   }
 
@@ -1051,12 +1056,12 @@ export async function planoTemAssistente(orgId: string): Promise<boolean> {
  */
 export async function exigirPlanoComAssistente(orgId: string): Promise<void> {
   if (await planoTemAssistente(orgId)) return
-  // Desde 02/10/2026 o assistente é uma chave do Norte (+R$ 149 por mês), não
-  // um plano "de cima": a frase diz onde ligar e quanto custa.
+  // Desde 06/10/2026 o assistente vem dentro de todo plano pago (básico no
+  // Essencial, completo no Profissional): a frase diz qual assinar.
   const comAssistente = Object.values(PLANOS).some((p) => p.aVenda && (p.modulos as readonly string[]).includes('agente'))
   throw new Error(
     comAssistente
-      ? `O assistente está desligado no plano desta empresa. Ligue em Assinatura: +R$ ${PRECOS.assistente} por mês, com ${milhar(PRECOS.respostasDoAssistente)} respostas.`
+      ? `O plano desta empresa não tem o assistente. Assine o ${PLANOS.BALCAO.titulo} (${rs(PRECOS.essencial)} por mês) ou o ${PLANOS.BALCAO_AGENTE.titulo} em Assinatura.`
       : 'O plano desta empresa não tem o assistente.',
   )
 }

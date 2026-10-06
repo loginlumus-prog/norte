@@ -23,9 +23,13 @@ import { exigir, exigirQueNaoSejaSuporte, type Sessao } from './permissao'
 import {
   PLANOS,
   PRECOS,
-  TETO_IA_DO_MES_CENT,
-  TETO_IA_DO_PACOTE_CENT,
+  PACOTES,
   TETO_IA_DO_TESTE_CENT,
+  respostasDoPlano,
+  somar,
+  tetoDoMesCent,
+  tetoDoPacoteCent,
+  type Pacote,
   mensalidade,
   milhar,
   mudanca,
@@ -36,6 +40,23 @@ import {
 import { mostrar } from './dinheiro'
 import { MODULOS, moduloLigado } from './modulos'
 import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
+
+/** As lojas de venda que contam para a franquia e para a conta (depósito não). */
+const lojasDeVenda = (db: BancoDaOrg) => db.unidade.count({ where: { ativa: true, ehDeposito: false } })
+
+/**
+ * Quantas respostas um pacote do mês trouxe, pela referência
+ * (`respostas:AAAA-MM:300`). Os de antes de 06/10/2026 não têm o número no fim
+ * — eram todos de 500.
+ */
+export const respostasDaReferencia = (referencia: string | null) => {
+  const n = Number(referencia?.split(':')[2])
+  return Number.isInteger(n) && n > 0 ? n : 500
+}
+
+/** O preço de um pacote pelo tamanho (o de 500, de antes de 06/10/2026, custava R$ 49). */
+const precoDoPacote = (respostas: number) =>
+  respostas === PACOTES.grande.respostas ? PACOTES.grande.preco : respostas === PACOTES.pequeno.respostas ? PACOTES.pequeno.preco : 49
 
 const mostrarDia = (d: Date) =>
   new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(d)
@@ -119,7 +140,9 @@ export async function garantirCreditoDoMes(orgId: string, agora = new Date()): P
     })
     if (!PLANOS[org.plano].respostasMes || org.situacao === 'SUSPENSA' || org.situacao === 'CANCELADA') return 0
     const emTeste = org.situacao === 'TESTE'
-    const teto = emTeste ? TETO_IA_DO_TESTE_CENT : TETO_IA_DO_MES_CENT
+    // A franquia cresce com as lojas (cada loja a mais soma respostas), e o
+    // teto da carteira acompanha.
+    const teto = emTeste ? TETO_IA_DO_TESTE_CENT : tetoDoMesCent(org.plano, await lojasDeVenda(db))
 
     const ja = await db.recargaIA.findFirst({
       where: { tipo: 'PLANO', referencia },
@@ -175,6 +198,8 @@ export type Respostas = {
   incluidas: number | null
   /** Pacotes que entraram neste mês. */
   pacotes: number
+  /** O que os pacotes do mês custaram (há dois tamanhos). */
+  valorPacotes?: number
   /** Franquia + pacotes. `null` = sem número de tabela. */
   total: number | null
   /** Respostas que já saíram no período. */
@@ -191,9 +216,9 @@ export type Respostas = {
   renovaEm: Date | null
 }
 
-/** A franquia do período, pelo plano e pela situação. Pura. */
-export function franquiaDeRespostas(plano: Plano, situacao: Situacao): number | null {
-  const doPlano = PLANOS[plano].respostasMes
+/** A franquia do período, pelo plano, pelas lojas de venda e pela situação. Pura. */
+export function franquiaDeRespostas(plano: Plano, situacao: Situacao, lojas = 1): number | null {
+  const doPlano = respostasDoPlano(plano, lojas)
   if (!doPlano) return doPlano
   return situacao === 'TESTE' ? Math.min(doPlano, PRECOS.respostasDoTeste) : doPlano
 }
@@ -203,11 +228,13 @@ export function contaDeRespostas(
   incluidas: number | null,
   pacotes: number,
   usadas: number,
+  /** As respostas que os pacotes do mês trouxeram (há dois tamanhos). */
+  dosPacotes = pacotes * PRECOS.pacoteRespostas,
 ): Pick<Respostas, 'incluidas' | 'pacotes' | 'total' | 'usadas' | 'restam' | 'acabou' | 'baixo'> {
   if (incluidas === null) {
     return { incluidas, pacotes, total: null, usadas, restam: null, acabou: false, baixo: false }
   }
-  const total = incluidas + pacotes * PRECOS.pacoteRespostas
+  const total = incluidas + dosPacotes
   const restam = Math.max(0, total - usadas)
   return {
     incluidas,
@@ -236,7 +263,7 @@ export function avisoDeRespostas(
   if (restam === 0) {
     return periodo === 'teste'
       ? 'Esta foi a última resposta do teste. Para continuar, assine em Assinatura.'
-      : `Esta foi a última resposta do mês. Para continuar, compre +${milhar(PRECOS.pacoteRespostas)} respostas em Assinatura — ou espere o dia 1º.`
+      : `Esta foi a última resposta do mês. Para continuar, compre um pacote de respostas em Assinatura — ou espere o dia 1º.`
   }
   if (restam === Math.ceil(total / 10)) {
     return `Faltam ${milhar(restam)} respostas ${periodo === 'teste' ? 'no teste' : 'este mês'}.`
@@ -248,7 +275,7 @@ export function avisoDeRespostas(
 export function recadoSemRespostas(periodo: Respostas['periodo']): string {
   return periodo === 'teste'
     ? 'As respostas do teste acabaram. Para continuar com o assistente, assine em Assinatura.'
-    : `As respostas do mês acabaram — compre um pacote de +${milhar(PRECOS.pacoteRespostas)} em Assinatura ou espere o dia 1º.`
+    : 'As respostas do mês acabaram — compre um pacote de respostas em Assinatura ou espere o dia 1º.'
 }
 
 /** As respostas de uma empresa agora. Só lê. */
@@ -266,11 +293,16 @@ export async function respostasDoMes(orgId: string, agora = new Date()): Promise
     // usado no teste naquele mês conta — no máximo as respostas do teste.
     const desde = emTeste ? org.criadaEm : inicioDoMesEmSP(agora)
     const usadas = await db.mensagemAgente.count({ where: { respostaIa: true, criadaEm: { gte: desde } } })
-    const pacotes = await db.recargaIA.count({
-      where: { origem: 'pacote', referencia: `respostas:${mes}`, centavos: { gt: 0 } },
+    const pacotes = await db.recargaIA.findMany({
+      where: { origem: 'pacote', referencia: { startsWith: `respostas:${mes}` }, centavos: { gt: 0 } },
+      select: { referencia: true },
     })
+    const lojas = await lojasDeVenda(db)
+    const dosPacotes = pacotes.reduce((t, x) => t + respostasDaReferencia(x.referencia), 0)
+    const valorPacotes = somar(...pacotes.map((x) => precoDoPacote(respostasDaReferencia(x.referencia))))
     return {
-      ...contaDeRespostas(franquiaDeRespostas(org.plano, org.situacao), pacotes, usadas),
+      valorPacotes,
+      ...contaDeRespostas(franquiaDeRespostas(org.plano, org.situacao, lojas), pacotes.length, usadas, dosPacotes),
       periodo: emTeste ? 'teste' : 'mes',
       desde,
       renovaEm: emTeste ? null : proximoMesEmSP(agora),
@@ -289,9 +321,10 @@ export async function respostasDoMes(orgId: string, agora = new Date()): Promise
  */
 export async function adicionarPacoteDeRespostas(
   orgId: string,
-  por: { quem: string; autor: 'PESSOA' | 'SISTEMA'; usuarioId?: string | null; pedidoId?: string | null },
+  por: { quem: string; autor: 'PESSOA' | 'SISTEMA'; usuarioId?: string | null; pedidoId?: string | null; pacote?: Pacote },
   agora = new Date(),
 ): Promise<Respostas> {
+  const pac = PACOTES[por.pacote ?? 'pequeno']
   const mes = mesEmSP(agora)
   const [ano, m] = mes.split('-')
   // Ler antes, fora da transação de escrita: estourar DENTRO dela aborta a
@@ -310,11 +343,12 @@ export async function adicionarPacoteDeRespostas(
   // pacote viraria só a franquia do mês.
   await garantirCreditoDoMes(orgId, agora)
   await comoOrg(orgId, async (db) => {
-    const saldo = await creditarNaTransacao(db, orgId, TETO_IA_DO_PACOTE_CENT, {
+    const saldo = await creditarNaTransacao(db, orgId, tetoDoPacoteCent(por.pacote ?? 'pequeno'), {
       tipo: 'COMPRA',
       origem: 'pacote',
-      referencia: `respostas:${mes}`,
-      motivo: `Pacote de +${milhar(PRECOS.pacoteRespostas)} respostas — ${m}/${ano}`,
+      // O tamanho no fim: há dois pacotes (ver `respostasDaReferencia`).
+      referencia: `respostas:${mes}:${pac.respostas}`,
+      motivo: `Pacote de +${milhar(pac.respostas)} respostas — ${m}/${ano}`,
       quem: por.quem,
     })
     await db.auditoria.create({
@@ -326,12 +360,12 @@ export async function adicionarPacoteDeRespostas(
         acao: 'respostas.adicionou',
         alvoTipo: 'empresa',
         alvoId: orgId,
-        alvoNome: `+${milhar(PRECOS.pacoteRespostas)} respostas`,
-        valor: PRECOS.pacotePreco,
-        motivo: `Pacote de +${milhar(PRECOS.pacoteRespostas)} respostas para ${m}/${ano}`,
+        alvoNome: `+${milhar(pac.respostas)} respostas`,
+        valor: pac.preco,
+        motivo: `Pacote de +${milhar(pac.respostas)} respostas para ${m}/${ano}`,
         depois: {
           mes,
-          respostas: PRECOS.pacoteRespostas,
+          respostas: pac.respostas,
           saldoDepois: saldo,
           ...(por.pedidoId ? { pedidoId: por.pedidoId } : {}),
         },
@@ -469,7 +503,7 @@ export async function assinaturaDaEmpresa(orgId: string, agora = new Date()): Pr
         texto:
           p.respostasMes === null
             ? 'O crédito de IA do contrato acabou e o assistente parou de responder. Fale com a gente para repor.'
-            : `O assistente chegou ao limite de uso deste mês — respostas muito longas gastam mais. Compre um pacote de +${milhar(PRECOS.pacoteRespostas)} respostas abaixo ou espere o dia 1º.`,
+            : 'O assistente chegou ao limite de uso deste mês — respostas muito longas gastam mais. Compre um pacote de respostas abaixo ou espere o dia 1º.',
       })
     } else if (respostas.baixo && respostas.restam !== null) {
       alertas.push({
@@ -587,15 +621,16 @@ function avisarLivreIgnorada() {
  */
 export async function registrarPedido(
   sessao: Sessao,
-  pedido: { tipo: 'plano'; para: Plano } | { tipo: 'respostas' },
+  pedido: { tipo: 'plano'; para: Plano } | { tipo: 'respostas'; pacote?: Pacote },
 ) {
   exigir(sessao, 'empresa.configurar')
   exigirQueNaoSejaSuporte(sessao, 'mexe na Assinatura')
-  const pacote = `+${milhar(PRECOS.pacoteRespostas)} respostas`
+  const pac = PACOTES[pedido.tipo === 'respostas' ? (pedido.pacote ?? 'pequeno') : 'pequeno']
+  const pacote = `+${milhar(pac.respostas)} respostas`
   const texto =
     pedido.tipo === 'plano'
       ? `Pediu o plano ${PLANOS[pedido.para].titulo}`
-      : `Pediu um pacote de ${pacote} (${mostrar(PRECOS.pacotePreco * 100)})`
+      : `Pediu um pacote de ${pacote} (${mostrar(Math.round(pac.preco * 100))})`
   await comoOrg(sessao.orgId, (db) =>
     db.auditoria.create({
       data: {
@@ -613,7 +648,7 @@ export async function registrarPedido(
         depois:
           pedido.tipo === 'plano'
             ? { plano: pedido.para }
-            : { respostas: PRECOS.pacoteRespostas, preco: PRECOS.pacotePreco },
+            : { respostas: pac.respostas, preco: pac.preco },
       },
     }),
   )
@@ -782,7 +817,7 @@ export async function completarCreditoDaConversao(orgId: string, agora = new Dat
       select: { id: true },
     })
     if (!doMes) return 0
-    const falta = TETO_IA_DO_MES_CENT - org.creditoIaCent
+    const falta = tetoDoMesCent(org.plano, await lojasDeVenda(db)) - org.creditoIaCent
     if (falta <= 0) return 0
     const [ano, m] = mes.split('-')
     await creditarNaTransacao(db, orgId, falta, {

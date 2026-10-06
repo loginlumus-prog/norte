@@ -10,7 +10,7 @@ import { PLANOS, RECURSOS, GRUPOS, RECOMENDADO, temRecurso, ORDEM } from '@/serv
 // perguntar no WhatsApp. A tabela responde sem ninguém do outro lado.
 //
 // ── quais colunas ────────────────────────────────────────────
-// As que se vendem (o Norte e o Norte + Assistente) e o plano de hoje, quando
+// As que se vendem (o Essencial e o Profissional) e o plano de hoje, quando
 // ele não está à venda: quem caiu no Grátis depois do teste, ou o cliente de
 // contrato, precisa ver o próprio plano ao lado do que pode escolher. Os
 // outros que não se vendem ficam fora — coluna de plano que não se pode

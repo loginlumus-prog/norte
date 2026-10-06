@@ -14,7 +14,7 @@ import { Planos } from './Planos'
 import { Respostas } from './Respostas'
 import { Comparar } from './Comparar'
 import { plural } from '@/ui/texto'
-import { PLANOS, PRECOS, milhar, mudanca } from '@/servidor/planos'
+import { PACOTES, PLANOS, PRECOS, milhar, mudanca, somar } from '@/servidor/planos'
 import type { Assinatura } from '@/servidor/assinatura'
 
 export const metadata: Metadata = { title: 'Assinatura' }
@@ -153,7 +153,7 @@ export default async function AssinaturaPagina({
             }
             detalhe={
               !comAssistente
-                ? `ligue por +${brl(PRECOS.assistente)}/mês`
+                ? `vem no ${PLANOS.BALCAO.titulo} e no ${PLANOS.BALCAO_AGENTE.titulo}`
                 : a.respostas.restam === null
                   ? `${milhar(a.respostas.usadas)} respostas este mês`
                   : a.respostas.periodo === 'teste'
@@ -181,7 +181,7 @@ export default async function AssinaturaPagina({
               pacotes={a.respostas.pacotes}
               periodo={a.respostas.periodo}
               renovaEm={a.respostas.renovaEm?.toISOString() ?? null}
-              pacote={{ respostas: PRECOS.pacoteRespostas, preco: PRECOS.pacotePreco }}
+              opcoes={Object.entries(PACOTES).map(([chave, p]) => ({ chave, respostas: p.respostas, preco: p.preco }))}
               podeComprar={podeMexer && a.situacao !== 'TESTE'}
               pedidoAberto={pedidos.respostas?.estado === 'aberto'}
             />
@@ -210,7 +210,7 @@ export default async function AssinaturaPagina({
             vem no Norte?" abre; quem não quer não rola trinta linhas. */}
         <details className="group rounded-norte border border-borda bg-superficie">
           <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-tinta [&::-webkit-details-marker]:hidden">
-            O que vem no {PLANOS.BALCAO.titulo}, item por item
+            O que vem em cada plano, item por item
             <span aria-hidden className="ml-2 text-tinta-3 group-open:hidden">+</span>
           </summary>
           <div className="border-t border-borda-suave px-1 pb-3">
@@ -268,9 +268,10 @@ function QuadroDoTeste({ a }: { a: Assinatura }) {
         </p>
         <ul className="flex list-disc flex-col gap-1.5 pl-5">
           <li>
-            <b className="text-tinta">Assinando,</b> nada muda: o que foi lançado continua, e com o assistente
-            ligado o mês passa a ter {milhar(PRECOS.respostasDoAssistente)} respostas. Escolha em &ldquo;Assinar&rdquo;,
-            mais abaixo.
+            <b className="text-tinta">Assinando,</b> nada muda: o que foi lançado continua, e o mês passa a ter
+            as respostas do plano — {milhar(PRECOS.respostasEssencial)} no {PLANOS.BALCAO.titulo},{' '}
+            {milhar(PRECOS.respostasProfissional)} no {PLANOS.BALCAO_AGENTE.titulo}, mais{' '}
+            {milhar(PRECOS.respostasPorLojaExtra)} por loja a mais. Escolha em &ldquo;Assinar&rdquo;, mais abaixo.
           </li>
           <li>
             <b className="text-tinta">Sem assinar,</b> a empresa passa para o plano {g.titulo}:{' '}
@@ -293,7 +294,7 @@ function QuadroDoTeste({ a }: { a: Assinatura }) {
  * mostra só o total em vez de uma soma que não bate.
  */
 function ContaDoMes({ a }: { a: Assinatura }) {
-  const { total, extras, porExtra, assistente, fabricas, fabrica, farol, farolMarcas } = a.mensal
+  const { total, base, extras, porExtra, fabricas, fabrica, farol, farolMarcas } = a.mensal
 
   // Corporativo: não há conta de tabela para mostrar.
   if (total === null) {
@@ -312,19 +313,16 @@ function ContaDoMes({ a }: { a: Assinatura }) {
       <Cartao titulo="A conta do mês">
         <p className="text-sm leading-relaxed text-tinta-2">
           O {a.titulo} não tem mensalidade. Com as suas lojas, o {PLANOS.BALCAO.titulo} sai por{' '}
-          <b className="numero text-tinta">{brl(sem)}</b> por mês, ou{' '}
-          <b className="numero text-tinta">{brl(com)}</b> com o assistente.
+          <b className="numero text-tinta">{brl(sem)}</b> por mês, e o {PLANOS.BALCAO_AGENTE.titulo}, com o
+          assistente completo, por <b className="numero text-tinta">{brl(com)}</b>.
         </p>
       </Cartao>
     )
   }
 
-  const linhas: [string, string | null, number][] = [['Primeira loja', null, PRECOS.primeiraLoja]]
+  const linhas: [string, string | null, number][] = [[`${a.titulo}, primeira loja`, 'com o assistente', base ?? 0]]
   if (extras > 0 && porExtra !== null) {
-    linhas.push([extras === 1 ? '1 loja a mais' : `${extras} lojas a mais`, `× ${brl(porExtra)}`, extras * porExtra])
-  }
-  if (assistente > 0) {
-    linhas.push(['Assistente', `${milhar(PRECOS.respostasDoAssistente)} respostas/mês`, assistente])
+    linhas.push([extras === 1 ? '1 loja a mais' : `${extras} lojas a mais`, `× ${brl(porExtra)}`, somar(extras * porExtra)])
   }
   if (fabrica > 0) {
     linhas.push(['Fábrica', fabricas === 1 ? '1 unidade' : `${fabricas} unidades, uma parcela só`, fabrica])
@@ -334,7 +332,7 @@ function ContaDoMes({ a }: { a: Assinatura }) {
   if (farol > 0) {
     linhas.push(['Farol', farolMarcas === 1 ? '1 marca' : `${farolMarcas} marcas`, farol])
   }
-  const fecha = linhas.reduce((soma, [, , v]) => soma + v, 0) === total
+  const fecha = somar(...linhas.map(([, , v]) => v)) === total
   const pacotes = a.respostas.pacotes
 
   return (
@@ -357,9 +355,9 @@ function ContaDoMes({ a }: { a: Assinatura }) {
         {pacotes > 0 && (
           <div className="flex items-baseline gap-3 border-t border-borda-suave py-1.5 text-xs text-tinta-3">
             <dt className="flex-1">
-              Avulso este mês: {pacotes === 1 ? '1 pacote' : `${pacotes} pacotes`} de +{milhar(PRECOS.pacoteRespostas)} respostas
+              Avulso este mês: {pacotes === 1 ? '1 pacote' : `${pacotes} pacotes`} de respostas
             </dt>
-            <dd className="numero text-right tabular-nums">{brl(pacotes * PRECOS.pacotePreco)}</dd>
+            <dd className="numero text-right tabular-nums">{brl(a.respostas.valorPacotes ?? pacotes * PRECOS.pacotePreco)}</dd>
           </div>
         )}
       </dl>

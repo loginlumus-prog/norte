@@ -273,9 +273,9 @@ function formsDePedido(c: Contexto, slug: string, p: Pedido, compacto: boolean):
         : p.tipo === 'respostas'
           ? form(
               c, slug, 'respostas',
-              `Pôr um pacote de +${milhar(PRECOS.pacoteRespostas)} respostas em /${slug}, atendendo o pedido de ${dataHora(p.criadoEm)}?`,
+              `Pôr o ${p.oQue} em /${slug}, atendendo o pedido de ${dataHora(p.criadoEm)}?`,
               `<input type="hidden" name="pedidoId" value="${esc(p.id)}">${campoMotivo('Motivo (ex.: Pix confirmado)')}`,
-              `Atender: +${milhar(PRECOS.pacoteRespostas)} respostas`, 'ok',
+              `Atender: ${p.oQue}`, 'ok',
             )
           : '<p class="dica">Pedido sem valor legível: atenda pelo formulário de plano ou crédito.</p>'
   const recusar = form(
@@ -313,7 +313,7 @@ export function telaEmpresa(c: Contexto, d: DetalheEmpresa, dominioDaEquipe: str
   const margem = margemCent(l)
   const cardCredito = `<div class="cartao"><h2>Assistente e IA</h2><dl class="pares">
       <dt>Respostas ${r.periodo === 'teste' ? 'no teste' : 'no mês'}</dt><dd>${r.total === null ? `${milhar(r.usadas)} (sob contrato)` : r.total === 0 ? 'sem assistente no plano' : `${milhar(r.usadas)} usadas / ${milhar(r.total)} incluídas`}</dd>
-      ${r.pacotes ? `<dt>Pacotes no mês</dt><dd>${r.pacotes} × ${milhar(PRECOS.pacoteRespostas)} (${mostrar(r.pacotes * PRECOS.pacotePreco * 100)})</dd>` : ''}
+      ${r.pacotes ? `<dt>Pacotes no mês</dt><dd>${r.pacotes} (+${milhar((r.total ?? 0) - (r.incluidas ?? 0))} respostas)</dd>` : ''}
       <dt>Cofre de IA (trava)</dt><dd>${mostrar(l.creditoSaldoCent)}</dd>
       <dt>Saiu do cofre no mês</dt><dd>${mostrar(l.creditoGastoMesCent)} de ${mostrar(l.creditoInclusoMesCent)} posto</dd>
       <dt>Custo de IA no mês</dt><dd>${mostrar(l.custoIaMesCent)}</dd>
@@ -456,7 +456,7 @@ export function telaEmpresa(c: Contexto, d: DetalheEmpresa, dominioDaEquipe: str
     <details class="acao"><summary>Pacote de respostas <span class="mini">${respostasTxt(l.respostas)}</span></summary><div class="corpo">
       ${form(
         c, slug, 'respostas',
-        `Pôr um pacote de +${milhar(PRECOS.pacoteRespostas)} respostas em /${slug}? Vale para este mês.`,
+        `Pôr um pacote de +${milhar(PRECOS.pacoteRespostas)} respostas em /${slug} (sem pedido aberto)? Vale para este mês.`,
         `${abertos.some((p) => p.tipo === 'respostas') ? '<label class="marcar"><input type="checkbox" name="atendePedido" value="1" checked> Atende o pedido de respostas aberto</label>' : ''}
          <p class="dica">+${milhar(PRECOS.pacoteRespostas)} respostas no mês e o teto de IA delas no cofre. O mesmo caminho do pagamento.</p>${campoMotivo()}`,
         `Pôr +${milhar(PRECOS.pacoteRespostas)} respostas`,
@@ -543,9 +543,9 @@ export function telaPedidos(c: Contexto, itens: { empresa: LinhaEmpresa; pedido:
                     `<input type="hidden" name="valor" value="${esc((p.centavos / 100).toFixed(2).replace('.', ','))}"><input type="hidden" name="tipo" value="COMPRA"><input type="hidden" name="pedidoId" value="${esc(p.id)}"><input type="hidden" name="voltar" value="/pedidos">${campoMotivo('Motivo — a loja lê no extrato')}`,
                     `Pôr ${mostrar(p.centavos)}`, 'ok')
                 : p.tipo === 'respostas'
-                  ? form(c, l.slug, 'respostas', `Pôr um pacote de +${milhar(PRECOS.pacoteRespostas)} respostas em /${l.slug}, atendendo o pedido?`,
+                  ? form(c, l.slug, 'respostas', `Pôr o pacote de respostas pedido em /${l.slug}, atendendo o pedido?`,
                       `<input type="hidden" name="pedidoId" value="${esc(p.id)}"><input type="hidden" name="voltar" value="/pedidos">${campoMotivo('Motivo (ex.: Pix confirmado)')}`,
-                      `Pôr +${milhar(PRECOS.pacoteRespostas)} respostas`, 'ok')
+                      'Atender o pedido', 'ok')
                   : `<a href="/empresa/${esc(l.slug)}">abrir a empresa</a>`
           const recusar = form(c, l.slug, 'recusar', `Recusar o pedido de ${p.oQue} de /${l.slug}?`,
             `<input type="hidden" name="tipo" value="${p.tipo}"><input type="hidden" name="pedidoId" value="${esc(p.id)}"><input type="hidden" name="voltar" value="/pedidos">${campoMotivo('Motivo da recusa — a loja lê')}`,

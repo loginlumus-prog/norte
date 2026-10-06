@@ -255,9 +255,10 @@ describe('a escola no resto do sistema', () => {
     expect(doModulo.sort()).toEqual(['Mensalidades', 'Turmas'])
   })
 
-  it('a Escola é dos planos pagos, e o Grátis não tem', () => {
+  it('a Escola é do Profissional para cima; o Essencial e o Grátis não têm', () => {
     expect(planoLibera('GRATIS', 'escola')).toBe(false)
-    for (const p of ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO'] as const) expect(PLANOS[p].modulos).toContain('escola')
+    expect(planoLibera('BALCAO', 'escola')).toBe(false)
+    for (const p of ['BALCAO_AGENTE', 'REDE', 'CORPORATIVO'] as const) expect(PLANOS[p].modulos).toContain('escola')
   })
 
   it('as ferramentas do assistente só existem com a Escola ligada', () => {

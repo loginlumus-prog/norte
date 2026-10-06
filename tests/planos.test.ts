@@ -11,6 +11,9 @@
 
 import { describe, it, expect } from 'vitest'
 import {
+  somar,
+  respostasDoPlano,
+  planoPermitePoder,
   podeCriarUnidade,
   podeAbrirVaga,
   mensalidade,
@@ -40,20 +43,13 @@ describe('quantas lojas cabem', () => {
     expect(podeCriarUnidade('GRATIS', 1).pode).toBe(false)
   })
 
-  // A tabela de 02/10/2026: a loja é o que se paga. Uma vem na base; cada
-  // loja a mais cabe, e a tela diz quanto passa a custar ANTES de abrir.
-  it('no Norte a primeira loja vem na base e cada loja a mais cabe pagando', () => {
+  // A tabela de 06/10/2026: a loja é o que se paga, com o assistente dentro.
+  // Uma vem na base; cada loja a mais cabe, e a tela diz quanto passa a custar
+  // ANTES de abrir — em centavos certos (89,90 + 59,90 = 149,80, não 149,79999).
+  it('no Essencial e no Profissional a primeira loja vem na base e cada loja a mais cabe pagando', () => {
     expect(podeCriarUnidade('BALCAO', 0)).toEqual({ pode: true, custoExtra: 0 })
-    expect(podeCriarUnidade('BALCAO', 1)).toEqual({
-      pode: true,
-      custoExtra: PRECOS.lojaExtra,
-      novoTotal: PRECOS.primeiraLoja + PRECOS.lojaExtra,
-    })
-    expect(podeCriarUnidade('BALCAO_AGENTE', 5)).toEqual({
-      pode: true,
-      custoExtra: PRECOS.lojaExtra,
-      novoTotal: PRECOS.primeiraLoja + PRECOS.assistente + 5 * PRECOS.lojaExtra,
-    })
+    expect(podeCriarUnidade('BALCAO', 1)).toEqual({ pode: true, custoExtra: 59.9, novoTotal: 149.8 })
+    expect(podeCriarUnidade('BALCAO_AGENTE', 5)).toEqual({ pode: true, custoExtra: 99.9, novoTotal: 649.4 })
   })
 
   it('o Corporativo não tem teto nem conta de tabela', () => {
@@ -120,44 +116,45 @@ describe('a conta do mês', () => {
     expect(mensalidade('CORPORATIVO', 40).total).toBeNull()
   })
 
-  it('duas lojas com o assistente: 219 + 149 + 139', () => {
-    expect(mensalidade('BALCAO_AGENTE', 2)).toMatchObject({
-      base: PRECOS.primeiraLoja + PRECOS.assistente,
-      extras: 1,
-      total: 507,
-    })
+  it('uma loja no Essencial: 89,90; duas no Profissional: 149,90 + 99,90', () => {
+    expect(mensalidade('BALCAO', 1).total).toBe(89.9)
+    expect(mensalidade('BALCAO_AGENTE', 2)).toMatchObject({ base: PRECOS.profissional, extras: 1, total: 249.8 })
   })
 
-  it('cinco lojas sem o assistente', () => {
-    expect(mensalidade('BALCAO', 5).total).toBe(219 + 4 * 139)
+  it('cinco lojas no Essencial', () => {
+    expect(mensalidade('BALCAO', 5).total).toBe(329.5)
+  })
+
+  // A conta que fez a tabela nova: cinco lojas e a fábrica, no Profissional.
+  it('a rede com fábrica (cinco lojas) fica em 749,40', () => {
+    expect(mensalidade('BALCAO_AGENTE', 5, 1).total).toBe(749.4)
   })
 
   it('o plano de contrato mostra a conta da tabela', () => {
     expect(mensalidade('REDE', 2).total).toBe(mensalidade('BALCAO_AGENTE', 2).total)
   })
 
-  // A fábrica é UMA chave da empresa: com uma ou com três cozinhas, 379.
+  // A fábrica é UMA chave da empresa: com uma ou com três cozinhas, uma vez.
+  // E só onde o plano tem a fábrica (o Profissional e os de cima).
   it('a fábrica entra uma vez, com qualquer número de unidades de fábrica', () => {
-    const uma = mensalidade('BALCAO', 1, 1)
-    const tres = mensalidade('BALCAO', 1, 3)
+    const uma = mensalidade('BALCAO_AGENTE', 1, 1)
+    const tres = mensalidade('BALCAO_AGENTE', 1, 3)
     expect(uma.fabrica).toBe(PRECOS.fabrica)
     expect(tres.fabrica).toBe(PRECOS.fabrica)
     expect(tres.fabricas).toBe(3)
-    expect(tres.total).toBe(PRECOS.primeiraLoja + PRECOS.fabrica)
-    expect(mensalidade('BALCAO', 1, 0).fabrica).toBe(0)
-    // No Grátis ela nem existe.
+    expect(tres.total).toBe(349.8)
+    expect(mensalidade('BALCAO_AGENTE', 1, 0).fabrica).toBe(0)
+    // No Essencial e no Grátis ela nem existe.
+    expect(mensalidade('BALCAO', 1, 2).fabrica).toBe(0)
     expect(mensalidade('GRATIS', 1, 2).fabrica).toBe(0)
   })
 
-  it('a conta aberta fecha com o total: lojas, assistente, fábrica e Farol', () => {
+  it('a conta aberta fecha com o total: lojas, fábrica e Farol', () => {
     const m = mensalidade('BALCAO_AGENTE', 3, 2, 2)
-    expect(m.assistente).toBe(PRECOS.assistente)
-    expect(PRECOS.primeiraLoja + m.extras * PRECOS.lojaExtra + m.assistente + m.fabrica + m.farol).toBe(m.total)
-    expect(m.total).toBe(219 + 2 * 139 + 149 + 379 + 497 + 297)
-    expect(mensalidade('BALCAO', 3).assistente).toBe(0)
+    expect(m.total).toBe(149.9 + 2 * 99.9 + 199.9 + 497 + 297)
   })
 
-  it('só o Norte e o Norte + Assistente estão à venda', () => {
+  it('só o Essencial e o Profissional estão à venda', () => {
     expect(PLANOS_COM_PRECO).toEqual(['BALCAO', 'BALCAO_AGENTE'])
   })
 })
@@ -169,29 +166,31 @@ describe('a conta do mês', () => {
 describe('o que muda ao trocar de plano', () => {
   const pequeno = { unidades: 1 }
 
-  it('do Grátis para o Norte: ganha tudo da loja', () => {
+  it('do Grátis para o Essencial: ganha o básico da loja e o assistente básico', () => {
     const m = mudanca('GRATIS', 'BALCAO', pequeno)
     expect(m.sentido).toBe('subir')
-    expect(m.diferenca).toBe(PRECOS.primeiraLoja)
-    expect(m.ganha).toContain('crediario')
+    expect(m.diferenca).toBe(PRECOS.essencial)
     expect(m.ganha).toContain('multiUnidade')
+    expect(m.ganha).toContain('agente')
+    expect(m.ganha).not.toContain('crediario')
     expect(m.perde).toEqual([])
   })
 
-  it('pôr o assistente custa o assistente', () => {
+  it('do Essencial para o Profissional: ganha o crediário, a fábrica e o resto', () => {
     const m = mudanca('BALCAO', 'BALCAO_AGENTE', { unidades: 3 })
     expect(m.sentido).toBe('subir')
-    expect(m.diferenca).toBe(PRECOS.assistente)
-    expect(m.ganha).toEqual(['agente'])
+    expect(m.diferenca).toBe(somar(PRECOS.profissional - PRECOS.essencial, 2 * (PRECOS.profissionalLojaExtra - PRECOS.essencialLojaExtra)))
+    expect(m.ganha).toEqual(expect.arrayContaining(['crediario', 'fabrica', 'agenda', 'compras']))
     expect(m.perde).toEqual([])
   })
 
   // O caso que faz o cliente cancelar quando ninguém avisa.
-  it('tirar o assistente mostra o que PERDE', () => {
+  it('voltar para o Essencial mostra o que PERDE (e o assistente fica, básico)', () => {
     const m = mudanca('BALCAO_AGENTE', 'BALCAO', pequeno)
     expect(m.sentido).toBe('descer')
-    expect(m.diferenca).toBe(-PRECOS.assistente)
-    expect(m.perde).toEqual(['agente'])
+    expect(m.diferenca).toBe(-60)
+    expect(m.perde).toContain('crediario')
+    expect(m.perde).not.toContain('agente')
   })
 
   it('descer para o Grátis perde tudo que é módulo', () => {
@@ -258,11 +257,12 @@ describe('o plano decide quais módulos existem', () => {
     for (const m of TODOS) expect(planoLibera('GRATIS', m), m).toBe(false)
   })
 
-  it('o Norte tem tudo da loja, inclusive crediário, e só não tem o assistente', () => {
-    for (const m of TODOS) expect(planoLibera('BALCAO', m), m).toBe(m !== 'agente')
+  it('o Essencial tem o básico da loja e o assistente, sem crediário, agenda, compras e fábrica', () => {
+    const tem = ['notaFiscal', 'encomenda', 'multiUnidade', 'ponto', 'agente']
+    for (const m of TODOS) expect(planoLibera('BALCAO', m), m).toBe(tem.includes(m))
   })
 
-  it('o Norte + Assistente tem tudo', () => {
+  it('o Profissional tem tudo', () => {
     for (const m of TODOS) expect(planoLibera('BALCAO_AGENTE', m), m).toBe(true)
   })
 
@@ -285,16 +285,36 @@ describe('o plano decide quais módulos existem', () => {
     expect(PLANOS.CORPORATIVO.respostasMes).toBeNull()
   })
 
-  // O modelo antigo, nos clientes que já existem: quem tinha o Norte +
-  // Assistente segue com o assistente ligado e 1.000 respostas; quem tinha o
-  // Norte segue sem; o contrato segue igual. Nenhum valor do enum mudou.
-  it('os planos antigos caem no modelo novo sem migração', () => {
-    expect(PLANOS.BALCAO_AGENTE.respostasMes).toBe(PRECOS.respostasDoAssistente)
-    expect(planoLibera('BALCAO_AGENTE', 'agente')).toBe(true)
-    expect(PLANOS.BALCAO.respostasMes).toBe(0)
-    expect(planoLibera('BALCAO', 'agente')).toBe(false)
+  // A tabela de 06/10/2026 nos valores do enum que já existiam: BALCAO é o
+  // Essencial (assistente básico, 150), BALCAO_AGENTE o Profissional (completo,
+  // 600), e o contrato dos primeiros clientes segue com as 1.000 combinadas.
+  it('os planos caem no modelo novo sem migração', () => {
+    expect(PLANOS.BALCAO_AGENTE.respostasMes).toBe(PRECOS.respostasProfissional)
+    expect(PLANOS.BALCAO_AGENTE.assistente).toBe('completo')
+    expect(PLANOS.BALCAO.respostasMes).toBe(PRECOS.respostasEssencial)
+    expect(PLANOS.BALCAO.assistente).toBe('basico')
+    expect(planoLibera('BALCAO', 'agente')).toBe(true)
+    expect(planoLibera('BALCAO', 'crediario')).toBe(false)
     expect(PLANOS.REDE.aVenda).toBe(false)
-    expect(PLANOS.REDE.respostasMes).toBe(PRECOS.respostasDoAssistente)
+    expect(PLANOS.REDE.respostasMes).toBe(PRECOS.respostasContrato)
+  })
+
+  it('cada loja a mais soma respostas à franquia', () => {
+    expect(respostasDoPlano('BALCAO', 1)).toBe(150)
+    expect(respostasDoPlano('BALCAO_AGENTE', 5)).toBe(600 + 4 * 200)
+    expect(respostasDoPlano('GRATIS', 3)).toBe(0)
+    expect(respostasDoPlano('CORPORATIVO', 3)).toBeNull()
+  })
+
+  // O básico conta e avisa; o que mexe pelo WhatsApp é do completo.
+  it('o assistente básico só consulta', () => {
+    expect(planoPermitePoder('BALCAO', 'ver.resumo')).toBe(true)
+    expect(planoPermitePoder('BALCAO', 'consultar.produto')).toBe(true)
+    expect(planoPermitePoder('BALCAO', 'estoque.entrada')).toBe(false)
+    expect(planoPermitePoder('BALCAO', 'ajustar.estoque')).toBe(false)
+    expect(planoPermitePoder('BALCAO', 'pedir.compra')).toBe(false)
+    expect(planoPermitePoder('BALCAO_AGENTE', 'estoque.entrada')).toBe(true)
+    expect(planoPermitePoder('GRATIS', 'ver.resumo')).toBe(false)
   })
 
   it('nenhum plano libera módulo que não existe', () => {
@@ -346,7 +366,10 @@ describe('a tabela de comparação não pode divergir dos planos', () => {
       if (!planoLibera(p, 'agente')) continue
       const dito = r.detalhe?.[p] ?? ''
       if (c === null) expect(dito, p).toBe('no contrato')
-      else expect(dito, p).toBe(`${c.toLocaleString('pt-BR')}/mês`)
+      else {
+        const porLoja = PLANOS[p].respostasPorLojaExtra
+        expect(dito, p).toBe(`${c.toLocaleString('pt-BR')}/mês${porLoja ? ` (+${porLoja.toLocaleString('pt-BR')} por loja)` : ''}`)
+      }
     }
   })
 
@@ -436,8 +459,8 @@ describe('a escada do que cada plano abre', () => {
   })
 
   it('a frase do cadeado sai com o artigo do plano', () => {
-    expect(doPlano('BALCAO')).toBe('do Norte')
-    expect(doPlano('BALCAO_AGENTE')).toBe('do Norte + Assistente')
+    expect(doPlano('BALCAO')).toBe('do Essencial')
+    expect(doPlano('BALCAO_AGENTE')).toBe('do Profissional')
     expect(planoQueAbre('campanhas').codigo).toBe('BALCAO_AGENTE')
     expect(planoQueAbre('tarefas.rede').codigo).toBe('BALCAO')
   })
@@ -462,5 +485,19 @@ describe('a escada do que cada plano abre', () => {
 
   it('todo recurso da tabela está num grupo que a tabela desenha', () => {
     for (const r of RECURSOS) expect(GRUPOS, r.titulo).toContain(r.grupo)
+  })
+})
+
+describe('o assistente básico no servidor', () => {
+  it('a ferramenta que mexe não vai para o modelo, e a proposta dela é recusada', async () => {
+    const { ferramentasDe, conferirPoder, PoderNegado } = await import('../src/servidor/poderes')
+    const agente = { poderes: ['ver.resumo', 'estoque.entrada', 'ajustar.estoque'], descontoMaxPct: 5, valorMaxCent: 100000 }
+    const essencial = { modulos: ['agente'], plano: 'BALCAO' as const }
+    const pro = { modulos: ['agente'], plano: 'BALCAO_AGENTE' as const }
+    expect(ferramentasDe(agente, essencial)).toContain('ver.resumo')
+    expect(ferramentasDe(agente, essencial)).not.toContain('estoque.entrada')
+    expect(ferramentasDe(agente, pro)).toContain('estoque.entrada')
+    expect(() => conferirPoder(agente, essencial, 'estoque.entrada')).toThrow(PoderNegado)
+    expect(() => conferirPoder(agente, pro, 'estoque.entrada')).not.toThrow()
   })
 })

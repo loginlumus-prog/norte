@@ -33,7 +33,7 @@ export const metadata: Metadata = { title: 'Lojas' }
 // conta (`lojas.ts`, `travarCota`).
 
 const brl = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
 export default async function TelaLojas({ params }: { params: Promise<{ empresa: string }> }) {
   const { empresa: slug } = await params

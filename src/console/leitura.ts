@@ -12,7 +12,7 @@
 
 import type { PrismaClient, Plano, Situacao, Papel } from '@prisma/client'
 import { mensalidade } from '../servidor/planos'
-import { contaDeRespostas, franquiaDeRespostas, mesEmSP, type Respostas } from '../servidor/assinatura'
+import { contaDeRespostas, franquiaDeRespostas, mesEmSP, respostasDaReferencia, type Respostas } from '../servidor/assinatura'
 import { diaEmSP } from '../servidor/dia'
 import {
   ACOES_DE_PEDIDO,
@@ -151,10 +151,10 @@ export async function listarEmpresas(db: Admin, agora = new Date()): Promise<Lin
   const respostasTeste = emTeste.length
     ? await db.mensagemAgente.groupBy({ by: ['orgId'], where: { respostaIa: true, orgId: { in: emTeste } }, _count: { _all: true } })
     : []
-  const pacotes = await db.recargaIA.groupBy({
-    by: ['orgId'],
-    where: { origem: 'pacote', referencia: `respostas:${mesEmSP(agora)}`, centavos: { gt: 0 } },
-    _count: { _all: true },
+  // Os pacotes do mês, com o tamanho de cada um na referência (há dois).
+  const pacotes = await db.recargaIA.findMany({
+    where: { origem: 'pacote', referencia: { startsWith: `respostas:${mesEmSP(agora)}` }, centavos: { gt: 0 } },
+    select: { orgId: true, referencia: true },
   })
   const inclusos = await db.recargaIA.groupBy({
     by: ['orgId'],
@@ -177,7 +177,11 @@ export async function listarEmpresas(db: Admin, agora = new Date()): Promise<Lin
   const gastoDe = new Map(gastos.map((g) => [g.orgId, g._sum.cobradoCent ?? 0]))
   const custoDe = new Map(gastos.map((g) => [g.orgId, g._sum.custoCent ?? 0]))
   const usadasDe = new Map([...respostasMes, ...respostasTeste].map((r) => [r.orgId, r._count._all]))
-  const pacotesDe = new Map(pacotes.map((p) => [p.orgId, p._count._all]))
+  const pacotesDe = new Map<string, { quantos: number; respostas: number }>()
+  for (const p of pacotes) {
+    const a = pacotesDe.get(p.orgId) ?? { quantos: 0, respostas: 0 }
+    pacotesDe.set(p.orgId, { quantos: a.quantos + 1, respostas: a.respostas + respostasDaReferencia(p.referencia) })
+  }
   const inclusoDe = new Map(inclusos.map((g) => [g.orgId, g._sum.centavos ?? 0]))
   const suporteDe = new Map(suportes.map((s) => [s.orgId, s._count._all]))
   const unidadesDe = new Map<string, typeof unidades>()
@@ -211,7 +215,12 @@ export async function listarEmpresas(db: Admin, agora = new Date()): Promise<Lin
       creditoGastoMesCent: gastoDe.get(o.id) ?? 0,
       custoIaMesCent: custoDe.get(o.id) ?? 0,
       respostas: {
-        ...contaDeRespostas(franquiaDeRespostas(o.plano, o.situacao), pacotesDe.get(o.id) ?? 0, usadasDe.get(o.id) ?? 0),
+        ...contaDeRespostas(
+          franquiaDeRespostas(o.plano, o.situacao, ativas.filter((u) => !u.ehDeposito).length),
+          pacotesDe.get(o.id)?.quantos ?? 0,
+          usadasDe.get(o.id) ?? 0,
+          pacotesDe.get(o.id)?.respostas ?? 0,
+        ),
         periodo: o.situacao === 'TESTE' ? 'teste' : 'mes',
       },
       creditoInclusoMesCent: inclusoDe.get(o.id) ?? 0,

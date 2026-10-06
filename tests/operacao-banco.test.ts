@@ -106,10 +106,10 @@ describe('trocarPlanoComoEquipe', () => {
   it('descer tira os módulos que o plano novo não cobre', async () => {
     await m.assinatura.trocarPlanoComoEquipe('org-a', 'BALCAO', 'Rafa Teste')
     const [org] = await linhas<{ plano: string; modulos: string[] }>(`select plano, modulos from orgs where id = 'org-a'`)
-    // O Norte tem tudo da loja (metas também); só o assistente sai.
-    expect(org).toEqual({ plano: 'BALCAO', modulos: ['metas', 'encomenda'] })
+    // O Essencial tem o assistente (básico) e as encomendas; as metas são do Profissional.
+    expect(org).toEqual({ plano: 'BALCAO', modulos: ['agente', 'encomenda'] })
     const todas = await livro('org-a', 'plano.trocou')
-    expect(todas.at(-1)!.motivo).toMatch(/perdeu: .*Assistente no WhatsApp/)
+    expect(todas.at(-1)!.motivo).toMatch(/perdeu: .*Metas/)
     expect(todas.at(-1)!.depois).not.toHaveProperty('pedidoId')
   })
 

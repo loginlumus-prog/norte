@@ -14,7 +14,7 @@ import { Aviso, Botao, Campo, Marcar, Selecao, Situacao, cx } from '@/ui/base'
 import { criarLojaAcao, editarLojaAcao, situacaoLojaAcao, type EstadoLoja } from './acoes'
 import { semApagar } from '@/ui/formulario'
 import { Confirmar } from '@/ui/Confirmar'
-import { PRECOS } from '@/servidor/planos'
+import { PLANOS, PRECOS, rs } from '@/servidor/planos'
 
 export type LojaNaTela = {
   id: string
@@ -105,7 +105,7 @@ function Formulario({
         name="ehFabrica"
         id={`fab-${d?.id ?? 'nova'}`}
         titulo="É fábrica (produz o que as lojas vendem)"
-        resumo={`Faz a produção com ficha técnica e lote, e as lojas pedem a ela. Não vende no balcão. Cobrada à parte: R$ ${PRECOS.fabrica} por mês, uma vez para a empresa — a segunda fábrica não soma.`}
+        resumo={`Faz a produção com ficha técnica e lote, e as lojas pedem a ela. Não vende no balcão. Cobrada à parte, no ${PLANOS.BALCAO_AGENTE.titulo}: ${rs(PRECOS.fabrica)} por mês, uma vez para a empresa — a segunda fábrica não soma.`}
         defaultChecked={d?.ehFabrica ?? false}
         onChange={(e) => {
           // E marcar a fábrica marca o depósito, como o servidor grava.

@@ -64,12 +64,16 @@ describe('os ramos de serviço', () => {
     expect(RAMOS.saude.manual).toMatch(/prontuário/)
   })
 
-  it('os módulos novos têm pergunta para o cadastro e entram do Balcão para cima', () => {
+  // Tabela de 06/10/2026: o ponto vem nos dois planos; agenda e compras, do Profissional para cima.
+  it('os módulos novos têm pergunta para o cadastro e entram nos planos pagos certos', () => {
     for (const m of ['agenda', 'ponto', 'compras'] as const) {
       expect(MODULOS[m].pergunta.endsWith('?')).toBe(true)
       expect(PLANOS.GRATIS.modulos).not.toContain(m)
-      for (const p of ['BALCAO', 'BALCAO_AGENTE', 'REDE', 'CORPORATIVO'] as const) expect(PLANOS[p].modulos).toContain(m)
+      for (const p of ['BALCAO_AGENTE', 'REDE', 'CORPORATIVO'] as const) expect(PLANOS[p].modulos).toContain(m)
     }
+    expect(PLANOS.BALCAO.modulos).toContain('ponto')
+    expect(PLANOS.BALCAO.modulos).not.toContain('agenda')
+    expect(PLANOS.BALCAO.modulos).not.toContain('compras')
   })
 })
 
