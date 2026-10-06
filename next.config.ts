@@ -11,6 +11,8 @@ const config: NextConfig = {
   // linha a menos na lista de "o que roda aqui" de quem varre a internet
   // procurando versão com falha conhecida.
   poweredByHeader: false,
+  // O navegador não recebe o mapa que reconstitui o código-fonte original.
+  productionBrowserSourceMaps: false,
   // O Prisma e o pg nao devem ser empacotados pelo bundler do servidor.
   serverExternalPackages: ['@prisma/client', 'pg'],
   // Quem mais pode disparar um Server Action, além do próprio endereço.

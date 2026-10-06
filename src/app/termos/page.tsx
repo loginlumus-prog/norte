@@ -344,7 +344,7 @@ export default function Termos() {
         <p>
           <b>Nosso:</b> o sistema — código, telas, marca, textos. Contratar dá direito de usar
           enquanto o contrato durar, e mais nada: não dá direito de copiar, revender, hospedar
-          cópia nem tirar o código.
+          cópia nem tirar o código. Também é proibido fazer engenharia reversa, extrair dados ou telas em massa por robô, ou criar serviço parecido a partir do que o sistema mostra; o uso fora disto pode ser bloqueado e cobrado por perdas e danos, nos termos da Lei de Software (Lei 9.609/98) e da Lei de Direitos Autorais (Lei 9.610/98).
         </p>
       </Secao>
 

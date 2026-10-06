@@ -33,6 +33,18 @@ gestornorte.com {
 
 	header -Server
 
+	# Programas de cópia de site e raspadores de força bruta nem chegam ao Norte.
+	# /api e /saude ficam de fora: webhooks, rotinas agendadas e monitor usam curl e afins.
+	@copiadores {
+		header_regexp ua User-Agent (?i)(httrack|webcopier|sitesucker|teleport ?pro|webzip|offline ?explorer|wget|scrapy|python-requests|libwww|masscan|sqlmap|nikto|nmap)
+		not path /api/* /saude
+	}
+	respond @copiadores 403
+
+	# Telas das empresas, painel de parceiro e API não entram em buscador nem em cache.
+	@privado path /api/* /parceiros/painel /parceiros/entrar
+	header @privado X-Robots-Tag "noindex, nofollow, noarchive"
+
 	reverse_proxy norte:3000 {
 		# Uma Server Action de vídeo pode demorar; não corta no meio.
 		transport http {
