@@ -239,3 +239,39 @@ describe('abono e primeiro dia no ponto', () => {
     await expect(m.ponto.abonarDia(BALCAO, { colaboradorId: 'col-vini', dia: '2026-09-25', motivo: 'Folga' }, AGORA)).rejects.toThrow()
   })
 })
+
+describe('fase 2: o que o funcionário vê', () => {
+  it('o balcão não vê a Fábrica, nem vendas e caixa de outros dias; o gerente vê', async () => {
+    const { pode, PODERES, CAPACIDADES_DE_CARGO } = await import('../src/servidor/permissao')
+    for (const c of ['fabrica.ver', 'fabrica.pedir', 'venda.historico', 'caixa.historico'] as const) {
+      expect(pode(BALCAO, c, 'uni-z1')).toBe(false)
+      expect(PODERES.GERENTE).toContain(c)
+      expect(CAPACIDADES_DE_CARGO).toContain(c)
+    }
+    expect(pode(BALCAO, 'venda.ver', 'uni-z1')).toBe(true)
+    expect(pode(BALCAO, 'estoque.ver', 'uni-z1')).toBe(true)
+  })
+
+  it('a tarefa diária feita ontem volta para "a fazer"; a de hoje fica feita', async () => {
+    await db.exec(`
+      insert into quadros (id, org_id, unidade_id, nome, quem, atualizado_em) values
+        ('q-ab', 'org-z', 'uni-z1', 'Abertura e fechamento da casa', 'Vitor', now()),
+        ('q-out', 'org-z', null, 'Campanha', 'Vitor', now());
+      insert into tarefas (id, org_id, quadro_id, grupo, titulo, situacao, progresso, concluida_em, diaria, quem, atualizado_em) values
+        ('t-ontem', 'org-z', 'q-ab', 'Ao abrir', 'Conferir o troco', 'FEITO', 100, now() - interval '2 days', true, 'Vitor', now()),
+        ('t-hoje', 'org-z', 'q-ab', 'Ao abrir', 'Ligar a maquininha', 'FEITO', 100, now(), true, 'Vitor', now()),
+        ('t-aberta', 'org-z', 'q-ab', 'Ao fechar', 'Sangria', 'A_FAZER', 0, null, true, 'Vitor', now()),
+        ('t-camp', 'org-z', 'q-out', '', 'Montar a vitrine da campanha', 'A_FAZER', 0, null, false, 'Vitor', now()),
+        ('t-minha', 'org-z', 'q-out', '', 'Ligar para o fornecedor', 'A_FAZER', 0, null, false, 'Vitor', now());
+      update tarefas set responsavel_id = 'usr-bal' where id = 't-minha';
+    `)
+    const tarefas = await import('../src/servidor/tarefas')
+    const hoje = await tarefas.tarefasDeHoje(BALCAO, 'uni-z1')
+    // Diárias sem dono + as dela; a da campanha sem dono não entra no balcão.
+    expect(hoje.map((t) => [t.id, t.feita]).sort()).toEqual(
+      [['t-aberta', false], ['t-hoje', true], ['t-minha', false], ['t-ontem', false]].sort(),
+    )
+    const [t] = await linha<{ situacao: string; concluida_em: Date | null }>(`select situacao, concluida_em from tarefas where id = 't-ontem'`)
+    expect(t).toEqual({ situacao: 'A_FAZER', concluida_em: null })
+  })
+})

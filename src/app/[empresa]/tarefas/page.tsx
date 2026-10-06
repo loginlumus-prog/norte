@@ -169,6 +169,7 @@ export default async function TelaTarefas({
           prazo: t.prazo ? chaveDoDia(t.prazo) : null,
           atrasada: atrasada(t.prazo, t.situacao, hoje),
           podeMexer: podeMexerNaTarefa(sessao, t, completo.unidadeId),
+          diaria: t.diaria,
         })),
       }
     : null

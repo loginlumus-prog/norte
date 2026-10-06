@@ -60,6 +60,8 @@ export type TarefaNaTela = {
   atrasada: boolean
   /** Esta pessoa pode mudar situação e progresso desta linha. */
   podeMexer: boolean
+  /** Volta para "a fazer" todo dia. */
+  diaria: boolean
 }
 
 export type QuadroNaTela = {
@@ -586,6 +588,20 @@ function Detalhes({
         )}
       </label>
       <div className="flex flex-col gap-2 sm:w-56">
+        <label className="flex items-start gap-2 text-xs text-tinta-2" title={podeGerir ? undefined : SO_QUEM_GERE}>
+          <input
+            type="checkbox"
+            checked={t.diaria}
+            disabled={!podeGerir}
+            onChange={(e) => rodar(() => alterarTarefaAcao(slug, t.id, { diaria: e.currentTarget.checked }))}
+            className="mt-0.5 size-4 accent-[var(--marca)]"
+          />
+          <span>
+            <b className="text-tinta">Repete todo dia</b>
+            <br />
+            Feita hoje, volta para &quot;a fazer&quot; amanhã.
+          </span>
+        </label>
         <label className="flex flex-col gap-1 text-xs text-tinta-2">
           Grupo
           <select

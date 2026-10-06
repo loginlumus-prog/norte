@@ -19,8 +19,14 @@ export const CAPACIDADES = [
   'venda.criar',
   'venda.cancelar',
   'venda.desconto', // separado: dar desconto ACIMA do teto da empresa
+  // Ver as vendas de OUTROS dias, com período e filtros. Sem ela, a tela de
+  // vendas mostra só as de hoje — e a busca acha a de outro dia (a troca).
+  'venda.historico',
   'caixa.ver',
   'caixa.operar', // abrir, sangrar, suprir, fechar
+  // Ver os turnos de outros dias e a diferença acumulada. Sem ela, o Caixa
+  // mostra só os turnos de hoje.
+  'caixa.historico',
   // catálogo e estoque
   'produto.ver',
   'produto.editar',
@@ -37,6 +43,10 @@ export const CAPACIDADES = [
   // o motivo. Separada de `estoque.ajustar` de propósito: quem lança a avaria NÃO
   // dá entrada, não transfere e não corrige o saldo — só tira, e fica no livro.
   'estoque.perda',
+  // fábrica: separada do estoque porque o balcão precisa ver o estoque para
+  // vender, e não precisa da produção nem dos pedidos da fábrica.
+  'fabrica.ver', // ver a Fábrica: produção, fichas e pedidos
+  'fabrica.pedir', // pedir à fábrica pela loja
   // compras
   'compra.ver', // ver pedidos e fornecedores — com o CUSTO do que se compra
   'compra.gerir', // montar, mandar, receber e cancelar pedido; cadastrar fornecedor
@@ -79,7 +89,10 @@ export type Papel = 'DONO' | 'GERENTE' | 'BALCAO' | 'FINANCEIRO' | 'CONTADOR' | 
 
 const SO_LEITURA: Capacidade[] = [
   'venda.ver',
+  'venda.historico',
   'caixa.ver',
+  'caixa.historico',
+  'fabrica.ver',
   'produto.ver',
   'estoque.ver',
   'cliente.ver',
@@ -103,10 +116,11 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
   // Gerente: toca a operação da unidade dele. Não configura a empresa nem o
   // agente, e não lança no financeiro — vê, mas não escreve.
   GERENTE: [
-    'venda.ver', 'venda.criar', 'venda.cancelar', 'venda.desconto',
-    'caixa.ver', 'caixa.operar',
+    'venda.ver', 'venda.criar', 'venda.cancelar', 'venda.desconto', 'venda.historico',
+    'caixa.ver', 'caixa.operar', 'caixa.historico',
     'produto.ver', 'produto.editar', 'produto.preco', 'produto.cadastrar',
     'estoque.ver', 'estoque.ajustar', 'estoque.consumir', 'estoque.perda',
+    'fabrica.ver', 'fabrica.pedir',
     'compra.ver', 'compra.gerir',
     'agenda.ver', 'agenda.marcar',
     'ponto.proprio', 'ponto.ver', 'ponto.gerir',
@@ -153,7 +167,7 @@ export const PODERES: Record<Papel, readonly Capacidade[]> = {
   // vê, recebe e dispensa a de um mês (com motivo) — sem matricular ninguém
   // nem mexer no preço da turma.
   FINANCEIRO: [
-    'venda.ver', 'caixa.ver',
+    'venda.ver', 'venda.historico', 'caixa.ver', 'caixa.historico',
     'cliente.ver',
     'crediario.ver', 'crediario.cobrar', 'crediario.receber',
     'escola.ver',

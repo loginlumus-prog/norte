@@ -34,7 +34,7 @@ export default async function PedirAFabrica({
 }) {
   const { empresa: slug } = await params
   const q = await searchParams
-  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'estoque.ver' })
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'fabrica.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
   const moldura = { empresa, sessao, itens: MENU(slug), ativo: `/${slug}/fabrica`, tema, titulo: 'Pedir à fábrica' }
 
@@ -55,7 +55,7 @@ export default async function PedirAFabrica({
   // primeiro; as outras que ela enxerga ficam para acompanhar.
   const lojas = unidades
     .filter((u) => !u.ehFabrica)
-    .sort((a, b) => Number(pode(sessao, 'estoque.ajustar', b.id)) - Number(pode(sessao, 'estoque.ajustar', a.id)))
+    .sort((a, b) => Number(pode(sessao, 'fabrica.pedir', b.id)) - Number(pode(sessao, 'fabrica.pedir', a.id)))
   const pedida = typeof q.loja === 'string' ? q.loja : undefined
   const loja = lojas.find((l) => l.id === pedida) ?? lojas[0]
 
@@ -90,7 +90,7 @@ async function Corpo({
   fabricas: { id: string; nome: string }[]
   sessao: Parameters<typeof listarPedidos>[0]
 }) {
-  const podePedir = pode(sessao, 'estoque.ajustar', loja.id)
+  const podePedir = pode(sessao, 'fabrica.pedir', loja.id)
   const catalogo = await catalogoParaPedir(sessao, loja.id)
   const pedidos = (await listarPedidos(sessao, { limite: 100 })).filter((p) => p.lojaId === loja.id).slice(0, 20)
   const abertos = pedidos.filter((p) => p.situacao === 'ABERTO')

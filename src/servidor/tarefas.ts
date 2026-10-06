@@ -566,6 +566,7 @@ export type TarefaDoQuadro = {
   prazo: Date | null
   concluidaEm: Date | null
   ordem: number
+  diaria: boolean
 }
 
 export type QuadroCompleto = QuadroResumido & {
@@ -587,6 +588,7 @@ function escopo(sessao: Sessao, unidadeIds: string[]) {
 export async function listarQuadros(sessao: Sessao, unidadeIds: string[]): Promise<QuadroResumido[]> {
   exigir(sessao, 'tarefa.ver')
   return comoOrg(sessao.orgId, async (db) => {
+    await renovarDiarias(db)
     const quadros = await db.quadro.findMany({
       where: { arquivado: false, ...escopo(sessao, unidadeIds) },
       orderBy: [{ ordem: 'asc' }, { criadoEm: 'asc' }],
@@ -628,12 +630,14 @@ export async function quadroCompleto(sessao: Sessao, quadroId: string): Promise<
     })
     if (!q || !pode(sessao, 'tarefa.ver', q.unidadeId ?? undefined)) return null
 
+    await renovarDiarias(db)
     const tarefas = await db.tarefa.findMany({
       where: { quadroId: q.id },
       orderBy: [{ ordem: 'asc' }, { criadoEm: 'asc' }],
       select: {
         id: true, quadroId: true, grupo: true, titulo: true, descricao: true, responsavelId: true,
         situacao: true, prioridade: true, progresso: true, inicio: true, prazo: true, concluidaEm: true, ordem: true,
+        diaria: true,
         responsavel: { select: { nome: true } },
       },
     })
@@ -665,6 +669,7 @@ export async function quadroCompleto(sessao: Sessao, quadroId: string): Promise<
         prazo: doBanco(t.prazo),
         concluidaEm: t.concluidaEm,
         ordem: t.ordem,
+        diaria: t.diaria,
       })),
     }
   })
@@ -702,6 +707,62 @@ export async function pessoasParaAtribuir(sessao: Sessao, unidadeId: string | nu
       select: { id: true, nome: true },
     }),
   )
+}
+
+/**
+ * As tarefas que repetem todo dia, feitas ANTES de hoje, voltam para "a
+ * fazer". Corre na leitura (quadro, lista, balcão) em vez de numa rotina da
+ * madrugada: a loja que abre às 6h vê a lista limpa sem depender de relógio
+ * nenhum. Quem fez ontem continua no livro (`tarefa.concluiu`).
+ */
+async function renovarDiarias(db: BancoDaOrg, agora = new Date()) {
+  await db.tarefa.updateMany({
+    where: { diaria: true, situacao: 'FEITO', concluidaEm: { lt: inicioDoDiaEmSP(diaEmSP(agora)) } },
+    data: { situacao: 'A_FAZER', progresso: 0, concluidaEm: null },
+  })
+}
+
+export type TarefaDeHoje = {
+  id: string
+  titulo: string
+  quadroNome: string
+  grupo: string
+  feita: boolean
+  /** É dela (responsável); senão é sem dono, da loja. */
+  minha: boolean
+}
+
+/**
+ * O que aparece no balcão: as tarefas DESTA pessoa ainda abertas, mais as
+ * diárias sem dono (abrir e fechar a loja) — com as já feitas hoje, riscadas,
+ * para ela ver o que falta. Só os quadros da loja do balcão e os da empresa.
+ */
+export async function tarefasDeHoje(sessao: Sessao, unidadeId: string, agora = new Date()): Promise<TarefaDeHoje[]> {
+  if (!pode(sessao, 'tarefa.ver', unidadeId)) return []
+  const inicioHoje = inicioDoDiaEmSP(diaEmSP(agora))
+  return comoOrg(sessao.orgId, async (db) => {
+    await renovarDiarias(db, agora)
+    const ts = await db.tarefa.findMany({
+      where: {
+        quadro: { arquivado: false, OR: [{ unidadeId: null }, { unidadeId }] },
+        AND: [
+          { OR: [{ responsavelId: sessao.usuarioId }, { responsavelId: null, diaria: true }] },
+          { OR: [{ situacao: { not: 'FEITO' } }, { concluidaEm: { gte: inicioHoje } }] },
+        ],
+      },
+      orderBy: [{ quadro: { ordem: 'asc' } }, { ordem: 'asc' }, { criadoEm: 'asc' }],
+      take: 60,
+      select: { id: true, titulo: true, grupo: true, situacao: true, responsavelId: true, quadro: { select: { nome: true } } },
+    })
+    return ts.map((t) => ({
+      id: t.id,
+      titulo: t.titulo,
+      quadroNome: t.quadro.nome,
+      grupo: t.grupo,
+      feita: t.situacao === 'FEITO',
+      minha: t.responsavelId === sessao.usuarioId,
+    }))
+  })
 }
 
 /** Para a bolinha do menu: o que é meu e está em aberto, e quanto disso venceu. */
@@ -1096,6 +1157,7 @@ export async function criarTarefa(sessao: Sessao, dados: NovaTarefa): Promise<{ 
 }
 
 export type AlteracaoDeTarefa = {
+  diaria?: boolean
   titulo?: string
   descricao?: string | null
   grupo?: string
@@ -1121,9 +1183,14 @@ export async function alterarTarefa(sessao: Sessao, tarefaId: string, dados: Alt
 
     const novo: {
       titulo?: string; descricao?: string | null; grupo?: string; responsavelId?: string | null
-      prioridade?: number; inicio?: Date | null; prazo?: Date | null
+      prioridade?: number; inicio?: Date | null; prazo?: Date | null; diaria?: boolean
     } = {}
     const legivel: Record<string, unknown> = {}
+
+    if (dados.diaria !== undefined) {
+      novo.diaria = dados.diaria === true
+      legivel.diaria = novo.diaria
+    }
 
     if (dados.titulo !== undefined) {
       const titulo = limparTexto(dados.titulo, TITULO_MAX)
@@ -1299,6 +1366,8 @@ export async function criarDeModelo(sessao: Sessao, chave: ChaveModelo, unidadeI
         descricao: t.descricao ?? null,
         prioridade: liberado(plano, 'tarefas.prioridade') ? (t.prioridade ?? 0) : 0,
         ordem: i + 1,
+        // Abrir e fechar a loja é todo dia: a lista volta sozinha amanhã.
+        diaria: chave === 'abertura',
         quem: sessao.nome,
       })),
     })

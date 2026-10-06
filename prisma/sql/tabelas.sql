@@ -1088,6 +1088,7 @@ CREATE TABLE "tarefas" (
     "inicio" DATE,
     "prazo" DATE,
     "concluida_em" TIMESTAMP(3),
+    "diaria" BOOLEAN NOT NULL DEFAULT false,
     "ordem" INTEGER NOT NULL DEFAULT 0,
     "quem" TEXT NOT NULL,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

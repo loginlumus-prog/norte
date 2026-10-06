@@ -54,7 +54,10 @@ export default async function CaixaPagina({
   const onde = await escolherUnidade(sessao, empresa, pedida, 'caixa.ver')
   // "Recebido nos turnos · 15 atendimentos" na recepção (vocabulario.ts).
   const palavras = await vocabularioDaEmpresa(sessao.orgId)
-  const j = janela(lerPeriodo(pedido))
+  // Sem o histórico (o balcão, por padrão), o Caixa é o de HOJE: os turnos do
+  // dia, sem período para voltar nem a diferença de um mês inteiro.
+  const veHistorico = onde.ids.length > 0 && onde.ids.every((u) => pode(sessao, 'caixa.historico', u))
+  const j = janela(veHistorico ? lerPeriodo(pedido) : 'hoje')
   const turnos = await listarCaixas(sessao, { unidadeIds: onde.ids, de: j.de, ate: j.ate })
 
   const aberto = turnos.find((t) => t.id === turno) ?? null
@@ -85,7 +88,7 @@ export default async function CaixaPagina({
       titulo="Caixa"
       acao={
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <SeletorPeriodo atual={j.chave} />
+          {veHistorico && <SeletorPeriodo atual={j.chave} />}
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
         </div>
       }

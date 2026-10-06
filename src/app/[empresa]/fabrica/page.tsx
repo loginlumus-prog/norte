@@ -55,7 +55,7 @@ export default async function TelaFabrica({
 }) {
   const { empresa: slug } = await params
   const q = await searchParams
-  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'estoque.ver' })
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'fabrica.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
   const moldura = { empresa, sessao, itens: MENU(slug), ativo: `/${slug}/fabrica`, tema, titulo: 'Fábrica' }
 
@@ -75,7 +75,7 @@ export default async function TelaFabrica({
   const unidades = await unidadesDaFabrica(sessao)
   const fabricas = unidades.filter((u) => u.ehFabrica)
   const fabricasQuePode = fabricas.filter((f) => pode(sessao, 'estoque.ajustar', f.id))
-  const lojasQuePedem = unidades.filter((u) => !u.ehFabrica && pode(sessao, 'estoque.ajustar', u.id))
+  const lojasQuePedem = unidades.filter((u) => !u.ehFabrica && pode(sessao, 'fabrica.pedir', u.id))
   const abertas = await listarOrdens(sessao, { situacao: 'ABERTA', limite: 100 })
   const pedidosAbertos = await listarPedidos(sessao, { abertos: true, limite: 100 })
   const esperando = pedidosAbertos.filter((p) => p.situacao === 'ABERTO')

@@ -72,7 +72,11 @@ export default async function Vendas({
   const g = (feminina: string, masculina: string) => concorda(palavras, feminina, masculina)
 
   const onde = await escolherUnidade(sessao, empresa, pedida, 'venda.ver')
-  const j = janela(lerPeriodo(pedido))
+  // Quem não vê o histórico (o balcão, por padrão) vê as vendas de HOJE, sem
+  // período nem filtros — a tela do dia. A busca continua achando a venda de
+  // outro dia nos últimos 30, que é o que a troca precisa.
+  const veHistorico = onde.ids.length > 0 && onde.ids.every((u) => pode(sessao, 'venda.historico', u))
+  const j = janela(veHistorico ? lerPeriodo(pedido) : q ? '30d' : 'hoje')
   // Só as duas que fazem sentido filtrar. ABERTA existe no enum e não existe
   // na prática — a venda nasce CONCLUIDA — e aceitar do endereço uma situação
   // que a lista nunca teria seria filtro que devolve vazio sem explicar.
@@ -288,9 +292,9 @@ export default async function Vendas({
         // Período antes da loja, como no Painel, no Caixa e na Auditoria: a
         // mesma chave no mesmo lugar em toda tela, senão a mão erra o clique.
         <span className="flex flex-wrap items-center justify-end gap-2">
-          <SeletorPeriodo atual={j.chave} />
+          {veHistorico && <SeletorPeriodo atual={j.chave} />}
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
-          {!simples && (
+          {!simples && veHistorico && (
             <a
               href={linkExportar}
               className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"
@@ -364,7 +368,15 @@ export default async function Vendas({
 
       {/* Quem vendeu e como receberam: os dois recortes que a pergunta do dia
           usa ("o que a Maria vendeu no sábado", "quanto entrou no Pix"). */}
-      {((!simples && (vendedores.length > 1 || formasUsadas.length > 1)) || vendedorId || forma) && (
+      {!veHistorico && (
+        <p className="-mt-1 text-xs text-tinta-3">
+          {q
+            ? `Buscando nos últimos 30 dias.`
+            : `Mostrando só as ${palavras.vendas} de hoje. Para achar outra, busque pelo número ou pelo nome ${palavras.daPessoa}.`}
+        </p>
+      )}
+
+      {veHistorico && ((!simples && (vendedores.length > 1 || formasUsadas.length > 1)) || vendedorId || forma) && (
         <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
           {((!simples && vendedores.length > 1) || vendedorId) && (
             <Fichas

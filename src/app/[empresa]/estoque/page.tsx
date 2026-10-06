@@ -509,7 +509,7 @@ export default async function TelaEstoque({
           {/* Com fábrica, a loja repõe pedindo a ela — e é aqui, no estoque,
               que a gerente percebe que está acabando. A tela de pedir confere
               em que loja a pessoa pode pedir. */}
-          {moduloLigado(empresa, 'fabrica') && pode(sessao, 'estoque.ajustar') && (
+          {moduloLigado(empresa, 'fabrica') && pode(sessao, 'fabrica.pedir') && (
             <Link
               href={`/${slug}/fabrica/pedir${onde.unidadeId ? `?loja=${onde.unidadeId}` : ''}`}
               className="botao-marca rounded-norte px-3 py-1.5 text-sm font-semibold text-marca-tinta"

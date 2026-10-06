@@ -32,10 +32,12 @@ export const GRUPOS_DE_CARGO: {
     titulo: 'Balcão e caixa',
     itens: [
       { capacidade: 'venda.criar', titulo: 'Vender no balcão' },
-      { capacidade: 'venda.ver', titulo: 'Ver as vendas' },
+      { capacidade: 'venda.ver', titulo: 'Ver as vendas de hoje' },
+      { capacidade: 'venda.historico', titulo: 'Ver as vendas de outros dias, com filtros' },
       { capacidade: 'venda.cancelar', titulo: 'Cancelar venda' },
       { capacidade: 'venda.desconto', titulo: 'Dar desconto acima do limite da empresa' },
-      { capacidade: 'caixa.ver', titulo: 'Ver o caixa' },
+      { capacidade: 'caixa.ver', titulo: 'Ver o caixa de hoje' },
+      { capacidade: 'caixa.historico', titulo: 'Ver os turnos de outros dias e a diferença acumulada' },
       { capacidade: 'caixa.operar', titulo: 'Abrir, sangrar, suprir e fechar o caixa' },
     ],
   },
@@ -50,6 +52,14 @@ export const GRUPOS_DE_CARGO: {
       { capacidade: 'estoque.ajustar', titulo: 'Dar entrada, transferir e corrigir o estoque' },
       { capacidade: 'estoque.perda', titulo: 'Lançar avaria (tirar o que quebrou ou estragou, sem poder corrigir o estoque)' },
       { capacidade: 'estoque.consumir', titulo: 'Anotar o material usado' },
+    ],
+  },
+  {
+    titulo: 'Fábrica',
+    modulo: 'fabrica',
+    itens: [
+      { capacidade: 'fabrica.ver', titulo: 'Ver a Fábrica (produção e pedidos)' },
+      { capacidade: 'fabrica.pedir', titulo: 'Pedir à fábrica pela loja' },
     ],
   },
   {
@@ -125,8 +135,8 @@ export const MODELOS_DE_CARGO: { nome: string; capacidades: Capacidade[] }[] = [
   {
     nome: 'Subgerente',
     capacidades: [
-      'venda.criar', 'venda.ver', 'caixa.ver', 'caixa.operar',
-      'produto.ver', 'estoque.ver', 'estoque.ajustar', 'estoque.consumir',
+      'venda.criar', 'venda.ver', 'venda.historico', 'caixa.ver', 'caixa.operar', 'caixa.historico',
+      'produto.ver', 'estoque.ver', 'estoque.ajustar', 'estoque.consumir', 'fabrica.ver', 'fabrica.pedir',
       'cliente.ver', 'cliente.editar', 'crediario.ver', 'crediario.receber',
       'ponto.proprio', 'agenda.ver', 'agenda.marcar',
       'relatorio.ver', 'equipe.ver', 'tarefa.ver', 'tarefa.gerir',
@@ -145,7 +155,7 @@ export const MODELOS_DE_CARGO: { nome: string; capacidades: Capacidade[] }[] = [
   },
   {
     nome: 'Estoquista',
-    capacidades: ['produto.ver', 'produto.cadastrar', 'estoque.ver', 'estoque.ajustar', 'estoque.consumir', 'compra.ver', 'compra.gerir', 'ponto.proprio', 'tarefa.ver'],
+    capacidades: ['produto.ver', 'produto.cadastrar', 'estoque.ver', 'estoque.ajustar', 'estoque.consumir', 'fabrica.ver', 'fabrica.pedir', 'compra.ver', 'compra.gerir', 'ponto.proprio', 'tarefa.ver'],
   },
 ]
 

@@ -28,7 +28,7 @@ export type Planilha = 'clientes' | 'vendas' | 'produtos' | 'estoque' | 'finance
 /** O que cada planilha exige. Todas as capacidades da lista, não uma delas. */
 export const EXIGE: Record<Planilha, readonly Capacidade[]> = {
   clientes: ['cliente.ver', 'relatorio.ver'],
-  vendas: ['venda.ver'],
+  vendas: ['venda.ver', 'venda.historico'],
   produtos: ['produto.ver'],
   estoque: ['estoque.ver'],
   financeiro: ['financeiro.ver'],

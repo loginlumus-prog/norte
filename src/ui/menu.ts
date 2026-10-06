@@ -72,7 +72,7 @@ export const MENU = (slug: string): ItemMenu[] => [
   // A fábrica: ficha técnica, ordem de produção com lote e o pedido das
   // lojas. Exige só ver o estoque — produzir e mandar é mexer no estoque DA
   // fábrica, e isso a própria tela confere por unidade (servidor/fabrica.ts).
-  { grupo: 'Catálogo', href: `/${slug}/fabrica`, titulo: 'Fábrica', exige: 'estoque.ver', modulo: 'fabrica' },
+  { grupo: 'Catálogo', href: `/${slug}/fabrica`, titulo: 'Fábrica', exige: 'fabrica.ver', modulo: 'fabrica' },
   // O pedido ao fornecedor, com o custo. Receber é dar entrada no estoque.
   { grupo: 'Catálogo', href: `/${slug}/compras`, titulo: 'Compras', exige: 'compra.ver', modulo: 'compras' },
   // O esmalte, a luva, o algodão: quem atende anota o que gastou. Item

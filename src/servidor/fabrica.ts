@@ -605,7 +605,7 @@ export async function criarPedido(
   sessao: Sessao,
   d: { lojaId: string; fabricaId?: string | null; itens: { variacaoId: string; quantidade: number }[]; observacao?: string | null; pin?: string | null },
 ): Promise<{ id: string; numero: number }> {
-  exigir(sessao, 'estoque.ajustar', d.lojaId)
+  exigir(sessao, 'fabrica.pedir', d.lojaId)
   const itens = d.itens.filter((i) => i.quantidade > 0)
   if (itens.length === 0) throw new FabricaRecusou('Ponha a quantidade de pelo menos um item.')
   if (itens.some((i) => !Number.isFinite(i.quantidade))) throw new FabricaRecusou('Quantidade precisa ser um número.')

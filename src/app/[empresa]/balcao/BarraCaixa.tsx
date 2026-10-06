@@ -21,6 +21,8 @@ import { Situacao, cx } from '@/ui/base'
 import { Movimento } from './Caixa'
 import { usePalavras } from './palavras'
 import { plural } from '@/ui/texto'
+import { TarefasDeHoje } from './TarefasDeHoje'
+import type { TarefaDeHoje } from '@/servidor/tarefas'
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const hora = (d: Date) =>
@@ -35,6 +37,7 @@ export function BarraCaixa({
   veReceita = false,
   meta = null,
   compacta = false,
+  tarefas = [],
 }: {
   slug: string
   unidadeId: string
@@ -51,6 +54,8 @@ export function BarraCaixa({
    * duzentas. A linha fina deixa a altura para os produtos.
    */
   compacta?: boolean
+  /** As tarefas de quem está no caixa e as diárias da loja (ver `tarefasDeHoje`). */
+  tarefas?: TarefaDeHoje[]
 }) {
   const palavras = usePalavras()
   const [painel, setPainel] = useState<'SANGRIA' | 'SUPRIMENTO' | null>(null)
@@ -100,6 +105,7 @@ export function BarraCaixa({
             </span>
           </div>
         )}
+        <TarefasDeHoje slug={slug} tarefas={tarefas} />
         {dias >= 1 && (
           <Situacao nivel="atencao">
             aberto há {dias} dia{dias === 1 ? '' : 's'}

@@ -38,12 +38,13 @@ describe('o que cada perfil vê no menu', () => {
     // Compras não: é onde mora o CUSTO do que se compra.
     // Mensalidades e Turmas entram: na escola o balcão é a secretaria, que
     // matricula e recebe a mensalidade com o pai na frente.
-    // Fábrica entra (ver o estoque basta para ver a produção e os pedidos);
-    // produzir, mandar e pedir é de quem mexe no estoque da unidade.
+    // Fábrica não: ver o estoque (que o balcão precisa para vender) não
+    // abre a produção nem os pedidos — isso é `fabrica.ver`, do gerente.
     expect(v).toEqual([
       'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Catálogo', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
-      'Produtos', 'Estoque', 'Fábrica', 'Material usado', 'Clientes', 'Tarefas',
+      'Produtos', 'Estoque', 'Material usado', 'Clientes', 'Tarefas',
     ])
+    expect(v).not.toContain('Fábrica')
     expect(v).not.toContain('Compras')
     expect(v).not.toContain('Preços')
     expect(v).not.toContain('Painel')

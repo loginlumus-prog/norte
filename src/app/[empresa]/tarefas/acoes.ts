@@ -159,6 +159,7 @@ export async function alterarTarefaAcao(slug: string, tarefaId: string, campos: 
   }
   if ('prazo' in campos) limpo.prazo = campos.prazo === null ? null : texto(campos.prazo, 10)
   if ('inicio' in campos) limpo.inicio = campos.inicio === null ? null : texto(campos.inicio, 10)
+  if ('diaria' in campos) limpo.diaria = campos.diaria === true
 
   return tentar(slug, () => alterarTarefa(sessao, tarefaId, limpo), 'Você não pode editar esta tarefa.')
 }

@@ -2622,6 +2622,10 @@ model Tarefa {
   /// "entregou no prazo" depois.
   concluidaEm DateTime? @map("concluida_em")
 
+  /// Repete todo dia: a feita ontem volta para "a fazer" hoje (abrir e
+  /// fechar a loja). Ver `renovarDiarias`.
+  diaria Boolean @default(false)
+
   ordem Int    @default(0)
   quem  String
 

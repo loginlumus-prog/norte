@@ -94,10 +94,12 @@ describe('para qual fábrica', () => {
     expect(lido!.fabrica_id).toBe('uni-fab2')
   })
 
-  it('a vendedora que pede porque a empresa deixou assina com o PIN', async () => {
+  it('a vendedora do balcão ampliado não pede à fábrica: pedir é `fabrica.pedir`, não corrigir o estoque', async () => {
+    // Antes, o balcão ampliado (que corrige o estoque) pedia junto. A
+    // sorveteria pediu o contrário: quem está no caixa não faz pedido.
     await expect(
       m.fabrica.criarPedido(VENDEDORA, { lojaId: 'uni-loja', fabricaId: 'uni-fab1', itens: [{ variacaoId: 'v-pic', quantidade: 1 }] }),
-    ).rejects.toBeInstanceOf(m.fabrica.FabricaPedePin)
+    ).rejects.toThrow()
   })
 })
 

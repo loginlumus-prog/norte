@@ -28,7 +28,7 @@ export default async function EtiquetaDoLotePagina({
   const nonce = (await headers()).get('x-nonce') ?? undefined
   const { empresa: slug, id } = await params
   const q = await searchParams
-  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'estoque.ver' })
+  const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'fabrica.ver' })
   if (!moduloLigado(empresa, 'fabrica')) semAcesso(slug, 'modulo-fabrica')
   if (!/^[\w-]{1,64}$/.test(id)) notFound()
   const ordem = await acharOrdem(sessao, id)
