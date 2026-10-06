@@ -256,6 +256,129 @@ export async function marcarPago(sessao: Sessao, id: string, pagoEm: Date | null
   })
 }
 
+/* ── corrigir e excluir ───────────────────────────────────── */
+
+/** O lançamento que a encomenda gravou (sinal, complemento, devolução). */
+const OBS_DA_ENCOMENDA = 'Gerado pela encomenda'
+export const ehDaEncomenda = (observacoes: string | null) => !!observacoes?.startsWith(OBS_DA_ENCOMENDA)
+
+/**
+ * Corrige descrição, valor e vencimento de um lançamento.
+ *
+ * O da encomenda não se corrige aqui: ele é o espelho do dinheiro que a
+ * encomenda recebeu, e os dois ficariam dizendo valores diferentes.
+ */
+export async function editarLancamento(
+  sessao: Sessao,
+  id: string,
+  novo: { descricao: string; valor: number; vencimento: Date },
+) {
+  exigir(sessao, 'financeiro.lancar')
+  const descricao = novo.descricao.trim().slice(0, TEXTO_MAX.descricao)
+  if (!descricao) throw new Error('Todo lançamento precisa de descrição.')
+  if (!Number.isFinite(novo.valor) || novo.valor <= 0) throw new Error('O valor precisa ser maior que zero.')
+  if (novo.valor > TETO_LANCAMENTO) throw new Error('Valor alto demais para um lançamento: confira os zeros.')
+  if (Number.isNaN(novo.vencimento.getTime())) throw new Error('A data de vencimento não é uma data.')
+
+  await comoOrg(sessao.orgId, async (db) => {
+    const antes = await db.lancamento.findUnique({
+      where: { id },
+      select: { descricao: true, valor: true, vencimento: true, unidadeId: true, observacoes: true },
+    })
+    if (!antes) throw new Error('Este lançamento não existe mais. Recarregue a página.')
+    exigirNoAlcance(sessao, 'financeiro.lancar', antes.unidadeId)
+    if (ehDaEncomenda(antes.observacoes)) {
+      throw new Error('Este lançamento foi feito pela encomenda. Corrija pela encomenda, para os dois baterem.')
+    }
+    const valor = reais(centavos(novo.valor))
+    const igual =
+      antes.descricao === descricao &&
+      Number(antes.valor) === Number(valor) &&
+      diaDaColuna(antes.vencimento) === diaDaColuna(novo.vencimento)
+    if (igual) return
+
+    await db.lancamento.update({ where: { id }, data: { descricao, valor, vencimento: novo.vencimento } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: antes.unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'financeiro.editou',
+        alvoTipo: 'lancamento',
+        alvoId: id,
+        alvoNome: descricao,
+        valor: Number(valor),
+        antes: { descricao: antes.descricao, valor: Number(antes.valor), vencimento: diaDaColuna(antes.vencimento) },
+        depois: { descricao, valor: Number(valor), vencimento: diaDaColuna(novo.vencimento) },
+      },
+    })
+  })
+}
+
+/**
+ * Exclui um lançamento — o de teste, o lançado em dobro.
+ *
+ * Sai de verdade da lista e do resultado; a auditoria guarda o que era, quem
+ * excluiu e por quê. O da conta fixa (recorrente) deixa o mês marcado como
+ * pulado: sem isso, abrir o Financeiro gerava o mesmo lançamento de novo.
+ * O da encomenda não se exclui aqui (ver `editarLancamento`).
+ */
+export async function excluirLancamento(sessao: Sessao, id: string, motivoBruto: string) {
+  exigir(sessao, 'financeiro.lancar')
+  const motivo = motivoBruto.trim().slice(0, 200)
+  if (motivo.length < 3) throw new Error('Escreva o motivo (ex.: lançado em dobro, era teste).')
+
+  await comoOrg(sessao.orgId, async (db) => {
+    const l = await db.lancamento.findUnique({
+      where: { id },
+      select: {
+        tipo: true, descricao: true, valor: true, vencimento: true, pagoEm: true,
+        unidadeId: true, observacoes: true, recorrenteId: true, fornecedor: true,
+        categoria: { select: { nome: true } },
+      },
+    })
+    if (!l) return
+    exigirNoAlcance(sessao, 'financeiro.lancar', l.unidadeId)
+    if (ehDaEncomenda(l.observacoes)) {
+      throw new Error('Este lançamento foi feito pela encomenda. Para desfazer, cancele ou ajuste a encomenda.')
+    }
+
+    if (l.recorrenteId) {
+      const mes = diaDaColuna(l.vencimento).slice(0, 7)
+      const r = await db.recorrente.findUnique({ where: { id: l.recorrenteId }, select: { pulados: true } })
+      if (r && !r.pulados.includes(mes)) {
+        await db.recorrente.update({ where: { id: l.recorrenteId }, data: { pulados: [...r.pulados, mes] } })
+      }
+    }
+    await db.lancamento.delete({ where: { id } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: l.unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'financeiro.excluiu',
+        alvoTipo: 'lancamento',
+        alvoId: id,
+        alvoNome: l.descricao,
+        valor: Number(l.valor),
+        motivo,
+        antes: {
+          tipo: l.tipo,
+          descricao: l.descricao,
+          valor: Number(l.valor),
+          vencimento: diaDaColuna(l.vencimento),
+          pagoEm: l.pagoEm ? diaDaColuna(l.pagoEm) : null,
+          categoria: l.categoria.nome,
+          fornecedor: l.fornecedor,
+          recorrente: !!l.recorrenteId,
+        },
+      },
+    })
+  })
+}
+
 /* ── as contas da empresa inteira ─────────────────────────── */
 
 /**
@@ -878,6 +1001,8 @@ export type LancamentoNaLista = {
   quem: string
   /** Nasceu de uma conta recorrente (ver `recorrentes.ts`). */
   recorrente: boolean
+  /** Gravado pela encomenda (sinal): não se corrige nem se exclui por aqui. */
+  daEncomenda: boolean
 }
 
 /**
@@ -947,7 +1072,7 @@ export async function listarLancamentos(
       take: limite,
       select: {
         id: true, tipo: true, descricao: true, valor: true, vencimento: true, pagoEm: true,
-        fornecedor: true, documento: true, quem: true, recorrenteId: true, unidadeId: true,
+        fornecedor: true, documento: true, quem: true, recorrenteId: true, unidadeId: true, observacoes: true,
         categoria: { select: { nome: true } },
       },
     })
@@ -964,6 +1089,7 @@ export async function listarLancamentos(
       documento: l.documento,
       quem: l.quem,
       recorrente: l.recorrenteId !== null,
+      daEncomenda: ehDaEncomenda(l.observacoes),
     }))
   })
 }

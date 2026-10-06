@@ -94,7 +94,7 @@ export function Cabecalho({
       <Link
         href={com({ minhas: minhas ? null : '1' })}
         aria-pressed={minhas}
-        title={minhas ? 'Mostrando só o que é seu. Clique para ver tudo.' : 'Só as tarefas em que você é a responsável'}
+        title={minhas ? 'Mostrando só o que é seu. Clique para ver tudo.' : 'Só as suas e as que ainda não têm responsável'}
         className={cx(
           'rounded-norte border px-2.5 py-1.5 text-xs font-semibold transition-colors',
           minhas ? 'border-marca bg-marca-suave text-marca' : 'border-borda bg-superficie text-tinta-2 hover:bg-superficie-2 hover:text-tinta',

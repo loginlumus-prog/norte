@@ -9,7 +9,7 @@
 import { startTransition, useActionState, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Selecao } from '@/ui/base'
-import { ajustarPontoAcao, anularBatidaAcao, baterPontoAcao, type EstadoFicha } from './acoes'
+import { abonarAcao, ajustarPontoAcao, anularBatidaAcao, baterPontoAcao, desfazerAbonoAcao, inicioAcao, type EstadoFicha } from './acoes'
 
 export function BaterPonto({
   slug,
@@ -174,5 +174,191 @@ export function Anular({ slug, registroId }: { slug: string; registroId: string 
       </span>
       {erro && <span className="text-xs text-critico">{erro}</span>}
     </span>
+  )
+}
+
+/** Os motivos de sempre, a um toque. "Outro" abre o campo. */
+const MOTIVOS_DE_ABONO = ['Folga', 'Atestado', 'Feriado', 'Ainda não trabalhava']
+
+/**
+ * "Abonar" no dia de falta: folga, atestado, feriado. O dia deixa de contar
+ * jornada e falta. As batidas não mudam — ninguém apaga batida.
+ */
+export function Abonar({ slug, colaboradorId, dia }: { slug: string; colaboradorId: string; dia: string }) {
+  const [aberto, setAberto] = useState(false)
+  const [outro, setOutro] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+  const [indo, comecar] = useTransition()
+  const router = useRouter()
+
+  const abonar = (motivo: string) =>
+    comecar(async () => {
+      setErro(null)
+      const r = await abonarAcao(slug, colaboradorId, dia, motivo)
+      if (r.erro) return setErro(r.erro)
+      setAberto(false)
+      router.refresh()
+    })
+
+  if (!aberto) {
+    return (
+      <button type="button" onClick={() => setAberto(true)} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
+        abonar
+      </button>
+    )
+  }
+  return (
+    <span className="flex w-full flex-col gap-1.5">
+      <span className="flex flex-wrap items-center gap-1.5">
+        {MOTIVOS_DE_ABONO.map((m) => (
+          <Botao key={m} tom="secundario" className="px-2 py-1 text-xs" disabled={indo} onClick={() => abonar(m)}>
+            {m}
+          </Botao>
+        ))}
+        <input
+          value={outro}
+          onChange={(e) => setOutro(e.target.value)}
+          placeholder="Outro motivo"
+          aria-label="Outro motivo do abono"
+          maxLength={120}
+          className="h-8 w-36 rounded-norte border border-borda bg-superficie px-2 text-xs text-tinta"
+        />
+        <Botao tom="principal" className="px-2 py-1 text-xs" carregando={indo} disabled={outro.trim().length < 3} onClick={() => abonar(outro)}>
+          Abonar
+        </Botao>
+        <Botao tom="discreto" className="px-2 py-1 text-xs" onClick={() => setAberto(false)}>
+          Não
+        </Botao>
+      </span>
+      {erro && <span className="text-xs text-critico">{erro}</span>}
+    </span>
+  )
+}
+
+/** Tira o abono: o dia volta a contar. */
+export function DesfazerAbono({ slug, colaboradorId, dia }: { slug: string; colaboradorId: string; dia: string }) {
+  const [erro, setErro] = useState<string | null>(null)
+  const [indo, comecar] = useTransition()
+  const router = useRouter()
+  return (
+    <span className="flex items-center gap-2">
+      <button
+        type="button"
+        disabled={indo}
+        onClick={() =>
+          comecar(async () => {
+            const r = await desfazerAbonoAcao(slug, colaboradorId, dia)
+            if (r.erro) setErro(r.erro)
+            else router.refresh()
+          })
+        }
+        className="text-xs font-semibold text-tinta-2 underline-offset-2 hover:text-critico hover:underline"
+      >
+        {indo ? 'tirando…' : 'tirar abono'}
+      </button>
+      {erro && <span className="text-xs text-critico">{erro}</span>}
+    </span>
+  )
+}
+
+/** Abonar um dia que ainda não aparece como falta: o feriado de amanhã, a folga combinada. */
+export function AbonarOutroDia({ slug, colaboradorId, hoje }: { slug: string; colaboradorId: string; hoje: string }) {
+  const [dia, setDia] = useState(hoje)
+  const [motivo, setMotivo] = useState('')
+  const [msg, setMsg] = useState<{ ok?: string; erro?: string } | null>(null)
+  const [indo, comecar] = useTransition()
+  const router = useRouter()
+  return (
+    <details className="rounded-norte border border-borda-suave px-3 py-2">
+      <summary className="cursor-pointer text-sm font-semibold text-tinta">Abonar um dia (folga, atestado, feriado)</summary>
+      <div className="mt-2 flex flex-wrap items-end gap-2">
+        <Campo rotulo="Dia" type="date" name={`abono-dia-${colaboradorId}`} value={dia} onChange={(e) => setDia(e.currentTarget.value)} />
+        <Campo
+          rotulo="Motivo"
+          name={`abono-motivo-${colaboradorId}`}
+          value={motivo}
+          onChange={(e) => setMotivo(e.currentTarget.value)}
+          placeholder="Folga, Atestado, Feriado…"
+          maxLength={120}
+        />
+        <Botao
+          tom="secundario"
+          carregando={indo}
+          disabled={motivo.trim().length < 3 || !dia}
+          onClick={() =>
+            comecar(async () => {
+              const r = await abonarAcao(slug, colaboradorId, dia, motivo)
+              setMsg(r)
+              if (!r.erro) {
+                setMotivo('')
+                router.refresh()
+              }
+            })
+          }
+        >
+          Abonar
+        </Botao>
+      </div>
+      {msg?.erro && <p className="mt-1 text-xs text-critico">{msg.erro}</p>}
+      {msg?.ok && <p className="mt-1 text-xs text-bom">{msg.ok}</p>}
+    </details>
+  )
+}
+
+/**
+ * O primeiro dia de trabalho. Antes dele não há jornada nem falta — quem foi
+ * cadastrado antes de começar não carrega falta dos dias em que não vinha.
+ */
+export function Inicio({ slug, colaboradorId, inicio, hoje }: { slug: string; colaboradorId: string; inicio: string; hoje: string }) {
+  const [editando, setEditando] = useState(false)
+  const [dia, setDia] = useState(inicio)
+  const [erro, setErro] = useState<string | null>(null)
+  const [indo, comecar] = useTransition()
+  const router = useRouter()
+  const falado = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${inicio}T12:00:00Z`))
+
+  if (!editando) {
+    return (
+      <p className="text-sm text-tinta-2">
+        Trabalha aqui desde <b className="numero text-tinta">{falado}</b>.{' '}
+        <button type="button" onClick={() => setEditando(true)} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
+          mudar
+        </button>
+      </p>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-end gap-2">
+        <Campo
+          rotulo="Primeiro dia de trabalho"
+          type="date"
+          name={`inicio-${colaboradorId}`}
+          value={dia}
+          max={hoje}
+          onChange={(e) => setDia(e.currentTarget.value)}
+          dica="Antes deste dia a folha não conta jornada nem falta."
+        />
+        <Botao
+          tom="principal"
+          carregando={indo}
+          disabled={!dia}
+          onClick={() =>
+            comecar(async () => {
+              const r = await inicioAcao(slug, colaboradorId, dia)
+              if (r.erro) return setErro(r.erro)
+              setEditando(false)
+              router.refresh()
+            })
+          }
+        >
+          Salvar
+        </Botao>
+        <Botao tom="discreto" onClick={() => setEditando(false)}>
+          Cancelar
+        </Botao>
+      </div>
+      {erro && <p className="text-xs text-critico">{erro}</p>}
+    </div>
   )
 }

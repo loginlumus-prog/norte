@@ -117,6 +117,8 @@ export type RecorrenteParaGerar = {
   ateEm: Date | null
   /** Quando foi cadastrada. Vencimento antes deste dia (na loja) não é gerado. */
   criadoEm: Date
+  /** Meses ("AAAA-MM") cujo lançamento foi excluído: não nascem de novo. */
+  pulados?: string[]
 }
 
 /**
@@ -142,6 +144,7 @@ export function aGerar(
   for (const r of recorrentes) {
     if (!r.ativo) continue
     if (feitos.has(`${r.id}|${mes}`)) continue
+    if (r.pulados?.includes(mes)) continue
     const vencimento = vencimentoNoMes(r.diaVencimento, ano, m)
     const chave = chaveDate(vencimento)
     if (r.ateEm && chave > chaveDate(r.ateEm)) continue
@@ -319,7 +322,7 @@ export async function gerarRecorrentesDoMes(sessao: Sessao, mes: string): Promis
     const recorrentes = await db.recorrente.findMany({
       where: { ativo: true, ...escopoDeLancar(sessao) },
       select: {
-        id: true, ativo: true, diaVencimento: true, ateEm: true, criadoEm: true,
+        id: true, ativo: true, diaVencimento: true, ateEm: true, criadoEm: true, pulados: true,
         categoriaId: true, unidadeId: true, tipo: true, descricao: true, valor: true, fornecedor: true,
       },
     })

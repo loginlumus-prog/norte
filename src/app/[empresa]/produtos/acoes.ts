@@ -7,7 +7,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { criarProduto, editarProduto, excluirProduto, reativarProduto, ajustarGrade, criarOpcaoDoEixo, criarEixoDaEmpresa, definirPrecosDosItens, GradeRecusada, PrecoDoItemRecusado, type EixoEscolhido } from '@/servidor/produto'
+import { criarProduto, editarProduto, excluirProduto, reativarProduto, ajustarGrade, criarOpcaoDoEixo, criarEixoDaEmpresa, renomearEixo, renomearOpcao, excluirEixo, excluirOpcao, definirPrecosDosItens, GradeRecusada, PrecoDoItemRecusado, type EixoEscolhido } from '@/servidor/produto'
 import { SemPermissao, pode, unidadesQuePodem, type Sessao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { alcanceComum, normalizarVendidoEm, vendidoEmDoGerente } from '@/servidor/catalogo-loja'
@@ -428,6 +428,38 @@ export async function novoEixo(
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para criar eixos.' }
     return { erro: recadoDoErro(e, 'Não deu para criar o eixo.') }
+  }
+}
+
+/**
+ * Arrumar os eixos da empresa pela ficha: renomear ou excluir um eixo ou uma
+ * opção. Vale para todos os produtos — a ficha avisa isso antes.
+ */
+export async function arrumarEixo(
+  slug: string,
+  pedido:
+    | { tipo: 'renomearEixo'; eixoId: string; nome: string }
+    | { tipo: 'renomearOpcao'; opcaoId: string; nome: string }
+    | { tipo: 'excluirEixo'; eixoId: string }
+    | { tipo: 'excluirOpcao'; opcaoId: string },
+): Promise<{ ok: true; nome?: string } | { erro: string }> {
+  const sessao = await exigirSessao(slug)
+  try {
+    switch (pedido.tipo) {
+      case 'renomearEixo':
+        return { ok: true, nome: (await renomearEixo(sessao, pedido.eixoId, pedido.nome)).nome }
+      case 'renomearOpcao':
+        return { ok: true, nome: (await renomearOpcao(sessao, pedido.opcaoId, pedido.nome)).valor }
+      case 'excluirEixo':
+        await excluirEixo(sessao, pedido.eixoId)
+        return { ok: true }
+      case 'excluirOpcao':
+        await excluirOpcao(sessao, pedido.opcaoId)
+        return { ok: true }
+    }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não tem permissão para mudar as variações.' }
+    return { erro: recadoDoErro(e, 'Não deu para fazer a mudança.') }
   }
 }
 

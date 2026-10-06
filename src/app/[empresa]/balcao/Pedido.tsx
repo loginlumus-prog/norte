@@ -31,6 +31,7 @@ import { PerguntaSemEstoque } from './Autorizar'
 import { fracionado, partesDaDescricao, UNIDADE } from './vitrine'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
+import { CampoValor } from './CampoValor'
 
 /* ── os itens ─────────────────────────────────────────────── */
 
@@ -558,14 +559,9 @@ export function Pagamento({
                       <span className="text-xs leading-none font-bold text-tinta-2">Recebido</span>
                       <span className="flex items-baseline gap-1">
                       <span className="text-sm font-semibold text-tinta-3">R$</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        inputMode="decimal"
-                        value={p.valor}
-                        onChange={(e) => v.mudarPago(i, Number(e.target.value))}
-                        onFocus={(e) => e.target.select()}
+                      <CampoValor
+                        valor={p.valor}
+                        aoMudar={(n) => v.mudarPago(i, n)}
                         aria-label="Valor recebido em dinheiro"
                         className="numero w-full min-w-0 bg-transparent text-xl leading-tight font-bold text-tinta focus:outline-none focus-visible:outline-none!"
                       />
@@ -663,14 +659,9 @@ export function Pagamento({
                 </span>
                 <span className="flex items-center gap-1.5">
                   {editavel && p.forma !== 'VALE' ? (
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      inputMode="decimal"
-                      value={p.valor}
-                      onChange={(e) => v.mudarPago(i, Number(e.target.value))}
-                      onFocus={(e) => e.target.select()}
+                    <CampoValor
+                      valor={p.valor}
+                      aoMudar={(n) => v.mudarPago(i, n)}
                       aria-label={`Valor em ${tituloDaForma(p)}`}
                       className="numero h-11 w-28 rounded-lg border border-borda bg-superficie px-2 text-right text-base font-bold text-tinta focus:border-marca focus:outline-none"
                     />

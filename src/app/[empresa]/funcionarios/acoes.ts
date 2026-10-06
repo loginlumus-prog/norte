@@ -10,7 +10,7 @@ import { SemPermissao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { moduloLigado, type Modulo } from '@/servidor/modulos'
 import { planoLibera } from '@/servidor/planos'
-import { ajustarPonto, anularBatida, baterPonto, lerJornada, salvarColaborador } from '@/servidor/ponto'
+import { abonarDia, ajustarPonto, anularBatida, baterPonto, definirInicio, desfazerAbono, lerJornada, salvarColaborador } from '@/servidor/ponto'
 import { registrarErro } from '@/servidor/registro'
 
 export type EstadoFicha = { erro?: string; ok?: string; vez?: number }
@@ -117,4 +117,39 @@ export async function anularBatidaAcao(slug: string, registroId: string, motivo:
   }
   revalidatePath(`/${slug}/funcionarios`)
   return { ok: 'Batida anulada. Ela continua na folha, riscada, com o motivo.' }
+}
+
+/** Ação do abono e do primeiro dia: o mesmo molde do anular. */
+async function doPonto(
+  slug: string,
+  rotulo: string,
+  f: (sessao: Awaited<ReturnType<typeof exigirSessao>>) => Promise<{ ok: true } | { ok: false; erro: string }>,
+  ok: string,
+): Promise<{ ok?: string; erro?: string }> {
+  const sessao = await exigirSessao(slug)
+  if (!(await ligado(sessao.orgId, 'ponto'))) return { erro: SEM_PONTO }
+  try {
+    const r = await f(sessao)
+    if (!r.ok) return { erro: r.erro }
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode mexer no ponto desta pessoa.' }
+    return { erro: `Não deu para salvar. Tente de novo. (código ${registrarErro(rotulo, e)})` }
+  }
+  revalidatePath(`/${slug}/funcionarios`)
+  return { ok }
+}
+
+export async function abonarAcao(slug: string, colaboradorId: string, dia: string, motivo: string) {
+  if (!idValido(colaboradorId)) return { erro: 'Pessoa inválida.' }
+  return doPonto(slug, 'ponto.abonar', (s) => abonarDia(s, { colaboradorId, dia: texto(dia, 10), motivo: texto(motivo, 200) }), 'Dia abonado.')
+}
+
+export async function desfazerAbonoAcao(slug: string, colaboradorId: string, dia: string) {
+  if (!idValido(colaboradorId)) return { erro: 'Pessoa inválida.' }
+  return doPonto(slug, 'ponto.desabonar', (s) => desfazerAbono(s, { colaboradorId, dia: texto(dia, 10) }), 'Abono tirado.')
+}
+
+export async function inicioAcao(slug: string, colaboradorId: string, dia: string) {
+  if (!idValido(colaboradorId)) return { erro: 'Pessoa inválida.' }
+  return doPonto(slug, 'ponto.inicio', (s) => definirInicio(s, { colaboradorId, dia: texto(dia, 10) }), 'Primeiro dia salvo.')
 }

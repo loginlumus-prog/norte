@@ -22,6 +22,7 @@ import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { DesfazerPagamento, Lancar, Pagar } from './Lancar'
+import { Corrigir } from './Corrigir'
 import { Recorrentes } from './Recorrentes'
 import { palavra, plural } from '@/ui/texto'
 import { registrarErro } from '@/servidor/registro'
@@ -489,14 +490,32 @@ export default async function Financeiro({
                     {
                       chave: 'acao',
                       titulo: '',
-                      largura: '6rem',
+                      largura: '9rem',
                       // O "Pagar" fica ao lado do valor, à vista no cartão.
                       destaque: true,
                       celula: (l: (typeof lancamentos)[number]) =>
-                        !podeMexer(l.unidadeId) ? null : l.pagoEm ? (
-                          <DesfazerPagamento slug={slug} id={l.id} />
-                        ) : (
-                          <Pagar slug={slug} id={l.id} hoje={hoje} />
+                        !podeMexer(l.unidadeId) ? null : (
+                          <span className="flex items-center justify-end gap-2">
+                            {l.pagoEm ? (
+                              <DesfazerPagamento slug={slug} id={l.id} />
+                            ) : (
+                              <Pagar slug={slug} id={l.id} hoje={hoje} />
+                            )}
+                            {/* O da encomenda é espelho do sinal: corrige-se pela encomenda. */}
+                            {!l.daEncomenda && (
+                              <Corrigir
+                                slug={slug}
+                                lancamento={{
+                                  id: l.id,
+                                  descricao: l.descricao,
+                                  valor: l.valor,
+                                  vencimento: l.vencimento.toISOString().slice(0, 10),
+                                  recorrente: l.recorrente,
+                                  pago: !!l.pagoEm,
+                                }}
+                              />
+                            )}
+                          </span>
                         ),
                     },
                   ]

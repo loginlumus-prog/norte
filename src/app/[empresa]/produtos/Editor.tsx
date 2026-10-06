@@ -13,10 +13,10 @@
 //    já foi vendida não apaga nada — desativa. A tela diz isso na hora, não
 //    depois do susto.
 
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao, cx } from '@/ui/base'
-import { criar, editar, novaOpcao, novoEixo, type EstadoProduto } from './acoes'
+import { arrumarEixo, criar, editar, novaOpcao, novoEixo, type EstadoProduto } from './acoes'
 import { semApagar } from '@/ui/formulario'
 import { CampoDoPin } from '@/ui/Assinar'
 
@@ -152,8 +152,147 @@ function NovaOpcao({
   )
 }
 
+/**
+ * "Arrumar": renomear e excluir o eixo e as opções dele. Mexe na EMPRESA, não
+ * só neste produto — o "oi" criado por engano aparecia em toda ficha e não
+ * havia como tirar. O que tem venda não some do histórico: o servidor arquiva.
+ */
+function ArrumarEixo({
+  eixo,
+  slug,
+  aoRenomearEixo,
+  aoRenomearOpcao,
+  aoExcluirEixo,
+  aoExcluirOpcao,
+}: {
+  eixo: EixoNaTela
+  slug: string
+  aoRenomearEixo: (nome: string) => void
+  aoRenomearOpcao: (opcaoId: string, valor: string) => void
+  aoExcluirEixo: () => void
+  aoExcluirOpcao: (opcaoId: string) => void
+}) {
+  const [erro, setErro] = useState<string | null>(null)
+  const [indo, setIndo] = useState<string | null>(null)
+  const [confirmando, setConfirmando] = useState<string | null>(null)
+
+  async function fazer(chave: string, pedido: Parameters<typeof arrumarEixo>[1], depois: (nome?: string) => void) {
+    if (indo) return
+    setIndo(chave)
+    setErro(null)
+    const r = await arrumarEixo(slug, pedido).catch(() => ({ erro: 'Sem conexão. Tente de novo.' }))
+    setIndo(null)
+    setConfirmando(null)
+    if ('erro' in r) return setErro(r.erro)
+    depois(r.nome)
+  }
+
+  const excluir = (chave: string, rotulo: string, acao: () => void) =>
+    confirmando === chave ? (
+      <span className="flex items-center gap-1.5">
+        <Botao type="button" tom="perigo" carregando={indo === chave} onClick={acao} className="h-8 py-0 text-xs">
+          Excluir mesmo
+        </Botao>
+        <Botao type="button" tom="discreto" onClick={() => setConfirmando(null)} className="h-8 py-0 text-xs">
+          Voltar
+        </Botao>
+      </span>
+    ) : (
+      <Botao type="button" tom="discreto" onClick={() => setConfirmando(chave)} aria-label={rotulo} className="h-8 py-0 text-xs text-critico">
+        Excluir
+      </Botao>
+    )
+
+  return (
+    <div className="mt-2 flex flex-col gap-2.5 rounded-norte border border-borda bg-superficie-2 p-3">
+      <p className="text-xs text-tinta-2">
+        Vale para <b>todos os produtos</b>. O que já foi vendido continua no histórico com o nome da época.
+      </p>
+      <LinhaDeNome
+        rotulo={`Nome do eixo ${eixo.nome}`}
+        inicial={eixo.nome}
+        indo={indo === 'eixo'}
+        aoSalvar={(nome) => fazer('eixo', { tipo: 'renomearEixo', eixoId: eixo.id, nome }, (n) => aoRenomearEixo(n ?? nome))}
+        depois={excluir('eixo-x', `Excluir ${eixo.nome}`, () =>
+          fazer('eixo-x', { tipo: 'excluirEixo', eixoId: eixo.id }, aoExcluirEixo),
+        )}
+      />
+      {eixo.opcoes.length > 0 && (
+        <ul className="flex flex-col gap-1.5 border-t border-borda pt-2.5">
+          {eixo.opcoes.map((o) => (
+            <li key={o.id}>
+              <LinhaDeNome
+                rotulo={`Nome de ${o.valor}`}
+                inicial={o.valor}
+                indo={indo === o.id}
+                aoSalvar={(nome) =>
+                  fazer(o.id, { tipo: 'renomearOpcao', opcaoId: o.id, nome }, (n) => aoRenomearOpcao(o.id, n ?? nome))
+                }
+                depois={excluir(`${o.id}-x`, `Excluir ${o.valor}`, () =>
+                  fazer(`${o.id}-x`, { tipo: 'excluirOpcao', opcaoId: o.id }, () => aoExcluirOpcao(o.id)),
+                )}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      {erro && <p className="text-xs text-critico">{erro}</p>}
+    </div>
+  )
+}
+
+/** Um nome editável: o botão Salvar só aparece quando o texto mudou. */
+function LinhaDeNome({
+  rotulo,
+  inicial,
+  indo,
+  aoSalvar,
+  depois,
+}: {
+  rotulo: string
+  inicial: string
+  indo: boolean
+  aoSalvar: (nome: string) => void
+  depois: ReactNode
+}) {
+  const [texto, setTexto] = useState(inicial)
+  const mudou = texto.trim() !== '' && texto.trim() !== inicial
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            if (mudou) aoSalvar(texto)
+          }
+        }}
+        maxLength={40}
+        aria-label={rotulo}
+        className={cx(CAMPO_PEQUENO, 'w-full max-w-56 flex-1')}
+      />
+      {mudou && (
+        <Botao type="button" tom="secundario" carregando={indo} onClick={() => aoSalvar(texto)} className="h-8 py-0 text-xs">
+          Salvar nome
+        </Botao>
+      )}
+      {depois}
+    </div>
+  )
+}
+
 /** Sem eixo nenhum: escolhe Sabor, Tamanho ou Cor, ou escreve o nome do eixo. */
-function NovoEixo({ slug, aoCriar }: { slug: string; aoCriar: (e: EixoNaTela) => void }) {
+function NovoEixo({
+  slug,
+  aoCriar,
+  existentes = [],
+}: {
+  slug: string
+  aoCriar: (e: EixoNaTela) => void
+  /** Os eixos que a empresa já tem: a sugestão com o mesmo nome não aparece de novo. */
+  existentes?: string[]
+}) {
   const [nome, setNome] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [indo, setIndo] = useState(false)
@@ -172,7 +311,7 @@ function NovoEixo({ slug, aoCriar }: { slug: string; aoCriar: (e: EixoNaTela) =>
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        {SUGESTOES_DE_EIXO.map((s) => (
+        {SUGESTOES_DE_EIXO.filter((s) => !existentes.some((n) => n.toLocaleLowerCase('pt-BR') === s.nome.toLocaleLowerCase('pt-BR'))).map((s) => (
           <Botao key={s.nome} type="button" tom="secundario" disabled={indo} onClick={() => criarAgora(s.nome, s.ehCor)} className="h-9 py-0">
             + {s.nome}
           </Botao>
@@ -198,6 +337,42 @@ function NovoEixo({ slug, aoCriar }: { slug: string; aoCriar: (e: EixoNaTela) =>
         </Botao>
       </div>
       {erro && <p className="text-xs text-critico">{erro}</p>}
+    </div>
+  )
+}
+
+/** Os eixos que a empresa já tem e este produto não usa, e o "criar outro". */
+function EscolherEixo({
+  fechados,
+  abrir,
+  slug,
+  aoCriar,
+  existentes,
+}: {
+  fechados: EixoNaTela[]
+  abrir: (id: string) => void
+  slug: string
+  aoCriar: (e: EixoNaTela) => void
+  existentes: string[]
+}) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      {fechados.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-semibold text-tinta-3">Já cadastrados:</span>
+            {fechados.map((e) => (
+              <Botao key={e.id} type="button" tom="secundario" onClick={() => abrir(e.id)} className="h-9 py-0">
+                + {e.nome}
+              </Botao>
+            ))}
+          </div>
+          <p className="text-xs text-tinta-3">
+            Algum criado por engano? Toque nele e depois em <b>Renomear ou excluir</b>.
+          </p>
+        </div>
+      )}
+      <NovoEixo slug={slug} aoCriar={aoCriar} existentes={existentes} />
     </div>
   )
 }
@@ -290,7 +465,25 @@ export function Editor({
     )
     setMarcadas((m) => ((m[eixoId] ?? []).includes(opcao.id) ? m : { ...m, [eixoId]: [...(m[eixoId] ?? []), opcao.id] }))
   }
-  const eixoCriado = (novo: EixoNaTela) => setEixos((es) => (es.some((e) => e.id === novo.id) ? es : [...es, novo]))
+  // Só os eixos que ESTE produto usa ficam abertos. Antes, todo eixo da
+  // empresa aparecia em toda ficha — o "ATC 10UN" de um produto aparecia no
+  // açaí, vazio, pedindo "escreva o primeiro".
+  const [abertos, setAbertos] = useState<string[]>(() =>
+    eixosDaPagina.filter((e) => (produto?.marcadas?.[e.id] ?? []).length > 0).map((e) => e.id),
+  )
+  const [arrumando, setArrumando] = useState<string | null>(null)
+  const abrir = (id: string) => setAbertos((a) => (a.includes(id) ? a : [...a, id]))
+  const fechar = (id: string) => {
+    setAbertos((a) => a.filter((x) => x !== id))
+    setMarcadas((m) => ({ ...m, [id]: [] }))
+    setArrumando((x) => (x === id ? null : x))
+  }
+  const eixoCriado = (novo: EixoNaTela) => {
+    setEixos((es) => (es.some((e) => e.id === novo.id) ? es : [...es, novo]))
+    abrir(novo.id)
+  }
+  const visiveis = eixos.filter((e) => abertos.includes(e.id))
+  const fechados = eixos.filter((e) => !abertos.includes(e.id))
 
   // A conta que a pessoa precisa ver ANTES de salvar.
   const usados = eixos.filter((e) => (marcadas[e.id] ?? []).length > 0)
@@ -525,28 +718,29 @@ export function Editor({
           </span>
         }
       >
-        {eixos.length === 0 ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-tinta-2">
-              Este produto é um item único. Para ele variar (sabor, tamanho, cor…), crie primeiro
-              <b> como ele varia</b> — é só uma vez, depois vale para todos os produtos.
-            </p>
-            {travado ? null : <NovoEixo slug={slug} aoCriar={eixoCriado} />}
-          </div>
-        ) : (
-          <>
-            {travado && <input type="hidden" name="gradeTravada" value="1" />}
-            <p className="mb-3 text-sm text-tinta-2">
+        {travado && <input type="hidden" name="gradeTravada" value="1" />}
+        <p className="mb-3 text-sm text-tinta-2">
+          {visiveis.length === 0 ? (
+            <>
+              Este produto é um item único. Para ele variar (sabor, tamanho, cor…), escolha abaixo
+              <b> como ele varia</b>.
+            </>
+          ) : (
+            <>
               Marque só o que este produto tem de verdade. Cada combinação vira um item
               contado separado no estoque, com o próprio código de etiqueta.
-            </p>
+            </>
+          )}
+        </p>
 
-            <div className="flex flex-col gap-4">
-              {eixos.map((e) => {
-                const desteEixo = marcadas[e.id] ?? []
-                return (
-                  <section key={e.id}>
-                    <h3 className="mb-2 flex items-center gap-2 text-xs font-bold tracking-wide text-tinta-3 uppercase">
+        {visiveis.length > 0 && (
+          <div className="flex flex-col gap-4">
+            {visiveis.map((e) => {
+              const desteEixo = marcadas[e.id] ?? []
+              return (
+                <section key={e.id}>
+                  <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <h3 className="flex items-center gap-2 text-xs font-bold tracking-wide text-tinta-3 uppercase">
                       {e.nome}
                       {desteEixo.length > 0 && (
                         <span className="numero rounded bg-superficie-2 px-1.5 py-px text-[10px] font-semibold text-tinta-2">
@@ -554,62 +748,110 @@ export function Editor({
                         </span>
                       )}
                     </h3>
-                    <div className="flex flex-wrap gap-1.5">
-                      {e.opcoes.map((o) => {
-                        const ligada = desteEixo.includes(o.id)
-                        return (
-                          <label
-                            key={o.id}
-                            className={cx(
-                              'flex cursor-pointer items-center gap-1.5 rounded-norte border px-2.5 py-1.5 text-sm transition-colors',
-                              ligada
-                                // Escolha é azul, como no `Marcar`: verde é situação.
-                                ? 'border-marca bg-marca-suave font-semibold text-tinta'
-                                : 'border-borda bg-superficie text-tinta-2 hover:bg-superficie-2',
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              name={`opcao_${e.id}_${o.id}`}
-                              disabled={travado}
-                              defaultChecked={ligada}
-                              onChange={(ev) => alterna(e.id, o.id, ev.currentTarget.checked)}
-                              className="size-3.5 accent-[var(--marca)]"
-                            />
-                            {o.hex && (
-                              <span
-                                aria-hidden
-                                className="size-3 rounded-full border border-borda"
-                                style={{ background: o.hex }}
-                              />
-                            )}
-                            {/* cor E texto: a bolinha sozinha exclui quem não distingue */}
-                            <span>{o.valor}</span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                    {e.opcoes.length === 0 && (
-                      <p className="text-sm text-tinta-2">
-                        Ainda não há nenhum {e.nome.toLowerCase()} cadastrado. Escreva o primeiro abaixo.
-                      </p>
+                    {!travado && (
+                      <span className="ml-auto flex items-center gap-3 text-xs font-semibold">
+                        <button
+                          type="button"
+                          onClick={() => setArrumando((x) => (x === e.id ? null : e.id))}
+                          aria-expanded={arrumando === e.id}
+                          className="text-marca underline-offset-2 hover:underline"
+                        >
+                          {arrumando === e.id ? 'Fechar' : 'Renomear ou excluir'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fechar(e.id)}
+                          className="text-tinta-2 underline-offset-2 hover:text-critico hover:underline"
+                        >
+                          Tirar deste produto
+                        </button>
+                      </span>
                     )}
-                    {!travado && <NovaOpcao eixo={e} slug={slug} aoCriar={opcaoCriada} />}
-                  </section>
-                )
-              })}
-            </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {e.opcoes.map((o) => {
+                      const ligada = desteEixo.includes(o.id)
+                      return (
+                        <label
+                          key={o.id}
+                          className={cx(
+                            'flex cursor-pointer items-center gap-1.5 rounded-norte border px-2.5 py-1.5 text-sm transition-colors',
+                            ligada
+                              // Escolha é azul, como no Marcar: verde é situação.
+                              ? 'border-marca bg-marca-suave font-semibold text-tinta'
+                              : 'border-borda bg-superficie text-tinta-2 hover:bg-superficie-2',
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            name={`opcao_${e.id}_${o.id}`}
+                            disabled={travado}
+                            defaultChecked={ligada}
+                            onChange={(ev) => alterna(e.id, o.id, ev.currentTarget.checked)}
+                            className="size-3.5 accent-[var(--marca)]"
+                          />
+                          {o.hex && (
+                            <span
+                              aria-hidden
+                              className="size-3 rounded-full border border-borda"
+                              style={{ background: o.hex }}
+                            />
+                          )}
+                          {/* cor E texto: a bolinha sozinha exclui quem não distingue */}
+                          <span>{o.valor}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {e.opcoes.length === 0 && (
+                    <p className="text-sm text-tinta-2">
+                      Ainda não há nenhum {e.nome.toLowerCase()} cadastrado. Escreva o primeiro abaixo.
+                    </p>
+                  )}
+                  {!travado && <NovaOpcao eixo={e} slug={slug} aoCriar={opcaoCriada} />}
+                  {!travado && arrumando === e.id && (
+                    <ArrumarEixo
+                      eixo={e}
+                      slug={slug}
+                      aoRenomearEixo={(nome) => setEixos((es) => es.map((x) => (x.id === e.id ? { ...x, nome } : x)))}
+                      aoRenomearOpcao={(opcaoId, valor) =>
+                        setEixos((es) =>
+                          es.map((x) =>
+                            x.id === e.id ? { ...x, opcoes: x.opcoes.map((o) => (o.id === opcaoId ? { ...o, valor } : o)) } : x,
+                          ),
+                        )
+                      }
+                      aoExcluirEixo={() => {
+                        fechar(e.id)
+                        setEixos((es) => es.filter((x) => x.id !== e.id))
+                      }}
+                      aoExcluirOpcao={(opcaoId) => {
+                        setEixos((es) =>
+                          es.map((x) => (x.id === e.id ? { ...x, opcoes: x.opcoes.filter((o) => o.id !== opcaoId) } : x)),
+                        )
+                        setMarcadas((m) => ({ ...m, [e.id]: (m[e.id] ?? []).filter((x) => x !== opcaoId) }))
+                      }}
+                    />
+                  )}
+                </section>
+              )
+            })}
+          </div>
+        )}
 
-            {!travado && (
-              <details className="mt-4 text-sm">
-                <summary className="cursor-pointer font-semibold text-marca underline-offset-2 hover:underline">
-                  Variar de outro jeito também (tamanho, cor…)
-                </summary>
-                <div className="mt-2.5">
-                  <NovoEixo slug={slug} aoCriar={eixoCriado} />
-                </div>
-              </details>
-            )}
+        {!travado && visiveis.length === 0 && (
+          <EscolherEixo fechados={fechados} abrir={abrir} slug={slug} aoCriar={eixoCriado} existentes={eixos.map((e) => e.nome)} />
+        )}
+        {!travado && visiveis.length > 0 && (
+          <details className="mt-4 text-sm">
+            <summary className="cursor-pointer font-semibold text-marca underline-offset-2 hover:underline">
+              Variar de outro jeito também (tamanho, cor…)
+            </summary>
+            <div className="mt-2.5">
+              <EscolherEixo fechados={fechados} abrir={abrir} slug={slug} aoCriar={eixoCriado} existentes={eixos.map((e) => e.nome)} />
+            </div>
+          </details>
+        )}
 
             {usados.length > 1 && (
               <p className="mt-4 text-sm text-tinta-2">
@@ -628,8 +870,6 @@ export function Editor({
                 </Aviso>
               </div>
             )}
-          </>
-        )}
       </Cartao>
 
       {produto && (

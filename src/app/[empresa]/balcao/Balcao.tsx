@@ -58,6 +58,7 @@ import { DadosDoCartao, DadosDoCrediario } from './Pedido'
 import { plural } from '@/ui/texto'
 import { usePalavras } from './palavras'
 import { escolhaDoEnter } from '@/servidor/etiqueta'
+import { CampoValor } from './CampoValor'
 
 const MEDIDA: Record<string, string> = {
   UN: 'un', KG: 'kg', G: 'g', L: 'l', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx',
@@ -869,12 +870,9 @@ export function Balcao({
                     {tituloDaForma(p)}
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      step={0.01}
-                      min={0}
-                      value={p.valor}
-                      onChange={(e) => mudarPago(i, Number(e.target.value))}
+                    <CampoValor
+                      valor={p.valor}
+                      aoMudar={(n) => mudarPago(i, n)}
                       aria-label={`Valor recebido em ${p.forma}`}
                       className="numero w-24 rounded border border-borda bg-superficie px-2 py-1 text-sm font-semibold text-tinta"
                     />

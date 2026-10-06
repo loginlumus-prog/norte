@@ -374,11 +374,16 @@ async function eixoCom(db: BancoDaOrg, orgId: string, nomes: string[], nomeNovo:
     })
     eixo = { ...criado, opcoes: [] }
   }
+  // A planilha usou um eixo (ou opção) arquivado: ele volta para a tela.
+  await db.eixo.updateMany({ where: { id: eixo.id, arquivadoEm: { not: null } }, data: { arquivadoEm: null } })
   const opcoes = new Map(eixo.opcoes.map((o) => [chaveDoNome(o.valor), o.id]))
   let ordem = eixo.opcoes.reduce((m, o) => Math.max(m, o.ordem), -1) + 1
   for (const valor of valores) {
     const k = chaveDoNome(valor)
-    if (opcoes.has(k)) continue
+    if (opcoes.has(k)) {
+      await db.opcao.updateMany({ where: { id: opcoes.get(k), arquivadoEm: { not: null } }, data: { arquivadoEm: null } })
+      continue
+    }
     const o = await db.opcao.create({ data: { orgId, eixoId: eixo.id, valor, ordem: ordem++ }, select: { id: true } })
     opcoes.set(k, o.id)
   }

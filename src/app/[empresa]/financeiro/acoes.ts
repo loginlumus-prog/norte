@@ -6,7 +6,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { lancar, marcarPago } from '@/servidor/financeiro'
+import { editarLancamento, excluirLancamento, lancar, marcarPago } from '@/servidor/financeiro'
 import { alternarRecorrente, criarRecorrente, editarRecorrente, garantirRecorrentes } from '@/servidor/recorrentes'
 import { SemPermissao } from '@/servidor/permissao'
 import { lerDinheiro } from '@/servidor/dinheiro'
@@ -103,6 +103,42 @@ export async function desfazerPagamento(slug: string, id: string): Promise<{ err
   } catch (e) {
     if (e instanceof SemPermissao) return { erro: 'Você não pode mexer nesta conta.' }
     return { erro: recadoDoErro(e, 'Não deu para desfazer.') }
+  }
+  revalidatePath(`/${slug}/financeiro`)
+  return {}
+}
+
+/** Corrige descrição, valor e vencimento ("1.250,00" e "2026-10-05" como a tela manda). */
+export async function corrigirLancamento(
+  slug: string,
+  id: string,
+  campos: { descricao: string; valor: string; vencimento: string },
+): Promise<{ erro?: string }> {
+  const s = await exigirSessao(slug)
+  if (typeof id !== 'string' || !/^[\w-]{1,64}$/.test(id)) return { erro: 'Conta inválida.' }
+  const valor = lerDinheiro(String(campos?.valor ?? ''))
+  if (valor === null) return { erro: 'O valor não é um número. Use vírgula para os centavos: 1.250,00.' }
+  const dia = String(campos?.vencimento ?? '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || diaDaColuna(colunaDoDia(dia)) !== dia) return { erro: 'Essa data não existe.' }
+  try {
+    await editarLancamento(s, id, { descricao: String(campos?.descricao ?? ''), valor, vencimento: colunaDoDia(dia) })
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode mexer nesta conta.' }
+    return { erro: recadoDoErro(e, 'Não deu para corrigir.') }
+  }
+  revalidatePath(`/${slug}/financeiro`)
+  return {}
+}
+
+/** Exclui o lançamento. A auditoria guarda o que era e o motivo. */
+export async function excluirLancamentoAcao(slug: string, id: string, motivo: string): Promise<{ erro?: string }> {
+  const s = await exigirSessao(slug)
+  if (typeof id !== 'string' || !/^[\w-]{1,64}$/.test(id)) return { erro: 'Conta inválida.' }
+  try {
+    await excluirLancamento(s, id, String(motivo ?? ''))
+  } catch (e) {
+    if (e instanceof SemPermissao) return { erro: 'Você não pode mexer nesta conta.' }
+    return { erro: recadoDoErro(e, 'Não deu para excluir.') }
   }
   revalidatePath(`/${slug}/financeiro`)
   return {}

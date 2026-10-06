@@ -137,9 +137,11 @@ export default async function TelaTarefas({
   const redeAberta = liberado(plano, 'tarefas.rede')
   const rede = verRede && redeAberta ? await tarefasDaRede(sessao, onde.ids) : []
 
-  // Só o que é dela, se pediu. A tira conta o que está na tela.
+  // Só o que é dela, se pediu — e o que não tem dono, que ela também pode
+  // fazer (ver `podeMexerNaTarefa`). Sem isso, o "conferir os freezers" sem
+  // responsável sumia de todo mundo. A tira conta o que está na tela.
   const tarefasVisiveis = completo
-    ? completo.tarefas.filter((t) => !minhas || t.responsavelId === sessao.usuarioId)
+    ? completo.tarefas.filter((t) => !minhas || t.responsavelId === sessao.usuarioId || t.responsavelId === null)
     : []
   const resumo = resumir(tarefasVisiveis, hoje)
 

@@ -29,7 +29,7 @@ import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Aviso, Cartao, Situacao, Vazio, cx } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { Ficha } from './Ficha'
-import { Ajuste, Anular, BaterPonto } from './Ponto'
+import { AbonarOutroDia, Abonar, Ajuste, Anular, BaterPonto, DesfazerAbono, Inicio } from './Ponto'
 
 export const metadata: Metadata = { title: 'Funcionários' }
 
@@ -88,6 +88,7 @@ export default async function Funcionarios({
   const doMes = new Map(resumo.map((r) => [r.colaboradorId, r]))
   const pessoaPedida = q.pessoa && /^[\w-]{1,64}$/.test(q.pessoa) ? q.pessoa : meu && !verHoras ? meu.id : null
   const folha = pontoLigado && pessoaPedida ? await folhaDe(sessao, pessoaPedida, mes, agora) : null
+  const gereEsta = !!folha && podeNoColaborador(sessao, 'ponto.gerir', folha.colaborador)
   const editando = podeGerir && q.editar ? (pessoas.find((p) => p.id === q.editar) ?? null) : null
   const contas = podeGerir ? await contasSemFicha(sessao, editando?.usuarioId ?? null) : []
   const podeSemLoja = unidadesQuePodem(sessao, 'equipe.gerir') === 'todas'
@@ -186,15 +187,20 @@ export default async function Funcionarios({
             <p className="text-sm text-bom">Trabalhando agora, desde {horaEmSP(folha.folha.aberto.entrada)}.</p>
           )}
 
-          {folha.folha.dias.some((d) => d.turnos.length > 0 || d.falta) ? (
+          {gereEsta && <Inicio slug={slug} colaboradorId={folha.colaborador.id} inicio={folha.colaborador.inicio} hoje={hoje} />}
+
+          {folha.folha.dias.some((d) => d.turnos.length > 0 || d.falta || d.abono) ? (
             <ul className="flex flex-col divide-y divide-borda-suave">
-              {[...folha.folha.dias].reverse().filter((d) => d.turnos.length > 0 || d.falta).map((d) => (
+              {[...folha.folha.dias].reverse().filter((d) => d.turnos.length > 0 || d.falta || d.abono).map((d) => (
                 <li key={d.dia} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-start gap-3 py-2 text-sm">
                   <span className="numero font-semibold text-tinta">
                     {semanaCurta(d.dia)} {diaDoMes(d.dia)}
                   </span>
                   <span className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-tinta-2">
                     {d.falta && <Situacao nivel="critico">falta</Situacao>}
+                    {d.abono && <Situacao nivel="neutro">abonado: {d.abono}</Situacao>}
+                    {gereEsta && d.falta && <Abonar slug={slug} colaboradorId={folha.colaborador.id} dia={d.dia} />}
+                    {gereEsta && d.abono && <DesfazerAbono slug={slug} colaboradorId={folha.colaborador.id} dia={d.dia} />}
                     {d.turnos.map((t, i) => (
                       <span key={i} className="numero">
                         {t.entrada ? horaEmSP(t.entrada) : '—'} → {t.saida ? horaEmSP(t.saida) : t.situacao === 'aberto' ? 'agora' : '—'}
@@ -239,7 +245,8 @@ export default async function Funcionarios({
               </ul>
             </details>
           )}
-          {podeNoColaborador(sessao, 'ponto.gerir', folha.colaborador) && <Ajuste slug={slug} colaboradorId={folha.colaborador.id} hoje={hoje} />}
+          {gereEsta && <Ajuste slug={slug} colaboradorId={folha.colaborador.id} hoje={hoje} />}
+          {gereEsta && <AbonarOutroDia slug={slug} colaboradorId={folha.colaborador.id} hoje={hoje} />}
         </Cartao>
       )}
       {pontoLigado && q.pessoa && !folha && <Aviso nivel="neutro">Essa folha não abre para você.</Aviso>}

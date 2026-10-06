@@ -407,6 +407,7 @@ CREATE TABLE "eixos" (
     "nome" TEXT NOT NULL,
     "ordem" INTEGER NOT NULL DEFAULT 0,
     "eh_cor" BOOLEAN NOT NULL DEFAULT false,
+    "arquivado_em" TIMESTAMP(3),
 
     CONSTRAINT "eixos_pkey" PRIMARY KEY ("id")
 );
@@ -419,6 +420,7 @@ CREATE TABLE "opcoes" (
     "valor" TEXT NOT NULL,
     "ordem" INTEGER NOT NULL DEFAULT 0,
     "hex" TEXT,
+    "arquivado_em" TIMESTAMP(3),
 
     CONSTRAINT "opcoes_pkey" PRIMARY KEY ("id")
 );
@@ -865,6 +867,7 @@ CREATE TABLE "recorrentes" (
     "fornecedor" TEXT,
     "ativo" BOOLEAN NOT NULL DEFAULT true,
     "ate_em" DATE,
+    "pulados" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "recorrentes_pkey" PRIMARY KEY ("id")
@@ -1253,11 +1256,25 @@ CREATE TABLE "colaboradores" (
     "telefone" TEXT,
     "atende" BOOLEAN NOT NULL DEFAULT false,
     "jornada_min" INTEGER[] DEFAULT ARRAY[]::INTEGER[],
+    "inicio_em" DATE,
     "ativo" BOOLEAN NOT NULL DEFAULT true,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizado_em" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "colaboradores_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "abonos_ponto" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "colaborador_id" TEXT NOT NULL,
+    "dia" DATE NOT NULL,
+    "motivo" TEXT NOT NULL,
+    "quem" TEXT NOT NULL,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "abonos_ponto_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1998,6 +2015,12 @@ CREATE UNIQUE INDEX "colaboradores_usuario_id_key" ON "colaboradores"("usuario_i
 CREATE INDEX "colaboradores_org_id_ativo_idx" ON "colaboradores"("org_id", "ativo");
 
 -- CreateIndex
+CREATE INDEX "abonos_ponto_org_id_idx" ON "abonos_ponto"("org_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "abonos_ponto_colaborador_id_dia_key" ON "abonos_ponto"("colaborador_id", "dia");
+
+-- CreateIndex
 CREATE INDEX "registros_ponto_org_id_colaborador_id_em_idx" ON "registros_ponto"("org_id", "colaborador_id", "em");
 
 -- CreateIndex
@@ -2533,6 +2556,12 @@ ALTER TABLE "colaboradores" ADD CONSTRAINT "colaboradores_unidade_id_fkey" FOREI
 
 -- AddForeignKey
 ALTER TABLE "colaboradores" ADD CONSTRAINT "colaboradores_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "abonos_ponto" ADD CONSTRAINT "abonos_ponto_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "abonos_ponto" ADD CONSTRAINT "abonos_ponto_colaborador_id_fkey" FOREIGN KEY ("colaborador_id") REFERENCES "colaboradores"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "registros_ponto" ADD CONSTRAINT "registros_ponto_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

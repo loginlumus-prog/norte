@@ -563,10 +563,14 @@ export async function criarOpcaoDoEixo(
   return comoOrg(sessao.orgId, async (db) => {
     const eixo = await db.eixo.findUnique({ where: { id: eixoId }, select: { id: true, nome: true } })
     if (!eixo) throw new EixoRecusado('Este eixo não existe mais. Recarregue a página.')
-    const todas = await db.opcao.findMany({ where: { eixoId }, select: { id: true, valor: true, hex: true, ordem: true } })
+    const todas = await db.opcao.findMany({ where: { eixoId }, select: { id: true, valor: true, hex: true, ordem: true, arquivadoEm: true } })
     const igual = todas.find((o) => o.valor.toLocaleLowerCase('pt-BR') === valor.toLocaleLowerCase('pt-BR'))
-    if (igual) return { id: igual.id, valor: igual.valor, hex: igual.hex }
-    if (todas.length >= MAX_OPCOES_POR_EIXO) throw new EixoRecusado(`Já são ${MAX_OPCOES_POR_EIXO} opções neste eixo.`)
+    if (igual) {
+      // Arquivada e escrita de novo: volta, com o mesmo id (e o histórico dela).
+      if (igual.arquivadoEm) await db.opcao.update({ where: { id: igual.id }, data: { arquivadoEm: null } })
+      return { id: igual.id, valor: igual.valor, hex: igual.hex }
+    }
+    if (todas.filter((o) => !o.arquivadoEm).length >= MAX_OPCOES_POR_EIXO) throw new EixoRecusado(`Já são ${MAX_OPCOES_POR_EIXO} opções neste eixo.`)
 
     const nova = await db.opcao.create({
       data: { orgId: sessao.orgId, eixoId, valor, hex: cor, ordem: Math.max(-1, ...todas.map((o) => o.ordem)) + 1 },
@@ -600,11 +604,17 @@ export async function criarEixoDaEmpresa(
 
   return comoOrg(sessao.orgId, async (db) => {
     const todos = await db.eixo.findMany({
-      select: { id: true, nome: true, ehCor: true, ordem: true, opcoes: { select: { id: true, valor: true, hex: true }, orderBy: { ordem: 'asc' } } },
+      select: {
+        id: true, nome: true, ehCor: true, ordem: true, arquivadoEm: true,
+        opcoes: { where: { arquivadoEm: null }, select: { id: true, valor: true, hex: true }, orderBy: { ordem: 'asc' } },
+      },
     })
     const igual = todos.find((e) => e.nome.toLocaleLowerCase('pt-BR') === nome.toLocaleLowerCase('pt-BR'))
-    if (igual) return { id: igual.id, nome: igual.nome, ehCor: igual.ehCor, opcoes: igual.opcoes }
-    if (todos.length >= MAX_EIXOS) throw new EixoRecusado(`A empresa já tem ${MAX_EIXOS} eixos. Use um dos que existem.`)
+    if (igual) {
+      if (igual.arquivadoEm) await db.eixo.update({ where: { id: igual.id }, data: { arquivadoEm: null } })
+      return { id: igual.id, nome: igual.nome, ehCor: igual.ehCor, opcoes: igual.opcoes }
+    }
+    if (todos.filter((e) => !e.arquivadoEm).length >= MAX_EIXOS) throw new EixoRecusado(`A empresa já tem ${MAX_EIXOS} eixos. Use um dos que existem.`)
 
     const novo = await db.eixo.create({
       data: { orgId: sessao.orgId, nome, ehCor, ordem: Math.max(-1, ...todos.map((e) => e.ordem)) + 1 },
@@ -623,6 +633,150 @@ export async function criarEixoDaEmpresa(
       },
     })
     return { ...novo, opcoes: [] }
+  })
+}
+
+/** Os produtos à venda que ainda têm item com estas opções — para a mensagem dizer onde. */
+async function produtosComAsOpcoes(db: BancoDaOrg, opcaoIds: string[]) {
+  const vs = await db.variacaoOpcao.findMany({
+    where: { opcaoId: { in: opcaoIds } },
+    select: { variacao: { select: { ativa: true, produto: { select: { nome: true, ativo: true } } } } },
+  })
+  const ativos = new Set<string>()
+  for (const v of vs) if (v.variacao.ativa && v.variacao.produto.ativo) ativos.add(v.variacao.produto.nome)
+  return { emUso: [...ativos].sort((a, b) => a.localeCompare(b, 'pt-BR')), noHistorico: vs.length > 0 }
+}
+
+const listaCurta = (nomes: string[]) =>
+  nomes.length <= 3 ? nomes.join(', ') : `${nomes.slice(0, 3).join(', ')} e mais ${nomes.length - 3}`
+
+/** Troca o nome de um eixo (Sabor → Sabores). Os itens passam a mostrar o nome novo. */
+export async function renomearEixo(sessao: Sessao, eixoId: string, nomeBruto: string): Promise<{ id: string; nome: string }> {
+  exigir(sessao, 'produto.editar')
+  const nome = limpo(nomeBruto).slice(0, 30)
+  if (!nome) throw new EixoRecusado('Escreva o nome do eixo.')
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const eixo = await db.eixo.findUnique({ where: { id: eixoId }, select: { id: true, nome: true } })
+    if (!eixo) throw new EixoRecusado('Este eixo não existe mais. Recarregue a página.')
+    if (eixo.nome === nome) return eixo
+    const outro = await db.eixo.findFirst({
+      where: { id: { not: eixoId }, nome: { equals: nome, mode: 'insensitive' } },
+      select: { id: true },
+    })
+    if (outro) throw new EixoRecusado(`Já existe um eixo chamado "${nome}".`)
+    await db.eixo.update({ where: { id: eixoId }, data: { nome } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId, usuarioId: sessao.usuarioId, quem: sessao.nome,
+        acao: 'produto.eixo.renomeou', alvoTipo: 'eixo', alvoId: eixoId, alvoNome: nome,
+        antes: { nome: eixo.nome }, depois: { nome },
+      },
+    })
+    return { id: eixoId, nome }
+  })
+}
+
+/** Troca o nome de uma opção (Chocolat → Chocolate). As vendas antigas guardam o texto da época. */
+export async function renomearOpcao(sessao: Sessao, opcaoId: string, valorBruto: string): Promise<{ id: string; valor: string }> {
+  exigir(sessao, 'produto.editar')
+  const valor = limpo(valorBruto).slice(0, 40)
+  if (!valor) throw new EixoRecusado('Escreva o nome da opção.')
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const op = await db.opcao.findUnique({
+      where: { id: opcaoId },
+      select: { id: true, valor: true, eixoId: true, eixo: { select: { nome: true } } },
+    })
+    if (!op) throw new EixoRecusado('Esta opção não existe mais. Recarregue a página.')
+    if (op.valor === valor) return { id: op.id, valor }
+    const outra = await db.opcao.findFirst({
+      where: { eixoId: op.eixoId, id: { not: opcaoId }, valor: { equals: valor, mode: 'insensitive' } },
+      select: { id: true },
+    })
+    if (outra) throw new EixoRecusado(`Já existe "${valor}" em ${op.eixo.nome.toLowerCase()}.`)
+    await db.opcao.update({ where: { id: opcaoId }, data: { valor } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId, usuarioId: sessao.usuarioId, quem: sessao.nome,
+        acao: 'produto.opcao.renomeou', alvoTipo: 'eixo', alvoId: op.eixoId, alvoNome: `${op.eixo.nome}: ${valor}`,
+        antes: { valor: op.valor }, depois: { valor },
+      },
+    })
+    return { id: op.id, valor }
+  })
+}
+
+/**
+ * Tira uma opção da empresa ("oi", criada por engano).
+ *
+ * Nunca usada: apaga. Só em item antigo, já desmarcado (com venda no
+ * histórico): ARQUIVA — some das telas, e a venda antiga continua dizendo o
+ * que foi vendido. Marcada num produto à venda: recusa, dizendo qual.
+ */
+export async function excluirOpcao(sessao: Sessao, opcaoId: string): Promise<{ como: 'apagada' | 'arquivada' }> {
+  exigir(sessao, 'produto.editar')
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const op = await db.opcao.findUnique({
+      where: { id: opcaoId },
+      select: { id: true, valor: true, eixoId: true, eixo: { select: { nome: true } } },
+    })
+    if (!op) return { como: 'apagada' as const }
+    const uso = await produtosComAsOpcoes(db, [opcaoId])
+    if (uso.emUso.length > 0) {
+      throw new EixoRecusado(
+        `"${op.valor}" está marcado em ${listaCurta(uso.emUso)}. Desmarque nesses produtos e salve antes de excluir.`,
+      )
+    }
+    const como = uso.noHistorico ? ('arquivada' as const) : ('apagada' as const)
+    if (como === 'arquivada') await db.opcao.update({ where: { id: opcaoId }, data: { arquivadoEm: new Date() } })
+    else await db.opcao.delete({ where: { id: opcaoId } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId, usuarioId: sessao.usuarioId, quem: sessao.nome,
+        acao: como === 'apagada' ? 'produto.opcao.apagou' : 'produto.opcao.arquivou',
+        alvoTipo: 'eixo', alvoId: op.eixoId, alvoNome: `${op.eixo.nome}: ${op.valor}`,
+        antes: { valor: op.valor },
+      },
+    })
+    return { como }
+  })
+}
+
+/** Tira um eixo inteiro da empresa ("ATC 10UN"). Mesmas regras da opção, para todas as opções dele. */
+export async function excluirEixo(sessao: Sessao, eixoId: string): Promise<{ como: 'apagado' | 'arquivado' }> {
+  exigir(sessao, 'produto.editar')
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const eixo = await db.eixo.findUnique({
+      where: { id: eixoId },
+      select: {
+        id: true, nome: true,
+        opcoes: { select: { id: true } },
+        produtos: { select: { produto: { select: { nome: true, ativo: true } } } },
+      },
+    })
+    if (!eixo) return { como: 'apagado' as const }
+    const uso = await produtosComAsOpcoes(db, eixo.opcoes.map((o) => o.id))
+    const emUso = [...new Set([...uso.emUso, ...eixo.produtos.filter((p) => p.produto.ativo).map((p) => p.produto.nome)])]
+    if (emUso.length > 0) {
+      throw new EixoRecusado(
+        `${eixo.nome} está em uso em ${listaCurta(emUso)}. Desmarque as opções nesses produtos e salve antes de excluir.`,
+      )
+    }
+    const como = uso.noHistorico || eixo.produtos.length > 0 ? ('arquivado' as const) : ('apagado' as const)
+    if (como === 'arquivado') await db.eixo.update({ where: { id: eixoId }, data: { arquivadoEm: new Date() } })
+    else await db.eixo.delete({ where: { id: eixoId } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId, usuarioId: sessao.usuarioId, quem: sessao.nome,
+        acao: como === 'apagado' ? 'produto.eixo.apagou' : 'produto.eixo.arquivou',
+        alvoTipo: 'eixo', alvoId: eixoId, alvoNome: eixo.nome,
+        antes: { nome: eixo.nome, opcoes: eixo.opcoes.length },
+      },
+    })
+    return { como }
   })
 }
 
@@ -1094,10 +1248,11 @@ export async function eixosDaEmpresa(sessao: Sessao) {
 
   return comoOrg(sessao.orgId, (db) =>
     db.eixo.findMany({
+      where: { arquivadoEm: null },
       orderBy: { ordem: 'asc' },
       select: {
         id: true, nome: true, ehCor: true,
-        opcoes: { orderBy: { ordem: 'asc' }, select: { id: true, valor: true, hex: true } },
+        opcoes: { where: { arquivadoEm: null }, orderBy: { ordem: 'asc' }, select: { id: true, valor: true, hex: true } },
       },
     }),
   )

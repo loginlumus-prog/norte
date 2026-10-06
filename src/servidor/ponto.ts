@@ -30,7 +30,7 @@
 import type { OrigemPonto, TipoPonto } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, SemPermissao, unidadesQuePodem, type Capacidade, type Sessao } from './permissao'
-import { diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
+import { colunaDoDia, diaDaColuna, diaEmSP, inicioDoDiaEmSP, somarDias } from './dia'
 import { deSP, horaEmSP } from './encomenda'
 import { soDigitos } from './cliente'
 
@@ -118,6 +118,8 @@ export type DiaDaFolha = {
   falta: boolean
   /** Turno sem saída ou saída sem entrada: alguém precisa ajustar. */
   pendente: boolean
+  /** Dia abonado (folga, atestado, feriado): o motivo. A jornada do dia vira zero. */
+  abono: string | null
   turnos: Turno[]
 }
 
@@ -159,11 +161,21 @@ const semanaDe = (dia: string) => new Date(`${dia}T12:00:00Z`).getUTCDay()
  *
  * `jornadaMin` tem sete posições (domingo a sábado); vazia = sem jornada.
  *
- * `desde` é o dia em que a ficha nasceu: antes dele a pessoa não trabalhava
- * aqui, e o dia não tem jornada nem falta — a contratada no dia 20 não chega
- * com treze faltas.
+ * `desde` é o primeiro dia de trabalho (ou o do cadastro): antes dele a pessoa
+ * não trabalhava aqui, e o dia não tem jornada nem falta — a contratada no
+ * dia 20 não chega com treze faltas.
+ *
+ * `abonos` são os dias que não contam (folga, atestado, feriado), com o motivo:
+ * a jornada do dia vira zero, e o dia sem batida deixa de ser falta.
  */
-export function folhaDoMes(batidas: Batida[], jornadaMin: readonly number[], mes: string, agora: Date, desde?: string): Folha {
+export function folhaDoMes(
+  batidas: Batida[],
+  jornadaMin: readonly number[],
+  mes: string,
+  agora: Date,
+  desde?: string,
+  abonos?: ReadonlyMap<string, string>,
+): Folha {
   const hoje = diaEmSP(agora)
   const turnos = montarTurnos(batidas, agora)
   const porDia = new Map<string, Turno[]>()
@@ -176,7 +188,8 @@ export function folhaDoMes(batidas: Batida[], jornadaMin: readonly number[], mes
   const dias: DiaDaFolha[] = []
   const totais = { trabalhado: 0, previsto: 0, previstoMes: 0, extras: 0, faltas: 0, pendencias: 0, diferenca: 0 }
   for (const dia of diasDoMes(mes)) {
-    const previsto = temJornada && (!desde || dia >= desde) ? Math.max(0, jornadaMin[semanaDe(dia)] ?? 0) : 0
+    const abono = abonos?.get(dia) ?? null
+    const previsto = temJornada && !abono && (!desde || dia >= desde) ? Math.max(0, jornadaMin[semanaDe(dia)] ?? 0) : 0
     totais.previstoMes += previsto
     if (dia > hoje) continue
     const ts = porDia.get(dia) ?? []
@@ -189,7 +202,7 @@ export function folhaDoMes(batidas: Batida[], jornadaMin: readonly number[], mes
     totais.extras += extra
     if (falta) totais.faltas++
     if (pendente) totais.pendencias++
-    dias.push({ dia, previsto, trabalhado, extra, falta, pendente, turnos: ts })
+    dias.push({ dia, previsto, trabalhado, extra, falta, pendente, abono, turnos: ts })
   }
   totais.diferenca = totais.trabalhado - totais.previsto
   const ultimo = turnos.at(-1)
@@ -437,7 +450,27 @@ export async function contasSemFicha(sessao: Sessao, incluir?: string | null) {
 // AS BATIDAS
 // ─────────────────────────────────────────────────────────────
 
-const SELECT_COLAB = { id: true, nome: true, unidadeId: true, usuarioId: true, ativo: true, jornadaMin: true, criadoEm: true } as const
+const SELECT_COLAB = { id: true, nome: true, unidadeId: true, usuarioId: true, ativo: true, jornadaMin: true, criadoEm: true, inicioEm: true } as const
+
+/** O primeiro dia de trabalho: o escolhido na ficha, ou o do cadastro. */
+const desdeDe = (c: { criadoEm: Date; inicioEm: Date | null }) => (c.inicioEm ? diaDaColuna(c.inicioEm) : diaEmSP(c.criadoEm))
+
+/** Os dias abonados de várias pessoas entre dois dias ('AAAA-MM-DD'), por pessoa. */
+async function abonosDe(db: BancoDaOrg, colaboradorIds: string[], de: string, ate: string) {
+  const linhas = colaboradorIds.length
+    ? await db.abonoPonto.findMany({
+        where: { colaboradorId: { in: colaboradorIds }, dia: { gte: colunaDoDia(de), lte: colunaDoDia(ate) } },
+        select: { colaboradorId: true, dia: true, motivo: true },
+      })
+    : []
+  const por = new Map<string, Map<string, string>>()
+  for (const l of linhas) {
+    const m = por.get(l.colaboradorId) ?? new Map<string, string>()
+    m.set(diaDaColuna(l.dia), l.motivo)
+    por.set(l.colaboradorId, m)
+  }
+  return por
+}
 
 async function batidasDe(db: BancoDaOrg, colaboradorId: string, de: Date, ate: Date): Promise<(Batida & { origem: OrigemPonto; quem: string; motivo: string | null; anuladoEm: Date | null; motivoAnulacao: string | null; anuladoPor: string | null })[]> {
   const linhas = await db.registroPonto.findMany({
@@ -590,6 +623,105 @@ export async function anularBatida(
   })
 }
 
+const DIA = /^\d{4}-\d{2}-\d{2}$/
+const diaQueExiste = (dia: string) => DIA.test(dia) && diaDaColuna(colunaDoDia(dia)) === dia
+
+/**
+ * Abona um dia: folga, atestado, feriado, "ainda não trabalhava". A jornada
+ * do dia vira zero e o dia sem batida deixa de ser falta. As batidas do dia,
+ * se houver, continuam contando como trabalhadas.
+ *
+ * Abonar de novo o mesmo dia troca o motivo.
+ */
+export async function abonarDia(
+  sessao: Sessao,
+  p: { colaboradorId: string; dia: string; motivo: string },
+  agora = new Date(),
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  exigir(sessao, 'ponto.gerir')
+  const motivo = limpar(p.motivo, 120)
+  if (motivo.length < 3) return { ok: false, erro: 'Escreva o motivo (folga, atestado, feriado…).' }
+  if (!diaQueExiste(p.dia)) return { ok: false, erro: 'Escolha um dia que exista.' }
+  if (p.dia > somarDias(diaEmSP(agora), 60)) return { ok: false, erro: 'Abone no máximo 60 dias para frente.' }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const c = await db.colaborador.findUnique({ where: { id: p.colaboradorId }, select: SELECT_COLAB })
+    if (!c) return { ok: false as const, erro: 'Essa pessoa não foi encontrada.' }
+    if (!podeNoColaborador(sessao, 'ponto.gerir', c)) throw new SemPermissao('ponto.gerir', c.unidadeId ?? undefined)
+    const dia = colunaDoDia(p.dia)
+    await db.abonoPonto.upsert({
+      where: { colaboradorId_dia: { colaboradorId: c.id, dia } },
+      create: { orgId: sessao.orgId, colaboradorId: c.id, dia, motivo, quem: sessao.nome },
+      update: { motivo, quem: sessao.nome },
+    })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId, unidadeId: c.unidadeId, usuarioId: sessao.usuarioId, quem: sessao.nome,
+        acao: 'ponto.abonou', alvoTipo: 'colaborador', alvoId: c.id, alvoNome: c.nome, motivo,
+        depois: { dia: p.dia },
+      },
+    })
+    return { ok: true as const }
+  })
+}
+
+/** Tira o abono: o dia volta a contar a jornada (e a falta, se não houve batida). */
+export async function desfazerAbono(
+  sessao: Sessao,
+  p: { colaboradorId: string; dia: string },
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  exigir(sessao, 'ponto.gerir')
+  if (!diaQueExiste(p.dia)) return { ok: false, erro: 'Dia inválido.' }
+  return comoOrg(sessao.orgId, async (db) => {
+    const c = await db.colaborador.findUnique({ where: { id: p.colaboradorId }, select: SELECT_COLAB })
+    if (!c) return { ok: false as const, erro: 'Essa pessoa não foi encontrada.' }
+    if (!podeNoColaborador(sessao, 'ponto.gerir', c)) throw new SemPermissao('ponto.gerir', c.unidadeId ?? undefined)
+    const antes = await db.abonoPonto.findUnique({
+      where: { colaboradorId_dia: { colaboradorId: c.id, dia: colunaDoDia(p.dia) } },
+      select: { id: true, motivo: true },
+    })
+    if (!antes) return { ok: true as const }
+    await db.abonoPonto.delete({ where: { id: antes.id } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId, unidadeId: c.unidadeId, usuarioId: sessao.usuarioId, quem: sessao.nome,
+        acao: 'ponto.desabonou', alvoTipo: 'colaborador', alvoId: c.id, alvoNome: c.nome,
+        antes: { dia: p.dia, motivo: antes.motivo },
+      },
+    })
+    return { ok: true as const }
+  })
+}
+
+/**
+ * O primeiro dia de trabalho. Antes dele a folha não cobra jornada nem
+ * falta. Sem isto valia o dia do cadastro — quem foi cadastrado antes de
+ * começar chegava com faltas de dias em que nem trabalhava aqui.
+ */
+export async function definirInicio(
+  sessao: Sessao,
+  p: { colaboradorId: string; dia: string },
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  exigir(sessao, 'ponto.gerir')
+  if (!diaQueExiste(p.dia)) return { ok: false, erro: 'Escolha um dia que exista.' }
+  return comoOrg(sessao.orgId, async (db) => {
+    const c = await db.colaborador.findUnique({ where: { id: p.colaboradorId }, select: SELECT_COLAB })
+    if (!c) return { ok: false as const, erro: 'Essa pessoa não foi encontrada.' }
+    if (!podeNoColaborador(sessao, 'ponto.gerir', c)) throw new SemPermissao('ponto.gerir', c.unidadeId ?? undefined)
+    const antes = desdeDe(c)
+    if (antes === p.dia) return { ok: true as const }
+    await db.colaborador.update({ where: { id: c.id }, data: { inicioEm: colunaDoDia(p.dia) } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId, unidadeId: c.unidadeId, usuarioId: sessao.usuarioId, quem: sessao.nome,
+        acao: 'ponto.inicio', alvoTipo: 'colaborador', alvoId: c.id, alvoNome: c.nome,
+        antes: { inicio: antes }, depois: { inicio: p.dia },
+      },
+    })
+    return { ok: true as const }
+  })
+}
+
 // ─────────────────────────────────────────────────────────────
 // A FOLHA
 // ─────────────────────────────────────────────────────────────
@@ -616,7 +748,11 @@ export async function folhaDe(
   colaboradorId: string,
   mes: string,
   agora = new Date(),
-): Promise<{ colaborador: { id: string; nome: string; unidadeId: string | null; jornadaMin: number[] }; folha: Folha; batidas: BatidaNaFolha[] } | null> {
+): Promise<{
+  colaborador: { id: string; nome: string; unidadeId: string | null; jornadaMin: number[]; inicio: string }
+  folha: Folha
+  batidas: BatidaNaFolha[]
+} | null> {
   const de = inicioDoDiaEmSP(somarDias(`${mes}-01`, -1))
   const fimDoMes = diasDoMes(mes).at(-1)!
   const ate = inicioDoDiaEmSP(somarDias(fimDoMes, 2))
@@ -625,14 +761,16 @@ export async function folhaDe(
     if (!c) return null
     const propria = !!c.usuarioId && c.usuarioId === sessao.usuarioId && pode(sessao, 'ponto.proprio')
     if (!propria && !podeNoColaborador(sessao, 'ponto.ver', c)) return null
-    return { c, linhas: await batidasDe(db, c.id, de, ate) }
+    const linhas = await batidasDe(db, c.id, de, ate)
+    const abonos = await abonosDe(db, [c.id], `${mes}-01`, fimDoMes)
+    return { c, linhas, abonos: abonos.get(c.id) }
   })
   if (!r) return null
-  const folha = folhaDoMes(validas(r.linhas), r.c.jornadaMin, mes, agora, diaEmSP(r.c.criadoEm))
+  const folha = folhaDoMes(validas(r.linhas), r.c.jornadaMin, mes, agora, desdeDe(r.c), r.abonos)
   const inicioMes = inicioDoDiaEmSP(`${mes}-01`)
   const fimMes = inicioDoDiaEmSP(somarDias(fimDoMes, 1))
   return {
-    colaborador: { id: r.c.id, nome: r.c.nome, unidadeId: r.c.unidadeId, jornadaMin: r.c.jornadaMin },
+    colaborador: { id: r.c.id, nome: r.c.nome, unidadeId: r.c.unidadeId, jornadaMin: r.c.jornadaMin, inicio: desdeDe(r.c) },
     folha,
     batidas: r.linhas
       .filter((b) => b.em >= inicioMes && b.em < fimMes)
@@ -688,7 +826,8 @@ export async function resumoDoMes(
           select: { id: true, colaboradorId: true, tipo: true, em: true },
         })
       : []
-    return { visiveis, batidas }
+    const abonos = await abonosDe(db, visiveis.map((c) => c.id), `${mes}-01`, diasDoMes(mes).at(-1)!)
+    return { visiveis, batidas, abonos }
   })
   const por = new Map<string, Batida[]>()
   for (const b of r.batidas) {
@@ -697,7 +836,7 @@ export async function resumoDoMes(
     por.set(b.colaboradorId, l)
   }
   return r.visiveis.map((c) => {
-    const f = folhaDoMes(por.get(c.id) ?? [], c.jornadaMin, mes, agora, diaEmSP(c.criadoEm))
+    const f = folhaDoMes(por.get(c.id) ?? [], c.jornadaMin, mes, agora, desdeDe(c), r.abonos.get(c.id))
     return {
       colaboradorId: c.id,
       nome: c.nome,

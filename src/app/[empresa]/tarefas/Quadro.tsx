@@ -222,9 +222,19 @@ function Responsavel({
       gatilho={
         <span className="flex items-center gap-1.5 text-xs">
           <Iniciais sigla={t.responsavelIniciais} apagado={!liberado} />
-          <span className={cx('max-w-28 truncate', t.responsavelNome ? 'text-tinta' : 'text-tinta-3')}>
-            {t.responsavelNome ?? 'ninguém'}
+          <span
+            className={cx(
+              'max-w-28 truncate',
+              t.responsavelNome ? 'text-tinta' : podeGerir && liberado ? 'font-semibold text-marca' : 'text-tinta-3',
+            )}
+          >
+            {t.responsavelNome ?? (podeGerir && liberado ? 'Escolher' : 'ninguém')}
           </span>
+          {podeGerir && liberado && (
+            <span aria-hidden className="text-tinta-3">
+              ▾
+            </span>
+          )}
         </span>
       }
     >
@@ -454,6 +464,37 @@ function Estrelas({ t, podeGerir, liberado, rodar }: { t: TarefaNaTela; podeGeri
   )
 }
 
+/**
+ * A caixinha de "feito", na frente da tarefa: um toque marca, outro desmarca.
+ * Antes era abrir o menu da situação e escolher "Feito" — dois toques que o
+ * funcionário não descobria sozinho.
+ */
+function MarcarFeito({ t, rodar }: { t: TarefaNaTela; rodar: Rodar }) {
+  const slug = useSlug()
+  const feita = t.situacao === 'FEITO'
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={feita}
+      aria-label={feita ? `Desmarcar "${t.titulo}"` : `Marcar "${t.titulo}" como feita`}
+      disabled={!t.podeMexer}
+      title={t.podeMexer ? (feita ? 'Feita. Toque para voltar a "a fazer"' : 'Marcar como feita') : NAO_E_SUA}
+      onClick={() => rodar(() => moverTarefaAcao(slug, t.id, feita ? 'A_FAZER' : 'FEITO'))}
+      className={cx(
+        'grid size-6 shrink-0 place-items-center rounded-norte border-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        feita ? 'border-bom-vivo bg-bom-vivo text-white' : 'border-borda bg-superficie hover:border-bom-vivo',
+      )}
+    >
+      {feita && (
+        <svg aria-hidden viewBox="0 0 16 16" className="size-3.5" fill="none">
+          <path d="M3.5 8.5l3 3 6-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 function Titulo({ t, podeGerir, rodar }: { t: TarefaNaTela; podeGerir: boolean; rodar: Rodar }) {
   const slug = useSlug()
   const [editando, setEditando] = useState(false)
@@ -616,7 +657,10 @@ function Linha({
             dele, e cada coluna vira "rótulo … valor". Sem isso o Resp. e o
             prazo moravam atrás da rolagem lateral. */}
         <td data-titulo className={cx(CELULA, 'min-w-44 sm:min-w-56')}>
-          <Titulo t={t} podeGerir={podeGerir} rodar={rodar} />
+          <span className={cx('flex items-center gap-2', t.situacao === 'FEITO' && '[&_button:last-child]:text-tinta-3 [&_button:last-child]:line-through')}>
+            <MarcarFeito t={t} rodar={rodar} />
+            <Titulo t={t} podeGerir={podeGerir} rodar={rodar} />
+          </span>
         </td>
         <td data-destaque className={CELULA}>
           <PilulaSituacao t={t} rodar={rodar} />
@@ -791,7 +835,9 @@ function Grupo({
         className={cx('empilha relative overflow-x-auto rounded-norte border border-borda bg-superficie border-l-[3px]', !quadro.cor && (primeiro ? 'border-l-marca' : 'border-l-tinta-3'))}
         style={quadro.cor ? { borderLeftColor: quadro.cor } : undefined}
       >
-        <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+        {/* 704px das colunas fixas + ~13rem para a tarefa: com a caixinha de
+            "feito" na frente, a tarefa não pode ficar com as sobras. */}
+        <table className="w-full table-fixed border-collapse text-sm" style={{ minWidth: 912 }}>
           {/* Larguras fixas: os quadros "Ao abrir" e "Ao fechar" ficam um
               embaixo do outro, e com a largura pelo conteúdo as colunas de um
               não batiam com as do outro. */}
