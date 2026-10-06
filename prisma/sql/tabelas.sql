@@ -491,6 +491,32 @@ CREATE TABLE "variacao_opcoes" (
 );
 
 -- CreateTable
+CREATE TABLE "precos_na_loja" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "produto_id" TEXT NOT NULL,
+    "unidade_id" TEXT NOT NULL,
+    "preco_vista" DECIMAL(12,2) NOT NULL,
+    "preco_cartao" DECIMAL(12,2),
+    "preco_crediario" DECIMAL(12,2),
+    "quem" TEXT NOT NULL,
+    "atualizado_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "precos_na_loja_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "composicoes" (
+    "id" TEXT NOT NULL,
+    "org_id" TEXT NOT NULL,
+    "variacao_id" TEXT NOT NULL,
+    "componente_id" TEXT NOT NULL,
+    "quantidade" DECIMAL(14,3) NOT NULL,
+
+    CONSTRAINT "composicoes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "estoque" (
     "id" TEXT NOT NULL,
     "org_id" TEXT NOT NULL,
@@ -1758,6 +1784,21 @@ CREATE INDEX "variacao_opcoes_org_id_idx" ON "variacao_opcoes"("org_id");
 CREATE UNIQUE INDEX "variacao_opcoes_variacao_id_opcao_id_key" ON "variacao_opcoes"("variacao_id", "opcao_id");
 
 -- CreateIndex
+CREATE INDEX "precos_na_loja_org_id_idx" ON "precos_na_loja"("org_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "precos_na_loja_produto_id_unidade_id_key" ON "precos_na_loja"("produto_id", "unidade_id");
+
+-- CreateIndex
+CREATE INDEX "composicoes_org_id_idx" ON "composicoes"("org_id");
+
+-- CreateIndex
+CREATE INDEX "composicoes_componente_id_idx" ON "composicoes"("componente_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "composicoes_variacao_id_componente_id_key" ON "composicoes"("variacao_id", "componente_id");
+
+-- CreateIndex
 CREATE INDEX "estoque_org_id_unidade_id_idx" ON "estoque"("org_id", "unidade_id");
 
 -- CreateIndex
@@ -2260,6 +2301,24 @@ ALTER TABLE "variacao_opcoes" ADD CONSTRAINT "variacao_opcoes_variacao_id_fkey" 
 
 -- AddForeignKey
 ALTER TABLE "variacao_opcoes" ADD CONSTRAINT "variacao_opcoes_opcao_id_fkey" FOREIGN KEY ("opcao_id") REFERENCES "opcoes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "precos_na_loja" ADD CONSTRAINT "precos_na_loja_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "precos_na_loja" ADD CONSTRAINT "precos_na_loja_produto_id_fkey" FOREIGN KEY ("produto_id") REFERENCES "produtos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "precos_na_loja" ADD CONSTRAINT "precos_na_loja_unidade_id_fkey" FOREIGN KEY ("unidade_id") REFERENCES "unidades"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "composicoes" ADD CONSTRAINT "composicoes_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "composicoes" ADD CONSTRAINT "composicoes_variacao_id_fkey" FOREIGN KEY ("variacao_id") REFERENCES "variacoes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "composicoes" ADD CONSTRAINT "composicoes_componente_id_fkey" FOREIGN KEY ("componente_id") REFERENCES "variacoes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "estoque" ADD CONSTRAINT "estoque_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "orgs"("id") ON DELETE CASCADE ON UPDATE CASCADE;

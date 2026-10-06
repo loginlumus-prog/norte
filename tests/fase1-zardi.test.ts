@@ -275,3 +275,92 @@ describe('fase 2: o que o funcionário vê', () => {
     expect(t).toEqual({ situacao: 'A_FAZER', concluida_em: null })
   })
 })
+
+describe('fase 3: preço por loja, composição e custo em %', () => {
+  beforeAll(async () => {
+    await db.exec(`
+      update orgs set pin_em_toda_venda = false, vende_sem_estoque = false where id = 'org-z';
+      insert into unidades (id, org_id, nome, eh_deposito, ativa, atualizada_em) values
+        ('uni-z2', 'org-z', 'Shopping', false, true, now());
+      insert into caixas (id, org_id, unidade_id, aberto_por, saldo_abertura) values
+        ('cx-z1', 'org-z', 'uni-z1', 'Vitor', 100),
+        ('cx-z2', 'org-z', 'uni-z2', 'Vitor', 100);
+      insert into produtos (id, org_id, nome, medida, preco_vista, custo, ativo, atualizado_em) values
+        ('p-casq', 'org-z', 'Casquinha', 'UN', 5.00, 1.00, true, now()),
+        ('p-agua', 'org-z', 'Água', 'UN', 3.00, 0.80, true, now()),
+        ('p-combo', 'org-z', 'Casquinha + Água', 'UN', 7.00, null, true, now());
+      insert into variacoes (id, org_id, produto_id, codigo, padrao, ativa) values
+        ('v-casq', 'org-z', 'p-casq', 'CASQ', true, true),
+        ('v-agua', 'org-z', 'p-agua', 'AGUA', true, true),
+        ('v-combo', 'org-z', 'p-combo', 'COMBO', true, true);
+      insert into estoque (id, org_id, variacao_id, unidade_id, quantidade, atualizado_em) values
+        ('e-casq', 'org-z', 'v-casq', 'uni-z1', 100, now()),
+        ('e-agua', 'org-z', 'v-agua', 'uni-z1', 2, now()),
+        ('e-casq2', 'org-z', 'v-casq', 'uni-z2', 100, now());
+    `)
+  })
+
+  const saldo = async (v: string, u = 'uni-z1') =>
+    Number((await linha<{ quantidade: string }>(`select quantidade from estoque where variacao_id = $1 and unidade_id = $2`, [v, u]))[0]?.quantidade ?? 0)
+
+  it('a loja com preço próprio cobra o dela; a outra, o geral', async () => {
+    const pl = await import('../src/servidor/preco-loja')
+    const venda = await import('../src/servidor/venda')
+    await pl.definirPrecoNaLoja(DONO, 'p-casq', 'uni-z2', { vista: 6.5, cartao: null, crediario: null })
+    await expect(pl.definirPrecoNaLoja(BALCAO, 'p-casq', 'uni-z1', { vista: 1, cartao: null, crediario: null })).rejects.toThrow()
+
+    const shopping = await venda.registrarVenda(DONO, {
+      unidadeId: 'uni-z2', caixaId: 'cx-z2', itens: [{ variacaoId: 'v-casq', quantidade: 2 }], pagamentos: [{ forma: 'PIX', valor: 13 }],
+    })
+    expect(shopping).toMatchObject({ ok: true, total: 13 })
+    const bairro = await venda.registrarVenda(DONO, {
+      unidadeId: 'uni-z1', caixaId: 'cx-z1', itens: [{ variacaoId: 'v-casq', quantidade: 2 }], pagamentos: [{ forma: 'PIX', valor: 10 }],
+    })
+    expect(bairro).toMatchObject({ ok: true, total: 10 })
+
+    // Voltar ao geral.
+    await pl.definirPrecoNaLoja(DONO, 'p-casq', 'uni-z2', null)
+    expect(await linha(`select id from precos_na_loja`)).toHaveLength(0)
+  })
+
+  it('o item composto baixa o que leva, custa a soma, e o cancelamento devolve', async () => {
+    const comp = await import('../src/servidor/composicao')
+    const venda = await import('../src/servidor/venda')
+    await comp.definirComposicao(DONO, 'v-combo', [{ componenteId: 'v-casq', quantidade: 1 }, { componenteId: 'v-agua', quantidade: 1 }])
+    // Um nível só, e nunca ele mesmo.
+    await expect(comp.definirComposicao(DONO, 'var-mor', [{ componenteId: 'v-combo', quantidade: 1 }])).rejects.toThrow('composto')
+    await expect(comp.definirComposicao(DONO, 'v-combo', [{ componenteId: 'v-combo', quantidade: 1 }])).rejects.toThrow('ele mesmo')
+
+    const antesCasq = await saldo('v-casq')
+    const r = await venda.registrarVenda(DONO, {
+      unidadeId: 'uni-z1', caixaId: 'cx-z1', itens: [{ variacaoId: 'v-combo', quantidade: 2 }], pagamentos: [{ forma: 'PIX', valor: 14 }],
+    })
+    expect(r).toMatchObject({ ok: true, total: 14 })
+    expect(await saldo('v-casq')).toBe(antesCasq - 2)
+    expect(await saldo('v-agua')).toBe(0)
+    expect(await linha(`select id from estoque where variacao_id = 'v-combo'`)).toHaveLength(0)
+    const [item] = await linha<{ custo_unit: string }>(`select custo_unit::text from venda_itens where variacao_id = 'v-combo'`)
+    expect(Number(item!.custo_unit)).toBeCloseTo(1.8)
+
+    // Sem água no freezer: a recusa diz qual componente falta.
+    const sem = await venda.registrarVenda(DONO, {
+      unidadeId: 'uni-z1', caixaId: 'cx-z1', itens: [{ variacaoId: 'v-combo', quantidade: 1 }], pagamentos: [{ forma: 'PIX', valor: 7 }],
+    })
+    expect(sem).toMatchObject({ ok: false, motivo: 'sem_estoque', faltando: [{ descricao: 'Água' }] })
+
+    if (!r.ok) throw new Error('venda')
+    expect(await venda.cancelarVenda(DONO, r.vendaId, 'teste de composição')).toMatchObject({ ok: true })
+    expect(await saldo('v-casq')).toBe(antesCasq)
+    expect(await saldo('v-agua')).toBe(2)
+  })
+
+  it('o custo em % é do preço à vista; "35%" não vira mais R$ 35', async () => {
+    const { lerCusto } = await import('../src/servidor/dinheiro')
+    expect(lerCusto('35%', 54.9)).toEqual({ valor: 19.215 })
+    expect(lerCusto(' 4,50 ', 10)).toEqual({ valor: 4.5 })
+    expect(lerCusto('0,0028', null)).toEqual({ valor: 0.0028 })
+    expect(lerCusto('35%', null)).toMatchObject({ erro: expect.stringContaining('preço à vista') })
+    expect(lerCusto('150%', 10)).toMatchObject({ erro: expect.any(String) })
+    expect(lerCusto('', 10)).toBeNull()
+  })
+})

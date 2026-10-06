@@ -37,6 +37,8 @@
 
 import type { FormaPagamento, Prisma } from '@prisma/client'
 import { comoOrg, type BancoDaOrg } from './banco'
+import { aplicarPrecoDaLoja } from './preco-loja'
+import { expandir } from './composicao'
 import { exigir, numeroDaBusca, pode, SemPermissao, textoDaBusca, type Sessao } from './permissao'
 import { autorizarComPin } from './autorizacao'
 import { criarValeEm, devolverEm, normalizarCodigo, pedeInteiro, restante, type ResultadoDevolucao } from './devolucao'
@@ -544,10 +546,11 @@ async function trocarEm(
       where: { id: { in: ids } },
       select: {
         id: true, ajustePreco: true,
-        produto: { select: { nome: true, medida: true, precoVista: true, precoCartao: true, precoCrediario: true } },
+        produto: { select: { id: true, nome: true, medida: true, precoVista: true, precoCartao: true, precoCrediario: true } },
         opcoes: { select: { opcao: { select: { valor: true } } } },
       },
     })
+    await aplicarPrecoDaLoja(db, vs.map((x) => x.produto), p.unidadeId)
     const porId = new Map(vs.map((x) => [x.id, x]))
     const linhas: { variacaoId: string; descricao: string; quantidade: number; cent: number }[] = []
     for (const i of c.semCompra) {
@@ -579,12 +582,12 @@ async function trocarEm(
     creditoCent = voltaCent
 
     // A peça volta ao estoque desta loja — é aqui que ela está, na mão.
-    for (const l of linhas) {
+    for (const b of (await expandir(db, linhas.map((l) => ({ variacaoId: l.variacaoId, quantidade: l.quantidade })))).baixas) {
       await mexerEstoqueEm(db, sessao, {
-        variacaoId: l.variacaoId,
+        variacaoId: b.variacaoId,
         unidadeId: p.unidadeId,
         tipo: 'DEVOLUCAO',
-        quantidade: l.quantidade,
+        quantidade: b.quantidade,
         motivo: `Troca sem a compra (sistema anterior)${c.autorizador ? ` · autorizada por ${c.autorizador.nome}` : ''}`,
       })
     }
@@ -607,8 +610,9 @@ async function trocarEm(
     const tabela = tabelaDaTroca(p.diferenca?.forma ?? null)
     const vs = await db.variacao.findMany({
       where: { id: { in: [...new Set(c.leva.map((i) => i.variacaoId))] } },
-      select: { id: true, ajustePreco: true, produto: { select: { precoVista: true, precoCartao: true, precoCrediario: true } } },
+      select: { id: true, ajustePreco: true, produto: { select: { id: true, precoVista: true, precoCartao: true, precoCrediario: true } } },
     })
+    await aplicarPrecoDaLoja(db, vs.map((x) => x.produto), p.unidadeId)
     const precoDe = new Map(
       vs.map((x) => [
         x.id,

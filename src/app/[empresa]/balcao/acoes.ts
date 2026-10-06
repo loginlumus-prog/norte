@@ -14,6 +14,8 @@ import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
 import { exigir, pode, SemPermissao } from '@/servidor/permissao'
 import { horarioParaCobrar } from '@/servidor/agenda'
 import { comoOrg, type BancoDaOrg } from '@/servidor/banco'
+import { aplicarPrecoDaLoja } from '@/servidor/preco-loja'
+import { aplicarSaldoDosCompostos } from '@/servidor/composicao'
 import {
   registrarVenda,
   EstoqueSumiu,
@@ -187,12 +189,15 @@ export async function achadosPorVariacao(slug: string, unidadeId: string, ids: s
   exigir(s, 'estoque.ver', unidadeId)
   const limpos = (Array.isArray(ids) ? ids : []).filter((i) => typeof i === 'string' && /^[\w-]{1,64}$/.test(i)).slice(0, 80)
   if (limpos.length === 0) return []
-  const lidos = await comoOrg(s.orgId, (db) =>
-    db.variacao.findMany({
+  const lidos = await comoOrg(s.orgId, async (db) => {
+    const vs = await db.variacao.findMany({
       where: { id: { in: limpos }, ativa: true, produto: { ativo: true, ...aVendaNaLoja(unidadeId) } },
       select: { ...SELECAO_DA_VARIACAO, estoques: { where: { unidadeId }, select: { quantidade: true } } },
-    }),
-  )
+    })
+    await aplicarPrecoDaLoja(db, vs.map((v) => v.produto), unidadeId)
+    await aplicarSaldoDosCompostos(db, vs, unidadeId)
+    return vs
+  })
   return lidos.map(montarAchadoDaBusca)
 }
 
@@ -277,6 +282,9 @@ export async function procurar(
 
     // Código exato na frente: é o caso do leitor de código de barras. Depois
     // a grade da etiqueta, em ordem de código, e por último o que achou pelo nome.
+    // O preço DESTA loja, onde ela tem um (ver preco-loja.ts).
+    await aplicarPrecoDaLoja(db, [...porCodigo, ...porNome].map((v) => v.produto), unidadeId)
+    await aplicarSaldoDosCompostos(db, [...porCodigo, ...porNome], unidadeId)
     const perto = (c: string | null) => proximidade(c, t) ?? 9
     const achados = [...porCodigo.map(montarAchadoDaBusca)].sort((a, b) => perto(a.codigo) - perto(b.codigo))
     achados.push(...porNome.map(montarAchadoDaBusca))
@@ -352,6 +360,8 @@ export async function grade(
       },
     })
 
+    await aplicarPrecoDaLoja(db, vs.map((v) => v.produto), unidadeId)
+    await aplicarSaldoDosCompostos(db, vs, unidadeId)
     return {
       categorias,
       itens: vs.slice(0, TETO).map(montarAchado),
@@ -460,6 +470,8 @@ export async function vitrine(
       },
     })
 
+    await aplicarPrecoDaLoja(db, ps, unidadeId)
+    await aplicarSaldoDosCompostos(db, ps.flatMap((p) => p.variacoes), unidadeId)
     return {
       categorias,
       mais: ps.length > POR_PAGINA,
@@ -668,12 +680,17 @@ export async function paraCobrarHorario(slug: string, agendamentoId: string, uni
 
   const itens: Achado[] = []
   if (h.variacaoId && pode(s, 'produto.ver', unidadeId)) {
-    const v = await comoOrg(s.orgId, (db) =>
-      db.variacao.findFirst({
+    const v = await comoOrg(s.orgId, async (db) => {
+      const achada = await db.variacao.findFirst({
         where: { id: h.variacaoId!, ativa: true, produto: { ativo: true, ...aVendaNaLoja(unidadeId) } },
         select: { ...SELECAO_DA_VARIACAO, estoques: { where: { unidadeId }, select: { quantidade: true } } },
-      }),
-    )
+      })
+      if (achada) {
+        await aplicarPrecoDaLoja(db, [achada.produto], unidadeId)
+        await aplicarSaldoDosCompostos(db, [achada], unidadeId)
+      }
+      return achada
+    })
     if (v) itens.push(montarAchado(v))
   }
 

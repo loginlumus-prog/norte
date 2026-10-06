@@ -308,6 +308,8 @@ model Org {
   colaboradores         Colaborador[]
   registrosPonto        RegistroPonto[]
   abonosPonto           AbonoPonto[]
+  precosNaLoja          PrecoNaLoja[]
+  composicoes           Composicao[]
   agendamentos          Agendamento[]
   fornecedores          Fornecedor[]
   pedidosCompra         PedidoCompra[]
@@ -383,6 +385,7 @@ model Unidade {
   acessos               Acesso[]
   auditoria             Auditoria[]
   estoques              Estoque[]
+  precosNaLoja          PrecoNaLoja[]
   movimentos            MovimentoEstoque[]
   caixas                Caixa[]
   vendas                Venda[]
@@ -911,10 +914,10 @@ model Eixo {
   orgId String @map("org_id")
   org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  nome  String
-  ordem Int     @default(0)
+  nome        String
+  ordem       Int       @default(0)
   /// Mostra bolinha colorida na tela em vez de texto (útil para "Cor").
-  ehCor Boolean @default(false) @map("eh_cor")
+  ehCor       Boolean   @default(false) @map("eh_cor")
   /// Saiu da tela, mas ainda nomeia item antigo (com venda): não dá para apagar.
   arquivadoEm DateTime? @map("arquivado_em")
 
@@ -935,10 +938,10 @@ model Opcao {
   eixoId String @map("eixo_id")
   eixo   Eixo   @relation(fields: [eixoId], references: [id], onDelete: Cascade)
 
-  valor String
-  ordem Int     @default(0)
+  valor       String
+  ordem       Int       @default(0)
   /// Hex, quando o eixo é de cor. A tela mostra a bolinha.
-  hex   String?
+  hex         String?
   /// Saiu da tela, mas ainda nomeia item antigo (com venda): não dá para apagar.
   arquivadoEm DateTime? @map("arquivado_em")
 
@@ -1028,6 +1031,7 @@ model Produto {
 
   eixos        ProdutoEixo[]
   variacoes    Variacao[]
+  precosNaLoja PrecoNaLoja[]
   agendamentos Agendamento[]
 
   criadoEm     DateTime @default(now()) @map("criado_em")
@@ -1081,17 +1085,20 @@ model Variacao {
   padrao Boolean @default(false)
   ativa  Boolean @default(true)
 
-  opcoes          VariacaoOpcao[]
-  estoques        Estoque[]
-  movimentos      MovimentoEstoque[]
-  vendaItens      VendaItem[]
-  itensCompra     ItemCompra[]
-  receita         Receita?            @relation("receitaDoProduto")
-  usadaEmReceitas ReceitaItem[]
-  itensEncomenda  EncomendaItem[]
-  ordensProducao  OrdemProducao[]
-  consumosOrdem   OrdemConsumo[]
-  pedidosFabrica  PedidoFabricaItem[]
+  opcoes             VariacaoOpcao[]
+  estoques           Estoque[]
+  movimentos         MovimentoEstoque[]
+  vendaItens         VendaItem[]
+  itensCompra        ItemCompra[]
+  receita            Receita?            @relation("receitaDoProduto")
+  usadaEmReceitas    ReceitaItem[]
+  itensEncomenda     EncomendaItem[]
+  ordensProducao     OrdemProducao[]
+  consumosOrdem      OrdemConsumo[]
+  pedidosFabrica     PedidoFabricaItem[]
+  /// O que este item leva do estoque quando é vendido (ver composicao.ts).
+  composicao         Composicao[]        @relation("itemComposto")
+  usadaEmComposicoes Composicao[]        @relation("componente")
 
   criadaEm DateTime @default(now()) @map("criada_em")
 
@@ -1114,6 +1121,50 @@ model VariacaoOpcao {
   @@unique([variacaoId, opcaoId])
   @@index([orgId])
   @@map("variacao_opcoes")
+}
+
+/// O preço do produto NESTA loja (praça diferente, preço diferente). Sem
+/// linha, a loja cobra o preço do produto. Ver `preco-loja.ts`.
+model PrecoNaLoja {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  produtoId String  @map("produto_id")
+  produto   Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  unidadeId String  @map("unidade_id")
+  unidade   Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  precoVista     Decimal  @map("preco_vista") @db.Decimal(12, 2)
+  precoCartao    Decimal? @map("preco_cartao") @db.Decimal(12, 2)
+  precoCrediario Decimal? @map("preco_crediario") @db.Decimal(12, 2)
+
+  quem         String
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@unique([produtoId, unidadeId])
+  @@index([orgId])
+  @@map("precos_na_loja")
+}
+
+/// O item que "monta na hora": vender a "Casquinha + Água" baixa 1 Casquinha
+/// e 1 Água. Item com composição não tem estoque próprio. Ver composicao.ts.
+model Composicao {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  variacaoId   String   @map("variacao_id")
+  variacao     Variacao @relation("itemComposto", fields: [variacaoId], references: [id], onDelete: Cascade)
+  componenteId String   @map("componente_id")
+  componente   Variacao @relation("componente", fields: [componenteId], references: [id], onDelete: Cascade)
+
+  quantidade Decimal @db.Decimal(14, 3)
+
+  @@unique([variacaoId, componenteId])
+  @@index([orgId])
+  @@index([componenteId])
+  @@map("composicoes")
 }
 
 /// Saldo por variação POR UNIDADE. A loja 3 e a loja 5 contam separado.
@@ -2037,11 +2088,11 @@ model Recorrente {
   diaVencimento Int            @map("dia_vencimento")
   fornecedor    String?
 
-  ativo Boolean   @default(true)
+  ativo   Boolean   @default(true)
   /// Até quando gerar. Nulo = para sempre.
-  ateEm DateTime? @map("ate_em") @db.Date
+  ateEm   DateTime? @map("ate_em") @db.Date
   /// Meses ("AAAA-MM") em que o lançamento foi excluído: não volta a nascer.
-  pulados String[] @default([])
+  pulados String[]  @default([])
 
   lancamentos Lancamento[]
 
@@ -2448,10 +2499,10 @@ model MensagemAgente {
   conversaId String         @map("conversa_id")
   conversa   ConversaAgente @relation(fields: [conversaId], references: [id], onDelete: Cascade)
 
-  de    Autor
-  texto String
+  de         Autor
+  texto      String
   /// Áudio transcrito, imagem descrita: guarda o que chegou de verdade.
-  midia String?
+  midia      String?
   /// Esta mensagem é UMA RESPOSTA do assistente escrita pela IA — a unidade
   /// que o plano vende (1.000 por mês; ver "o assistente, em respostas" em
   /// src/servidor/planos.ts). Relatório, aviso, recado, campanha e atalho

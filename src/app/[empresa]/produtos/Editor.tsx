@@ -562,10 +562,10 @@ export function Editor({
               name="custo"
               readOnly={travado}
               defaultValue={produto?.custo ?? ''}
-              placeholder="0,00"
+              placeholder="0,00 ou 35%"
               inputMode="decimal"
               erro={estado.campos?.custo}
-              dica="Sem ele o relatório não sabe calcular margem."
+              dica="Do quilo, do litro ou da unidade, como se conta. Não sabe o valor? Escreva em % do preço (ex.: 35%)."
             />
           )}
           {/* Ao lado do custo porque é a outra metade da conta de compra:

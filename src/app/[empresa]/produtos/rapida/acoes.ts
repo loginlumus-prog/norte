@@ -12,6 +12,7 @@ import { criarProduto, editarProduto } from '@/servidor/produto'
 import { corrigirPeloContado } from '@/servidor/estoque'
 import { comoOrg } from '@/servidor/banco'
 import { SemPermissao, unidadesQuePodem } from '@/servidor/permissao'
+import { lerCusto } from '@/servidor/dinheiro'
 
 export type EstadoLinha = { ok?: string; erro?: string; precisaPin?: boolean; saldo?: number; produtoId?: string }
 
@@ -35,6 +36,16 @@ async function gravarLinha(sessao: Awaited<ReturnType<typeof exigirSessao>>, pro
   const dados: Parameters<typeof editarProduto>[2] = {}
   if (d.nome !== undefined) dados.nome = String(d.nome).slice(0, 200)
   if (d.categoriaId !== undefined) dados.categoriaId = d.categoriaId ? String(d.categoriaId) : null
+  // Custo em % do preço ("35%"): a base é o preço que veio na linha, senão o
+  // que o produto já tem (ver `lerCusto`).
+  if (typeof d.custo === 'string' && /%\s*$/.test(d.custo)) {
+    const base =
+      numero(d.precoVista) ||
+      Number((await comoOrg(sessao.orgId, (db) => db.produto.findUnique({ where: { id: produtoId }, select: { precoVista: true } })))?.precoVista ?? 0)
+    const c = lerCusto(d.custo, base)
+    if (c && 'erro' in c) return { erro: c.erro }
+    d = { ...d, custo: c ? c.valor : null }
+  }
   for (const campo of ['precoVista', 'precoCartao', 'precoCrediario', 'custo'] as const) {
     if (d[campo] === undefined) continue
     const n = numero(d[campo])

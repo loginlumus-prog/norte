@@ -21,6 +21,10 @@ import { Editor, type ProdutoNaTela } from '../Editor'
 import { Excluir } from '../Excluir'
 import { fotoUrl } from '@/servidor/catalogo'
 import { FotoDoProduto } from './FotoDoProduto'
+import { PrecoPorLoja } from './PrecoPorLoja'
+import { precosDasLojas } from '@/servidor/preco-loja'
+import { composicaoDoProduto } from '@/servidor/composicao'
+import { Composicao } from './Composicao'
 import { palavra, plural, quantidade } from '@/ui/texto'
 import { diaEmSP, somarDias } from '@/servidor/dia'
 
@@ -176,6 +180,20 @@ export default async function FichaProduto({
       podeMarcar: alcancaLoja(alcance, u.id),
     })),
   )
+
+  // Preço em cada loja: só faz sentido com mais de uma loja vendendo. As
+  // lojas onde o produto é vendido (vendidoEm vazio = todas).
+  const lojasDoProduto = lojasQueVendem.filter((l) => (produto.vendidoEm ?? []).length === 0 || produto.vendidoEm.includes(l.id))
+  const proprios = lojasDoProduto.length > 1 ? await precosDasLojas(sessao, produto.id) : []
+  const precoGeral = Number(produto.precoVista ?? 0)
+  const composicao = produto.servico ? {} : await composicaoDoProduto(sessao, produto.id)
+  const itensDoProduto = produto.variacoes
+    .filter((v) => v.ativa)
+    .map((v) => ({
+      id: v.id,
+      rotulo: v.padrao || v.opcoes.length === 0 ? produto.nome : v.opcoes.map((o) => valorDe.get(o.opcaoId)?.valor ?? '—').join(' · '),
+      saldo: pode(sessao, 'estoque.ver') ? saldoDe(v) : null,
+    }))
 
   return (
     <Estrutura
@@ -397,6 +415,45 @@ export default async function FichaProduto({
       <Secao titulo="Editar">
         <Editor slug={slug} eixos={eixos} categorias={categorias} lojas={lojasQueVendem} produto={naTela} />
       </Secao>
+
+      {/* ── O QUE CADA ITEM LEVA ──
+          A Casquinha + Água baixa 1 Casquinha e 1 Água: o estoque que conta é
+          o do freezer, não um número por combinação. Ver composicao.ts. */}
+      {!produto.servico && (
+        <Secao
+          titulo="O que cada item gasta do estoque"
+          resumo="Para o que monta na hora: vender a Casquinha + Água baixa 1 casquinha e 1 água. O custo passa a ser a soma do que ele leva."
+        >
+          <Cartao>
+            <Composicao slug={slug} itens={itensDoProduto} composicao={composicao} podeEditar={!naTela.travado} />
+          </Cartao>
+        </Secao>
+      )}
+
+      {/* ── PREÇO EM CADA LOJA ──
+          Praça diferente, preço diferente: a loja do shopping cobra o dela,
+          as outras o geral. Ver preco-loja.ts. */}
+      {lojasDoProduto.length > 1 && precoGeral > 0 && (
+        <Secao titulo="Preço em cada loja" resumo="Sem preço próprio, a loja cobra o geral. O balcão, o catálogo e a etiqueta de cada loja usam o dela.">
+          <Cartao>
+            <PrecoPorLoja
+              slug={slug}
+              produtoId={produto.id}
+              geral={precoGeral}
+              porKg={produto.medida === 'KG'}
+              lojas={lojasDoProduto.map((l) => {
+                const p = proprios.find((x) => x.unidadeId === l.id)
+                return {
+                  id: l.id,
+                  nome: l.nome,
+                  proprio: p ? { vista: p.vista, cartao: p.cartao, crediario: p.crediario } : null,
+                  podeMudar: pode(sessao, 'produto.preco', l.id),
+                }
+              })}
+            />
+          </Cartao>
+        </Secao>
+      )}
 
       {/* ── EXCLUIR ──
           Fora do formulário e longe do "Salvar": é a ação que a equipe procura

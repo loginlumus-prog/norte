@@ -127,3 +127,24 @@ export const DINHEIRO_ILEGIVEL = 'Não deu para ler este valor. Escreva assim: 4
 
 /** A frase do campo de número (porcentagem, juro, quantidade) que `lerNumero` recusa. */
 export const NUMERO_ILEGIVEL = 'Não deu para ler este número. Escreva assim: 2,5 ou 10.'
+
+/**
+ * O custo como a pessoa escreve: "4,50" (reais, até quatro casas — o
+ * mililitro de calda) ou "35%" (do preço à vista). O "%" é para quem não sabe
+ * quanto custa o quilo do açaí, mas sabe que é mais ou menos um terço do
+ * preço. Antes o "%" era jogado fora e "35%" virava R$ 35 de custo.
+ *
+ * Vazio é `null`. O custo em % sem o preço à vista é erro (não há base).
+ */
+export function lerCusto(bruto: string, precoVista: number | null | undefined): { valor: number } | { erro: string } | null {
+  const t = String(bruto ?? '').trim().replace(/^R\$\s*/i, '')
+  if (!t) return null
+  if (/%\s*$/.test(t)) {
+    const pct = lerDecimal(t.replace(/\s*%\s*$/, ''), 2)
+    if (pct === null || pct <= 0 || pct > 100) return { erro: 'O custo em % vai de 1% a 100% do preço (ex.: 35%).' }
+    if (!(precoVista && precoVista > 0)) return { erro: 'Para o custo em %, informe o preço à vista.' }
+    return { valor: Math.round(precoVista * pct * 100) / 10000 }
+  }
+  const v = lerDecimal(t, 4)
+  return v === null ? { erro: DINHEIRO_ILEGIVEL } : { valor: v }
+}

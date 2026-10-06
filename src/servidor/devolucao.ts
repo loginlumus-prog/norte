@@ -48,6 +48,7 @@ import { colunaDoDia, diaDaColuna, diaEmSP, somarDias } from './dia'
 import { comoOrg, type BancoDaOrg } from './banco'
 import { exigir, pode, SemPermissao, type Sessao } from './permissao'
 import { mexerEstoqueEm } from './estoque'
+import { expandir } from './composicao'
 import { travarCaixaAberto } from './caixa'
 import { centavos, reais, multiplicar } from './dinheiro'
 import { desfazerTentativa, reservarTentativa } from './limite'
@@ -512,16 +513,19 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
     const como = !l.item.variacaoId && l.variacaoId ? voltaComo.get(l.variacaoId) : undefined
     const variacaoId = l.item.variacaoId ?? como?.id
     if (!variacaoId) continue
-    await mexerEstoqueEm(db, sessao, {
-      variacaoId,
-      unidadeId: onde,
-      tipo: 'DEVOLUCAO',
-      quantidade: l.quantidade,
-      referencia: v.id,
-      motivo: como
-        ? `Devolução da venda ${v.numero}${daLoja} (${l.item.descricao}, sem cadastro, voltou como ${como.nome})`
-        : `Devolução da venda ${v.numero}${daLoja}`,
-    })
+    // O composto (a Casquinha + Água) devolve o que leva — ver composicao.ts.
+    for (const b of (await expandir(db, [{ variacaoId, quantidade: l.quantidade }])).baixas) {
+      await mexerEstoqueEm(db, sessao, {
+        variacaoId: b.variacaoId,
+        unidadeId: onde,
+        tipo: 'DEVOLUCAO',
+        quantidade: b.quantidade,
+        referencia: v.id,
+        motivo: como
+          ? `Devolução da venda ${v.numero}${daLoja} (${l.item.descricao}, sem cadastro, voltou como ${como.nome})`
+          : `Devolução da venda ${v.numero}${daLoja}`,
+      })
+    }
   }
 
   // ── a dívida do fiado diminui ──

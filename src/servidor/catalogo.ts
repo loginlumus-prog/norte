@@ -36,6 +36,7 @@ import { planoLibera } from './planos'
 import { aVendaNaLoja, alcancaOProduto } from './catalogo-loja'
 import { pedeInteiro } from './devolucao'
 import { codigoEncomenda } from './encomenda'
+import { aplicarPrecoDaLoja } from './preco-loja'
 
 // ─────────────────────────────────────────────────────────────
 // REGRAS PURAS (testadas sem banco)
@@ -343,6 +344,7 @@ async function lerFotosQueFaltam(
     take: SEM_FOTO_POR_PAGINA,
     select: { id: true, nome: true, precoVista: true },
   })
+  await aplicarPrecoDaLoja(db, lidos, unidadeId)
   // O saldo à parte (lista aninhada na mesma consulta corre em paralelo na
   // conexão da transação).
   const saldos = lidos.length
@@ -807,6 +809,8 @@ export async function produtosDoCatalogo(
       take: POR_PAGINA * 2,
       select: SELECAO_PRODUTO(a.catalogo.unidadeId),
     })
+    // O catálogo é de UMA loja: mostra o preço dela (ver preco-loja.ts).
+    await aplicarPrecoDaLoja(db, lidos, a.catalogo.unidadeId)
     let produtos = lidos.map((p) => montarProduto(slug, p, org?.vendeSemEstoque ?? false))
     if (!a.catalogo.mostrarEsgotado) produtos = produtos.filter((p) => p.disponivel)
     // Leu o dobro para a página não sair vazia quando muita coisa está
@@ -893,9 +897,10 @@ export async function fazerPedidoPeloCatalogo(
         id: true,
         ajustePreco: true,
         opcoes: { select: { opcao: { select: { valor: true, ordem: true, eixo: { select: { ordem: true } } } } } },
-        produto: { select: { nome: true, medida: true, precoVista: true, servico: true, feitoNoDia: true } },
+        produto: { select: { id: true, nome: true, medida: true, precoVista: true, servico: true, feitoNoDia: true } },
       },
     })
+    await aplicarPrecoDaLoja(db, variacoes.map((x) => x.produto), a.catalogo.unidadeId)
     // O saldo numa leitura à parte: com duas listas aninhadas na mesma
     // consulta (opções e estoques), o Prisma lê as duas em paralelo na
     // conexão da transação — o mesmo problema do Promise.all em comoOrg.

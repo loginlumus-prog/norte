@@ -4,6 +4,7 @@ import { headers } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { semAcesso } from '@/servidor/sem-acesso'
 import { comoOrg } from '@/servidor/banco'
+import { aplicarPrecoDaLoja } from '@/servidor/preco-loja'
 import { pode, textoDaBusca } from '@/servidor/permissao'
 import { escolherUnidade } from '@/servidor/unidade'
 import { ondeOCodigo } from '@/servidor/etiqueta'
@@ -169,8 +170,8 @@ export default async function Etiquetas({
   const conf = await comoOrg(sessao.orgId, (db) =>
     db.org.findUnique({ where: { id: sessao.orgId }, select: { creditoMaxParcelas: true } }),
   )
-  const lidos = await comoOrg(sessao.orgId, (db) =>
-    db.produto.findMany({
+  const lidos = await comoOrg(sessao.orgId, async (db) => {
+    const ps = await db.produto.findMany({
       where: {
         ativo: true,
         ...(ids.length ? { id: { in: ids } } : {}),
@@ -202,8 +203,11 @@ export default async function Etiquetas({
           },
         },
       },
-    }),
-  )
+    })
+    // Uma loja escolhida: a etiqueta sai com o preço dela (ver preco-loja.ts).
+    await aplicarPrecoDaLoja(db, ps, onde.unidadeId)
+    return ps
+  })
   const passou = lidos.length > MAXIMO_DE_PRODUTOS
   // O lote marcado sai na ordem em que veio; a busca, por nome.
   const ordem = new Map(ids.map((id, i) => [id, i]))

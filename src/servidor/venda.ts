@@ -41,6 +41,8 @@
 
 import { vendidoNaLoja } from './catalogo-loja'
 import { comoOrg, type BancoDaOrg } from './banco'
+import { aplicarPrecoDaLoja } from './preco-loja'
+import { expandir } from './composicao'
 import type { Prisma, SituacaoVenda } from '@prisma/client'
 import { exigir, numeroDaBusca, pode, textoDaBusca, type Sessao } from './permissao'
 import { SELECT_ACESSO, acessosDoBanco } from './cargos'
@@ -759,7 +761,7 @@ export async function registrarVenda(
         id: true, codigo: true, ajustePreco: true, ativa: true, custo: true,
         produto: {
           select: {
-            nome: true, medida: true, custo: true, ativo: true,
+            id: true, nome: true, medida: true, custo: true, ativo: true,
             precoVista: true, precoCartao: true, precoCrediario: true,
             vendidoEm: true, servico: true, usoInterno: true,
           },
@@ -767,6 +769,8 @@ export async function registrarVenda(
         opcoes: { select: { opcao: { select: { valor: true } } } },
       },
     })
+    // A tabela é a DESTA loja quando ela tem preço próprio (ver preco-loja.ts).
+    await aplicarPrecoDaLoja(db, variacoes.map((x) => x.produto), v.unidadeId)
     const porId = new Map(variacoes.map((x) => [x.id, x]))
 
     // ── 1a. só o que ainda está no cadastro ──
@@ -833,8 +837,15 @@ export async function registrarVenda(
     // Serviço não tem estoque: a manicure não "acaba". Fica fora da
     // conferência e da baixa (ver `mexerEstoqueEm`).
     const deEstoque = doCatalogo.filter((i) => !porId.get(i.variacaoId)?.produto.servico)
+    // O item que "monta na hora" (a Casquinha + Água) baixa o que leva — a
+    // conferência e a baixa olham os componentes (ver composicao.ts).
+    const comp = await expandir(
+      db,
+      deEstoque.map((i) => ({ variacaoId: i.variacaoId, quantidade: i.quantidade })),
+    )
+    const nomeDe = (id: string) => (porId.has(id) ? descrever(porId.get(id)) : (comp.nomes.get(id) ?? 'um item'))
     const saldos = await db.estoque.findMany({
-      where: { unidadeId: v.unidadeId, variacaoId: { in: deEstoque.map((i) => i.variacaoId) } },
+      where: { unidadeId: v.unidadeId, variacaoId: { in: [...new Set(comp.baixas.map((b) => b.variacaoId))] } },
       select: { variacaoId: true, quantidade: true },
     })
     const saldoDe = new Map(saldos.map((e) => [e.variacaoId, Number(e.quantidade)]))
@@ -844,12 +855,12 @@ export async function registrarVenda(
     // por linha, cada uma "cabia" no saldo de 1, e a segunda baixa estourava
     // no meio da transação em vez de virar a recusa limpa de "sem estoque".
     const pedidoPorVariacao = new Map<string, number>()
-    for (const i of deEstoque) pedidoPorVariacao.set(i.variacaoId, (pedidoPorVariacao.get(i.variacaoId) ?? 0) + i.quantidade)
+    for (const b of comp.baixas) pedidoPorVariacao.set(b.variacaoId, (pedidoPorVariacao.get(b.variacaoId) ?? 0) + b.quantidade)
     const faltando = [...pedidoPorVariacao]
       .filter(([id, q]) => (saldoDe.get(id) ?? 0) < q - 1e-9)
       .map(([id, q]) => ({
         variacaoId: id,
-        descricao: descrever(porId.get(id)),
+        descricao: nomeDe(id),
         pedido: Math.round(q * 1000) / 1000,
         tem: saldoDe.get(id) ?? 0,
       }))
@@ -933,6 +944,8 @@ export async function registrarVenda(
         // margem erra em R$ 5. A coluna guarda 4 casas; o dinheiro mostrado
         // continua com 2.
         custoUnit: (() => {
+          // Composto: a soma do que ele leva (ver composicao.ts).
+          if (comp.compostos.has(i.variacaoId)) return comp.custoDoComposto.get(i.variacaoId) ?? null
           const c = va?.custo ?? va?.produto.custo
           return c != null ? Number(c) : null
         })(),
@@ -1368,8 +1381,10 @@ export async function registrarVenda(
 
     // ── 6. baixa o estoque, na MESMA transação ──
     // Só o que é do catálogo: item avulso não tem de onde sair.
+    // O composto baixa os componentes (`comp.baixas`); o serviço não passa
+    // por aqui (`mexerEstoqueEm` o ignora de qualquer jeito).
     const semEstoque = new Set(faltando.map((f) => f.descricao))
-    for (const i of doCatalogo) {
+    for (const i of comp.baixas) {
       const r = await mexerEstoqueEm(db, sessao, {
         variacaoId: i.variacaoId,
         unidadeId: v.unidadeId,
@@ -1391,7 +1406,7 @@ export async function registrarVenda(
           data: { saldoNaVenda: r.saldo + i.quantidade },
         })
         saldoQueFaltou.set(i.variacaoId, r.saldo + i.quantidade)
-        semEstoque.add(descrever(porId.get(i.variacaoId)))
+        semEstoque.add(nomeDe(i.variacaoId))
       }
     }
 
@@ -2126,13 +2141,17 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
     // produto mostra os dois movimentos, um cancelando o outro, em vez de a
     // venda simplesmente sumir e o saldo "aparecer" sem explicação. Item
     // avulso não tem para onde voltar.
-    for (const i of v.itens) {
-      if (!i.variacaoId) continue
+    // O composto devolve o que leva (ver composicao.ts).
+    const volta = await expandir(
+      db,
+      v.itens.filter((i) => i.variacaoId).map((i) => ({ variacaoId: i.variacaoId!, quantidade: Number(i.quantidade) })),
+    )
+    for (const i of volta.baixas) {
       await mexerEstoqueEm(db, sessao, {
         variacaoId: i.variacaoId,
         unidadeId: v.unidadeId,
         tipo: 'DEVOLUCAO',
-        quantidade: Number(i.quantidade),
+        quantidade: i.quantidade,
         referencia: v.id,
         motivo: `Cancelamento da venda ${v.numero}`,
       })

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { comoOrg } from '@/servidor/banco'
+import { aplicarPrecoDaLoja } from '@/servidor/preco-loja'
 import { svgCode128 } from '@/servidor/codigo-barras'
 import { Imprimir } from '@/ui/Imprimir'
 import { plural } from '@/ui/texto'
@@ -51,8 +52,8 @@ export async function EtiquetasSimples({
   /** A escolha do modelo, em cima. */
   cabecalho: ReactNode
 }) {
-  const variacoes = await comoOrg(orgId, (db) =>
-    db.variacao.findMany({
+  const variacoes = await comoOrg(orgId, async (db) => {
+    const vs = await db.variacao.findMany({
       where: {
         ativa: true,
         produto: { ativo: true, ...(ids.length ? { id: { in: ids } } : {}), ...(categoria ? { categoriaId: categoria } : {}) },
@@ -65,12 +66,15 @@ export async function EtiquetasSimples({
       take: 400,
       select: {
         id: true, codigo: true, codigoBarras: true, ajustePreco: true,
-        produto: { select: { nome: true, precoVista: true } },
+        produto: { select: { id: true, nome: true, precoVista: true } },
         opcoes: { select: { opcao: { select: { valor: true, eixo: { select: { ordem: true } } } } } },
         estoques: { where: { unidadeId: { in: unidadeIds } }, select: { quantidade: true } },
       },
-    }),
-  )
+    })
+    // Uma loja só: o preço dela.
+    if (unidadeIds.length === 1) await aplicarPrecoDaLoja(db, vs.map((v) => v.produto), unidadeIds[0])
+    return vs
+  })
 
   // Uma etiqueta por item, ou uma por peça em estoque (para etiquetar a
   // caixa que acabou de chegar). Teto de 400 para a folha não virar rolo.
