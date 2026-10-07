@@ -1282,3 +1282,72 @@ th.numero {
   pointer-events: none;
   z-index: 2;
 }
+
+/* ═══ O MENU COM COR POR ÁREA (cores-menu.ts) ═══════════════════
+   Cada item recebe `--cor-item` (a cor do grupo dele). O ícone ganha um
+   azulejo na cor; o item aberto, o fundo tingido e o fio aceso na esquerda.
+   O passar do mouse empurra o item 2px: a barra responde ao gesto. */
+.menu-item {
+  --c: var(--cor-item, var(--lado-ativo));
+  position: relative;
+  transition: background-color .18s ease, color .18s ease, transform .18s cubic-bezier(.2,.8,.3,1);
+}
+.menu-item:hover { background: color-mix(in oklab, var(--c) 10%, transparent); transform: translateX(2px); }
+.menu-item[aria-current='page'] { background: color-mix(in oklab, var(--c) 16%, transparent); }
+.menu-item[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: var(--c);
+  box-shadow: 0 0 12px var(--c);
+}
+.menu-icone {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  color: var(--c);
+  background: color-mix(in oklab, var(--c) 14%, transparent);
+  transition: transform .22s cubic-bezier(.3,1.6,.5,1), background-color .18s ease, color .18s ease, box-shadow .18s ease;
+}
+.menu-item:hover .menu-icone { transform: scale(1.08) rotate(-4deg); }
+.menu-item[aria-current='page'] .menu-icone {
+  color: #fff;
+  background: linear-gradient(140deg, color-mix(in oklab, var(--c) 82%, white), var(--c));
+  box-shadow: 0 6px 14px -6px var(--c);
+}
+.menu-trilho {
+  --c: var(--cor-item, var(--lado-ativo));
+  color: var(--c);
+  transition: background-color .18s ease, transform .2s cubic-bezier(.3,1.6,.5,1);
+}
+.menu-trilho:hover { background: color-mix(in oklab, var(--c) 14%, transparent); transform: scale(1.06); }
+.menu-trilho[aria-current='page'] {
+  color: #fff;
+  background: linear-gradient(140deg, color-mix(in oklab, var(--c) 82%, white), var(--c));
+  box-shadow: 0 8px 18px -8px var(--c);
+}
+
+/* As janelinhas que abrem por cima (cores do menu, menus de ação). */
+@keyframes flutuar { from { opacity: 0; transform: translateY(6px) scale(.97); } }
+.menu-flutua { animation: flutuar .18s cubic-bezier(.2,.8,.3,1) both; transform-origin: bottom left; }
+
+/* Os botões respondem ao toque: sobem um pixel no passar e afundam no clique. */
+.botao-vivo { transition: transform .15s cubic-bezier(.3,1.4,.5,1), box-shadow .18s ease, background-color .18s ease, border-color .18s ease, color .18s ease, filter .18s ease; }
+.botao-vivo:not(:disabled):hover { transform: translateY(-1px); }
+.botao-vivo:not(:disabled):active { transform: translateY(0) scale(.97); }
+
+/* Cartão que se clica: levanta e ganha sombra. */
+.cartao-vivo { transition: transform .2s cubic-bezier(.2,.8,.3,1), box-shadow .2s ease, border-color .2s ease; }
+.cartao-vivo:hover { transform: translateY(-2px); box-shadow: 0 14px 30px -18px rgb(15 23 42 / .35); }
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-item, .menu-icone, .menu-trilho, .botao-vivo, .cartao-vivo { transition: none; }
+  .menu-item:hover, .botao-vivo:hover, .cartao-vivo:hover, .menu-trilho:hover { transform: none; }
+  .menu-flutua { animation: none; }
+}

@@ -36,16 +36,24 @@ export function Busca({
         .map(([k, v]) => (
           <input key={k} type="hidden" name={k} value={v!} />
         ))}
-      <input
-        name="q"
-        defaultValue={valor ?? ''}
-        placeholder={placeholder}
-        aria-label={rotulo}
-        className="min-w-[14rem] flex-1 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
-      />
+      {/* A lupa dentro do campo, e o campo grande: é a primeira coisa que a
+          pessoa procura numa lista. O anel da marca acende no foco. */}
+      <label className="group flex h-11 min-w-[14rem] flex-1 items-center gap-2.5 rounded-2xl border border-borda bg-superficie px-3.5 shadow-[0_1px_2px_rgb(15_23_42/0.04)] transition-[border-color,box-shadow] focus-within:border-marca focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--marca)_16%,transparent)]">
+        <svg aria-hidden viewBox="0 0 20 20" className="size-[18px] shrink-0 text-tinta-3 transition-colors group-focus-within:text-marca" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <circle cx="9" cy="9" r="5.5" />
+          <path d="m13.2 13.2 3.6 3.6" />
+        </svg>
+        <input
+          name="q"
+          defaultValue={valor ?? ''}
+          placeholder={placeholder}
+          aria-label={rotulo}
+          className="h-full min-w-0 flex-1 bg-transparent text-sm text-tinta outline-none placeholder:text-tinta-3"
+        />
+      </label>
       <button
         type="submit"
-        className="rounded-norte border border-borda bg-superficie px-4 py-2 text-sm font-semibold text-tinta hover:bg-superficie-2"
+        className="botao-vivo botao-marca h-11 rounded-2xl px-5 text-sm font-semibold text-marca-tinta"
       >
         Buscar
       </button>
@@ -94,15 +102,20 @@ export function Fichas<T extends string>({
           href={linkDe(o.valor)}
           aria-current={atual === o.valor ? 'true' : undefined}
           className={
-            'rounded-full border px-3 py-1.5 font-semibold ' +
+            'botao-vivo inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-semibold ' +
             (atual === o.valor
-              ? 'border-marca/40 bg-marca-suave text-marca'
-              : 'border-transparent text-tinta-2 hover:bg-superficie-2 hover:text-tinta')
+              ? 'border-transparent bg-marca text-marca-tinta shadow-[0_6px_14px_-8px_var(--marca)]'
+              : 'border-borda bg-superficie text-tinta-2 hover:border-tinta-3 hover:text-tinta')
           }
         >
           {o.rotulo}
           {o.quantos !== undefined && (
-            <span className={'numero ml-1 ' + (atual === o.valor ? 'opacity-70' : 'text-tinta-3')}>
+            <span
+              className={
+                'numero rounded-full px-1.5 py-px text-[10.5px] leading-none ' +
+                (atual === o.valor ? 'bg-white/25' : 'bg-superficie-2 text-tinta-3')
+              }
+            >
               {o.quantos.toLocaleString('pt-BR')}
             </span>
           )}

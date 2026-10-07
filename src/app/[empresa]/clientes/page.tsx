@@ -18,6 +18,7 @@ import { plural } from '@/ui/texto'
 import { podeExportar } from '@/servidor/exportacao'
 import { Paginas } from '@/ui/Paginas'
 import { fatiar, lerPagina } from '@/ui/paginacao'
+import { Avatar, CartaoFiltro, type CorDoCartao, type ICONE } from '@/ui/premium'
 
 // O título diz a palavra do ramo: "Pacientes" na clínica, "Alunos" na escola.
 export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
@@ -180,26 +181,39 @@ export default async function Clientes({
           manter={{ quem, ordem: atuais.ordem }}
           limparEm={link({ q: null })}
         />
-        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-          <Fichas
-            opcoes={(
-              [
-                { valor: null, rotulo: 'todos', quantos: clientes.length },
-                { valor: 'ativos', rotulo: 'compram', quantos: clientes.length - semCompra.length - sumidos.length, avancado: true },
-                { valor: 'sumidos', rotulo: `sumidos há ${DIAS_SUMIDO}+ dias`, quantos: sumidos.length },
-                { valor: 'novos', rotulo: 'cadastrados nos últimos 30 dias', quantos: novos.length, avancado: true },
-                { valor: 'aniversario', rotulo: `aniversário em ${MES_NOME[mesAtual]}`, quantos: aniversariantes.length },
-                { valor: 'pontos', rotulo: 'com pontos', quantos: comPontos.length, avancado: true },
-                { valor: 'devendo', rotulo: 'devendo', quantos: devendo.length },
-                { valor: 'nunca', rotulo: vocab.naFicha.nuncaPlural, quantos: semCompra.length, avancado: true },
-                ...(desativados.length > 0 || quem === 'desativados'
-                  ? [{ valor: 'desativados' as const, rotulo: 'desativados', quantos: desativados.length, avancado: true }]
-                  : []),
-              ] as { valor: Quem | null; rotulo: string; quantos: number; avancado?: boolean }[]
-            ).filter((o) => !simples || !o.avancado || o.valor === quem)}
-            atual={quem}
-            linkDe={(v) => link({ quem: v })}
-          />
+        {/* Os recortes em cartões: o número grande é o que a dona lê primeiro,
+            e o cartão inteiro é o botão do filtro. Cada assunto tem sua cor. */}
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          {(
+            [
+              { valor: null, rotulo: 'Todos', quantos: clientes.length, cor: 'indigo', icone: 'pessoas', detalhe: 'cadastrados' },
+              { valor: 'ativos', rotulo: 'Compram', quantos: clientes.length - semCompra.length - sumidos.length, cor: 'verde', icone: 'sacola', detalhe: `nos últimos ${DIAS_SUMIDO} dias`, avancado: true },
+              { valor: 'sumidos', rotulo: 'Sumidos', quantos: sumidos.length, cor: 'ambar', icone: 'relogio', detalhe: `há ${DIAS_SUMIDO}+ dias sem comprar` },
+              { valor: 'aniversario', rotulo: 'Aniversário', quantos: aniversariantes.length, cor: 'rosa', icone: 'bolo', detalhe: `em ${MES_NOME[mesAtual]}` },
+              { valor: 'devendo', rotulo: 'Devendo', quantos: devendo.length, cor: 'vermelho', icone: 'moeda', detalhe: 'no crediário' },
+              { valor: 'novos', rotulo: 'Novos', quantos: novos.length, cor: 'ceu', icone: 'novo', detalhe: 'nos últimos 30 dias', avancado: true },
+              { valor: 'pontos', rotulo: 'Com pontos', quantos: comPontos.length, cor: 'violeta', icone: 'estrela', detalhe: 'para usar', avancado: true },
+              { valor: 'nunca', rotulo: vocab.naFicha.nuncaPlural.replace(/^./, (x) => x.toUpperCase()), quantos: semCompra.length, cor: 'ardosia', icone: 'sono', detalhe: 'cadastrados sem compra', avancado: true },
+              ...(desativados.length > 0 || quem === 'desativados'
+                ? [{ valor: 'desativados' as const, rotulo: 'Desativados', quantos: desativados.length, cor: 'ardosia' as const, icone: 'sono' as const, detalhe: 'fichas guardadas', avancado: true }]
+                : []),
+            ] as { valor: Quem | null; rotulo: string; quantos: number; cor: CorDoCartao; icone: keyof typeof ICONE; detalhe: string; avancado?: boolean }[]
+          )
+            .filter((o) => !simples || !o.avancado || o.valor === quem)
+            .map((o) => (
+              <CartaoFiltro
+                key={o.valor ?? 'todos'}
+                href={link({ quem: o.valor, pagina: null })}
+                ativo={quem === o.valor}
+                cor={o.cor}
+                icone={o.icone}
+                numero={o.quantos}
+                rotulo={o.rotulo}
+                detalhe={o.detalhe}
+              />
+            ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-3">
           {(!simples || ordem !== 'nome') && (
           <Fichas
             rotulo="Ordenar por"
@@ -235,18 +249,21 @@ export default async function Clientes({
       >
         {clientes.length === 0 && quem !== 'desativados' ? (
           <Vazio
+            titulo={q ? undefined : `Sua lista de ${vocab.pessoas} começa aqui`}
             acao={
               podeEditar && !q ? (
                 <Link
                   href={`/${slug}/clientes/novo`}
-                  className="botao-marca rounded-norte px-4 py-2 text-sm font-semibold text-marca-tinta"
+                  className="botao-vivo botao-marca rounded-2xl px-5 py-2.5 text-sm font-semibold text-marca-tinta"
                 >
-                  Cadastrar o primeiro
+                  + Cadastrar o primeiro
                 </Link>
               ) : undefined
             }
           >
-            {q ? 'Ninguém com esse nome, telefone ou CPF.' : `Nenhum ${vocab.pessoa} cadastrado ainda.`}
+            {q
+              ? 'Ninguém com esse nome, telefone ou CPF.'
+              : `Cadastre quem compra com você: o sistema mostra quem sumiu, quem faz aniversário e quem deve — e o assistente manda a mensagem certa para cada um.`}
           </Vazio>
         ) : (
           <Tabela
@@ -257,17 +274,20 @@ export default async function Clientes({
                 celula: (c) => (
                   <Link
                     href={`/${slug}/clientes/${c.id}`}
-                    className="flex min-w-0 flex-col hover:underline"
+                    className="group flex min-w-0 items-center gap-3"
                   >
-                    <span
-                      className={
-                        c.ativo ? 'truncate text-sm text-tinta' : 'truncate text-sm text-tinta-3'
-                      }
-                    >
-                      {c.nome}
-                    </span>
-                    <span className="text-xs text-tinta-3">
-                      {mostrarTelefone(c.telefone) || 'sem telefone'}
+                    <Avatar nome={c.nome} apagado={!c.ativo} />
+                    <span className="flex min-w-0 flex-col">
+                      <span
+                        className={
+                          (c.ativo ? 'text-tinta' : 'text-tinta-3') + ' truncate text-sm font-semibold group-hover:text-marca'
+                        }
+                      >
+                        {c.nome}
+                      </span>
+                      <span className="text-xs text-tinta-3">
+                        {mostrarTelefone(c.telefone) || 'sem telefone'}
+                      </span>
                     </span>
                   </Link>
                 ),

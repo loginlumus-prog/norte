@@ -54,7 +54,7 @@ export function Botao({
       disabled={resto.disabled || carregando}
       aria-busy={carregando || undefined}
       className={cx(
-        'inline-flex items-center justify-center gap-2 rounded-norte border px-3 py-2',
+        'botao-vivo inline-flex items-center justify-center gap-2 rounded-norte border px-3 py-2',
         'text-sm font-semibold transition-colors',
         'disabled:cursor-not-allowed disabled:opacity-55',
         TOM[tom],
@@ -294,9 +294,25 @@ export function Cartao({
 /* ── Vazio ────────────────────────────────────────────────── */
 
 /** Lista sem nada dentro. Diz o que fazer, não só que está vazio. */
-export function Vazio({ children, acao }: { children: ReactNode; acao?: ReactNode }) {
+/**
+ * A lista vazia: um desenho leve, a frase e o que fazer. Vazio não é erro —
+ * é o começo; o desenho tira a cara de "quebrou" e o botão diz o próximo passo.
+ */
+export function Vazio({ children, acao, titulo }: { children: ReactNode; acao?: ReactNode; titulo?: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+    <div className="tela-entra flex flex-col items-center gap-3 px-4 py-10 text-center">
+      <svg aria-hidden viewBox="0 0 120 96" className="h-24 w-32" fill="none">
+        <ellipse cx="60" cy="86" rx="40" ry="6" fill="currentColor" className="text-superficie-3" />
+        <rect x="26" y="26" width="68" height="50" rx="10" className="fill-superficie stroke-borda" strokeWidth="2" />
+        <path d="M26 40h68" className="stroke-borda" strokeWidth="2" />
+        <circle cx="35" cy="33" r="2.4" fill="var(--marca)" opacity=".55" />
+        <circle cx="43" cy="33" r="2.4" fill="var(--marca)" opacity=".35" />
+        <rect x="36" y="50" width="30" height="5" rx="2.5" fill="var(--marca)" opacity=".25" />
+        <rect x="36" y="60" width="44" height="5" rx="2.5" className="fill-superficie-3" />
+        <circle cx="90" cy="24" r="13" fill="var(--marca)" />
+        <path d="M84.5 24h11M90 18.5v11" stroke="white" strokeWidth="2.6" strokeLinecap="round" />
+      </svg>
+      {titulo ? <p className="text-base font-bold text-tinta">{titulo}</p> : null}
       <p className="max-w-sm text-sm text-tinta-2">{children}</p>
       {acao}
     </div>

@@ -7,6 +7,7 @@
 // caminho para resolver. O pedido em montagem fica guardado no aparelho
 // (guardar.ts): sair do balcão para ver a encomenda não perde nada.
 
+import { tocar } from '@/ui/sons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { cx } from '@/ui/base'
@@ -20,6 +21,7 @@ export function SinoDoBalcao({ slug, unidadeId }: { slug: string; unidadeId: str
   const [aberto, setAberto] = useState(false)
   const [novo, setNovo] = useState(false)
   const antes = useRef(0)
+  const primeira = useRef(true)
   const caixa = useRef<HTMLDivElement>(null)
 
   const total = avisos.reduce((s, a) => s + a.n, 0)
@@ -29,7 +31,12 @@ export function SinoDoBalcao({ slug, unidadeId }: { slug: string; unidadeId: str
     try {
       const r = await avisosAcao(slug, unidadeId)
       const n = r.reduce((s, a) => s + a.n, 0)
-      if (n > antes.current) setNovo(true)
+      // Subiu: acende e toca o sino — menos na primeira olhada, ao abrir a tela.
+      if (n > antes.current) {
+        setNovo(true)
+        if (!primeira.current) tocar('aviso')
+      }
+      primeira.current = false
       antes.current = n
       setAvisos(r)
     } catch {

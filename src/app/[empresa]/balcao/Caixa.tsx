@@ -10,6 +10,7 @@
 // em cima do campo.) Pela mesma razão, a linha do dinheiro vendido fica para
 // depois: com ela e a abertura, o esperado sai de cabeça.
 
+import { tocar } from '@/ui/sons'
 import { useState, useTransition } from 'react'
 import { Botao, Campo, Aviso, cx } from '@/ui/base'
 import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
@@ -356,6 +357,7 @@ export function FecharCaixa({
               if (!r.ok) return setErroFechar(r.erro)
               setFechadoId(caixaId)
               setFeito(r)
+              tocar(Math.abs(r.diferenca) < 0.005 ? 'sucesso' : 'aviso')
             })
           }
         >

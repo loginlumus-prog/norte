@@ -25,6 +25,7 @@
 //     bipe leva o foco para a busca e o resto do código cai lá. Sem isso, a
 //     regra 9 quebraria o leitor no tablet.
 
+import { tocar } from '@/ui/sons'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import type { ClienteNoBalcao, Achado, InicialDoBalcao } from './acoes'
 import { procurar, fecharVenda, consultarValeAcao, fichaNoBalcao } from './acoes'
@@ -1173,6 +1174,8 @@ export function useVenda({
 
       if (r.ok) {
         chaveDaVenda.current = null
+        // O "plim" da venda fechada (sons.ts): quem está no balcão ouve que deu certo.
+        tocar('venda')
         // O ganho aparece no recado porque e a hora de falar: "voce ja tem
         // 1.240 pontos" dito no balcao e o que faz a pessoa voltar. Guardado
         // so no banco, o programa nao existe para quem compra.

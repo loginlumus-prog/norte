@@ -25,6 +25,8 @@
 //    menu NENHUM: quem entrava pelo celular caía no painel e não saía dele.
 
 import Link from 'next/link'
+import { cookies } from 'next/headers'
+import type { CSSProperties } from 'react'
 import { resumoDaBarra } from '@/servidor/assinatura'
 import type { ReactNode } from 'react'
 import { CAPACIDADES, pode, type Capacidade, type Sessao } from '@/servidor/permissao'
@@ -48,6 +50,9 @@ import { Tranca } from './Tranca'
 import { Guia } from './Guia'
 import { AcoesDoTopo } from './AcoesDoTopo'
 import { cx, Ponto } from './base'
+import { cookieDasCores, corDoGrupo, lerCores } from './cores-menu'
+import { CoresDoMenu } from './CoresDoMenu'
+import { ChaveDeSom } from './ChaveDeSom'
 
 export type ItemMenu = {
   href: string
@@ -78,6 +83,8 @@ export type ItemMenu = {
   emBreve?: boolean
   /** Tela de análise: some do menu no modo simples. Ver `servidor/modo.ts`. */
   avancado?: boolean
+  /** O grupo antes do vocabulário do ramo ("Vender", e não "Recepção"): é a chave da cor. */
+  chaveGrupo?: string
 }
 
 export async function Estrutura({
@@ -146,6 +153,7 @@ export async function Estrutura({
         ...i,
         titulo: i.vocabulario ? vocab[i.vocabulario] : i.titulo,
         grupo: i.grupo && nomeDoGrupo(i.grupo, vocab),
+        chaveGrupo: i.grupo ?? 'Painel',
       })),
     modo,
     ativo,
@@ -154,13 +162,17 @@ export async function Estrutura({
   // Os grupos na ordem em que aparecem pela primeira vez. Grupo que ficou sem
   // item (o balconista não vê nada de "Empresa") some junto com o título —
   // título sem nada embaixo é a única coisa pior que item sem acesso.
+  // A cor de cada área (cores-menu.ts): a escolhida neste aparelho, ou a padrão.
+  const coresEscolhidas = lerCores((await cookies()).get(cookieDasCores(empresa.slug))?.value)
+  const corDe = (i: ItemMenu) => ({ '--cor-item': corDoGrupo(i.chaveGrupo, coresEscolhidas) }) as CSSProperties
+
   const soltos = visiveis.filter((i) => !i.grupo)
-  const grupos: { nome: string; itens: ItemMenu[] }[] = []
+  const grupos: { nome: string; chave: string; itens: ItemMenu[] }[] = []
   for (const i of visiveis) {
     if (!i.grupo) continue
     const g = grupos.find((x) => x.nome === i.grupo)
     if (g) g.itens.push(i)
-    else grupos.push({ nome: i.grupo, itens: [i] })
+    else grupos.push({ nome: i.grupo, chave: i.chaveGrupo ?? i.grupo, itens: [i] })
   }
 
   const item = (i: ItemMenu, trilho = false) => {
@@ -177,14 +189,10 @@ export async function Estrutura({
           aria-current={aqui ? 'page' : undefined}
           aria-label={i.titulo}
           title={i.titulo}
-          className={cx(
-            'relative mx-auto grid size-10 shrink-0 place-items-center rounded-xl transition-colors',
-            aqui
-              ? 'bg-lado-3 text-lado-ativo'
-              : 'text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta',
-          )}
+          style={corDe(i)}
+          className="menu-trilho relative mx-auto grid size-10 shrink-0 place-items-center rounded-xl"
         >
-          <IconeDoItem href={i.href} tamanho={20} />
+          <IconeDoItem href={i.href} tamanho={19} />
           {i.aviso && (
             <span
               aria-hidden
@@ -228,18 +236,16 @@ export async function Estrutura({
         key={i.href}
         href={i.href}
         aria-current={aqui ? 'page' : undefined}
+        style={corDe(i)}
         className={cx(
-          'flex items-center justify-between gap-2 rounded-norte px-2.5 py-[7px] text-sm transition-colors',
-          aqui
-            ? 'bg-lado-3 font-semibold text-lado-ativo'
-            : 'font-medium text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta',
+          'menu-item flex items-center justify-between gap-2 rounded-xl py-1 pr-2 pl-1 text-sm',
+          aqui ? 'font-semibold text-lado-tinta' : 'font-medium text-lado-tinta-2 hover:text-lado-tinta',
         )}
       >
         <span className="flex min-w-0 items-center gap-2.5">
-          <IconeDoItem
-            href={i.href}
-            className={cx('shrink-0', aqui ? 'text-lado-ativo' : 'text-lado-tinta-2')}
-          />
+          <span className="menu-icone shrink-0">
+            <IconeDoItem href={i.href} tamanho={16} />
+          </span>
           <span className="truncate">{i.titulo}</span>
         </span>
         {/* O aviso ganha da contagem: o que pede ação vem primeiro. */}
@@ -262,7 +268,8 @@ export async function Estrutura({
         <div key={g.nome} className="mt-2.5 flex flex-col gap-0.5">
           {/* O título do grupo é miúdo e apagado de propósito: ele organiza,
               não compete. Se tivesse o peso de um item, a pessoa clicaria. */}
-          <span className="px-2.5 pb-1 text-[10px] font-bold tracking-[0.12em] text-lado-tinta-2/75 uppercase">
+          <span className="flex items-center gap-2 px-2 pb-1 text-[10px] font-bold tracking-[0.12em] text-lado-tinta-2/80 uppercase">
+            <span aria-hidden className="h-2.5 w-1 rounded-full" style={{ background: corDoGrupo(g.chave, coresEscolhidas) }} />
             {g.nome}
           </span>
           {g.itens.map((i) => item(i))}
@@ -277,7 +284,7 @@ export async function Estrutura({
     <nav aria-label="Menu" className="flex flex-col gap-1">
       {soltos.map((i) => item(i, true))}
       {grupos.map((g) => (
-        <div key={g.nome} className="mt-0.5 flex flex-col gap-1 border-t border-lado-borda pt-1.5">
+        <div key={g.nome} className="mt-0.5 flex flex-col gap-1 border-t pt-1.5" style={{ borderColor: `color-mix(in oklab, ${corDoGrupo(g.chave, coresEscolhidas)} 40%, transparent)` }}>
           {g.itens.map((i) => item(i, true))}
         </div>
       ))}
@@ -322,10 +329,12 @@ export async function Estrutura({
         </Link>
       )}
 
+      <CoresDoMenu slug={empresa.slug} grupos={grupos.map((g) => ({ chave: g.chave, nome: g.nome }))} escolhidas={coresEscolhidas} />
+
       <div className="flex items-center gap-2 px-1">
         <span
           aria-hidden
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-lado-3 text-[11px] font-bold text-lado-ativo"
+          className="grid size-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,var(--marca),#8b5cf6)] text-[11px] font-bold text-white shadow-sm"
         >
           {iniciais}
         </span>
@@ -353,6 +362,7 @@ export async function Estrutura({
   // No trilho, o rodapé é a pessoa: as iniciais, e o sair logo abaixo.
   const rodapeTrilho = (
     <div className="mt-auto flex flex-col items-center gap-1.5 border-t border-lado-borda pt-2">
+      <CoresDoMenu slug={empresa.slug} grupos={grupos.map((g) => ({ chave: g.chave, nome: g.nome }))} escolhidas={coresEscolhidas} compacto />
       <Link
         href={`/${empresa.slug}/conta`}
         title={`${sessao.nome} · minha conta`}
@@ -437,6 +447,7 @@ export async function Estrutura({
               <div className="mt-4 flex flex-col gap-2 border-t border-lado-borda px-1.5 pt-3">
                 <span className="text-[10px] font-bold tracking-[0.12em] text-lado-tinta-2/75 uppercase">Tela</span>
                 <div className="flex items-center justify-between gap-2">
+                  <ChaveDeSom tom="lado" />
                   <TrocaModo atual={modo} tom="lado" />
                   <TrocaTema inicial={tema} tom="lado" />
                 </div>
@@ -465,6 +476,7 @@ export async function Estrutura({
               vista em toda tela, e não perdidos no pé da barra — no
               celular, na gaveta. */}
           <div className="hidden items-center gap-2 md:flex">
+            <ChaveDeSom />
             <TrocaModo atual={modo} tom="topo" />
             <TrocaTema inicial={tema} tom="papel" />
           </div>
@@ -474,7 +486,7 @@ export async function Estrutura({
             'flex flex-1 flex-col',
             // `pb-20`: o vão do botão de Ajuda, que fica fixo no canto de
             // baixo e cobria o último valor e o último botão da página.
-            recolhida ? 'min-h-0 overflow-hidden' : 'gap-5 p-4 pb-20 md:p-6 md:pb-20',
+            recolhida ? 'min-h-0 overflow-hidden' : 'tela-entra gap-5 p-4 pb-20 md:p-6 md:pb-20',
           )}
         >
           {children}
