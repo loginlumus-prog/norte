@@ -9,6 +9,7 @@ import {
 } from '../src/app/[empresa]/balcao/conta'
 import {
   acharVariacao,
+  matrizDaGrade,
   eixosDe,
   faixaDePreco,
   fracionado,
@@ -179,6 +180,18 @@ describe('a escolha da variação', () => {
   it('só acha a peça com todos os eixos escolhidos', () => {
     expect(acharVariacao(vs, { Tamanho: 'M' })).toBeNull()
     expect(acharVariacao(vs, { Tamanho: 'M', Cor: 'Rosa' })?.id).toBe('mr')
+  })
+
+  it('eixo de uma opção só não é escolha: o picolé com um sabor lança num toque', () => {
+    // Sonhos Gelatos, 07/10: "Choc africano" com Sabor (um só) × Unitário /
+    // Atacado 20un abria a grade de dois eixos e pedia o "Adicionar".
+    const choc = [
+      va('un', [['Tamanho', 'Unitário', 0], ['Sabor', 'Choc africano', 0]]),
+      va('atc', [['Tamanho', 'ATC 20UN', 1], ['Sabor', 'Choc africano', 0]]),
+    ]
+    expect(eixosDe(choc).map((e) => e.nome)).toEqual(['Tamanho'])
+    expect(matrizDaGrade(choc)).toBeNull()
+    expect(acharVariacao(choc, { Tamanho: 'ATC 20UN' })?.id).toBe('atc')
   })
 
   it('o cartão diz "a partir de" o menor preço', () => {

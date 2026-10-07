@@ -1,6 +1,7 @@
 'use client'
 
-// A capa e os destaques (as bolinhas do topo), no painel da aparência.
+// Os destaques (as bolinhas do topo), no painel da aparência. A capa e a logo
+// moram em Perfil.tsx.
 //
 // Destaque é como o do perfil do Instagram: a loja dá o nome ("Promoções",
 // "Açaí", "Para presente"), põe a foto da bolinha e escolhe o que aparece
@@ -13,7 +14,7 @@ import type { AparenciaDaLoja } from '@/servidor/vitrine'
 import { Botao, cx } from '@/ui/base'
 import { AcoesDaLinha, classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { reduzirFoto } from '../../produtos/[id]/FotoDoProduto'
-import { capaAcao, destaqueAcao, destaquesDasCategoriasAcao, moverDestaqueAcao, tirarDestaqueAcao } from './acoes'
+import { destaqueAcao, destaquesDasCategoriasAcao, moverDestaqueAcao, tirarDestaqueAcao } from './acoes'
 
 type Resposta = { ok: true } | { ok: false; erro: string }
 type Agir = (f: () => Promise<Resposta>, ok?: string) => void
@@ -38,53 +39,6 @@ function useImagem(agir: Agir) {
   }
   const input = <input ref={entrada} type="file" accept="image/*" className="hidden" />
   return { pedir, input }
-}
-
-export function Capa({ slug, unidadeId, capa, agir, indo }: { slug: string; unidadeId: string; capa: string | null; agir: Agir; indo: boolean }) {
-  const img = useImagem(agir)
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-semibold text-tinta">Capa</p>
-      <div className="relative h-28 w-full max-w-xl overflow-hidden rounded-2xl border border-borda bg-[linear-gradient(135deg,var(--marca),var(--marca-forte,var(--marca)))] sm:h-32">
-        {capa ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={capa} alt="A capa" className="h-full w-full object-cover" />
-        ) : (
-          <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white/85">Sem foto: a cor do tema</span>
-        )}
-      </div>
-      {img.input}
-      <div className="flex flex-wrap gap-2">
-        <Botao
-          tom="secundario"
-          disabled={indo}
-          onClick={() =>
-            img.pedir((b) => {
-              const fd = new FormData()
-              fd.set('capa', b)
-              agir(() => capaAcao(slug, unidadeId, fd), 'Capa trocada.')
-            })
-          }
-        >
-          {capa ? 'Trocar capa' : 'Pôr foto na capa'}
-        </Botao>
-        {capa ? (
-          <Botao
-            tom="discreto"
-            disabled={indo}
-            onClick={() => {
-              const fd = new FormData()
-              fd.set('tirar', '1')
-              agir(() => capaAcao(slug, unidadeId, fd))
-            }}
-          >
-            Tirar
-          </Botao>
-        ) : null}
-      </div>
-      <p className="text-xs text-tinta-3">Deitada (mais larga que alta) fica melhor: a fachada, a vitrine, o produto mais bonito.</p>
-    </div>
-  )
 }
 
 export function Destaques({

@@ -13,9 +13,9 @@ import { Aviso, Botao, cx } from '@/ui/base'
 import { Secao } from '@/ui/painel'
 import { AcoesDaLinha, classeDaAcao, IconeDaAcao } from '@/ui/premium'
 import { reduzirFoto } from '../../produtos/[id]/FotoDoProduto'
-import { sigla } from '../[endereco]/marca'
-import { Capa, Destaques } from './Destaques'
-import { dataAcao, esconderAvaliacaoAcao, logoAcao, postarAcao, responderAvaliacaoAcao, temaAcao, tirarPostagemAcao } from './acoes'
+import { Destaques } from './Destaques'
+import { Perfil } from './Perfil'
+import { dataAcao, esconderAvaliacaoAcao, postarAcao, responderAvaliacaoAcao, temaAcao, tirarPostagemAcao } from './acoes'
 
 type Resposta = { ok: true } | { ok: false; erro: string }
 
@@ -96,9 +96,18 @@ export function Aparencia({
 
       {/* ── A CARA ── */}
       <Secao titulo="A cara do catálogo" resumo="A logo vale para todas as lojas. A capa e a cor são deste catálogo.">
-        <Capa slug={slug} unidadeId={loja.id} capa={dados.capa} agir={agir} indo={indo} />
-        <div className="grid gap-6 lg:grid-cols-[auto_1fr]">
-          <Logo slug={slug} nome={empresaNome} logo={dados.logoUrl} agir={agir} indo={indo} />
+        <Perfil
+          slug={slug}
+          unidadeId={loja.id}
+          nome={empresaNome}
+          loja={lojas.find((l) => l.id === loja.id)?.nome ?? ''}
+          capa={dados.capa}
+          logo={dados.logoUrl}
+          cor={corAtual}
+          agir={agir}
+          indo={indo}
+        />
+        <div>
           <div className="flex flex-col gap-3">
             <p className="text-sm font-semibold text-tinta">Cor do tema</p>
             <div className="flex flex-wrap gap-2.5">
@@ -246,64 +255,6 @@ function Amostra({ nome, cor, ativa, onClick }: { nome: string; cor: string; ati
       <span className={cx('h-12 w-12 rounded-full ring-offset-2 ring-offset-fundo', ativa ? 'ring-2 ring-tinta' : 'ring-1 ring-borda')} style={{ background: cor }} />
       <span className={cx('text-xs', ativa ? 'font-semibold text-tinta' : 'text-tinta-2')}>{nome}</span>
     </button>
-  )
-}
-
-function Logo({ slug, nome, logo, agir, indo }: { slug: string; nome: string; logo: string | null; agir: (f: () => Promise<Resposta>, ok?: string) => void; indo: boolean }) {
-  const entrada = useRef<HTMLInputElement>(null)
-  return (
-    <div className="flex items-center gap-4">
-      <span className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[26px] bg-marca text-3xl font-extrabold text-marca-tinta">
-        {logo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logo} alt="A logo" className="h-full w-full object-cover" />
-        ) : (
-          sigla(nome)
-        )}
-      </span>
-      <div className="flex flex-col gap-2">
-        <p className="text-sm font-semibold text-tinta">Logo</p>
-        <input
-          ref={entrada}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={async (e) => {
-            const f = e.target.files?.[0]
-            e.target.value = ''
-            if (!f) return
-            let foto: Blob
-            try {
-              foto = await reduzirFoto(f)
-            } catch {
-              return agir(async () => ({ ok: false, erro: 'Não deu para ler essa imagem. Tente outra (JPG ou PNG).' }))
-            }
-            const fd = new FormData()
-            fd.set('logo', foto)
-            agir(() => logoAcao(slug, fd), 'Logo trocada.')
-          }}
-        />
-        <div className="flex flex-wrap gap-2">
-          <Botao tom="secundario" disabled={indo} onClick={() => entrada.current?.click()}>
-            {logo ? 'Trocar logo' : 'Pôr a logo'}
-          </Botao>
-          {logo ? (
-            <Botao
-              tom="discreto"
-              disabled={indo}
-              onClick={() => {
-                const fd = new FormData()
-                fd.set('tirar', '1')
-                agir(() => logoAcao(slug, fd))
-              }}
-            >
-              Tirar
-            </Botao>
-          ) : null}
-        </div>
-        <p className="text-xs text-tinta-3">Quadrada fica melhor. Sem logo, aparecem as iniciais.</p>
-      </div>
-    </div>
   )
 }
 

@@ -37,7 +37,14 @@ export type ProdutoNaVitrine = {
 
 export type Eixo = { nome: string; opcoes: { valor: string; hex: string | null }[] }
 
-/** Os eixos que as variações usam, na ordem do cadastro, sem repetir opção. */
+/**
+ * Os eixos que as variações usam, na ordem do cadastro, sem repetir opção.
+ *
+ * Eixo com UMA opção só não é escolha e fica de fora: o "Choc africano" com
+ * Sabor = Choc africano × Unitário/Atacado 20un abria a grade de dois eixos e
+ * pedia o "Adicionar" a cada picolé, enquanto o Flocos (só Unitário/Atacado)
+ * lançava num toque. Sem o eixo único, os dois se comportam igual.
+ */
 export function eixosDe(variacoes: VariacaoNaVitrine[]): Eixo[] {
   const mapa = new Map<string, { ordem: number; opcoes: Map<string, { ordem: number; hex: string | null }> }>()
   for (const v of variacoes) {
@@ -51,6 +58,7 @@ export function eixosDe(variacoes: VariacaoNaVitrine[]): Eixo[] {
     }
   }
   return [...mapa.entries()]
+    .filter(([, e]) => e.opcoes.size > 1)
     .sort((a, b) => a[1].ordem - b[1].ordem || a[0].localeCompare(b[0], 'pt-BR'))
     .map(([nome, e]) => ({
       nome,
