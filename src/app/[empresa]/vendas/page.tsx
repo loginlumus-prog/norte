@@ -17,6 +17,7 @@ import type { Tema } from '@/ui/TrocaTema'
 import type { FormaPagamento, SituacaoVenda } from '@prisma/client'
 import { Fichas } from '@/ui/Busca'
 import { pode } from '@/servidor/permissao'
+import { podeExportar } from '@/servidor/exportacao'
 import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { concorda, plural } from '@/ui/texto'
 import { Paginas } from '@/ui/Paginas'
@@ -294,7 +295,7 @@ export default async function Vendas({
         <span className="flex flex-wrap items-center justify-end gap-2">
           {veHistorico && <SeletorPeriodo atual={j.chave} />}
           {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
-          {!simples && veHistorico && (
+          {!simples && veHistorico && podeExportar(sessao, 'vendas') && (
             <a
               href={linkExportar}
               className="rounded-norte border border-borda bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta hover:bg-superficie-2"

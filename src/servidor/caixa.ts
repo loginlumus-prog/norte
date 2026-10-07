@@ -711,3 +711,78 @@ export async function turnoParaImprimir(sessao: Sessao, caixaId: string): Promis
     }
   })
 }
+
+// ─────────────────────────────────────────────────────────────
+// APAGAR UM TURNO DE TESTE
+// ─────────────────────────────────────────────────────────────
+// O dono testou o caixa (abriu, vendeu de mentira, fechou com o número que
+// veio na cabeça) e a diferença acumulada do mês ficou com −R$ 1.255 que
+// nunca existiram. Só o DONO apaga, com motivo, e só o turno que não guarda
+// dinheiro de verdade: fechado, sem venda concluída e sem parcela ou
+// mensalidade recebida nele. A venda de teste se cancela antes (o estoque
+// volta); a cancelada sai do turno e continua na lista, como cancelada. O
+// livro guarda o turno inteiro como era.
+
+export class TurnoNaoApaga extends Error {
+  constructor(motivo: string) {
+    super(motivo)
+    this.name = 'TurnoNaoApaga'
+  }
+}
+
+export async function apagarTurno(sessao: Sessao, caixaId: string, motivo: string): Promise<void> {
+  exigir(sessao, 'empresa.configurar')
+  const porque = motivo.trim().replace(/\s+/g, ' ')
+  if (porque.length < 5) throw new TurnoNaoApaga('Diga por que apagar (por exemplo: "turno de teste").')
+
+  await comoOrg(sessao.orgId, async (db) => {
+    await db.$queryRaw`select id from caixas where id = ${caixaId} for update`
+    const c = await db.caixa.findUnique({
+      where: { id: caixaId },
+      select: {
+        unidadeId: true, aberto: true, abertoPor: true, abertoEm: true, fechadoPor: true, fechadoEm: true,
+        saldoAbertura: true, saldoEsperado: true, saldoContado: true, observacoes: true,
+        _count: { select: { recebimentos: true, recibosCrediario: true, pagamentosMensalidade: true, movimentos: true } },
+      },
+    })
+    if (!c) throw new TurnoNaoApaga('Turno não encontrado.')
+    if (c.aberto) throw new TurnoNaoApaga('Feche o turno antes de apagar.')
+    const concluidas = await db.venda.count({ where: { caixaId, situacao: { not: 'CANCELADA' } } })
+    if (concluidas > 0) {
+      throw new TurnoNaoApaga(
+        `Este turno tem ${concluidas === 1 ? '1 venda' : `${concluidas} vendas`} valendo. Se foram de teste, cancele cada uma (o estoque volta) e depois apague o turno.`,
+      )
+    }
+    if (c._count.recebimentos + c._count.recibosCrediario + c._count.pagamentosMensalidade > 0) {
+      throw new TurnoNaoApaga('Este turno recebeu parcela ou mensalidade. Esse dinheiro é de verdade: o turno fica.')
+    }
+
+    const canceladas = await db.venda.updateMany({ where: { caixaId }, data: { caixaId: null } })
+    await db.caixa.delete({ where: { id: caixaId } })
+    await db.auditoria.create({
+      data: {
+        orgId: sessao.orgId,
+        unidadeId: c.unidadeId,
+        usuarioId: sessao.usuarioId,
+        quem: sessao.nome,
+        acao: 'caixa.apagou',
+        alvoTipo: 'caixa',
+        alvoId: caixaId,
+        motivo: porque,
+        valor: c.saldoContado !== null && c.saldoEsperado !== null ? reais(centavos(Number(c.saldoContado)) - centavos(Number(c.saldoEsperado))) : null,
+        antes: {
+          abertoPor: c.abertoPor,
+          abertoEm: c.abertoEm.toISOString(),
+          fechadoPor: c.fechadoPor,
+          fechadoEm: c.fechadoEm?.toISOString() ?? null,
+          abertura: Number(c.saldoAbertura),
+          esperado: c.saldoEsperado === null ? null : Number(c.saldoEsperado),
+          contado: c.saldoContado === null ? null : Number(c.saldoContado),
+          observacoes: c.observacoes,
+          movimentos: c._count.movimentos,
+          vendasCanceladasSoltas: canceladas.count,
+        },
+      },
+    })
+  })
+}

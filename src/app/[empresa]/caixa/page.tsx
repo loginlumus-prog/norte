@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { exigirEntrada } from '@/servidor/pagina'
 import { semAcesso } from '@/servidor/sem-acesso'
-import { pode } from '@/servidor/permissao'
+import { ehSuporteDoNorte, pode } from '@/servidor/permissao'
+import { ApagarTurno } from './ApagarTurno'
 import { escolherUnidade } from '@/servidor/unidade'
 import { janela, lerPeriodo } from '@/servidor/periodo'
 import { listarCaixas, movimentosDoCaixa, type TurnoDeCaixa } from '@/servidor/caixa'
@@ -58,6 +59,8 @@ export default async function CaixaPagina({
   // dia, sem período para voltar nem a diferença de um mês inteiro.
   const veHistorico = onde.ids.length > 0 && onde.ids.every((u) => pode(sessao, 'caixa.historico', u))
   const j = janela(veHistorico ? lerPeriodo(pedido) : 'hoje')
+  // Apagar turno de teste: só o dono (ver `apagarTurno`).
+  const podeApagar = pode(sessao, 'empresa.configurar') && !ehSuporteDoNorte(sessao)
   const turnos = await listarCaixas(sessao, { unidadeIds: onde.ids, de: j.de, ate: j.ate })
 
   const aberto = turnos.find((t) => t.id === turno) ?? null
@@ -261,6 +264,13 @@ export default async function CaixaPagina({
             <span className="flex items-center gap-3">
               {/* O papel do fechamento: só de turno fechado (o esperado do
                   aberto é o que a contagem às cegas esconde). */}
+              {!aberto.aberto && podeApagar && (
+                <ApagarTurno
+                  slug={slug}
+                  caixaId={aberto.id}
+                  voltar={`/${slug}/caixa?${onde.unidadeId ? `unidade=${onde.unidadeId}&` : ''}periodo=${j.chave}`}
+                />
+              )}
               {!aberto.aberto && (
                 <a href={`/${slug}/caixa/${aberto.id}/fechamento`} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
                   imprimir fechamento

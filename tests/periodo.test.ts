@@ -147,3 +147,36 @@ describe('gráfico por dia', () => {
     }
   })
 })
+
+describe('ontem e os dias escolhidos no calendário', () => {
+  it('ontem é o dia de ontem inteiro', () => {
+    const j = janela('ontem', AGORA)
+    expect(iso(j.de)).toBe('2026-09-08 00:00')
+    expect(iso(j.ate)).toBe('2026-09-09 00:00')
+  })
+
+  it('um dia só: anteontem, por exemplo', () => {
+    const p = lerPeriodo('dias:2026-09-07')
+    expect(p).toBe('dias:2026-09-07')
+    const j = janela(p, AGORA)
+    expect(iso(j.de)).toBe('2026-09-07 00:00')
+    expect(iso(j.ate)).toBe('2026-09-08 00:00')
+    expect(j.rotulo).toBe('07/09')
+  })
+
+  it('de um dia a outro, os dois inclusos — e invertido se desinverte', () => {
+    const p = lerPeriodo('dias:2026-09-08:2026-09-04')
+    expect(p).toBe('dias:2026-09-04:2026-09-08')
+    const j = janela(p, AGORA)
+    expect(j.dias).toBe(5)
+    expect(iso(j.ate)).toBe('2026-09-09 00:00')
+    expect(iso(j.deAnterior)).toBe('2026-08-30 00:00')
+  })
+
+  it('data que não existe, lixo ou mais de um ano vira os 30 dias', () => {
+    expect(lerPeriodo('dias:2026-02-30')).toBe('30d')
+    expect(lerPeriodo('dias:abc')).toBe('30d')
+    expect(lerPeriodo('dias:2024-01-01:2026-01-01')).toBe('30d')
+    expect(janela('dias:lixo' as Periodo, AGORA).chave).toBe('30d')
+  })
+})

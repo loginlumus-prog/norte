@@ -14,9 +14,13 @@
 // a contagem às cegas (ver Caixa.tsx) vira copiar o número da barra. Por isso
 // ele, e o total vendido do turno, só aparecem para quem vê relatório: o dono
 // e a gerência. Quem opera vê quantas vendas passaram, não quanto.
+//
+// E mesmo para o dono, escondidos até tocar (Sonhos Gelatos, 07/10/2026): o
+// balcão fica aberto na conta dele com a funcionária ao lado. Tocar mostra por
+// 15 segundos e esconde de novo.
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Situacao, cx } from '@/ui/base'
 import { Movimento } from './Caixa'
 import { usePalavras } from './palavras'
@@ -57,6 +61,12 @@ export function BarraCaixa({
   const [painel, setPainel] = useState<'SANGRIA' | 'SUPRIMENTO' | null>(null)
   const [feito, setFeito] = useState<string | null>(null)
   const [gestos, setGestos] = useState(!compacta)
+  const [verValores, setVerValores] = useState(false)
+  useEffect(() => {
+    if (!verValores) return
+    const t = setTimeout(() => setVerValores(false), 15_000)
+    return () => clearTimeout(t)
+  }, [verValores])
 
   const horas = (Date.now() - new Date(caixa.abertoEm).getTime()) / 36e5
   const dias = Math.floor(horas / 24)
@@ -78,14 +88,24 @@ export function BarraCaixa({
           </span>
           <span className="numero text-sm font-semibold text-tinta">
             {plural(conferencia.vendas, palavras.venda, palavras.vendas)}
-            {veReceita && <> · {brl(conferencia.vendidoTotal)}</>}
+            {veReceita && verValores && <> · {brl(conferencia.vendidoTotal)}</>}
           </span>
         </div>
-        {veReceita && (
+        {veReceita && verValores && (
           <div className="flex flex-col">
             <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">na gaveta</span>
             <span className="numero text-sm font-semibold text-tinta">{brl(conferencia.esperado)}</span>
           </div>
+        )}
+        {veReceita && (
+          <button
+            type="button"
+            onClick={() => setVerValores((v) => !v)}
+            aria-pressed={verValores}
+            className="rounded-norte border border-borda px-2 py-1 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta"
+          >
+            {verValores ? 'Esconder valores' : 'Ver valores'}
+          </button>
         )}
         <span className={cx('text-xs text-tinta-3', compacta && 'hidden sm:inline')}>{caixa.abertoPor}</span>
         {meta && (

@@ -17,7 +17,14 @@
 
 import { diaEmSP, diasEntre, inicioDoDiaEmSP, primeiroDoMes, somarDias } from './dia'
 
-export type Periodo = 'hoje' | '7d' | '30d' | '90d' | 'mes' | 'mes-passado'
+export type PeriodoFixo = 'hoje' | 'ontem' | '7d' | '30d' | '90d' | 'mes' | 'mes-passado'
+/**
+ * Os dias escolhidos no calendário: `dias:2026-10-05` (um dia) ou
+ * `dias:2026-10-01:2026-10-05` (do primeiro ao último, os dois inclusos).
+ * Vai no endereço como os outros: o link continua sendo a pergunta inteira.
+ */
+export type PeriodoEscolhido = `dias:${string}`
+export type Periodo = PeriodoFixo | PeriodoEscolhido
 
 export type Janela = {
   chave: Periodo
@@ -43,8 +50,9 @@ export type Janela = {
   temGrafico: boolean
 }
 
-export const PERIODOS: { chave: Periodo; curto: string }[] = [
+export const PERIODOS: { chave: PeriodoFixo; curto: string }[] = [
   { chave: 'hoje', curto: 'Hoje' },
+  { chave: 'ontem', curto: 'Ontem' },
   { chave: '7d', curto: '7 dias' },
   { chave: '30d', curto: '30 dias' },
   { chave: '90d', curto: '90 dias' },
@@ -59,7 +67,36 @@ const VALIDOS = new Set<string>(PERIODOS.map((p) => p.chave))
  * aqui, e o padrão precisa ser um período útil, não um erro.
  */
 export function lerPeriodo(v: string | undefined | null): Periodo {
-  return v && VALIDOS.has(v) ? (v as Periodo) : '30d'
+  if (v && VALIDOS.has(v)) return v as Periodo
+  const d = diasEscolhidos(v)
+  return d ? (`dias:${d.de}${d.ate !== d.de ? `:${d.ate}` : ''}` as PeriodoEscolhido) : '30d'
+}
+
+/** No máximo um ano de cada vez: a tela e a planilha não aguentam mais que isso. */
+const MAXIMO_DE_DIAS = 366
+
+const diaValido = (t: string | undefined) => {
+  if (!t || !/^\d{4}-\d{2}-\d{2}$/.test(t)) return false
+  const d = new Date(`${t}T12:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === t
+}
+
+/**
+ * Os dias de `dias:…`, conferidos: data que existe, em ordem (invertidos, a
+ * gente desinverte) e no máximo um ano. Fora disso, nulo.
+ */
+export function diasEscolhidos(v: string | undefined | null): { de: string; ate: string } | null {
+  if (!v?.startsWith('dias:')) return null
+  const [a, b] = v.slice(5).split(':')
+  if (!diaValido(a) || (b !== undefined && !diaValido(b))) return null
+  const [de, ate] = b && b < a! ? [b, a!] : [a!, b ?? a!]
+  if (diasEntre(de, somarDias(ate, 1)) > MAXIMO_DE_DIAS) return null
+  return { de, ate }
+}
+
+/** "05/10" ou "05/10/2025" quando não é deste ano. */
+function mostrarDia(dia: string, hoje: string) {
+  return `${dia.slice(8, 10)}/${dia.slice(5, 7)}${dia.slice(0, 4) !== hoje.slice(0, 4) ? `/${dia.slice(0, 4)}` : ''}`
 }
 
 // ── o fuso ───────────────────────────────────────────────────
@@ -85,7 +122,7 @@ export function janela(chave: Periodo, agora: Date = new Date()): Janela {
       chave,
       rotulo,
       naFrase,
-      curto: PERIODOS.find((p) => p.chave === chave)!.curto,
+      curto: PERIODOS.find((p) => p.chave === chave)?.curto ?? rotulo,
       comparacao,
       de: inst(de),
       ate: inst(ate),
@@ -98,9 +135,23 @@ export function janela(chave: Periodo, agora: Date = new Date()): Janela {
     }
   }
 
+  const escolhidos = diasEscolhidos(chave)
+  if (escolhidos) {
+    const { de, ate } = escolhidos
+    if (de === ate) {
+      const r = mostrarDia(de, hoje)
+      return montar(de, somarDias(de, 1), r, 'vs o dia anterior', `em ${r}`)
+    }
+    const r = `${mostrarDia(de, hoje)} a ${mostrarDia(ate, hoje)}`
+    return montar(de, somarDias(ate, 1), r, 'vs os dias antes', `de ${r}`)
+  }
+
   switch (chave) {
     case 'hoje':
       return montar(hoje, amanha, 'Hoje', 'vs ontem', 'hoje')
+
+    case 'ontem':
+      return montar(somarDias(hoje, -1), hoje, 'Ontem', 'vs anteontem', 'ontem')
 
     case '7d':
       return montar(somarDias(hoje, -6), amanha, 'Últimos 7 dias', 'vs 7 dias antes', 'nos últimos 7 dias')
@@ -134,4 +185,6 @@ export function janela(chave: Periodo, agora: Date = new Date()): Janela {
       return { ...j, deAnterior: inst(inicioDoMesAnterior(inicio)), ateAnterior: inst(inicio) }
     }
   }
+  // `dias:` que não confere (o endereço é do usuário): os 30 dias de sempre.
+  return janela('30d', agora)
 }

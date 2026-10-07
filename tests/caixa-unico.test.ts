@@ -108,3 +108,36 @@ describe('abrirCaixa', () => {
     expect(n.rows[0]!.n).toBe(1)
   })
 })
+
+describe('apagar turno de teste', () => {
+  const GERENTE: Sessao = { orgId: 'org-a', usuarioId: 'usr-a1', nome: 'Gê', acessos: [{ papel: 'GERENTE', unidadeId: 'uni-a1', expiraEm: null }] } as Sessao
+  const turno = async (id: string) => {
+    await db.exec(`update caixas set aberto = false where unidade_id = 'uni-a1' and aberto`)
+    await db.exec(`insert into caixas (id, org_id, unidade_id, aberto, aberto_por, saldo_esperado, saldo_contado) values ('${id}', 'org-a', 'uni-a1', false, 'Teste', 100, 0)`)
+  }
+
+  it('só o dono, com motivo, e só turno fechado sem venda valendo', async () => {
+    await turno('t-1')
+    await expect(m.caixa.apagarTurno(GERENTE, 't-1', 'turno de teste')).rejects.toThrow()
+    await expect(m.caixa.apagarTurno(DONA, 't-1', 'ok')).rejects.toThrow('Diga por que')
+    await m.caixa.apagarTurno(DONA, 't-1', 'turno de teste')
+    expect((await db.query(`select 1 from caixas where id = 't-1'`)).rows).toHaveLength(0)
+    const livro = await db.query<{ motivo: string }>(`select motivo from auditoria where acao = 'caixa.apagou' and alvo_id = 't-1'`)
+    expect(livro.rows[0]!.motivo).toBe('turno de teste')
+  })
+
+  it('com venda valendo, recusa; cancelada, solta a venda e apaga', async () => {
+    await turno('t-2')
+    await db.exec(`insert into vendas (id, org_id, unidade_id, numero, total, situacao, caixa_id) values ('v-t2', 'org-a', 'uni-a1', 9901, 10, 'CONCLUIDA', 't-2')`)
+    await expect(m.caixa.apagarTurno(DONA, 't-2', 'turno de teste')).rejects.toThrow('cancele')
+    await db.exec(`update vendas set situacao = 'CANCELADA' where id = 'v-t2'`)
+    await m.caixa.apagarTurno(DONA, 't-2', 'turno de teste')
+    const v = await db.query<{ caixa_id: string | null }>(`select caixa_id from vendas where id = 'v-t2'`)
+    expect(v.rows[0]!.caixa_id).toBeNull()
+  })
+
+  it('turno aberto não apaga', async () => {
+    await db.exec(`insert into caixas (id, org_id, unidade_id, aberto, aberto_por) values ('t-3', 'org-a', 'uni-a1', true, 'Teste')`)
+    await expect(m.caixa.apagarTurno(DONA, 't-3', 'turno de teste')).rejects.toThrow('Feche')
+  })
+})
