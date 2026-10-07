@@ -242,21 +242,24 @@ model Org {
 
   recargas RecargaIA[]
 
-  unidades       Unidade[]
-  usuarios       Usuario[]
-  presencas      Presenca[]
-  acessos        Acesso[]
-  convites       Convite[]
-  cargos         Cargo[]
-  receitas       Receita[]
-  ordensProducao OrdemProducao[]
-  pedidosFabrica PedidoFabrica[]
-  marcasFarol    MarcaFarol[]
-  catalogosLoja  CatalogoLoja[]
-  itensEncomenda EncomendaItem[]
-  pecasFarol     PecaFarol[]
-  auditoria      Auditoria[]
-  cobranca       Cobranca?
+  unidades           Unidade[]
+  usuarios           Usuario[]
+  presencas          Presenca[]
+  acessos            Acesso[]
+  convites           Convite[]
+  cargos             Cargo[]
+  receitas           Receita[]
+  ordensProducao     OrdemProducao[]
+  pedidosFabrica     PedidoFabrica[]
+  marcasFarol        MarcaFarol[]
+  catalogosLoja      CatalogoLoja[]
+  postagensCatalogo  PostagemCatalogo[]
+  avaliacoesCatalogo AvaliacaoCatalogo[]
+  destaquesCatalogo  DestaqueCatalogo[]
+  itensEncomenda     EncomendaItem[]
+  pecasFarol         PecaFarol[]
+  auditoria          Auditoria[]
+  cobranca           Cobranca?
 
   categorias            Categoria[]
   movimentosPontos      MovimentoPontos[]
@@ -1212,6 +1215,8 @@ model Produto {
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  postagensCatalogo PostagemCatalogo[]
 
   @@index([orgId, ativo])
   @@index([orgId, categoriaId])
@@ -2937,6 +2942,9 @@ model Encomenda {
   /// Carimbada quando vira ENTREGUE.
   concluidaEm DateTime? @map("concluida_em")
 
+  /// A nota que a cliente deu depois de receber (só a do catálogo).
+  avaliacao AvaliacaoCatalogo?
+
   /// A venda do balcão que recebeu o que faltava.
   venda           Venda?
   /// O sinal em dinheiro que entrou (ou voltou) pela gaveta.
@@ -3020,11 +3028,122 @@ model CatalogoLoja {
   /// Mostrar o que acabou, marcado como "esgotado" (em vez de esconder).
   mostrarEsgotado Boolean  @default(false) @map("mostrar_esgotado")
 
+  /// A cara da vitrine (ver src/servidor/vitrine-tema.ts): um dos temas
+  /// prontos, ou nulo para a cor da marca. `corTema` é a cor escolhida à mão
+  /// (#rrggbb), que vale por cima do tema.
+  tema        String?
+  corTema     String?   @map("cor_tema")
+  /// O tema de data (Natal, São João...), ligado pela loja. Sai sozinho
+  /// depois de `especialAte`.
+  especial    String?
+  especialAte DateTime? @map("especial_ate")
+
+  /// A foto da capa (o topo da vitrine). Sem ela, a cor do tema com a arte.
+  capaId String? @map("capa_id")
+  capa   Midia?  @relation("capaDoCatalogo", fields: [capaId], references: [id], onDelete: SetNull)
+
+  destaques  DestaqueCatalogo[]
+  postagens  PostagemCatalogo[]
+  avaliacoes AvaliacaoCatalogo[]
+
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
   @@unique([orgId, endereco])
   @@map("catalogos")
+}
+
+/// Uma postagem da vitrine: a novidade, a promoção, o sabor do dia. Aparece no
+/// mural do catálogo e, enquanto valer, nas bolinhas do topo (os stories).
+model PostagemCatalogo {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  catalogoId String       @map("catalogo_id")
+  catalogo   CatalogoLoja @relation(fields: [catalogoId], references: [id], onDelete: Cascade)
+
+  /// A foto (já reduzida no aparelho, como a do produto).
+  midiaId String? @map("midia_id")
+  midia   Midia?  @relation(fields: [midiaId], references: [id], onDelete: SetNull)
+
+  titulo String
+  texto  String?
+
+  /// O produto do "Quero esse": abre direto na escolha.
+  produtoId String?  @map("produto_id")
+  produto   Produto? @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+
+  /// Nas bolinhas do topo até esta hora; nulo = enquanto a postagem existir.
+  storiesAte DateTime? @map("stories_ate")
+  nosStories Boolean   @default(true) @map("nos_stories")
+  ativa      Boolean   @default(true)
+
+  quem     String
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@index([orgId, catalogoId, criadaEm])
+  @@map("postagens_catalogo")
+}
+
+/// Um destaque da vitrine: a bolinha do topo, como nos destaques do perfil
+/// do Instagram. A loja dá o nome, a capa e o que tem dentro: uma categoria
+/// inteira (acompanha o cadastro) ou os produtos que ela escolher, na ordem
+/// dela. Sem nenhum destaque, as bolinhas saem sozinhas das categorias.
+model DestaqueCatalogo {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  catalogoId String       @map("catalogo_id")
+  catalogo   CatalogoLoja @relation(fields: [catalogoId], references: [id], onDelete: Cascade)
+
+  nome    String
+  midiaId String? @map("midia_id")
+  midia   Midia?  @relation(fields: [midiaId], references: [id], onDelete: SetNull)
+
+  /// Uma categoria inteira, ou (sem ela) os produtos escolhidos.
+  categoriaId String?  @map("categoria_id")
+  produtoIds  String[] @map("produto_ids")
+
+  ordem    Int      @default(0)
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([orgId, catalogoId, ordem])
+  @@map("destaques_catalogo")
+}
+
+/// A avaliação de quem pediu pelo catálogo: uma por pedido entregue, pelo
+/// link de acompanhar. A loja pode esconder (com motivo, e fica no livro),
+/// nunca reescrever.
+model AvaliacaoCatalogo {
+  id    String @id @default(cuid())
+  orgId String @map("org_id")
+  org   Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  catalogoId String       @map("catalogo_id")
+  catalogo   CatalogoLoja @relation(fields: [catalogoId], references: [id], onDelete: Cascade)
+
+  encomendaId String    @unique @map("encomenda_id")
+  encomenda   Encomenda @relation(fields: [encomendaId], references: [id], onDelete: Cascade)
+
+  /// De 1 a 5.
+  nota  Int
+  texto String?
+  /// O primeiro nome de quem pediu — é o que aparece.
+  nome  String
+
+  /// A resposta da loja, que aparece embaixo.
+  resposta String?
+
+  oculta       Boolean @default(false)
+  ocultaPor    String? @map("oculta_por")
+  ocultaMotivo String? @map("oculta_motivo")
+
+  criadaEm DateTime @default(now()) @map("criada_em")
+
+  @@index([orgId, catalogoId, criadaEm])
+  @@map("avaliacoes_catalogo")
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -3206,7 +3325,10 @@ model Midia {
   sha256  String
   dados   Bytes  @db.ByteA
 
-  produtos Produto[] @relation("fotoDoProduto")
+  produtos        Produto[]          @relation("fotoDoProduto")
+  postagens       PostagemCatalogo[]
+  capasDeCatalogo CatalogoLoja[]     @relation("capaDoCatalogo")
+  destaques       DestaqueCatalogo[]
 
   criadaEm DateTime @default(now()) @map("criada_em")
 

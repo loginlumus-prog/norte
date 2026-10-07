@@ -185,6 +185,14 @@ function UmaLoja({
               >
                 Ver como a cliente vê
               </a>
+              {podeMudar ? (
+                <a
+                  href={`/${slug}/catalogo/aparencia?loja=${loja.unidadeId}`}
+                  className="inline-flex items-center rounded-norte border border-marca bg-superficie px-3 py-2 text-sm font-semibold text-marca hover:bg-superficie-2"
+                >
+                  Aparência e postagens
+                </a>
+              ) : null}
             </div>
           </div>
         ) : null}

@@ -37,12 +37,16 @@ import { aVendaNaLoja, alcancaOProduto } from './catalogo-loja'
 import { pedeInteiro } from './devolucao'
 import { codigoEncomenda } from './encomenda'
 import { aplicarPrecoDaLoja } from './preco-loja'
+import { avaliacaoDoPedido, extrasDaVitrine, midiaDaVitrine, type ExtrasDaVitrine, type SituacaoDaAvaliacao } from './vitrine'
 
 // ─────────────────────────────────────────────────────────────
 // REGRAS PURAS (testadas sem banco)
 // ─────────────────────────────────────────────────────────────
 
 /** O pedaço do link: letras, números e hífen, de 2 a 40. */
+/** Endereços que são telas do painel, não catálogo de loja. */
+export const ENDERECOS_RESERVADOS = new Set(['aparencia'])
+
 export const ENDERECO = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/
 
 /** "Itinga (SESI)" → "itinga-sesi". */
@@ -395,6 +399,8 @@ export async function salvarCatalogo(
   exigir(sessao, 'empresa.configurar')
   const endereco = (d.endereco ?? '').trim().toLowerCase()
   if (!ENDERECO.test(endereco)) return { ok: false, erro: 'O endereço do link usa só letras sem acento, números e hífen (ex.: centro, loja-2).' }
+  // "aparencia" é a tela de aparência do catálogo, no painel (catalogo/aparencia).
+  if (ENDERECOS_RESERVADOS.has(endereco)) return { ok: false, erro: 'Esse endereço é reservado. Escolha outro (ex.: centro, loja-2).' }
   const whatsapp = d.whatsapp ? limparWhatsapp(d.whatsapp) : null
   if (d.whatsapp && !whatsapp) return { ok: false, erro: 'Confira o WhatsApp da loja, com DDD: (71) 99999-0000.' }
   if (d.ativo && !whatsapp) return { ok: false, erro: 'Para abrir o catálogo, diga o WhatsApp da loja: é para onde os pedidos vão.' }
@@ -556,7 +562,9 @@ export async function lerFotoPublica(slug: string, id: string): Promise<{ mime: 
   if (!org || !SITUACOES_NO_AR.has(org.situacao)) return null
   return comoOrg(org.id, async (db) => {
     const usada = await db.produto.findFirst({ where: { fotoId: id, ativo: true, usoInterno: false }, select: { id: true } })
-    if (!usada) return null
+    // Além da foto de produto: a logo da empresa e a foto de postagem ativa
+    // da vitrine (ver vitrine.ts).
+    if (!usada && !(await midiaDaVitrine(db, slug, org.logoUrl, id))) return null
     const m = await db.midia.findUnique({ where: { id }, select: { mime: true, dados: true } })
     return m ? { mime: m.mime, dados: new Uint8Array(m.dados) } : null
   })
@@ -607,9 +615,19 @@ export type VitrinePublica = {
   }
   endereco: string
   categorias: { id: string; nome: string; total: number }[]
+  /** O tema, as postagens e as avaliações (ver vitrine.ts). */
+  extras: ExtrasDaVitrine
 }
 
-type Aberto = { orgId: string; empresa: VitrinePublica['empresa']; catalogo: { id: string; unidadeId: string; mostrarEsgotado: boolean; chavePix: string | null; whatsapp: string | null; retirada: boolean; entrega: boolean; taxaEntrega: number | null; pedidoMinimo: number | null; recado: string | null } }
+type Aberto = {
+  orgId: string
+  empresa: VitrinePublica['empresa']
+  catalogo: {
+    id: string; unidadeId: string; mostrarEsgotado: boolean; chavePix: string | null; whatsapp: string | null; retirada: boolean; entrega: boolean
+    taxaEntrega: number | null; pedidoMinimo: number | null; recado: string | null
+    tema: string | null; corTema: string | null; especial: string | null; especialAte: Date | null; capaId: string | null
+  }
+}
 
 /** A empresa e o catálogo do link, se estiverem no ar. */
 async function abrir(slug: string, endereco: string): Promise<Aberto | null> {
@@ -621,7 +639,10 @@ async function abrir(slug: string, endereco: string): Promise<Aberto | null> {
       // Depósito e fábrica não vendem ao público: o catálogo ligado de antes
       // (a loja que virou depósito) não abre nem recebe pedido.
       where: { endereco, ativo: true, unidade: { ativa: true, ehDeposito: false, ehFabrica: false } },
-      select: { id: true, unidadeId: true, mostrarEsgotado: true, chavePix: true, whatsapp: true, retirada: true, entrega: true, taxaEntrega: true, pedidoMinimo: true, recado: true },
+      select: {
+        id: true, unidadeId: true, mostrarEsgotado: true, chavePix: true, whatsapp: true, retirada: true, entrega: true, taxaEntrega: true, pedidoMinimo: true, recado: true,
+        tema: true, corTema: true, especial: true, especialAte: true, capaId: true,
+      },
     }),
   )
   if (!c) return null
@@ -777,6 +798,7 @@ export async function lerVitrinePublica(slug: string, endereco: string): Promise
       },
       endereco,
       categorias,
+      extras: await extrasDaVitrine(db, slug, a.catalogo, a.empresa.corMarca),
     }
   })
 }
@@ -787,7 +809,7 @@ const POR_PAGINA = 40
 export async function produtosDoCatalogo(
   slug: string,
   endereco: string,
-  filtro: { categoriaId?: string | null; busca?: string | null; pular?: number },
+  filtro: { categoriaId?: string | null; busca?: string | null; pular?: number; produtoId?: string | null; produtoIds?: string[] | null },
 ): Promise<{ produtos: ProdutoNoCatalogo[]; mais: boolean; proximo: number } | null> {
   const a = await abrir(slug, endereco)
   if (!a) return null
@@ -799,6 +821,11 @@ export async function produtosDoCatalogo(
     const extra: Prisma.ProdutoWhereInput = {}
     if (categoria === 'outros') extra.categoriaId = null
     else if (categoria) extra.categoriaId = categoria
+    // Um produto só: o "Quero esse" de uma postagem (ver vitrine.ts).
+    if (filtro.produtoId && /^[\w-]{1,64}$/.test(filtro.produtoId)) extra.id = filtro.produtoId
+    // Os produtos de um destaque montado à mão (ver vitrine.ts).
+    const escolhidos = (filtro.produtoIds ?? []).filter((x) => typeof x === 'string' && /^[\w-]{1,64}$/.test(x)).slice(0, 40)
+    if (filtro.produtoIds) extra.id = { in: escolhidos }
     if (busca.length >= 2) {
       extra.AND = busca.split(/\s+/).slice(0, 5).map((w) => ({ nome: { contains: w, mode: 'insensitive' as const } }))
     }
@@ -1076,6 +1103,8 @@ export type PedidoAcompanhado = {
   forma: string | null
   chavePix: string | null
   situacao: ReturnType<typeof situacaoParaCliente>
+  /** Entregue, a cliente avalia pelo próprio link (ver vitrine.ts). */
+  avaliacao: SituacaoDaAvaliacao
 }
 
 /** A página de acompanhar: o link secreto é a chave. */
@@ -1120,6 +1149,7 @@ export async function acompanharPedido(slug: string, token: string): Promise<Ped
       forma: FORMAS_DO_CATALOGO.find((f) => f.forma === e.formaCombinada)?.rotulo ?? null,
       chavePix: e.formaCombinada === 'PIX' && e.situacao !== 'CANCELADA' ? (cat?.chavePix ?? null) : null,
       situacao: situacaoParaCliente(e),
+      avaliacao: await avaliacaoDoPedido(db, e.id),
     }
   })
 }

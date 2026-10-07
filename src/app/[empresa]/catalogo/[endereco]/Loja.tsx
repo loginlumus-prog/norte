@@ -17,7 +17,9 @@ import './vitrine.css'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import type { FormaPagamento } from '@prisma/client'
 import type { ProdutoNoCatalogo, OpcaoNoCatalogo, VitrinePublica } from '@/servidor/catalogo'
-import { maisProdutos, pedir } from './acoes'
+import { maisProdutos, pedir, produtoDaVitrine } from './acoes'
+import { ArteDaCapa } from './Arte'
+import { Avaliacoes, Bolinhas, Estrelas, Mural, Visor, type Bolinha } from './Vitrine'
 import { iconeDoProduto, linkPedirFoto, type IconeDoProduto } from './icone'
 import { estiloDaMarca } from './marca'
 import { Adiante, Alvo, Etiqueta, Fechar, Foto, Lixo, Lupa, MarcaDaLoja, Mais, Menos, Moto, Relogio, Sacola, Visto, Vitrine, Voltar, Zap } from './Pecas'
@@ -401,8 +403,81 @@ export function Loja({
     })
   }
 
-  const estilo = estiloDaMarca(empresa.corMarca)
+  // A cor do tema da vitrine (o de data, o escolhido, ou a da marca).
+  const { tema, capa, destaques: destaquesDaLoja, stories, mural, avaliacoes } = vitrine.extras
+  const estilo = estiloDaMarca(tema.cor ?? empresa.corMarca)
   const subLoja = loja.nome && loja.nome !== empresa.nome ? loja.nome : null
+
+  // ── as bolinhas (stories) ──
+  const CHAVE_VISTOS = `norte:stories:${slug}:${enderecoCat}`
+  const [visor, setVisor] = useState<number | null>(null)
+  const fecharVisor = useCallback(() => setVisor(null), [])
+  const nomeDaCategoria = useMemo(() => new Map(categorias.map((c) => [c.id, c.nome])), [categorias])
+  const bolinhas = useMemo<Bolinha[]>(() => {
+    const capaDe = (id: string) => primeira.produtos.find((p) => (p.categoriaId ?? 'outros') === id && p.foto)?.foto ?? null
+    // Os destaques que a loja montou; sem nenhum, um por categoria.
+    const grupos: Bolinha[] = destaquesDaLoja.length
+      ? destaquesDaLoja.map((d) => ({
+          tipo: 'grupo',
+          id: d.id,
+          rotulo: d.nome,
+          capa: d.capa ?? (d.categoriaId ? capaDe(d.categoriaId) : (primeira.produtos.find((p) => d.produtoIds.includes(p.id) && p.foto)?.foto ?? null)),
+          icone: iconeDoProduto(d.nome, d.categoriaId ? nomeDaCategoria.get(d.categoriaId) : d.nome),
+          categoriaId: d.categoriaId,
+          produtoIds: d.produtoIds,
+        }))
+      : categorias.length > 1
+        ? categorias.map((c) => ({ tipo: 'grupo', id: c.id, rotulo: c.nome, capa: capaDe(c.id), icone: iconeDoProduto(c.nome, c.nome), categoriaId: c.id, produtoIds: [] }))
+        : []
+    return [...stories.map((p): Bolinha => ({ tipo: 'postagem', id: p.id, rotulo: p.titulo, postagem: p })), ...grupos]
+  }, [stories, categorias, primeira.produtos, destaquesDaLoja, nomeDaCategoria])
+  const carregarGrupo = useCallback(
+    async (b: Extract<Bolinha, { tipo: 'grupo' }>) => {
+      if (b.categoriaId) return (await maisProdutos(slug, enderecoCat, { categoriaId: b.categoriaId, busca: '', pular: 0 }))?.produtos ?? []
+      const ps = (await maisProdutos(slug, enderecoCat, { produtoIds: b.produtoIds, busca: '', pular: 0 }))?.produtos ?? []
+      // Na ordem que a loja escolheu.
+      return [...ps].sort((x, y) => b.produtoIds.indexOf(x.id) - b.produtoIds.indexOf(y.id))
+    },
+    [slug, enderecoCat],
+  )
+  /** O "Quero esse" de uma postagem: busca o produto e abre a escolha. */
+  const queroEsse = useCallback(
+    async (produtoId: string) => {
+      setVisor(null)
+      const p = await produtoDaVitrine(slug, enderecoCat, produtoId).catch(() => null)
+      if (p) abrirProduto(p)
+    },
+    // abrirProduto só mexe em estado; não precisa entrar na lista.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slug, enderecoCat],
+  )
+
+  // ── a aba que acende conforme a rolagem, e a página seguinte no fim ──
+  const [naTela, setNaTela] = useState<string | null>(null)
+  const sentinela = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (categoria !== null || busca.trim().length >= 2) return
+    const secoes = [...document.querySelectorAll<HTMLElement>('[data-categoria]')]
+    if (secoes.length === 0) return
+    const o = new IntersectionObserver(
+      (es) => {
+        const visivel = es.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
+        if (visivel) setNaTela(visivel.target.getAttribute('data-categoria'))
+      },
+      { rootMargin: '-140px 0px -60% 0px' },
+    )
+    secoes.forEach((x) => o.observe(x))
+    return () => o.disconnect()
+  }, [categoria, busca, lista.produtos.length])
+  useEffect(() => {
+    const el = sentinela.current
+    if (!el || !lista.mais) return
+    const o = new IntersectionObserver((es) => {
+      if (es.some((e) => e.isIntersecting) && !carregando) void carregar(null, '', lista.proximo)
+    }, { rootMargin: '600px' })
+    o.observe(el)
+    return () => o.disconnect()
+  }, [lista.mais, lista.proximo, carregando, carregar])
 
   // ── depois do pedido ──
   if (feito) {
@@ -474,43 +549,69 @@ export function Loja({
     else secoes.push({ id, nome: agrupar ? (nomeCategoria.get(id) ?? 'Outros') : null, itens: [p] })
   }
   const zapLoja = loja.whatsapp ? `https://wa.me/${loja.whatsapp}?text=${encodeURIComponent('Olá! Vim pelo catálogo.')}` : null
+  // Sem busca e sem categoria escolhida, a vitrine é o CARDÁPIO, como nos
+  // apps de delivery: uma seção por categoria, cada produto numa linha com a
+  // foto à direita. As abas de categoria levam até a seção e acendem conforme
+  // a rolagem.
+  const emFeed = categoria === null && !buscando
+  const destaques = emFeed ? produtos.filter((p) => p.foto && p.disponivel).slice(0, 10) : []
 
   return (
     <main style={estilo} className="min-h-dvh bg-fundo pb-32">
       {/* ── quem é a loja ── */}
       <header className="relative">
-        <div aria-hidden className="vt-halo pointer-events-none absolute inset-x-0 top-0 h-64" />
-        <div className="relative mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-6 pb-4 sm:pt-10">
-          <div className="flex items-center gap-3.5">
-            <MarcaDaLoja nome={empresa.nome} logo={empresa.logoUrl} className="h-16 w-16 rounded-[20px] text-2xl sm:h-[72px] sm:w-[72px]" />
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-[22px] leading-tight font-extrabold tracking-tight text-titulo sm:text-[28px]">{empresa.nome}</h1>
-              <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm text-tinta-2">
-                {subLoja ? <span className="truncate font-medium">{subLoja}</span> : <span className="truncate font-medium">Catálogo</span>}
-                {loja.horario ? (
-                  <>
-                    <span aria-hidden className="text-tinta-3">·</span>
-                    <span className="flex min-w-0 items-center gap-1">
-                      <Relogio tamanho={14} className="shrink-0 text-tinta-3" />
-                      <span className="truncate">{loja.horario}</span>
-                    </span>
-                  </>
-                ) : null}
+        {/* A capa: a cor do tema, com a arte da data (ou a trama de sempre). */}
+        <div className="relative mx-auto max-w-5xl sm:px-4 sm:pt-4">
+          <div className="relative h-32 overflow-hidden sm:h-40 sm:rounded-[28px]">
+            <ArteDaCapa arte={tema.especial?.arte ?? null} foto={capa} />
+            {tema.especial ? (
+              <p className="absolute top-3 right-3 max-w-[78%] rounded-full bg-black/30 px-3 py-1.5 text-right text-[12.5px] leading-snug font-semibold text-white backdrop-blur-sm sm:top-4 sm:right-5 sm:text-sm">
+                {tema.especial.saudacao}
               </p>
-            </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="relative mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-3 sm:px-8">
+          <div className="-mt-10 flex items-end justify-between gap-3 sm:-mt-12">
+            <MarcaDaLoja nome={empresa.nome} logo={empresa.logoUrl} className="h-[84px] w-[84px] rounded-[26px] text-3xl ring-4 ring-fundo sm:h-24 sm:w-24" />
             {zapLoja ? (
               <a
                 href={zapLoja}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Falar com a loja no WhatsApp"
-                className={`flex h-11 shrink-0 items-center gap-2 rounded-full border border-borda bg-superficie px-3 text-sm font-semibold vt-zap shadow-sm hover:bg-superficie-2 sm:px-4 ${FOCO}`}
+                className={`mb-1 flex h-11 shrink-0 items-center gap-2 rounded-full border border-borda bg-superficie px-3 text-sm font-semibold vt-zap shadow-sm hover:bg-superficie-2 sm:px-4 ${FOCO}`}
               >
                 <Zap tamanho={20} />
                 <span className="hidden sm:inline">WhatsApp</span>
               </a>
             ) : null}
           </div>
+          <div className="-mt-1 min-w-0">
+            <h1 className="truncate text-[22px] leading-tight font-extrabold tracking-tight text-titulo sm:text-[28px]">{empresa.nome}</h1>
+            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm text-tinta-2">
+              {subLoja ? <span className="truncate font-medium">{subLoja}</span> : <span className="truncate font-medium">Catálogo</span>}
+              {loja.horario ? (
+                <>
+                  <span aria-hidden className="text-tinta-3">·</span>
+                  <span className="flex min-w-0 items-center gap-1">
+                    <Relogio tamanho={14} className="shrink-0 text-tinta-3" />
+                    <span className="truncate">{loja.horario}</span>
+                  </span>
+                </>
+              ) : null}
+            </p>
+          </div>
+
+          {avaliacoes.total > 0 && avaliacoes.media !== null ? (
+            <a href="#avaliacoes" className={`-mt-1 flex w-fit items-center gap-2 rounded-full text-sm text-tinta-2 hover:text-tinta ${FOCO}`}>
+              <Estrelas nota={avaliacoes.media} />
+              <span className="font-bold text-tinta tabular-nums">{avaliacoes.media.toLocaleString('pt-BR', { minimumFractionDigits: 1 })}</span>
+              <span className="underline-offset-2 hover:underline">
+                {avaliacoes.total} {avaliacoes.total === 1 ? 'avaliação' : 'avaliações'}
+              </span>
+            </a>
+          ) : null}
 
           {loja.recado ? (
             <p className="rounded-2xl border border-[var(--marca-borda)]/40 bg-marca-suave px-4 py-3 text-sm leading-relaxed font-medium text-tinta">{loja.recado}</p>
@@ -553,6 +654,8 @@ export function Loja({
               <Adiante tamanho={16} className="text-tinta-3" />
             </a>
           ) : null}
+
+          <Bolinhas bolinhas={bolinhas} logo={empresa.logoUrl} nome={empresa.nome} chaveVistos={CHAVE_VISTOS} abrir={setVisor} />
         </div>
       </header>
 
@@ -579,12 +682,23 @@ export function Loja({
           {categorias.length > 1 ? (
             <nav aria-label="Categorias" className="vt-sem-barra -mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5">
               {[{ id: null as string | null, nome: 'Tudo', total: 0 }, ...categorias].map((c) => {
-                const ativa = categoria === c.id
+                const ativa = emFeed ? (c.id ?? null) === naTela : categoria === c.id
                 return (
                   <button
                     key={c.id ?? 'tudo'}
                     type="button"
-                    onClick={() => setCategoria(c.id)}
+                    onClick={() => {
+                      // No feed, a categoria é uma postagem: o botão leva até ela.
+                      if (!buscando && categoria === null) {
+                        const alvo = document.getElementById(c.id ? `cat-${c.id}` : 'vt-feed')
+                        if (alvo) {
+                          alvo.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                          return
+                        }
+                      }
+                      setBusca('')
+                      setCategoria(c.id)
+                    }}
                     aria-pressed={ativa}
                     className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-semibold whitespace-nowrap transition-colors ${FOCO} ${
                       ativa ? 'bg-titulo text-fundo' : 'border border-borda-suave bg-superficie text-tinta-2 hover:border-borda hover:text-tinta'
@@ -625,6 +739,57 @@ export function Loja({
                 Ver tudo
               </button>
             ) : null}
+          </div>
+        ) : emFeed ? (
+          <div id="vt-feed" className="flex scroll-mt-36 flex-col gap-8">
+            {/* Os destaques: os que têm foto, numa fileira que passa para o lado. */}
+            {destaques.length >= 3 ? (
+              <div className="flex flex-col gap-3">
+                <h2 className="text-lg font-extrabold tracking-tight text-titulo">Destaques</h2>
+                <ul className="vt-sem-barra -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1">
+                  {destaques.map((p) => (
+                    <li key={p.id} className="w-[150px] shrink-0 snap-start">
+                      <button type="button" onClick={() => abrirProduto(p)} className={`flex w-full flex-col gap-2 text-left ${FOCO}`}>
+                        <span className="relative aspect-square w-full overflow-hidden rounded-2xl border border-borda-suave">
+                          <Foto src={p.foto} icone={iconeDe(p.nome, p.categoriaId)} tom={p.categoriaId} desenho={44} />
+                        </span>
+                        <span className="line-clamp-2 text-sm leading-snug font-semibold text-tinta">{p.nome}</span>
+                        <span className="text-sm font-extrabold text-titulo tabular-nums">
+                          {p.variavel ? <span className="mr-1 text-xs font-medium text-tinta-3">a partir de</span> : null}
+                          {brl(p.preco)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {secoes.map((sec) => (
+              <section key={sec.id} id={`cat-${sec.id}`} data-categoria={sec.id} className="flex scroll-mt-36 flex-col gap-3">
+                {sec.nome ? <h2 className="text-lg font-extrabold tracking-tight text-titulo">{sec.nome}</h2> : null}
+                <ul className="divide-y divide-borda-suave overflow-hidden rounded-3xl border border-borda-suave bg-superficie">
+                  {sec.itens.map((p) => (
+                    <Cartao
+                      key={p.id}
+                      p={p}
+                      grade={false}
+                      ifood
+                      icone={iconeDe(p.nome, p.categoriaId)}
+                      pedirFoto={null}
+                      naSacola={porProduto.get(p.id) ?? 0}
+                      abrir={() => abrirProduto(p)}
+                      mais={() => maisUm(p)}
+                      menos={() => {
+                        const o = opcaoUnica(p)
+                        if (o) somar(p, o, -passoDe(p.medida))
+                      }}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
+            {/* Chegando no fim, a próxima página entra sozinha. */}
+            {lista.mais ? <div ref={sentinela} aria-hidden className="h-px" /> : null}
           </div>
         ) : (
           <div className="flex flex-col gap-7">
@@ -672,6 +837,16 @@ export function Loja({
         ) : null}
       </section>
 
+      <Mural
+        mural={mural}
+        abrir={(id) => {
+          const i = bolinhas.findIndex((b) => b.tipo === 'postagem' && b.id === id)
+          if (i >= 0) setVisor(i)
+        }}
+        queroEsse={(id) => void queroEsse(id)}
+      />
+      <Avaliacoes {...avaliacoes} />
+
       <p className="mx-auto max-w-5xl px-4 pt-10 text-center text-xs text-tinta-3">
         Preços para pagamento à vista ou Pix. O pagamento é combinado com a loja.
       </p>
@@ -703,6 +878,24 @@ export function Loja({
             <span className="text-base font-extrabold tabular-nums">{brl(subtotal)}</span>
           </button>
         </div>
+      ) : null}
+
+      {visor !== null ? (
+        <Visor
+          bolinhas={bolinhas}
+          inicio={visor}
+          fechar={fecharVisor}
+          carregarGrupo={carregarGrupo}
+          iconeDe={(nome, cat) => iconeDoProduto(nome, cat ? nomeDaCategoria.get(cat) : null)}
+          escolher={(p) => {
+            setVisor(null)
+            abrirProduto(p)
+          }}
+          queroEsse={(id) => void queroEsse(id)}
+          chaveVistos={CHAVE_VISTOS}
+          loja={empresa.nome}
+          logo={empresa.logoUrl}
+        />
       ) : null}
 
       {/* ── o produto aberto ── */}
@@ -1040,6 +1233,7 @@ export function Loja({
 function Cartao({
   p,
   grade,
+  ifood,
   icone,
   pedirFoto,
   naSacola,
@@ -1049,6 +1243,8 @@ function Cartao({
 }: {
   p: ProdutoNoCatalogo
   grade: boolean
+  /** A linha de cardápio do delivery: texto à esquerda, foto quadrada à direita. */
+  ifood?: boolean
   icone: IconeDoProduto
   /** O link do WhatsApp da loja pedindo a foto; nulo quando tem foto (ou a loja não tem WhatsApp). */
   pedirFoto: string | null
@@ -1093,6 +1289,36 @@ function Cartao({
   const esgotado = !p.disponivel ? (
     <span className="rounded-full bg-superficie/95 px-2.5 py-1 text-[11px] font-bold tracking-wide text-tinta-2 uppercase shadow-sm ring-1 ring-borda-suave">Esgotado</span>
   ) : null
+
+  if (ifood) {
+    return (
+      <li className="relative">
+        <button
+          type="button"
+          onClick={abrir}
+          disabled={!p.disponivel}
+          className={`flex w-full items-start gap-4 px-4 py-4 text-left transition-colors hover:bg-superficie-2/60 ${FOCO} focus-visible:-outline-offset-2 ${!p.disponivel ? 'opacity-60' : ''}`}
+        >
+          <span className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="line-clamp-2 text-[15px] leading-snug font-semibold text-tinta">{p.nome}</span>
+            {p.descricao ? (
+              <span className="line-clamp-2 text-[13px] leading-relaxed text-tinta-2">{p.descricao}</span>
+            ) : p.opcoes.length > 1 ? (
+              <span className="line-clamp-1 text-[13px] text-tinta-3">{p.opcoes.map((o) => o.rotulo).filter(Boolean).join(' · ')}</span>
+            ) : null}
+            <span className="mt-1 flex items-center gap-2">
+              {preco}
+              {esgotado}
+            </span>
+          </span>
+          <span className={`relative h-[92px] w-[92px] shrink-0 overflow-hidden rounded-2xl border border-borda-suave ${!p.disponivel ? 'grayscale' : ''}`}>
+            <Foto src={p.foto} icone={icone} tom={p.categoriaId} desenho={40} />
+          </span>
+        </button>
+        {controle ? <div className="absolute right-2.5 bottom-2.5">{controle}</div> : null}
+      </li>
+    )
+  }
 
   if (grade) {
     return (

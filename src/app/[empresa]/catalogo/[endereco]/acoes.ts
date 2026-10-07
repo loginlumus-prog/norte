@@ -13,14 +13,23 @@ import { avisarEquipeDoPedido } from '@/servidor/assistente/avisos-encomenda'
 export async function maisProdutos(
   slug: string,
   endereco: string,
-  filtro: { categoriaId?: string | null; busca?: string | null; pular?: number },
+  filtro: { categoriaId?: string | null; busca?: string | null; pular?: number; produtoIds?: string[] | null },
 ) {
   if (typeof slug !== 'string' || typeof endereco !== 'string') return null
   return produtosDoCatalogo(slug, endereco, {
     categoriaId: typeof filtro?.categoriaId === 'string' ? filtro.categoriaId : null,
+    // Os produtos de um destaque: só texto, e no máximo 40 (o servidor confere).
+    produtoIds: Array.isArray(filtro?.produtoIds) ? filtro.produtoIds.filter((x): x is string => typeof x === 'string').slice(0, 40) : null,
     busca: typeof filtro?.busca === 'string' ? filtro.busca : null,
     pular: Number(filtro?.pular) || 0,
   })
+}
+
+/** Um produto da vitrine, pelo id: o "Quero esse" de uma postagem. */
+export async function produtoDaVitrine(slug: string, endereco: string, produtoId: string) {
+  if (typeof slug !== 'string' || typeof endereco !== 'string' || typeof produtoId !== 'string') return null
+  const r = await produtosDoCatalogo(slug, endereco, { produtoId })
+  return r?.produtos[0] ?? null
 }
 
 /** O endereço do Norte para o link de acompanhar. Sem NORTE_URL (laptop), o do próprio pedido. */

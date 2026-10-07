@@ -61,3 +61,23 @@
    preferência do aparelho — por isso não é a variante `dark:`. */
 .vt-zap { color: #15803d; }
 :root[data-tema='escuro'] .vt-zap { color: #4ade80; }
+
+/* A neve e o confete da capa caem devagar: o desenho se repete a cada 150px,
+   então andar 150px e voltar não dá salto. */
+@keyframes vt-cair { to { transform: translateY(150px); } }
+
+/* O anel das bolinhas (stories): a cor do tema girando em volta. */
+.vt-anel {
+  background: conic-gradient(from 200deg, var(--marca), color-mix(in oklab, var(--marca) 45%, #ffd43b), var(--marca-forte, var(--marca)), var(--marca));
+}
+.vt-anel-visto { background: var(--borda); }
+
+/* A barrinha de cada story enchendo. */
+@keyframes vt-encher { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.vt-encher { transform-origin: left; animation: vt-encher linear forwards; }
+.vt-encher[data-pausado='1'] { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .vt-cair rect { animation: vt-cair 16s linear infinite; }
+  .vt-story { animation: vt-aparecer .18s ease-out both; }
+}

@@ -5,6 +5,7 @@ import { acompanharPedido } from '@/servidor/catalogo'
 import { estiloDaMarca } from '../../catalogo/[endereco]/marca'
 import { Adiante, Fechar, MarcaDaLoja, Visto, Zap } from '../../catalogo/[endereco]/Pecas'
 import { Atualizar, CopiarPix } from './Atualizar'
+import { Avaliar } from './Avaliar'
 
 // ACOMPANHAR O PEDIDO feito pelo catálogo. O link é secreto (16 bytes
 // aleatórios) e é a única chave: quem tem o link vê o pedido — e só o
@@ -159,6 +160,8 @@ export default async function Acompanhar({ params }: { params: Promise<{ empresa
             <span className="tabular-nums">{brl(p.total)}</span>
           </p>
         </section>
+
+        {p.avaliacao.pode ? <Avaliar slug={p.empresa.slug} token={token} feita={p.avaliacao.feita} /> : null}
 
         <div className="flex flex-col gap-2.5 pt-1">
           {zap ? (

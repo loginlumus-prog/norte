@@ -241,6 +241,11 @@ export const ACOES: Record<string, string> = {
   'catalogo.abriu': 'abriu o catálogo na internet',
   'catalogo.fechou': 'fechou o catálogo na internet',
   'catalogo.ajustou': 'ajustou o catálogo na internet',
+  'catalogo.aparencia': 'mudou a aparência do catálogo',
+  'catalogo.postou': 'postou no catálogo',
+  'catalogo.tirou_postagem': 'tirou uma postagem do catálogo',
+  'catalogo.avaliacao': 'mexeu numa avaliação do catálogo',
+  'empresa.logo': 'trocou a logo da empresa',
   'encomenda.pelo_catalogo': 'chegou um pedido pelo catálogo',
   // O Farol (farol.ts).
   'farol.marca.criou': 'cadastrou uma marca no Farol',
