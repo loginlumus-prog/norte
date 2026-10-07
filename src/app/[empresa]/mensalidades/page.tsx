@@ -30,6 +30,7 @@ import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import { Situacao, cx } from '@/ui/base'
+import { AcoesDaLinha, BotaoDaLinha } from '@/ui/premium'
 import type { Tema } from '@/ui/TrocaTema'
 import { Dispensar, Receber } from './Receber'
 
@@ -297,28 +298,36 @@ export default async function Mensalidades({
               chave: 'acoes',
               titulo: '',
               largura: '9rem',
+              // Recibo e dispensar em ícone, o Receber em pílula no fim. Soltos
+              // (sem a cápsula): o Receber e o Dispensar abrem o formulário
+              // ali mesmo, e ele desce para a linha de baixo.
               celula: (m: MensalidadeNaLista) => (
-                <span className="flex flex-col items-end gap-1">
-                  {m.situacao !== 'paga' && m.situacao !== 'cancelada' && pode(sessao, 'mensalidade.receber', m.unidadeId) && (
-                    <Receber
-                      slug={slug}
-                      mensalidadeId={m.id}
-                      resta={m.resta}
-                      jurosHoje={m.jurosHoje}
-                      multaHoje={m.multaHoje}
-                      abonoHoje={m.abonoHoje}
-                      diasAtraso={m.diasAtraso}
-                      diasJuros={m.diasJuros}
-                    />
-                  )}
-                  {m.temPagamento && (
-                    <Link href={`/${slug}/mensalidades/${m.id}/recibo`} className="text-xs text-marca underline-offset-2 hover:underline">
-                      Recibo
-                    </Link>
-                  )}
-                  {!m.temPagamento && m.situacao !== 'cancelada' && m.situacao !== 'paga' && pode(sessao, 'mensalidade.ajustar', m.unidadeId) && (
-                    <Dispensar slug={slug} id={m.id} />
-                  )}
+                <span className="flex justify-end">
+                  <AcoesDaLinha solta>
+                    {m.temPagamento && (
+                      <BotaoDaLinha
+                        href={`/${slug}/mensalidades/${m.id}/recibo`}
+                        icone="imprimir"
+                        rotulo="Recibo"
+                        dica={`Recibo da mensalidade de ${m.aluno}`}
+                      />
+                    )}
+                    {!m.temPagamento && m.situacao !== 'cancelada' && m.situacao !== 'paga' && pode(sessao, 'mensalidade.ajustar', m.unidadeId) && (
+                      <Dispensar slug={slug} id={m.id} />
+                    )}
+                    {m.situacao !== 'paga' && m.situacao !== 'cancelada' && pode(sessao, 'mensalidade.receber', m.unidadeId) && (
+                      <Receber
+                        slug={slug}
+                        mensalidadeId={m.id}
+                        resta={m.resta}
+                        jurosHoje={m.jurosHoje}
+                        multaHoje={m.multaHoje}
+                        abonoHoje={m.abonoHoje}
+                        diasAtraso={m.diasAtraso}
+                        diasJuros={m.diasJuros}
+                      />
+                    )}
+                  </AcoesDaLinha>
                 </span>
               ),
             },

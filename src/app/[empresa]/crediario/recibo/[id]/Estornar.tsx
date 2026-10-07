@@ -7,7 +7,8 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Aviso, Botao, Campo } from '@/ui/base'
+import { Aviso, Botao, Campo, cx } from '@/ui/base'
+import { IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { estornarReciboAcao } from '../../acoes'
 
 export function Estornar({ slug, reciboId, clienteId, codigo }: { slug: string; reciboId: string; clienteId: string; codigo: string }) {
@@ -20,8 +21,14 @@ export function Estornar({ slug, reciboId, clienteId, codigo }: { slug: string; 
 
   if (!aberto) {
     return (
-      <button type="button" onClick={() => setAberto(true)} className="text-xs font-medium text-critico underline-offset-2 hover:underline">
-        Lançado errado? Estornar este recibo
+      <button
+        type="button"
+        onClick={() => setAberto(true)}
+        title="Lançado errado? Estornar este recibo"
+        className={cx(classeDaAcao({ jeito: 'pilula', tom: 'perigo' }), 'self-start')}
+      >
+        <IconeDaAcao icone="devolver" tamanho={15} />
+        Estornar este recibo
       </button>
     )
   }

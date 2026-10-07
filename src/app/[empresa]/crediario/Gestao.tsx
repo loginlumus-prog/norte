@@ -17,6 +17,7 @@
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Aviso, Botao, Campo, Situacao, cx } from '@/ui/base'
+import { BotaoDaLinha, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
 import type { FichaDeGestao } from '@/servidor/crediario-gestao'
 import {
@@ -273,9 +274,9 @@ function LancarDivida({
       <span className="flex flex-col gap-2">
         <Resposta estado={estado} />
         {estado.vendaId && (
-          <Link href={`/${slug}/vendas/${estado.vendaId}/carne`} className="text-sm font-semibold text-marca underline-offset-2 hover:underline">
-            Imprimir o carnê
-          </Link>
+          <span className="self-start">
+            <BotaoDaLinha href={`/${slug}/vendas/${estado.vendaId}/carne`} icone="imprimir" rotulo="Imprimir o carnê" comRotulo />
+          </span>
         )}
       </span>
     )
@@ -409,9 +410,9 @@ function Juntar({ slug, cliente, parecidas }: { slug: string; cliente: { id: str
       <span className="flex flex-col gap-2">
         <Resposta estado={estado} />
         {estado.fica && estado.fica !== cliente.id && (
-          <Link href={`/${slug}/crediario?cliente=${estado.fica}`} className="text-sm font-semibold text-marca underline-offset-2 hover:underline">
-            Abrir a ficha que ficou
-          </Link>
+          <span className="self-start">
+            <BotaoDaLinha principal href={`/${slug}/crediario?cliente=${estado.fica}`} icone="abrir" rotulo="Abrir a ficha que ficou" />
+          </span>
         )}
       </span>
     )
@@ -468,8 +469,9 @@ function Juntar({ slug, cliente, parecidas }: { slug: string; cliente: { id: str
               <input type="radio" checked={!ficaEsta} onChange={() => setFicaEsta(false)} />
               Fica <b>{outra.nome}</b> — esta entra nela
             </label>
-            <button type="button" onClick={() => setOutra(null)} className="self-start text-xs text-tinta-3 underline-offset-2 hover:underline">
-              escolher outra ficha
+            <button type="button" onClick={() => setOutra(null)} className={cx(classeDaAcao({ jeito: 'pilula' }), 'self-start')}>
+              <IconeDaAcao icone="trocar" tamanho={15} />
+              Escolher outra ficha
             </button>
           </div>
           <MotivosProntos excecao="cliente.juntar" atual={motivo} aoEscolher={setMotivo} />

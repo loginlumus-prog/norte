@@ -8,6 +8,7 @@ import { useCallback, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Selecao } from '@/ui/base'
 import { brl } from '@/ui/painel'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import type { ItemParaComprar } from '@/servidor/compras'
 import { buscarItensAcao, criarPedidoAcao } from './acoes'
 import { BuscaItem } from './BuscaItem'
@@ -87,8 +88,9 @@ export function NovoPedido({
       caixa
       titulo="Novo pedido de compra"
       acao={
-        <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-          fechar
+        <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar o pedido novo">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >
@@ -150,9 +152,15 @@ export function NovoPedido({
                     setLinhas((ls) => ls.map((x, j) => (j === i ? { ...x, custo: v } : x)))
                   }}
                 />
-                <Botao tom="discreto" className="px-2 py-2 text-xs" onClick={() => setLinhas((ls) => ls.filter((_, j) => j !== i))}>
-                  tirar
-                </Botao>
+                <button
+                  type="button"
+                  onClick={() => setLinhas((ls) => ls.filter((_, j) => j !== i))}
+                  className={classeDaAcao({ tom: 'perigo' })}
+                  aria-label={`Tirar ${l.descricao}`}
+                >
+                  <IconeDaAcao icone="excluir" />
+                  <DicaDaAcao>Tirar</DicaDaAcao>
+                </button>
               </li>
             ))}
           </ul>

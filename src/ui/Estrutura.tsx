@@ -42,7 +42,7 @@ import { menuRecolhido } from '@/servidor/menu-lateral'
 import { BarraLateral } from './BarraLateral'
 import { AvisoVersao } from '@/app/[empresa]/balcao/AvisoVersao'
 import { versaoDoBuild } from '@/app/[empresa]/balcao/versaoDoBuild'
-import { itemNaEmpresa, noModo, podeVerItem } from './menu'
+import { GRUPOS_FORA_DA_FABRICA, MENU_DA_FABRICA, itemNaEmpresa, noModo, podeVerItem } from './menu'
 import { Simbolo } from './Marca'
 import { Gaveta } from './Gaveta'
 import { IconeDoItem } from './IconesMenu'
@@ -53,6 +53,8 @@ import { cx, Ponto } from './base'
 import { cookieDasCores, corDoGrupo, lerCores } from './cores-menu'
 import { CoresDoMenu } from './CoresDoMenu'
 import { ChaveDeSom } from './ChaveDeSom'
+import { TrocaDeLoja } from './TrocaDeLoja'
+import { escolherUnidade } from '@/servidor/unidade'
 
 export type ItemMenu = {
   href: string
@@ -120,6 +122,18 @@ export async function Estrutura({
     : null
 
   const modo = await lerModo()
+  // A loja em que a pessoa está (a lembrada neste aparelho), para o cartão
+  // de trocar de loja no alto da barra. Só aparece para quem tem mais de uma.
+  const lojas = await escolherUnidade(sessao, empresa, undefined, 'venda.ver')
+  // Dentro da fábrica (a unidade escolhida é uma fábrica, e a fábrica está
+  // contratada), o menu é o dela: produção, fichas, pedidos das lojas,
+  // estoque e compras — mais Pessoas, Dinheiro e Empresa, que valem em
+  // qualquer lugar. A loja não vê a produção, e a fábrica não vê o balcão.
+  const naFabrica =
+    moduloLigado(empresa, 'fabrica') && !!lojas.opcoes.find((u) => u.id === lojas.unidadeId)?.ehFabrica
+  const itensDaTela = naFabrica
+    ? [...MENU_DA_FABRICA(empresa.slug), ...itens.filter((i) => GRUPOS_FORA_DA_FABRICA.includes(i.grupo ?? ''))]
+    : itens
   // A lateral: a escolha da pessoa neste aparelho; sem escolha, o padrão da
   // tela (o balcão abre recolhido). `recolhida` continua mandando no resto
   // da moldura (altura da janela, sem rolar a página); a lateral é só dela.
@@ -147,7 +161,7 @@ export async function Estrutura({
   // "Serviços e materiais") — e o do grupo "Vender" também.
   const vocab = await vocabularioDaEmpresa(sessao.orgId)
   const visiveis = noModo(
-    itens
+    itensDaTela
       .filter((i) => podeVerItem(sessao, i) && itemNaEmpresa(i, empresa))
       .map((i) => ({
         ...i,
@@ -227,7 +241,7 @@ export async function Estrutura({
             <IconeDoItem href={i.href} className="shrink-0" />
             <span className="truncate">{i.titulo}</span>
           </span>
-          <span className="shrink-0 rounded border border-lado-borda px-1 py-px text-[9px] font-bold tracking-wide text-lado-tinta-2/70 uppercase">
+          <span className="shrink-0 rounded border border-lado-borda px-1 py-px text-[10.5px] font-bold tracking-wide text-lado-tinta-2/70 uppercase">
             em breve
           </span>
         </span>
@@ -271,7 +285,7 @@ export async function Estrutura({
         <div key={g.nome} className="mt-2.5 flex flex-col gap-0.5">
           {/* O título do grupo é miúdo e apagado de propósito: ele organiza,
               não compete. Se tivesse o peso de um item, a pessoa clicaria. */}
-          <span className="flex items-center gap-2 px-2 pb-1 text-[10px] font-bold tracking-[0.12em] text-lado-tinta-2/80 uppercase">
+          <span className="flex items-center gap-2 px-2 pb-1 text-[11.5px] font-bold tracking-[0.12em] text-lado-tinta-2/80 uppercase">
             <span aria-hidden className="h-2.5 w-1 rounded-full" style={{ background: corDoGrupo(g.chave, coresEscolhidas) }} />
             {g.nome}
           </span>
@@ -312,7 +326,7 @@ export async function Estrutura({
           )}
         >
           <span className="flex min-w-0 flex-col">
-            <span className="text-[10px] font-medium tracking-wide text-lado-tinta-2 uppercase">
+            <span className="text-[11.5px] font-medium tracking-wide text-lado-tinta-2 uppercase">
               plano
             </span>
             <span className="truncate text-xs font-bold text-lado-tinta">
@@ -334,10 +348,23 @@ export async function Estrutura({
 
       <CoresDoMenu slug={empresa.slug} grupos={grupos.map((g) => ({ chave: g.chave, nome: g.nome }))} escolhidas={coresEscolhidas} />
 
+      {/* Até 80rem a cápsula do som, do modo e do tema sai do cabeçalho (ela
+          descia para uma segunda linha, embaixo do título) e mora aqui. */}
+      <div className="flex flex-col gap-2 px-1 xl:hidden">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11.5px] font-bold tracking-[0.12em] text-lado-tinta-2/80 uppercase">Tela</span>
+          <span className="flex items-center gap-1.5">
+            <ChaveDeSom tom="lado" />
+            <TrocaTema inicial={tema} tom="lado" />
+          </span>
+        </div>
+        <TrocaModo atual={modo} tom="lado" />
+      </div>
+
       <div className="flex items-center gap-2 px-1">
         <span
           aria-hidden
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,var(--marca),#8b5cf6)] text-[11px] font-bold text-white shadow-sm"
+          className="grid size-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,var(--marca),#8b5cf6)] text-[12.5px] font-bold text-white shadow-sm"
         >
           {iniciais}
         </span>
@@ -370,7 +397,7 @@ export async function Estrutura({
         href={`/${empresa.slug}/conta`}
         title={`${sessao.nome} · minha conta`}
         aria-label={`${sessao.nome} · minha conta`}
-        className="grid size-8 place-items-center rounded-full bg-lado-3 text-[11px] font-bold text-lado-ativo hover:ring-2 hover:ring-lado-borda"
+        className="grid size-8 place-items-center rounded-full bg-lado-3 text-[12.5px] font-bold text-lado-ativo hover:ring-2 hover:ring-lado-borda"
       >
         {iniciais}
       </Link>
@@ -378,7 +405,7 @@ export async function Estrutura({
         <input type="hidden" name="empresa" value={empresa.slug} />
         <button
           type="submit"
-          className="rounded px-1.5 py-0.5 text-[11px] font-medium text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta"
+          className="rounded px-1.5 py-0.5 text-[12.5px] font-medium text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta"
         >
           Sair
         </button>
@@ -412,6 +439,13 @@ export async function Estrutura({
         />
         <span className="truncate text-xs font-semibold text-lado-tinta-2">{empresa.nome}</span>
       </div>
+      {/* Em que loja estou — e o caminho para outra. No alto, antes do menu:
+          tudo o que vem abaixo dele é DESTA loja. */}
+      {lojas.mostrarSeletor && (
+        <div className="mb-3">
+          <TrocaDeLoja slug={empresa.slug} opcoes={lojas.opcoes} atual={lojas.unidadeId} jeito="lado" />
+        </div>
+      )}
     </>
   )
 
@@ -430,9 +464,12 @@ export async function Estrutura({
         navegacao={navegacao}
         rodape={rodape}
         marcaTrilho={
-          <Link href={`/${empresa.slug}`} aria-label={`Norte · ${empresa.nome}`} title={empresa.nome} className="mx-auto mb-1">
-            <Simbolo tamanho={30} id="marca-trilho" />
-          </Link>
+          <>
+            <Link href={`/${empresa.slug}`} aria-label={`Norte · ${empresa.nome}`} title={empresa.nome} className="mx-auto mb-1">
+              <Simbolo tamanho={30} id="marca-trilho" />
+            </Link>
+            {lojas.mostrarSeletor && <TrocaDeLoja slug={empresa.slug} opcoes={lojas.opcoes} atual={lojas.unidadeId} jeito="trilho" />}
+          </>
         }
         trilho={trilho}
         rodapeTrilho={rodapeTrilho}
@@ -448,7 +485,7 @@ export async function Estrutura({
               {navegacao}
               {/* O modo e o tema, que no cabeçalho do celular não cabem. */}
               <div className="mt-4 flex flex-col gap-2 border-t border-lado-borda px-1.5 pt-3">
-                <span className="text-[10px] font-bold tracking-[0.12em] text-lado-tinta-2/75 uppercase">Tela</span>
+                <span className="text-[11.5px] font-bold tracking-[0.12em] text-lado-tinta-2/75 uppercase">Tela</span>
                 <div className="flex items-center justify-between gap-2">
                   <ChaveDeSom tom="lado" />
                   <TrocaModo atual={modo} tom="lado" />
@@ -489,7 +526,7 @@ export async function Estrutura({
             ) : null}
             <div className="flex min-w-0 flex-col">
               {itemAtivo?.grupo ? (
-                <span className="topo-area text-[10px] leading-tight font-bold tracking-[0.12em] uppercase">{itemAtivo.grupo}</span>
+                <span className="topo-area text-[11.5px] leading-tight font-bold tracking-[0.12em] uppercase">{itemAtivo.grupo}</span>
               ) : null}
               <h1 className="text-lg leading-tight font-extrabold tracking-[-0.02em] text-tinta">{titulo}</h1>
             </div>
@@ -498,7 +535,7 @@ export async function Estrutura({
           {/* O som, o modo e o tema numa cápsula só: são preferências da
               tela, e juntas não competem com as ações da página. No celular,
               na gaveta. */}
-          <div className="hidden items-center gap-1 rounded-full border border-borda bg-superficie-2/70 p-1 md:flex">
+          <div className="hidden items-center gap-1 rounded-full border border-borda bg-superficie-2/70 p-1 xl:flex">
             <ChaveDeSom />
             <span aria-hidden className="mx-0.5 h-5 w-px bg-borda" />
             <TrocaModo atual={modo} tom="topo" />

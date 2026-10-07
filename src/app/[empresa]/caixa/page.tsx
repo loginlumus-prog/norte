@@ -15,6 +15,7 @@ import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { SeletorPeriodo } from '@/ui/Periodo'
 import { Numero, Secao, Tira, brl } from '@/ui/painel'
 import { Aviso, Cartao, Situacao, cx } from '@/ui/base'
+import { AcoesDaLinha, BotaoDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import type { Tema } from '@/ui/TrocaTema'
 import { duracao, plural } from '@/ui/texto'
 import { vocabularioDaEmpresa } from '@/servidor/vocabulario'
@@ -238,11 +239,11 @@ export default async function CaixaPagina({
             {
               chave: 'ver',
               titulo: '',
-              largura: '5rem',
+              largura: '7.5rem',
               celula: (t: TurnoDeCaixa) => (
-                <Link href={link(t)} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
-                  detalhes
-                </Link>
+                <span className="flex justify-end">
+                  <BotaoDaLinha principal href={link(t)} icone="abrir" rotulo="Detalhes" dica={`Detalhes do turno de ${quando(t.abertoEm)}`} />
+                </span>
               ),
             },
           ]}
@@ -261,7 +262,7 @@ export default async function CaixaPagina({
               : `Aberto por ${aberto.abertoPor}, fechado por ${aberto.fechadoPor ?? '—'}${aberto.fechadoEm ? ` às ${hora(aberto.fechadoEm)}` : ''}.`
           }
           acao={
-            <span className="flex items-center gap-3">
+            <AcoesDaLinha solta>
               {/* O papel do fechamento: só de turno fechado (o esperado do
                   aberto é o que a contagem às cegas esconde). */}
               {!aberto.aberto && podeApagar && (
@@ -271,15 +272,19 @@ export default async function CaixaPagina({
                   voltar={`/${slug}/caixa?${onde.unidadeId ? `unidade=${onde.unidadeId}&` : ''}periodo=${j.chave}`}
                 />
               )}
+              {/* <a>, e não Link: a página de impressão abre inteira. */}
               {!aberto.aberto && (
-                <a href={`/${slug}/caixa/${aberto.id}/fechamento`} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
-                  imprimir fechamento
+                <a href={`/${slug}/caixa/${aberto.id}/fechamento`} aria-label="Imprimir o fechamento" className={classeDaAcao()}>
+                  <IconeDaAcao icone="imprimir" />
+                  <DicaDaAcao>Imprimir fechamento</DicaDaAcao>
                 </a>
               )}
-              <Link href={`/${slug}/caixa?${onde.unidadeId ? `unidade=${onde.unidadeId}&` : ''}periodo=${j.chave}`} className="text-xs text-tinta-3 hover:text-tinta">
-                fechar detalhes
-              </Link>
-            </span>
+              <BotaoDaLinha
+                href={`/${slug}/caixa?${onde.unidadeId ? `unidade=${onde.unidadeId}&` : ''}periodo=${j.chave}`}
+                icone="fechar"
+                rotulo="Fechar detalhes"
+              />
+            </AcoesDaLinha>
           }
         >
           <div className="grid gap-3 lg:grid-cols-2">

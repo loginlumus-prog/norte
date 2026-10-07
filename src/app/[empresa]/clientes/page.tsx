@@ -210,6 +210,7 @@ export default async function Clientes({
                 numero={o.quantos}
                 rotulo={o.rotulo}
                 detalhe={o.detalhe}
+                de={o.valor && o.valor !== 'desativados' ? clientes.length : undefined}
               />
             ))}
         </div>

@@ -63,7 +63,7 @@ export function Comparar({ atual }: { atual: Plano }) {
               >
                 <span className="flex flex-col gap-0.5">
                   <span className="text-sm font-bold text-tinta">{PLANOS[p].titulo}</span>
-                  <span className="text-[10px] font-medium tracking-wide text-tinta-3 uppercase">
+                  <span className="text-[11.5px] font-medium tracking-wide text-tinta-3 uppercase">
                     {p === atual ? 'seu plano' : p === RECOMENDADO ? 'recomendado' : ' '}
                   </span>
                 </span>
@@ -78,7 +78,7 @@ export function Comparar({ atual }: { atual: Plano }) {
               <th
                 scope="colgroup"
                 colSpan={1 + colunas.length}
-                className="px-3 pt-5 pb-1 text-left text-[10px] font-bold tracking-[0.14em] text-tinta-3 uppercase"
+                className="px-3 pt-5 pb-1 text-left text-[11.5px] font-bold tracking-[0.14em] text-tinta-3 uppercase"
               >
                 {grupo}
               </th>
@@ -88,7 +88,7 @@ export function Comparar({ atual }: { atual: Plano }) {
                 <th scope="row" className="px-3 py-2 text-left font-normal text-tinta-2">
                   {r.titulo}
                   {r.quando === 'breve' && (
-                    <span className="ml-2 inline-block rounded-full bg-superficie-2 px-1.5 py-0.5 align-middle text-[10px] font-bold tracking-wide whitespace-nowrap text-tinta-3 uppercase">
+                    <span className="ml-2 inline-block rounded-full bg-superficie-2 px-1.5 py-0.5 align-middle text-[11.5px] font-bold tracking-wide whitespace-nowrap text-tinta-3 uppercase">
                       em breve
                     </span>
                   )}

@@ -27,11 +27,10 @@ import {
 } from '@/servidor/encomenda'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
-import { Tabela } from '@/ui/Tabela'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Secao, Tira, brl } from '@/ui/painel'
-import { Aviso, Cartao, FAIXA, Situacao, Vazio, cx } from '@/ui/base'
+import { Aviso, Situacao, Vazio, cx } from '@/ui/base'
 import type { Tema } from '@/ui/TrocaTema'
 import { Formulario } from './Formulario'
 import { AcoesEncomenda } from './Linha'
@@ -50,9 +49,8 @@ export const metadata: Metadata = { title: 'Encomendas' }
 // Filtros no endereço: `?situacao=`, `?unidade=`, `?q=`. Mudar uma encomenda
 // é `?editar=<id>`. O link é a tela inteira.
 //
-// No modo simples, cada encomenda é um cartão com botões grandes; no
-// avançado, a tabela completa (no celular, os cartões — tabela de nove
-// colunas em 375px é rolagem de lado, e rolagem de lado no balcão é erro).
+// Cada encomenda é um cartão, nos dois modos (ver `cartoes`); no simples, com
+// os botões grandes de tocar.
 
 const FILTROS: Record<string, SituacaoEncomenda | 'todas'> = {
   aberta: 'ABERTA',
@@ -127,28 +125,6 @@ export default async function Encomendas({
       <Situacao nivel={NIVEL_ENCOMENDA[e.situacao]}>{ROTULO_ENCOMENDA[e.situacao]}</Situacao>
     )
 
-  const contato = (e: EncomendaNaLista) => {
-    const wa = linkWhatsApp(e.telefone)
-    return (
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate font-semibold text-tinta">{e.clienteNome}</span>
-        {wa ? (
-          <a
-            href={wa}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs font-medium text-marca underline-offset-2 hover:underline"
-            title="Abrir a conversa no WhatsApp"
-          >
-            {mostrarTelefone(e.telefone)} · WhatsApp
-          </a>
-        ) : (
-          <span className="text-xs text-tinta-3">sem telefone</span>
-        )}
-      </span>
-    )
-  }
-
   // A venda do balcão que recebeu o resto: um link de verdade (é a ligação
   // `Venda.encomendaId`, não texto na observação).
   const recebida = (e: EncomendaNaLista) =>
@@ -161,13 +137,13 @@ export default async function Encomendas({
   // "Pix", "Dinheiro": como o sinal foi pago. Some nas encomendas antigas.
   const formaDoSinal = (e: EncomendaNaLista) =>
     e.sinal > 0 && formaSinalValida(e.sinalForma) ? (
-      <span className="text-[11px] text-tinta-3">{ROTULO_FORMA_SINAL[e.sinalForma]}</span>
+      <span className="text-[12.5px] text-tinta-3">{ROTULO_FORMA_SINAL[e.sinalForma]}</span>
     ) : null
 
   // O pedido do catálogo: os itens, um por linha, e como a cliente vai pagar.
   const doCatalogo = (e: EncomendaNaLista) =>
     e.origem === 'CATALOGO' && e.itens.length > 0 ? (
-      <span className="flex flex-col gap-0.5 text-xs text-tinta-2">
+      <span className="flex flex-col gap-0.5 text-sm text-tinta-2">
         {e.itens.map((i, n) => (
           <span key={n}>
             <b className="numero font-semibold text-tinta">{i.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}×</b> {i.descricao}{' '}
@@ -175,7 +151,7 @@ export default async function Encomendas({
           </span>
         ))}
         {e.taxaEntrega > 0 && <span>Entrega <span className="numero text-tinta-3">{brl(e.taxaEntrega)}</span></span>}
-        <span className="text-tinta-3">
+        <span className="text-xs text-tinta-3">
           Pelo catálogo{e.formaCombinada ? ` · pagamento: ${ROTULO_FORMA_SINAL[e.formaCombinada as keyof typeof ROTULO_FORMA_SINAL] ?? e.formaCombinada}` : ''}
         </span>
       </span>
@@ -183,11 +159,11 @@ export default async function Encomendas({
 
   const comoSai = (e: EncomendaNaLista) =>
     e.entrega ? (
-      <span className="text-xs text-tinta-2">
+      <span className="text-sm text-tinta-2">
         <b className="font-semibold text-tinta">Entrega</b> · {e.endereco}
       </span>
     ) : (
-      <span className="text-xs text-tinta-2">Retirada na loja</span>
+      <span className="text-sm text-tinta-2">Retirada na loja</span>
     )
 
   const acoes = (e: EncomendaNaLista) => (
@@ -214,112 +190,80 @@ export default async function Encomendas({
   // Balcão, ou o pedido morreu. Mostrar R$ 35 ali faria alguém cobrar de novo.
   const falta = (e: EncomendaNaLista) => (ehFinal(e.situacao) ? '—' : e.falta > 0 ? brl(e.falta) : 'pago')
 
-  const nivelDoCartao = (e: EncomendaNaLista) =>
-    atrasada(e) ? 'critico' : e.situacao === 'PRONTA' ? 'atencao' : e.situacao === 'ENTREGUE' ? 'bom' : 'neutro'
+  // A cor do bloco da hora diz o estado: vermelho atrasada, âmbar pronta,
+  // verde entregue — o olho acha a encomenda que pede ação sem ler.
+  const tomDaHora = (e: EncomendaNaLista) =>
+    atrasada(e) ? 'critico' : e.nova ? 'atencao' : e.situacao === 'PRONTA' ? 'atencao' : e.situacao === 'ENTREGUE' ? 'bom' : e.situacao === 'CANCELADA' ? 'apagada' : 'neutro'
 
+  // Uma encomenda, um cartão — no computador também. Já foi uma tabela de
+  // nove colunas: o pedido do catálogo, com os itens um por linha, esticava
+  // a linha, os botões empilhavam numa coluna estreita e a tabela rolava de
+  // lado. No cartão, cada coisa tem o seu lugar: a hora à esquerda, quem e
+  // o quê no meio, o dinheiro e os botões à direita, numa linha só.
   const cartoes = (itens: EncomendaNaLista[]) => (
     <ul className="flex flex-col gap-3">
       {itens.map((e) => (
-        <li
-          key={e.id}
-          className={cx('flex flex-col gap-3 rounded-norte border border-borda bg-superficie p-4', FAIXA[nivelDoCartao(e)])}
-        >
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <span className="flex items-baseline gap-2">
-              <span className="numero text-xl font-bold text-tinta">{horaEmSP(e.para)}</span>
-              <span className="text-sm text-tinta-2">{diaCurtoSP(e.para)}</span>
-            </span>
-            {pilula(e)}
+        <li key={e.id} className="encomenda-cartao caixa-viva rounded-2xl border border-borda bg-superficie">
+          <div className="grid gap-4 p-4 sm:grid-cols-[5.5rem_minmax(0,1fr)] lg:grid-cols-[5.5rem_minmax(0,1fr)_auto]">
+            {/* ── quando ── */}
+            <div data-tom={tomDaHora(e)} className="encomenda-hora flex flex-row items-baseline gap-2 self-start rounded-xl px-3 py-2 sm:flex-col sm:items-center sm:gap-0 sm:py-3 sm:text-center">
+              <span className="numero text-xl leading-tight font-extrabold">{horaEmSP(e.para)}</span>
+              <span className="text-xs font-semibold opacity-80">{diaCurtoSP(e.para)}</span>
+            </div>
+
+            {/* ── quem e o quê ── */}
+            <div className="flex min-w-0 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <span className="text-base font-bold text-tinta">{e.clienteNome}</span>
+                {pilula(e)}
+                {variasLojas && <span className="rounded-full bg-superficie-2 px-2 py-0.5 text-xs font-semibold text-tinta-2">{e.unidadeNome}</span>}
+              </div>
+              {(() => {
+                const wa = linkWhatsApp(e.telefone)
+                return wa ? (
+                  <a href={wa} target="_blank" rel="noopener noreferrer" className="encomenda-zap inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold" title="Abrir a conversa no WhatsApp">
+                    <svg aria-hidden viewBox="0 0 20 20" className="size-3.5" fill="currentColor">
+                      <path d="M10 2.5a7.4 7.4 0 0 0-6.4 11.2L2.5 17.5l3.9-1A7.4 7.4 0 1 0 10 2.5Zm4.2 10.4c-.2.5-1 1-1.5 1-.4.1-.9.1-1.5-.1a9.6 9.6 0 0 1-3.6-3.1c-.7-.9-1-1.9-1-2.6 0-.8.4-1.2.6-1.4.2-.2.4-.2.5-.2h.4c.1 0 .3 0 .4.3l.6 1.4c.1.1.1.3 0 .4l-.2.4-.3.3c-.1.1-.2.2-.1.4.2.3.6 1 1.2 1.5.8.7 1.4.9 1.6 1 .2.1.3.1.4-.1l.6-.7c.1-.2.3-.2.5-.1l1.3.6c.2.1.3.2.4.2v.8Z" />
+                    </svg>
+                    {mostrarTelefone(e.telefone)}
+                  </a>
+                ) : (
+                  <span className="text-xs text-tinta-3">sem telefone</span>
+                )
+              })()}
+              <div className="flex flex-col gap-1 rounded-xl bg-superficie-2/70 px-3 py-2.5 text-sm">
+                {doCatalogo(e) ?? <span className="font-medium text-tinta">{e.descricao}</span>}
+                {comoSai(e)}
+                {e.observacao && <span className="text-xs whitespace-pre-line text-tinta-2 italic">“{e.observacao}”</span>}
+                {recebida(e)}
+              </div>
+            </div>
+
+            {/* ── dinheiro e botões ── */}
+            <div className="flex flex-col gap-3 sm:col-span-2 lg:col-span-1 lg:w-[23rem] lg:items-end">
+              <dl className="grid w-full grid-cols-3 overflow-hidden rounded-xl border border-borda-suave text-center">
+                <div className="flex flex-col gap-0.5 px-2 py-2">
+                  <dt className="text-xs font-semibold text-tinta-3">Valor</dt>
+                  <dd className="numero text-[15px] font-bold text-tinta">{brl(e.valor)}</dd>
+                </div>
+                <div className="flex flex-col gap-0.5 border-x border-borda-suave px-2 py-2">
+                  <dt className="text-xs font-semibold text-tinta-3">Sinal</dt>
+                  <dd className="numero flex flex-col text-[15px] font-bold text-tinta-2">
+                    {brl(e.sinal)}
+                    {formaDoSinal(e)}
+                  </dd>
+                </div>
+                <div className={cx('flex flex-col gap-0.5 px-2 py-2', !ehFinal(e.situacao) && e.falta > 0 && 'bg-atencao-fundo/60')}>
+                  <dt className="text-xs font-semibold text-tinta-3">Falta</dt>
+                  <dd className={cx('numero text-[15px] font-extrabold', e.falta > 0 || ehFinal(e.situacao) ? 'text-tinta' : 'text-bom')}>{falta(e)}</dd>
+                </div>
+              </dl>
+              {acoes(e)}
+            </div>
           </div>
-          {contato(e)}
-          {doCatalogo(e) ?? <p className="text-sm text-tinta">{e.descricao}</p>}
-          {comoSai(e)}
-          {e.observacao && <p className="text-xs whitespace-pre-line text-tinta-3">{e.observacao}</p>}
-          {recebida(e)}
-          <dl className="grid grid-cols-3 gap-2 border-t border-borda-suave pt-2 text-xs">
-            <div className="flex flex-col">
-              <dt className="text-tinta-3">Valor</dt>
-              <dd className="numero font-semibold text-tinta">{brl(e.valor)}</dd>
-            </div>
-            <div className="flex flex-col">
-              <dt className="text-tinta-3">Sinal</dt>
-              <dd className="numero flex flex-col text-tinta-2">
-                {brl(e.sinal)}
-                {formaDoSinal(e)}
-              </dd>
-            </div>
-            <div className="flex flex-col">
-              <dt className="text-tinta-3">Falta pagar</dt>
-              <dd className={cx('numero font-semibold', e.falta > 0 || ehFinal(e.situacao) ? 'text-tinta' : 'text-bom')}>
-                {falta(e)}
-              </dd>
-            </div>
-          </dl>
-          {variasLojas && <span className="text-xs text-tinta-3">{e.unidadeNome}</span>}
-          {acoes(e)}
         </li>
       ))}
     </ul>
-  )
-
-  const tabela = (itens: EncomendaNaLista[]) => (
-    <Tabela
-      colunas={[
-        {
-          chave: 'quando',
-          titulo: 'Quando',
-          largura: '5.5rem',
-          celula: (e: EncomendaNaLista) => (
-            <span className="flex flex-col">
-              <span className="numero font-semibold text-tinta">{horaEmSP(e.para)}</span>
-              <span className="text-xs text-tinta-3">{diaCurtoSP(e.para)}</span>
-            </span>
-          ),
-        },
-        { chave: 'cliente', titulo: 'Cliente', largura: '10rem', celula: contato },
-        {
-          chave: 'desc',
-          titulo: 'Encomenda',
-          celula: (e: EncomendaNaLista) => (
-            <span className="flex min-w-[13rem] flex-col gap-0.5">
-              {doCatalogo(e) ?? <span className="text-tinta">{e.descricao}</span>}
-              {comoSai(e)}
-              {e.observacao && <span className="text-xs whitespace-pre-line text-tinta-3">{e.observacao}</span>}
-              {recebida(e)}
-              {variasLojas && <span className="text-xs text-tinta-3">{e.unidadeNome}</span>}
-            </span>
-          ),
-        },
-        { chave: 'valor', titulo: 'Valor', numero: true, largura: '5.5rem', celula: (e: EncomendaNaLista) => brl(e.valor) },
-        {
-          chave: 'sinal',
-          titulo: 'Sinal',
-          numero: true,
-          largura: '5.5rem',
-          celula: (e: EncomendaNaLista) => (
-            <span className="flex flex-col items-end text-tinta-2">
-              {brl(e.sinal)}
-              {formaDoSinal(e)}
-            </span>
-          ),
-        },
-        {
-          chave: 'falta',
-          titulo: 'Falta',
-          numero: true,
-          largura: '5.5rem',
-          celula: (e: EncomendaNaLista) => (
-            <span className={cx('font-semibold', e.falta > 0 || ehFinal(e.situacao) ? 'text-tinta' : 'text-bom')}>
-              {falta(e)}
-            </span>
-          ),
-        },
-        { chave: 'sit', titulo: 'Situação', largura: '6.5rem', celula: pilula },
-        { chave: 'acoes', titulo: '', largura: '12rem', celula: acoes },
-      ]}
-      linhas={itens}
-      chave={(e) => e.id}
-    />
   )
 
   return (
@@ -462,16 +406,7 @@ export default async function Encomendas({
             {g.chave === 'atrasadas' && (
               <p className="-mt-2 text-sm text-critico">Passaram da hora combinada e ainda não saíram.</p>
             )}
-            {simples ? (
-              cartoes(g.itens)
-            ) : (
-              <>
-                <div className="md:hidden">{cartoes(g.itens)}</div>
-                <div className="hidden md:block">
-                  <Cartao>{tabela(g.itens)}</Cartao>
-                </div>
-              </>
-            )}
+            {cartoes(g.itens)}
           </Secao>
         ))
       )}

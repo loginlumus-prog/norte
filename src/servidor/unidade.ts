@@ -22,7 +22,15 @@ import { cookieDaUnidade, pedidaOuLembrada } from './unidade-lembrada'
 import { unidadesQuePodem, type Capacidade, type Sessao } from './permissao'
 import { moduloLigado, type ComModulos } from './modulos'
 
-export type UnidadeVisivel = { id: string; nome: string; ehDeposito: boolean }
+export type UnidadeVisivel = {
+  id: string
+  nome: string
+  ehDeposito: boolean
+  /** Para o cartão da troca de loja (TrocaDeLoja): onde ela fica e o que é. */
+  ehFabrica?: boolean
+  bairro?: string | null
+  cidade?: string | null
+}
 
 /**
  * As unidades que esta pessoa pode ver, para esta capacidade.
@@ -42,7 +50,7 @@ export async function unidadesVisiveis(
         ...(permitidas === 'todas' ? {} : { id: { in: permitidas } }),
       },
       orderBy: [{ ehDeposito: 'asc' }, { nome: 'asc' }],
-      select: { id: true, nome: true, ehDeposito: true },
+      select: { id: true, nome: true, ehDeposito: true, ehFabrica: true, bairro: true, cidade: true },
     }),
   )
 }

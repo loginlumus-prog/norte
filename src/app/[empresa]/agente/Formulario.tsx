@@ -302,7 +302,7 @@ function Grupo({
                     <span className="text-sm font-semibold text-tinta-3">{p.titulo}</span>
                     <span
                       className={cx(
-                        'shrink-0 rounded border px-1 py-px text-[9px] font-bold tracking-wide whitespace-nowrap uppercase',
+                        'shrink-0 rounded border px-1 py-px text-[10.5px] font-bold tracking-wide whitespace-nowrap uppercase',
                         semModulo
                           ? 'border-atencao-vivo text-atencao'
                           : 'border-borda text-tinta-3',

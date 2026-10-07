@@ -183,7 +183,7 @@ export default async function AuditoriaPagina({
                     </span>
                   )}
                   {l.autor !== 'PESSOA' && (
-                    <span className="text-[11px] text-tinta-3">
+                    <span className="text-[12.5px] text-tinta-3">
                       {l.autor === 'AGENTE' ? 'assistente' : 'sistema'}
                     </span>
                   )}

@@ -11,6 +11,7 @@
 import { useRef, useState, useTransition } from 'react'
 import { Aviso, Botao, cx } from '@/ui/base'
 import { excluir } from './acoes'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 
 export function Excluir({
   slug,
@@ -26,7 +27,7 @@ export function Excluir({
   /** O saldo de hoje, somado; maior que zero acende o aviso na janela. */
   estoque?: number
   medida?: string
-  /** Na linha da lista: texto pequeno, no lugar do botão grande da ficha. */
+  /** Na linha da lista: o ícone da lixeira, no lugar do botão grande da ficha. */
   compacto?: boolean
 }) {
   const janela = useRef<HTMLDialogElement>(null)
@@ -44,10 +45,11 @@ export function Excluir({
             setErro(null)
             janela.current?.showModal()
           }}
-          title="Excluir este produto"
-          className="font-semibold text-critico underline-offset-2 hover:underline"
+          aria-label={`Excluir ${nome}`}
+          className={classeDaAcao({ tom: 'perigo' })}
         >
-          excluir
+          <IconeDaAcao icone="excluir" />
+          <DicaDaAcao>Excluir</DicaDaAcao>
         </button>
       ) : (
         <Botao

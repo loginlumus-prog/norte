@@ -5,6 +5,7 @@
 import { useActionState, useEffect, useRef, useState } from 'react'
 import { Aviso, Botao, Campo, Cartao } from '@/ui/base'
 import { semApagar } from '@/ui/formulario'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { salvarFornecedorAcao, type EstadoFornecedor } from './acoes'
 
 export function NovoFornecedor({ slug }: { slug: string }) {
@@ -34,8 +35,9 @@ export function NovoFornecedor({ slug }: { slug: string }) {
       caixa
       titulo="Novo fornecedor"
       acao={
-        <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-          fechar
+        <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar o fornecedor novo">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >

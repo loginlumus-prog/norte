@@ -16,6 +16,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao } from '@/ui/base'
 import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { avariaAcao } from './acoes'
 
 export function Avaria({
@@ -47,9 +48,10 @@ export function Avaria({
         type="button"
         onClick={() => setAberto(true)}
         title="Tirar do estoque o que quebrou, amassou ou venceu"
-        className="text-xs font-medium text-tinta-3 underline-offset-2 hover:text-critico hover:underline"
+        className={classeDaAcao({ jeito: 'pilula', tom: 'perigo' })}
       >
-        avaria
+        <IconeDaAcao icone="excluir" tamanho={15} />
+        Avaria
       </button>
     )
   }
@@ -58,7 +60,7 @@ export function Avaria({
   const valida = Number.isFinite(n) && n > 0
 
   return (
-    <span className="flex flex-wrap items-center justify-end gap-1.5">
+    <span className="flex w-full flex-wrap items-center justify-end gap-1.5">
       <input
         type="number"
         step="any"
@@ -110,9 +112,11 @@ export function Avaria({
           setAberto(false)
           setErro(null)
         }}
-        className="text-xs text-tinta-3 hover:text-tinta"
+        className={classeDaAcao()}
+        aria-label="Cancelar"
       >
-        cancelar
+        <IconeDaAcao icone="fechar" />
+        <DicaDaAcao>Cancelar</DicaDaAcao>
       </button>
       <span className="flex w-full justify-end">
         <MotivosProntos excecao="estoque.perda" atual={motivo} aoEscolher={setMotivo} className="justify-end" />

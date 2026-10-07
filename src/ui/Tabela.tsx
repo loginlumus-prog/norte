@@ -105,7 +105,7 @@ export function Tabela<L>({
                 style={c.largura ? { width: c.largura } : undefined}
                 className={cx(
                   'sticky top-0 z-10 border-b border-borda bg-superficie-2 px-2.5 py-2.5 sm:px-3.5',
-                  'text-[11px] font-bold tracking-[0.06em] text-tinta-3 uppercase',
+                  'text-[12.5px] font-bold tracking-[0.06em] text-tinta-3 uppercase',
                   c.numero ? 'text-right' : 'text-left',
                   c.escondeNoCelular && 'hidden sm:table-cell',
                 )}
@@ -136,7 +136,7 @@ export function Tabela<L>({
                   // ganham 16px, que é o que separava a lista de Vendas de
                   // caber inteira num telefone sem rolar de lado.
                   className={cx(
-                    'px-2.5 py-2.5 align-top text-tinta sm:px-3.5',
+                    'px-2.5 py-3 align-middle text-tinta sm:px-3.5',
                     c.numero && 'numero',
                     c.escondeNoCelular && 'hidden sm:table-cell',
                   )}

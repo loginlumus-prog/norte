@@ -7,6 +7,7 @@
 import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao } from '@/ui/base'
+import { IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { ReceberParcelas } from './ReceberParcelas'
 
 export function BotaoReceber({
@@ -17,6 +18,8 @@ export function BotaoReceber({
   children = 'Receber',
   tom = 'confirmar',
   className,
+  linha = false,
+  dica,
 }: {
   slug: string
   unidadeId: string
@@ -25,15 +28,26 @@ export function BotaoReceber({
   children?: ReactNode
   tom?: 'confirmar' | 'secundario' | 'principal' | 'discreto'
   className?: string
+  /** Na linha de uma lista: a pílula principal dos botões de ação (ui/premium). */
+  linha?: boolean
+  /** O aria-label da pílula da linha: "Receber a parcela 2/5 de Marta". */
+  dica?: string
 }) {
   const [aberto, setAberto] = useState(false)
   const [recebeu, setRecebeu] = useState(false)
   const router = useRouter()
   return (
     <>
-      <Botao tom={tom} onClick={() => setAberto(true)} className={className}>
-        {children}
-      </Botao>
+      {linha ? (
+        <button type="button" onClick={() => setAberto(true)} aria-label={dica} className={classeDaAcao({ jeito: 'pilula', tom: 'principal' })}>
+          {children}
+          <IconeDaAcao icone="receber" tamanho={14} grosso />
+        </button>
+      ) : (
+        <Botao tom={tom} onClick={() => setAberto(true)} className={className}>
+          {children}
+        </Botao>
+      )}
       {aberto && (
         <ReceberParcelas
           slug={slug}

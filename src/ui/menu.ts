@@ -46,7 +46,7 @@ export const MENU = (slug: string): ItemMenu[] => [
   // O link que a loja manda para a cliente ver o que tem e pedir. Para todo
   // mundo: é o jeito mais curto de vender pelo WhatsApp e pelo Instagram. O
   // pedido que chega vira encomenda (abrir o catálogo liga as Encomendas).
-  { grupo: 'Vender', href: `/${slug}/catalogo`, titulo: 'Catálogo', exige: 'venda.ver' },
+  { grupo: 'Vender', href: `/${slug}/catalogo`, titulo: 'Catálogo online', exige: 'venda.ver' },
   // A mensalidade da escola: o mês, quem pagou, quem está em atraso, e
   // receber. Ao lado do Crediário porque é a mesma conversa — dinheiro que
   // entra com a pessoa na frente —, e a secretaria abre as duas.
@@ -56,11 +56,6 @@ export const MENU = (slug: string): ItemMenu[] => [
   // Quem vende hora marcada (salão, clínica, escola) vive nesta tela: a
   // recepção abre a Agenda antes do Balcão.
   { grupo: 'Atendimento', href: `/${slug}/agenda`, titulo: 'Agenda', exige: 'agenda.ver', modulo: 'agenda' },
-  // Quem trabalha aqui, com ou sem login. Existe com o Ponto (as horas) OU
-  // com a Agenda (a lista de profissionais) — ver modulos.ts. Aparece para
-  // quem bate o próprio ponto: cada um vê o seu, e só quem pode vê as horas
-  // dos outros.
-  { grupo: 'Atendimento', href: `/${slug}/funcionarios`, titulo: 'Funcionários', exige: 'ponto.proprio', ouExige: ['ponto.ver', 'equipe.ver'], modulos: ['ponto', 'agenda'] },
   // As turmas da escola: quem estuda em cada uma, quantas vagas sobram, e
   // matricular. Os alunos são a tela de Clientes, com a palavra "Alunos".
   { grupo: 'Atendimento', href: `/${slug}/turmas`, titulo: 'Turmas', exige: 'escola.ver', modulo: 'escola' },
@@ -69,10 +64,10 @@ export const MENU = (slug: string): ItemMenu[] => [
   // "Serviços e materiais" na clínica (vocabulario.ts).
   { grupo: 'Catálogo', href: `/${slug}/produtos`, titulo: 'Produtos', exige: 'produto.ver', vocabulario: 'Produtos' },
   { grupo: 'Catálogo', href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },
-  // A fábrica: ficha técnica, ordem de produção com lote e o pedido das
-  // lojas. Exige só ver o estoque — produzir e mandar é mexer no estoque DA
-  // fábrica, e isso a própria tela confere por unidade (servidor/fabrica.ts).
-  { grupo: 'Catálogo', href: `/${slug}/fabrica`, titulo: 'Fábrica', exige: 'fabrica.ver', modulo: 'fabrica' },
+  // A loja repõe pedindo à fábrica. A fábrica em si não mora aqui: ela é um
+  // LUGAR, como uma loja — entra-se nela pela troca de loja, e lá dentro o
+  // menu é o dela (MENU_DA_FABRICA).
+  { grupo: 'Catálogo', href: `/${slug}/fabrica/pedir`, titulo: 'Pedir à fábrica', exige: 'fabrica.pedir', modulo: 'fabrica' },
   // O pedido ao fornecedor, com o custo. Receber é dar entrada no estoque.
   { grupo: 'Catálogo', href: `/${slug}/compras`, titulo: 'Compras', exige: 'compra.ver', modulo: 'compras' },
   // O esmalte, a luva, o algodão: quem atende anota o que gastou. Item
@@ -87,6 +82,12 @@ export const MENU = (slug: string): ItemMenu[] => [
   // servidor/vocabulario.ts). A tela é a mesma.
   { grupo: 'Pessoas', href: `/${slug}/clientes`, titulo: 'Clientes', exige: 'cliente.ver', vocabulario: 'Pessoas' },
   { grupo: 'Pessoas', href: `/${slug}/equipe`, titulo: 'Equipe', exige: 'equipe.ver' },
+  // Funcionários mora com a Equipe (antes ficava sozinho em Atendimento,
+  // para quem não tem agenda). Quem trabalha aqui, com ou sem login. Existe com o Ponto (as horas) OU
+  // com a Agenda (a lista de profissionais) — ver modulos.ts. Aparece para
+  // quem bate o próprio ponto: cada um vê o seu, e só quem pode vê as horas
+  // dos outros.
+  { grupo: 'Pessoas', href: `/${slug}/funcionarios`, titulo: 'Funcionários', exige: 'ponto.proprio', ouExige: ['ponto.ver', 'equipe.ver'], modulos: ['ponto', 'agenda'] },
   // O quadro da equipe: o que abrir, conferir, montar e ligar. Aparece para
   // quem trabalha na loja, não só para quem manda — a balconista vê a lista
   // de abertura e dá baixa no que é dela.
@@ -121,6 +122,24 @@ export const MENU = (slug: string): ItemMenu[] => [
   { grupo: 'Empresa', href: `/${slug}/indique`, titulo: 'Indique e ganhe', exige: 'empresa.configurar' },
   { grupo: 'Empresa', href: `/${slug}/configuracoes`, titulo: 'Configurações', exige: 'empresa.configurar' },
 ]
+
+/**
+ * O menu de quem está DENTRO da fábrica (a unidade escolhida na troca de loja
+ * é uma fábrica). Balcão, encomendas e catálogo não existem lá; o dia de quem
+ * trabalha na fábrica é produzir, conferir a ficha técnica, separar o pedido
+ * das lojas e cuidar do estoque de insumos. Pessoas, Dinheiro e Empresa vêm
+ * do menu de sempre (ver Estrutura).
+ */
+export const MENU_DA_FABRICA = (slug: string): ItemMenu[] => [
+  { grupo: 'Fábrica', href: `/${slug}/fabrica`, titulo: 'Produção', exige: 'fabrica.ver', modulo: 'fabrica' },
+  { grupo: 'Fábrica', href: `/${slug}/fabrica?aba=fichas`, titulo: 'Fichas técnicas', exige: 'fabrica.ver', modulo: 'fabrica' },
+  { grupo: 'Fábrica', href: `/${slug}/fabrica?aba=pedidos`, titulo: 'Pedidos das lojas', exige: 'fabrica.ver', modulo: 'fabrica' },
+  { grupo: 'Fábrica', href: `/${slug}/estoque`, titulo: 'Estoque', exige: 'estoque.ver' },
+  { grupo: 'Fábrica', href: `/${slug}/compras`, titulo: 'Compras', exige: 'compra.ver', modulo: 'compras' },
+]
+
+/** Os grupos do menu de sempre que continuam valendo dentro da fábrica. */
+export const GRUPOS_FORA_DA_FABRICA = ['Pessoas', 'Dinheiro', 'Empresa']
 
 /** A pessoa abre o item? A capacidade dele, ou qualquer uma das alternativas. */
 export function podeVerItem(sessao: Sessao, i: Pick<ItemMenu, 'exige' | 'ouExige'>): boolean {

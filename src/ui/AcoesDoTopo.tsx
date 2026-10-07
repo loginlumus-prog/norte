@@ -115,7 +115,7 @@ export function AcoesDoTopo({ children }: { children: ReactNode }) {
         }}
         // `flex-1`: quando as ações não cabem, elas quebram aqui dentro, e a
         // chave do modo e do tema continua na linha do título.
-        className="acoes-topo flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 2xl:flex-nowrap"
+        className="acoes-topo flex flex-1 flex-nowrap items-center justify-end gap-2"
       >
         {children}
       </div>

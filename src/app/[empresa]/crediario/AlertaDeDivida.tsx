@@ -14,7 +14,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Botao } from '@/ui/base'
+import { Botao, cx } from '@/ui/base'
+import { IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import type { SituacaoDeCredito } from '@/servidor/crediario'
 import { situacaoDeCreditoAcao } from './acoes'
 import { ReceberParcelas } from './ReceberParcelas'
@@ -141,12 +142,9 @@ export function AlertaDeDivida({
   if (!podeReceber || sit.devendo <= 0) return null
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setRecebendo(true)}
-        className="self-start text-xs font-semibold text-marca underline-offset-2 hover:underline"
-      >
-        receber parcela
+      <button type="button" onClick={() => setRecebendo(true)} className={cx(classeDaAcao({ jeito: 'pilula', tom: 'bom' }), 'self-start')}>
+        <IconeDaAcao icone="receber" tamanho={15} />
+        Receber parcela
       </button>
       {receber}
     </>

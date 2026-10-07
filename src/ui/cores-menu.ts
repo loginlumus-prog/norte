@@ -17,6 +17,7 @@ export const CORES_PADRAO: Record<string, string> = {
   Vender: '#10b981',
   Atendimento: '#0ea5e9',
   Catálogo: '#f59e0b',
+  Fábrica: '#f97316',
   Pessoas: '#ec4899',
   Dinheiro: '#8b5cf6',
   Empresa: '#64748b',

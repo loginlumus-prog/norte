@@ -1305,7 +1305,7 @@ function AgendaDoRamo({
         </dl>
         {dados.trabalhando && (
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold tracking-[0.06em] text-tinta-3 uppercase">Trabalhando agora</span>
+            <span className="text-[12.5px] font-bold tracking-[0.06em] text-tinta-3 uppercase">Trabalhando agora</span>
             {dados.trabalhando.length === 0 ? (
               <span className="text-sm text-tinta-3">Ninguém bateu entrada.</span>
             ) : (
@@ -1573,7 +1573,7 @@ function ProducaoDoRamo({
                 <div key={titulo} className="flex flex-col gap-1.5">
                   <p
                     className={cx(
-                      'text-[11px] font-bold tracking-[0.06em] uppercase',
+                      'text-[12.5px] font-bold tracking-[0.06em] uppercase',
                       atraso ? 'text-critico' : 'text-tinta-3',
                     )}
                   >

@@ -121,7 +121,7 @@ export function CoresDoMenu({
               )
             })}
           </ul>
-          <p className="mt-2.5 text-[11px] leading-snug text-tinta-3">Vale neste aparelho. Cada pessoa deixa o menu do jeito que prefere.</p>
+          <p className="mt-2.5 text-[12.5px] leading-snug text-tinta-3">Vale neste aparelho. Cada pessoa deixa o menu do jeito que prefere.</p>
         </div>
       ) : null}
     </div>

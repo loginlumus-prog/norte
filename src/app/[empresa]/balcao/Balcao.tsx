@@ -67,7 +67,7 @@ const MEDIDA: Record<string, string> = {
 
 function Tecla({ children }: { children: string }) {
   return (
-    <kbd className="rounded border border-borda bg-superficie-2 px-1 py-px font-mono text-[10px] font-semibold text-tinta-3">
+    <kbd className="rounded border border-borda bg-superficie-2 px-1 py-px font-mono text-[11.5px] font-semibold text-tinta-3">
       {children}
     </kbd>
   )
@@ -239,7 +239,7 @@ export function Balcao({
       {/* ── quem compra, quem vende ── */}
       <div className={cx('grid gap-2', vendedores ? 'sm:grid-cols-[1fr_16rem]' : '')}>
         <div className="flex flex-col gap-1 rounded-norte border border-borda bg-superficie px-3 py-2">
-          <span className="flex items-center gap-2 text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">
+          <span className="flex items-center gap-2 text-[11.5px] font-semibold tracking-wide text-tinta-3 uppercase">
             {p.Pessoa} <Tecla>Alt N</Tecla>
           </span>
           <EscolherCliente
@@ -263,7 +263,7 @@ export function Balcao({
         </div>
         {vendedores && (
           <label className="flex flex-col gap-1 rounded-norte border border-borda bg-superficie px-3 py-2">
-            <span className="flex items-center gap-2 text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">
+            <span className="flex items-center gap-2 text-[11.5px] font-semibold tracking-wide text-tinta-3 uppercase">
               {p.Vendedor} <Tecla>Alt F</Tecla>
             </span>
             <select
@@ -449,7 +449,7 @@ export function Balcao({
                       <span className="line-clamp-2 text-[13px] leading-snug font-medium">{a.descricao}</span>
                       <span className="flex items-baseline justify-between gap-2 pt-1">
                         <span className="numero text-sm font-bold">{brl(precoDe(a as Linha, tabela))}</span>
-                        <span className={cx('numero text-[11px]', semSaldo && !semControle ? 'font-semibold text-atencao' : 'text-tinta-3')}>
+                        <span className={cx('numero text-[12.5px]', semSaldo && !semControle ? 'font-semibold text-atencao' : 'text-tinta-3')}>
                           {a.servico ? 'serviço' : semControle ? '' : semSaldo ? 'acabou' : a.saldo}
                         </span>
                       </span>
@@ -637,7 +637,7 @@ export function Balcao({
                 <button type="button" onClick={() => setAvulsoAberto(false)} className="px-1 text-xs text-tinta-3 hover:text-tinta">
                   cancelar
                 </button>
-                <p className="w-full text-[11px] text-tinta-3">
+                <p className="w-full text-[12.5px] text-tinta-3">
                   Item avulso não mexe em estoque e fica marcado no livro. Se a peça existe, cadastre — o
                   relatório agradece.{precisaPin && ' Ao fechar, pede o PIN de quem pode autorizar.'}
                 </p>
@@ -683,7 +683,7 @@ export function Balcao({
             {/* A escada: o que a pessoa fala em voz alta para quem está
                 decidindo como pagar. */}
             {temEscada && (
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-tinta-3">
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[12.5px] text-tinta-3">
                 {(['vista', 'cartao', 'crediario'] as Tabela[]).map((t) => (
                   <span key={t} className={cx(t === tabela && 'font-semibold text-tinta-2')}>
                     {ROTULO_TABELA[t]} <span className="numero">{brl(escada[t] / 100)}</span>
@@ -964,7 +964,7 @@ export function Balcao({
           >
             {indo ? 'Fechando...' : `Fechar ${p.venda}`}
             {!indo && (
-              <kbd className="rounded bg-white/20 px-1.5 py-px font-mono text-[10px] font-semibold">F10</kbd>
+              <kbd className="rounded bg-white/20 px-1.5 py-px font-mono text-[11.5px] font-semibold">F10</kbd>
             )}
           </Botao>
         </aside>

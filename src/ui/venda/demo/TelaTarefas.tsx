@@ -68,7 +68,7 @@ export function TelaTarefas({ estado, fazer }: { estado: Estado; fazer: (a: Acao
             </p>
             <div
               className={
-                'hidden grid-cols-[minmax(0,1fr)_7.5rem_2.5rem_4.5rem] gap-2 border-t border-borda-suave px-3.5 py-1.5 text-[9.5px] font-bold tracking-[0.08em] text-tinta-3 uppercase sm:grid ' +
+                'hidden grid-cols-[minmax(0,1fr)_7.5rem_2.5rem_4.5rem] gap-2 border-t border-borda-suave px-3.5 py-1.5 text-[11px] font-bold tracking-[0.08em] text-tinta-3 uppercase sm:grid ' +
                 (avancado ? 'lg:grid-cols-[minmax(0,1fr)_7.5rem_2.5rem_6rem_4.5rem_5rem]' : '')
               }
             >
@@ -135,13 +135,13 @@ export function TelaTarefas({ estado, fazer }: { estado: Estado; fazer: (a: Acao
                       )}
                       <span
                         className={
-                          'numero col-span-2 text-[11px] sm:col-span-1 ' +
+                          'numero col-span-2 text-[12.5px] sm:col-span-1 ' +
                           (atrasada ? 'font-semibold text-critico' : 'text-tinta-3')
                         }
                       >
                         <span className="sm:hidden">{PESSOAS[t.quem]} · </span>
                         {t.prazo === 0 ? 'hoje' : dataCurta(t.prazo)}
-                        {atrasada && <span className="ml-1 text-[10px] sm:ml-0 sm:block">atrasada</span>}
+                        {atrasada && <span className="ml-1 text-[11.5px] sm:ml-0 sm:block">atrasada</span>}
                       </span>
                       {avancado && (
                         <span className="hidden lg:block">

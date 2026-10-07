@@ -74,7 +74,7 @@ export function Cadeado({
   const titulo = `${LIBERACOES[chave].titulo}: ${doPlano(p.codigo)}`
   const classe = cx(
     'inline-flex items-center gap-1 rounded-full border border-borda bg-superficie-2 px-1.5 py-0.5',
-    'text-[10px] font-semibold whitespace-nowrap text-tinta-3',
+    'text-[11.5px] font-semibold whitespace-nowrap text-tinta-3',
     verPlanos && 'hover:border-marca/40 hover:text-tinta',
     className,
   )

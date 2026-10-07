@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao, cx } from '@/ui/base'
 import { CampoDoPin } from '@/ui/Assinar'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { procurarParaEntrada, darEntrada, type AchadoEstoque } from './acoes'
 import { escolhaDoEnter } from '@/servidor/etiqueta'
 
@@ -173,9 +174,11 @@ export function Entrada({
         <button
           type="button"
           onClick={() => setAberto(false)}
-          className="text-xs text-tinta-3 hover:text-tinta"
+          className={classeDaAcao()}
+          aria-label="Fechar a entrada"
         >
-          fechar
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >
@@ -305,9 +308,11 @@ export function Entrada({
               <button
                 type="button"
                 onClick={() => setLinhas((a) => a.filter((x) => x.id !== l.id))}
-                className="pb-2 text-xs text-tinta-3 hover:text-critico"
+                className={classeDaAcao({ tom: 'perigo' })}
+                aria-label={`Tirar ${l.descricao} da entrada`}
               >
-                tirar
+                <IconeDaAcao icone="excluir" />
+                <DicaDaAcao>Tirar</DicaDaAcao>
               </button>
             </li>
           ))}

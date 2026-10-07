@@ -27,6 +27,7 @@ import { MENU } from '@/ui/menu'
 import { enderecoCom } from '@/ui/Busca'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Aviso, Cartao, Situacao, Vazio, cx } from '@/ui/base'
+import { AcoesDaLinha, BotaoDaLinha } from '@/ui/premium'
 import type { Tema } from '@/ui/TrocaTema'
 import { Ficha } from './Ficha'
 import { AbonarOutroDia, Abonar, Ajuste, Anular, BaterPonto, DesfazerAbono, Inicio } from './Ponto'
@@ -142,9 +143,7 @@ export default async function Funcionarios({
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <BaterPonto slug={slug} colaboradorId={meu.id} proxima={meuEstado.proxima} grande />
-              <Link href={link({ pessoa: meu.id })} className="text-sm font-semibold text-marca underline-offset-2 hover:underline">
-                Minha folha do mês
-              </Link>
+              <BotaoDaLinha comRotulo href={link({ pessoa: meu.id })} icone="carne" rotulo="Minha folha do mês" />
             </div>
           </div>
         </Cartao>
@@ -161,9 +160,7 @@ export default async function Funcionarios({
             <span className="flex flex-wrap items-center gap-3">
               {navMes}
               {q.pessoa && (
-                <Link href={link({ pessoa: null })} className="text-xs text-tinta-3 hover:text-tinta">
-                  fechar
-                </Link>
+                <BotaoDaLinha href={link({ pessoa: null })} icone="fechar" rotulo="Fechar" dica="Fechar a folha" />
               )}
             </span>
           }
@@ -332,15 +329,14 @@ export default async function Funcionarios({
                     {p.ativo && gerePonto(p) && p.id !== meu?.id && (
                       <BaterPonto slug={slug} colaboradorId={p.id} proxima={r?.aberto ? 'SAIDA' : 'ENTRADA'} rotulo={r?.aberto ? 'Bater saída' : 'Bater entrada'} />
                     )}
-                    {podeFolha && (
-                      <Link href={link({ pessoa: p.id })} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
-                        Folha
-                      </Link>
-                    )}
-                    {podeGerir && podeNoColaborador(sessao, 'equipe.gerir', p) && (
-                      <Link href={link({ editar: p.id })} className="text-xs font-semibold text-tinta-2 underline-offset-2 hover:underline">
-                        Ficha
-                      </Link>
+                    {/* A ficha (editar) é apoio; a folha do mês, o principal da linha. */}
+                    {(podeFolha || (podeGerir && podeNoColaborador(sessao, 'equipe.gerir', p))) && (
+                      <AcoesDaLinha>
+                        {podeGerir && podeNoColaborador(sessao, 'equipe.gerir', p) && (
+                          <BotaoDaLinha href={link({ editar: p.id })} icone="editar" rotulo="Ficha" dica={`Editar a ficha de ${p.nome}`} />
+                        )}
+                        {podeFolha && <BotaoDaLinha principal href={link({ pessoa: p.id })} icone="abrir" rotulo="Folha" dica={`Folha do mês de ${p.nome}`} />}
+                      </AcoesDaLinha>
                     )}
                   </span>
                 </li>

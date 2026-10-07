@@ -103,7 +103,7 @@ export function MaisOpcoes({
       <div className="flex flex-col gap-5">
         <section className={secao}>
           <h3 className={titulo}>
-            {p.Pessoa} <kbd className="ml-1 rounded border border-borda bg-superficie-2 px-1 font-mono text-[10px] text-tinta-3 normal-case">Alt N</kbd>
+            {p.Pessoa} <kbd className="ml-1 rounded border border-borda bg-superficie-2 px-1 font-mono text-[11.5px] text-tinta-3 normal-case">Alt N</kbd>
           </h3>
           <div className="rounded-xl border border-borda bg-superficie px-3 py-2.5 [&_button]:min-h-9 [&_input]:h-11 [&_input]:text-base">
             <EscolherCliente
@@ -131,7 +131,7 @@ export function MaisOpcoes({
         {vendedores && (
           <section className={secao}>
             <label htmlFor="vendedor-simples" className={titulo}>
-              Quem {p.vendeu.toLowerCase()} <kbd className="ml-1 rounded border border-borda bg-superficie-2 px-1 font-mono text-[10px] text-tinta-3 normal-case">Alt F</kbd>
+              Quem {p.vendeu.toLowerCase()} <kbd className="ml-1 rounded border border-borda bg-superficie-2 px-1 font-mono text-[11.5px] text-tinta-3 normal-case">Alt F</kbd>
             </label>
             <select
               id="vendedor-simples"

@@ -7,6 +7,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao, cx } from '@/ui/base'
+import { classeDaAcao, IconeDaAcao } from '@/ui/premium'
 import { precoNaLojaAcao } from './acoes'
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -63,8 +64,14 @@ function Linha({ slug, produtoId, loja, geral, porKg }: { slug: string; produtoI
             </span>
           )}
           {loja.podeMudar && !editando && (
-            <button type="button" onClick={() => setEditando(true)} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
-              {loja.proprio ? 'mudar' : 'pôr preço próprio'}
+            <button
+              type="button"
+              onClick={() => setEditando(true)}
+              className={classeDaAcao({ jeito: 'pilula' })}
+              aria-label={loja.proprio ? `Mudar o preço de ${loja.nome}` : `Pôr preço próprio em ${loja.nome}`}
+            >
+              <IconeDaAcao icone={loja.proprio ? 'editar' : 'mais'} tamanho={15} />
+              {loja.proprio ? 'Mudar' : 'Pôr preço próprio'}
             </button>
           )}
         </span>
@@ -99,7 +106,8 @@ function Linha({ slug, produtoId, loja, geral, porKg }: { slug: string; produtoI
             </Botao>
           </div>
           {loja.proprio && (
-            <button type="button" disabled={indo} onClick={() => salvar(true)} className="self-start text-xs font-semibold text-tinta-2 underline-offset-2 hover:text-critico hover:underline">
+            <button type="button" disabled={indo} onClick={() => salvar(true)} className={cx(classeDaAcao({ jeito: 'pilula', tom: 'perigo' }), 'self-start')}>
+              <IconeDaAcao icone="desfazer" tamanho={15} />
               Voltar a usar o preço geral ({brl(geral)})
             </button>
           )}

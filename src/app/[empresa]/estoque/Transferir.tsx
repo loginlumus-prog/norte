@@ -11,6 +11,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao } from '@/ui/base'
 import { CampoDoPin } from '@/ui/Assinar'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { transferirAcao } from './acoes'
 
 export function Transferir({
@@ -45,15 +46,17 @@ export function Transferir({
       <button
         type="button"
         onClick={() => setAberto(true)}
-        className="text-xs font-medium text-marca underline-offset-2 hover:underline"
+        title="Mandar peças desta loja para outra"
+        className={classeDaAcao({ jeito: 'pilula' })}
       >
-        transferir
+        <IconeDaAcao icone="trocar" tamanho={15} />
+        Transferir
       </button>
     )
   }
 
   return (
-    <div className="flex flex-col gap-1.5 text-xs">
+    <div className="flex w-full flex-col gap-1.5 text-xs">
       <div className="flex flex-wrap items-center gap-1.5">
         <input
           type="number"
@@ -118,8 +121,9 @@ export function Transferir({
         >
           Transferir
         </Botao>
-        <button type="button" onClick={() => setAberto(false)} className="px-1 text-tinta-3 hover:text-tinta">
-          cancelar
+        <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Cancelar">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Cancelar</DicaDaAcao>
         </button>
       </div>
     </div>

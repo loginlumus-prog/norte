@@ -5,7 +5,8 @@
 // o dinheiro entrou (ver venda-data.ts). Mês que já passou pede confirmação.
 
 import { useActionState, useState } from 'react'
-import { Aviso, Botao, Campo } from '@/ui/base'
+import { Aviso, Botao, Campo, cx } from '@/ui/base'
+import { IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
 import { semApagar } from '@/ui/formulario'
 import { corrigirDataAcao, type EstadoData } from './acoesData'
@@ -21,11 +22,8 @@ export function CorrigirData({ slug, vendaId, dia, hoje }: { slug: string; venda
 
   if (!aberto) {
     return (
-      <button
-        type="button"
-        onClick={() => setAberto(true)}
-        className="self-start text-sm font-medium text-tinta-2 underline-offset-2 hover:text-marca hover:underline"
-      >
+      <button type="button" onClick={() => setAberto(true)} className={cx(classeDaAcao({ jeito: 'pilula' }), 'self-start')}>
+        <IconeDaAcao icone="editar" tamanho={15} />
         Corrigir a data da venda
       </button>
     )

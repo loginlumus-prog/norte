@@ -72,11 +72,10 @@ export function Busca({
  * São links, não botões: cada um é um endereço. A escolhida muda texto, fundo
  * E contorno — não só cor — para quem não distingue cor ver igual.
  *
- * Já foi pílula PRETA. No sistema branco ela era o ponto mais escuro da tela,
- * mais forte que o botão principal, e brigava com o período (azul) logo
- * acima: dois jeitos de dizer "escolhido". Agora é o azul da marca em fundo
- * claro — a mesma família do período, um degrau mais quieta, porque filtro é
- * apoio. E o alvo cresceu: 24px de altura não é alvo de dedo.
+ * Já foi pílula PRETA (o ponto mais escuro da tela, brigando com o botão
+ * principal) e depois pílula azul cheia. Agora é um trilho só, com as opções
+ * dentro: a escolhida sobe em papel, com sombra e a letra na cor da área —
+ * escolher vira "deslizar" num controle, e não acender um botão a mais.
  */
 export function Fichas<T extends string>({
   opcoes,
@@ -95,27 +94,17 @@ export function Fichas<T extends string>({
   rotulo?: string
 }) {
   const fileira = (
-    <span className="flex flex-wrap gap-1 text-xs">
+    <span className="fichas inline-flex max-w-full flex-wrap gap-0.5 rounded-xl p-1 text-xs">
       {opcoes.map((o) => (
         <Link
           key={o.rotulo}
           href={linkDe(o.valor)}
           aria-current={atual === o.valor ? 'true' : undefined}
-          className={
-            'botao-vivo inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-semibold ' +
-            (atual === o.valor
-              ? 'border-transparent bg-marca text-marca-tinta shadow-[0_6px_14px_-8px_var(--marca)]'
-              : 'border-borda bg-superficie text-tinta-2 hover:border-tinta-3 hover:text-tinta')
-          }
+          className="ficha inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
         >
           {o.rotulo}
           {o.quantos !== undefined && (
-            <span
-              className={
-                'numero rounded-full px-1.5 py-px text-[10.5px] leading-none ' +
-                (atual === o.valor ? 'bg-white/25' : 'bg-superficie-2 text-tinta-3')
-              }
-            >
+            <span className="ficha-conta numero rounded-full px-1.5 py-px text-[12px] leading-none">
               {o.quantos.toLocaleString('pt-BR')}
             </span>
           )}

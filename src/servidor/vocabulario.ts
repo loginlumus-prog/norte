@@ -441,6 +441,10 @@ export type PalavraDoMenu = 'Pessoas' | 'Balcao' | 'Produtos' | 'Vendas'
  * (Catálogo, Dinheiro) e servem a qualquer ramo.
  */
 export function nomeDoGrupo(grupo: string, v: PalavrasDaVenda): string {
+  // O grupo "Catálogo" aparece como "Produtos e estoque": "Catálogo" é também
+  // o nome do catálogo online, no grupo Vender, e os dois juntos no menu
+  // confundiam. A chave continua a mesma (é ela que guarda a cor do grupo).
+  if (grupo === 'Catálogo') return 'Produtos e estoque'
   return grupo === VENDA_DA_LOJA.grupoVender ? v.grupoVender : grupo
 }
 

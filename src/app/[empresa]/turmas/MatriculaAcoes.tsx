@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo } from '@/ui/base'
 import { Confirmar } from '@/ui/Confirmar'
 import { semApagar } from '@/ui/formulario'
+import { AcoesDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao, type TomDaAcao } from '@/ui/premium'
 import { editarMatriculaAcao, mudarMatriculaAcao, type EstadoEscola } from './acoes'
 
 type Saida = 'TRANCADA' | 'CANCELADA' | 'CONCLUIDA'
@@ -19,6 +20,14 @@ const VERBO: Record<Saida, { botao: string; pergunta: string; sim: string; dica:
   TRANCADA: { botao: 'Trancar', pergunta: 'Por que trancou?', sim: 'Trancar', dica: 'Viagem, saúde, pausa. Volta com "Reativar".' },
   CANCELADA: { botao: 'Cancelar', pergunta: 'Por que saiu?', sim: 'Cancelar matrícula', dica: 'Mudou de cidade, desistiu. Não volta: quem volta faz matrícula nova.' },
   CONCLUIDA: { botao: 'Concluir', pergunta: 'Terminou como?', sim: 'Concluir', dica: 'Fim do curso, formatura.' },
+}
+
+// O desenho de cada saída na cápsula da linha. Trancar usa a caixa de
+// cadeado: a matrícula fica guardada e volta com "Reativar".
+const ACAO_DA_SAIDA: Record<Saida, { icone: IconeDaAcao; tom: TomDaAcao; dica: string }> = {
+  TRANCADA: { icone: 'trancar', tom: 'neutro', dica: 'Trancar a matrícula' },
+  CANCELADA: { icone: 'cancelar', tom: 'perigo', dica: 'Cancelar a matrícula' },
+  CONCLUIDA: { icone: 'conferir', tom: 'bom', dica: 'Concluir a matrícula' },
 }
 
 export function MatriculaAcoes({
@@ -101,7 +110,7 @@ export function MatriculaAcoes({
           <Campo rotulo="Desconto (R$)" name="descontoValor" inputMode="decimal" defaultValue={descontoValor ? descontoValor.toFixed(2).replace('.', ',') : ''} placeholder="0,00" />
         </div>
         <Campo rotulo="Motivo do desconto" name="descontoMotivo" defaultValue={descontoMotivo ?? ''} placeholder="irmão, bolsa de mérito, funcionário" />
-        <p className="text-[11px] text-tinta-3">As mensalidades em aberto, deste mês em diante, mudam junto. O que já foi pago fica como está.</p>
+        <p className="text-[12.5px] text-tinta-3">As mensalidades em aberto, deste mês em diante, mudam junto. O que já foi pago fica como está.</p>
         <div className="flex gap-2">
           <Botao type="submit" className="py-1 text-xs" carregando={pendenteValor}>
             Salvar
@@ -116,23 +125,32 @@ export function MatriculaAcoes({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="flex flex-wrap justify-end gap-1">
-        {podeGerir && (
-          <Botao tom="secundario" className="py-1 text-xs" onClick={() => setValores(true)}>
-            Valor e bolsa
-          </Botao>
-        )}
+      <div className="flex flex-wrap items-center justify-end gap-1">
         {podeMatricular && situacao === 'TRANCADA' && (
           <Confirmar pergunta="Reativar a matrícula?" sim="Reativar" tomSim="confirmar" className="py-1 text-xs" aoConfirmar={() => mudar('ATIVA', '')}>
             Reativar
           </Confirmar>
         )}
-        {podeMatricular &&
-          (situacao === 'ATIVA' ? (['TRANCADA', 'CANCELADA', 'CONCLUIDA'] as Saida[]) : (['CANCELADA'] as Saida[])).map((s) => (
-            <Botao key={s} tom="discreto" className="py-1 text-xs" onClick={() => setSaida(s)}>
-              {VERBO[s].botao}
-            </Botao>
-          ))}
+        {(podeGerir || podeMatricular) && (
+          <AcoesDaLinha>
+            {podeGerir && (
+              <button type="button" className={classeDaAcao({ jeito: 'pilula' })} onClick={() => setValores(true)}>
+                <IconeDaAcao icone="editar" tamanho={15} />
+                Valor e bolsa
+              </button>
+            )}
+            {podeMatricular &&
+              (situacao === 'ATIVA' ? (['TRANCADA', 'CANCELADA', 'CONCLUIDA'] as Saida[]) : (['CANCELADA'] as Saida[])).map((s) => {
+                const a = ACAO_DA_SAIDA[s]
+                return (
+                  <button key={s} type="button" className={classeDaAcao({ tom: a.tom })} aria-label={a.dica} onClick={() => setSaida(s)}>
+                    <IconeDaAcao icone={a.icone} />
+                    <DicaDaAcao>{VERBO[s].botao}</DicaDaAcao>
+                  </button>
+                )
+              })}
+          </AcoesDaLinha>
+        )}
       </div>
       {erro && <span className="text-xs text-critico">{erro}</span>}
       {ok && <span className="text-xs text-bom">{ok}</span>}

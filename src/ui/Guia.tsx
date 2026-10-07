@@ -264,7 +264,7 @@ export function Guia({
                         <Cartoes slug={slug} itens={resposta.respostas} />
                       ))}
                     {resposta.modo !== 'erro' && (
-                      <p className="text-[11px] text-tinta-3">
+                      <p className="text-[12.5px] text-tinta-3">
                         {resposta.modo === 'ia' ? 'Respondido pela IA, com o manual como fonte.' : 'Respondido pelo manual.'}
                       </p>
                     )}
@@ -293,7 +293,7 @@ export function Guia({
 
 function Titulo({ children }: { children: string }) {
   return (
-    <h2 className="text-[10px] font-bold tracking-[0.12em] text-tinta-3 uppercase">{children}</h2>
+    <h2 className="text-[11.5px] font-bold tracking-[0.12em] text-tinta-3 uppercase">{children}</h2>
   )
 }
 
@@ -314,7 +314,7 @@ function ComoFazer({ passo, aberto = false }: { passo: Passo; aberto?: boolean }
           ))}
         </ol>
         {(passo.capacidade || passo.plano) && (
-          <p className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-tinta-3">
+          <p className="flex flex-wrap gap-x-3 gap-y-1 text-[12.5px] text-tinta-3">
             {passo.capacidade && <span>Precisa poder: {NOME_DA_CAPACIDADE[passo.capacidade]}.</span>}
             {passo.plano && <span>Plano: {rotuloDoPlano(passo.plano)}.</span>}
           </p>

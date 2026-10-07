@@ -90,7 +90,7 @@ export function SinoDoBalcao({ slug, unidadeId }: { slug: string; unidadeId: str
           <path d="M10 20a2 2 0 0 0 4 0" />
         </svg>
         {total > 0 && (
-          <span className="numero absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-critico-vivo px-1 text-[11px] font-bold text-white">
+          <span className="numero absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-critico-vivo px-1 text-[12.5px] font-bold text-white">
             {total > 99 ? '99+' : total}
           </span>
         )}

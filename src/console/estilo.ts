@@ -12,7 +12,7 @@ export const ESTILO = `
 }
 *{box-sizing:border-box}
 html,body{margin:0}
-body{font-family:Manrope,"Cabinet Grotesk",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+body{font-family:Figtree,Manrope,"Cabinet Grotesk",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
   font-size:14px;line-height:1.45;color:var(--texto);background:var(--fundo);-webkit-font-smoothing:antialiased}
 a{color:var(--azul);text-decoration:none}
 a:hover{text-decoration:underline}

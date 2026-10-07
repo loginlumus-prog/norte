@@ -21,6 +21,7 @@ import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Aviso, Cartao, Situacao } from '@/ui/base'
 import { Numero, Secao } from '@/ui/painel'
+import { BotaoDaLinha } from '@/ui/premium'
 import type { Tema } from '@/ui/TrocaTema'
 import { Ativar } from './Ativar'
 import { abrirPainelAcao } from './acoes'
@@ -70,9 +71,9 @@ export default async function Indique({ params }: { params: Promise<{ empresa: s
               outros parceiros, você ganha mais {NIVEL2_PCT}% sobre as lojas deles.
             </li>
           </ul>
-          <a href="/parceiros" target="_blank" className="mt-3 inline-block text-sm font-semibold text-marca hover:underline">
-            Ver todas as regras e exemplos
-          </a>
+          <span className="mt-3 inline-block">
+            <BotaoDaLinha comRotulo externo href="/parceiros" icone="ver" rotulo="Ver todas as regras e exemplos" />
+          </span>
         </Cartao>
       </Secao>
 

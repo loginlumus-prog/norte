@@ -9,6 +9,7 @@
 import { startTransition, useActionState, useEffect, useState, useTransition } from 'react'
 import { Aviso, Botao, Campo, Cartao, Selecao, Situacao, cx } from '@/ui/base'
 import { brl } from '@/ui/painel'
+import { AcoesDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { alternarRecorrenteAcao, salvarRecorrenteAcao, type EstadoRecorrente } from './acoes'
 
 export type RecorrenteNaTela = {
@@ -120,14 +121,16 @@ export function Recorrentes({
                     {brl(r.valor)}
                   </span>
                   {podeLancar && r.editavel !== false && (
-                    <>
-                      <Botao tom="discreto" className="px-2 py-1 text-xs" onClick={() => setEditando(r)}>
-                        Mudar
-                      </Botao>
-                      <Botao tom="secundario" className="px-2 py-1 text-xs" carregando={indo} onClick={() => alternar(r)}>
+                    <AcoesDaLinha>
+                      <button type="button" className={classeDaAcao()} aria-label={`Mudar ${r.descricao}`} onClick={() => setEditando(r)}>
+                        <IconeDaAcao icone="editar" />
+                        <DicaDaAcao>Mudar</DicaDaAcao>
+                      </button>
+                      <button type="button" className={classeDaAcao({ jeito: 'pilula' })} disabled={indo} aria-busy={indo || undefined} onClick={() => alternar(r)}>
+                        <IconeDaAcao icone={r.ativo ? 'pausar' : 'retomar'} tamanho={15} />
                         {r.ativo ? 'Pausar' : 'Retomar'}
-                      </Botao>
-                    </>
+                      </button>
+                    </AcoesDaLinha>
                   )}
                 </span>
               </li>
@@ -192,8 +195,9 @@ function FormRecorrente({
       caixa
       titulo={inicial ? `Mudar: ${inicial.descricao}` : 'Conta que se repete todo mês'}
       acao={
-        <button type="button" onClick={aoFechar} className="text-xs text-tinta-3 hover:text-tinta">
-          fechar
+        <button type="button" onClick={aoFechar} className={classeDaAcao()} aria-label="Fechar">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >

@@ -19,6 +19,7 @@ import Link from 'next/link'
 import { Aviso, Botao, Cartao, cx } from '@/ui/base'
 import { CampoDoPin } from '@/ui/Assinar'
 import { plural } from '@/ui/texto'
+import { classeDaAcao, IconeDaAcao } from '@/ui/premium'
 import {
   CAMPOS,
   MAX_LINHAS,
@@ -438,8 +439,9 @@ export function Importar({
               Lido: <strong className="text-tinta">{origem}</strong> · {plural(dados.length, 'linha', 'linhas')}
             </span>
             {etapa !== 'trazendo' && (
-              <button type="button" onClick={recomecar} className="text-sm font-semibold text-marca hover:underline">
-                trocar
+              <button type="button" onClick={recomecar} className={classeDaAcao({ jeito: 'pilula' })} aria-label="Trocar o arquivo">
+                <IconeDaAcao icone="trocar" tamanho={15} />
+                Trocar
               </button>
             )}
           </p>
@@ -556,8 +558,9 @@ export function Importar({
               <Conta n={jaExistem} rotulo={jaExistem === 1 ? 'já existe no Norte' : 'já existem no Norte'} nivel="atencao" />
               <Conta n={montagem.problemas.length} rotulo={montagem.problemas.length === 1 ? 'linha com problema' : 'linhas com problema'} nivel="critico" />
               {montagem.problemas.length + montagem.avisos.length > 0 && (
-                <button type="button" onClick={() => setVerProblemas((v) => !v)} className="text-sm font-semibold text-marca hover:underline">
-                  {verProblemas ? 'esconder' : 'veja'}
+                <button type="button" onClick={() => setVerProblemas((v) => !v)} aria-expanded={verProblemas} className={classeDaAcao({ jeito: 'pilula' })}>
+                  <IconeDaAcao icone={verProblemas ? 'cancelar' : 'ver'} tamanho={15} />
+                  {verProblemas ? 'Esconder' : 'Ver'}
                 </button>
               )}
             </div>

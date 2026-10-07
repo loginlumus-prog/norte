@@ -22,8 +22,8 @@ const visiveis = (papel: Papel, modulos: string[] = TODOS) =>
 describe('o que cada perfil vê no menu', () => {
   it('o dono vê tudo', () => {
     expect(visiveis('DONO')).toEqual([
-      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Catálogo', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
-      'Produtos', 'Estoque', 'Fábrica', 'Compras', 'Material usado', 'Preços', 'Clientes', 'Equipe', 'Tarefas', 'Financeiro', 'Análise', 'Assistente',
+      'Painel', 'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Catálogo online', 'Mensalidades', 'Agenda', 'Turmas',
+      'Produtos', 'Estoque', 'Pedir à fábrica', 'Compras', 'Material usado', 'Preços', 'Clientes', 'Equipe', 'Funcionários', 'Tarefas', 'Financeiro', 'Análise', 'Assistente',
       'Farol', 'Campanhas', 'Auditoria', 'Lojas', 'Assinatura', 'Indique e ganhe', 'Configurações',
     ])
   })
@@ -38,13 +38,14 @@ describe('o que cada perfil vê no menu', () => {
     // Compras não: é onde mora o CUSTO do que se compra.
     // Mensalidades e Turmas entram: na escola o balcão é a secretaria, que
     // matricula e recebe a mensalidade com o pai na frente.
-    // Fábrica não: ver o estoque (que o balcão precisa para vender) não
-    // abre a produção nem os pedidos — isso é `fabrica.ver`, do gerente.
+    // Pedir à fábrica não: ver o estoque (que o balcão precisa para vender)
+    // não faz pedido — isso é `fabrica.pedir`, do gerente. (A fábrica em si
+    // nem está neste menu: ela tem o dele, MENU_DA_FABRICA.)
     expect(v).toEqual([
-      'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Catálogo', 'Mensalidades', 'Agenda', 'Funcionários', 'Turmas',
-      'Produtos', 'Estoque', 'Material usado', 'Clientes', 'Tarefas',
+      'Balcão', 'Vendas', 'Caixa', 'Crediário', 'Encomendas', 'Catálogo online', 'Mensalidades', 'Agenda', 'Turmas',
+      'Produtos', 'Estoque', 'Material usado', 'Clientes', 'Funcionários', 'Tarefas',
     ])
-    expect(v).not.toContain('Fábrica')
+    expect(v).not.toContain('Pedir à fábrica')
     expect(v).not.toContain('Compras')
     expect(v).not.toContain('Preços')
     expect(v).not.toContain('Painel')
@@ -74,7 +75,7 @@ describe('o que cada perfil vê no menu', () => {
     // de pagamento (que costuma ser ele quem fecha) e a compra é conta a
     // pagar. Ele LÊ as duas — não bate ponto de ninguém, não pede nada.
     // As mensalidades também: são a receita da escola. As turmas não.
-    expect(visiveis('CONTADOR')).toEqual(['Painel', 'Mensalidades', 'Funcionários', 'Compras', 'Financeiro', 'Análise'])
+    expect(visiveis('CONTADOR')).toEqual(['Painel', 'Mensalidades', 'Compras', 'Funcionários', 'Financeiro', 'Análise'])
   })
 
   it('o financeiro vê vendas e caixa, e não vende', () => {
@@ -121,8 +122,8 @@ describe('o atendimento no menu', () => {
 
   it('o grupo "Vender" vira "Recepção" na clínica e "Secretaria" na escola; os outros grupos não mudam', () => {
     const grupos = (ramo: string) => [...new Set(MENU('x').map((i) => i.grupo && nomeDoGrupo(i.grupo, vocabularioDoRamo(ramo))).filter(Boolean))]
-    expect(grupos('roupa')).toEqual(['Vender', 'Atendimento', 'Catálogo', 'Pessoas', 'Dinheiro', 'Empresa'])
-    expect(grupos('saude')).toEqual(['Recepção', 'Atendimento', 'Catálogo', 'Pessoas', 'Dinheiro', 'Empresa'])
+    expect(grupos('roupa')).toEqual(['Vender', 'Atendimento', 'Produtos e estoque', 'Pessoas', 'Dinheiro', 'Empresa'])
+    expect(grupos('saude')).toEqual(['Recepção', 'Atendimento', 'Produtos e estoque', 'Pessoas', 'Dinheiro', 'Empresa'])
     expect(grupos('beleza')[0]).toBe('Recepção')
     expect(grupos('escola')[0]).toBe('Secretaria')
     expect(grupos('petshop')[0]).toBe('Vender')

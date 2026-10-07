@@ -11,7 +11,8 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Botao } from '@/ui/base'
+import { Botao, cx } from '@/ui/base'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { salvarMinimo } from './acoes'
 
 const SIGLA: Record<string, string> = { UN: 'un', KG: 'kg', G: 'g', L: 'L', ML: 'ml', M: 'm', PAR: 'par', CX: 'cx' }
@@ -51,9 +52,11 @@ export function Minimo({
         type="button"
         onClick={() => setAberto(true)}
         title="Definir o mínimo deste item nesta loja"
-        className="numero text-xs text-tinta-3 underline-offset-2 hover:text-marca hover:underline"
+        className={cx(classeDaAcao({ jeito: 'pilula' }), 'numero')}
       >
-        {minimo > 0 ? `${mostrar(minimo)} ${SIGLA[medida] ?? ''}` : 'definir'}
+        {/* Pílula com nome: um lápis sozinho não diria "o mínimo". */}
+        <IconeDaAcao icone={minimo > 0 ? 'editar' : 'mais'} tamanho={15} />
+        {minimo > 0 ? `${mostrar(minimo)} ${SIGLA[medida] ?? ''}` : 'Definir'}
       </button>
     )
   }
@@ -102,9 +105,11 @@ export function Minimo({
           setAberto(false)
           setErro(null)
         }}
-        className="text-xs text-tinta-3 hover:text-tinta"
+        className={classeDaAcao()}
+        aria-label="Cancelar"
       >
-        cancelar
+        <IconeDaAcao icone="fechar" />
+        <DicaDaAcao>Cancelar</DicaDaAcao>
       </button>
       {erro && <span className="w-full text-right text-xs font-medium text-critico">{erro}</span>}
     </span>

@@ -13,11 +13,11 @@
 // aparece trancado também, com o aviso de que salvar desliga — é o que o
 // servidor faz, e a tela não pode prometer outra coisa.
 
-import Link from 'next/link'
 import { useActionState } from 'react'
 import type { Plano } from '@prisma/client'
 import { Botao, Marcar, Aviso } from '@/ui/base'
 import { IconeCadeado } from '@/ui/Cadeado'
+import { BotaoDaLinha } from '@/ui/premium'
 import { MODULOS, ESCOLHIVEIS, type Modulo } from '@/servidor/modulos'
 import { ORDEM, doPlano, planoLibera } from '@/servidor/planos'
 import { salvarModulos, type EstadoComeco } from '../comecar/acoes'
@@ -69,7 +69,7 @@ export function Modulos({
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-tinta-2">
                     {MODULOS[m].titulo}
-                    <span className="rounded-full border border-borda px-2 py-0.5 text-[10px] font-semibold tracking-wide text-tinta-3">
+                    <span className="rounded-full border border-borda px-2 py-0.5 text-[11.5px] font-semibold tracking-wide text-tinta-3">
                       Em breve
                     </span>
                   </span>
@@ -115,12 +115,10 @@ export function Modulos({
                       </span>
                     )}
                     {abre ? (
-                      <Link
-                        href={`/${empresa}/assinatura`}
-                        className="mt-1 w-fit text-xs font-semibold text-marca underline-offset-2 hover:underline"
-                      >
-                        {doPlano(abre)} · ver os planos
-                      </Link>
+                      <span className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-tinta-2">É {doPlano(abre)}.</span>
+                        <BotaoDaLinha comRotulo href={`/${empresa}/assinatura`} icone="ver" rotulo="Ver os planos" />
+                      </span>
                     ) : (
                       <span className="mt-1 text-xs text-tinta-3">Ainda não está em nenhum plano.</span>
                     )}

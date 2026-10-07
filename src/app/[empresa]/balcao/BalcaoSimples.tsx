@@ -432,7 +432,7 @@ function CabecaDoPedido({
           </svg>
           Mais opções
           {emUso > 0 && (
-            <span className="numero flex h-5 min-w-5 items-center justify-center rounded-full bg-marca px-1.5 text-[11px] font-bold text-marca-tinta">
+            <span className="numero flex h-5 min-w-5 items-center justify-center rounded-full bg-marca px-1.5 text-[12.5px] font-bold text-marca-tinta">
               {emUso}
               <span className="sr-only"> em uso</span>
             </span>

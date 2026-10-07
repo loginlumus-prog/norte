@@ -406,7 +406,7 @@ function SemFoto({
             <li key={e.id} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-bom-borda" title={e.nome}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={e.foto} alt={`Foto de ${e.nome}`} className="h-full w-full object-cover" />
-              <span className="absolute right-0.5 bottom-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-bom-vivo text-[10px] font-bold text-white" aria-hidden>
+              <span className="absolute right-0.5 bottom-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-bom-vivo text-[11.5px] font-bold text-white" aria-hidden>
                 ✓
               </span>
             </li>

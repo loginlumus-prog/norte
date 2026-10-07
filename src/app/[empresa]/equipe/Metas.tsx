@@ -43,7 +43,7 @@ function Linha({ slug, mes, m, podeGerir }: { slug: string; mes: string; m: Meta
         <span className="flex items-baseline gap-2">
           <span className="text-sm font-semibold text-tinta">{m.nome}</span>
           {m.herdada && (
-            <span className="text-[11px] text-tinta-3" title="Este número veio de um mês anterior">
+            <span className="text-[12.5px] text-tinta-3" title="Este número veio de um mês anterior">
               meta herdada
             </span>
           )}

@@ -177,7 +177,7 @@ export function Grafico({
         {p && (
           <span
             aria-hidden
-            className="dica-grafico flex flex-col rounded-lg border border-borda bg-superficie px-2.5 py-1.5 text-[11px] leading-tight shadow-norte-alta"
+            className="dica-grafico flex flex-col rounded-lg border border-borda bg-superficie px-2.5 py-1.5 text-[12.5px] leading-tight shadow-norte-alta"
             style={{
               left: `${x(ativo!)}%`,
               top: 0,
@@ -201,7 +201,7 @@ export function Grafico({
           {dica}
         </span>
       </div>
-      <div className="relative mt-1.5 h-3.5 text-[9.5px] text-tinta-3" aria-hidden>
+      <div className="relative mt-1.5 h-3.5 text-[11px] text-tinta-3" aria-hidden>
         {pontos.map((_, i) => {
           const r = eixo(i)
           return r ? (
@@ -245,7 +245,7 @@ export function Fichas<T extends string>({
           aria-pressed={valor === o.valor}
           onClick={() => onEscolher(o.valor)}
           className={cx(
-            'rounded-full border px-2.5 py-1 text-[11.5px] font-semibold whitespace-nowrap transition-colors',
+            'rounded-full border px-2.5 py-1 text-[13px] font-semibold whitespace-nowrap transition-colors',
             valor === o.valor
               ? 'border-transparent bg-tinta text-superficie'
               : 'border-borda bg-superficie text-tinta-2 hover:border-tinta-3 hover:text-tinta',
@@ -263,7 +263,7 @@ export function Topo({ titulo, sub, children }: { titulo: string; sub?: string; 
   return (
     <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
       <div className="min-w-0">
-        {sub && <p className="text-[11px] text-tinta-3">{sub}</p>}
+        {sub && <p className="text-[12.5px] text-tinta-3">{sub}</p>}
         <p className="font-display text-lg leading-tight font-bold tracking-tight text-titulo">{titulo}</p>
       </div>
       {children}

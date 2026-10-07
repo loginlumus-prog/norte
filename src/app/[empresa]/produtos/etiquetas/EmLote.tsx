@@ -10,6 +10,7 @@
 // conta quantos estão marcados e se marca a página de uma vez.
 
 import { useEffect, useState } from 'react'
+import { classeDaAcao, IconeDaAcao } from '@/ui/premium'
 
 /** O id do formulário; a caixa de cada cartão aponta para ele (produtos/page.tsx). */
 const FORMULARIO_DO_LOTE = 'etiquetas-lote'
@@ -58,8 +59,9 @@ export function EtiquetasEmLote({ acao, unidade }: { acao: string; unidade: stri
           disso ele era um link solto no cabeçalho, e é ao começar a marcar
           que a pessoa quer marcar o resto. */}
       {quantos > 0 && (
-        <button type="button" onClick={() => marcarTodas(quantos < naPagina)} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
-          {quantos < naPagina ? 'marcar todos' : 'desmarcar'}
+        <button type="button" onClick={() => marcarTodas(quantos < naPagina)} className={classeDaAcao({ jeito: 'pilula' })}>
+          <IconeDaAcao icone={quantos < naPagina ? 'conferir' : 'cancelar'} tamanho={15} />
+          {quantos < naPagina ? 'Marcar todos' : 'Desmarcar'}
         </button>
       )}
     </form>

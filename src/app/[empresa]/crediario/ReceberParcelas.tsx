@@ -21,6 +21,7 @@
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Aviso, Botao, Situacao, cx } from '@/ui/base'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
 import { lerDinheiro, lerNumero } from '@/servidor/dinheiro'
 import {
@@ -487,8 +488,9 @@ function Receber({
               Desmarcar
             </Atalho>
             {aoTrocarCliente && (
-              <button type="button" onClick={aoTrocarCliente} className="ml-auto text-xs text-tinta-3 underline-offset-2 hover:text-tinta hover:underline">
-                outra cliente
+              <button type="button" onClick={aoTrocarCliente} className={cx(classeDaAcao({ jeito: 'pilula' }), 'ml-auto')}>
+                <IconeDaAcao icone="trocar" tamanho={15} />
+                Outra cliente
               </button>
             )}
           </div>
@@ -701,8 +703,9 @@ function Receber({
                             aria-label="Valor desta forma"
                             className="numero w-28 rounded border border-borda bg-superficie px-2 py-1.5 text-right text-tinta"
                           />
-                          <button type="button" aria-label="Tirar esta forma" onClick={() => setFormas(formas.filter((_, j) => j !== i))} className="px-1 text-tinta-3 hover:text-critico">
-                            ×
+                          <button type="button" aria-label="Tirar esta forma" onClick={() => setFormas(formas.filter((_, j) => j !== i))} className={classeDaAcao({ tom: 'perigo' })}>
+                            <IconeDaAcao icone="excluir" />
+                            <DicaDaAcao>Tirar</DicaDaAcao>
                           </button>
                         </span>
                       )}
@@ -710,8 +713,9 @@ function Receber({
                   )
                 })}
                 {formas.length < 4 && (
-                  <button type="button" onClick={() => setFormas([...formas, { forma: 'PIX', valor: '', maquininha: '' }])} className="self-start text-xs font-semibold text-marca underline-offset-2 hover:underline">
-                    + dividir em outra forma
+                  <button type="button" onClick={() => setFormas([...formas, { forma: 'PIX', valor: '', maquininha: '' }])} className={cx(classeDaAcao({ jeito: 'pilula' }), 'self-start')}>
+                    <IconeDaAcao icone="mais" tamanho={15} />
+                    Dividir em outra forma
                   </button>
                 )}
                 {dinheiroC > 0 && (
@@ -790,7 +794,7 @@ function LinhaParcela({
         <span className="flex shrink-0 flex-col items-end">
           <span className={cx('numero font-semibold', p.dias > 0 ? 'text-critico' : 'text-tinta')}>{brlC(p.restaC + atrasoC)}</span>
           {atrasoC > 0 && (
-            <span className="numero text-[11px] text-tinta-3">
+            <span className="numero text-[12.5px] text-tinta-3">
               {brlC(p.restaC)} + {brlC(atrasoC)} atraso
             </span>
           )}
@@ -834,9 +838,9 @@ function Detalhe({
 function Placar({ rotulo, valor, detalhe, nivel }: { rotulo: string; valor: string; detalhe: string; nivel?: 'critico' | 'atencao' | 'bom' }) {
   return (
     <div className="flex flex-col rounded-norte border border-borda-suave px-2 py-2">
-      <span className="text-[11px] font-semibold tracking-wide text-tinta-3 uppercase">{rotulo}</span>
+      <span className="text-[12.5px] font-semibold tracking-wide text-tinta-3 uppercase">{rotulo}</span>
       <span className={cx('numero text-lg font-bold', nivel === 'critico' ? 'text-critico' : nivel === 'atencao' ? 'text-atencao' : 'text-tinta')}>{valor}</span>
-      <span className="text-[11px] text-tinta-3">{detalhe}</span>
+      <span className="text-[12.5px] text-tinta-3">{detalhe}</span>
     </div>
   )
 }

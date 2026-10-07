@@ -15,6 +15,7 @@ import { listarMensalidades, mesPorExtenso, ROTULO_SITUACAO } from '@/servidor/m
 import { ORIGENS_ACEITE, ehOrigemAceite } from '@/servidor/ofertas'
 import { Cartao, Situacao, Vazio, cx } from '@/ui/base'
 import { brl } from '@/ui/painel'
+import { BotaoDaLinha } from '@/ui/premium'
 import { Responsavel } from './Responsavel'
 import { Receber } from '../../mensalidades/Receber'
 
@@ -101,7 +102,7 @@ export async function Escola({
         ) : !r ? (
           <Vazio>Sem responsável anotado. Quem matricula anota aqui quem paga e quem a escola contata.</Vazio>
         ) : null}
-        <p className="pt-2 text-[11px] text-tinta-3">
+        <p className="pt-2 text-[12.5px] text-tinta-3">
           Mensagem da escola vai para o responsável, nunca para o {palavra}. O aceite de ofertas desta ficha não vale enquanto houver responsável.
         </p>
       </Cartao>
@@ -157,9 +158,7 @@ export async function Escola({
                 </a>
               )}
               {ficha.matriculas.some((m) => m.situacao === 'ATIVA') && (
-                <Link href={`/${slug}/mensalidades/carne?aluno=${alunoId}`} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
-                  Carnê
-                </Link>
+                <BotaoDaLinha comRotulo href={`/${slug}/mensalidades/carne?aluno=${alunoId}`} icone="carne" rotulo="Carnê" dica={`Carnê das mensalidades de ${nomeAluno}`} />
               )}
             </span>
           }
@@ -199,9 +198,12 @@ export async function Escola({
                       />
                     )}
                     {m.temPagamento && (
-                      <Link href={`/${slug}/mensalidades/${m.id}/recibo`} className="text-xs text-marca underline-offset-2 hover:underline">
-                        Recibo
-                      </Link>
+                      <BotaoDaLinha
+                        href={`/${slug}/mensalidades/${m.id}/recibo`}
+                        icone="imprimir"
+                        rotulo="Recibo"
+                        dica={`Recibo da mensalidade de ${mesPorExtenso(m.mes)}`}
+                      />
                     )}
                   </span>
                 </li>
@@ -209,7 +211,7 @@ export async function Escola({
             </ul>
           )}
           {abertas.some((m) => m.situacao === 'a_receber' || m.situacao === 'vence_hoje') && (
-            <p className="pt-2 text-[11px] text-tinta-3">
+            <p className="pt-2 text-[12.5px] text-tinta-3">
               O aviso ao responsável (se a escola ligou em Configurações e ele aceitou) sai alguns dias antes do vencimento.
             </p>
           )}

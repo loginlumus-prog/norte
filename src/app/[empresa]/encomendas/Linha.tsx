@@ -25,6 +25,7 @@ import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Marcar, Selecao, cx } from '@/ui/base'
+import { AcoesDaLinha, BotaoDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { brl } from '@/ui/painel'
 import { aceitarEncomendaAcao, mudarSituacaoAcao } from './acoes'
 
@@ -137,58 +138,132 @@ export function AcoesEncomenda({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className={cx('flex flex-wrap gap-1.5', simples && 'gap-2')}>
-        {podeMexer && nova && (
-          <Botao
-            className={grande}
-            carregando={indo}
-            title="A cliente recebe o aviso de que a loja aceitou (se o WhatsApp do assistente estiver ligado)."
-            onClick={() => {
-              setErro(null)
-              comecar(async () => {
-                const r = await aceitarEncomendaAcao(slug, id)
-                if (r.erro) setErro(r.erro)
-              })
-            }}
-          >
-            Aceitar pedido
-          </Botao>
-        )}
-        {podeMexer && situacao === 'ABERTA' && (
-          <Botao tom="secundario" className={grande} carregando={indo} onClick={() => mudar({ para: 'PRONTA' })}>
-            Pronta
-          </Botao>
-        )}
-        {/* Entregar vira venda (ou abre mão do saldo): é de quem vende — o
-            suporte do Norte, que só anota, não vê o botão. */}
-        {podeVender && (
-          <Botao tom="confirmar" className={grande} onClick={() => setPainel('entregar')}>
-            Entregue
-          </Botao>
-        )}
-        {podeMexer && (
-          <Link
-            href={editarEm}
-            className={cx(
-              'inline-flex items-center justify-center rounded-norte border border-transparent font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta',
-              grande,
+    <div className="flex w-full flex-col gap-2">
+      {/* No modo simples, os botões grandes de tocar. No avançado (a tabela e
+          os cartões do celular), os botões de ação: os de apoio em ícone na
+          cápsula, o próximo passo em pílula no fim. */}
+      {simples ? (
+        <div className={cx('flex flex-wrap gap-1.5', simples && 'gap-2')}>
+          {podeMexer && nova && (
+            <Botao
+              className={grande}
+              carregando={indo}
+              title="A cliente recebe o aviso de que a loja aceitou (se o WhatsApp do assistente estiver ligado)."
+              onClick={() => {
+                setErro(null)
+                comecar(async () => {
+                  const r = await aceitarEncomendaAcao(slug, id)
+                  if (r.erro) setErro(r.erro)
+                })
+              }}
+            >
+              Aceitar pedido
+            </Botao>
+          )}
+          {podeMexer && situacao === 'ABERTA' && (
+            <Botao tom="secundario" className={grande} carregando={indo} onClick={() => mudar({ para: 'PRONTA' })}>
+              Pronta
+            </Botao>
+          )}
+          {/* Entregar vira venda (ou abre mão do saldo): é de quem vende — o
+              suporte do Norte, que só anota, não vê o botão. */}
+          {podeVender && (
+            <Botao tom="confirmar" className={grande} onClick={() => setPainel('entregar')}>
+              Entregue
+            </Botao>
+          )}
+          {podeMexer && (
+            <Link
+              href={editarEm}
+              className={cx(
+                'inline-flex items-center justify-center rounded-norte border border-transparent font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta',
+                grande,
+              )}
+            >
+              Mudar
+            </Link>
+          )}
+          {podeMexer && situacao === 'PRONTA' && (
+            <Botao tom="discreto" className={grande} carregando={indo} onClick={() => mudar({ para: 'ABERTA' })} title="Marcou pronta por engano? Volta para a fazer.">
+              Não está pronta
+            </Botao>
+          )}
+          {podeCancelar && (
+            <Botao tom="discreto" className={grande} onClick={() => setPainel('cancelar')}>
+              Cancelar
+            </Botao>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
+          <AcoesDaLinha>
+            {podeMexer && <BotaoDaLinha href={editarEm} icone="editar" rotulo="Mudar" dica={`Mudar a encomenda: ${resumo}`} />}
+            {podeMexer && situacao === 'PRONTA' && (
+              <button
+                type="button"
+                className={classeDaAcao()}
+                disabled={indo}
+                aria-busy={indo || undefined}
+                aria-label={`Não está pronta: ${resumo}`}
+                title="Marcou pronta por engano? Volta para a fazer."
+                onClick={() => mudar({ para: 'ABERTA' })}
+              >
+                <IconeDaAcao icone="desfazer" />
+                <DicaDaAcao>Não está pronta</DicaDaAcao>
+              </button>
             )}
-          >
-            Mudar
-          </Link>
-        )}
-        {podeMexer && situacao === 'PRONTA' && (
-          <Botao tom="discreto" className={grande} carregando={indo} onClick={() => mudar({ para: 'ABERTA' })} title="Marcou pronta por engano? Volta para a fazer.">
-            Não está pronta
-          </Botao>
-        )}
-        {podeCancelar && (
-          <Botao tom="discreto" className={grande} onClick={() => setPainel('cancelar')}>
-            Cancelar
-          </Botao>
-        )}
-      </div>
+            {podeCancelar && (
+              <button
+                type="button"
+                className={classeDaAcao({ tom: 'perigo' })}
+                aria-label={`Cancelar a encomenda: ${resumo}`}
+                onClick={() => setPainel('cancelar')}
+              >
+                <IconeDaAcao icone="cancelar" />
+                <DicaDaAcao>Cancelar</DicaDaAcao>
+              </button>
+            )}
+          </AcoesDaLinha>
+          {podeMexer && situacao === 'ABERTA' && (
+            <button
+              type="button"
+              className={classeDaAcao({ jeito: 'pilula' })}
+              disabled={indo}
+              aria-busy={indo || undefined}
+              onClick={() => mudar({ para: 'PRONTA' })}
+            >
+              <IconeDaAcao icone="conferir" tamanho={15} />
+              Pronta
+            </button>
+          )}
+          {/* Entregar vira venda (ou abre mão do saldo): é de quem vende. */}
+          {podeVender && (
+            <button type="button" className={classeDaAcao({ jeito: 'pilula', tom: 'bom' })} onClick={() => setPainel('entregar')}>
+              <IconeDaAcao icone="receber" tamanho={15} />
+              Entregue
+            </button>
+          )}
+          {podeMexer && nova && (
+            <button
+              type="button"
+              className={classeDaAcao({ jeito: 'pilula', tom: 'principal' })}
+              disabled={indo}
+              aria-busy={indo || undefined}
+              title="A cliente recebe o aviso de que a loja aceitou (se o WhatsApp do assistente estiver ligado)."
+              onClick={() => {
+                setErro(null)
+                comecar(async () => {
+                  const r = await aceitarEncomendaAcao(slug, id)
+                  if (r.erro) setErro(r.erro)
+                })
+              }}
+            >
+              Aceitar pedido
+              <IconeDaAcao icone="conferir" tamanho={14} grosso />
+            </button>
+          )}
+        </div>
+      )}
 
       {painel === 'entregar' && (
         <Janela titulo={`Entregar: ${resumo}`} aoFechar={() => setPainel(null)}>

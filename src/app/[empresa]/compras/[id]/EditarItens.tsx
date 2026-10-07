@@ -12,6 +12,7 @@ import { useCallback, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao } from '@/ui/base'
 import { brl } from '@/ui/painel'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { lerDinheiro, lerNumero } from '@/servidor/dinheiro'
 import type { ItemParaComprar } from '@/servidor/compras'
 import { buscarItensAcao, salvarItensAcao } from '../acoes'
@@ -108,8 +109,9 @@ export function EditarItens({
       caixa
       titulo="Mudar os itens do pedido"
       acao={
-        <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-          fechar sem salvar
+        <button type="button" onClick={() => setAberto(false)} className={classeDaAcao({ jeito: 'pilula' })}>
+          <IconeDaAcao icone="fechar" tamanho={15} />
+          Fechar sem salvar
         </button>
       }
     >
@@ -136,9 +138,15 @@ export function EditarItens({
                   value={l.custo}
                   onChange={(ev) => mudar(i, 'custo', ev.currentTarget.value)}
                 />
-                <Botao tom="discreto" className="px-2 py-2 text-xs" onClick={() => setLinhas((ls) => ls.filter((_, j) => j !== i))}>
-                  tirar
-                </Botao>
+                <button
+                  type="button"
+                  onClick={() => setLinhas((ls) => ls.filter((_, j) => j !== i))}
+                  className={classeDaAcao({ tom: 'perigo' })}
+                  aria-label={`Tirar ${l.descricao}`}
+                >
+                  <IconeDaAcao icone="excluir" />
+                  <DicaDaAcao>Tirar</DicaDaAcao>
+                </button>
               </li>
             ))}
           </ul>

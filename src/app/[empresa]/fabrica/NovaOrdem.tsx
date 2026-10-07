@@ -11,6 +11,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Selecao, cx } from '@/ui/base'
 import { quantidade } from '@/ui/texto'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import type { ItemDoCatalogo } from '@/servidor/fabrica'
 import { abrirOrdemAcao, type Recado } from './acoes'
 import { LEGIVEL, ler } from './formato'
@@ -78,8 +79,9 @@ export function NovaOrdem({
       caixa
       titulo="Nova ordem de produção"
       acao={
-        <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-          fechar
+        <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar a ordem nova">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >

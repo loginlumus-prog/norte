@@ -11,6 +11,7 @@ import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { MENU } from '@/ui/menu'
 import { Cartao, Dica, Situacao, cx } from '@/ui/base'
 import { Numero, Secao, brl } from '@/ui/painel'
+import { BotaoDaLinha } from '@/ui/premium'
 import { plural } from '@/ui/texto'
 import type { Tema } from '@/ui/TrocaTema'
 
@@ -172,12 +173,9 @@ export default async function FechamentoDoMes({
                   </div>
                   {i.onde &&
                     (i.onde.href ? (
-                      <Link
-                        href={i.onde.href}
-                        className="pl-4 text-xs font-semibold text-marca underline-offset-2 hover:underline"
-                      >
-                        {i.onde.texto} →
-                      </Link>
+                      <span className="pl-4">
+                        <BotaoDaLinha comRotulo href={i.onde.href} icone="abrir" rotulo={i.onde.texto} />
+                      </span>
                     ) : (
                       // Tela que esta pessoa não abre: a frase diz quem resolve.
                       <p className="pl-4 text-xs text-tinta-3">{i.onde.texto}</p>

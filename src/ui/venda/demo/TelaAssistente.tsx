@@ -57,7 +57,7 @@ export function TelaAssistente({
               return (
                 <li key={p.id} className="rounded-lg border border-borda p-3">
                   <p className="text-[12.5px] leading-snug text-tinta">{p.resumo}</p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-tinta-3">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] text-tinta-3">
                     <span className="rounded bg-superficie-2 px-1.5 py-0.5 font-mono">{p.poder}</span>
                     {s === 'espera' && <span>expira em {p.expira}h</span>}
                     {p.valor !== null && (
@@ -83,8 +83,8 @@ export function TelaAssistente({
                         </button>
                       </span>
                     ) : s === 'confirmada' ? (
-                      <span className="flex flex-wrap items-center gap-2 text-[11.5px]">
-                        <span className="grid size-4 place-items-center rounded-full bg-bom-vivo text-[9px] font-bold text-white">✓</span>
+                      <span className="flex flex-wrap items-center gap-2 text-[13px]">
+                        <span className="grid size-4 place-items-center rounded-full bg-bom-vivo text-[10.5px] font-bold text-white">✓</span>
                         <span className="font-semibold text-bom">Confirmada por você · no livro de auditoria</span>
                         <button
                           type="button"
@@ -95,14 +95,14 @@ export function TelaAssistente({
                         </button>
                       </span>
                     ) : (
-                      <span className="text-[11.5px] text-tinta-3">Recusada. Nada mudou.</span>
+                      <span className="text-[13px] text-tinta-3">Recusada. Nada mudou.</span>
                     )}
                   </div>
                 </li>
               )
             })}
           </ul>
-          <p className="mt-2.5 text-[11px] text-tinta-3">
+          <p className="mt-2.5 text-[12.5px] text-tinta-3">
             A confirmação é aqui, na tela — nunca por mensagem.
           </p>
         </Cartao>
@@ -132,7 +132,7 @@ export function TelaAssistente({
                     <span aria-hidden className={c.disponivel ? 'text-bom' : 'text-tinta-3'}>✓</span>
                     {c.titulo}
                     {!c.disponivel && (
-                      <span className="rounded-full bg-superficie-2 px-1.5 text-[9px] font-bold text-tinta-3 uppercase">
+                      <span className="rounded-full bg-superficie-2 px-1.5 text-[10.5px] font-bold text-tinta-3 uppercase">
                         em breve
                       </span>
                     )}

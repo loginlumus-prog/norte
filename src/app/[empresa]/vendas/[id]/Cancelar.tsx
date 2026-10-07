@@ -1,7 +1,8 @@
 'use client'
 
 import { useActionState, useState } from 'react'
-import { Botao, Campo, Aviso } from '@/ui/base'
+import { Botao, Campo, Aviso, cx } from '@/ui/base'
+import { IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
 import { cancelarAcao, type EstadoCancelamento } from './acoes'
 import { semApagar } from '@/ui/formulario'
@@ -31,11 +32,8 @@ export function Cancelar({
 
   if (!aberto) {
     return (
-      <button
-        type="button"
-        onClick={() => setAberto(true)}
-        className="text-sm font-medium text-critico underline-offset-2 hover:underline"
-      >
+      <button type="button" onClick={() => setAberto(true)} className={cx(classeDaAcao({ jeito: 'pilula', tom: 'perigo' }), 'self-start')}>
+        <IconeDaAcao icone="cancelar" tamanho={15} />
         Cancelar {palavras.estaVenda}
       </button>
     )

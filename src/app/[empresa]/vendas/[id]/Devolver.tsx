@@ -14,6 +14,7 @@
 import { useActionState, useState } from 'react'
 import { Botao, Campo, Aviso, Marcar, cx } from '@/ui/base'
 import { brl } from '@/ui/painel'
+import { IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { devolverAcao, type EstadoDevolucao } from './acoes'
 import { semApagar } from '@/ui/formulario'
 
@@ -122,10 +123,14 @@ export function Devolver({
       <button
         type="button"
         onClick={() => setAberto(true)}
-        className="text-sm font-medium text-marca underline-offset-2 hover:underline"
+        aria-label={`Devolver itens ${palavras.destaVenda} ${podeDinheiro ? '(vale, dinheiro ou estorno)' : 'por vale'}`}
+        className={cx(classeDaAcao({ jeito: 'pilula' }), 'self-start')}
       >
-        {/* Trocar por outra peça é o "⇄ Trocar" lá em cima (troca/): numa tela só. */}
-        Devolver itens {palavras.destaVenda} {podeDinheiro ? '(vale, dinheiro ou estorno)' : 'por vale'}
+        {/* Trocar por outra peça é o "⇄ Trocar" lá em cima (troca/): numa tela só.
+            A pílula não quebra linha: o "desta venda" fica só no aria-label. */}
+        <IconeDaAcao icone="devolver" tamanho={15} />
+        Devolver itens
+        <span className="font-medium text-tinta-3">· {podeDinheiro ? 'vale, dinheiro ou estorno' : 'por vale'}</span>
       </button>
     )
   }

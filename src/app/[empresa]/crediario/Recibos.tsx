@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { BotaoDaLinha } from '@/ui/premium'
 import { brl } from '@/ui/painel'
 import { plural } from '@/ui/texto'
 import type { ReciboNaLista } from '@/servidor/recibos'
@@ -27,9 +27,13 @@ export function ListaDeRecibos({ slug, recibos }: { slug: string; recibos: Recib
               {r.referencia ? ` · ${r.referencia}` : ''} · {r.saldoDepois > 0 ? `ficou devendo ${brl(r.saldoDepois)}` : 'quitou'}
             </span>
           </span>
-          <Link href={`/${slug}/crediario/recibo/${r.id}`} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
-            {r.codigo} · ver e imprimir
-          </Link>
+          <BotaoDaLinha
+            href={`/${slug}/crediario/recibo/${r.id}`}
+            icone="imprimir"
+            rotulo={r.codigo}
+            comRotulo
+            dica={`Ver e imprimir o recibo ${r.codigo}`}
+          />
         </li>
       ))}
     </ul>

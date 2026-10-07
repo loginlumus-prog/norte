@@ -57,29 +57,8 @@ export function GraficoDias({ dados }: { dados: DiaDoGrafico[] }) {
 
   return (
     <div className="flex flex-col gap-2">
-      {/* A faixa do balão tem altura fixa mesmo vazia: sem isso o gráfico
-          inteiro pula para baixo no primeiro movimento do mouse. */}
-      <div className="flex h-9 items-start">
-        {d ? (
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-norte border border-borda bg-superficie-2 px-2.5 py-1.5">
-            <span className="text-xs font-semibold text-tinta">{nomes(d.dia).longo}</span>
-            <span className="numero text-sm font-bold text-tinta">{brl(d.total)}</span>
-            <span className="text-xs text-tinta-2">
-              {d.vendas} venda{d.vendas === 1 ? '' : 's'}
-            </span>
-            {d.vendas > 0 && (
-              <span className="text-xs text-tinta-3">ticket {brl(d.total / d.vendas)}</span>
-            )}
-          </div>
-        ) : (
-          <span className="text-xs text-tinta-3">
-            Toque num dia para ver o movimento.
-          </span>
-        )}
-      </div>
-
       <div
-        className="relative flex h-24 items-end gap-px border-b border-borda"
+        className="relative flex h-32 items-end gap-[3px] border-b border-borda"
         onMouseLeave={() => setEmCima(null)}
         role="img"
         aria-label={`Venda por dia. Maior dia ${brl(maior)}, média ${brl(media)}.`}
@@ -89,9 +68,27 @@ export function GraficoDias({ dados }: { dados: DiaDoGrafico[] }) {
             qual dia foi o maior. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 border-t border-dashed border-borda"
+          className="pointer-events-none absolute inset-x-0 z-[1] border-t-2 border-dashed border-tinta-3/40"
           style={{ bottom: `${(media / maior) * 100}%` }}
-        />
+        >
+          <span className="absolute -top-2.5 right-0 rounded-full bg-superficie px-1.5 text-[11px] font-bold text-tinta-3">média</span>
+        </div>
+
+        {d && alvo !== null && (
+          // O balão em cima da barra apontada: valor, vendas e ticket.
+          <div
+            aria-hidden
+            className={'graf-balao pointer-events-none absolute z-10 flex min-w-[9rem] flex-col gap-0.5 rounded-xl px-3 py-2' + (d.total / maior > 0.6 ? ' graf-balao-baixo' : '')}
+            style={{ left: `clamp(4.5rem, ${((alvo + 0.5) / dados.length) * 100}%, calc(100% - 4.5rem))`, top: `${100 - (d.total / maior) * 100}%` }}
+          >
+            <span className="text-xs font-bold text-tinta-2">{nomes(d.dia).longo}</span>
+            <span className="numero text-[15px] font-extrabold text-tinta">{brl(d.total)}</span>
+            <span className="text-xs text-tinta-2">
+              {plural(d.vendas, 'venda', 'vendas')}
+              {d.vendas > 0 ? ` · ticket ${brl(d.total / d.vendas)}` : ''}
+            </span>
+          </div>
+        )}
 
         {dados.map((dia, i) => {
           const alt = dia.total > 0 ? Math.max((dia.total / maior) * 100, 3) : 0
@@ -114,24 +111,12 @@ export function GraficoDias({ dados }: { dados: DiaDoGrafico[] }) {
             >
               <span
                 aria-hidden
-                className={
-                  'absolute inset-0 rounded-sm transition-colors ' +
-                  (aceso ? 'bg-superficie-2' : 'bg-transparent')
-                }
+                className={'absolute inset-0 rounded-md transition-colors ' + (aceso ? 'bg-superficie-2' : 'bg-transparent')}
               />
               <span
                 aria-hidden
-                className={
-                  'relative w-full rounded-t-sm transition-[filter,opacity] ' +
-                  (dia.total === 0
-                    ? 'bg-borda'
-                    : i === iMaior
-                      ? 'bg-bom'
-                      : 'bg-bom-vivo') +
-                  (aceso ? ' brightness-110' : '') +
-                  (fimDeSemana && dia.total > 0 ? ' opacity-80' : '')
-                }
-                style={{ height: `${alt}%`, minHeight: dia.total > 0 ? 3 : 1 }}
+                className={'graf-barra graf-barra-dia relative w-full rounded-t-[5px]' + (dia.total === 0 ? ' graf-barra-zero' : i === iMaior ? ' graf-barra-maior' : '') + (fimDeSemana && dia.total > 0 && !aceso ? ' opacity-75' : '')}
+                style={{ height: `${alt}%`, minHeight: dia.total > 0 ? 3 : 2, animationDelay: `${Math.min(i, 40) * 14}ms`, filter: aceso ? 'brightness(1.08) saturate(1.1)' : undefined }}
               />
             </button>
           )
@@ -140,7 +125,7 @@ export function GraficoDias({ dados }: { dados: DiaDoGrafico[] }) {
 
       <div className="flex items-baseline justify-between text-xs text-tinta-3">
         <span>{nomes(dados[0]!.dia).curto}</span>
-        <span className="text-tinta-2">
+        <span className="font-semibold text-tinta-2">
           média {brl(media)} · maior {brl(maior)}
         </span>
         <span>{nomes(dados[dados.length - 1]!.dia).curto}</span>

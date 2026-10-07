@@ -41,7 +41,7 @@ export function Pilula({
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] leading-4 font-semibold whitespace-nowrap',
+        'inline-flex items-center rounded-full px-2 py-0.5 text-[12.5px] leading-4 font-semibold whitespace-nowrap',
         PILULA[tom],
         className,
       )}
@@ -69,7 +69,7 @@ export function Avatar({
   return (
     <span
       className={cx(
-        'grid size-6 shrink-0 place-items-center rounded-full text-[9.5px] font-bold',
+        'grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-bold',
         cor,
         className,
       )}
@@ -142,7 +142,7 @@ export function Janela({
       )}
     >
       <div className="flex items-center border-b border-borda-suave bg-superficie px-3.5 py-2">
-        <span className="truncate rounded-md bg-superficie-2 px-2.5 py-0.5 font-mono text-[10.5px] text-tinta-3">
+        <span className="truncate rounded-md bg-superficie-2 px-2.5 py-0.5 font-mono text-[12px] text-tinta-3">
           {caminho}
         </span>
       </div>
@@ -156,7 +156,7 @@ export function Rotulo({ children, className }: { children: ReactNode; className
   return (
     <p
       className={cx(
-        'text-[10px] font-bold tracking-[0.12em] text-tinta-3 uppercase',
+        'text-[11.5px] font-bold tracking-[0.12em] text-tinta-3 uppercase',
         className,
       )}
     >

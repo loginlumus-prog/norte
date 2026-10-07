@@ -23,7 +23,7 @@
 // diferentes. A hora é a do relógio da loja; o servidor converte.
 
 import { startTransition, useActionState, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
+import { BotaoDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { Aviso, Botao, Campo, Cartao, Marcar, Selecao } from '@/ui/base'
 import { brl } from '@/ui/painel'
 import { lerDinheiro } from '@/servidor/dinheiro'
@@ -176,12 +176,11 @@ export function Formulario({
       titulo={editando ? `Mudar a encomenda de ${inicial!.clienteNome}` : 'Nova encomenda'}
       acao={
         editando ? (
-          <Link href={voltarPara} className="text-xs text-tinta-3 hover:text-tinta">
-            cancelar
-          </Link>
+          <BotaoDaLinha href={voltarPara} icone="fechar" rotulo="Cancelar" dica="Desistir de mudar a encomenda" />
         ) : (
-          <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-            fechar
+          <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar">
+            <IconeDaAcao icone="fechar" />
+            <DicaDaAcao>Fechar</DicaDaAcao>
           </button>
         )
       }

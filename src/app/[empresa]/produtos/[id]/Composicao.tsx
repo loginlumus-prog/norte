@@ -7,6 +7,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao, cx } from '@/ui/base'
+import { classeDaAcao, IconeDaAcao } from '@/ui/premium'
 import { composicaoAcao, procurarComponentesAcao } from './acoes'
 import type { ComponenteNaTela } from '@/servidor/composicao'
 
@@ -49,11 +50,12 @@ function DoItem({
 
   return (
     <li className="flex flex-col gap-2 py-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold text-tinta">{item.rotulo}</span>
         {podeEditar && !mexendo && (
-          <button type="button" onClick={() => setMexendo(true)} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
-            {lista.length ? 'mudar' : 'dizer o que ele leva'}
+          <button type="button" onClick={() => setMexendo(true)} className={classeDaAcao({ jeito: 'pilula' })}>
+            <IconeDaAcao icone={lista.length ? 'editar' : 'mais'} tamanho={15} />
+            {lista.length ? 'Mudar' : 'Dizer o que ele leva'}
           </button>
         )}
       </div>

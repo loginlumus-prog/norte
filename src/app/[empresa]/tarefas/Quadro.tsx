@@ -24,6 +24,7 @@ import { createContext, useContext, useEffect, useRef, useState, useTransition, 
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Situacao, cx, type Nivel } from '@/ui/base'
 import { Cadeado } from '@/ui/Cadeado'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { LIBERACOES, doPlano, planoQueAbre, type Liberacao } from '@/servidor/planos'
 // Só TIPOS daqui: o módulo de tarefas fala com o banco, e valor importado
 // dele arrastaria o driver do Postgres para o bundle do navegador. Rótulos,
@@ -187,7 +188,7 @@ function Iniciais({ sigla, apagado }: { sigla: string | null; apagado?: boolean 
     <span
       aria-hidden
       className={cx(
-        'grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-bold',
+        'grid size-6 shrink-0 place-items-center rounded-full text-[11.5px] font-bold',
         sigla ? 'bg-marca-suave text-marca' : 'border border-dashed border-borda text-tinta-3',
         apagado && 'opacity-60',
       )}
@@ -378,11 +379,11 @@ function LinhaDoTempo({ t, liberado, rodar }: { t: TarefaNaTela; liberado: boole
           className={cx('h-full rounded-full', t.situacao === 'FEITO' ? 'bg-bom-vivo' : t.situacao === 'PARADO' ? 'bg-critico-vivo' : 'bg-marca')}
           style={{ width: `${valor}%` }}
         />
-        <span className="numero pointer-events-none absolute inset-0 grid place-items-center text-[10px] font-bold text-tinta mix-blend-difference">
+        <span className="numero pointer-events-none absolute inset-0 grid place-items-center text-[11.5px] font-bold text-tinta mix-blend-difference">
           {valor}%
         </span>
       </div>
-      <span className="numero text-[10px] text-tinta-3">{periodo}</span>
+      <span className="numero text-[11.5px] text-tinta-3">{periodo}</span>
     </div>
   )
 }
@@ -630,15 +631,19 @@ function Detalhes({
             </Botao>
           </span>
         ) : (
-          <Botao
-            tom="discreto"
-            disabled={!podeGerir}
-            title={podeGerir ? 'Apagar a tarefa. Some do quadro; fica no livro de auditoria.' : SO_QUEM_GERE}
-            className="self-start py-1 text-xs text-critico"
-            onClick={() => setConfirmando(true)}
-          >
-            Apagar tarefa
-          </Botao>
+          // O título fica no invólucro: o botão desligado não recebe o mouse
+          // (pointer-events: none), e o "só quem gere" sumiria.
+          <span className="self-start" title={podeGerir ? 'Apagar a tarefa. Some do quadro; fica no livro de auditoria.' : SO_QUEM_GERE}>
+            <button
+              type="button"
+              disabled={!podeGerir}
+              className={classeDaAcao({ jeito: 'pilula', tom: 'perigo' })}
+              onClick={() => setConfirmando(true)}
+            >
+              <IconeDaAcao icone="excluir" tamanho={15} />
+              Apagar tarefa
+            </button>
+          </span>
         )}
       </div>
     </div>
@@ -698,11 +703,14 @@ function Linha({
             type="button"
             aria-label={aberta ? 'Fechar detalhes' : 'Detalhes da tarefa'}
             aria-expanded={aberta}
-            title="Descrição, grupo e apagar"
             onClick={() => setAberta((v) => !v)}
-            className="rounded px-1.5 py-0.5 text-sm font-bold text-tinta-3 hover:bg-superficie-2 hover:text-tinta"
+            className={classeDaAcao()}
           >
-            ⋯
+            {/* A seta gira para baixo com os detalhes abertos. */}
+            <span aria-hidden className={cx('grid transition-transform', aberta && 'rotate-90')}>
+              <IconeDaAcao icone="abrir" />
+            </span>
+            <DicaDaAcao>{aberta ? 'Fechar' : 'Descrição, grupo e apagar'}</DicaDaAcao>
           </button>
         </td>
       </tr>
@@ -831,7 +839,7 @@ function Grupo({
   verPlanos: boolean
   rodar: Rodar
 }) {
-  const cabecalho = 'sticky top-0 z-10 border-b border-borda bg-superficie-2 px-2 py-1.5 text-left text-[11px] font-semibold tracking-wide text-tinta-3 uppercase'
+  const cabecalho = 'sticky top-0 z-10 border-b border-borda bg-superficie-2 px-2 py-1.5 text-left text-[12.5px] font-semibold tracking-wide text-tinta-3 uppercase'
   const th = (titulo: string, chave?: Liberacao, aberto = true) => (
     <th scope="col" className={cabecalho}>
       <span className="flex items-center gap-1.5">
@@ -1003,15 +1011,12 @@ export function Quadro({
             </Botao>
           </span>
         ) : (
-          <Botao
-            tom="discreto"
-            className="py-1 text-xs"
-            disabled={!podeGerir}
-            title={podeGerir ? 'Tira o quadro da tela. As tarefas ficam guardadas.' : SO_QUEM_GERE}
-            onClick={() => setArquivando(true)}
-          >
-            Arquivar quadro
-          </Botao>
+          <span title={podeGerir ? 'Tira o quadro da tela. As tarefas ficam guardadas.' : SO_QUEM_GERE}>
+            <button type="button" className={classeDaAcao({ jeito: 'pilula' })} disabled={!podeGerir} onClick={() => setArquivando(true)}>
+              <IconeDaAcao icone="arquivar" tamanho={15} />
+              Arquivar quadro
+            </button>
+          </span>
         )}
       </header>
 

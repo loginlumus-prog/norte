@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, cx } from '@/ui/base'
 import { Confirmar } from '@/ui/Confirmar'
 import { brl } from '@/ui/painel'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { quantidade } from '@/ui/texto'
 import type { ItemDoCatalogo, ReceitaNaTela } from '@/servidor/fabrica'
 import { apagarReceitaAcao, salvarReceitaAcao } from './acoes'
@@ -212,8 +213,9 @@ function Editor({
       caixa
       titulo={receita ? `Ficha técnica · ${receita.produto}` : 'Nova ficha técnica'}
       acao={
-        <button type="button" onClick={() => aoFechar()} className="text-xs text-tinta-3 hover:text-tinta">
-          fechar
+        <button type="button" onClick={() => aoFechar()} className={classeDaAcao()} aria-label="Fechar a ficha técnica">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >
@@ -273,14 +275,16 @@ function Editor({
                   {item ? (
                     <div className="flex min-w-0 flex-col gap-1.5">
                       <span className="text-sm font-medium text-tinta">Insumo</span>
-                      <span className="flex items-center justify-between gap-2 rounded-norte border border-borda-suave bg-superficie-2 px-3 py-2 text-sm">
+                      <span className="flex items-center justify-between gap-2 rounded-norte border border-borda-suave bg-superficie-2 py-1 pr-1 pl-3 text-sm">
                         <span className="min-w-0 truncate text-tinta">{item.nome}</span>
                         <button
                           type="button"
                           onClick={() => setLinhas((ls) => ls.map((x) => (x.chave === l.chave ? { ...x, insumoId: '' } : x)))}
-                          className="shrink-0 text-xs text-tinta-3 hover:text-tinta"
+                          className={classeDaAcao()}
+                          aria-label={`Trocar o insumo ${item.nome}`}
                         >
-                          trocar
+                          <IconeDaAcao icone="trocar" />
+                          <DicaDaAcao>Trocar</DicaDaAcao>
                         </button>
                       </span>
                     </div>
@@ -303,13 +307,15 @@ function Editor({
                       setLinhas((ls) => ls.map((x) => (x.chave === l.chave ? { ...x, quantidade: v } : x)))
                     }}
                   />
-                  <Botao
-                    tom="discreto"
+                  <button
+                    type="button"
+                    className={classeDaAcao({ tom: 'perigo' })}
                     aria-label={`Remover a linha ${n + 1}`}
                     onClick={() => setLinhas((ls) => (ls.length === 1 ? [{ chave: novaChave(), insumoId: '', quantidade: '' }] : ls.filter((x) => x.chave !== l.chave)))}
                   >
-                    remover
-                  </Botao>
+                    <IconeDaAcao icone="excluir" />
+                    <DicaDaAcao>Remover</DicaDaAcao>
+                  </button>
                 </li>
               )
             })}

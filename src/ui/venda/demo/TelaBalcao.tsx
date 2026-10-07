@@ -103,13 +103,13 @@ function Escolha({
           </span>
           <span className="min-w-0">
             <span className="block truncate text-[13px] font-semibold text-tinta">{topo.nome}</span>
-            <span className="block text-[11px] text-tinta-3">Escolha cor e tamanho</span>
+            <span className="block text-[12.5px] text-tinta-3">Escolha cor e tamanho</span>
           </span>
         </div>
         <button
           type="button"
           onClick={aoVoltar}
-          className="shrink-0 rounded-md border border-borda px-2 py-1 text-[11.5px] font-semibold text-tinta-2 hover:text-tinta"
+          className="shrink-0 rounded-md border border-borda px-2 py-1 text-[13px] font-semibold text-tinta-2 hover:text-tinta"
         >
           Voltar
         </button>
@@ -117,7 +117,7 @@ function Escolha({
 
       {grupos.map((e) => (
         <div key={e.nome} role="group" aria-label={e.nome} className="flex flex-col gap-1.5">
-          <p className="text-[10.5px] font-bold tracking-[0.1em] text-tinta-3 uppercase">{e.nome}</p>
+          <p className="text-[12px] font-bold tracking-[0.1em] text-tinta-3 uppercase">{e.nome}</p>
           <div className="flex flex-wrap gap-1.5">
             {e.opcoes.map((o) => {
               const [c, t] = e.par(o)
@@ -139,7 +139,7 @@ function Escolha({
                   }
                 >
                   {o}
-                  {acabou && <span className="ml-1 text-[9.5px] font-bold text-critico">acabou</span>}
+                  {acabou && <span className="ml-1 text-[11px] font-bold text-critico">acabou</span>}
                 </button>
               )
             })}
@@ -310,23 +310,23 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
                       </span>
                       <span className="flex flex-1 flex-col gap-0.5 p-2">
                         <span className="text-[12px] leading-tight font-semibold text-tinta">{p.nome}</span>
-                        <span className="text-[10.5px] text-tinta-3">{varias ? `${g.length} opções` : p.grade}</span>
+                        <span className="text-[12px] text-tinta-3">{varias ? `${g.length} opções` : p.grade}</span>
                         <span className="mt-auto flex items-baseline justify-between gap-1 pt-1">
                           <span className="numero text-[12.5px] font-bold text-titulo">
-                            {aPartirDe && <span className="mr-1 text-[10px] font-medium text-tinta-3">a partir de</span>}
+                            {aPartirDe && <span className="mr-1 text-[11.5px] font-medium text-tinta-3">a partir de</span>}
                             {reais(menor)}
                           </span>
                           {acabou ? (
-                            <span className="rounded-full bg-critico-fundo px-1.5 text-[9.5px] font-bold text-critico">acabou</span>
+                            <span className="rounded-full bg-critico-fundo px-1.5 text-[11px] font-bold text-critico">acabou</span>
                           ) : pouco ? (
-                            <span className="text-[10px] font-semibold text-atencao">só {saldo}</span>
+                            <span className="text-[11.5px] font-semibold text-atencao">só {saldo}</span>
                           ) : !simples && !varias ? (
-                            <span className="numero text-[10px] text-tinta-3">tem {saldo}</span>
+                            <span className="numero text-[11.5px] text-tinta-3">tem {saldo}</span>
                           ) : null}
                         </span>
                       </span>
                       {no > 0 && (
-                        <span key={no} className="pousa numero absolute top-1.5 right-1.5 grid size-5 place-items-center rounded-full bg-marca text-[10.5px] font-bold text-marca-tinta shadow-norte">
+                        <span key={no} className="pousa numero absolute top-1.5 right-1.5 grid size-5 place-items-center rounded-full bg-marca text-[12px] font-bold text-marca-tinta shadow-norte">
                           {no}
                         </span>
                       )}
@@ -358,11 +358,11 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
             <p className="numero font-display text-3xl font-bold text-titulo">{reais(feita.total)}</p>
             {feita.forma === 'Dinheiro' && (
               <div className="mt-1 w-full rounded-lg bg-bom-fundo px-3 py-2.5">
-                <p className="text-[10px] font-bold tracking-[0.12em] text-bom uppercase">Troco para devolver</p>
+                <p className="text-[11.5px] font-bold tracking-[0.12em] text-bom uppercase">Troco para devolver</p>
                 <p className="numero font-display text-2xl font-bold text-bom">{reais(feita.troco)}</p>
               </div>
             )}
-            <p className="text-[11px] text-tinta-3">Saiu do estoque e já está no painel deste exemplo.</p>
+            <p className="text-[12.5px] text-tinta-3">Saiu do estoque e já está no painel deste exemplo.</p>
             <button type="button" onClick={nova} className={botaoMarca + ' mt-1 w-full py-2.5'}>
               Nova venda
             </button>
@@ -371,12 +371,12 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
           <>
             <div className="flex items-baseline justify-between">
               <Rotulo>Pedido</Rotulo>
-              {pecas > 0 && <span className="text-[11px] text-tinta-3">{pecas} {pecas === 1 ? 'peça' : 'peças'}</span>}
+              {pecas > 0 && <span className="text-[12.5px] text-tinta-3">{pecas} {pecas === 1 ? 'peça' : 'peças'}</span>}
             </div>
             {itens.length === 0 ? (
               <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-borda px-3 py-5 text-center">
                 <p className="text-[12.5px] font-semibold text-tinta-2">Pedido vazio</p>
-                <p className="text-[11.5px] text-tinta-3">Toque num produto ou bipe a etiqueta.</p>
+                <p className="text-[13px] text-tinta-3">Toque num produto ou bipe a etiqueta.</p>
               </div>
             ) : (
               <ul className="flex max-h-40 flex-col overflow-y-auto">
@@ -386,7 +386,7 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
                     <li key={id} className="pousa flex items-center gap-2 border-t border-borda-suave py-1.5 first:border-t-0">
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate text-[12px] font-semibold text-tinta">{p.nome}</span>
-                        <span className="numero text-[10.5px] text-tinta-3">
+                        <span className="numero text-[12px] text-tinta-3">
                           {p.grade} · {q} × {reais(p.preco)}
                         </span>
                       </span>
@@ -422,7 +422,7 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
             </div>
 
             <div role="group" aria-label="Como vai pagar?">
-              <p className="mb-1.5 text-[11.5px] font-semibold text-tinta-2">Como vai pagar?</p>
+              <p className="mb-1.5 text-[13px] font-semibold text-tinta-2">Como vai pagar?</p>
               <div className="grid grid-cols-2 gap-1.5">
                 {FORMAS.map((f) => (
                   <button
@@ -458,7 +458,7 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
                       aria-pressed={recebido === v}
                       onClick={() => setRecebido(v)}
                       className={
-                        'numero rounded-md border px-2 py-1 text-[11.5px] font-semibold ' +
+                        'numero rounded-md border px-2 py-1 text-[13px] font-semibold ' +
                         (recebido === v
                           ? 'border-marca bg-marca-suave text-marca'
                           : 'border-borda text-tinta-2 hover:border-tinta-3')
@@ -470,13 +470,13 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-lg bg-superficie-2 px-3 py-2">
-                    <p className="text-[10.5px] text-tinta-3">Recebido</p>
+                    <p className="text-[12px] text-tinta-3">Recebido</p>
                     <p className="numero font-display text-lg font-bold text-tinta">
                       {recebido === null ? '—' : reais(recebido)}
                     </p>
                   </div>
                   <div className="rounded-lg bg-bom-fundo px-3 py-2">
-                    <p className="text-[10.5px] font-semibold text-bom">Troco</p>
+                    <p className="text-[12px] font-semibold text-bom">Troco</p>
                     <p className="numero font-display text-lg font-bold text-bom">{reais(troco)}</p>
                   </div>
                 </div>
@@ -491,7 +491,7 @@ export function TelaBalcao({ estado, fazer }: { estado: Estado; fazer: (a: Acao)
             >
               Concluir venda
             </button>
-            {motivo && <p className="-mt-1.5 text-center text-[11px] text-tinta-3">{motivo}</p>}
+            {motivo && <p className="-mt-1.5 text-center text-[12.5px] text-tinta-3">{motivo}</p>}
           </>
         )}
       </div>

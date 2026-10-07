@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import type { AparenciaDaLoja } from '@/servidor/vitrine'
 import { Aviso, Botao, cx } from '@/ui/base'
 import { Secao } from '@/ui/painel'
+import { AcoesDaLinha, classeDaAcao, IconeDaAcao } from '@/ui/premium'
 import { reduzirFoto } from '../../produtos/[id]/FotoDoProduto'
 import { sigla } from '../[endereco]/marca'
 import { Capa, Destaques } from './Destaques'
@@ -200,8 +201,10 @@ export function Aparencia({
                     type="button"
                     disabled={indo}
                     onClick={() => agir(() => tirarPostagemAcao(slug, p.id))}
-                    className="mt-auto w-fit text-xs font-semibold text-critico underline-offset-2 hover:underline"
+                    className={cx(classeDaAcao({ jeito: 'pilula', tom: 'perigo' }), 'mt-auto self-start')}
+                    aria-label={`Tirar do catálogo: ${p.titulo}`}
                   >
+                    <IconeDaAcao icone="excluir" tamanho={15} />
                     Tirar do catálogo
                   </button>
                 </div>
@@ -451,12 +454,14 @@ function Avaliacao({
           </div>
         </div>
       ) : (
-        <div className="flex flex-wrap gap-3 text-xs font-semibold">
-          <button type="button" onClick={() => setRespondendo(true)} className="text-marca underline-offset-2 hover:underline">
+        <AcoesDaLinha solta>
+          <button type="button" onClick={() => setRespondendo(true)} className={classeDaAcao({ jeito: 'pilula' })}>
+            <IconeDaAcao icone={a.resposta ? 'editar' : 'responder'} tamanho={15} />
             {a.resposta ? 'Mudar resposta' : 'Responder'}
           </button>
           {a.oculta ? (
-            <button type="button" disabled={indo} onClick={() => agir(() => esconderAvaliacaoAcao(slug, a.id, null))} className="text-tinta-2 underline-offset-2 hover:underline">
+            <button type="button" disabled={indo} onClick={() => agir(() => esconderAvaliacaoAcao(slug, a.id, null))} className={classeDaAcao({ jeito: 'pilula' })}>
+              <IconeDaAcao icone="ver" tamanho={15} />
               Mostrar de novo
             </button>
           ) : (
@@ -467,12 +472,14 @@ function Avaliacao({
                 const motivo = window.prompt('Por que esconder esta avaliação? (fica registrado)')
                 if (motivo) agir(() => esconderAvaliacaoAcao(slug, a.id, motivo))
               }}
-              className="text-critico underline-offset-2 hover:underline"
+              className={classeDaAcao({ jeito: 'pilula', tom: 'perigo' })}
             >
+              {/* Não há o olho riscado: a caixa diz "guardar fora da vista". */}
+              <IconeDaAcao icone="esconder" tamanho={15} />
               Esconder
             </button>
           )}
-        </div>
+        </AcoesDaLinha>
       )}
     </li>
   )

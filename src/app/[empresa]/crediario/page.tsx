@@ -19,6 +19,7 @@ import { Paginas } from '@/ui/Paginas'
 import { plural } from '@/ui/texto'
 import { lerPagina, paginar } from '@/ui/paginacao'
 import { Situacao, cx } from '@/ui/base'
+import { AcoesDaLinha, BotaoDaLinha } from '@/ui/premium'
 import type { Tema } from '@/ui/TrocaTema'
 import { recibosDoCliente, type ReciboNaLista } from '@/servidor/recibos'
 import { fichaDeGestao } from '@/servidor/crediario-gestao'
@@ -218,11 +219,6 @@ export default async function CrediarioPagina({
                     {p.cliente}
                   </Link>
                   <span className="text-xs text-tinta-3">{mostrarTelefone(p.telefone) || 'sem telefone'}</span>
-                  {!clienteId && (
-                    <Link href={link({ cliente: p.clienteId })} className="text-xs text-tinta-3 underline-offset-2 hover:text-marca hover:underline">
-                      gestão da cliente
-                    </Link>
-                  )}
                   {p.cobrancaPausada && (
                     <span className="pt-0.5">
                       <Situacao nivel="atencao">cobrança pausada</Situacao>
@@ -296,20 +292,44 @@ export default async function CrediarioPagina({
                   </span>
                 ),
             },
-            ...(podeReceber
+            // A gestão da cliente (era um link cinza sob o nome) em ícone, e o
+            // Receber em pílula no fim — o desenho das ações de Vendas.
+            ...(podeReceber || !clienteId
               ? [
                   {
-                    chave: 'receber',
+                    chave: 'acoes',
                     titulo: '',
-                    largura: '8rem',
-                    celula: (p: ParcelaNaLista) =>
-                      p.situacao === 'quitada' ? null : (
-                        podeReceberEm(p.unidadeId) ? (
-                          <BotaoReceber slug={slug} unidadeId={p.unidadeId} clienteId={p.clienteId} marcar={[p.id]} className="py-1 text-xs">
-                            Receber
-                          </BotaoReceber>
-                        ) : null
-                      ),
+                    largura: '9rem',
+                    celula: (p: ParcelaNaLista) => {
+                      const receber = podeReceber && p.situacao !== 'quitada' && podeReceberEm(p.unidadeId)
+                      if (!receber && clienteId) return null
+                      return (
+                        <span className="flex justify-end">
+                          <AcoesDaLinha>
+                            {!clienteId && (
+                              <BotaoDaLinha
+                                href={link({ cliente: p.clienteId })}
+                                icone="ficha"
+                                rotulo="Gestão da cliente"
+                                dica={`Gestão do crediário de ${p.cliente}`}
+                              />
+                            )}
+                            {receber && (
+                              <BotaoReceber
+                                linha
+                                slug={slug}
+                                unidadeId={p.unidadeId}
+                                clienteId={p.clienteId}
+                                marcar={[p.id]}
+                                dica={`Receber a parcela ${p.numero}/${p.de} de ${p.cliente}`}
+                              >
+                                Receber
+                              </BotaoReceber>
+                            )}
+                          </AcoesDaLinha>
+                        </span>
+                      )
+                    },
                   },
                 ]
               : []),

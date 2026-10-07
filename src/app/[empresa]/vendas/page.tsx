@@ -9,13 +9,16 @@ import { janela, lerPeriodo } from '@/servidor/periodo'
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, Vazio } from '@/ui/base'
-import { Numero, brl } from '@/ui/painel'
+import { Barras, Bloco, Numero, brl } from '@/ui/painel'
+import { Rosca } from '@/ui/Graficos'
+import { resumoDoPainel } from '@/servidor/painel'
 import { Tabela } from '@/ui/Tabela'
 import { SeletorPeriodo } from '@/ui/Periodo'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import type { Tema } from '@/ui/TrocaTema'
 import type { FormaPagamento, SituacaoVenda } from '@prisma/client'
-import { Fichas } from '@/ui/Busca'
+import { Busca, Fichas } from '@/ui/Busca'
+import { AcoesDaLinha, BotaoDaLinha } from '@/ui/premium'
 import { pode } from '@/servidor/permissao'
 import { podeExportar } from '@/servidor/exportacao'
 import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
@@ -104,6 +107,9 @@ export default async function Vendas({
     // de um mês movimentado era o das 500 vendas mais recentes.
     resumoVendas(sessao, filtro),
   ])
+  // Os gráficos do período (o mesmo resumo do Painel), só para quem lê o
+  // faturamento e com mais de um dia na janela.
+  const grafico = veReceita && veHistorico && j.temGrafico && !q ? await resumoDoPainel(sessao, onde.ids, j) : null
   const universo = base ?? vendas
   const vendedores = [...new Map(universo.filter((v) => v.vendedorId).map((v) => [v.vendedorId!, v.vendedor ?? '—'])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]))
@@ -227,52 +233,44 @@ export default async function Vendas({
       // imprimindo, e a lista fica onde estava.
       chave: 'acoes',
       titulo: '',
-      largura: simples ? '6.5rem' : '11rem',
-      // O "abrir" mora junto, no fim da mesma fila: em coluna própria ele
-      // ficava 2px abaixo dos outros links e a linha lia torta. `leading-5` é
-      // a altura da linha de texto da tabela, para os links assentarem na
-      // mesma base que o total ao lado.
+      largura: '11rem',
+      // Os ícones de apoio (reimprimir, carnê, trocar) com a dica ao passar o
+      // mouse, e o "Abrir" em pílula no fim — sempre na mesma ordem, para a
+      // mão aprender o lugar. Eram links de texto que quebravam linha.
       celula: (v: (typeof vendas)[number]) => {
         const valendo = v.situacao !== 'CANCELADA'
         return (
-          <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs leading-5 font-semibold whitespace-nowrap">
-            {valendo && (
-              <a
-                href={`/${slug}/vendas/${v.id}/comprovante?imprimir=1`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-marca underline-offset-2 hover:underline"
-                aria-label={`Reimprimir o comprovante ${palavras.daVenda} ${v.numero}`}
-              >
-                Reimprimir
-              </a>
-            )}
-            {valendo && v.formas.includes('CREDIARIO') && (
-              <a
-                href={`/${slug}/vendas/${v.id}/carne?imprimir=1`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-marca underline-offset-2 hover:underline"
-                aria-label={`Reimprimir o carnê ${palavras.daVenda} ${v.numero}`}
-              >
-                carnê
-              </a>
-            )}
-            {/* A troca numa tela só (troca/), já com esta compra aberta. */}
-            {v.situacao === 'CONCLUIDA' && v.devolvido + 0.005 < v.total && pode(sessao, 'venda.criar') && (
-              <Link
-                href={`/${slug}/troca?venda=${v.id}`}
-                className="text-marca underline-offset-2 hover:underline"
-                aria-label={`Trocar peças ${palavras.daVenda} ${v.numero}`}
-              >
-                Trocar
-              </Link>
-            )}
-            {!simples && (
-              <Link href={`/${slug}/vendas/${v.id}`} className="text-marca underline-offset-2 hover:underline">
-                abrir
-              </Link>
-            )}
+          <span className="flex justify-end">
+            <AcoesDaLinha>
+              {valendo && (
+                <BotaoDaLinha
+                  externo
+                  href={`/${slug}/vendas/${v.id}/comprovante?imprimir=1`}
+                  icone="imprimir"
+                  rotulo="Reimprimir"
+                  dica={`Reimprimir o comprovante ${palavras.daVenda} ${v.numero}`}
+                />
+              )}
+              {valendo && v.formas.includes('CREDIARIO') && (
+                <BotaoDaLinha
+                  externo
+                  href={`/${slug}/vendas/${v.id}/carne?imprimir=1`}
+                  icone="carne"
+                  rotulo="Carnê"
+                  dica={`Reimprimir o carnê ${palavras.daVenda} ${v.numero}`}
+                />
+              )}
+              {/* A troca numa tela só (troca/), já com esta compra aberta. */}
+              {v.situacao === 'CONCLUIDA' && v.devolvido + 0.005 < v.total && pode(sessao, 'venda.criar') && (
+                <BotaoDaLinha
+                  href={`/${slug}/troca?venda=${v.id}`}
+                  icone="trocar"
+                  rotulo="Trocar"
+                  dica={`Trocar peças ${palavras.daVenda} ${v.numero}`}
+                />
+              )}
+              <BotaoDaLinha principal href={`/${slug}/vendas/${v.id}`} icone="abrir" rotulo="Abrir" dica={`Abrir ${palavras.aVenda} ${v.numero}`} />
+            </AcoesDaLinha>
           </span>
         )
       },
@@ -335,37 +333,33 @@ export default async function Vendas({
         />
       </div>
 
+      {/* O período desenhado: o dia a dia e como entrou o dinheiro. Para quem
+          lê o faturamento (o balcão não vê número de dono) e só com mais de
+          um dia — um dia só é o número grande, não um gráfico. */}
+      {grafico && grafico.plano !== 'GRATIS' && grafico.porDia.some((d) => d.total > 0) && (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <Bloco titulo={`${palavras.Vendido} por dia`} detalhe={j.rotulo}>
+            <Barras dados={grafico.porDia} titulo={`${palavras.Vendido} por dia`} />
+          </Bloco>
+          <Bloco titulo="Como receberam" detalhe="Por forma de pagamento">
+            <Rosca fatias={grafico.porForma.map((f) => ({ rotulo: FORMA[f.forma] ?? f.forma, valor: f.total, detalhe: `${f.vendas}×` }))} />
+          </Bloco>
+        </div>
+      )}
+
       {/* Busca e filtro no endereço. `q` aceita o número da venda, o nome do
           cliente, a peça, o código da etiqueta ou o valor ("189,90") — é o que
           a pessoa tem na mão quando a cliente volta para trocar (ver
           `ondeDasVendas`). */}
-      <form className="flex flex-wrap gap-2">
-        {/* Buscar não apaga os outros filtros: o formulário leva junto tudo
-            o que já estava escolhido no endereço. */}
-        <input type="hidden" name="periodo" value={j.chave} />
-        {onde.unidadeId && <input type="hidden" name="unidade" value={onde.unidadeId} />}
-        {situacao && <input type="hidden" name="situacao" value={situacao} />}
-        {vendedorId && <input type="hidden" name="vendedor" value={vendedorId} />}
-        {forma && <input type="hidden" name="forma" value={forma} />}
-        <input
-          name="q"
-          defaultValue={q ?? ''}
-          placeholder={`Número, nome ${palavras.daPessoa}, peça, código ou valor (189,90)`}
-          aria-label={`Buscar ${palavras.venda}`}
-          className="min-w-[14rem] flex-1 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
-        />
-        <button
-          type="submit"
-          className="rounded-norte border border-borda bg-superficie px-4 py-2 text-sm font-semibold text-tinta hover:bg-superficie-2"
-        >
-          Buscar
-        </button>
-        {q && (
-          <Link href={link({ q: null })} className="flex items-center px-2 text-sm text-tinta-3 hover:text-tinta">
-            limpar
-          </Link>
-        )}
-      </form>
+      <Busca
+        valor={q}
+        placeholder={`Número, nome ${palavras.daPessoa}, peça, código ou valor (189,90)`}
+        rotulo={`Buscar ${palavras.venda}`}
+        // Buscar não apaga os outros filtros: o formulário leva junto tudo o
+        // que já estava escolhido no endereço.
+        manter={{ periodo: j.chave, unidade: onde.unidadeId, situacao, vendedor: vendedorId, forma }}
+        limparEm={link({ q: null })}
+      />
 
       {/* Quem vendeu e como receberam: os dois recortes que a pergunta do dia
           usa ("o que a Maria vendeu no sábado", "quanto entrou no Pix"). */}

@@ -337,7 +337,7 @@ export function Dica({ children }: { children: string }) {
         tabIndex={0}
         role="img"
         aria-label={children}
-        className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-borda text-[10px] leading-none font-bold text-tinta-3 outline-none hover:border-marca/40 hover:text-marca focus-visible:ring-2 focus-visible:ring-marca/40"
+        className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-borda text-[11.5px] leading-none font-bold text-tinta-3 outline-none hover:border-marca/40 hover:text-marca focus-visible:ring-2 focus-visible:ring-marca/40"
       >
         ?
       </span>
@@ -485,7 +485,7 @@ export function Ponto({
       aria-label={titulo ? `${quantos} ${titulo}` : String(quantos)}
       className={cx(
         'numero inline-flex min-w-5 shrink-0 items-center justify-center rounded-full',
-        'px-1.5 py-0.5 text-[11px] leading-none font-bold text-white',
+        'px-1.5 py-0.5 text-[12.5px] leading-none font-bold text-white',
         cor[nivel],
       )}
     >

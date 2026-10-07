@@ -153,7 +153,7 @@ export function Cargos({
                     {g.titulo}
                     <button
                       type="button"
-                      className="text-[11px] font-semibold tracking-normal text-marca normal-case hover:underline"
+                      className="text-[12.5px] font-semibold tracking-normal text-marca normal-case hover:underline"
                       onClick={() => g.itens.forEach((i) => marcar(i.capacidade, !todas))}
                     >
                       {todas ? 'desmarcar todas' : 'marcar todas'}

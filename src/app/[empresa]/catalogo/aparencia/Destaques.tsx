@@ -11,6 +11,7 @@ import '../[endereco]/vitrine.css'
 import { useMemo, useRef, useState } from 'react'
 import type { AparenciaDaLoja } from '@/servidor/vitrine'
 import { Botao, cx } from '@/ui/base'
+import { AcoesDaLinha, classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { reduzirFoto } from '../../produtos/[id]/FotoDoProduto'
 import { capaAcao, destaqueAcao, destaquesDasCategoriasAcao, moverDestaqueAcao, tirarDestaqueAcao } from './acoes'
 
@@ -139,27 +140,40 @@ export function Destaques({
                   <p className="truncate text-sm font-semibold text-tinta">{d.nome}</p>
                   <p className="truncate text-xs text-tinta-3">{d.conteudo}</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button type="button" disabled={indo || i === 0} onClick={() => agir(() => moverDestaqueAcao(slug, d.id, -1))} aria-label={`Subir ${d.nome}`} className="h-8 w-8 rounded-full text-tinta-2 hover:bg-superficie-2 disabled:opacity-30">
-                    ↑
-                  </button>
-                  <button type="button" disabled={indo || i === lista.length - 1} onClick={() => agir(() => moverDestaqueAcao(slug, d.id, 1))} aria-label={`Descer ${d.nome}`} className="h-8 w-8 rounded-full text-tinta-2 hover:bg-superficie-2 disabled:opacity-30">
-                    ↓
-                  </button>
-                  <button type="button" onClick={() => setEditando(editando === d.id ? null : d.id)} className="rounded-full px-2.5 py-1 text-xs font-semibold text-marca hover:bg-superficie-2">
-                    {editando === d.id ? 'Fechar' : 'Editar'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={indo}
-                    onClick={() => {
-                      if (window.confirm(`Tirar o destaque "${d.nome}"?`)) agir(() => tirarDestaqueAcao(slug, d.id))
-                    }}
-                    className="rounded-full px-2.5 py-1 text-xs font-semibold text-critico hover:bg-superficie-2"
-                  >
-                    Tirar
-                  </button>
-                </div>
+                <span className="shrink-0">
+                  <AcoesDaLinha>
+                    <button type="button" disabled={indo || i === 0} onClick={() => agir(() => moverDestaqueAcao(slug, d.id, -1))} aria-label={`Subir ${d.nome}`} className={classeDaAcao()}>
+                      <IconeDaAcao icone="subir" />
+                      <DicaDaAcao>Subir</DicaDaAcao>
+                    </button>
+                    <button type="button" disabled={indo || i === lista.length - 1} onClick={() => agir(() => moverDestaqueAcao(slug, d.id, 1))} aria-label={`Descer ${d.nome}`} className={classeDaAcao()}>
+                      <IconeDaAcao icone="descer" />
+                      <DicaDaAcao>Descer</DicaDaAcao>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditando(editando === d.id ? null : d.id)}
+                      aria-expanded={editando === d.id}
+                      aria-label={editando === d.id ? `Fechar a edição de ${d.nome}` : `Editar ${d.nome}`}
+                      className={classeDaAcao()}
+                    >
+                      <IconeDaAcao icone={editando === d.id ? 'cancelar' : 'editar'} />
+                      <DicaDaAcao>{editando === d.id ? 'Fechar' : 'Editar'}</DicaDaAcao>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={indo}
+                      onClick={() => {
+                        if (window.confirm(`Tirar o destaque "${d.nome}"?`)) agir(() => tirarDestaqueAcao(slug, d.id))
+                      }}
+                      aria-label={`Tirar o destaque ${d.nome}`}
+                      className={classeDaAcao({ tom: 'perigo' })}
+                    >
+                      <IconeDaAcao icone="excluir" />
+                      <DicaDaAcao>Tirar</DicaDaAcao>
+                    </button>
+                  </AcoesDaLinha>
+                </span>
               </div>
               {editando === d.id ? (
                 <Editor slug={slug} unidadeId={unidadeId} destaque={d} categorias={dados.categorias} produtos={produtos} agir={agir} indo={indo} fechar={() => setEditando(null)} />
@@ -247,7 +261,7 @@ function Editor({
           className="vt-anel flex h-20 w-20 items-center justify-center rounded-full p-[3px]"
           aria-label="Escolher a foto da bolinha"
         >
-          <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-2 border-superficie bg-superficie-2 text-[11px] text-tinta-3">
+          <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-2 border-superficie bg-superficie-2 text-[12.5px] text-tinta-3">
             {previa ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previa} alt="" className="h-full w-full object-cover" />
@@ -269,7 +283,7 @@ function Editor({
             tirar foto
           </button>
         ) : (
-          <span className="text-center text-[11px] text-tinta-3">sem foto, usa a do 1º produto</span>
+          <span className="text-center text-[12.5px] text-tinta-3">sem foto, usa a do 1º produto</span>
         )}
       </div>
       <div className="flex flex-col gap-3">

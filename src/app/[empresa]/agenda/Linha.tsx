@@ -15,7 +15,8 @@
 
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react'
 import Link from 'next/link'
-import { Aviso, Botao, Campo, cx } from '@/ui/base'
+import { Aviso, Botao, Campo } from '@/ui/base'
+import { BotaoDaLinha, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { mudarHorarioAcao } from './acoes'
 
 type Situacao = 'MARCADO' | 'CONFIRMADO' | 'ATENDIDO' | 'FALTOU' | 'CANCELADO'
@@ -52,7 +53,6 @@ export function AcoesHorario({
   podeMexer,
   cobrarEm,
   remarcarEm,
-  compacto = false,
 }: {
   slug: string
   id: string
@@ -65,7 +65,6 @@ export function AcoesHorario({
   /** O endereço do balcão para cobrar, ou nulo se esta pessoa não vende aqui. */
   cobrarEm: string | null
   remarcarEm: string
-  compacto?: boolean
 }) {
   const [painel, setPainel] = useState<null | 'desmarcar' | 'atendido' | 'faltou'>(null)
   const [menu, setMenu] = useState(false)
@@ -90,7 +89,6 @@ export function AcoesHorario({
   }, [menu])
 
   const vivo = situacao === 'MARCADO' || situacao === 'CONFIRMADO'
-  const tam = compacto ? 'px-2 py-1 text-xs' : 'px-2.5 py-1.5 text-xs'
 
   function mudar(m: Parameters<typeof mudarHorarioAcao>[2]) {
     setErro(null)
@@ -144,30 +142,35 @@ export function AcoesHorario({
   return (
     <div className="flex flex-col gap-1.5">
       <div ref={caixa} className="relative flex flex-wrap items-center gap-1">
+        {/* O próximo passo em pílula; o "Mais" ao lado, com o resto. */}
         {podeCobrar && (
-          <Link
-            href={cobrarEm!}
-            className={cx('inline-flex items-center justify-center rounded-norte border border-transparent bg-bom-vivo font-semibold text-white hover:brightness-95', tam)}
-          >
-            Atender e cobrar
-          </Link>
+          <BotaoDaLinha href={cobrarEm!} icone="receber" rotulo="Atender e cobrar" tom="bom" comRotulo dica={`Atender e cobrar: ${resumo}`} />
         )}
         {confirmarAMostra && (
-          <Botao tom="secundario" className={tam} carregando={indo} onClick={() => mudar({ para: 'CONFIRMADO' })} title="O cliente disse que vem">
+          <button
+            type="button"
+            className={classeDaAcao({ jeito: 'pilula' })}
+            disabled={indo}
+            aria-busy={indo || undefined}
+            title="O cliente disse que vem"
+            onClick={() => mudar({ para: 'CONFIRMADO' })}
+          >
+            <IconeDaAcao icone="conferir" tamanho={15} />
             Confirmar
-          </Botao>
+          </button>
         )}
         {(itens.length > 0 || podeDesmarcar) && (
-          <Botao
-            tom="discreto"
-            className={tam}
+          <button
+            type="button"
+            className={classeDaAcao({ jeito: 'pilula' })}
             aria-haspopup="menu"
             aria-expanded={menu}
-            carregando={indo && !confirmarAMostra && !painel}
+            disabled={indo && !confirmarAMostra && !painel}
+            aria-busy={(indo && !confirmarAMostra && !painel) || undefined}
             onClick={() => setMenu((m) => !m)}
           >
             Mais ▾
-          </Botao>
+          </button>
         )}
         {menu && (
           <div

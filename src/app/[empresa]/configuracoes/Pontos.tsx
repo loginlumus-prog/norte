@@ -24,6 +24,7 @@ import { useActionState, useState } from 'react'
 import type { Plano } from '@prisma/client'
 import { Botao, Campo, Marcar, Aviso, Situacao } from '@/ui/base'
 import { IconeCadeado } from '@/ui/Cadeado'
+import { BotaoDaLinha } from '@/ui/premium'
 import { quantoCusta } from '@/servidor/pontos'
 import { doPlano, liberado, planoQueAbre } from '@/servidor/planos'
 import { salvarPontos, type EstadoPontos } from './acoes'
@@ -71,12 +72,9 @@ export function Pontos({
             O cliente junta pontos a cada compra e troca por desconto no balcão — o motivo de
             ele voltar à sua loja e não à do lado.
           </span>
-          <Link
-            href={`/${empresa}/assinatura`}
-            className="mt-1 w-fit text-xs font-semibold text-marca underline-offset-2 hover:underline"
-          >
-            Ver os planos
-          </Link>
+          <span className="mt-1">
+            <BotaoDaLinha comRotulo href={`/${empresa}/assinatura`} icone="ver" rotulo="Ver os planos" />
+          </span>
         </span>
       </div>
     )

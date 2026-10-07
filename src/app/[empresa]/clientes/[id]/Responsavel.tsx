@@ -86,7 +86,7 @@ export function Responsavel({
           ))}
         </div>
         {aviso && <Selecao rotulo="Como respondeu" name="avisosOrigem" defaultValue="balcao" opcoes={origens} />}
-        <p className="text-[11px] text-tinta-3">A mensagem vai só para este número, nunca para o {palavra}. E só sai se a escola ligar o aviso em Configurações.</p>
+        <p className="text-[12.5px] text-tinta-3">A mensagem vai só para este número, nunca para o {palavra}. E só sai se a escola ligar o aviso em Configurações.</p>
       </fieldset>
 
       <div className="flex justify-end gap-2">

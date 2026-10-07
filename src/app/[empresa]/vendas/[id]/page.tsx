@@ -13,6 +13,7 @@ import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao } from '@/ui/base'
 import { Numero, brl } from '@/ui/painel'
+import { IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { Cancelar } from './Cancelar'
@@ -433,7 +434,8 @@ export default async function FichaVenda({
           </ul>
           <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-tinta-3">
             {/* O carnê: o papel que a cliente assina e leva (vendas/[id]/carne). */}
-            <a href={`/${slug}/vendas/${v.id}/carne`} className="font-semibold text-marca underline-offset-2 hover:underline">
+            <a href={`/${slug}/vendas/${v.id}/carne`} className={classeDaAcao({ jeito: 'pilula' })}>
+              <IconeDaAcao icone="imprimir" tamanho={15} />
               Imprimir o carnê
             </a>
             <span>

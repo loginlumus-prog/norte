@@ -9,7 +9,7 @@
 // paga tudo, até o vencimento, de uma vez.
 
 import { useActionState, useState } from 'react'
-import Link from 'next/link'
+import { BotaoDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { Aviso, Botao, cx } from '@/ui/base'
 import { semApagar } from '@/ui/formulario'
 import { lerDinheiro } from '@/servidor/dinheiro'
@@ -58,9 +58,7 @@ export function Receber({
       <span className="flex flex-col items-end gap-0.5 text-xs">
         <span className="font-semibold text-bom">{estado.ok}</span>
         {estado.mensalidadeId && (
-          <Link href={`/${slug}/mensalidades/${estado.mensalidadeId}/recibo`} className="text-marca underline-offset-2 hover:underline">
-            Recibo
-          </Link>
+          <BotaoDaLinha href={`/${slug}/mensalidades/${estado.mensalidadeId}/recibo`} icone="imprimir" rotulo="Recibo" comRotulo />
         )}
       </span>
     )
@@ -68,9 +66,10 @@ export function Receber({
 
   if (!aberto) {
     return (
-      <Botao tom="confirmar" onClick={() => setAberto(true)} className="py-1 text-xs">
+      <button type="button" onClick={() => setAberto(true)} className={classeDaAcao({ jeito: 'pilula', tom: 'principal' })}>
         Receber
-      </Botao>
+        <IconeDaAcao icone="receber" tamanho={14} grosso />
+      </button>
     )
   }
 
@@ -101,7 +100,7 @@ export function Receber({
               inputMode="decimal"
               className="numero rounded border border-borda bg-superficie px-2 py-1 text-sm text-tinta"
             />
-            <span className="text-[11px] text-tinta-3">{multaHoje > 0 ? `até ${brl(multaHoje)}` : 'já resolvida antes'}</span>
+            <span className="text-[12.5px] text-tinta-3">{multaHoje > 0 ? `até ${brl(multaHoje)}` : 'já resolvida antes'}</span>
           </label>
           <label className="flex flex-col gap-1 text-tinta-2">
             Juros
@@ -115,7 +114,7 @@ export function Receber({
               inputMode="decimal"
               className="numero rounded border border-borda bg-superficie px-2 py-1 text-sm text-tinta"
             />
-            <span className="text-[11px] text-critico">
+            <span className="text-[12.5px] text-critico">
               {diasAtraso} dia{diasAtraso === 1 ? '' : 's'} de atraso
               {diasJuros < diasAtraso && ` · juro de ${diasJuros} dia${diasJuros === 1 ? '' : 's'}`}
             </span>
@@ -154,7 +153,7 @@ export function Receber({
           onFocus={(e) => e.target.select()}
           className="numero rounded border border-borda bg-superficie px-2 py-1 text-sm font-semibold text-tinta"
         />
-        <span className={cx('text-[11px] text-tinta-3')}>falta {brl(resta)}</span>
+        <span className={cx('text-[12.5px] text-tinta-3')}>falta {brl(resta)}</span>
       </label>
 
       <label className="flex flex-col gap-1 text-tinta-2">
@@ -190,8 +189,9 @@ export function Dispensar({ slug, id }: { slug: string; id: string }) {
   if (ok) return <span className="text-xs text-tinta-3">{ok}</span>
   if (!aberto) {
     return (
-      <button type="button" onClick={() => setAberto(true)} className="text-xs text-tinta-3 underline-offset-2 hover:text-tinta hover:underline">
-        Dispensar
+      <button type="button" onClick={() => setAberto(true)} className={classeDaAcao({ tom: 'perigo' })} aria-label="Dispensar a mensalidade deste mês">
+        <IconeDaAcao icone="cancelar" />
+        <DicaDaAcao>Dispensar</DicaDaAcao>
       </button>
     )
   }

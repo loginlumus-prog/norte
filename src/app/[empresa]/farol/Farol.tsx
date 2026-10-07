@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Situacao, cx } from '@/ui/base'
 import { Markdown } from '@/ui/Markdown'
+import { AcoesDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { arquivarMarcaAcao, atualizarPecaAcao, gerarAcao, salvarMarcaAcao, type EstadoFarol } from './acoes'
 
 export type MarcaNaTela = {
@@ -168,23 +169,45 @@ function Peca({ slug, p, aoMudar }: { slug: string; p: PecaNaTela; aoMudar: (r: 
                 </Botao>
               </>
             ) : (
-              <>
-                <Botao tom="discreto" className="px-3 py-1.5 text-xs" onClick={() => setEditando(true)}>Editar</Botao>
-                <Botao
-                  tom="discreto"
-                  className="px-3 py-1.5 text-xs"
+              // Apoio em ícones (editar, copiar, arquivar); aprovar e publicar,
+              // que andam com a peça, em pílula com o nome.
+              <AcoesDaLinha>
+                <button type="button" className={classeDaAcao()} aria-label={`Editar ${p.titulo}`} onClick={() => setEditando(true)}>
+                  <IconeDaAcao icone="editar" />
+                  <DicaDaAcao>Editar</DicaDaAcao>
+                </button>
+                <button
+                  type="button"
+                  className={classeDaAcao()}
+                  aria-label={`Copiar o texto de ${p.titulo}`}
                   onClick={() => navigator.clipboard?.writeText(p.conteudo).then(() => aoMudar({ ok: 'Texto copiado.' }))}
                 >
-                  Copiar
-                </Botao>
+                  <IconeDaAcao icone="copiar" />
+                  <DicaDaAcao>Copiar</DicaDaAcao>
+                </button>
+                <button
+                  type="button"
+                  className={classeDaAcao()}
+                  aria-label={`Arquivar ${p.titulo}`}
+                  disabled={indo}
+                  onClick={() => mudar({ situacao: 'ARQUIVADA' })}
+                >
+                  <IconeDaAcao icone="arquivar" />
+                  <DicaDaAcao>Arquivar</DicaDaAcao>
+                </button>
                 {p.situacao === 'RASCUNHO' && (
-                  <Botao tom="secundario" className="px-3 py-1.5 text-xs" carregando={indo} onClick={() => mudar({ situacao: 'APROVADA' })}>Aprovar</Botao>
+                  <button type="button" className={classeDaAcao({ jeito: 'pilula' })} disabled={indo} onClick={() => mudar({ situacao: 'APROVADA' })}>
+                    <IconeDaAcao icone="conferir" tamanho={15} />
+                    Aprovar
+                  </button>
                 )}
                 {p.situacao !== 'PUBLICADA' && (
-                  <Botao tom="confirmar" className="px-3 py-1.5 text-xs" carregando={indo} onClick={() => mudar({ situacao: 'PUBLICADA' })}>Marcar publicada</Botao>
+                  <button type="button" className={classeDaAcao({ jeito: 'pilula', tom: 'bom' })} disabled={indo} onClick={() => mudar({ situacao: 'PUBLICADA' })}>
+                    <IconeDaAcao icone="enviar" tamanho={15} />
+                    Marcar publicada
+                  </button>
                 )}
-                <Botao tom="discreto" className="px-3 py-1.5 text-xs" carregando={indo} onClick={() => mudar({ situacao: 'ARQUIVADA' })}>Arquivar</Botao>
-              </>
+              </AcoesDaLinha>
             )}
           </div>
         </div>
@@ -243,8 +266,9 @@ export function Farol({
         </div>
         <FormMarca slug={slug} marca={null} lojas={lojas} aoTerminar={terminou} />
         {marcas.length > 0 && (
-          <button type="button" className="w-fit text-sm text-tinta-3 hover:text-tinta" onClick={() => setNovaMarca(false)}>
-            voltar
+          <button type="button" className={cx(classeDaAcao({ jeito: 'pilula' }), 'self-start')} onClick={() => setNovaMarca(false)}>
+            <IconeDaAcao icone="desfazer" tamanho={15} />
+            Voltar
           </button>
         )}
       </div>
@@ -274,8 +298,9 @@ export function Farol({
               {m.instagram ? <span className="ml-1 font-normal text-tinta-3">@{m.instagram}</span> : null}
             </Link>
           ))}
-          <button type="button" className="text-xs font-semibold text-marca hover:underline" onClick={() => setNovaMarca(true)}>
-            + marca
+          <button type="button" className={classeDaAcao({ jeito: 'pilula' })} onClick={() => setNovaMarca(true)}>
+            <IconeDaAcao icone="mais" tamanho={15} />
+            Marca
           </button>
         </div>
         <span className="text-sm text-tinta-2">
@@ -290,14 +315,19 @@ export function Farol({
           {editandoMarca ? (
             <>
               <FormMarca slug={slug} marca={atual} lojas={lojas} aoTerminar={terminou} />
-              <div className="mt-2 flex gap-3">
-                <button type="button" className="text-xs text-tinta-3 hover:text-tinta" onClick={() => setEditandoMarca(false)}>cancelar</button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" className={classeDaAcao({ jeito: 'pilula' })} onClick={() => setEditandoMarca(false)}>
+                  <IconeDaAcao icone="fechar" tamanho={15} />
+                  Cancelar
+                </button>
                 <button
                   type="button"
-                  className="text-xs text-critico hover:underline"
+                  className={classeDaAcao({ jeito: 'pilula', tom: 'perigo' })}
+                  disabled={indo}
                   onClick={() => comecar(async () => terminou(await arquivarMarcaAcao(slug, atual.id)))}
                 >
-                  arquivar esta marca
+                  <IconeDaAcao icone="arquivar" tamanho={15} />
+                  Arquivar esta marca
                 </button>
               </div>
             </>
@@ -308,7 +338,10 @@ export function Farol({
                 {atual.publico && <span>Público: {atual.publico}</span>}
                 {atual.tom && <span>Tom: {atual.tom}</span>}
               </span>
-              <Botao tom="discreto" className="px-3 py-1.5 text-xs" onClick={() => setEditandoMarca(true)}>Editar a marca</Botao>
+              <button type="button" className={classeDaAcao({ jeito: 'pilula' })} onClick={() => setEditandoMarca(true)}>
+                <IconeDaAcao icone="editar" tamanho={15} />
+                Editar a marca
+              </button>
             </div>
           )}
         </div>

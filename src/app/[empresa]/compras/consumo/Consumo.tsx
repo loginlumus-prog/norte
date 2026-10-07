@@ -8,6 +8,7 @@ import { useCallback, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Selecao } from '@/ui/base'
 import { CampoDoPin } from '@/ui/Assinar'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import type { ItemParaComprar } from '@/servidor/compras'
 import { buscarConsumoAcao, registrarConsumoAcao } from '../acoes'
 import { BuscaItem } from '../BuscaItem'
@@ -89,9 +90,15 @@ export function Consumo({ slug, lojas, lojaAtual }: { slug: string; lojas: { id:
                     setLinhas((ls) => ls.map((x, j) => (j === i ? { ...x, quantidade: v } : x)))
                   }}
                 />
-                <Botao tom="discreto" className="px-2 py-2 text-xs" onClick={() => setLinhas((ls) => ls.filter((_, j) => j !== i))}>
-                  tirar
-                </Botao>
+                <button
+                  type="button"
+                  onClick={() => setLinhas((ls) => ls.filter((_, j) => j !== i))}
+                  className={classeDaAcao({ tom: 'perigo' })}
+                  aria-label={`Tirar ${l.descricao}`}
+                >
+                  <IconeDaAcao icone="excluir" />
+                  <DicaDaAcao>Tirar</DicaDaAcao>
+                </button>
               </li>
             ))}
           </ul>

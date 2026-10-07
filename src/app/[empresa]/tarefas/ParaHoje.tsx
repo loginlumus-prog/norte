@@ -72,7 +72,7 @@ export function ParaHoje({ slug, tarefas }: { slug: string; tarefas: TarefaDeHoj
                       )}
                     </span>
                     <span className={cx('flex-1', ok ? 'text-tinta-3 line-through' : 'text-tinta')}>{t.titulo}</span>
-                    {t.minha && <span className="text-[10px] font-semibold text-marca uppercase">sua</span>}
+                    {t.minha && <span className="text-[11.5px] font-semibold text-marca uppercase">sua</span>}
                   </button>
                 </li>
               )

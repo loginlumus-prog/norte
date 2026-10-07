@@ -2180,6 +2180,57 @@ export const GUIA: Entrada[] = [
     palavras: ['produção', 'produzir', 'ficha técnica', 'receita', 'batelada', 'lote', 'validade', 'insumo', 'ordem de produção', 'OP', 'pedido da loja', 'reposição', 'fábrica'],
   },
 
+  // ── Pedir à fábrica (o lado da loja) ──
+  {
+    chave: 'fabrica-pedir',
+    titulo: 'Pedir à fábrica',
+    caminho: '/fabrica/pedir',
+    abre: ['fabrica.pedir'],
+    modulo: 'fabrica',
+    oQueE:
+      'A loja repõe pedindo à fábrica da própria empresa. A tela mostra o que a loja vende, o saldo de hoje e quanto saiu nos últimos 7 dias, e a pessoa digita quanto quer de cada um. A fábrica em si é um lugar à parte: quem trabalha nela entra pela troca de loja, e lá dentro o menu é o da fábrica (Produção, Fichas técnicas, Pedidos das lojas).',
+    comoFazer: [
+      {
+        titulo: 'Fazer o pedido',
+        passos: [
+          'Em Produtos e estoque › "Pedir à fábrica" (ou no botão do Estoque), escolha a loja, se tiver mais de uma.',
+          'Olhe o saldo e o que vendeu em 7 dias e digite quanto quer de cada produto.',
+          '"Mandar o pedido": ele chega na fábrica, em Pedidos das lojas.',
+        ],
+        capacidade: 'fabrica.pedir',
+      },
+      {
+        titulo: 'Conferir o que chegou',
+        passos: [
+          'Quando a fábrica manda, o pedido aparece aqui como "a caminho", com o lote de cada item.',
+          'Ao receber, confira: o que veio a menos sai como perda na loja, com o número do pedido.',
+          'O que chegou entra no estoque da loja na hora.',
+        ],
+        capacidade: 'fabrica.pedir',
+      },
+      {
+        titulo: 'Entrar na fábrica',
+        passos: [
+          'Toque no cartão da loja, no alto do menu (ou na loja do cabeçalho).',
+          'Escolha o cartão da Fábrica: o menu passa a ser o dela.',
+          'Para voltar, troque de novo para a loja.',
+        ],
+        capacidade: 'fabrica.ver',
+      },
+    ],
+    perguntas: [
+      {
+        p: 'A Fábrica aparece com um cadeado. Por quê?',
+        r: 'A Fábrica é contratada à parte. Sem ela, o cartão aparece trancado na troca de loja e leva quem responde pela empresa a Configurações, onde ela é ligada.',
+      },
+      {
+        p: 'Quem pode pedir?',
+        r: 'Quem tem "pedir à fábrica" no cargo, na loja dele. O gerente pede por todas as lojas que gerencia.',
+      },
+    ],
+    palavras: ['pedir', 'pedido', 'reposição', 'repor', 'fábrica', 'abastecer', 'chegou', 'conferir'],
+  },
+
   // ── Campanhas ──
   {
     chave: 'campanhas',

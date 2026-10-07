@@ -190,6 +190,30 @@ const D: Record<string, ReactNode> = {
       <path d="M7.5 17.5h2M12.5 17.5h2" />
     </>
   ),
+  // Fichas técnicas: a prancheta com a receita.
+  'fabrica-fichas': (
+    <>
+      <path d="M8.5 4.5h-2a1.5 1.5 0 0 0-1.5 1.5v13a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5h-2" />
+      <rect x="8.5" y="3" width="7" height="3.5" rx="1" />
+      <path d="M8.5 11h7M8.5 14.5h7M8.5 18h4" />
+    </>
+  ),
+  // Pedidos das lojas: o caminhão que leva.
+  'fabrica-pedidos': (
+    <>
+      <path d="M2.5 6.5h11v10h-11z" />
+      <path d="M13.5 10h4l3 3.5v3h-7" />
+      <circle cx="6.5" cy="17.5" r="1.8" />
+      <circle cx="17" cy="17.5" r="1.8" />
+    </>
+  ),
+  // Pedir à fábrica: a caixa com a seta chegando.
+  pedir: (
+    <>
+      <path d="M4 9.5 12 5l8 4.5v9L12 23l-8-4.5z" transform="translate(0 -1.5)" />
+      <path d="M12 12v9.5M4 8l8 4.5L20 8" transform="translate(0 -1.5)" />
+    </>
+  ),
   auditoria: (
     <>
       <path d="M12 3.5 19 6v5.5c0 4.3-2.9 7.8-7 9-4.1-1.2-7-4.7-7-9V6l7-2.5Z" />
@@ -227,8 +251,12 @@ const D: Record<string, ReactNode> = {
 
 /** A chave do ícone a partir do endereço do item: `/loja/produtos` → produtos. */
 export function chaveDoItem(href: string): string {
-  const partes = href.split('/').filter(Boolean)
-  return partes.length <= 1 ? 'painel' : (partes.at(-1) ?? 'painel')
+  // A aba vira chave própria: "/fabrica?aba=fichas" é a prancheta, não o galpão.
+  const [caminho, busca] = href.split('?')
+  const aba = new URLSearchParams(busca ?? '').get('aba')
+  const partes = (caminho ?? '').split('/').filter(Boolean)
+  const chave = partes.length <= 1 ? 'painel' : (partes.at(-1) ?? 'painel')
+  return aba ? `${chave}-${aba}` : chave
 }
 
 export function IconeDoItem({

@@ -7,9 +7,9 @@
 // assim que o contrato é falado. O servidor guarda em minutos.
 
 import { useActionState, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
 import { Aviso, Botao, Campo, Cartao, Marcar, Selecao } from '@/ui/base'
 import { semApagar } from '@/ui/formulario'
+import { BotaoDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { salvarColaboradorAcao, type EstadoFicha } from './acoes'
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -82,12 +82,11 @@ export function Ficha({
       titulo={editando ? `Ficha de ${inicial!.nome}` : 'Quem trabalha aqui'}
       acao={
         editando ? (
-          <Link href={voltarPara} className="text-xs text-tinta-3 hover:text-tinta">
-            fechar
-          </Link>
+          <BotaoDaLinha href={voltarPara} icone="fechar" rotulo="Fechar" />
         ) : (
-          <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-            fechar
+          <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar">
+            <IconeDaAcao icone="fechar" />
+            <DicaDaAcao>Fechar</DicaDaAcao>
           </button>
         )
       }

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import localFont from 'next/font/local'
-import { Manrope } from 'next/font/google'
+import { Figtree } from 'next/font/google'
 import './globals.css'
 
 // ── as duas fontes, e por que estas ──────────────────────────
@@ -17,9 +17,14 @@ import './globals.css'
 // fonte estática por peso custaria cinco arquivos e cinco downloads; a
 // variável interpola, então dá para usar 780 se 700 for leve e 800 for pesado.
 //
-// TEXTO (Manrope) — geométrica de contraforma aberta, feita para tela. Segura
+// TEXTO (Figtree) — geométrica de contraforma aberta, feita para tela. Segura
 // tudo que se lê de verdade: rótulo, tabela, formulário, dinheiro. Grotesca de
 // display não desce para 13px sem fechar as contraformas.
+//
+// Já foi a Manrope. Ela é fina e estreita: o texto corrido em 14px parecia
+// apagado, e o negrito dela (800 é o teto) não destacava do semibold. A
+// Figtree vai até 900, tem o "a" e o "g" mais redondos — lê mais viva — e
+// aguenta o peso do texto um degrau acima (ver os pesos no globals.css).
 //
 // A licença (Fontshare Free License) está em `src/app/fontes/License/`, e ela
 // cobre uso comercial — o que importa aqui, porque isto é um produto vendido a
@@ -31,7 +36,7 @@ const display = localFont({
   weight: '100 900',
 })
 
-const texto = Manrope({
+const texto = Figtree({
   subsets: ['latin'],
   variable: '--fonte-texto',
   display: 'swap',

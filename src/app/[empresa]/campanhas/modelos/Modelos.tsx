@@ -9,6 +9,7 @@
 
 import { useActionState, useMemo, useState, useTransition } from 'react'
 import { Aviso, Botao, Campo, Selecao, cx } from '@/ui/base'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { criarModeloAcao, apagarModeloAcao, type RespostaModelo } from './acoes'
 
 const campo = 'w-full min-w-0 rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3'
@@ -147,9 +148,10 @@ export function ApagarModelo({ slug, nome }: { slug: string; nome: string }) {
   return (
     <div className="flex flex-col items-start gap-2 lg:items-end">
       {!confirmar ? (
-        <Botao tom="discreto" onClick={() => setConfirmar(true)}>
-          Apagar
-        </Botao>
+        <button type="button" className={classeDaAcao({ tom: 'perigo' })} aria-label={`Apagar o modelo ${nome}`} onClick={() => setConfirmar(true)}>
+          <IconeDaAcao icone="excluir" />
+          <DicaDaAcao>Apagar</DicaDaAcao>
+        </button>
       ) : (
         <span className="flex flex-wrap items-center gap-2 text-sm text-tinta-2">
           Apagar na Meta? Campanha que usa este modelo para de mandá-lo.

@@ -765,7 +765,7 @@ export function Editor({
                     <h3 className="flex items-center gap-2 text-xs font-bold tracking-wide text-tinta-3 uppercase">
                       {e.nome}
                       {desteEixo.length > 0 && (
-                        <span className="numero rounded bg-superficie-2 px-1.5 py-px text-[10px] font-semibold text-tinta-2">
+                        <span className="numero rounded bg-superficie-2 px-1.5 py-px text-[11.5px] font-semibold text-tinta-2">
                           {desteEixo.length}
                         </span>
                       )}

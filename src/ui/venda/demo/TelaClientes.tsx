@@ -62,7 +62,7 @@ export function TelaClientes({ estado }: { estado: Estado }) {
               className="h-9 w-full rounded-lg border border-borda bg-superficie px-3 text-[12.5px] text-tinta placeholder:text-tinta-3"
             />
           </label>
-          <label className="flex items-center gap-2 text-[11.5px] text-tinta-2">
+          <label className="flex items-center gap-2 text-[13px] text-tinta-2">
             Ordenar por
             <select
               value={ordem}
@@ -88,7 +88,7 @@ export function TelaClientes({ estado }: { estado: Estado }) {
         <div className="relative max-h-80 overflow-y-auto">
           <table className="w-full text-[12px]">
             <thead className="sticky top-0 z-[1] bg-superficie">
-              <tr className="text-left text-[9.5px] font-bold tracking-[0.08em] text-tinta-3 uppercase">
+              <tr className="text-left text-[11px] font-bold tracking-[0.08em] text-tinta-3 uppercase">
                 <th className="py-1.5 font-bold">Cliente</th>
                 {avancado && <th className="hidden py-1.5 text-right font-bold sm:table-cell">Compras</th>}
                 {avancado && <th className="hidden py-1.5 text-right font-bold sm:table-cell">Gastou</th>}
@@ -108,12 +108,12 @@ export function TelaClientes({ estado }: { estado: Estado }) {
                           <span className="truncate font-semibold text-tinta">
                             {c.nome}
                             {c.aniversario === HOJE.mes && (
-                              <span className="ml-1.5 rounded-full bg-marca-suave px-1.5 text-[9.5px] font-bold text-marca">
+                              <span className="ml-1.5 rounded-full bg-marca-suave px-1.5 text-[11px] font-bold text-marca">
                                 aniversário
                               </span>
                             )}
                           </span>
-                          <span className="numero text-[10.5px] text-tinta-3">{c.telefone}</span>
+                          <span className="numero text-[12px] text-tinta-3">{c.telefone}</span>
                         </span>
                       </span>
                     </td>
@@ -138,7 +138,7 @@ export function TelaClientes({ estado }: { estado: Estado }) {
             </tbody>
           </table>
         </div>
-        <p className="text-[11px] text-tinta-3" aria-live="polite">
+        <p className="text-[12.5px] text-tinta-3" aria-live="polite">
           {lista.length} de {CLIENTES.length} clientes
         </p>
       </Cartao>

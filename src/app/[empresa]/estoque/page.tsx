@@ -17,12 +17,13 @@ import { previsaoDeRuptura, preverRuptura, JANELA_DIAS, type LinhaRuptura } from
 import { Estrutura } from '@/ui/Estrutura'
 import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, Vazio, Aviso, cx } from '@/ui/base'
-import { Tira, Secao } from '@/ui/painel'
+import { Secao } from '@/ui/painel'
 import { Tabela, type Coluna } from '@/ui/Tabela'
 import { Trancado } from '@/ui/Cadeado'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { SeletorPeriodo } from '@/ui/Periodo'
 import { Busca, Fichas, enderecoCom } from '@/ui/Busca'
+import { BotaoDaLinha, CartaoFiltro } from '@/ui/premium'
 import { Paginas } from '@/ui/Paginas'
 import { codigoBate } from '@/servidor/etiqueta'
 import { fatiar, lerPagina } from '@/ui/paginacao'
@@ -474,9 +475,12 @@ export default async function TelaEstoque({
           {
             chave: 'acao',
             titulo: '',
-            largura: '17rem',
+            largura: '19rem',
             celula: (i: (typeof itens)[number]) => (
-              <div className="flex flex-col gap-1">
+              // As pílulas lado a lado; a que abre o formulário ganha a linha
+              // inteira embaixo (`w-full` dentro de cada uma). Sem a cápsula
+              // do AcoesDaLinha: o formulário aberto não cabe nela.
+              <div className="flex flex-wrap items-center justify-end gap-1">
                 {podeMexer && <Corrigir slug={slug} variacaoId={i.id} unidadeId={onde.unidadeId!} saldo={i.saldo} />}
                 {podeAvariar && <Avaria slug={slug} variacaoId={i.id} unidadeId={onde.unidadeId!} saldo={i.saldo} />}
                 {podeMexer && destinos.length > 0 && (
@@ -546,15 +550,26 @@ export default async function TelaEstoque({
       {/* As contagens e o "Dar entrada" na mesma linha: o botão sozinho numa
           linha, entre a tira e a primeira seção, era um bloco azul solto. A
           entrada aberta (um formulário) ocupa a linha inteira. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 [&>section]:basis-full">
-      <Tira
-        itens={[
-          { rotulo: 'acabaram', um: 'acabou', quantos: acabaram.length, nivel: 'critico' },
-          { rotulo: 'no mínimo', quantos: noMinimo.length, nivel: 'atencao' },
-          { rotulo: 'com estoque', quantos: itens.length - acabaram.length - noMinimo.length - semLancamento.length, nivel: 'bom' },
-          { rotulo: 'sem estoque lançado', quantos: semLancamento.length, nivel: 'neutro' },
-        ]}
-      />
+      {/* As contagens viraram os cartões do filtro de "Tudo que tem": tocar em
+          "Acabaram" desce para a lista já filtrada. */}
+      <div className="flex flex-wrap items-start justify-between gap-3 [&>section]:basis-full">
+      {itens.length > 0 && (
+        <div className="grid min-w-[min(100%,36rem)] flex-1 grid-cols-2 gap-2.5 lg:grid-cols-4">
+          <CartaoFiltro href={`${link({ situacao: null })}#tudo`} ativo={situacao === null} cor="ardosia" icone="sacola" numero={itens.length} rotulo="Tudo" detalhe={`${itens.length === 1 ? 'item' : 'itens'} no estoque`} />
+          <CartaoFiltro href={`${link({ situacao: 'acabaram' })}#tudo`} ativo={situacao === 'acabaram'} cor="vermelho" icone="sono" numero={acabaram.length} rotulo={acabaram.length === 1 ? 'Acabou' : 'Acabaram'} detalhe="saldo zerado" de={itens.length} />
+          <CartaoFiltro href={`${link({ situacao: 'minimo' })}#tudo`} ativo={situacao === 'minimo'} cor="ambar" icone="relogio" numero={noMinimo.length} rotulo="No mínimo" detalhe="hora de repor" de={itens.length} />
+          <CartaoFiltro
+            href={`${link({ situacao: 'ok' })}#tudo`}
+            ativo={situacao === 'ok'}
+            cor="verde"
+            icone="estrela"
+            numero={itens.length - acabaram.length - noMinimo.length}
+            rotulo="Com estoque"
+            detalhe={semLancamento.length > 0 ? `${semLancamento.length.toLocaleString('pt-BR')} sem estoque lançado` : 'tudo certo'}
+            de={itens.length}
+          />
+        </div>
+      )}
 
       {lojasDaEntrada.length > 0 && (
         <Entrada
@@ -651,7 +666,7 @@ export default async function TelaEstoque({
               { valor: 'ok', rotulo: 'com estoque', quantos: itens.length - acabaram.length - noMinimo.length },
             ]}
             atual={situacao}
-            linkDe={(v) => link({ situacao: v })}
+            linkDe={(v) => `${link({ situacao: v })}#tudo`}
           />
         }
       >
@@ -744,14 +759,6 @@ export default async function TelaEstoque({
                   <span className="text-xs text-tinta-3">
                     {m.codigo ? <span className="font-mono">{m.codigo} · </span> : null}
                     {m.motivo ?? ROTULO_MOVIMENTO[m.tipo]}
-                    {m.referencia && m.tipo === 'VENDA' ? (
-                      <>
-                        {' · '}
-                        <Link href={`/${slug}/vendas/${m.referencia}`} className="text-marca underline-offset-2 hover:underline">
-                          ver venda
-                        </Link>
-                      </>
-                    ) : null}
                   </span>
                 </span>
               ),
@@ -801,6 +808,19 @@ export default async function TelaEstoque({
               titulo: 'Quem',
               largura: '8rem',
               celula: (m: MovimentoNaLista) => <span className="truncate text-xs text-tinta-2">{m.quem}</span>,
+            },
+            {
+              // A venda que tirou do estoque, a um toque (era "ver venda" em
+              // texto, no meio da linha do motivo).
+              chave: 'acoes',
+              titulo: '',
+              largura: '3rem',
+              celula: (m: MovimentoNaLista) =>
+                m.referencia && m.tipo === 'VENDA' ? (
+                  <span className="flex justify-end">
+                    <BotaoDaLinha href={`/${slug}/vendas/${m.referencia}`} icone="ver" rotulo="Ver a venda" dica={`Ver a venda de ${m.descricao}`} />
+                  </span>
+                ) : null,
             },
           ]}
           linhas={fatiaMov.itens}

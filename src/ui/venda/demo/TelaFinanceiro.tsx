@@ -47,8 +47,8 @@ export function TelaFinanceiro({ estado, fazer }: { estado: Estado; fazer: (a: A
         ).map(([xs, t, cor]) => (
           <Cartao key={t} className="!p-2.5">
             <p key={xs.length} className={'pousa numero font-display text-xl font-bold ' + cor}>{xs.length}</p>
-            <p className="text-[11px] text-tinta-3">{t}</p>
-            <p className="numero text-[11px] font-semibold text-tinta-2">{reais(soma(xs))}</p>
+            <p className="text-[12.5px] text-tinta-3">{t}</p>
+            <p className="numero text-[12.5px] font-semibold text-tinta-2">{reais(soma(xs))}</p>
           </Cartao>
         ))}
       </div>
@@ -64,7 +64,7 @@ export function TelaFinanceiro({ estado, fazer }: { estado: Estado; fazer: (a: A
         <Cartao>
           <div className="flex items-baseline justify-between gap-2">
             <Rotulo>A vencer</Rotulo>
-            <span className="numero text-[11px] text-tinta-3">{reais(soma(quinze))} em 15 dias</span>
+            <span className="numero text-[12.5px] text-tinta-3">{reais(soma(quinze))} em 15 dias</span>
           </div>
           {quinze.length === 0 ? (
             <p className="pousa py-8 text-center text-[12.5px] text-tinta-2">Nada vencendo nos próximos 15 dias.</p>
@@ -76,7 +76,7 @@ export function TelaFinanceiro({ estado, fazer }: { estado: Estado; fazer: (a: A
                   <li key={c.id} className="pousa flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-borda-suave py-2 first:border-t-0">
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-[12.5px] font-semibold text-tinta">{c.descricao}</span>
-                      <span className="text-[10.5px] text-tinta-3">
+                      <span className="text-[12px] text-tinta-3">
                         vence {venceEm(c.vence)} · {c.categoria}
                       </span>
                     </span>
@@ -85,7 +85,7 @@ export function TelaFinanceiro({ estado, fazer }: { estado: Estado; fazer: (a: A
                     <button
                       type="button"
                       onClick={() => fazer({ tipo: 'pagar', id: c.id })}
-                      className="rounded-md bg-bom-vivo px-2.5 py-1 text-[11.5px] font-bold text-white transition-[filter] hover:brightness-110"
+                      className="rounded-md bg-bom-vivo px-2.5 py-1 text-[13px] font-bold text-white transition-[filter] hover:brightness-110"
                     >
                       Paguei<span className="sr-only"> {c.descricao}</span>
                     </button>
@@ -95,12 +95,12 @@ export function TelaFinanceiro({ estado, fazer }: { estado: Estado; fazer: (a: A
             </ul>
           )}
           {depois.length > 0 && (
-            <p className="mt-1 border-t border-borda-suave pt-2 text-[11px] text-tinta-3">
+            <p className="mt-1 border-t border-borda-suave pt-2 text-[12.5px] text-tinta-3">
               Depois de 15 dias: {depois.map((c) => `${c.descricao} (${venceEm(c.vence)})`).join(', ')}.
             </p>
           )}
           {pagas.length > 0 && (
-            <div className="mt-2 rounded-lg bg-bom-fundo px-3 py-2 text-[11.5px] text-bom">
+            <div className="mt-2 rounded-lg bg-bom-fundo px-3 py-2 text-[13px] text-bom">
               <b>Pagas agora:</b> {pagas.map((c) => c.descricao).join(', ')} · {reais(soma(pagas))}
             </div>
           )}
@@ -135,7 +135,7 @@ export function TelaFinanceiro({ estado, fazer }: { estado: Estado; fazer: (a: A
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-[11px] leading-snug text-tinta-3">
+            <p className="mt-2 text-[12.5px] leading-snug text-tinta-3">
               Sobrou 18,9% do que vendeu. A taxa da maquininha e o custo de cada peça saem venda a venda.
             </p>
           </Cartao>

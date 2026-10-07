@@ -35,6 +35,7 @@ import { Fichas, enderecoCom } from '@/ui/Busca'
 import { SeletorUnidade } from '@/ui/SeletorUnidade'
 import { Tira } from '@/ui/painel'
 import { Aviso, FAIXA, Situacao, Vazio, cx } from '@/ui/base'
+import { BotaoDaLinha } from '@/ui/premium'
 import type { Tema } from '@/ui/TrocaTema'
 import { Formulario } from './Formulario'
 import { AcoesHorario } from './Linha'
@@ -167,9 +168,9 @@ export default async function Agenda({
         {a.observacao && !compacto && <p className="text-xs whitespace-pre-line text-tinta-3">{a.observacao}</p>}
         {a.situacao === 'CANCELADO' && a.motivo && <p className="text-xs text-tinta-3">Desmarcado: {a.motivo}</p>}
         {a.vendaId && pode(sessao, 'venda.ver', unidadeId) && (
-          <Link href={`/${slug}/vendas/${a.vendaId}`} className="text-xs font-medium text-bom underline-offset-2 hover:underline">
-            Cobrado · ver a venda
-          </Link>
+          <span className="self-start">
+            <BotaoDaLinha href={`/${slug}/vendas/${a.vendaId}`} icone="ver" rotulo="Cobrado · ver a venda" tom="bom" comRotulo dica={`Cobrado: ver a venda de ${a.clienteNome}`} />
+          </span>
         )}
         {a.lembrete && ROTULO_LEMBRETE[a.lembrete] && <span className="text-xs text-tinta-3">{ROTULO_LEMBRETE[a.lembrete]}</span>}
         <AcoesHorario
@@ -181,7 +182,6 @@ export default async function Agenda({
           podeMexer={podeMarcar}
           cobrarEm={podeVender ? `/${slug}/balcao?unidade=${unidadeId}&agendamento=${a.id}` : null}
           remarcarEm={link({ editar: a.id, dia: diaEmSP(a.inicio) === hoje ? null : diaEmSP(a.inicio), ver: null })}
-          compacto={compacto}
         />
       </li>
     )
@@ -397,7 +397,7 @@ export default async function Agenda({
                     )}
                     {livres.length > 0 && (
                       <div className="flex flex-col gap-1.5">
-                        <span className="text-[11px] font-bold tracking-[0.06em] text-tinta-3 uppercase">Livre</span>
+                        <span className="text-[12.5px] font-bold tracking-[0.06em] text-tinta-3 uppercase">Livre</span>
                         <div className="flex flex-wrap gap-1">
                           {livres.map((h) =>
                             podeMarcar ? (

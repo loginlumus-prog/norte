@@ -376,7 +376,7 @@ export function Produtos({
               </svg>
             </button>
           ) : (
-            <kbd className="pointer-events-none absolute top-1/2 right-4 hidden -translate-y-1/2 rounded border border-borda bg-superficie-2 px-1.5 py-px font-mono text-[11px] font-semibold text-tinta-3 sm:block">
+            <kbd className="pointer-events-none absolute top-1/2 right-4 hidden -translate-y-1/2 rounded border border-borda bg-superficie-2 px-1.5 py-px font-mono text-[12.5px] font-semibold text-tinta-3 sm:block">
               Ctrl P
             </kbd>
           )}
@@ -500,7 +500,7 @@ export function Produtos({
                     {saldo <= 0 && !semLanc ? 'acabou' : `+${brl(preco)}`}
                   </span>
                   {qtd > 0 && (
-                    <span className="numero flex h-5 min-w-5 items-center justify-center rounded-full bg-marca px-1.5 text-[11px] font-bold text-marca-tinta">
+                    <span className="numero flex h-5 min-w-5 items-center justify-center rounded-full bg-marca px-1.5 text-[12.5px] font-bold text-marca-tinta">
                       {Number.isInteger(qtd) ? qtd : qtd.toLocaleString('pt-BR')}
                     </span>
                   )}
@@ -847,7 +847,7 @@ function Cartao({
           )}
         </span>
         {enter && noPedido === 0 && (
-          <kbd className="rounded border border-current/20 bg-superficie/70 px-1.5 py-px font-mono text-[10px] font-semibold">
+          <kbd className="rounded border border-current/20 bg-superficie/70 px-1.5 py-px font-mono text-[11.5px] font-semibold">
             Enter
           </kbd>
         )}
@@ -857,7 +857,7 @@ function Cartao({
         <span className="line-clamp-2 text-[15px] leading-snug font-semibold text-tinta">{nome}</span>
         <span className="mt-auto flex flex-wrap items-end justify-between gap-x-2 gap-y-1 pt-1">
           <span className="flex min-w-0 flex-col">
-            {aPartirDe && <span className="text-[11px] leading-none text-tinta-3">a partir de</span>}
+            {aPartirDe && <span className="text-[12.5px] leading-none text-tinta-3">a partir de</span>}
             <span className="numero text-lg leading-tight font-bold text-tinta">
               {brl(preco)}
               {un && <span className="text-sm font-semibold text-tinta-3">{un}</span>}
@@ -1129,7 +1129,7 @@ function EscolhaFolha({
                             {jaTem > 0 && (
                               <span
                                 aria-hidden
-                                className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-marca px-1 text-[11px] font-bold text-marca-tinta"
+                                className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-marca px-1 text-[12.5px] font-bold text-marca-tinta"
                               >
                                 {qtdNaTela(jaTem)}
                               </span>

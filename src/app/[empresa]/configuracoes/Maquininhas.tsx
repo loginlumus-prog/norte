@@ -11,6 +11,7 @@
 import { useState, useTransition } from 'react'
 import type { FormaPagamento } from '@prisma/client'
 import { Aviso, Botao, cx } from '@/ui/base'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { salvarMaquininhasAcao } from './acoesBalcao'
 import type { Maquininha } from '@/servidor/maquininhas'
 
@@ -109,9 +110,10 @@ function DaLoja({
                 setLista((x) => x.filter((_, j) => j !== i))
               }}
               aria-label={`Tirar ${m.nome || 'esta maquininha'}`}
-              className="rounded px-2 py-1 text-sm text-tinta-3 hover:bg-critico-fundo hover:text-critico"
+              className={classeDaAcao({ tom: 'perigo' })}
             >
-              ✕
+              <IconeDaAcao icone="excluir" />
+              <DicaDaAcao>Tirar</DicaDaAcao>
             </button>
           </li>
         ))}
@@ -121,9 +123,10 @@ function DaLoja({
           type="button"
           onClick={() => setLista((x) => [...x, { nome: '', formas: ['PIX', 'DEBITO', 'CREDITO'] }])}
           disabled={lista.length >= 8}
-          className="text-sm font-semibold text-marca underline-offset-2 hover:underline disabled:opacity-50"
+          className={classeDaAcao({ jeito: 'pilula' })}
         >
-          + maquininha
+          <IconeDaAcao icone="mais" tamanho={15} />
+          Maquininha
         </button>
         <Botao onClick={salvar} carregando={indo}>
           {indo ? 'Salvando...' : sozinha ? 'Salvar' : `Salvar ${loja.nome}`}

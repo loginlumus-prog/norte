@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { fecharSessao } from '@/servidor/sessao'
 import { conferirSessao, cortarSessoes, destrancar, exigirSessao } from '@/servidor/pagina'
 import { liberarVaga } from '@/servidor/presenca'
-import { acharOrgPorSlug } from '@/servidor/banco'
+import { acharOrgPorSlug, comoOrg } from '@/servidor/banco'
 import { deOndeVeio } from '@/servidor/requisicao'
 import { pode, CAPACIDADES } from '@/servidor/permissao'
 import { nomesNoGuia, vocabularioDaEmpresa } from '@/servidor/vocabulario'
@@ -18,6 +18,10 @@ import {
   type ResultadoBusca,
 } from '@/servidor/guia'
 import { perguntar, temChaveIA } from '@/servidor/ia'
+import { unidadesVisiveis } from '@/servidor/unidade'
+import { moduloLigado } from '@/servidor/modulos'
+import { resumoVendas } from '@/servidor/venda'
+import { janela } from '@/servidor/periodo'
 
 /** Destrancar a tela: a senha de quem já está dentro, de novo (ver `destrancar`). */
 export async function destrancarAcao(
@@ -147,4 +151,54 @@ export async function perguntarAoGuiaAcao(
     console.error('[guia] a IA não respondeu:', e instanceof Error ? e.message : e)
     return { modo: 'erro', texto: 'O guia não conseguiu responder agora. Use a busca ao lado — ela funciona sempre.' }
   }
+}
+
+export type PulsoDaLoja = {
+  vendas: number
+  /** Só para quem vê relatório daquela loja; os outros recebem nulo. */
+  total: number | null
+  /** Caixa aberto agora; nulo quando a pessoa não vê o caixa da loja. */
+  caixa: boolean | null
+}
+
+/**
+ * O "agora" de cada loja, para os cartões da troca de loja (TrocaDeLoja):
+ * quantas vendas hoje, quanto (para quem vê o faturamento) e se o caixa está
+ * aberto. Uma loja por vez, em sequência — são poucas, e consulta paralela
+ * dentro do banco é o que o pg não aceita (ver comoOrg).
+ */
+export async function pulsoDasLojasAcao(slug: string): Promise<{
+  lojas: Record<string, PulsoDaLoja>
+  /**
+   * A fábrica está contratada? Sem ela, o cartão da fábrica na troca de loja
+   * aparece com o cadeado e leva a quem pode ligá-la (`liberarEm`; nulo para
+   * quem não configura a empresa).
+   */
+  fabrica: { liberada: boolean; liberarEm: string | null }
+}> {
+  const sessao = await exigirSessao(String(slug ?? ''))
+  const empresa = await acharOrgPorSlug(String(slug ?? ''))
+  const fabrica = {
+    liberada: !!empresa && moduloLigado(empresa, 'fabrica'),
+    liberarEm: pode(sessao, 'empresa.configurar') ? `/${slug}/configuracoes` : null,
+  }
+  const lojas = await unidadesVisiveis(sessao, 'venda.ver')
+  if (lojas.length === 0) return { lojas: {}, fabrica }
+  const j = janela('hoje')
+  const veCaixa = lojas.filter((l) => pode(sessao, 'caixa.ver', l.id)).map((l) => l.id)
+  const abertos = veCaixa.length
+    ? await comoOrg(sessao.orgId, (db) =>
+        db.caixa.findMany({ where: { aberto: true, unidadeId: { in: veCaixa } }, select: { unidadeId: true } }),
+      )
+    : []
+  const pulso: Record<string, PulsoDaLoja> = {}
+  for (const l of lojas) {
+    const r = await resumoVendas(sessao, { unidadeIds: [l.id], de: j.de, ate: j.ate })
+    pulso[l.id] = {
+      vendas: r.concluidas,
+      total: pode(sessao, 'relatorio.ver', l.id) ? r.total : null,
+      caixa: veCaixa.includes(l.id) ? abertos.some((c) => c.unidadeId === l.id) : null,
+    }
+  }
+  return { lojas: pulso, fabrica }
 }

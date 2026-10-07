@@ -9,6 +9,7 @@
 
 import { useRef, useState, useTransition } from 'react'
 import { Aviso, Botao, Campo, cx } from '@/ui/base'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { corrigirLancamento, excluirLancamentoAcao } from './acoes'
 
 const valorNaTela = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -48,13 +49,9 @@ export function Corrigir({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={abrir}
-        title="Corrigir ou excluir este lançamento"
-        className="text-xs font-semibold text-tinta-2 underline-offset-2 hover:text-marca hover:underline"
-      >
-        corrigir
+      <button type="button" onClick={abrir} aria-label={`Corrigir ou excluir: ${l.descricao}`} className={classeDaAcao()}>
+        <IconeDaAcao icone="editar" />
+        <DicaDaAcao>Corrigir</DicaDaAcao>
       </button>
 
       <dialog

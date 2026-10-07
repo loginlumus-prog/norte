@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { vocabularioDaEmpresa, vocabularioDoEndereco } from '@/servidor/vocabulario'
 import { mostrarDiaDaColuna } from '@/servidor/dia'
-import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { exigirEntrada } from '@/servidor/pagina'
@@ -20,6 +19,7 @@ import { MENU } from '@/ui/menu'
 import { Aviso, Cartao, Situacao, Vazio, cx } from '@/ui/base'
 import { Numero, Secao, brl } from '@/ui/painel'
 import { BarrasMeses, BarrasH } from '@/ui/Graficos'
+import { BotaoDaLinha } from '@/ui/premium'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ClienteNaTela } from '../Editor'
 import { ofertasNaTela } from '../ofertasNaTela'
@@ -272,7 +272,7 @@ export default async function FichaCliente({
                         <span className="flex flex-col items-end">
                           <span className={cx('numero font-semibold', p.situacao === 'vencida' ? 'text-critico' : 'text-tinta')}>{brl(p.resta)}</span>
                           {p.multaHoje + p.jurosHoje > 0 && (
-                            <span className="numero text-[11px] text-critico">+ {brl(p.multaHoje + p.jurosHoje)} atraso</span>
+                            <span className="numero text-[12.5px] text-critico">+ {brl(p.multaHoje + p.jurosHoje)} atraso</span>
                           )}
                         </span>
                       </span>
@@ -288,9 +288,13 @@ export default async function FichaCliente({
                         {todas.length > 1 ? `Receber em ${nome}` : 'Receber parcelas'}
                       </BotaoReceber>
                     ))}
-                  <Link href={`/${slug}/crediario?cliente=${cliente.id}&situacao=todas`} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
-                    todas as parcelas, pagas também
-                  </Link>
+                  <BotaoDaLinha
+                    comRotulo
+                    href={`/${slug}/crediario?cliente=${cliente.id}&situacao=todas`}
+                    icone="ver"
+                    rotulo="Todas as parcelas"
+                    dica="Ver todas as parcelas, pagas também"
+                  />
                 </div>
               </Cartao>
             )}

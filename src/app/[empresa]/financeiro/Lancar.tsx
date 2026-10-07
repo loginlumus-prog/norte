@@ -12,6 +12,7 @@ import { Botao, Campo, Selecao, Marcar, Aviso, Cartao } from '@/ui/base'
 import { desfazerPagamento, novoLancamento, pagar, type EstadoLanc } from './acoes'
 import { semApagar } from '@/ui/formulario'
 import { Confirmar } from '@/ui/Confirmar'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 
 export function Lancar({
   slug,
@@ -67,12 +68,9 @@ export function Lancar({
     <Cartao
       titulo="Lançar"
       acao={
-        <button
-          type="button"
-          onClick={() => setAberto(false)}
-          className="text-xs text-tinta-3 hover:text-tinta"
-        >
-          fechar
+        <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >

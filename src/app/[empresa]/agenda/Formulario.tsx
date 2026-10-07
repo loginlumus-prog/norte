@@ -18,7 +18,7 @@
 // só o do catálogo vai pronto para o balcão no "Atender e cobrar".
 
 import { startTransition, useActionState, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
+import { BotaoDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { Aviso, Botao, Campo, Cartao, Marcar, Selecao } from '@/ui/base'
 import { brl } from '@/ui/painel'
 import { buscarClientesAgendaAcao, salvarHorarioAcao, type EstadoHorario } from './acoes'
@@ -131,12 +131,11 @@ export function Formulario({
       titulo={editando ? `Remarcar ${inicial!.clienteNome}` : 'Novo horário'}
       acao={
         editando ? (
-          <Link href={voltarPara} className="text-xs text-tinta-3 hover:text-tinta">
-            cancelar
-          </Link>
+          <BotaoDaLinha href={voltarPara} icone="fechar" rotulo="Cancelar" dica="Desistir de remarcar" />
         ) : (
-          <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-            fechar
+          <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar">
+            <IconeDaAcao icone="fechar" />
+            <DicaDaAcao>Fechar</DicaDaAcao>
           </button>
         )
       }

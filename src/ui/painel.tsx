@@ -19,6 +19,7 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { GraficoDias } from './Grafico'
+import { BarrasH } from './Graficos'
 import { cx } from './base'
 import type { Pendencia } from '@/servidor/pendencias'
 
@@ -88,38 +89,35 @@ export function Numero({
     // uma ilustração. No painel simples ainda disputava com o botão azul de
     // Vender — dois blocos fortes são dois "principais".
     //
-    // Agora o destaque vem do que é do NÚMERO: o tamanho, o azul-marinho do
-    // título e uma régua da marca no topo, sobre o mesmo papel das outras
-    // fichas, só que tingido de marca bem de leve. Tudo ficha — a mesma
-    // conta vale no escuro, onde o tingido vira um azul fundo e o número, o
-    // azul-claro do título.
+    // Depois veio o papel tingido com uma régua azul no topo e contorno azul
+    // — e o contorno parecia campo de formulário selecionado. Agora o
+    // principal é a peça CHEIA da tela: a cor da área (o verde de Vender, o
+    // índigo do Painel) em degradê, com o número em branco. Um por faixa,
+    // então é a única mancha de cor forte — e é nela que o olho pousa.
     return (
       // O número encolhe com a FICHA, não com a janela: "R$ 2.190,00" não
       // quebra linha, e na ficha estreita (as mensalidades com o menu aberto)
       // os 32px passavam da borda e o ",00" sumia. Até 32px; menos, só quando
       // não cabe.
-      <div className="realce @container relative flex min-w-0 flex-col justify-center gap-1 overflow-hidden rounded-norte border border-marca/30 bg-superficie bg-linear-to-b from-marca/8 to-transparent px-4 pt-4 pb-3.5">
-        <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-marca" />
-        <span className="text-xs font-semibold text-marca">{rotulo}</span>
+      <div className="numero-principal realce @container relative isolate flex min-w-0 flex-col justify-center gap-1 overflow-hidden rounded-2xl px-4 pt-4 pb-3.5 text-white">
+        {/* As luzes do fundo: dois círculos da própria cor, mais claros. */}
+        <span aria-hidden className="numero-principal-luz pointer-events-none absolute -top-12 -right-10 -z-10 size-36 rounded-full" />
+        <span aria-hidden className="numero-principal-luz pointer-events-none absolute -bottom-16 left-1/3 -z-10 size-28 rounded-full opacity-60" />
+        <span className="text-xs font-semibold text-white/85">{rotulo}</span>
         <span
           className={cx(
-            'font-bold tracking-[-0.03em] text-titulo',
-            ehTexto ? 'text-[min(26px,14cqi)] leading-tight text-balance' : 'numero text-[min(32px,19cqi)] leading-none',
+            'font-extrabold tracking-[-0.03em] text-white drop-shadow-[0_2px_8px_rgb(0_0_0/0.12)]',
+            ehTexto ? 'text-[min(26px,14cqi)] leading-tight text-balance' : 'numero text-[min(34px,19cqi)] leading-none',
           )}
         >
           {valor}
         </span>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-          {detalhe && <span className="text-tinta-2">{detalhe}</span>}
+          {detalhe && <span className="text-white/80">{detalhe}</span>}
           {c && Number.isFinite(c.pct) && (
-            // Etiqueta com fundo, e não só texto colorido: é a única cor
-            // forte do bloco, e tem de se ver de longe. Seta E sinal junto.
-            <span
-              className={cx(
-                'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-semibold',
-                subiu ? 'bg-bom-fundo text-bom' : 'bg-critico-fundo text-critico',
-              )}
-            >
+            // Etiqueta clara sobre a cor: seta E sinal, para quem não
+            // distingue o verde do vermelho ler a mesma coisa.
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 font-bold text-white ring-1 ring-white/25 backdrop-blur-sm">
               {subiu ? '▲' : '▼'} {Math.abs(c.pct).toFixed(0)}% {c.contra}
             </span>
           )}
@@ -225,36 +223,9 @@ export function Ranque({
   itens: { rotulo: string; valor: number; detalhe?: string }[]
   vazio?: string
 }) {
-  if (itens.length === 0) {
-    return <p className="py-6 text-center text-sm text-tinta-3">{vazio}</p>
-  }
-  const maior = Math.max(...itens.map((i) => i.valor), 1)
-
-  return (
-    <ol className="flex flex-col gap-2">
-      {itens.map((i) => (
-        <li key={i.rotulo} className="flex flex-col gap-1">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="truncate text-sm text-tinta">{i.rotulo}</span>
-            <span className="numero shrink-0 text-sm font-semibold text-tinta">
-              {brl(i.valor)}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-superficie-2">
-              <div
-                className="h-full rounded-full bg-bom-vivo"
-                style={{ width: `${Math.max((i.valor / maior) * 100, 2)}%` }}
-              />
-            </div>
-            {i.detalhe && (
-              <span className="shrink-0 text-xs text-tinta-3">{i.detalhe}</span>
-            )}
-          </div>
-        </li>
-      ))}
-    </ol>
-  )
+  // O mesmo desenho das barras deitadas da Análise (Graficos.tsx): o
+  // ranque com a posição, a barra cheia em degradê e chegando esticada.
+  return <BarrasH itens={itens} cor="var(--bom-vivo)" vazio={vazio} />
 }
 
 /* ── Seção ────────────────────────────────────────────────── */
@@ -336,7 +307,7 @@ export function Faixa({
   const regua = (
     <div
       className={cx(
-        'realce grid min-w-0 gap-px overflow-hidden rounded-norte border border-borda bg-borda',
+        'realce caixa-viva grid min-w-0 gap-px overflow-hidden rounded-2xl border border-borda bg-borda',
         'grid-cols-1 sm:grid-cols-2',
         // Número ímpar de células em duas colunas deixaria um buraco cinza
         // no fim: a última se estica para fechar a linha.
@@ -442,7 +413,7 @@ export function Pendencias({ itens }: { itens: Pendencia[] }) {
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span
                 className={cx(
-                  'text-[10px] leading-none font-bold tracking-[0.06em] uppercase',
+                  'text-[11.5px] leading-none font-bold tracking-[0.06em] uppercase',
                   p.nivel === 'critico' ? 'text-critico' : 'text-atencao',
                 )}
               >

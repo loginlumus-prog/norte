@@ -22,7 +22,7 @@ import { Paginas } from '@/ui/Paginas'
 import { ondeOCodigo } from '@/servidor/etiqueta'
 import { fatiar, lerPagina } from '@/ui/paginacao'
 import type { Tema } from '@/ui/TrocaTema'
-import { CartaoFiltro } from '@/ui/premium'
+import { AcoesDaLinha, BotaoDaLinha, CartaoFiltro, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { fotoUrl } from '@/servidor/catalogo'
 
 // "Serviços e materiais" na clínica (vocabulario.ts).
@@ -370,9 +370,9 @@ export default async function Produtos({
         {!fora && (
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             <CartaoFiltro href={link({ situacao: null })} ativo={situacao === null} cor="indigo" icone="sacola" numero={conta.critico + conta.atencao + conta.bom + conta.semLancamento} rotulo="Tudo" detalhe="itens à venda" />
-            <CartaoFiltro href={link({ situacao: 'acabaram' })} ativo={situacao === 'acabaram'} cor="vermelho" icone="sono" numero={conta.critico} rotulo="Acabaram" detalhe="sem saldo" />
-            <CartaoFiltro href={link({ situacao: 'minimo' })} ativo={situacao === 'minimo'} cor="ambar" icone="relogio" numero={conta.atencao} rotulo="No mínimo" detalhe="hora de repor" />
-            <CartaoFiltro href={link({ situacao: 'ok' })} ativo={situacao === 'ok'} cor="verde" icone="estrela" numero={conta.bom} rotulo="Com estoque" detalhe="tudo certo" />
+            <CartaoFiltro href={link({ situacao: 'acabaram' })} ativo={situacao === 'acabaram'} cor="vermelho" icone="sono" numero={conta.critico} rotulo="Acabaram" detalhe="sem saldo" de={conta.critico + conta.atencao + conta.bom + conta.semLancamento} />
+            <CartaoFiltro href={link({ situacao: 'minimo' })} ativo={situacao === 'minimo'} cor="ambar" icone="relogio" numero={conta.atencao} rotulo="No mínimo" detalhe="hora de repor" de={conta.critico + conta.atencao + conta.bom + conta.semLancamento} />
+            <CartaoFiltro href={link({ situacao: 'ok' })} ativo={situacao === 'ok'} cor="verde" icone="estrela" numero={conta.bom} rotulo="Com estoque" detalhe="tudo certo" de={conta.critico + conta.atencao + conta.bom + conta.semLancamento} />
           </div>
         )}
         <Fichas
@@ -541,7 +541,7 @@ export default async function Produtos({
                     <span className="truncate text-[15px] font-bold text-tinta">{p.nome}</span>
                   )}
                   {!simples && p.categoria && (
-                    <Link href={link({ categoria: p.categoria.id })} className="etiqueta-cor rounded-full px-2 py-0.5 text-[11px] font-semibold">
+                    <Link href={link({ categoria: p.categoria.id })} className="etiqueta-cor rounded-full px-2 py-0.5 text-[12.5px] font-semibold">
                       {p.categoria.nome}
                     </Link>
                   )}
@@ -591,41 +591,44 @@ export default async function Produtos({
                 ) : (
                   <span className={cx('numero text-xl leading-none font-extrabold', total > 0 ? 'text-tinta' : p.feitoNoDia ? 'text-tinta-3' : 'text-critico')}>
                     {quantidade(total, p.medida)}
-                    <span className="ml-1 text-[11px] font-semibold text-tinta-3">{onde.unidadeId ? 'aqui' : 'no total'}</span>
+                    <span className="ml-1 text-[12.5px] font-semibold text-tinta-3">{onde.unidadeId ? 'aqui' : 'no total'}</span>
                   </span>
                 )}
-                <span className="flex items-center gap-1.5 text-xs">
-                  {podeEditar && (
-                    <Link href={`/${slug}/produtos/${p.id}`} className="botao-vivo rounded-lg border border-borda bg-superficie px-2.5 py-1 font-semibold text-tinta hover:border-marca hover:text-marca">
-                      Editar
-                    </Link>
-                  )}
+                {/* Os de apoio em ícone (etiqueta, marcar para o lote, excluir) e o
+                    Editar em pílula no fim — o mesmo desenho das outras listas. */}
+                <span className="flex items-center gap-1.5">
                   {fora && podeEditar && <VoltarAVenda slug={slug} produtoId={p.id} />}
-                  {!fora && (
-                    <>
-                      {/* <a>: página de impressão abre inteira — ver etiquetas/page.tsx. */}
-                      <a
-                        href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
-                        className="botao-vivo rounded-lg border border-borda bg-superficie px-2 py-1 font-semibold text-tinta-2 hover:text-tinta"
-                        title="Imprimir a etiqueta deste produto"
-                      >
-                        Etiqueta
-                      </a>
-                      {/* Marca para o lote: o formulário é o "Imprimir etiquetas" lá em cima (etiquetas/EmLote.tsx). */}
-                      <input
-                        type="checkbox"
-                        form="etiquetas-lote"
-                        name="produto"
-                        value={p.id}
-                        aria-label={`Marcar ${p.nome} para imprimir etiquetas`}
-                        title="Marcar para imprimir as etiquetas junto"
-                        className="size-4 accent-marca"
-                      />
-                    </>
-                  )}
-                  {!fora && podeEditar && (
-                    <Excluir slug={slug} produtoId={p.id} nome={p.nome} medida={MEDIDA[p.medida] ?? ''} estoque={p.servico ? 0 : total} compacto />
-                  )}
+                  <AcoesDaLinha>
+                    {!fora && (
+                      <>
+                        {/* <a>: página de impressão abre inteira — ver etiquetas/page.tsx. */}
+                        <a
+                          href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
+                          className={classeDaAcao()}
+                          aria-label={`Imprimir a etiqueta de ${p.nome}`}
+                        >
+                          <IconeDaAcao icone="etiqueta" />
+                          <DicaDaAcao>Etiqueta</DicaDaAcao>
+                        </a>
+                        {/* Marca para o lote: o formulário é o "Imprimir etiquetas" lá em cima (etiquetas/EmLote.tsx). */}
+                        <label className={`${classeDaAcao()} cursor-pointer`}>
+                          <input
+                            type="checkbox"
+                            form="etiquetas-lote"
+                            name="produto"
+                            value={p.id}
+                            aria-label={`Marcar ${p.nome} para imprimir etiquetas`}
+                            className="size-4 cursor-pointer accent-marca"
+                          />
+                          <DicaDaAcao>Imprimir junto</DicaDaAcao>
+                        </label>
+                      </>
+                    )}
+                    {!fora && podeEditar && (
+                      <Excluir slug={slug} produtoId={p.id} nome={p.nome} medida={MEDIDA[p.medida] ?? ''} estoque={p.servico ? 0 : total} compacto />
+                    )}
+                    {podeEditar && <BotaoDaLinha principal href={`/${slug}/produtos/${p.id}`} icone="abrir" rotulo="Editar" dica={`Editar ${p.nome}`} />}
+                  </AcoesDaLinha>
                 </span>
               </div>
             </div>

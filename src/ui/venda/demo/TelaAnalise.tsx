@@ -49,7 +49,7 @@ export function TelaAnalise({ estado }: { estado: Estado }) {
           <div className="relative mt-2 overflow-x-auto">
             <table className="w-full text-[12px]">
               <thead>
-                <tr className="text-left text-[9.5px] tracking-[0.08em] text-tinta-3 uppercase">
+                <tr className="text-left text-[11px] tracking-[0.08em] text-tinta-3 uppercase">
                   <th className="pb-1.5 font-bold">Loja</th>
                   <th className="pb-1.5 text-right font-bold">Vendas</th>
                   <th className="pb-1.5 text-right font-bold">Margem</th>
@@ -78,7 +78,7 @@ export function TelaAnalise({ estado }: { estado: Estado }) {
           <div className="mt-3 rounded-lg bg-superficie-2 p-3">
             <Rotulo>Dinheiro parado na Loja Centro</Rotulo>
             <p className="numero mt-1 font-display text-xl font-bold text-atencao">{reais(valorParado, 0)}</p>
-            <p className="text-[11px] text-tinta-3">
+            <p className="text-[12.5px] text-tinta-3">
               a preço de custo · {parado.map((p) => p.nome).join(', ')}
             </p>
           </div>
@@ -104,13 +104,13 @@ export function TelaAnalise({ estado }: { estado: Estado }) {
             <span className="bg-atencao-vivo" style={{ width: '15%' }} />
             <span className="bg-superficie-3" style={{ width: '5%' }} />
           </div>
-          <p className="mt-1.5 text-[11px] text-tinta-3">
+          <p className="mt-1.5 text-[12.5px] text-tinta-3">
             <b className="text-tinta-2">{conta('A')} produtos</b> fazem 80% do que entra.
           </p>
           <div className="relative mt-2 max-h-60 overflow-y-auto">
             <table className="w-full text-[12px]">
               <thead className="sticky top-0 bg-superficie">
-                <tr className="text-left text-[9.5px] tracking-[0.08em] text-tinta-3 uppercase">
+                <tr className="text-left text-[11px] tracking-[0.08em] text-tinta-3 uppercase">
                   <th className="py-1.5 font-bold">Produto</th>
                   <th className="py-1.5 text-right font-bold">Vendeu</th>
                   <th className="hidden py-1.5 text-right font-bold sm:table-cell">Acum.</th>
@@ -122,7 +122,7 @@ export function TelaAnalise({ estado }: { estado: Estado }) {
                   <tr key={l.p.id} className="border-t border-borda-suave">
                     <td className="py-1.5 pr-2">
                       <span className="font-semibold text-tinta">{l.p.nome}</span>{' '}
-                      <span className="text-[10.5px] text-tinta-3">{l.p.grade.split(' · ')[1]}</span>
+                      <span className="text-[12px] text-tinta-3">{l.p.grade.split(' · ')[1]}</span>
                     </td>
                     <td className="numero py-1.5 text-right text-tinta">{reais(l.vendido, 0)}</td>
                     <td className="numero hidden py-1.5 text-right text-tinta-3 sm:table-cell">{l.acumulado}%</td>

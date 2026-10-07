@@ -176,7 +176,7 @@ export function SistemaPorDentro({
       {/* A faixa de cima: é exemplo, e é para clicar. */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
         <span className="flex items-center gap-2 text-[13px] font-semibold text-tinta-2">
-          <span className="rounded-full bg-marca-suave px-2 py-0.5 text-[11px] font-bold tracking-wide text-marca uppercase">
+          <span className="rounded-full bg-marca-suave px-2 py-0.5 text-[12.5px] font-bold tracking-wide text-marca uppercase">
             Exemplo
           </span>
           Clique para explorar — os dados são de uma loja que não existe
@@ -194,7 +194,7 @@ export function SistemaPorDentro({
         {/* O cabeçalho, como no sistema: a loja, onde se está, e a chave. */}
         <div className="flex items-center gap-2.5 border-b border-borda-suave px-3 py-2.5 sm:px-4">
           <Simbolo tamanho={20} id="por-dentro-sol" />
-          <span className="hidden h-7 items-center gap-1.5 rounded-md border border-borda px-2 text-[11.5px] font-semibold text-tinta sm:flex">
+          <span className="hidden h-7 items-center gap-1.5 rounded-md border border-borda px-2 text-[13px] font-semibold text-tinta sm:flex">
             Loja Centro <span className="text-tinta-3">▾</span>
           </span>
           <span className="min-w-0 truncate text-[12px] text-tinta-3">
@@ -214,7 +214,7 @@ export function SistemaPorDentro({
                   setMexeu(true)
                 }}
                 className={
-                  'rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition-colors ' +
+                  'rounded-md px-2.5 py-1 text-[13px] font-semibold transition-colors ' +
                   (estado.modo === m.valor ? 'bg-superficie text-tinta shadow-norte' : 'text-tinta-3 hover:text-tinta')
                 }
               >
@@ -242,7 +242,7 @@ export function SistemaPorDentro({
                     {m.grupo && (
                       <span
                         aria-hidden
-                        className="hidden px-2 pt-3 pb-1 text-[9.5px] font-bold tracking-[0.14em] text-tinta-3 uppercase md:block"
+                        className="hidden px-2 pt-3 pb-1 text-[11px] font-bold tracking-[0.14em] text-tinta-3 uppercase md:block"
                       >
                         {m.grupo}
                       </span>

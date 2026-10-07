@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import { Botao } from '@/ui/base'
 import { Confirmar } from '@/ui/Confirmar'
+import { IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import type { VendaNaFila } from './semInternet'
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -52,8 +53,9 @@ export function FilaSemInternet({
             >
               Tentar agora
             </Botao>
-            <button type="button" className="text-xs font-semibold text-marca hover:underline" onClick={() => setAberta(!aberta)}>
-              {aberta ? 'esconder' : 'ver'}
+            <button type="button" className={classeDaAcao({ jeito: 'pilula' })} aria-expanded={aberta} onClick={() => setAberta(!aberta)}>
+              <IconeDaAcao icone="ver" tamanho={15} />
+              {aberta ? 'Esconder' : 'Ver'}
             </button>
           </span>
         )}

@@ -630,7 +630,7 @@ export function Pagamento({
                         )}
                       >
                         {n}×
-                        <span className="numero text-[10px] font-medium text-tinta-3">{brl(Math.ceil((cent(p.valor) / n)) / 100)}</span>
+                        <span className="numero text-[11.5px] font-medium text-tinta-3">{brl(Math.ceil((cent(p.valor) / n)) / 100)}</span>
                       </button>
                     ))}
                   </div>
@@ -752,7 +752,7 @@ export function Concluir({ v, caixaId }: { v: Venda; caixaId: string | null }) {
       >
         {v.indo ? 'Concluindo…' : `Concluir ${p.venda}`}
         {!v.indo && (
-          <kbd className="hidden rounded bg-white/20 px-1.5 py-px font-mono text-[11px] font-semibold sm:inline">F10</kbd>
+          <kbd className="hidden rounded bg-white/20 px-1.5 py-px font-mono text-[12.5px] font-semibold sm:inline">F10</kbd>
         )}
       </Botao>
       {motivo && !v.indo && (
@@ -854,7 +854,7 @@ function Tecla({ children, canto = false }: { children: string; canto?: boolean 
   return (
     <kbd
       className={cx(
-        'hidden rounded border border-borda bg-superficie-2 px-1 font-mono text-[10px] font-semibold text-tinta-3 [@media(pointer:fine)]:inline',
+        'hidden rounded border border-borda bg-superficie-2 px-1 font-mono text-[11.5px] font-semibold text-tinta-3 [@media(pointer:fine)]:inline',
         canto && 'absolute top-1 right-1.5',
       )}
     >

@@ -36,7 +36,7 @@ const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : 0)
 function Variacao({ agora, antes, contra }: { agora: number; antes: number; contra: string }) {
   const v = pct(agora, antes)
   return (
-    <span className={'mt-1 block text-[10.5px] font-semibold ' + (v >= 0 ? 'text-bom' : 'text-critico')}>
+    <span className={'mt-1 block text-[12px] font-semibold ' + (v >= 0 ? 'text-bom' : 'text-critico')}>
       {v >= 0 ? '▲' : '▼'} {Math.abs(v)}% <span className="font-normal text-tinta-3">{contra}</span>
     </span>
   )
@@ -147,7 +147,7 @@ function PainelSimples({ estado, fazer }: { estado: Estado; fazer: (a: Acao) => 
               <p className="numero mt-1 font-display text-[1.75rem] leading-none font-bold tracking-tight text-titulo">
                 {reais(h.total)}
               </p>
-              <p className="mt-1 text-[11px] text-tinta-3">{h.vendas} vendas</p>
+              <p className="mt-1 text-[12.5px] text-tinta-3">{h.vendas} vendas</p>
               <Variacao agora={h.total} antes={h.anterior} contra="vs quinta passada, até esta hora" />
             </div>
             <button
@@ -182,7 +182,7 @@ function PainelSimples({ estado, fazer }: { estado: Estado; fazer: (a: Acao) => 
           <div className="flex items-center gap-2">
             <Rotulo>Precisa de você</Rotulo>
             {lista.length > 0 && (
-              <span key={lista.length} className="pousa numero grid h-4 min-w-4 place-items-center rounded-full bg-critico-fundo px-1 text-[9.5px] font-bold text-critico">
+              <span key={lista.length} className="pousa numero grid h-4 min-w-4 place-items-center rounded-full bg-critico-fundo px-1 text-[11px] font-bold text-critico">
                 {lista.length}
               </span>
             )}
@@ -203,7 +203,7 @@ function PainelSimples({ estado, fazer }: { estado: Estado; fazer: (a: Acao) => 
                     <span className="flex items-center gap-1.5">
                       <span
                         className={
-                          'shrink-0 text-[9px] font-bold tracking-[0.1em] ' +
+                          'shrink-0 text-[10.5px] font-bold tracking-[0.1em] ' +
                           (l.nivel === 'URGENTE' ? 'text-critico' : 'text-atencao')
                         }
                       >
@@ -211,12 +211,12 @@ function PainelSimples({ estado, fazer }: { estado: Estado; fazer: (a: Acao) => 
                       </span>
                       <span className="truncate text-[12.5px] font-semibold text-tinta">{l.frase}</span>
                     </span>
-                    <span className="truncate text-[11px] text-tinta-3">{l.detalhe}</span>
+                    <span className="truncate text-[12.5px] text-tinta-3">{l.detalhe}</span>
                   </span>
                   <button
                     type="button"
                     onClick={() => fazer({ tipo: 'tela', tela: l.vai })}
-                    className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-semibold text-marca hover:bg-marca-suave"
+                    className="shrink-0 rounded-md px-2 py-1 text-[13px] font-semibold text-marca hover:bg-marca-suave"
                   >
                     Ver →<span className="sr-only"> {l.frase}</span>
                   </button>
@@ -276,19 +276,19 @@ function PainelAvancado({ estado }: { estado: Estado }) {
           <p className="numero mt-1 font-display text-lg font-bold text-titulo sm:text-xl">
             {reais(periodo === 'hoje' ? total : total / dias)}
           </p>
-          <span className="mt-1 block text-[10.5px] text-tinta-3">{vendas} vendas no período</span>
+          <span className="mt-1 block text-[12px] text-tinta-3">{vendas} vendas no período</span>
         </Cartao>
         <Cartao>
           <Rotulo>Ticket médio</Rotulo>
           <p className="numero mt-1 font-display text-lg font-bold text-titulo sm:text-xl">{reais(total / vendas)}</p>
-          <span className="mt-1 block text-[10.5px] text-tinta-3">por venda</span>
+          <span className="mt-1 block text-[12px] text-tinta-3">por venda</span>
         </Cartao>
         <Cartao>
           <Rotulo>Margem</Rotulo>
           <p className="numero mt-1 font-display text-lg font-bold text-titulo sm:text-xl">
             {margem.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
           </p>
-          <span className="mt-1 block text-[10.5px] text-tinta-3">sobre o custo das peças</span>
+          <span className="mt-1 block text-[12px] text-tinta-3">sobre o custo das peças</span>
         </Cartao>
       </div>
 
@@ -296,7 +296,7 @@ function PainelAvancado({ estado }: { estado: Estado }) {
         <Cartao>
           <div className="flex items-baseline justify-between gap-2">
             <Rotulo>{periodo === 'hoje' ? 'Por hora do dia' : 'Movimento'}</Rotulo>
-            <span className="flex items-center gap-3 text-[10px] text-tinta-3">
+            <span className="flex items-center gap-3 text-[11.5px] text-tinta-3">
               <span className="flex items-center gap-1">
                 <i className="h-0.5 w-3 rounded bg-marca" /> {periodo === 'hoje' ? 'hoje' : 'este período'}
               </span>

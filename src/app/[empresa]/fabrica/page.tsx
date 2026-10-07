@@ -18,6 +18,7 @@ import { MENU } from '@/ui/menu'
 import { Fichas, enderecoCom } from '@/ui/Busca'
 import { Aviso, Cartao } from '@/ui/base'
 import { Secao, Tira, brl } from '@/ui/painel'
+import { BotaoDaLinha } from '@/ui/premium'
 import { quantidade } from '@/ui/texto'
 import type { Tema } from '@/ui/TrocaTema'
 import { NovaOrdem } from './NovaOrdem'
@@ -57,7 +58,16 @@ export default async function TelaFabrica({
   const q = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'fabrica.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
-  const moldura = { empresa, sessao, itens: MENU(slug), ativo: `/${slug}/fabrica`, tema, titulo: 'Fábrica' }
+  // O item aceso é o da aba (o menu da fábrica tem uma entrada por aba).
+  const abaPedida = typeof q.aba === 'string' && ABAS[q.aba] ? q.aba : null
+  const moldura = {
+    empresa,
+    sessao,
+    itens: MENU(slug),
+    ativo: `/${slug}/fabrica${abaPedida ? `?aba=${abaPedida}` : ''}`,
+    tema,
+    titulo: abaPedida === 'fichas' ? 'Fichas técnicas' : abaPedida === 'pedidos' ? 'Pedidos das lojas' : 'Produção',
+  }
 
   if (!moduloLigado(empresa, 'fabrica')) {
     return (
@@ -257,9 +267,13 @@ async function Producao({
                       </td>
                     )}
                     <td className="px-3 py-2 text-right">
-                      <Link href={`/${slug}/fabrica/ordens/${o.id}/etiqueta`} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
-                        Etiquetas
-                      </Link>
+                      <BotaoDaLinha
+                        comRotulo
+                        href={`/${slug}/fabrica/ordens/${o.id}/etiqueta`}
+                        icone="etiqueta"
+                        rotulo="Etiquetas"
+                        dica={`Imprimir as etiquetas do lote ${o.lote}`}
+                      />
                     </td>
                   </tr>
                 ))}

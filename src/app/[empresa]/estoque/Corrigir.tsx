@@ -16,6 +16,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao, cx } from '@/ui/base'
 import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { contar } from './acoes'
 
 export function Corrigir({
@@ -50,9 +51,11 @@ export function Corrigir({
           setContado(String(saldo))
           setAberto(true)
         }}
-        className="text-xs font-medium text-tinta-3 underline-offset-2 hover:text-marca hover:underline"
+        title="Corrigir o saldo pelo que foi contado na prateleira"
+        className={classeDaAcao({ jeito: 'pilula' })}
       >
-        corrigir
+        <IconeDaAcao icone="editar" tamanho={15} />
+        Corrigir
       </button>
     )
   }
@@ -60,7 +63,7 @@ export function Corrigir({
   const diferenca = Number(contado) - visto
 
   return (
-    <span className="flex flex-wrap items-center justify-end gap-1.5">
+    <span className="flex w-full flex-wrap items-center justify-end gap-1.5">
       <input
         type="number"
         step="any"
@@ -125,9 +128,11 @@ export function Corrigir({
           setAberto(false)
           setErro(null)
         }}
-        className="text-xs text-tinta-3 hover:text-tinta"
+        className={classeDaAcao()}
+        aria-label="Cancelar"
       >
-        cancelar
+        <IconeDaAcao icone="fechar" />
+        <DicaDaAcao>Cancelar</DicaDaAcao>
       </button>
       <span className="flex w-full justify-end">
         <MotivosProntos excecao="estoque.ajuste" atual={motivo} aoEscolher={setMotivo} className="justify-end" />

@@ -657,8 +657,8 @@ function Carne({ slug, k, aberto = false }: { slug: string; k: CarneNaFicha; abe
                 <span className={cx('numero font-semibold', x.situacao === 'quitada' ? 'text-tinta-3' : x.situacao === 'vencida' ? 'text-critico' : 'text-tinta')}>
                   {x.situacao === 'quitada' ? brl(x.valor) : brl(x.resta)}
                 </span>
-                {x.situacao !== 'quitada' && x.pago > 0 && <span className="numero text-[11px] text-tinta-3">de {brl(x.valor)}</span>}
-                {x.atrasoHoje > 0 && <span className="numero text-[11px] text-critico">+ {brl(x.atrasoHoje)} atraso</span>}
+                {x.situacao !== 'quitada' && x.pago > 0 && <span className="numero text-[12.5px] text-tinta-3">de {brl(x.valor)}</span>}
+                {x.atrasoHoje > 0 && <span className="numero text-[12.5px] text-critico">+ {brl(x.atrasoHoje)} atraso</span>}
               </span>
             </li>
           )

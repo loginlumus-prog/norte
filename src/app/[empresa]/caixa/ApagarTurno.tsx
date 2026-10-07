@@ -5,6 +5,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { apagarTurnoAcao } from './acoes'
 
 export function ApagarTurno({ slug, caixaId, voltar }: { slug: string; caixaId: string; voltar: string }) {
@@ -16,8 +17,9 @@ export function ApagarTurno({ slug, caixaId, voltar }: { slug: string; caixaId: 
 
   if (!aberto) {
     return (
-      <button type="button" onClick={() => setAberto(true)} className="text-xs font-semibold text-critico underline-offset-2 hover:underline">
-        apagar turno
+      <button type="button" onClick={() => setAberto(true)} className={classeDaAcao({ tom: 'perigo' })} aria-label="Apagar este turno">
+        <IconeDaAcao icone="excluir" />
+        <DicaDaAcao>Apagar turno</DicaDaAcao>
       </button>
     )
   }
@@ -43,8 +45,9 @@ export function ApagarTurno({ slug, caixaId, voltar }: { slug: string; caixaId: 
       >
         {indo ? 'Apagando…' : 'Apagar de vez'}
       </button>
-      <button type="button" onClick={() => { setAberto(false); setErro(null) }} className="text-tinta-3 hover:text-tinta">
-        cancelar
+      <button type="button" onClick={() => { setAberto(false); setErro(null) }} className={classeDaAcao()} aria-label="Desistir de apagar">
+        <IconeDaAcao icone="fechar" />
+        <DicaDaAcao>Desistir</DicaDaAcao>
       </button>
       {erro && <span role="alert" className="w-full text-critico">{erro}</span>}
     </span>

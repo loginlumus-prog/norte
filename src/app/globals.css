@@ -66,8 +66,8 @@
      azul-noite da barra, escurecido o bastante para passar em contraste sobre
      papel. Custa uma ficha e muda a tela inteira. */
   --titulo: #0f1f4d;
-  --tinta-2: #4b5563;
-  --tinta-3: #8a93a3;
+  --tinta-2: #3d4554;
+  --tinta-3: #636c7c;
   --borda: #e4e7ec;
   --borda-suave: #eef0f4;
 
@@ -152,7 +152,7 @@
        some no fundo. */
     --titulo: #d6e2ff;
     --tinta-2: #a7aebe;
-    --tinta-3: #737b8d;
+    --tinta-3: #8e96a8;
     --borda: #222b40;
     --borda-suave: #182032;
 
@@ -214,7 +214,7 @@
   --tinta: #edeef2;
   --titulo: #d6e2ff;
   --tinta-2: #a7aebe;
-  --tinta-3: #737b8d;
+  --tinta-3: #8e96a8;
   --borda: #222b40;
   --borda-suave: #182032;
 
@@ -321,6 +321,23 @@
   --font-display:
     var(--fonte-display), var(--fonte-texto), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, monospace;
+
+  /* Os pesos um degrau acima do padrão, no sistema inteiro: o texto comum
+     sai em 500 (ver body), o "medium" vira 600, o semibold 700 e o negrito
+     800 — o negrito destaca de verdade do resto. Mudar aqui muda toda
+     classe font-* de uma vez, sem caçar tela por tela. */
+  --font-weight-medium: 600;
+  --font-weight-semibold: 700;
+  --font-weight-bold: 800;
+  --font-weight-extrabold: 900;
+  --font-weight-black: 900;
+
+  /* E os tamanhos pequenos um pouco maiores: 12px e 14px liam miúdos com
+     a letra mais cheia. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.45;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
 }
 
 /* ── base ────────────────────────────────────────────────── */
@@ -337,7 +354,8 @@ body {
   font-family: var(--font-sans);
   /* Painel é para trabalhar, não para ler artigo: 14px cabe mais linha na
      tela sem apertar, que é o padrão de ferramenta de gestão. */
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 500;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -354,7 +372,7 @@ h3,
      o espaço entre letras cresce junto, então apertar devolve a densidade que
      faz o título soar firme. É o contrário do que uma serifada quer. */
   letter-spacing: -0.028em;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 /* A COR do título mora numa CAMADA, e o resto do desenho não. Não é capricho
@@ -385,7 +403,7 @@ h3,
 /* A capa vai mais pesada e mais apertada ainda: em tamanho grande é onde o
    desenho da fonte aparece, e é a única linha da página que pode gritar. */
 h1 {
-  font-weight: 800;
+  font-weight: 850;
   letter-spacing: -0.04em;
 }
 
@@ -619,14 +637,16 @@ th.numero {
    quebravam em duas linhas. */
 /* Botão de ação nunca quebra o texto ("Editar em / planilha"). */
 .acoes-topo a, .acoes-topo button { white-space: nowrap; }
-@media (width >= 96rem) {
-  .acoes-topo > * { flex-wrap: nowrap; }
-}
+/* Fechada, a fileira não quebra e não encolhe: se não cabe ao lado do
+   título, ela desce inteira para a linha de baixo (o cabeçalho é flex-wrap).
+   Encolher deixava o período e a loja subirem por cima do título. */
+.acoes-topo:not([data-aberto]) > * { flex-wrap: nowrap; }
 @media (width < 96rem) {
   .acoes-topo:not([data-aberto]) [data-mais] {
     display: none;
   }
   .acoes-topo[data-aberto] {
+    flex-wrap: wrap;
     order: 10;
     flex-basis: 100%;
     justify-content: flex-start;
@@ -1405,3 +1425,217 @@ th.numero {
 .etiqueta-cor:hover { background: color-mix(in oklab, var(--cor-item, var(--marca)) 22%, transparent); }
 .cartao-produto { transition: box-shadow .2s ease, border-color .2s ease, transform .2s cubic-bezier(.2,.8,.3,1); }
 .cartao-produto:hover { transform: translateY(-1px); }
+
+/* ═══ O CARTÃO-FILTRO ═══════════════════════════════════════════
+   Parado: papel com o ícone tingido. Escolhido: o cartão inteiro na cor
+   do assunto, em degradê, com o texto branco — o filtro aceso se acha de
+   longe. A barrinha embaixo é o tamanho do recorte no todo. */
+.cartao-filtro {
+  background: var(--superficie);
+  color: var(--tinta);
+  box-shadow: inset 0 0 0 1px var(--borda), 0 1px 2px rgb(15 23 42 / .04);
+  transition: transform .2s cubic-bezier(.2,.8,.3,1), box-shadow .2s ease, background .25s ease;
+}
+.cartao-filtro:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c) 40%, var(--borda)), 0 14px 28px -20px var(--c); }
+.cartao-filtro:active { transform: translateY(0) scale(.98); }
+.cartao-filtro-icone { background: color-mix(in oklab, var(--c) 13%, transparent); color: var(--c); transition: transform .2s cubic-bezier(.3,1.4,.5,1); }
+.cartao-filtro:hover .cartao-filtro-icone { transform: scale(1.06) rotate(-4deg); }
+.cartao-filtro-rotulo { color: var(--tinta-2); }
+.cartao-filtro-detalhe { color: var(--tinta-3); }
+.cartao-filtro-trilho { background: color-mix(in oklab, var(--c) 14%, transparent); }
+.cartao-filtro-trilho > span { background: var(--c); }
+.cartao-filtro[aria-current] {
+  color: #fff;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--c) 82%, white), var(--c) 55%, color-mix(in oklab, var(--c) 85%, black));
+  box-shadow: 0 16px 30px -16px var(--c), inset 0 1px 0 rgb(255 255 255 / .25);
+}
+.cartao-filtro[aria-current] .cartao-filtro-icone { background: rgb(255 255 255 / .22); color: #fff; }
+.cartao-filtro[aria-current] .cartao-filtro-rotulo { color: rgb(255 255 255 / .9); }
+.cartao-filtro[aria-current] .cartao-filtro-detalhe { color: rgb(255 255 255 / .78); }
+.cartao-filtro[aria-current] .cartao-filtro-trilho { background: rgb(255 255 255 / .28); }
+.cartao-filtro[aria-current] .cartao-filtro-trilho > span { background: #fff; }
+.cartao-filtro:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
+
+/* ═══ AS FICHAS (opções de um filtro) ═══════════════════════════
+   Um trilho só, com as opções dentro; a escolhida sobe em papel branco com
+   a letra na cor da área — o jeito de "segmento" dos aplicativos. */
+.fichas { background: var(--superficie-2); box-shadow: inset 0 0 0 1px var(--borda-suave); }
+.ficha { color: var(--tinta-2); transition: background-color .18s ease, color .18s ease, box-shadow .18s ease, transform .15s cubic-bezier(.3,1.4,.5,1); }
+.ficha:hover { color: var(--tinta); background: color-mix(in oklab, var(--superficie) 60%, transparent); }
+.ficha:active { transform: scale(.96); }
+.ficha[aria-current] { background: var(--superficie); color: var(--cor-item, var(--marca)); box-shadow: 0 1px 2px rgb(15 23 42 / .08), 0 4px 12px -6px rgb(15 23 42 / .18); }
+.ficha-conta { background: color-mix(in oklab, var(--tinta-3) 14%, transparent); color: var(--tinta-3); }
+.ficha[aria-current] .ficha-conta { background: color-mix(in oklab, var(--cor-item, var(--marca)) 14%, transparent); color: var(--cor-item, var(--marca)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cartao-filtro, .cartao-filtro-icone, .ficha { transition: none; }
+  .cartao-filtro:hover, .cartao-filtro:hover .cartao-filtro-icone { transform: none; }
+}
+
+/* ═══ O PERÍODO ═════════════════════════════════════════════════
+   Um botão só no cabeçalho (o calendário e o nome do período); a lista abre
+   num cartão flutuante. O escolhido leva a cor da área da tela. */
+.periodo-botao, .loja-topo {
+  background: var(--superficie);
+  box-shadow: inset 0 0 0 1px var(--borda), 0 1px 2px rgb(15 23 42 / .05);
+}
+.periodo-botao:hover, .loja-topo:hover { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--cor-item, var(--marca)) 35%, var(--borda)), 0 8px 18px -12px rgb(15 23 42 / .35); }
+.periodo-botao[aria-expanded="true"] { box-shadow: inset 0 0 0 1.5px var(--cor-item, var(--marca)), 0 8px 18px -12px var(--cor-item, var(--marca)); }
+.periodo-icone { background: color-mix(in oklab, var(--cor-item, var(--marca)) 14%, transparent); color: var(--cor-item, var(--marca)); }
+.periodo-caixa, .loja-palco {
+  background: var(--superficie);
+  box-shadow: 0 0 0 1px var(--borda), 0 24px 60px -20px rgb(15 23 42 / .45);
+}
+.periodo-caixa { animation: pop-cima .18s cubic-bezier(.2,.9,.3,1.2); transform-origin: top right; }
+.periodo-opcao { transition: background-color .15s ease, color .15s ease; }
+.periodo-opcao:hover { background: var(--superficie-2); }
+.periodo-opcao[aria-current] { background: color-mix(in oklab, var(--cor-item, var(--marca)) 10%, var(--superficie)); color: var(--cor-item, var(--marca)); }
+.periodo-marca { box-shadow: inset 0 0 0 1.5px var(--borda); }
+.periodo-opcao[aria-current] .periodo-marca { background: var(--cor-item, var(--marca)); box-shadow: none; color: #fff; }
+.periodo-ver { background: var(--cor-item, var(--marca)); box-shadow: 0 8px 16px -10px var(--cor-item, var(--marca)); }
+@keyframes pop-cima { from { opacity: 0; transform: translateY(-6px) scale(.97); } }
+
+/* ═══ A TROCA DE LOJA ═══════════════════════════════════════════
+   A loja é um lugar: o cartão na barra diz onde a pessoa está, e trocar abre
+   uma tela própria, com um cartão por loja na cor dela. Ao escolher, a cor
+   sai do ponto tocado, cobre a tela com o nome da loja e a tela volta nela. */
+.loja-lado {
+  background: var(--lado-2);
+  box-shadow: inset 0 0 0 1px var(--lado-borda);
+  transition: box-shadow .2s ease, transform .15s cubic-bezier(.3,1.4,.5,1);
+}
+.loja-lado:hover { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--loja) 55%, var(--lado-borda)), 0 10px 22px -16px var(--loja); }
+.loja-lado:active { transform: scale(.98); }
+.loja-fundo { background: rgb(6 10 22 / .55); backdrop-filter: blur(10px) saturate(1.2); animation: aparecer .2s ease; }
+.loja-palco { animation: palco-sobe .32s cubic-bezier(.2,.9,.25,1.05); }
+.loja-palco-topo { background: radial-gradient(120% 140% at 0% 0%, color-mix(in oklab, var(--marca) 10%, transparent), transparent 60%); }
+.loja-cartao {
+  background: var(--superficie);
+  box-shadow: inset 0 0 0 1px var(--borda);
+  transition: transform .2s cubic-bezier(.2,.8,.3,1), box-shadow .2s ease;
+  animation: cartao-chega .35s cubic-bezier(.2,.9,.3,1) backwards;
+}
+.loja-cartao::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(90% 120% at 100% 0%, color-mix(in oklab, var(--loja) 14%, transparent), transparent 60%);
+  opacity: .7; transition: opacity .2s ease;
+}
+.loja-cartao:hover { transform: translateY(-3px); box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--loja) 60%, var(--borda)), 0 18px 36px -22px var(--loja); }
+.loja-cartao:hover::before { opacity: 1; }
+.loja-cartao:active { transform: scale(.98); }
+.loja-cartao[aria-current] { box-shadow: inset 0 0 0 2px var(--loja), 0 14px 30px -20px var(--loja); }
+.loja-cartao:focus-visible { outline: 2px solid var(--loja); outline-offset: 2px; }
+.loja-aqui { background: var(--loja); }
+.loja-carregando { background: linear-gradient(90deg, var(--superficie-2), var(--borda-suave), var(--superficie-2)); background-size: 200% 100%; animation: brilho-corre 1.1s linear infinite; }
+.loja-cortina {
+  background: radial-gradient(circle at var(--x) var(--y), color-mix(in oklab, var(--loja) 85%, white), var(--loja) 45%, color-mix(in oklab, var(--loja) 70%, black));
+  clip-path: circle(0 at var(--x) var(--y));
+  animation: cortina-abre .55s cubic-bezier(.65,0,.35,1) forwards;
+}
+.loja-cortina-miolo { animation: miolo-chega .5s .18s cubic-bezier(.2,.9,.3,1.1) backwards; }
+.loja-cortina-azulejo { box-shadow: 0 20px 40px -18px rgb(0 0 0 / .45); }
+.loja-cortina-barra > span { animation: barra-vai 1s ease-in-out infinite; }
+@keyframes aparecer { from { opacity: 0; } }
+@keyframes palco-sobe { from { opacity: 0; transform: translateY(24px) scale(.97); } }
+@keyframes cartao-chega { from { opacity: 0; transform: translateY(10px); } }
+@keyframes brilho-corre { to { background-position: -200% 0; } }
+@keyframes cortina-abre { to { clip-path: circle(150vmax at var(--x) var(--y)); } }
+@keyframes miolo-chega { from { opacity: 0; transform: translateY(14px) scale(.92); } }
+@keyframes barra-vai { 0% { transform: translateX(-110%); } 100% { transform: translateX(330%); } }
+@media (prefers-reduced-motion: reduce) {
+  .loja-fundo, .loja-palco, .loja-cartao, .loja-cortina-miolo, .periodo-caixa { animation: none; }
+  .loja-cortina { animation: none; clip-path: none; }
+  .loja-cartao:hover, .loja-lado:active { transform: none; }
+}
+
+/* ═══ O NÚMERO PRINCIPAL ════════════════════════════════════════
+   A peça cheia do painel: a cor da área em degradê, número em branco. */
+.numero-principal {
+  background: linear-gradient(135deg, color-mix(in oklab, var(--cor-item, var(--marca)) 78%, white) 0%, var(--cor-item, var(--marca)) 50%, color-mix(in oklab, var(--cor-item, var(--marca)) 78%, black) 100%);
+  box-shadow: 0 18px 36px -20px var(--cor-item, var(--marca)), inset 0 1px 0 rgb(255 255 255 / .22);
+}
+.numero-principal-luz { background: radial-gradient(circle, rgb(255 255 255 / .28), transparent 70%); }
+
+/* ═══ OS BOTÕES DE AÇÃO (premium.tsx: BotaoDaLinha, classeDaAcao) ═══
+   Ícones de apoio num trilho, a ação principal em pílula cheia. O nome
+   sobe numa dica ao passar o mouse (e no foco do teclado). Perigo
+   (excluir, cancelar) acende em vermelho só no passar — parado, é calmo. */
+.acoes-da-linha { background: var(--superficie-2); box-shadow: inset 0 0 0 1px var(--borda-suave); }
+.botao-acao { color: var(--tinta-2); background: transparent; transition: background-color .15s ease, color .15s ease, transform .15s cubic-bezier(.3,1.4,.5,1), box-shadow .15s ease; }
+.botao-acao:not(.botao-acao-icone):not(.botao-acao-principal) { background: var(--superficie); box-shadow: inset 0 0 0 1px var(--borda); color: var(--tinta); }
+.botao-acao:hover { background: var(--superficie); color: var(--cor-item, var(--marca)); box-shadow: 0 1px 2px rgb(15 23 42 / .08), 0 4px 10px -6px rgb(15 23 42 / .25); transform: translateY(-1px); }
+.botao-acao:not(.botao-acao-icone):not(.botao-acao-principal):hover { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--cor-item, var(--marca)) 40%, var(--borda)), 0 4px 10px -6px rgb(15 23 42 / .25); }
+.botao-acao:active { transform: scale(.93); }
+.botao-acao:disabled { opacity: .45; pointer-events: none; }
+.botao-acao:focus-visible { outline: 2px solid var(--cor-item, var(--marca)); outline-offset: 1px; }
+.botao-acao-perigo:hover { color: var(--critico) !important; background: var(--critico-fundo) !important; }
+.botao-acao-bom { color: var(--bom) !important; }
+.botao-acao-bom:hover { background: var(--bom-fundo) !important; }
+.botao-acao-principal { color: #fff; background: var(--cor-item, var(--marca)); box-shadow: 0 6px 14px -8px var(--cor-item, var(--marca)); }
+.botao-acao-principal:hover { color: #fff; background: color-mix(in oklab, var(--cor-item, var(--marca)) 86%, black); }
+.botao-acao-principal svg { transition: transform .15s ease; }
+.botao-acao-principal:hover svg { transform: translateX(2px); }
+.botao-acao-dica {
+  position: absolute; bottom: calc(100% + 6px); left: 50%; z-index: 20;
+  translate: -50% 4px; opacity: 0; pointer-events: none; white-space: nowrap;
+  border-radius: 8px; padding: 4px 8px; font-size: 11px; font-weight: 600; line-height: 1.2;
+  color: var(--superficie); background: var(--tinta);
+  box-shadow: 0 6px 16px -6px rgb(15 23 42 / .4);
+  transition: opacity .15s ease, translate .15s ease;
+}
+.botao-acao:hover .botao-acao-dica, .botao-acao:focus-visible .botao-acao-dica { opacity: 1; translate: -50% 0; }
+@media (prefers-reduced-motion: reduce) {
+  .botao-acao, .botao-acao-dica, .botao-acao-principal svg { transition: none; }
+  .botao-acao:hover { transform: none; }
+}
+
+/* ═══ O CARTÃO DA ENCOMENDA ═════════════════════════════════════ */
+.encomenda-hora { background: var(--superficie-2); color: var(--tinta); }
+.encomenda-hora[data-tom="critico"] { background: var(--critico-fundo); color: var(--critico); }
+.encomenda-hora[data-tom="atencao"] { background: var(--atencao-fundo); color: var(--atencao); }
+.encomenda-hora[data-tom="bom"] { background: var(--bom-fundo); color: var(--bom); }
+.encomenda-hora[data-tom="apagada"] { opacity: .6; }
+.encomenda-zap { background: color-mix(in oklab, #25d366 14%, transparent); color: #128c4a; transition: background-color .15s ease; }
+.encomenda-zap:hover { background: color-mix(in oklab, #25d366 24%, transparent); }
+:root[data-tema='escuro'] .encomenda-zap { color: #4ade80; }
+
+/* A fábrica sem contrato, na troca de loja: o cartão com cadeado e o convite. */
+.loja-trancada { background: repeating-linear-gradient(135deg, var(--superficie), var(--superficie) 10px, var(--superficie-2) 10px, var(--superficie-2) 11px); }
+.loja-liberar { background: var(--loja); box-shadow: 0 8px 18px -10px var(--loja); }
+
+/* ═══ OS GRÁFICOS CHEGANDO (ui/Graficos.tsx, ui/Grafico.tsx) ═════
+   A barra cresce do chão, a barra deitada estica, a linha se desenha da
+   esquerda para a direita, a rosca gira até o lugar. Uma vez, ao abrir. */
+.graf-barra { transform-origin: bottom; animation: graf-cresce .75s cubic-bezier(.2,.85,.25,1) backwards; transition: opacity .2s ease, box-shadow .2s ease, filter .2s ease; }
+.graf-barra-h { transform-origin: left; animation: graf-estica .9s cubic-bezier(.2,.85,.25,1) backwards; }
+.graf-revela { animation: graf-revela 1.2s cubic-bezier(.45,0,.2,1) backwards; }
+.graf-rosca { filter: drop-shadow(0 8px 14px rgb(15 23 42 / .16)); }
+.graf-rosca-anel { animation: graf-roda .9s cubic-bezier(.2,.85,.25,1) backwards; transform-origin: 50px 50px; }
+.graf-fatia { cursor: pointer; transition: transform .25s cubic-bezier(.3,1.4,.5,1), stroke-width .2s ease, opacity .2s ease; animation: graf-fatia .9s cubic-bezier(.2,.85,.25,1) backwards; }
+.graf-linha-h { transition: background-color .15s ease; }
+.graf-linha-h:hover { background: var(--superficie-2); }
+.graf-casa { transition: transform .15s ease; }
+.graf-casa:hover { transform: scale(1.15); }
+.graf-barra-dia { background: linear-gradient(180deg, color-mix(in oklab, var(--bom-vivo) 60%, white), var(--bom-vivo) 75%); }
+.graf-barra-maior { background: linear-gradient(180deg, color-mix(in oklab, var(--bom) 70%, white), var(--bom) 75%); box-shadow: 0 6px 14px -6px var(--bom-vivo); }
+.graf-barra-zero { background: var(--borda); }
+.graf-balao {
+  translate: -50% calc(-100% - 10px);
+  background: var(--superficie);
+  box-shadow: 0 0 0 1px var(--borda), 0 12px 28px -10px rgb(15 23 42 / .35);
+  animation: graf-balao .16s ease;
+  white-space: nowrap;
+}
+.graf-agora { box-shadow: 0 0 0 0 var(--c); animation: graf-pulsa 1.8s ease-out infinite; }
+@keyframes graf-cresce { from { transform: scaleY(0); } }
+@keyframes graf-estica { from { transform: scaleX(0); } }
+@keyframes graf-revela { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 -10% 0 0); } }
+@keyframes graf-roda { from { transform: rotate(-120deg) scale(.85); opacity: 0; } }
+@keyframes graf-fatia { from { stroke-dasharray: 0 252; } }
+@keyframes graf-balao { from { opacity: 0; } }
+.graf-balao-baixo { translate: -50% 14px; }
+@keyframes graf-pulsa { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--c) 55%, transparent); } 70% { box-shadow: 0 0 0 10px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .graf-barra, .graf-barra-h, .graf-revela, .graf-rosca-anel, .graf-fatia, .graf-balao, .graf-agora { animation: none; }
+  .graf-casa:hover { transform: none; }
+}

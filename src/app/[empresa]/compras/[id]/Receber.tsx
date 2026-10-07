@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Marcar, Selecao } from '@/ui/base'
 import { Confirmar } from '@/ui/Confirmar'
 import { brl } from '@/ui/painel'
+import { classeDaAcao, DicaDaAcao, IconeDaAcao } from '@/ui/premium'
 import { mudarPedidoAcao, receberPedidoAcao } from '../acoes'
 
 type Item = { id: string; descricao: string; medida: string; falta: number; custoUnit: number | null }
@@ -93,8 +94,9 @@ export function Receber({
       caixa
       titulo="O que chegou"
       acao={
-        <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-          fechar
+        <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar o recebimento">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >

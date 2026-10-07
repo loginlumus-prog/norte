@@ -68,7 +68,7 @@ export function Cabecalho({
             <Link key={q.id} href={com({ quadro: q.id, novo: null })} aria-current={q.id === atual ? 'page' : undefined} className={aba(q.id === atual)}>
               {q.cor && <span aria-hidden className="size-2 rounded-full" style={{ background: q.cor }} />}
               <span className="max-w-56 truncate xl:max-w-80" title={q.nome}>{q.nome}</span>
-              {q.abertas > 0 && <span className={cx('numero text-[10px]', q.id === atual ? 'opacity-80' : 'text-tinta-3')}>{q.abertas}</span>}
+              {q.abertas > 0 && <span className={cx('numero text-[11.5px]', q.id === atual ? 'opacity-80' : 'text-tinta-3')}>{q.abertas}</span>}
             </Link>
           ))}
         </nav>

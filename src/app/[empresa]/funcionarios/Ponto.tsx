@@ -9,6 +9,7 @@
 import { startTransition, useActionState, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, Campo, Cartao, Selecao } from '@/ui/base'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { abonarAcao, ajustarPontoAcao, anularBatidaAcao, baterPontoAcao, desfazerAbonoAcao, inicioAcao, type EstadoFicha } from './acoes'
 
 export function BaterPonto({
@@ -81,8 +82,9 @@ export function Ajuste({ slug, colaboradorId, hoje }: { slug: string; colaborado
       caixa
       titulo="Lançar batida que faltou"
       acao={
-        <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-          fechar
+        <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >
@@ -135,9 +137,10 @@ export function Anular({ slug, registroId }: { slug: string; registroId: string 
   const router = useRouter()
   if (!aberto) {
     return (
-      <Botao tom="discreto" className="px-2 py-1 text-xs" onClick={() => setAberto(true)}>
-        Anular
-      </Botao>
+      <button type="button" className={classeDaAcao({ tom: 'perigo' })} aria-label="Anular esta batida" onClick={() => setAberto(true)}>
+        <IconeDaAcao icone="cancelar" />
+        <DicaDaAcao>Anular</DicaDaAcao>
+      </button>
     )
   }
   return (
@@ -202,8 +205,9 @@ export function Abonar({ slug, colaboradorId, dia }: { slug: string; colaborador
 
   if (!aberto) {
     return (
-      <button type="button" onClick={() => setAberto(true)} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
-        abonar
+      <button type="button" onClick={() => setAberto(true)} className={classeDaAcao({ jeito: 'pilula', tom: 'bom' })}>
+        <IconeDaAcao icone="conferir" tamanho={15} />
+        Abonar
       </button>
     )
   }
@@ -252,9 +256,10 @@ export function DesfazerAbono({ slug, colaboradorId, dia }: { slug: string; cola
             else router.refresh()
           })
         }
-        className="text-xs font-semibold text-tinta-2 underline-offset-2 hover:text-critico hover:underline"
+        className={classeDaAcao({ jeito: 'pilula', tom: 'perigo' })}
       >
-        {indo ? 'tirando…' : 'tirar abono'}
+        <IconeDaAcao icone="desfazer" tamanho={15} />
+        {indo ? 'Tirando…' : 'Tirar abono'}
       </button>
       {erro && <span className="text-xs text-critico">{erro}</span>}
     </span>
@@ -319,10 +324,13 @@ export function Inicio({ slug, colaboradorId, inicio, hoje }: { slug: string; co
 
   if (!editando) {
     return (
-      <p className="text-sm text-tinta-2">
-        Trabalha aqui desde <b className="numero text-tinta">{falado}</b>.{' '}
-        <button type="button" onClick={() => setEditando(true)} className="text-xs font-semibold text-marca underline-offset-2 hover:underline">
-          mudar
+      <p className="flex flex-wrap items-center gap-2 text-sm text-tinta-2">
+        <span>
+          Trabalha aqui desde <b className="numero text-tinta">{falado}</b>.
+        </span>
+        <button type="button" onClick={() => setEditando(true)} className={classeDaAcao()} aria-label="Mudar o primeiro dia de trabalho">
+          <IconeDaAcao icone="editar" />
+          <DicaDaAcao>Mudar</DicaDaAcao>
         </button>
       </p>
     )

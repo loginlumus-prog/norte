@@ -83,7 +83,7 @@ export function BarraCaixa({
         )}
       >
         <div className="flex flex-col">
-          <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">
+          <span className="text-[11.5px] font-semibold tracking-wide text-tinta-3 uppercase">
             caixa desde {hora(new Date(caixa.abertoEm))}
           </span>
           <span className="numero text-sm font-semibold text-tinta">
@@ -93,7 +93,7 @@ export function BarraCaixa({
         </div>
         {veReceita && verValores && (
           <div className="flex flex-col">
-            <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">na gaveta</span>
+            <span className="text-[11.5px] font-semibold tracking-wide text-tinta-3 uppercase">na gaveta</span>
             <span className="numero text-sm font-semibold text-tinta">{brl(conferencia.esperado)}</span>
           </div>
         )}
@@ -110,7 +110,7 @@ export function BarraCaixa({
         <span className={cx('text-xs text-tinta-3', compacta && 'hidden sm:inline')}>{caixa.abertoPor}</span>
         {meta && (
           <div className={cx('flex-col', compacta ? 'hidden md:flex' : 'flex')} title="Sua meta do mês, líquida de devolução">
-            <span className="text-[10px] font-semibold tracking-wide text-tinta-3 uppercase">sua meta do mês</span>
+            <span className="text-[11.5px] font-semibold tracking-wide text-tinta-3 uppercase">sua meta do mês</span>
             <span className="numero text-sm font-semibold text-tinta">
               {brl(meta.vendido)} <span className="text-tinta-3">de {brl(meta.valor)}</span>{' '}
               {meta.vendido >= meta.valor ? (

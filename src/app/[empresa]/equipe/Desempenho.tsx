@@ -65,7 +65,7 @@ function MiniBarras({ meses, valores }: { meses: string[]; valores: (number | nu
                 <div className={cx('w-full rounded-sm', COR_BARRA[NIVEL(v)])} style={{ height: `${Math.max((v / 5) * 100, 8)}%` }} />
               )}
             </div>
-            <span className="text-[9px] leading-none text-tinta-3">{abrev(m)}</span>
+            <span className="text-[10.5px] leading-none text-tinta-3">{abrev(m)}</span>
           </div>
         )
       })}

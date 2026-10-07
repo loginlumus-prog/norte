@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { Aviso, Botao, Situacao, cx } from '@/ui/base'
 import { brl } from '@/ui/painel'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { plural } from '@/ui/texto'
 import { centavos, lerDinheiro, lerNumero, multiplicar, reais } from '@/servidor/dinheiro'
 import { agendaDoCrediario, primeiroVencimentoMaximo, primeiroVencimentoPadrao } from '@/servidor/crediario-agenda'
@@ -354,8 +355,9 @@ export function Troca({ config, inicial }: { config: ConfigDaTroca; inicial: Com
                 {' · '}
                 <span className="numero">{brl(compra.total)}</span>
               </span>
-              <button type="button" onClick={recomecar} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
-                trocar de compra
+              <button type="button" onClick={recomecar} className={classeDaAcao({ jeito: 'pilula' })}>
+                <IconeDaAcao icone="trocar" tamanho={15} />
+                Trocar de compra
               </button>
             </div>
             {compra.itens.length === 0 ? (
@@ -384,9 +386,11 @@ export function Troca({ config, inicial }: { config: ConfigDaTroca; inicial: Com
                             <button
                               type="button"
                               onClick={() => setEstoqueComo(({ [i.id]: _fora, ...resto }) => resto)}
-                              className="shrink-0 text-xs text-marca underline-offset-2 hover:underline"
+                              className={classeDaAcao()}
+                              aria-label={`Trocar a peça do catálogo de ${i.descricao}`}
                             >
-                              trocar
+                              <IconeDaAcao icone="trocar" />
+                              <DicaDaAcao>Trocar</DicaDaAcao>
                             </button>
                           </span>
                         ) : (
@@ -396,7 +400,7 @@ export function Troca({ config, inicial }: { config: ConfigDaTroca; inicial: Com
                             aoEscolher={(a) => setEstoqueComo((m) => ({ ...m, [i.id]: a }))}
                           />
                         )}
-                        {!como && <span className="text-[11px] text-atencao">Sem escolher, o valor volta mas o estoque não.</span>}
+                        {!como && <span className="text-[12.5px] text-atencao">Sem escolher, o valor volta mas o estoque não.</span>}
                       </li>,
                     ]
                   })}
@@ -414,8 +418,9 @@ export function Troca({ config, inicial }: { config: ConfigDaTroca; inicial: Com
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-norte bg-superficie-2 px-3 py-2 text-sm">
               <span className="font-semibold text-tinta">Sem a compra (comprada antes do sistema)</span>
-              <button type="button" onClick={recomecar} className="text-xs font-medium text-marca underline-offset-2 hover:underline">
-                voltar a procurar a compra
+              <button type="button" onClick={recomecar} className={classeDaAcao({ jeito: 'pilula' })}>
+                <IconeDaAcao icone="desfazer" tamanho={15} />
+                Procurar a compra
               </button>
             </div>
             <p className="text-[13px] text-tinta-2">
@@ -444,10 +449,11 @@ export function Troca({ config, inicial }: { config: ConfigDaTroca; inicial: Com
                     <button
                       type="button"
                       onClick={() => setVoltaSem((ls) => ls.filter((x) => x.chave !== l.chave))}
-                      className="text-xs text-critico hover:underline"
+                      className={classeDaAcao({ tom: 'perigo' })}
                       aria-label={`Tirar ${l.achado.descricao}`}
                     >
-                      tirar
+                      <IconeDaAcao icone="excluir" />
+                      <DicaDaAcao>Tirar</DicaDaAcao>
                     </button>
                   </li>
                 ))}
@@ -584,7 +590,7 @@ export function Troca({ config, inicial }: { config: ConfigDaTroca; inicial: Com
                     )}
                   >
                     {f.rotulo}
-                    <span className="numero text-[11px] font-normal">{brlC(valor)}</span>
+                    <span className="numero text-[12.5px] font-normal">{brlC(valor)}</span>
                   </button>
                 )
               })}
@@ -864,7 +870,7 @@ function AcharCompra({
                   <span className="numero shrink-0 text-sm font-bold text-tinta">{brl(c.total)}</span>
                 </span>
                 <span className="truncate text-xs text-tinta">{c.itens}</span>
-                <span className="text-[11px] text-tinta-3">
+                <span className="text-[12.5px] text-tinta-3">
                   Venda {c.numero} · {quando(c.criadaEm)}
                   {!c.podeVoltar && ' · tudo já voltou'}
                   {abrindo === c.id && ' · abrindo…'}
@@ -961,7 +967,7 @@ function BuscaDePeca({ config, rotulo, aoEscolher }: { config: ConfigDaTroca; ro
               >
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-sm text-tinta">{a.descricao}</span>
-                  <span className="text-[11px] text-tinta-3">
+                  <span className="text-[12.5px] text-tinta-3">
                     {a.codigo ? `${a.codigo} · ` : ''}
                     {a.foraDaLoja ? 'não é vendido nesta loja' : a.servico ? 'serviço' : `${String(a.saldo).replace('.', ',')} em estoque`}
                   </span>
@@ -1014,8 +1020,9 @@ function EscolherCliente({
     return (
       <span className="flex items-center gap-2 text-sm text-tinta">
         {escolhido.nome}
-        <button type="button" onClick={() => aoEscolher(null)} className="text-xs text-marca underline-offset-2 hover:underline">
-          trocar
+        <button type="button" onClick={() => aoEscolher(null)} className={classeDaAcao()} aria-label={`Trocar a cliente (${escolhido.nome})`}>
+          <IconeDaAcao icone="trocar" />
+          <DicaDaAcao>Trocar</DicaDaAcao>
         </button>
       </span>
     )

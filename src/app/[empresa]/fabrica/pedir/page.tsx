@@ -36,7 +36,7 @@ export default async function PedirAFabrica({
   const q = await searchParams
   const { empresa, sessao } = await exigirEntrada(slug, { capacidade: 'fabrica.ver' })
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
-  const moldura = { empresa, sessao, itens: MENU(slug), ativo: `/${slug}/fabrica`, tema, titulo: 'Pedir à fábrica' }
+  const moldura = { empresa, sessao, itens: MENU(slug), ativo: `/${slug}/fabrica/pedir`, tema, titulo: 'Pedir à fábrica' }
 
   if (!moduloLigado(empresa, 'fabrica')) {
     return (

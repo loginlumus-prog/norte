@@ -167,7 +167,7 @@ function Bloco({ id, data, selected }: NodeProps<NoFluxo>) {
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-bold tracking-wide text-tinta uppercase">{ROTULO_NO[data.tipo]}</span>
           {problema && (
-            <span className={cx('text-[10px] font-semibold', problema === 'erro' ? 'text-critico' : 'text-atencao')}>
+            <span className={cx('text-[11.5px] font-semibold', problema === 'erro' ? 'text-critico' : 'text-atencao')}>
               {problema === 'erro' ? 'pendência' : 'aviso'}
             </span>
           )}
@@ -177,7 +177,7 @@ function Bloco({ id, data, selected }: NodeProps<NoFluxo>) {
       {saidas.length > 0 && (
         <div className="flex justify-around gap-1 border-t border-borda-suave px-1 pt-1 pb-2">
           {saidas.map((s) => (
-            <span key={s.id} className="max-w-24 truncate text-[10px] text-tinta-3" title={s.rotulo}>
+            <span key={s.id} className="max-w-24 truncate text-[11.5px] text-tinta-3" title={s.rotulo}>
               {s.rotulo}
             </span>
           ))}
@@ -554,7 +554,7 @@ function EditorPorDentro({ slug, inicial, dentro }: { slug: string; inicial: Par
                 <span aria-hidden className={cx('h-7 w-1 rounded-full', FAMILIA[p.tipo])} />
                 <span className="flex flex-col">
                   <span className="text-xs font-semibold text-tinta">{ROTULO_NO[p.tipo]}</span>
-                  <span className="text-[11px] text-tinta-3">{p.dica}</span>
+                  <span className="text-[12.5px] text-tinta-3">{p.dica}</span>
                 </span>
               </button>
             ))}
@@ -796,7 +796,7 @@ function Saidas({
           </div>
         )
       })}
-      {saidas.length > 1 && <p className="text-[11px] text-tinta-3">A bolinha marca onde entra o próximo bloco que você clicar na faixa de cima.</p>}
+      {saidas.length > 1 && <p className="text-[12.5px] text-tinta-3">A bolinha marca onde entra o próximo bloco que você clicar na faixa de cima.</p>}
     </div>
   )
 }
@@ -821,13 +821,13 @@ function Dentro({ slug, campanhaId, linhas }: { slug: string; campanhaId: string
             <div className="min-w-0 text-sm">
               <p className="truncate font-medium text-tinta">
                 {l.nome ?? 'Sem nome'} <span className="font-normal text-tinta-3">{l.telefone}</span>
-                {l.teste && <span className="ml-1 rounded-full bg-superficie-2 px-1.5 text-[10px] text-tinta-2">teste</span>}
+                {l.teste && <span className="ml-1 rounded-full bg-superficie-2 px-1.5 text-[11.5px] text-tinta-2">teste</span>}
               </p>
               <p className="text-xs text-tinta-2">
                 {l.bloco} · {ROTULO_STATUS[l.status]}
                 {l.proximoEm ? ` até ${quando(l.proximoEm)}` : ''}
               </p>
-              <p className="text-[11px] text-tinta-3">entrou {quando(l.desde)}</p>
+              <p className="text-[12.5px] text-tinta-3">entrou {quando(l.desde)}</p>
             </div>
             {/* Tirar não tem volta: a pessoa sai do roteiro no meio, e só
                 entra de novo se a reentrada da campanha deixar. */}

@@ -15,6 +15,7 @@ import { useActionState, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Botao, Campo, Selecao, Aviso, Cartao, Situacao, cx } from '@/ui/base'
 import { Confirmar } from '@/ui/Confirmar'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import {
   convidarPessoa,
   cortarSuporte,
@@ -125,13 +126,22 @@ function Telefone({
           <span>sem telefone</span>
         )}
         {pode && (
-          <button
-            type="button"
-            onClick={() => setEditando(true)}
-            className="font-semibold text-marca hover:underline"
-          >
-            {pessoa.telefone ? 'mudar' : pessoa.souEu ? '+ cadastrar o meu' : '+ cadastrar'}
-          </button>
+          pessoa.telefone ? (
+            <button
+              type="button"
+              onClick={() => setEditando(true)}
+              className={classeDaAcao()}
+              aria-label={`Mudar o telefone de ${pessoa.nome}`}
+            >
+              <IconeDaAcao icone="editar" />
+              <DicaDaAcao>Mudar</DicaDaAcao>
+            </button>
+          ) : (
+            <button type="button" onClick={() => setEditando(true)} className={classeDaAcao({ jeito: 'pilula' })}>
+              <IconeDaAcao icone="mais" tamanho={15} />
+              {pessoa.souEu ? 'Cadastrar o meu' : 'Cadastrar'}
+            </button>
+          )
         )}
       </span>
     )
@@ -165,12 +175,9 @@ function Telefone({
       <Botao type="submit" className="px-2 py-1 text-xs" carregando={indo}>
         Salvar
       </Botao>
-      <button
-        type="button"
-        onClick={() => setEditando(false)}
-        className="text-xs text-tinta-3 hover:text-tinta"
-      >
-        cancelar
+      <button type="button" onClick={() => setEditando(false)} className={classeDaAcao()} aria-label="Cancelar">
+        <IconeDaAcao icone="fechar" />
+        <DicaDaAcao>Cancelar</DicaDaAcao>
       </button>
     </form>
   )
@@ -417,12 +424,9 @@ export function Equipe({
         titulo="Quem tem acesso"
         acao={
           podeGerir && !abrindo ? (
-            <button
-              type="button"
-              onClick={() => setAbrindo(true)}
-              className="text-xs font-semibold text-marca hover:underline"
-            >
-              + Adicionar pessoa
+            <button type="button" onClick={() => setAbrindo(true)} className={classeDaAcao({ jeito: 'pilula' })}>
+              <IconeDaAcao icone="mais" tamanho={15} />
+              Adicionar pessoa
             </button>
           ) : undefined
         }
@@ -445,7 +449,7 @@ export function Equipe({
                     {p.nome}
                   </span>
                   {p.souEu && (
-                    <span className="rounded bg-superficie-2 px-1.5 py-px text-[10px] font-bold text-tinta-3 uppercase">
+                    <span className="rounded bg-superficie-2 px-1.5 py-px text-[11.5px] font-bold text-tinta-3 uppercase">
                       você
                     </span>
                   )}
@@ -576,12 +580,9 @@ export function Equipe({
         <Cartao
           titulo="Adicionar pessoa"
           acao={
-            <button
-              type="button"
-              onClick={() => setAbrindo(false)}
-              className="text-xs text-tinta-3 hover:text-tinta"
-            >
-              fechar
+            <button type="button" onClick={() => setAbrindo(false)} className={classeDaAcao()} aria-label="Fechar">
+              <IconeDaAcao icone="fechar" />
+              <DicaDaAcao>Fechar</DicaDaAcao>
             </button>
           }
         >

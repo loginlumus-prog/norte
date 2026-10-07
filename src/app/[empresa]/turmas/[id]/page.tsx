@@ -25,6 +25,7 @@ import { MENU } from '@/ui/menu'
 import { Tabela } from '@/ui/Tabela'
 import { Numero, Secao, brl } from '@/ui/painel'
 import { Situacao, cx } from '@/ui/base'
+import { BotaoDaLinha } from '@/ui/premium'
 import type { Tema } from '@/ui/TrocaTema'
 import { TurmaForm } from '../TurmaForm'
 import { Matricular } from '../Matricular'
@@ -187,9 +188,13 @@ export default async function TurmaPagina({
                     <span className="text-xs text-tinta-3">{mostrarTelefone(a.telefoneResponsavel) || 'sem telefone'}</span>
                   </span>
                 ) : (
-                  <Link href={`/${slug}/clientes/${a.alunoId}#escola`} className="text-xs font-medium text-atencao underline-offset-2 hover:underline">
-                    anotar o responsável
-                  </Link>
+                  <BotaoDaLinha
+                    comRotulo
+                    href={`/${slug}/clientes/${a.alunoId}#escola`}
+                    icone="editar"
+                    rotulo="Anotar o responsável"
+                    dica={`Anotar o responsável de ${a.nome}`}
+                  />
                 ),
             },
             ...(verMensalidade

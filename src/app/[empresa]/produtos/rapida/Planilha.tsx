@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Aviso, Botao, cx } from '@/ui/base'
 import { CampoDoPin, MotivosProntos } from '@/ui/Assinar'
+import { BotaoDaLinha } from '@/ui/premium'
 import { criarLinha, salvarEstoque, salvarLinhas, type LinhaEditada } from './acoes'
 
 export type LinhaDaPlanilha = {
@@ -275,7 +276,7 @@ export function Planilha({
       <div className="overflow-x-auto rounded-norte border border-borda bg-superficie">
         <table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
           <thead>
-            <tr className="border-b border-borda bg-superficie-2 text-left text-[11px] font-bold tracking-wide text-tinta-3 uppercase">
+            <tr className="border-b border-borda bg-superficie-2 text-left text-[12.5px] font-bold tracking-wide text-tinta-3 uppercase">
               <th className="w-[4.5rem] px-2 py-2">Código</th>
               <th className="px-3 py-2">Nome</th>
               <th className="w-32 px-2 py-2">Gaveta</th>
@@ -374,7 +375,7 @@ export function Planilha({
                     <Link href={`/${slug}/produtos/${l.id}`} className="numero font-mono text-xs font-bold text-tinta-2 hover:text-marca" title="Abrir a ficha completa">
                       {l.codigo || 'ficha'}
                     </Link>
-                    {erro && <span className="mt-1 block max-w-[14rem] text-[11px] leading-tight font-medium whitespace-normal text-critico">{erro}</span>}
+                    {erro && <span className="mt-1 block max-w-[14rem] text-[12.5px] leading-tight font-medium whitespace-normal text-critico">{erro}</span>}
                   </td>
                   <td className="px-1 py-1">
                     <input
@@ -416,13 +417,13 @@ export function Planilha({
                     {l.servico ? (
                       <span className="px-2 text-xs text-tinta-3">serviço</span>
                     ) : l.opcoes > 1 ? (
-                      <Link
+                      <BotaoDaLinha
+                        comRotulo
                         href={`/${slug}/estoque?q=${encodeURIComponent(l.nome)}${loja ? `&unidade=${loja.id}` : ''}`}
-                        className="px-2 text-xs font-semibold text-marca hover:underline"
-                        title="Cada opção tem o seu estoque"
-                      >
-                        {l.opcoes} opções →
-                      </Link>
+                        icone="ver"
+                        rotulo={`${l.opcoes} opções`}
+                        dica={`${l.opcoes} opções de ${l.nome}: cada uma tem o seu estoque`}
+                      />
                     ) : (
                       <input
                         inputMode="decimal"

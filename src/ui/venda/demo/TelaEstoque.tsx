@@ -76,7 +76,7 @@ export function TelaEstoque({ estado, fazer }: { estado: Estado; fazer: (a: Acao
         ).map(([n, t, cor]) => (
           <Cartao key={t} className="!p-2.5">
             <p key={n} className={'pousa numero font-display text-xl font-bold ' + cor}>{n}</p>
-            <p className="text-[11px] text-tinta-3">{t}</p>
+            <p className="text-[12.5px] text-tinta-3">{t}</p>
           </Cartao>
         ))}
       </div>
@@ -85,12 +85,12 @@ export function TelaEstoque({ estado, fazer }: { estado: Estado; fazer: (a: Acao
         <Cartao className="tela-entra">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <Rotulo>Vai faltar</Rotulo>
-            <span className="text-[11px] text-tinta-3">ritmo dos últimos 30 dias contra o prazo de reposição</span>
+            <span className="text-[12.5px] text-tinta-3">ritmo dos últimos 30 dias contra o prazo de reposição</span>
           </div>
           <div className="relative mt-2 overflow-x-auto">
             <table className="w-full text-[12px]">
               <thead>
-                <tr className="text-left text-[9.5px] font-bold tracking-[0.08em] text-tinta-3 uppercase">
+                <tr className="text-left text-[11px] font-bold tracking-[0.08em] text-tinta-3 uppercase">
                   <th className="pb-1.5 font-bold">Item</th>
                   <th className="pb-1.5 text-right font-bold">Saldo</th>
                   {avancado && <th className="hidden pb-1.5 text-right font-bold sm:table-cell">Ritmo/dia</th>}
@@ -108,7 +108,7 @@ export function TelaEstoque({ estado, fazer }: { estado: Estado; fazer: (a: Acao
                     <tr key={p.id} className={'border-t border-borda-suave ' + (chegou === p.id ? 'tique' : '')}>
                       <td className="py-2 pr-2">
                         <span className="block font-semibold text-tinta">{p.nome}</span>
-                        <span className="text-[10.5px] text-tinta-3">{p.grade}</span>
+                        <span className="text-[12px] text-tinta-3">{p.grade}</span>
                       </td>
                       <td className="numero py-2 text-right text-tinta">{e}</td>
                       {avancado && <td className="numero hidden py-2 text-right text-tinta-2 sm:table-cell">{ritmo(p.ritmo)}</td>}
@@ -123,7 +123,7 @@ export function TelaEstoque({ estado, fazer }: { estado: Estado; fazer: (a: Acao
                           <button
                             type="button"
                             onClick={() => entrada(p.id)}
-                            className={botaoLinha + ' !px-2 !py-1 !text-[11px] whitespace-nowrap'}
+                            className={botaoLinha + ' !px-2 !py-1 !text-[12.5px] whitespace-nowrap'}
                           >
                             + Dar entrada<span className="sr-only"> de 20 em {p.nome} {p.grade}</span>
                           </button>
@@ -136,7 +136,7 @@ export function TelaEstoque({ estado, fazer }: { estado: Estado; fazer: (a: Acao
             </table>
           </div>
           {chegou && (
-            <p className="pousa mt-2 text-[11px] text-bom">
+            <p className="pousa mt-2 text-[12.5px] text-bom">
               Entrada de 20 un. registrada — o saldo e a situação já mudaram, e o movimento foi para o histórico.
             </p>
           )}
@@ -166,13 +166,13 @@ export function TelaEstoque({ estado, fazer }: { estado: Estado; fazer: (a: Acao
               />
             </label>
           </div>
-          <p className="mt-2 text-[11px] text-tinta-3">
+          <p className="mt-2 text-[12.5px] text-tinta-3">
             <b className="numero text-tinta-2">{reais(parado, 0)}</b> parados na prateleira, a preço de custo
           </p>
           <div className="relative mt-1 max-h-72 overflow-y-auto">
             <table className="w-full text-[12px]">
               <thead className="sticky top-0 bg-superficie">
-                <tr className="text-left text-[9.5px] font-bold tracking-[0.08em] text-tinta-3 uppercase">
+                <tr className="text-left text-[11px] font-bold tracking-[0.08em] text-tinta-3 uppercase">
                   <th className="py-1.5 font-bold">Item</th>
                   <th className="py-1.5 text-right font-bold">Tem</th>
                   <th className="py-1.5 text-right font-bold">Mínimo</th>
@@ -187,7 +187,7 @@ export function TelaEstoque({ estado, fazer }: { estado: Estado; fazer: (a: Acao
                     <tr key={p.id} className="border-t border-borda-suave">
                       <td className="py-1.5 pr-2">
                         <span className="font-semibold text-tinta">{p.nome}</span>{' '}
-                        <span className="text-[10.5px] text-tinta-3">{p.grade}</span>
+                        <span className="text-[12px] text-tinta-3">{p.grade}</span>
                       </td>
                       <td className={'numero py-1.5 text-right font-semibold ' + (e <= 0 ? 'text-critico' : noMinimo(p, e) ? 'text-atencao' : 'text-tinta')}>
                         {e}

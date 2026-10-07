@@ -8,9 +8,9 @@
 // "Valor e bolsa". Turma cheia não trava a secretaria: pergunta "é isso mesmo".
 
 import { useActionState, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
 import { Aviso, Botao, Campo, Cartao, Marcar } from '@/ui/base'
 import { semApagar } from '@/ui/formulario'
+import { BotaoDaLinha, DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import { buscarAlunosAcao, matricularAcao, type EstadoEscola } from './acoes'
 
 type Achado = { id: string; nome: string; nascimento: string | null }
@@ -76,8 +76,9 @@ export function Matricular({
       caixa
       titulo="Matricular nesta turma"
       acao={
-        <button type="button" onClick={() => setAberto(false)} className="text-xs text-tinta-3 hover:text-tinta">
-          fechar
+        <button type="button" onClick={() => setAberto(false)} className={classeDaAcao()} aria-label="Fechar">
+          <IconeDaAcao icone="fechar" />
+          <DicaDaAcao>Fechar</DicaDaAcao>
         </button>
       }
     >
@@ -93,8 +94,9 @@ export function Matricular({
               <b className="text-tinta">{aluno.nome}</b>
               {idade(aluno.nascimento, hoje) !== null && <span className="text-tinta-3"> · {idade(aluno.nascimento, hoje)} anos</span>}
             </span>
-            <button type="button" onClick={() => setAluno(null)} className="text-xs text-tinta-3 hover:text-tinta">
-              trocar
+            <button type="button" onClick={() => setAluno(null)} className={classeDaAcao()} aria-label={`Trocar ${aluno.nome} por outra pessoa`}>
+              <IconeDaAcao icone="trocar" />
+              <DicaDaAcao>Trocar</DicaDaAcao>
             </button>
           </div>
         ) : (
@@ -129,9 +131,9 @@ export function Matricular({
                 ))}
               </ul>
             )}
-            <Link href={`/${slug}/clientes/novo`} className="self-start text-xs font-medium text-marca underline-offset-2 hover:underline">
-              {palavra.novo}
-            </Link>
+            <span className="self-start">
+              <BotaoDaLinha comRotulo href={`/${slug}/clientes/novo`} icone="mais" rotulo={palavra.novo} />
+            </span>
           </div>
         )}
 

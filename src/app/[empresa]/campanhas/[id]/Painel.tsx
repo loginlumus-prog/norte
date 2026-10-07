@@ -7,6 +7,7 @@
 
 import { useRef, useState, useTransition, type ReactNode } from 'react'
 import { Aviso, Botao, cx } from '@/ui/base'
+import { DicaDaAcao, IconeDaAcao, classeDaAcao } from '@/ui/premium'
 import {
   DIGITANDO_MAX_SEG,
   ROTULO_NO,
@@ -74,7 +75,7 @@ function Coringas({ aoInserir }: { aoInserir: (t: string) => void }) {
     <div className="flex flex-wrap items-center gap-1 text-xs text-tinta-3">
       Inserir:
       {['{primeiro_nome}', '{nome}', '{resposta}'].map((c) => (
-        <button key={c} type="button" onClick={() => aoInserir(c)} className="rounded-full border border-borda px-2 py-0.5 font-mono text-[11px] text-tinta-2 hover:border-marca/50">
+        <button key={c} type="button" onClick={() => aoInserir(c)} className="rounded-full border border-borda px-2 py-0.5 font-mono text-[12.5px] text-tinta-2 hover:border-marca/50">
           {c}
         </button>
       ))}
@@ -117,9 +118,10 @@ export function PainelDoBloco({
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-[15px] font-bold text-tinta">{ROTULO_NO[no.tipo]}</h3>
         {no.tipo !== 'inicio' && (
-          <Botao tom="discreto" onClick={aoApagar}>
+          <button type="button" className={classeDaAcao({ jeito: 'pilula', tom: 'perigo' })} onClick={aoApagar}>
+            <IconeDaAcao icone="excluir" tamanho={15} />
             Apagar bloco
-          </Botao>
+          </button>
         )}
       </div>
       {pendencias.map((p, i) => (
@@ -230,9 +232,10 @@ function Formulario(p: {
                   onChange={(e) => p.aoMudar({ regras: d.regras.map((x) => (x.id === r.id ? { ...x, rotulo: e.target.value } : x)) })}
                   className={campo}
                 />
-                <Botao tom="discreto" onClick={() => p.aoMudar({ regras: d.regras.filter((x) => x.id !== r.id) })} aria-label="Tirar caminho">
-                  ×
-                </Botao>
+                <button type="button" className={classeDaAcao({ tom: 'perigo' })} onClick={() => p.aoMudar({ regras: d.regras.filter((x) => x.id !== r.id) })} aria-label="Tirar caminho">
+                  <IconeDaAcao icone="excluir" />
+                  <DicaDaAcao>Tirar</DicaDaAcao>
+                </button>
               </div>
               <input
                 defaultValue={r.palavras.join(', ')}
@@ -285,9 +288,10 @@ function Formulario(p: {
               />
               <span className="w-10 text-right text-xs tabular-nums text-tinta-3">{total ? Math.round((r.peso / total) * 100) : 0}%</span>
               {d.ramos.length > 2 && (
-                <Botao tom="discreto" aria-label="Tirar caminho" onClick={() => p.aoMudar({ ramos: d.ramos.filter((x) => x.id !== r.id) })}>
-                  ×
-                </Botao>
+                <button type="button" className={classeDaAcao({ tom: 'perigo' })} aria-label="Tirar caminho" onClick={() => p.aoMudar({ ramos: d.ramos.filter((x) => x.id !== r.id) })}>
+                  <IconeDaAcao icone="excluir" />
+                  <DicaDaAcao>Tirar</DicaDaAcao>
+                </button>
               )}
             </div>
           ))}
@@ -497,9 +501,10 @@ function FormMensagem({
               className={campo}
             />
             {i > 0 && (
-              <Botao tom="discreto" aria-label="Tirar variação" onClick={() => aoMudar({ ...d, textos: d.textos.filter((_, j) => j !== i) })}>
-                ×
-              </Botao>
+              <button type="button" className={classeDaAcao({ tom: 'perigo' })} aria-label="Tirar variação" onClick={() => aoMudar({ ...d, textos: d.textos.filter((_, j) => j !== i) })}>
+                <IconeDaAcao icone="excluir" />
+                <DicaDaAcao>Tirar</DicaDaAcao>
+              </button>
             )}
           </div>
         </Rotulo>
