@@ -93,11 +93,11 @@ const pedir = (p: ReturnType<typeof pedido>) =>
   m.cat.fazerPedidoPeloCatalogo('sorveteria-a', 'centro', p as never, `10.1.1.${ip++}`, 'https://norte.test')
 
 describe('1. item composto: o pedido confere o estoque dos componentes', () => {
-  it('CORRIGIDO: combo sem casquinha — o pedido é recusado com o motivo (a vitrine ainda mostra o combo)', async () => {
+  it('CORRIGIDO: combo sem casquinha — aparece esgotado na vitrine, e o pedido é recusado com o motivo', async () => {
     const vitrine = await m.cat.produtosDoCatalogo('sorveteria-a', 'centro', {})
     expect(vitrine!.produtos.find((p) => p.id === 'p-casq')).toBeUndefined()
-    // Pendente: a vitrine ainda mostra o combo como "tem"; o pedido é que recusa.
-    expect(vitrine!.produtos.find((p) => p.id === 'p-combo')?.disponivel).toBe(true)
+    // Sem casquinha, o combo não monta: some da vitrine (ou aparece esgotado).
+    expect(vitrine!.produtos.find((p) => p.id === 'p-combo')?.disponivel ?? false).toBe(false)
     const r = await pedir(pedido([{ variacaoId: 'v-combo', quantidade: 5 }]))
     expect(r).toMatchObject({ ok: false, mudou: true })
     expect(!r.ok && r.erro).toMatch(/Não dá para montar/)

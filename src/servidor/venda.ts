@@ -209,6 +209,9 @@ export type NovaVenda = {
   offline?: { quando: Date } | null
 }
 
+/** Quanto a venda "sem internet" precisa ter de atraso para valer como tal (ver `registrarVenda`). */
+export const OFFLINE_MINIMO_MS = 3 * 60_000
+
 export type ResultadoVenda =
   | {
       ok: true
@@ -354,7 +357,14 @@ export async function registrarVenda(
   const quando = pedido.offline?.quando instanceof Date && Number.isFinite(pedido.offline.quando.getTime())
     ? new Date(Math.min(pedido.offline.quando.getTime(), Date.now()))
     : null
-  const offline = quando && Date.now() - quando.getTime() <= 7 * 864e5 ? { quando } : null
+  // E nem de agora: a marca vem do navegador, e ela afrouxa regras (estoque,
+  // PIN, preço). Venda que "ficou sem internet" há menos de 3 minutos é
+  // tratada como venda de agora, com as regras de sempre — a fila do
+  // aparelho só sobe depois de a rede falhar e voltar, então a venda de
+  // verdade chega atrasada. Sem isto, qualquer venda online mandava
+  // `offline: agora` e vendia sem estoque e sem PIN.
+  const idade = quando ? Date.now() - quando.getTime() : 0
+  const offline = quando && idade >= OFFLINE_MINIMO_MS && idade <= 7 * 864e5 ? { quando } : null
   const v: NovaVenda = {
     ...pedido,
     chave,
@@ -783,6 +793,23 @@ export async function registrarVenda(
     await aplicarPrecoDaLoja(db, variacoes.map((x) => x.produto), v.unidadeId)
     const porId = new Map(variacoes.map((x) => [x.id, x]))
 
+    // A venda sem internet que sobe depois de o preço mudar: ela aconteceu
+    // pelo preço de ENTÃO (o dinheiro na gaveta é esse). Só para o produto
+    // cujo preço o livro mostra mudado depois da hora da venda — fora disso,
+    // preço diferente continua sendo desconto, com o teto de sempre.
+    const precoMudouDepois = new Set<string>()
+    if (v.offline && variacoes.length > 0) {
+      const mudancas = await db.auditoria.findMany({
+        where: {
+          acao: { in: ['produto.preco.alterou', 'produto.preco.loja', 'produto.importou', 'produto.alterou'] },
+          alvoId: { in: [...new Set(variacoes.map((x) => x.produto.id))] },
+          criadoEm: { gte: v.offline.quando },
+        },
+        select: { alvoId: true },
+      })
+      for (const m of mudancas) if (m.alvoId) precoMudouDepois.add(m.alvoId)
+    }
+
     // ── 1a. só o que ainda está no cadastro ──
     // Produto desativado (ou a variação: a cor que saiu de linha) some da
     // busca e da grade — mas o pedido montado antes, o guardado no navegador
@@ -945,7 +972,7 @@ export async function registrarVenda(
       // combinou (a fotografia do pedido), em qualquer forma de pagamento: o
       // preço que subiu depois, ou a tabela do cartão, não mudam o que foi
       // prometido no link. É a "tabela" dela — o desconto se mede daí.
-      const tabelaCent = precoDoPedido.has(i.variacaoId)
+      let tabelaCent = precoDoPedido.has(i.variacaoId)
         ? precoDoPedido.get(i.variacaoId)!
         : precoNaTabela(
             {
@@ -956,6 +983,8 @@ export async function registrarVenda(
             tabela,
           ) + centavos(va?.ajustePreco ?? 0)
       const pedidoCent = i.precoUnit != null ? centavos(i.precoUnit) : tabelaCent
+      const tabelaDaHora = v.offline && i.precoUnit != null && !!p && precoMudouDepois.has(p.id) && !precoDoPedido.has(i.variacaoId)
+      if (tabelaDaHora) tabelaCent = pedidoCent
       const precoCent = Math.max(0, Math.min(pedidoCent, tabelaCent))
       // O balcão não edita o preço do item de catálogo (desconto vai à
       // parte): preço diferente da tabela é tela desatualizada. Sem isto, o

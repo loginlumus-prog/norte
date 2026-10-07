@@ -313,7 +313,7 @@ describe('quem ainda não tem PIN cria na hora de registrar', () => {
   })
 
   it('sem internet o caixa não trava: a venda entra no nome da conta, marcada para conferir — e o PIN novo é ignorado', async () => {
-    const r = await vender(NOVA, { offline: { quando: new Date(Date.now() - 60_000) }, chave: 'off-nova-0009', ...criando('5829') })
+    const r = await vender(NOVA, { offline: { quando: new Date(Date.now() - 5 * 60_000) }, chave: 'off-nova-0009', ...criando('5829') })
     expect(r).toMatchObject({ ok: true, vendedor: 'Nova Sem Pin' })
     if (!r.ok) return
     expect((await gravada(r.vendaId)).assinatura).toMatchObject({ como: 'sem_internet', conferir: true })

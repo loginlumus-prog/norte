@@ -102,82 +102,81 @@ const um = async <T>(sql: string, p: unknown[] = []) => (await db.query<T>(sql, 
 const saldo = async (variacaoId: string) =>
   Number((await um<{ quantidade: string }>(`select quantidade from estoque where variacao_id = $1 and unidade_id = 'uni-a1'`, [variacaoId])).quantidade)
 
-describe('1. a marca "sem internet" vem do navegador e abre atalhos numa venda online', () => {
-  it('com "vender sem estoque" DESLIGADO, a venda com offline vende 5 de uma peça que tem 1 (estoque -4)', async () => {
-    const normal = await m.venda.registrarVenda(BALCAO, {
-      unidadeId: 'uni-a1', caixaId: 'cx-a1',
-      itens: [{ variacaoId: 'var-uni', quantidade: 5, precoUnit: 80 }],
-      pagamentos: [{ forma: 'PIX', valor: 400 }],
-    })
-    expect(normal).toMatchObject({ ok: false, motivo: 'sem_estoque' })
-
-    // O mesmo pedido, agora com a marca que qualquer POST pode pôr.
+describe('1. a marca "sem internet" só vale para venda que chega atrasada', () => {
+  it('CORRIGIDO: "offline" de agora segue a regra de sempre — sem estoque é recusado', async () => {
     const r = await m.venda.registrarVenda(BALCAO, {
       unidadeId: 'uni-a1', caixaId: 'cx-a1',
       itens: [{ variacaoId: 'var-uni', quantidade: 5, precoUnit: 80 }],
       pagamentos: [{ forma: 'PIX', valor: 400 }],
       offline: { quando: new Date() },
     })
-    expect(r.ok).toBe(true)
-    expect(await saldo('var-uni')).toBe(-4)
+    expect(r).toMatchObject({ ok: false, motivo: 'sem_estoque' })
+    expect(await saldo('var-uni')).toBe(1)
   })
 
-  it('com a empresa pedindo PIN em toda venda, a venda com offline entra SEM PIN, no nome da conta aberta', async () => {
+  it('CORRIGIDO: com PIN em toda venda, "offline" de agora pede o PIN como qualquer venda', async () => {
     await db.exec(`update orgs set pin_em_toda_venda = true where id = 'org-a'`)
     try {
-      const semPin = await m.venda.registrarVenda(BALCAO, {
-        unidadeId: 'uni-a1', caixaId: 'cx-a1',
-        itens: [{ variacaoId: 'var-blu', quantidade: 1, precoUnit: 100 }],
-        pagamentos: [{ forma: 'PIX', valor: 100 }],
-      })
-      expect(semPin).toMatchObject({ ok: false, motivo: 'assinatura_pedida' })
-
       const r = await m.venda.registrarVenda(BALCAO, {
         unidadeId: 'uni-a1', caixaId: 'cx-a1',
         itens: [{ variacaoId: 'var-blu', quantidade: 1, precoUnit: 100 }],
         pagamentos: [{ forma: 'PIX', valor: 100 }],
-        offline: { quando: new Date() },
+        offline: { quando: new Date(Date.now() - 60_000) },
       })
-      expect(r).toMatchObject({ ok: true, vendedor: 'Bia Balcao' })
+      expect(r).toMatchObject({ ok: false, motivo: 'assinatura_pedida' })
     } finally {
       await db.exec(`update orgs set pin_em_toda_venda = false where id = 'org-a'`)
     }
   })
 })
 
-describe('2. a venda da fila (sem internet) que o preço mudou antes de subir nunca mais entra', () => {
-  it('preço BAIXOU entre a venda e a subida: o pago (preço velho) não fecha com o total, recusada para sempre', async () => {
-    // A venda aconteceu sem internet a R$ 100 (dinheiro na gaveta, peça na sacola).
+describe('2. a venda da fila (sem internet) que o preço mudou antes de subir', () => {
+  const mudouPreco = () =>
+    db.exec(`insert into auditoria (id, org_id, quem, acao, alvo_tipo, alvo_id, criado_em) values (gen_random_uuid()::text, 'org-a', 'Dona', 'produto.preco.alterou', 'produto', 'p-saia', now() at time zone 'utc')`)
+
+  it('CORRIGIDO: o preço BAIXOU depois da venda: entra pelo preço da hora (o que está na gaveta)', async () => {
     await db.exec(`update produtos set preco_vista = 90 where id = 'p-saia'`)
+    await mudouPreco()
     try {
       const r = await m.venda.registrarVenda(BALCAO, {
         unidadeId: 'uni-a1', caixaId: 'cx-a1',
         itens: [{ variacaoId: 'var-saia', quantidade: 1, precoUnit: 100 }],
         pagamentos: [{ forma: 'PIX', valor: 100 }],
         chave: 'fila-saia-0001',
-        offline: { quando: new Date(Date.now() - 60_000) },
+        offline: { quando: new Date(Date.now() - 10 * 60_000) },
       })
-      expect(r).toMatchObject({ ok: false, motivo: 'pagamento_nao_fecha', total: 90, pago: 100 })
-      expect(await saldo('var-saia')).toBe(10) // a peça saiu, o estoque não sabe
+      expect(r).toMatchObject({ ok: true, total: 100 })
     } finally {
       await db.exec(`update produtos set preco_vista = 100 where id = 'p-saia'`)
     }
   })
 
-  it('preço SUBIU acima do teto de desconto: o preço velho vira "desconto acima do teto" para quem não pode', async () => {
+  it('CORRIGIDO: o preço SUBIU depois da venda: entra pelo preço da hora, sem virar desconto', async () => {
     await db.exec(`update produtos set preco_vista = 120 where id = 'p-saia'`)
+    await mudouPreco()
     try {
       const r = await m.venda.registrarVenda(BALCAO, {
         unidadeId: 'uni-a1', caixaId: 'cx-a1',
         itens: [{ variacaoId: 'var-saia', quantidade: 1, precoUnit: 100 }],
         pagamentos: [{ forma: 'PIX', valor: 100 }],
         chave: 'fila-saia-0002',
-        offline: { quando: new Date(Date.now() - 60_000) },
+        offline: { quando: new Date(Date.now() - 10 * 60_000) },
       })
-      expect(r).toMatchObject({ ok: false, motivo: 'desconto_acima_do_teto' })
+      expect(r).toMatchObject({ ok: true, total: 100 })
     } finally {
       await db.exec(`update produtos set preco_vista = 100 where id = 'p-saia'`)
     }
+  })
+
+  it('sem mudança de preço no livro depois da venda, preço menor continua sendo desconto (com o teto)', async () => {
+    const r = await m.venda.registrarVenda(BALCAO, {
+      unidadeId: 'uni-a1', caixaId: 'cx-a1',
+      itens: [{ variacaoId: 'var-blu', quantidade: 1, precoUnit: 50 }],
+      pagamentos: [{ forma: 'PIX', valor: 50 }],
+      chave: 'fila-blu-0003',
+      offline: { quando: new Date(Date.now() - 10 * 60_000) },
+    })
+    expect(r).toMatchObject({ ok: false, motivo: 'desconto_acima_do_teto' })
   })
 })
 
@@ -200,6 +199,27 @@ describe('3. o cancelamento devolve o que a venda baixou, não o cadastro de ago
       expect(await saldo('var-esc')).toBe(10) // e nenhuma escova "voltou"
     } finally {
       await db.exec(`delete from composicoes where id = 'c-kit'`)
+    }
+  })
+
+  it('CORRIGIDO: a devolução do kit que ganhou composição depois de vendido devolve o próprio kit', async () => {
+    const r = await m.venda.registrarVenda(DONA, {
+      unidadeId: 'uni-a1', caixaId: 'cx-a1',
+      itens: [{ variacaoId: 'var-kit', quantidade: 2, precoUnit: 30 }],
+      pagamentos: [{ forma: 'PIX', valor: 60 }],
+    })
+    if (!r.ok) throw new Error(JSON.stringify(r))
+    const kit = await saldo('var-kit')
+    const esc = await saldo('var-esc')
+    await db.exec(`insert into composicoes (id, org_id, variacao_id, componente_id, quantidade) values ('c-kit2', 'org-a', 'var-kit', 'var-esc', 1)`)
+    try {
+      const linha = await um<{ id: string }>(`select id from venda_itens where venda_id = $1`, [r.vendaId])
+      const d = await m.devolucao.devolver(DONA, { vendaId: r.vendaId, itens: [{ vendaItemId: linha.id, quantidade: 1 }], destino: 'VALE', motivo: 'não quis' })
+      expect(d.ok).toBe(true)
+      expect(await saldo('var-kit')).toBe(kit + 1)
+      expect(await saldo('var-esc')).toBe(esc)
+    } finally {
+      await db.exec(`delete from composicoes where id = 'c-kit2'`)
     }
   })
 

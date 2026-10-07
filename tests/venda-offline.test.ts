@@ -103,7 +103,7 @@ describe('a venda que subiu da fila de sem internet', () => {
                    update estoque set quantidade = 100 where id = 'e-pic';`)
     const online = await m.venda.registrarVenda(BALCAO, pedido(1, { chave: 'chave-cccc-0003' }))
     expect(online).toMatchObject({ ok: false, motivo: 'caixa_fechado' })
-    const off = await m.venda.registrarVenda(BALCAO, pedido(1, { chave: 'chave-cccc-0003', offline: { quando: new Date(Date.now() - 60_000) } }))
+    const off = await m.venda.registrarVenda(BALCAO, pedido(1, { chave: 'chave-cccc-0003', offline: { quando: new Date(Date.now() - 5 * 60_000) } }))
     expect(off.ok).toBe(true)
     const [v] = await linhas<{ caixa_id: string }>(`select caixa_id from vendas where chave = 'chave-cccc-0003'`)
     expect(v!.caixa_id).toBe('cx-2')

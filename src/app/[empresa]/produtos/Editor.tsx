@@ -427,6 +427,14 @@ export function Editor({
   }, [estado])
 
   const [marcadas, setMarcadas] = useState<Record<string, string[]>>(produto?.marcadas ?? {})
+  // A grade que o servidor tem AGORA manda depois de salvar: se ele recusou
+  // a mudança ("ainda tem saldo"), as caixinhas voltam ao que ficou gravado,
+  // em vez de mostrar uma escolha que não entrou — e que reaparecia marcada
+  // ao recarregar.
+  const gravadas = JSON.stringify(produto?.marcadas ?? {})
+  useEffect(() => {
+    setMarcadas(JSON.parse(gravadas) as Record<string, string[]>)
+  }, [gravadas, estado])
 
   // "Vendido em" controlado: no cadastro novo, escolher a categoria já marca
   // as lojas do ramo dela (o picolé só na sorveteria). A pessoa ainda pode
@@ -808,7 +816,7 @@ export function Editor({
                             type="checkbox"
                             name={`opcao_${e.id}_${o.id}`}
                             disabled={travado}
-                            defaultChecked={ligada}
+                            checked={ligada}
                             onChange={(ev) => alterna(e.id, o.id, ev.currentTarget.checked)}
                             className="size-3.5 accent-[var(--marca)]"
                           />

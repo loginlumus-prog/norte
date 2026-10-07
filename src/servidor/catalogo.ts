@@ -745,7 +745,7 @@ export function disponivelNoCatalogo(
   return Number(estoques[0]!.quantidade) > 0
 }
 
-function montarProduto(slug: string, p: ProdutoLido, vendeSemEstoque: boolean): ProdutoNoCatalogo {
+function montarProduto(slug: string, p: ProdutoLido, vendeSemEstoque: boolean, semMontar: ReadonlySet<string> = new Set()): ProdutoNoCatalogo {
   const base = Number(p.precoVista ?? 0)
   const opcoes = p.variacoes.map((v): OpcaoNoCatalogo => {
     const rotulo = [...v.opcoes]
@@ -756,7 +756,7 @@ function montarProduto(slug: string, p: ProdutoLido, vendeSemEstoque: boolean): 
       variacaoId: v.id,
       rotulo,
       preco: Math.round((base + Number(v.ajustePreco ?? 0)) * 100) / 100,
-      disponivel: disponivelNoCatalogo(p, v.estoques, vendeSemEstoque),
+      disponivel: disponivelNoCatalogo(p, v.estoques, vendeSemEstoque) && !semMontar.has(v.id),
     }
   })
   const comPreco = opcoes.filter((o) => o.preco > 0)
@@ -822,6 +822,28 @@ export async function lerVitrinePublica(slug: string, endereco: string): Promise
 
 const POR_PAGINA = 40
 
+/**
+ * Os itens que "montam na hora" (Casquinha + Água) e que não dá para montar
+ * agora: algum componente, com estoque lançado nesta loja, tem menos que UMA
+ * unidade pede. O composto não tem saldo próprio — sem isto ele aparecia
+ * sempre "tem", e o pedido é que recusava.
+ */
+async function compostosSemComponente(db: BancoDaOrg, lidos: ProdutoLido[], unidadeId: string): Promise<Set<string>> {
+  const ids = lidos.flatMap((p) => p.variacoes.map((v) => v.id))
+  if (ids.length === 0) return new Set()
+  const comps = await db.composicao.findMany({
+    where: { variacaoId: { in: ids } },
+    select: { variacaoId: true, componenteId: true, quantidade: true },
+  })
+  if (comps.length === 0) return new Set()
+  const saldos = await db.estoque.findMany({
+    where: { unidadeId, variacaoId: { in: [...new Set(comps.map((c) => c.componenteId))] } },
+    select: { variacaoId: true, quantidade: true },
+  })
+  const tem = new Map(saldos.map((e) => [e.variacaoId, Number(e.quantidade)]))
+  return new Set(comps.filter((c) => tem.has(c.componenteId) && tem.get(c.componenteId)! < Number(c.quantidade) - 1e-9).map((c) => c.variacaoId))
+}
+
 /** Uma página de produtos: por categoria, por busca, ou tudo. */
 export async function produtosDoCatalogo(
   slug: string,
@@ -855,7 +877,8 @@ export async function produtosDoCatalogo(
     })
     // O catálogo é de UMA loja: mostra o preço dela (ver preco-loja.ts).
     await aplicarPrecoDaLoja(db, lidos, a.catalogo.unidadeId)
-    let produtos = lidos.map((p) => montarProduto(slug, p, org?.vendeSemEstoque ?? false))
+    const semMontar = org?.vendeSemEstoque ? new Set<string>() : await compostosSemComponente(db, lidos, a.catalogo.unidadeId)
+    let produtos = lidos.map((p) => montarProduto(slug, p, org?.vendeSemEstoque ?? false, semMontar))
     if (!a.catalogo.mostrarEsgotado) produtos = produtos.filter((p) => p.disponivel)
     // Leu o dobro para a página não sair vazia quando muita coisa está
     // esgotada; o "mais" segue pelo que foi LIDO, não pelo que sobrou.

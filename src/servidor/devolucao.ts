@@ -516,12 +516,27 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
   // que quem devolveu apontou (ver `PedidoDevolucao.itens`). Na loja onde a
   // devolução acontece: é lá que a peça está, na mão.
   const daLoja = outraLoja ? ` da ${v.unidade.nome}, devolvida na ${ondeNome}` : ''
+  // O que a venda baixou DIRETO (a peça em si, não componente): essa peça
+  // volta ela mesma, ainda que hoje tenha composição — o kit que ganhou
+  // receita depois de vendido devolvia escovas que nunca saíram.
+  const baixouDireto = new Set(
+    (
+      await db.movimentoEstoque.findMany({
+        where: { referencia: v.id, tipo: 'VENDA', variacaoId: { in: linhas.map((l) => l.item.variacaoId).filter((x): x is string => !!x) } },
+        select: { variacaoId: true },
+        distinct: ['variacaoId'],
+      })
+    ).map((x) => x.variacaoId),
+  )
   for (const l of linhas) {
     const como = !l.item.variacaoId && l.variacaoId ? voltaComo.get(l.variacaoId) : undefined
     const variacaoId = l.item.variacaoId ?? como?.id
     if (!variacaoId) continue
     // O composto (a Casquinha + Água) devolve o que leva — ver composicao.ts.
-    for (const b of (await expandir(db, [{ variacaoId, quantidade: l.quantidade }])).baixas) {
+    const voltam = baixouDireto.has(variacaoId)
+      ? [{ variacaoId, quantidade: l.quantidade }]
+      : (await expandir(db, [{ variacaoId, quantidade: l.quantidade }])).baixas
+    for (const b of voltam) {
       await mexerEstoqueEm(db, sessao, {
         variacaoId: b.variacaoId,
         unidadeId: onde,
