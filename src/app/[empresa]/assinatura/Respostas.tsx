@@ -14,6 +14,7 @@
 import { useActionState } from 'react'
 import { Botao, Aviso } from '@/ui/base'
 import { comprarPacote, type EstadoAssinatura } from './acoes'
+import { Pagamento, CampoDocumento } from './Pagamento'
 
 const n = (v: number) => v.toLocaleString('pt-BR')
 const brl = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -68,6 +69,7 @@ export function Respostas({
     <div className="flex flex-col gap-3">
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
+      <Pagamento estado={estado} />
 
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
         <p className="flex items-baseline gap-2">
@@ -105,6 +107,7 @@ export function Respostas({
 
       {periodo === 'mes' && podeComprar && (
         <form action={agir} className="flex flex-wrap items-center gap-3 border-t border-borda-suave pt-3">
+          {estado.pedirDocumento && <CampoDocumento />}
           {opcoes.map((o, i) => (
             <Botao
               key={o.chave}

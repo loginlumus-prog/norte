@@ -57,6 +57,10 @@ const PERMITIDAS = [
   { nome: 'CONECTOR_ASSINATURA', gerar: true },
   // e-mail
   { nome: 'RESEND_API_KEY' },
+  // cobrança (Asaas): sem a chave, assinar continua sendo pedido à equipe
+  { nome: 'ASAAS_API_KEY' },
+  { nome: 'ASAAS_AMBIENTE' },
+  { nome: 'ASAAS_WEBHOOK_TOKEN' },
   { nome: 'EMAIL_REMETENTE' },
   { nome: 'CADASTRO_ABERTO' },
   { nome: 'NORTE_WHATSAPP' },

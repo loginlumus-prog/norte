@@ -18,10 +18,32 @@ import {
 } from '@/servidor/assinatura'
 import { PACOTES, PLANOS, PRECOS, ehPacote, milhar, mudanca, rs, type Pacote } from '@/servidor/planos'
 import { EMPRESA } from '@/servidor/legal'
+import { asaasLigado, ajustarAssinatura, cobrarPacote, cobrarPrimeiroMes, AsaasFalhou, FaltaDocumento } from '@/servidor/asaas'
+import { comoOrg } from '@/servidor/banco'
 
 const reais = rs
 
-export type EstadoAssinatura = { erro?: string; ok?: string }
+export type EstadoAssinatura = {
+  erro?: string
+  ok?: string
+  /** A página de pagamento do Asaas (Pix, boleto ou cartão). */
+  pagar?: string
+  /** O Asaas pede CPF/CNPJ e a empresa não tem: a tela mostra o campo. */
+  pedirDocumento?: boolean
+}
+
+/** O erro do Asaas virado recado de tela. */
+function recadoDoAsaas(e: unknown): EstadoAssinatura | null {
+  if (e instanceof FaltaDocumento) return { erro: e.message, pedirDocumento: true }
+  if (e instanceof AsaasFalhou) return { erro: `Não deu para gerar a cobrança agora: ${e.message}` }
+  return null
+}
+
+/** A empresa tem assinatura mensal no Asaas? (Quem paga por contrato, não.) */
+const temAssinaturaAsaas = (orgId: string) =>
+  comoOrg(orgId, (db) => db.cobranca.findUnique({ where: { orgId }, select: { provedor: true, assinaturaId: true } })).then(
+    (c) => c?.provedor === 'asaas' && Boolean(c.assinaturaId),
+  )
 
 export async function trocar(
   slug: string,
@@ -64,6 +86,57 @@ export async function trocar(
   // testado e a de descer: o que a loja está dizendo é "quero assinar", e
   // assinar passa pelo pagamento. Descer na hora, em teste, só tiraria o
   // assistente de quem ainda não pagou nada.
+  // Com o Asaas ligado, assinar é pagar: a cobrança sai na hora e o plano liga
+  // quando o Asaas avisa que o dinheiro entrou (servidor/asaas.ts). O pedido
+  // continua no livro, para a equipe ver quem está no meio do caminho.
+  if (!assinaturaLivre() && asaasLigado()) {
+    const previa = mudanca(a.plano, alvo, a.uso)
+    if (previa.impedimentos.length > 0) return { erro: previa.impedimentos.join(' ') }
+    const assinando = a.situacao === 'TESTE' || a.plano === 'GRATIS' || !(await temAssinaturaAsaas(s.orgId))
+    if (assinando) {
+      if (previa.novoMensal === null || previa.novoMensal <= 0) return { erro: 'Este plano não tem preço para cobrar.' }
+      try {
+        const c = await cobrarPrimeiroMes(s.orgId, {
+          plano: alvo,
+          mensalCent: Math.round(previa.novoMensal * 100),
+          documento: String(form.get('documento') ?? '') || null,
+          email: null,
+        })
+        await registrarPedido(s, { tipo: 'plano', para: alvo })
+        revalidatePath(`/${slug}/assinatura`)
+        return {
+          pagar: c.invoiceUrl,
+          ok:
+            `Cobrança de ${reais(c.pagarCent / 100)} gerada` +
+            (c.descontoCent > 0 ? ` (já com ${reais(c.descontoCent / 100)} de desconto de indicação)` : '') +
+            `. Pague por Pix, boleto ou cartão: o plano ${PLANOS[alvo].titulo} liga sozinho assim que o pagamento cair.`,
+        }
+      } catch (e) {
+        const r = recadoDoAsaas(e)
+        if (r) return r
+        throw e
+      }
+    }
+    // Já paga pelo Asaas: muda na hora, e a mensalidade acompanha a partir
+    // da cobrança que ainda está em aberto.
+    try {
+      const m = await trocarPlano(s, alvo)
+      await ajustarAssinatura(s.orgId, m.novoMensal === null ? null : Math.round(m.novoMensal * 100))
+      revalidatePath(`/${slug}/assinatura`)
+      return {
+        ok:
+          `Plano alterado para ${PLANOS[alvo].titulo}.` +
+          (m.novoMensal !== null ? ` A mensalidade passa a ${reais(m.novoMensal)}, a partir da próxima cobrança.` : '') +
+          (m.perde.length > 0 ? ` Módulos desligados: ${m.perde.map((x) => MODULOS[x as Modulo]?.titulo ?? x).join(', ')}.` : ''),
+      }
+    } catch (e) {
+      if (e instanceof SemCota) return { erro: e.motivo }
+      const r = recadoDoAsaas(e)
+      if (r) return { erro: `O plano mudou, mas a mensalidade no Asaas não foi ajustada: ${r.erro} Fale com a gente em ${EMPRESA.email}.` }
+      throw e
+    }
+  }
+
   if (!assinaturaLivre()) {
     const previa = mudanca(a.plano, alvo, a.uso)
     if (previa.impedimentos.length > 0) return { erro: previa.impedimentos.join(' ') }
@@ -138,6 +211,22 @@ export async function comprarPacote(
   }
   if (a.situacao === 'TESTE') {
     return { erro: 'No teste, o caminho é assinar: o mês passa a vir com as respostas do plano.' }
+  }
+
+  if (!assinaturaLivre() && asaasLigado()) {
+    try {
+      const c = await cobrarPacote(s.orgId, { pacote: qual, documento: String(form.get('documento') ?? '') || null, email: null })
+      await registrarPedido(s, { tipo: 'respostas', pacote: qual })
+      revalidatePath(`/${slug}/assinatura`)
+      return {
+        pagar: c.invoiceUrl,
+        ok: `Cobrança do pacote de ${pacote} (${rs(c.valorCent / 100)}) gerada. Assim que o pagamento cair, as respostas entram sozinhas.`,
+      }
+    } catch (e) {
+      const r = recadoDoAsaas(e)
+      if (r) return r
+      throw e
+    }
   }
 
   if (!assinaturaLivre()) {

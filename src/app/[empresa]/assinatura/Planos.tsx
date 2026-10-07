@@ -30,6 +30,7 @@ import { PLANOS, PRECOS, milhar, type Mudanca } from '@/servidor/planos'
 import { Botao, Aviso } from '@/ui/base'
 import { Confirmar } from '@/ui/Confirmar'
 import { trocar, type EstadoAssinatura } from './acoes'
+import { Pagamento, CampoDocumento } from './Pagamento'
 
 /** Os nomes dos módulos, para gente: "Campanhas", e não "campanhas". */
 const nomes = (lista: string[]) => lista.map((x) => MODULOS[x as Modulo]?.titulo ?? x).join(', ')
@@ -64,6 +65,7 @@ export function Planos({
   semAssistente,
   comAssistente,
   podeTrocar,
+  pagaOnline = false,
   whatsapp,
 }: {
   slug: string
@@ -75,6 +77,8 @@ export function Planos({
   semAssistente: Mudanca
   comAssistente: Mudanca
   podeTrocar: boolean
+  /** O Asaas está ligado: assinar abre o pagamento na hora. */
+  pagaOnline?: boolean
   /** Nosso WhatsApp comercial. Sem ele, o contato vai pelo suporte. */
   whatsapp: string | null
 }) {
@@ -101,6 +105,7 @@ export function Planos({
   const botao = (para: Plano, rotulo: string, principal = false) => (
     <form action={agir}>
       <input type="hidden" name="plano" value={para} />
+      {estado.pedirDocumento && <CampoDocumento />}
       <Botao
         type="submit"
         tom={principal ? 'principal' : 'secundario'}
@@ -116,6 +121,7 @@ export function Planos({
     <div className="flex flex-col gap-3">
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
+      <Pagamento estado={estado} />
 
       {deContrato ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -147,8 +153,9 @@ export function Planos({
             <p key={i} className="rounded-norte bg-atencao-fundo px-2.5 py-1.5 text-xs text-atencao">{i}</p>
           ))}
           <p className="text-xs leading-relaxed text-tinta-3">
-            Assinar é um pedido: a gente confirma o pagamento com você e
-            {emTeste ? ' o teste vira assinatura' : ' o que desligou volta'}, com tudo o que já foi lançado.
+            {pagaOnline
+              ? `Assinar abre o pagamento por Pix, boleto ou cartão. Assim que cair, ${emTeste ? 'o teste vira assinatura' : 'o que desligou volta'} sozinho, com tudo o que já foi lançado.`
+              : `Assinar é um pedido: a gente confirma o pagamento com você e ${emTeste ? 'o teste vira assinatura' : 'o que desligou volta'}, com tudo o que já foi lançado.`}
           </p>
         </>
       ) : atual === 'BALCAO' ? (

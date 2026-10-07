@@ -11,6 +11,7 @@ import { Cartao, Aviso, Situacao } from '@/ui/base'
 import { Numero, Secao, brl } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Planos } from './Planos'
+import { asaasLigado } from '@/servidor/asaas'
 import { Respostas } from './Respostas'
 import { Comparar } from './Comparar'
 import { plural } from '@/ui/texto'
@@ -214,6 +215,7 @@ export default async function AssinaturaPagina({
             semAssistente={mudanca(a.plano, 'BALCAO', a.uso)}
             comAssistente={mudanca(a.plano, 'BALCAO_AGENTE', a.uso)}
             podeTrocar={podeMexer}
+            pagaOnline={asaasLigado()}
             // O número é nosso, não da empresa cliente, e vem do ambiente: número
             // escrito no código é número que ninguém lembra de trocar.
             whatsapp={process.env.NORTE_WHATSAPP ?? null}
