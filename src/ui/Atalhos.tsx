@@ -79,7 +79,7 @@ export function Atalhos({ itens }: { itens: Atalho[] }) {
 
 /**
  * O link discreto no pé do painel: "Ver o painel completo" / "Voltar ao
- * simples". Grava o MESMO cookie da chave da barra lateral (`TrocaModo`) —
+ * simples". Grava o MESMO cookie do botão de aparência (`Preferencias`) —
  * o modo é do aparelho, e as duas portas têm de dar no mesmo lugar — e pede a
  * página de novo ao servidor, que é onde o painel decide o que mostrar.
  */

@@ -35,8 +35,7 @@ import { vocabularioDaEmpresa, nomesNoGuia, nomeDoGrupo, type PalavraDoMenu } fr
 import { sairAcao } from '@/app/[empresa]/acoes'
 import { TRANCA_MIN, AVISO_SEG, trancadaAoAbrir } from '@/servidor/presenca'
 import { lerSessao, ultimoToque } from '@/servidor/sessao'
-import { TrocaTema, type Tema } from './TrocaTema'
-import { TrocaModo } from './TrocaModo'
+import type { Tema } from './TrocaTema'
 import { lerModo } from '@/servidor/modo'
 import { menuRecolhido } from '@/servidor/menu-lateral'
 import { BarraLateral } from './BarraLateral'
@@ -52,7 +51,7 @@ import { AcoesDoTopo } from './AcoesDoTopo'
 import { cx, Ponto } from './base'
 import { cookieDasCores, corDoGrupo, lerCores } from './cores-menu'
 import { CoresDoMenu } from './CoresDoMenu'
-import { ChaveDeSom } from './ChaveDeSom'
+import { Preferencias } from './Preferencias'
 import { TrocaDeLoja } from './TrocaDeLoja'
 import { escolherUnidade } from '@/servidor/unidade'
 
@@ -348,19 +347,6 @@ export async function Estrutura({
 
       <CoresDoMenu slug={empresa.slug} grupos={grupos.map((g) => ({ chave: g.chave, nome: g.nome }))} escolhidas={coresEscolhidas} />
 
-      {/* Até 80rem a cápsula do som, do modo e do tema sai do cabeçalho (ela
-          descia para uma segunda linha, embaixo do título) e mora aqui. */}
-      <div className="flex flex-col gap-2 px-1 xl:hidden">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11.5px] font-bold tracking-[0.12em] text-lado-tinta-2/80 uppercase">Tela</span>
-          <span className="flex items-center gap-1.5">
-            <ChaveDeSom tom="lado" />
-            <TrocaTema inicial={tema} tom="lado" />
-          </span>
-        </div>
-        <TrocaModo atual={modo} tom="lado" />
-      </div>
-
       <div className="flex items-center gap-2 px-1">
         <span
           aria-hidden
@@ -483,20 +469,13 @@ export async function Estrutura({
             <div className="flex min-h-full flex-col gap-0.5">
               {marca('marca-gaveta')}
               {navegacao}
-              {/* O modo e o tema, que no cabeçalho do celular não cabem. */}
-              <div className="mt-4 flex flex-col gap-2 border-t border-lado-borda px-1.5 pt-3">
-                <span className="text-[11.5px] font-bold tracking-[0.12em] text-lado-tinta-2/75 uppercase">Tela</span>
-                <div className="flex items-center justify-between gap-2">
-                  <ChaveDeSom tom="lado" />
-                  <TrocaModo atual={modo} tom="lado" />
-                  <TrocaTema inicial={tema} tom="lado" />
-                </div>
-              </div>
               {rodape}
             </div>
           </Gaveta>
           <Simbolo tamanho={22} id="marca-topo" />
-          <span className="truncate text-sm font-bold text-lado-tinta">{empresa.nome}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-bold text-lado-tinta">{empresa.nome}</span>
+          {/* A aparência (tema, modo e sons) também no celular, num botão. */}
+          <Preferencias tema={tema} modo={modo} tom="lado" />
         </div>
 
         {/* No celular o título fica em cima e os seletores embaixo: lado a
@@ -535,12 +514,8 @@ export async function Estrutura({
           {/* O som, o modo e o tema numa cápsula só: são preferências da
               tela, e juntas não competem com as ações da página. No celular,
               na gaveta. */}
-          <div className="hidden items-center gap-1 rounded-full border border-borda bg-superficie-2/70 p-1 xl:flex">
-            <ChaveDeSom />
-            <span aria-hidden className="mx-0.5 h-5 w-px bg-borda" />
-            <TrocaModo atual={modo} tom="topo" />
-            <span aria-hidden className="mx-0.5 h-5 w-px bg-borda" />
-            <TrocaTema inicial={tema} tom="capsula" />
+          <div className="hidden md:block">
+            <Preferencias tema={tema} modo={modo} />
           </div>
         </header>
         <main

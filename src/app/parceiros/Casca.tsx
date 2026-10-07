@@ -4,7 +4,7 @@
 
 import type { ReactNode } from 'react'
 import { Marca } from '@/ui/Marca'
-import { TrocaTema } from '@/ui/TrocaTema'
+import { Preferencias } from '@/ui/Preferencias'
 
 export function Casca({ children, direita, largo = false }: { children: ReactNode; direita?: ReactNode; largo?: boolean }) {
   return (
@@ -16,7 +16,7 @@ export function Casca({ children, direita, largo = false }: { children: ReactNod
             <span className="border-l border-borda pl-2.5 text-sm font-semibold text-tinta-2">Parceiros</span>
           </a>
           <div className="flex items-center gap-3 sm:gap-4">
-            <TrocaTema tom="papel" />
+            <Preferencias />
             {direita ?? (
               <a href="/" className="text-sm font-medium text-tinta-2 hover:text-tinta">
                 Voltar ao site

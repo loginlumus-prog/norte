@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import type { CSSProperties, ComponentType, ReactNode } from 'react'
+import { Preferencias } from '@/ui/Preferencias'
 import type { Plano } from '@prisma/client'
 import './site.css'
 import { PLANOS as LIMITES, PLANOS_COM_PRECO, PRECOS, RECURSOS, milhar } from '@/servidor/planos'
@@ -537,6 +538,8 @@ export default function Inicio() {
             ))}
           </nav>
           <div className="flex items-center gap-2">
+            {/* Claro ou escuro, o mesmo botão de dentro do sistema. */}
+            <Preferencias />
             <a href={ENTRAR} className="hidden rounded-[var(--s-raio)] px-3.5 py-2 text-[14px] font-semibold text-[var(--s-tinta-2)] hover:text-[var(--s-tinta)] sm:block">
               Entrar
             </a>

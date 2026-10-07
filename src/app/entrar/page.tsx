@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { enderecoPublico } from '@/servidor/requisicao'
 import { Marca } from '@/ui/Marca'
-import { TrocaTema } from '@/ui/TrocaTema'
+import { Preferencias } from '@/ui/Preferencias'
 import { QualEmpresa } from './QualEmpresa'
 
 // "Entrar" da página de venda.
@@ -33,7 +33,7 @@ export default async function Entrar() {
             <Marca tamanho={28} id="topo" />
           </a>
           <div className="flex items-center gap-3 sm:gap-4">
-            <TrocaTema tom="papel" />
+            <Preferencias />
             <a href="/" className="text-sm font-medium text-tinta-2 hover:text-tinta">
               Voltar ao site
             </a>

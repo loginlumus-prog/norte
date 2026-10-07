@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Preferencias } from '@/ui/Preferencias'
 import { notFound } from 'next/navigation'
 import { acharOrgPorSlug } from '@/servidor/banco'
 import { RECADO_VAGA } from '@/servidor/pagina'
@@ -137,6 +138,7 @@ export default async function Entrar({
       <main className="flex min-h-dvh flex-col bg-fundo" style={luz}>
         <div className="flex items-center justify-between px-6 py-5 sm:px-10">
           <Marca tamanho={28} />
+          <Preferencias />
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-6 px-5 pb-16">
           {cartao}
@@ -200,8 +202,12 @@ export default async function Entrar({
 
       {/* ── o cartão ── */}
       <div className="flex min-h-dvh flex-col" style={luz}>
-        <div className="flex items-center px-6 py-5 sm:px-10 lg:hidden">
-          <Marca tamanho={28} />
+        {/* A aparência no canto, como em todo o resto do Norte. */}
+        <div className="flex items-center justify-between px-6 py-5 sm:px-10 lg:justify-end">
+          <span className="lg:hidden">
+            <Marca tamanho={28} />
+          </span>
+          <Preferencias />
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-6 px-5 pb-16 lg:pb-0">
           {cartao}

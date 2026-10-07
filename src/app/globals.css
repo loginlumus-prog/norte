@@ -1639,3 +1639,27 @@ th.numero {
   .graf-barra, .graf-barra-h, .graf-revela, .graf-rosca-anel, .graf-fatia, .graf-balao, .graf-agora { animation: none; }
   .graf-casa:hover { transform: none; }
 }
+
+/* ═══ A APARÊNCIA (ui/Preferencias.tsx) ═════════════════════════
+   Um botão redondo em todo lugar; o painel abre com tema, modo e sons. */
+.prefs-botao { background: var(--superficie); color: var(--tinta-2); box-shadow: inset 0 0 0 1px var(--borda), 0 1px 2px rgb(15 23 42 / .05); }
+.prefs-botao:hover, .prefs-botao[aria-expanded="true"] { color: var(--cor-item, var(--marca)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--cor-item, var(--marca)) 40%, var(--borda)), 0 8px 18px -12px rgb(15 23 42 / .35); }
+.prefs-botao svg { transition: transform .35s cubic-bezier(.3,1.4,.5,1); }
+.prefs-botao:hover svg { transform: rotate(25deg); }
+.prefs-botao-lado { background: var(--lado-2); color: var(--lado-tinta-2); box-shadow: inset 0 0 0 1px var(--lado-borda); }
+.prefs-caixa { background: var(--superficie); color: var(--tinta); box-shadow: 0 0 0 1px var(--borda), 0 24px 60px -20px rgb(15 23 42 / .45); animation: pop-cima .18s cubic-bezier(.2,.9,.3,1.2); }
+.prefs-tema { box-shadow: inset 0 0 0 1px var(--borda); transition: box-shadow .15s ease, background-color .15s ease; }
+.prefs-tema:hover { background: var(--superficie-2); }
+.prefs-tema[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--cor-item, var(--marca)); background: color-mix(in oklab, var(--cor-item, var(--marca)) 7%, var(--superficie)); }
+.prefs-mini-claro { background: #eef1f6; }
+.prefs-mini-claro > span:first-child { background: #ffffff; }
+.prefs-mini-claro span span { background: #d5dbe6; }
+.prefs-mini-claro span span:nth-child(2) { background: #ffffff; box-shadow: 0 0 0 1px #dfe4ec; }
+.prefs-mini-escuro { background: #0b1222; }
+.prefs-mini-escuro > span:first-child { background: #16224a; }
+.prefs-mini-escuro span span { background: #2a3550; }
+.prefs-mini-escuro span span:nth-child(2) { background: #131c33; box-shadow: 0 0 0 1px #24304d; }
+.prefs-chave { background: var(--borda); transition: background-color .2s ease; }
+.prefs-chave > span { transition: transform .2s cubic-bezier(.3,1.4,.5,1); }
+.prefs-chave-ligada { background: var(--cor-item, var(--marca)); }
+.prefs-chave-ligada > span { transform: translateX(1rem); }

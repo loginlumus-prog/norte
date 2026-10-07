@@ -57,7 +57,8 @@ const OPCOES: { valor: Tema; titulo: string; icone: ReactNode }[] = [
 ]
 
 /** Avisa as outras chaves da tela (a do cabeçalho e a da gaveta do celular). */
-const EVENTO = 'norte:tema'
+export const EVENTO_TEMA = 'norte:tema'
+const EVENTO = EVENTO_TEMA
 
 /** O que vale de fato: tudo que não for escuro é claro. */
 export const temaDe = (t: string | undefined | null): 'claro' | 'escuro' =>
