@@ -613,7 +613,16 @@ th.numero {
   justify-content: flex-end;
 }
 
-@media (width < 40rem) {
+/* Até 96rem (o notebook e o monitor comum, com a barra aberta) as ações
+   secundárias vão para o "Mais": o cabeçalho fica numa linha só, com o título
+   e a ação principal. Antes o corte era 40rem, e no notebook os botões
+   quebravam em duas linhas. */
+/* Botão de ação nunca quebra o texto ("Editar em / planilha"). */
+.acoes-topo a, .acoes-topo button { white-space: nowrap; }
+@media (width >= 96rem) {
+  .acoes-topo > * { flex-wrap: nowrap; }
+}
+@media (width < 96rem) {
   .acoes-topo:not([data-aberto]) [data-mais] {
     display: none;
   }
@@ -1351,3 +1360,48 @@ th.numero {
   .menu-item:hover, .botao-vivo:hover, .cartao-vivo:hover, .menu-trilho:hover { transform: none; }
   .menu-flutua { animation: none; }
 }
+
+/* O ícone e a área da tela aberta, no cabeçalho, na cor da área do menu. */
+.topo-icone {
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(140deg, color-mix(in oklab, var(--cor-item, var(--marca)) 80%, white), var(--cor-item, var(--marca)));
+  box-shadow: 0 8px 18px -10px var(--cor-item, var(--marca));
+}
+.topo-area { color: color-mix(in oklab, var(--cor-item, var(--marca)) 85%, var(--tinta)); }
+
+/* ═══ AS PEÇAS DE TODA TELA, NA COR DA ÁREA ═════════════════════
+   O <main> recebe `--cor-item` (a cor da área da tela aberta): o fio do
+   título, o passar do mouse na linha da tabela e o anel do cartão falam a
+   mesma cor do menu. Estoque é âmbar de cima a baixo; Clientes, rosa. */
+.titulo-com-fio { display: inline-flex; align-items: center; gap: .55rem; }
+.titulo-com-fio::before {
+  content: '';
+  width: 4px;
+  height: .95em;
+  border-radius: 4px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--cor-item, var(--marca)) 70%, white), var(--cor-item, var(--marca)));
+  flex-shrink: 0;
+}
+.caixa-viva { box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -18px rgb(15 23 42 / .22); transition: box-shadow .2s ease, border-color .2s ease; }
+.caixa-viva:hover { border-color: color-mix(in oklab, var(--cor-item, var(--marca)) 28%, var(--borda)); }
+.tabela-viva { box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -20px rgb(15 23 42 / .25); }
+.linha-viva { transition: background-color .15s ease; }
+.linha-viva:hover { background: color-mix(in oklab, var(--cor-item, var(--marca)) 6%, var(--superficie)); }
+
+/* O produto sem foto: as iniciais num degradê da cor da área (âmbar no Catálogo). */
+.produto-iniciais {
+  color: color-mix(in oklab, var(--cor-item, var(--marca)) 80%, var(--tinta));
+  background: linear-gradient(140deg, color-mix(in oklab, var(--cor-item, var(--marca)) 10%, var(--superficie)), color-mix(in oklab, var(--cor-item, var(--marca)) 24%, var(--superficie)));
+}
+/* A etiqueta da categoria, na cor da área. */
+.etiqueta-cor {
+  color: color-mix(in oklab, var(--cor-item, var(--marca)) 75%, var(--tinta));
+  background: color-mix(in oklab, var(--cor-item, var(--marca)) 13%, transparent);
+}
+.etiqueta-cor:hover { background: color-mix(in oklab, var(--cor-item, var(--marca)) 22%, transparent); }
+.cartao-produto { transition: box-shadow .2s ease, border-color .2s ease, transform .2s cubic-bezier(.2,.8,.3,1); }
+.cartao-produto:hover { transform: translateY(-1px); }

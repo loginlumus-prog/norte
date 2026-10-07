@@ -65,7 +65,7 @@ export function CartaoFiltro({
       )}
     >
       {/* O brilho da cor no canto: discreto, só para o cartão ter cor. */}
-      <span aria-hidden className="pointer-events-none absolute -top-8 -right-8 size-24 rounded-full bg-[var(--c)] opacity-[0.07] transition-opacity group-hover:opacity-[0.13]" />
+      <span aria-hidden className="pointer-events-none absolute -top-10 -right-10 size-20 rounded-full bg-[var(--c)] opacity-[0.08] transition-opacity group-hover:opacity-[0.13]" />
       <span className="flex items-center justify-between gap-2">
         <span
           className={cx(

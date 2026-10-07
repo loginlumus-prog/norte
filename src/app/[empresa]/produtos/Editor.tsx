@@ -13,7 +13,9 @@
 //    já foi vendida não apaga nada — desativa. A tela diz isso na hora, não
 //    depois do susto.
 
-import { useActionState, useMemo, useState, type ReactNode } from 'react'
+import { useActionState, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { NavegacaoDeSecoes } from '@/ui/NavegacaoDeSecoes'
+import { tocar } from '@/ui/sons'
 import Link from 'next/link'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao, cx } from '@/ui/base'
 import { arrumarEixo, criar, editar, novaOpcao, novoEixo, type EstadoProduto } from './acoes'
@@ -418,6 +420,11 @@ export function Editor({
     ? editar.bind(null, slug, produto.id, idsDosEixos)
     : criar.bind(null, slug, idsDosEixos)
   const [estado, agir, pendente] = useActionState<EstadoProduto, FormData>(acao, {})
+  // Salvou: o som de sucesso; não deu: o de erro (sons.ts).
+  useEffect(() => {
+    if (estado.ok) tocar('sucesso')
+    else if (estado.erro) tocar('erro')
+  }, [estado])
 
   const [marcadas, setMarcadas] = useState<Record<string, string[]>>(produto?.marcadas ?? {})
 
@@ -492,6 +499,7 @@ export function Editor({
 
   return (
     <form action={agir} onSubmit={semApagar(agir)} className="flex max-w-3xl flex-col gap-5">
+      <NavegacaoDeSecoes />
       {estado.erro && <Aviso nivel="critico">{estado.erro}</Aviso>}
       {estado.ok && <Aviso nivel="bom">{estado.ok}</Aviso>}
 
@@ -906,16 +914,21 @@ export function Editor({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3">
+      {/* A barra de salvar flutua no pé da tela: a ficha é longa, e o
+          "Salvar" lá no fim fazia a pessoa rolar tudo depois de mudar o preço. */}
+      <div className="sticky bottom-3 z-20 flex items-center justify-between gap-3 rounded-2xl border border-borda bg-superficie/90 px-4 py-3 shadow-[0_18px_40px_-20px_rgb(15_23_42/0.5)] backdrop-blur-xl">
         <Link
           href={`/${slug}/produtos`}
           className="text-sm font-medium text-tinta-3 underline-offset-2 hover:text-tinta hover:underline"
         >
-          Voltar
+          ← Voltar
         </Link>
-        <Botao type="submit" tom="confirmar" carregando={pendente}>
-          {pendente ? 'Salvando...' : produto ? 'Salvar' : 'Cadastrar'}
-        </Botao>
+        <span className="flex items-center gap-3">
+          <span className="hidden text-xs text-tinta-3 sm:inline">{produto ? 'As mudanças valem no balcão e no catálogo na hora.' : 'Cadastra e já aparece no balcão.'}</span>
+          <Botao type="submit" tom="confirmar" carregando={pendente} className="px-5">
+            {pendente ? 'Salvando...' : produto ? 'Salvar alterações' : 'Cadastrar'}
+          </Botao>
+        </span>
       </div>
     </form>
   )

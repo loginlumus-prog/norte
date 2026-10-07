@@ -104,7 +104,9 @@ export function SeletorUnidade({
     )
 
   return (
-    <div ref={caixa} className="relative">
+    // `data-fixo`: no cabeçalho, a loja escolhida nunca vai para o "Mais"
+    // (AcoesDoTopo) — é o que diz de qual loja são os números da tela.
+    <div ref={caixa} data-fixo="" className="relative">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}

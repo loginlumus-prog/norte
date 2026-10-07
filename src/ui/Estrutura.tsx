@@ -166,6 +166,9 @@ export async function Estrutura({
   const coresEscolhidas = lerCores((await cookies()).get(cookieDasCores(empresa.slug))?.value)
   const corDe = (i: ItemMenu) => ({ '--cor-item': corDoGrupo(i.chaveGrupo, coresEscolhidas) }) as CSSProperties
 
+  // A tela aberta: o cabeçalho mostra o ícone e a área dela, na cor da área.
+  const itemAtivo = visiveis.find((i) => i.href === ativo)
+
   const soltos = visiveis.filter((i) => !i.grupo)
   const grupos: { nome: string; chave: string; itens: ItemMenu[] }[] = []
   for (const i of visiveis) {
@@ -469,19 +472,42 @@ export async function Estrutura({
             do conteúdo, o cabeçalho tinha 50px numa tela e 54 na outra, e o
             título pulava ao trocar de menu. No telefone, título e UMA ação —
             o resto vai para o "Mais" (AcoesDoTopo). */}
-        <header className="flex min-h-13 flex-wrap items-center gap-x-3 gap-y-2 border-b border-borda bg-superficie px-4 py-2 md:px-6">
-          <h1 className="mr-auto shrink-0 text-base font-bold tracking-tight">{titulo}</h1>
+        {/* Preso no topo, com o vidro fosco: rolando a lista, o título e as
+            ações continuam à mão, e o conteúdo passa por baixo, desfocado. */}
+        <header
+          style={itemAtivo ? corDe(itemAtivo) : undefined}
+          className={cx(
+            'z-30 flex min-h-16 flex-wrap items-center gap-x-3 gap-y-2 border-b border-borda/80 bg-superficie/85 px-4 py-2.5 backdrop-blur-xl backdrop-saturate-150 md:px-6',
+            !recolhida && 'sticky top-0',
+          )}
+        >
+          <div className="mr-auto flex min-w-0 shrink-0 items-center gap-3">
+            {itemAtivo ? (
+              <span className="topo-icone hidden sm:grid">
+                <IconeDoItem href={itemAtivo.href} tamanho={18} />
+              </span>
+            ) : null}
+            <div className="flex min-w-0 flex-col">
+              {itemAtivo?.grupo ? (
+                <span className="topo-area text-[10px] leading-tight font-bold tracking-[0.12em] uppercase">{itemAtivo.grupo}</span>
+              ) : null}
+              <h1 className="text-lg leading-tight font-extrabold tracking-[-0.02em] text-tinta">{titulo}</h1>
+            </div>
+          </div>
           {acao && <AcoesDoTopo>{acao}</AcoesDoTopo>}
-          {/* O modo muda o que a pessoa vê; o tema, só a cor. Os dois à
-              vista em toda tela, e não perdidos no pé da barra — no
-              celular, na gaveta. */}
-          <div className="hidden items-center gap-2 md:flex">
+          {/* O som, o modo e o tema numa cápsula só: são preferências da
+              tela, e juntas não competem com as ações da página. No celular,
+              na gaveta. */}
+          <div className="hidden items-center gap-1 rounded-full border border-borda bg-superficie-2/70 p-1 md:flex">
             <ChaveDeSom />
+            <span aria-hidden className="mx-0.5 h-5 w-px bg-borda" />
             <TrocaModo atual={modo} tom="topo" />
-            <TrocaTema inicial={tema} tom="papel" />
+            <span aria-hidden className="mx-0.5 h-5 w-px bg-borda" />
+            <TrocaTema inicial={tema} tom="capsula" />
           </div>
         </header>
         <main
+          style={itemAtivo ? corDe(itemAtivo) : undefined}
           className={cx(
             'flex flex-1 flex-col',
             // `pb-20`: o vão do botão de Ajuda, que fica fixo no canto de

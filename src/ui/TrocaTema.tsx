@@ -64,7 +64,7 @@ export const temaDe = (t: string | undefined | null): 'claro' | 'escuro' =>
   t === 'escuro' ? 'escuro' : 'claro'
 
 /** Sobre o azul-noite da barra, ou sobre o papel da página de venda. */
-type Tom = 'nav' | 'papel' | 'lado'
+type Tom = 'nav' | 'papel' | 'lado' | 'capsula'
 
 const TOM: Record<Tom, { caixa: string; ativo: string; parado: string }> = {
   nav: {
@@ -82,6 +82,12 @@ const TOM: Record<Tom, { caixa: string; ativo: string; parado: string }> = {
   // O cabeçalho: a mesma chave segmentada do Simples/Avançado (`topo` em
   // TrocaModo.tsx). Antes o aceso era um bloco preto, e as duas chaves lado a
   // lado pareciam de sistemas diferentes.
+  // Dentro da cápsula do cabeçalho do sistema (Estrutura.tsx): sem caixa própria.
+  capsula: {
+    caixa: 'border-transparent bg-transparent',
+    ativo: 'bg-superficie text-marca shadow-norte',
+    parado: 'text-tinta-3 hover:text-tinta',
+  },
   papel: {
     caixa: 'border-borda bg-superficie-2',
     ativo: 'bg-superficie text-marca shadow-norte',
@@ -149,7 +155,7 @@ export function TrocaTema({ inicial, tom = 'nav' }: { inicial?: Tema; tom?: Tom 
           className={cx(
             // A altura da chave do modo (py-1 + 16px), para as duas
             // ficarem do mesmo tamanho lado a lado.
-            'grid h-6 w-7 place-items-center rounded transition-colors',
+            'grid h-6 w-7 place-items-center rounded-full transition-colors',
             tema === o.valor ? cores.ativo : cores.parado,
           )}
         >

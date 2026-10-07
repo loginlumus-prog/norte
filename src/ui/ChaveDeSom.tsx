@@ -28,10 +28,10 @@ export function ChaveDeSom({ tom = 'papel' }: { tom?: 'papel' | 'lado' }) {
       aria-label={ligado ? 'Desligar os sons' : 'Ligar os sons'}
       title={ligado ? 'Sons ligados' : 'Sons desligados'}
       className={cx(
-        'grid size-8 place-items-center rounded-norte border transition-all active:scale-90',
+        'grid size-8 place-items-center border transition-all active:scale-90',
         tom === 'lado'
-          ? 'border-lado-borda text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta'
-          : 'border-borda bg-superficie text-tinta-2 hover:bg-superficie-2 hover:text-tinta',
+          ? 'rounded-norte border-lado-borda text-lado-tinta-2 hover:bg-lado-2 hover:text-lado-tinta'
+          : 'rounded-full border-transparent text-tinta-2 hover:bg-superficie hover:text-tinta',
       )}
     >
       <svg aria-hidden viewBox="0 0 20 20" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">

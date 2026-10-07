@@ -22,6 +22,8 @@ import { Paginas } from '@/ui/Paginas'
 import { ondeOCodigo } from '@/servidor/etiqueta'
 import { fatiar, lerPagina } from '@/ui/paginacao'
 import type { Tema } from '@/ui/TrocaTema'
+import { CartaoFiltro } from '@/ui/premium'
+import { fotoUrl } from '@/servidor/catalogo'
 
 // "Serviços e materiais" na clínica (vocabulario.ts).
 export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
@@ -157,7 +159,7 @@ export default async function Produtos({
       orderBy: { nome: 'asc' },
       select: {
         id: true, nome: true, marca: true, medida: true, custo: true, vendidoEm: true, servico: true,
-        usoInterno: true, feitoNoDia: true,
+        usoInterno: true, feitoNoDia: true, fotoId: true,
         categoria: { select: { id: true, nome: true } },
         precoVista: true, precoCartao: true, precoCrediario: true,
         variacoes: {
@@ -363,6 +365,16 @@ export default async function Produtos({
           manter={manterNaBusca}
           limparEm={link({ q: null })}
         />
+        {/* O estoque em cartões: o número que a dona olha primeiro, e o
+            cartão é o filtro. Conta itens da grade (cada tamanho/sabor). */}
+        {!fora && (
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <CartaoFiltro href={link({ situacao: null })} ativo={situacao === null} cor="indigo" icone="sacola" numero={conta.critico + conta.atencao + conta.bom + conta.semLancamento} rotulo="Tudo" detalhe="itens à venda" />
+            <CartaoFiltro href={link({ situacao: 'acabaram' })} ativo={situacao === 'acabaram'} cor="vermelho" icone="sono" numero={conta.critico} rotulo="Acabaram" detalhe="sem saldo" />
+            <CartaoFiltro href={link({ situacao: 'minimo' })} ativo={situacao === 'minimo'} cor="ambar" icone="relogio" numero={conta.atencao} rotulo="No mínimo" detalhe="hora de repor" />
+            <CartaoFiltro href={link({ situacao: 'ok' })} ativo={situacao === 'ok'} cor="verde" icone="estrela" numero={conta.bom} rotulo="Com estoque" detalhe="tudo certo" />
+          </div>
+        )}
         <Fichas
           opcoes={[
             { valor: null, rotulo: 'à venda' },
@@ -372,16 +384,7 @@ export default async function Produtos({
           linkDe={(v) => link({ mostrar: v, situacao: null })}
         />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          {!fora && <Fichas
-            opcoes={[
-              { valor: null, rotulo: 'tudo' },
-              { valor: 'acabaram', rotulo: 'acabaram', quantos: conta.critico },
-              { valor: 'minimo', rotulo: 'no mínimo', quantos: conta.atencao },
-              { valor: 'ok', rotulo: 'com estoque', quantos: conta.bom },
-            ]}
-            atual={situacao}
-            linkDe={(v) => link({ situacao: v })}
-          />}
+
           {categorias.length > 0 && (
             <Fichas
               opcoes={[
@@ -514,100 +517,128 @@ export default async function Produtos({
         const podeVerCusto = podeVerCustoDe(sessao, p.vendidoEm)
 
         return (
-          <Cartao
-            key={p.id}
-            titulo={p.nome}
-            acao={
-              <span className="flex flex-wrap items-center gap-2 text-xs text-tinta-3">
-                {podeEditar && (
-                  <Link
-                    href={`/${slug}/produtos/${p.id}`}
-                    className="font-semibold text-marca underline-offset-2 hover:underline"
-                  >
-                    editar
-                  </Link>
+          <article key={p.id} className="caixa-viva cartao-produto overflow-hidden rounded-2xl border border-borda bg-superficie">
+            <div className="flex flex-wrap items-center gap-4 p-3.5 sm:flex-nowrap">
+              {/* A foto (ou as iniciais na cor do nome): o produto se reconhece
+                  de longe, antes de ler. */}
+              <Link href={podeEditar ? `/${slug}/produtos/${p.id}` : '#'} className="relative size-16 shrink-0 overflow-hidden rounded-xl border border-borda-suave bg-superficie-2" tabIndex={-1} aria-hidden>
+                {p.fotoId ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={fotoUrl(slug, p.fotoId)!} alt="" loading="lazy" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="produto-iniciais grid h-full w-full place-items-center text-lg font-extrabold">
+                    {p.nome.replace(/[^\p{L}\p{N} ]/gu, '').split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join('') || '·'}
+                  </span>
                 )}
-                {fora && podeEditar && <VoltarAVenda slug={slug} produtoId={p.id} />}
-                {!fora && podeEditar && (
-                  <Excluir slug={slug} produtoId={p.id} nome={p.nome} medida={MEDIDA[p.medida] ?? ''} estoque={p.servico ? 0 : total} compacto />
-                )}
-                {/* Também no simples: a vendedora etiqueta a peça que chegou. */}
-                {!fora && (
-                  <>
-                    {/* <a>: página de impressão abre inteira — ver etiquetas/page.tsx. */}
-                    <a
-                      href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
-                      className="hover:text-tinta"
-                      title="Imprimir a etiqueta deste produto"
-                    >
-                      imprimir etiqueta
-                    </a>
-                    {/* Marca para o lote: o formulário é o "Imprimir etiquetas" lá em cima (etiquetas/EmLote.tsx). */}
-                    <input
-                      type="checkbox"
-                      form="etiquetas-lote"
-                      name="produto"
-                      value={p.id}
-                      aria-label={`Marcar ${p.nome} para imprimir etiquetas`}
-                      title="Marcar para imprimir as etiquetas junto"
-                      className="size-4 accent-marca"
-                    />
-                  </>
-                )}
-                {!simples && p.categoria && (
-                  <Link href={link({ categoria: p.categoria.id })} className="hover:text-tinta">
-                    {p.categoria.nome}
-                  </Link>
-                )}
-                {!simples && p.marca && <span>{p.marca}</span>}
-                {podeVerPreco && <span className="numero">{dinheiro(p.precoVista)} à vista</span>}
-                {/* Material de uso não vende: margem dele é número sem uso. */}
-                {!simples && podeVerCusto && !p.usoInterno &&
-                  (margem === null ? (
-                    <Link href={`/${slug}/produtos/${p.id}`} className="text-atencao hover:underline" title="Sem custo cadastrado, não há margem">
-                      sem custo
+              </Link>
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  {podeEditar ? (
+                    <Link href={`/${slug}/produtos/${p.id}`} className="truncate text-[15px] font-bold text-tinta hover:text-marca">
+                      {p.nome}
                     </Link>
                   ) : (
-                    <span className={cx('numero', margem < 20 ? 'text-critico' : margem < 40 ? 'text-atencao' : 'text-bom')}>
-                      margem bruta {margem.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%
+                    <span className="truncate text-[15px] font-bold text-tinta">{p.nome}</span>
+                  )}
+                  {!simples && p.categoria && (
+                    <Link href={link({ categoria: p.categoria.id })} className="etiqueta-cor rounded-full px-2 py-0.5 text-[11px] font-semibold">
+                      {p.categoria.nome}
+                    </Link>
+                  )}
+                  {!simples && p.marca && <span className="text-xs text-tinta-3">{p.marca}</span>}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  {podeVerPreco && (
+                    <span className="numero rounded-lg bg-superficie-2 px-2 py-1 font-bold text-tinta">{dinheiro(p.precoVista)}</span>
+                  )}
+                  {/* Material de uso não vende: margem dele é número sem uso. */}
+                  {!simples && podeVerCusto && !p.usoInterno &&
+                    (margem === null ? (
+                      <Link href={`/${slug}/produtos/${p.id}`} className="rounded-lg bg-atencao-fundo px-2 py-1 font-semibold text-atencao" title="Sem custo cadastrado, não há margem">
+                        sem custo
+                      </Link>
+                    ) : (
+                      <span className={cx('numero rounded-lg px-2 py-1 font-semibold', margem < 20 ? 'bg-critico-fundo text-critico' : margem < 40 ? 'bg-atencao-fundo text-atencao' : 'bg-bom-fundo text-bom')}>
+                        margem {margem.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%
+                      </span>
+                    ))}
+                  {!simples && p.usoInterno ? (
+                    <span className="rounded-lg bg-superficie-2 px-2 py-1 text-tinta-2" title="Tem estoque e entra em compras e no material usado; não aparece no balcão">material de uso</span>
+                  ) : !simples ? (
+                    <span className="numero rounded-lg bg-superficie-2 px-2 py-1 text-tinta-2" title="Vendido nos últimos 30 dias, nesta loja">
+                      {p.servico
+                        ? vendeu
+                          ? `${plural(vendeu, 'vez', 'vezes')} em 30 dias`
+                          : 'nenhuma vez em 30 dias'
+                        : vendeu
+                          ? `${quantidade(vendeu, p.medida)} ${palavra(vendeu, 'vendido', 'vendidos')} em 30 dias`
+                          : 'sem venda em 30 dias'}
                     </span>
-                  ))}
-                {/* Material de uso não vende: "sem venda em 30 dias" seria verdade
-                    que parece problema. Diz o que ele é. */}
-                {!simples && p.usoInterno ? (
-                  <span title="Tem estoque e entra em compras e no material usado; não aparece no balcão">material de uso — não vende</span>
-                ) : !simples ? (
-                  <span className="numero" title="Vendido nos últimos 30 dias, nesta loja">
-                    {/* Serviço conta VEZES: a consulta foi feita 35 vezes, não
-                        saíram "35 un" dela. */}
-                    {p.servico
-                      ? vendeu
-                        ? `${plural(vendeu, 'vez', 'vezes')} em 30 dias`
-                        : 'nenhuma vez em 30 dias'
-                      : vendeu
-                        ? `${quantidade(vendeu, p.medida)} ${palavra(vendeu, 'vendido', 'vendidos')} em 30 dias`
-                        : 'sem venda em 30 dias'}
-                  </span>
-                ) : null}
-                {!simples && p.feitoNoDia && <span title="A sobra sai ao fechar; zerado não é falta">feito no dia</span>}
-                {acabaram > 0 && <Ponto nivel="critico" quantos={acabaram} titulo="acabaram" />}
-                {noMinimo > 0 && <Ponto nivel="atencao" quantos={noMinimo} titulo="no mínimo" />}
+                  ) : null}
+                  {!simples && p.feitoNoDia && <span className="rounded-lg bg-superficie-2 px-2 py-1 text-tinta-2" title="A sobra sai ao fechar; zerado não é falta">feito no dia</span>}
+                  {acabaram > 0 && <Ponto nivel="critico" quantos={acabaram} titulo="acabaram" />}
+                  {noMinimo > 0 && <Ponto nivel="atencao" quantos={noMinimo} titulo="no mínimo" />}
+                </div>
+              </div>
+              {/* O saldo, grande, à direita: é a pergunta da tela. */}
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
                 {fora ? (
                   <Situacao nivel="neutro">fora de venda</Situacao>
                 ) : p.servico ? (
-                  <Situacao nivel="neutro">serviço, sem estoque</Situacao>
+                  <Situacao nivel="neutro">serviço</Situacao>
+                ) : p.variacoes.length > 0 && p.variacoes.every((v) => v.na.semLancamento) ? (
+                  <Situacao nivel="neutro">sem estoque lançado</Situacao>
                 ) : (
-                  p.variacoes.length > 0 && p.variacoes.every((v) => v.na.semLancamento) ? (
-                    <Situacao nivel="neutro">sem estoque lançado</Situacao>
-                  ) : (
-                    <Situacao nivel={total > 0 ? 'bom' : p.feitoNoDia ? 'neutro' : 'critico'}>
-                      {quantidade(total, p.medida)} {onde.unidadeId ? 'aqui' : 'no total'}
-                    </Situacao>
-                  )
+                  <span className={cx('numero text-xl leading-none font-extrabold', total > 0 ? 'text-tinta' : p.feitoNoDia ? 'text-tinta-3' : 'text-critico')}>
+                    {quantidade(total, p.medida)}
+                    <span className="ml-1 text-[11px] font-semibold text-tinta-3">{onde.unidadeId ? 'aqui' : 'no total'}</span>
+                  </span>
                 )}
-              </span>
-            }
-          >
+                <span className="flex items-center gap-1.5 text-xs">
+                  {podeEditar && (
+                    <Link href={`/${slug}/produtos/${p.id}`} className="botao-vivo rounded-lg border border-borda bg-superficie px-2.5 py-1 font-semibold text-tinta hover:border-marca hover:text-marca">
+                      Editar
+                    </Link>
+                  )}
+                  {fora && podeEditar && <VoltarAVenda slug={slug} produtoId={p.id} />}
+                  {!fora && (
+                    <>
+                      {/* <a>: página de impressão abre inteira — ver etiquetas/page.tsx. */}
+                      <a
+                        href={`/${slug}/produtos/etiquetas?produto=${p.id}${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`}
+                        className="botao-vivo rounded-lg border border-borda bg-superficie px-2 py-1 font-semibold text-tinta-2 hover:text-tinta"
+                        title="Imprimir a etiqueta deste produto"
+                      >
+                        Etiqueta
+                      </a>
+                      {/* Marca para o lote: o formulário é o "Imprimir etiquetas" lá em cima (etiquetas/EmLote.tsx). */}
+                      <input
+                        type="checkbox"
+                        form="etiquetas-lote"
+                        name="produto"
+                        value={p.id}
+                        aria-label={`Marcar ${p.nome} para imprimir etiquetas`}
+                        title="Marcar para imprimir as etiquetas junto"
+                        className="size-4 accent-marca"
+                      />
+                    </>
+                  )}
+                  {!fora && podeEditar && (
+                    <Excluir slug={slug} produtoId={p.id} nome={p.nome} medida={MEDIDA[p.medida] ?? ''} estoque={p.servico ? 0 : total} compacto />
+                  )}
+                </span>
+              </div>
+            </div>
+            {/* A grade (tamanho, sabor, cor) fica recolhida: abre sozinha
+                quando algum item acabou ou está no mínimo. Produto sem
+                variação não precisa da tabela — o saldo já está ao lado. */}
+            {p.variacoes.length > 1 || (p.variacoes[0] && !p.variacoes[0].padrao) ? (
+              <details open={acabaram + noMinimo > 0} className="group border-t border-borda-suave">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-tinta-2 hover:bg-superficie-2 hover:text-tinta [&::-webkit-details-marker]:hidden">
+                  <span aria-hidden className="text-tinta-3 transition-transform group-open:rotate-90">›</span>
+                  {plural(p.variacoes.length, 'variação', 'variações')}
+                </summary>
+                <div className="px-3.5 pb-3.5">
             <Tabela
               colunas={[
                 {
@@ -668,7 +699,10 @@ export default async function Produtos({
               chave={(v) => v.id}
               vazio="Este produto não tem nenhuma variação ativa."
             />
-          </Cartao>
+                </div>
+              </details>
+            ) : null}
+          </article>
         )
       })}
       <Paginas p={fatia} linkDe={(n) => link({ pagina: String(n) })} rotulo={vocab.produtos} />

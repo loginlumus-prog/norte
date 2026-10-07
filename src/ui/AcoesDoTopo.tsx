@@ -61,7 +61,12 @@ export function AcoesDoTopo({ children }: { children: ReactNode }) {
     const marcar = () => {
       const itens = pecas(el)
       const principal = itens.find((i) => i.matches('.botao-marca') || i.querySelector('.botao-marca'))
-      const mais = itens.length >= 2 ? itens.filter((i) => i !== principal) : []
+      // O seletor de loja e o de período ficam sempre à vista (`data-fixo`):
+      // dizem DE ONDE são os números da tela.
+      // No celular não: lá o período ocupa a largura toda e volta ao "Mais".
+      const largo = window.matchMedia('(min-width: 40rem)').matches
+      const fixo = (i: HTMLElement) => largo && (i.matches('[data-fixo]') || !!i.querySelector('[data-fixo]'))
+      const mais = itens.length >= 2 ? itens.filter((i) => i !== principal && !fixo(i)) : []
       for (const i of el.querySelectorAll<HTMLElement>('[data-mais]')) if (!mais.includes(i)) i.removeAttribute('data-mais')
       for (const i of mais) if (!i.hasAttribute('data-mais')) i.setAttribute('data-mais', '')
       setTemMais(mais.length > 0)
@@ -69,7 +74,11 @@ export function AcoesDoTopo({ children }: { children: ReactNode }) {
     marcar()
     const olho = new MutationObserver(marcar)
     olho.observe(el, { childList: true, subtree: true })
-    return () => olho.disconnect()
+    window.addEventListener('resize', marcar)
+    return () => {
+      olho.disconnect()
+      window.removeEventListener('resize', marcar)
+    }
   }, [])
 
   useEffect(() => {
@@ -106,7 +115,7 @@ export function AcoesDoTopo({ children }: { children: ReactNode }) {
         }}
         // `flex-1`: quando as ações não cabem, elas quebram aqui dentro, e a
         // chave do modo e do tema continua na linha do título.
-        className="acoes-topo flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2"
+        className="acoes-topo flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 2xl:flex-nowrap"
       >
         {children}
       </div>
@@ -118,7 +127,7 @@ export function AcoesDoTopo({ children }: { children: ReactNode }) {
           aria-expanded={aberto}
           aria-controls={id}
           className={cx(
-            'flex h-9 shrink-0 items-center gap-1.5 rounded-norte border px-2.5 text-sm font-semibold transition-colors sm:hidden',
+            'botao-vivo flex h-9 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-semibold 2xl:hidden',
             aberto
               ? 'border-marca/50 bg-marca-suave text-marca'
               : 'border-borda bg-superficie text-tinta hover:bg-superficie-2',

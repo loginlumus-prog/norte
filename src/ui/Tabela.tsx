@@ -94,7 +94,7 @@ export function Tabela<L>({
   const destaque = (c: Coluna<L>, i: number) => c.destaque === true || i === palpite
 
   return (
-    <div className={cx('relative overflow-x-auto rounded-norte border border-borda bg-superficie', classeEmpilhar(empilhar))}>
+    <div className={cx('tabela-viva relative overflow-x-auto rounded-2xl border border-borda bg-superficie', classeEmpilhar(empilhar))}>
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr>
@@ -104,8 +104,8 @@ export function Tabela<L>({
                 scope="col"
                 style={c.largura ? { width: c.largura } : undefined}
                 className={cx(
-                  'sticky top-0 z-10 border-b border-borda bg-superficie-2 px-2.5 py-2 sm:px-3',
-                  'text-xs font-semibold tracking-wide text-tinta-3 uppercase',
+                  'sticky top-0 z-10 border-b border-borda bg-superficie-2 px-2.5 py-2.5 sm:px-3.5',
+                  'text-[11px] font-bold tracking-[0.06em] text-tinta-3 uppercase',
                   c.numero ? 'text-right' : 'text-left',
                   c.escondeNoCelular && 'hidden sm:table-cell',
                 )}
@@ -121,8 +121,8 @@ export function Tabela<L>({
               key={chave(l)}
               onClick={aoClicar ? () => aoClicar(l) : undefined}
               className={cx(
-                'border-b border-borda-suave last:border-0',
-                aoClicar && 'cursor-pointer hover:bg-superficie-2',
+                'linha-viva border-b border-borda-suave last:border-0',
+                aoClicar && 'cursor-pointer',
               )}
             >
               {colunas.map((c, i) => (
@@ -136,7 +136,7 @@ export function Tabela<L>({
                   // ganham 16px, que é o que separava a lista de Vendas de
                   // caber inteira num telefone sem rolar de lado.
                   className={cx(
-                    'px-2.5 py-2 align-top text-tinta sm:px-3',
+                    'px-2.5 py-2.5 align-top text-tinta sm:px-3.5',
                     c.numero && 'numero',
                     c.escondeNoCelular && 'hidden sm:table-cell',
                   )}

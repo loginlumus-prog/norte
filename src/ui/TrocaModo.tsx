@@ -25,9 +25,10 @@ const TOM: Record<Tom, { caixa: string; ativo: string; parado: string }> = {
     ativo: 'bg-lado text-lado-ativo shadow-norte',
     parado: 'text-lado-tinta-2 hover:text-lado-tinta',
   },
+  // Dentro da cápsula do cabeçalho (Estrutura.tsx): sem caixa própria.
   topo: {
-    caixa: 'inline-flex border-borda bg-superficie-2',
-    ativo: 'bg-superficie text-marca shadow-norte',
+    caixa: 'inline-flex border-transparent bg-transparent',
+    ativo: 'bg-superficie text-marca shadow-norte rounded-full',
     parado: 'text-tinta-3 hover:text-tinta',
   },
 }
@@ -58,7 +59,7 @@ export function TrocaModo({ atual, tom = 'lado' }: { atual: Modo; tom?: Tom }) {
           title={o.dica}
           aria-pressed={atual === o.valor}
           className={cx(
-            'rounded px-2.5 py-1 text-xs font-semibold transition-colors',
+            'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
             atual === o.valor ? TOM[tom].ativo : TOM[tom].parado,
           )}
         >

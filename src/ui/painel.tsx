@@ -283,7 +283,7 @@ export function Secao({
           parece uma publicação. */}
       <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 className="text-[22px] leading-tight font-bold tracking-[-0.02em] text-balance">
+          <h2 className="titulo-com-fio text-[22px] leading-tight font-extrabold tracking-[-0.02em] text-balance">
             {titulo}
           </h2>
           {resumo && <p className="text-sm text-tinta-2">{resumo}</p>}

@@ -51,7 +51,7 @@ export function SeletorPeriodo({ atual }: { atual: Periodo }) {
   // não cabem em 343px, e a fileira quebrada deixava uma sozinha numa
   // segunda linha, com cara de defeito. Do `sm` para cima volta a ser fileira.
   return (
-    <div className="flex w-full flex-col gap-1.5 sm:w-auto">
+    <div data-fixo="" className="flex w-full flex-col gap-1.5 sm:w-auto">
       <nav
         aria-label="Período"
         className="grid w-full grid-cols-4 gap-0.5 rounded-norte border border-borda bg-superficie p-0.5 sm:flex sm:w-auto sm:flex-wrap sm:items-center"
