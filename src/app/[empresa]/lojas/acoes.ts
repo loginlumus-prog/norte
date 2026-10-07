@@ -6,6 +6,7 @@
 import { revalidatePath } from 'next/cache'
 import { exigirSessao } from '@/servidor/pagina'
 import { criarLoja, editarLoja, mudarSituacaoLoja, LojaRecusada, type DadosLoja } from '@/servidor/lojas'
+import { sincronizarMensalidade } from '@/servidor/asaas'
 import { SemCota } from '@/servidor/assinatura'
 import { SemPermissao } from '@/servidor/permissao'
 import { PLANOS } from '@/servidor/planos'
@@ -59,6 +60,8 @@ export async function criarLojaAcao(slug: string, _anterior: EstadoLoja, form: F
   try {
     const sessao = await exigirSessao(slug)
     const r = await criarLoja(sessao, dadosDo(form))
+    // A conta do mês mudou (loja, fábrica): a assinatura do Asaas acompanha.
+    await sincronizarMensalidade(sessao.orgId)
     revalidatePath(`/${slug}`, 'layout')
     const ramo = r.loja.ramo && r.loja.ramo in RAMOS ? RAMOS[r.loja.ramo as Ramo].titulo : null
     return {
@@ -83,6 +86,8 @@ export async function editarLojaAcao(
   try {
     const sessao = await exigirSessao(slug)
     const r = await editarLoja(sessao, id, dadosDo(form))
+    // A conta do mês mudou (loja, fábrica): a assinatura do Asaas acompanha.
+    await sincronizarMensalidade(sessao.orgId)
     revalidatePath(`/${slug}`, 'layout')
     return {
       ok:
@@ -100,6 +105,8 @@ export async function situacaoLojaAcao(slug: string, id: string, ativa: boolean)
   try {
     const sessao = await exigirSessao(slug)
     await mudarSituacaoLoja(sessao, id, ativa)
+    // A conta do mês mudou (loja, fábrica): a assinatura do Asaas acompanha.
+    await sincronizarMensalidade(sessao.orgId)
     revalidatePath(`/${slug}`, 'layout')
     return { ok: ativa ? 'Loja reaberta.' : 'Loja fechada. O histórico dela continua guardado.' }
   } catch (e) {

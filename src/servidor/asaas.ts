@@ -22,6 +22,35 @@
 //   norte:m:<org>:<plano>:<AAAA-MM>:<cheioCent>   o primeiro mês
 //   norte:s:<org>                                 a assinatura mensal
 //   norte:p:<org>:<pacote>                        um pacote de respostas
+//   norte:u:<org>:<plano>:<novoCent>              subir de plano já assinado
+//
+// ── subir de plano é pago; descer, não ───────────────────────
+// Quem já assina e SOBE de plano paga a diferença proporcional aos dias que
+// faltam até a próxima mensalidade, e o plano novo liga quando o dinheiro
+// entra. Antes subia na hora e só a mensalidade seguinte mudava: dava para
+// subir no dia seguinte ao pagamento, usar o mês inteiro e descer na véspera
+// da cobrança — o plano caro pelo preço do barato, todo mês. Descer continua
+// na hora (quem desce já pagou o mês pelo preço maior).
+//
+// ── a mensalidade acompanha a empresa ───────────────────────
+// A conta do mês depende das lojas, das unidades de fábrica e das marcas do
+// Farol, não só do plano. Abrir uma loja (ou fechar) muda o valor da
+// assinatura no Asaas (`sincronizarMensalidade`), e todo pagamento recebido
+// confere de novo — senão a loja nova saía de graça para sempre.
+//
+// ── um aviso de cada vez ─────────────────────────────────────
+// O Asaas manda mais de um aviso para o mesmo pagamento (CONFIRMED e
+// RECEIVED chegam juntos no boleto), e a porta responde na hora e trabalha
+// depois — os dois trabalhos corriam juntos, passavam os dois pela
+// conferência de "já processado" e criavam DUAS assinaturas: a empresa
+// pagava em dobro todo mês. Agora o trabalho de cada empresa entra numa fila
+// (`emFila`), e antes de criar a assinatura procuramos no próprio Asaas se
+// ela já existe.
+//
+// ── estorno ──────────────────────────────────────────────────
+// Pagamento estornado (ou contestado no cartão) estorna as comissões que
+// ainda não foram pagas aos parceiros. O plano não volta sozinho: a equipe
+// decide (a auditoria marca `asaas.estornou`).
 //
 // Variáveis: ASAAS_API_KEY (sem ela, tudo segue como pedido à equipe),
 // ASAAS_AMBIENTE=sandbox para testar, ASAAS_WEBHOOK_TOKEN (opcional; se
@@ -35,6 +64,7 @@ import { PACOTES, PLANOS, ehPacote, type Pacote } from './planos'
 import { eventosDePedido, pedidoAberto } from './pedidos'
 import { indicacaoDaEmpresa, lerDocumento, registrarPagamento, valorDaMensalidade, PagamentoRepetido, type FormaDePagamento } from './parceiros'
 import { atenderPacoteDeRespostas, trocarPlanoPelaEquipe } from './operacao'
+import { assinaturaDaEmpresa } from './assinatura'
 
 // ─────────────────────────────────────────────────────────────
 // A CONVERSA COM O ASAAS
@@ -114,7 +144,7 @@ export type PagamentoAsaas = {
   invoiceUrl?: string
   deleted?: boolean
 }
-type AssinaturaAsaas = { id: string; value: number; externalReference?: string | null; status?: string; deleted?: boolean }
+type AssinaturaAsaas = { id: string; value: number; externalReference?: string | null; status?: string; deleted?: boolean; customer?: string }
 type Lista<T> = { data: T[] }
 
 // ─────────────────────────────────────────────────────────────
@@ -125,10 +155,12 @@ export type Referencia =
   | { tipo: 'm'; orgId: string; plano: Plano; referencia: string; cheioCent: number }
   | { tipo: 's'; orgId: string }
   | { tipo: 'p'; orgId: string; pacote: Pacote }
+  | { tipo: 'u'; orgId: string; plano: Plano; novoCent: number }
 
 export function escreverReferencia(r: Referencia): string {
   if (r.tipo === 'm') return `norte:m:${r.orgId}:${r.plano}:${r.referencia}:${r.cheioCent}`
   if (r.tipo === 's') return `norte:s:${r.orgId}`
+  if (r.tipo === 'u') return `norte:u:${r.orgId}:${r.plano}:${r.novoCent}`
   return `norte:p:${r.orgId}:${r.pacote}`
 }
 
@@ -138,6 +170,9 @@ export function lerReferencia(texto: string | null | undefined): Referencia | nu
   const orgId = p[2]
   if (p[1] === 's' && p.length === 3) return { tipo: 's', orgId }
   if (p[1] === 'p' && p.length === 4 && ehPacote(p[3])) return { tipo: 'p', orgId, pacote: p[3] as Pacote }
+  if (p[1] === 'u' && p.length === 5 && p[3]! in PLANOS && /^\d+$/.test(p[4]!)) {
+    return { tipo: 'u', orgId, plano: p[3] as Plano, novoCent: Number(p[4]) }
+  }
   if (p[1] === 'm' && p.length === 6 && p[3]! in PLANOS && /^\d{4}-(0[1-9]|1[0-2])$/.test(p[4]!) && /^\d+$/.test(p[5]!)) {
     return { tipo: 'm', orgId, plano: p[3] as Plano, referencia: p[4]!, cheioCent: Number(p[5]) }
   }
@@ -258,6 +293,34 @@ export async function cobrarPacote(
   return { invoiceUrl: r.invoiceUrl, valorCent }
 }
 
+/** O Asaas não cobra menos que isto (R$ 5,00). */
+export const MINIMO_ASAAS_CENT = 500
+
+/**
+ * Subir de plano já assinado: a diferença proporcional aos dias que faltam
+ * até a próxima mensalidade. Abaixo do mínimo do Asaas, nada a cobrar
+ * (`null`): quem chama sobe na hora.
+ */
+export async function cobrarDiferenca(
+  orgId: string,
+  d: { plano: Plano; atualCent: number; novoCent: number; agora?: Date },
+): Promise<{ invoiceUrl: string; valorCent: number; dias: number } | null> {
+  const agora = d.agora ?? new Date()
+  const c = await comoOrg(orgId, (db) => db.cobranca.findUnique({ where: { orgId }, select: { proximaCobranca: true } }))
+  const ate = c?.proximaCobranca?.getTime() ?? agora.getTime() + 30 * 864e5
+  const dias = Math.min(31, Math.max(1, Math.ceil((ate - agora.getTime()) / 864e5)))
+  const valorCent = Math.round(((d.novoCent - d.atualCent) * Math.min(dias, 30)) / 30)
+  if (valorCent < MINIMO_ASAAS_CENT) return null
+  const cliente = await clienteDa(orgId, null, null)
+  const r = await cobrancaAvulsa(
+    cliente,
+    { tipo: 'u', orgId, plano: d.plano, novoCent: d.novoCent },
+    valorCent,
+    `Norte · troca para o plano ${PLANOS[d.plano].titulo} · diferença de ${dias} dia${dias === 1 ? '' : 's'} até a próxima mensalidade`,
+  )
+  return { invoiceUrl: r.invoiceUrl, valorCent, dias }
+}
+
 /**
  * A conta do mês mudou (subiu ou desceu de plano): a assinatura do Asaas
  * acompanha, inclusive a cobrança do mês que ainda não foi paga. Sem preço
@@ -277,12 +340,52 @@ export async function ajustarAssinatura(orgId: string, mensalCent: number | null
   return 'mudou'
 }
 
+/**
+ * A assinatura do Asaas com o valor que a empresa deve HOJE: o plano, as
+ * lojas além da cota, a fábrica e as marcas do Farol. Chamada quando abre,
+ * fecha ou muda uma loja, quando muda o Farol, e a cada mensalidade paga.
+ * Nunca derruba quem chamou: falhou, fica no log e a próxima chamada acerta.
+ */
+export async function sincronizarMensalidade(orgId: string): Promise<'mudou' | 'cancelou' | 'sem-assinatura' | 'igual' | 'falhou'> {
+  if (!asaasLigado()) return 'sem-assinatura'
+  try {
+    const c = await comoOrg(orgId, (db) => db.cobranca.findUnique({ where: { orgId }, select: { provedor: true, assinaturaId: true, valorMensal: true } }))
+    if (c?.provedor !== 'asaas' || !c.assinaturaId) return 'sem-assinatura'
+    const a = await assinaturaDaEmpresa(orgId)
+    if (a.mensal.total === null) return 'igual'
+    const devido = Math.round(a.mensal.total * 100)
+    if (Math.round(Number(c.valorMensal ?? 0) * 100) === devido) return 'igual'
+    return await ajustarAssinatura(orgId, devido)
+  } catch (e) {
+    console.error('[asaas] não deu para acertar a mensalidade', orgId, (e as Error).message)
+    return 'falhou'
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // O AVISO DO ASAAS (/api/asaas)
 // ─────────────────────────────────────────────────────────────
 
 const PAGO = new Set(['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'])
 const EVENTOS_DE_PAGO = new Set(['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED_IN_CASH'])
+/** O dinheiro voltou para quem pagou: estorno, ou contestação no cartão. */
+export const EVENTOS_DE_ESTORNO = new Set(['PAYMENT_REFUNDED', 'PAYMENT_CHARGEBACK_REQUESTED'])
+
+/**
+ * Um trabalho de cada vez por chave (a empresa). O Norte roda num processo
+ * só; num segundo processo, quem segura a assinatura dobrada é a procura no
+ * Asaas antes de criar (`assinaturaQueJaExiste`).
+ */
+const filas = new Map<string, Promise<unknown>>()
+function emFila<T>(chave: string, trabalho: () => Promise<T>): Promise<T> {
+  const antes = filas.get(chave) ?? Promise.resolve()
+  const vez = antes.catch(() => undefined).then(trabalho)
+  filas.set(chave, vez)
+  void vez.finally(() => {
+    if (filas.get(chave) === vez) filas.delete(chave)
+  }).catch(() => undefined)
+  return vez
+}
 
 function mesmoToken(veio: string | null, esperado: string): boolean {
   const a = Buffer.from(veio ?? '')
@@ -309,6 +412,7 @@ export function receberAvisoAsaas(bruto: string, token: string | null): { status
   if (!id || !/^[a-z0-9_]{5,60}$/i.test(id)) return { status: 200 }
   if (EVENTOS_DE_PAGO.has(aviso.event ?? '')) return { status: 200, trabalho: () => processarPagamento(id).then(() => undefined) }
   if (aviso.event === 'PAYMENT_OVERDUE') return { status: 200, trabalho: () => marcarAtraso(id) }
+  if (EVENTOS_DE_ESTORNO.has(aviso.event ?? '')) return { status: 200, trabalho: () => estornarPagamento(id).then(() => undefined) }
   return { status: 200 }
 }
 
@@ -343,7 +447,17 @@ export async function processarPagamento(pagamentoId: string): Promise<string> {
   if (p.deleted || !PAGO.has(p.status)) return 'não está pago'
   const achado = await referenciaDe(p)
   if (!achado) return 'não é do Norte'
-  const { ref, assinatura } = achado
+  return emFila(achado.ref.orgId, () => processarDaEmpresa(p, achado.ref, achado.assinatura))
+}
+
+/** A assinatura desta empresa que já existe no Asaas (ativa), se houver. */
+async function assinaturaQueJaExiste(cliente: string, orgId: string): Promise<string | null> {
+  const ref = encodeURIComponent(escreverReferencia({ tipo: 's', orgId }))
+  const l = await chamar<Lista<AssinaturaAsaas>>('GET', `/subscriptions?customer=${encodeURIComponent(cliente)}&externalReference=${ref}`)
+  return l.data.find((s) => !s.deleted && s.status !== 'INACTIVE' && s.status !== 'EXPIRED')?.id ?? null
+}
+
+async function processarDaEmpresa(p: PagamentoAsaas, ref: Referencia, assinatura: AssinaturaAsaas | null): Promise<string> {
   const orgId = ref.orgId
 
   const org = await comoOrg(orgId, (db) => db.org.findUnique({ where: { id: orgId }, select: { id: true, plano: true, situacao: true } }))
@@ -380,6 +494,21 @@ export async function processarPagamento(pagamentoId: string): Promise<string> {
     return 'pacote entregue'
   }
 
+  if (ref.tipo === 'u') {
+    // A diferença paga: o plano sobe e a mensalidade passa ao valor novo.
+    // A marca vem antes, como no pacote.
+    await marcar(`diferença para o plano ${PLANOS[ref.plano].titulo} (${reais(pagoCent)})`)
+    const pedido = pedidoAberto(await eventosDePedido(orgId), 'plano')
+    try {
+      await trocarPlanoPelaEquipe(orgId, ref.plano, { motivo: `Diferença paga no Asaas (${p.id})`, quem: 'Asaas', pedidoId: pedido?.id ?? null })
+    } catch (e) {
+      await avisarEquipe(orgId, p.id, `pago, mas o plano ${PLANOS[ref.plano].titulo} não foi aplicado: ${(e as Error).message}`)
+      return 'pago, plano pendente'
+    }
+    await ajustarAssinatura(orgId, ref.novoCent)
+    return 'plano subiu'
+  }
+
   const referencia = ref.tipo === 'm' ? ref.referencia : p.dueDate.slice(0, 7)
   const cheioCent = Math.max(pagoCent, ref.tipo === 'm' ? ref.cheioCent : Math.round((assinatura?.value ?? p.value) * 100))
 
@@ -389,8 +518,9 @@ export async function processarPagamento(pagamentoId: string): Promise<string> {
       await trocarPlanoPelaEquipe(orgId, ref.plano, { motivo: `Primeira mensalidade paga no Asaas (${p.id})`, quem: 'Asaas', pedidoId: pedido?.id ?? null })
     } catch (e) {
       // Pago, mas o plano não cabe (loja demais, por exemplo): o pagamento
-      // entra igual, e o pedido fica aberto para a equipe resolver.
-      console.error('[asaas] pago, mas o plano não foi aplicado', orgId, (e as Error).message)
+      // entra igual, e o pedido fica aberto para a equipe resolver — com a
+      // marca na auditoria, para não depender de alguém ler o log.
+      await avisarEquipe(orgId, p.id, `pago, mas o plano ${PLANOS[ref.plano].titulo} não foi aplicado: ${(e as Error).message}`)
     }
   }
 
@@ -413,10 +543,12 @@ export async function processarPagamento(pagamentoId: string): Promise<string> {
   }
 
   // O primeiro mês pago faz nascer a assinatura, do mês seguinte em diante.
-  // Até o dia 28: o dia 31 não existe em todo mês.
-  const proximaCobranca = mesSeguinte(diaEmSP(pagoEm))
+  // Até o dia 28: o dia 31 não existe em todo mês. A mensalidade paga
+  // empurra para o vencimento SEGUINTE ao dela (pagar atrasado não muda o dia).
+  const proximaCobranca = mesSeguinte(ref.tipo === 'm' ? diaEmSP(pagoEm) : p.dueDate.slice(0, 10))
   const c = await comoOrg(orgId, (db) => db.cobranca.findUnique({ where: { orgId }, select: { assinaturaId: true } }))
   let assinaturaId = c?.assinaturaId ?? null
+  if (ref.tipo === 'm' && !assinaturaId) assinaturaId = await assinaturaQueJaExiste(p.customer, orgId)
   if (ref.tipo === 'm' && !assinaturaId) {
     const s = await chamar<AssinaturaAsaas>('POST', '/subscriptions', {
       customer: p.customer,
@@ -440,7 +572,54 @@ export async function processarPagamento(pagamentoId: string): Promise<string> {
   await comoOrg(orgId, (db) => db.cobranca.upsert({ where: { orgId }, create: { orgId, ...dados }, update: dados }))
 
   await marcar(ref.tipo === 'm' ? `primeira mensalidade (${reais(pagoCent)})` : `mensalidade ${referencia} (${reais(pagoCent)})`)
+  // A mensalidade seguinte com o valor de hoje (abriu loja no meio do mês?).
+  if (ref.tipo === 's') await sincronizarMensalidade(orgId)
   return ref.tipo === 'm' ? 'assinatura começou' : 'mensalidade paga'
+}
+
+/** Uma marca na auditoria para a equipe resolver (aparece no console e na Auditoria). */
+async function avisarEquipe(orgId: string, pagamentoId: string, oQue: string): Promise<void> {
+  console.error('[asaas]', orgId, oQue)
+  await comoOrg(orgId, (db) =>
+    db.auditoria.create({
+      data: { orgId, quem: 'Asaas', autor: 'SISTEMA', acao: 'asaas.pendente', alvoTipo: 'cobranca', alvoId: pagamentoId, alvoNome: oQue.slice(0, 200) },
+    }),
+  )
+}
+
+/**
+ * O dinheiro voltou (estorno, ou contestação no cartão): as comissões deste
+ * pagamento que ainda não foram repassadas saem da conta dos parceiros. As já
+ * pagas ficam como estão — a equipe acerta no repasse seguinte, se for o caso.
+ */
+export async function estornarPagamento(pagamentoId: string): Promise<string> {
+  const p = await chamar<PagamentoAsaas>('GET', `/payments/${pagamentoId}`)
+  const achado = await referenciaDe(p)
+  if (!achado) return 'não é do Norte'
+  const orgId = achado.ref.orgId
+  return emFila(orgId, () =>
+    comoOrg(orgId, async (db) => {
+      const ja = await db.auditoria.findFirst({ where: { acao: 'asaas.estornou', alvoId: p.id }, select: { id: true } })
+      if (ja) return 'já estornado'
+      const pago = await db.pagamentoNorte.findFirst({ where: { orgId, observacao: `Asaas ${p.id}` }, select: { id: true, referencia: true } })
+      const r = pago
+        ? await db.comissao.updateMany({ where: { pagamentoId: pago.id, repasseId: null, estornadaEm: null }, data: { estornadaEm: new Date() } })
+        : { count: 0 }
+      await db.auditoria.create({
+        data: {
+          orgId,
+          quem: 'Asaas',
+          autor: 'SISTEMA',
+          acao: 'asaas.estornou',
+          alvoTipo: 'cobranca',
+          alvoId: p.id,
+          alvoNome: `${pago ? `mensalidade ${pago.referencia}` : 'cobrança'} estornada (${reais(Math.round(p.value * 100))})`,
+          depois: { comissoesEstornadas: r.count, status: p.status },
+        },
+      })
+      return r.count > 0 ? `${r.count} comissão(ões) estornada(s)` : 'estornado, sem comissão a desfazer'
+    }),
+  )
 }
 
 /** A mensalidade venceu sem pagamento: a empresa fica em atraso (o acesso continua). */

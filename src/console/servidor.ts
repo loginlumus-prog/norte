@@ -24,6 +24,7 @@ import { detalheEmpresa, filtrar, listarEmpresas, listarParceiros, pedidosAberto
 import { paginaDeErro, telaEmpresa, telaEmpresas, telaParceiros, telaPedidos, dataHora, type Aviso, type Contexto } from './telas'
 import * as parceiros from '../servidor/parceiros'
 import * as op from '../servidor/operacao'
+import { sincronizarMensalidade } from '../servidor/asaas'
 import { PLANOS, PRECOS, milhar } from '../servidor/planos'
 import { quemDaEquipe, SemCota } from '../servidor/assinatura'
 import { eventosDePedido, pedidoAberto, type TipoPedido } from '../servidor/pedidos'
@@ -225,6 +226,8 @@ export function criarConsole(cfg: ConfigDoConsole): Server {
         if (!(para in PLANOS)) throw new Error('Escolha o plano.')
         const pedidoId = await pedidoConferido(org.id, 'plano', campos.get('pedidoId'))
         const m = await op.trocarPlanoPelaEquipe(org.id, para, { motivo, quem, pedidoId })
+        // A mensalidade no Asaas acompanha o que a equipe mudou.
+        await sincronizarMensalidade(org.id)
         if (m.sentido === 'igual') return { tipo: 'info', texto: `/${org.slug} já estava no plano ${PLANOS[para].titulo}.` }
         return {
           tipo: 'ok',
@@ -298,6 +301,8 @@ export function criarConsole(cfg: ConfigDoConsole): Server {
         const modulo = campos.get('modulo') as op.ModuloDaEquipe
         const ligar = campos.get('ligar') === '1'
         const r = await op.definirModuloDaEquipe(org.id, modulo, ligar, { motivo, quem })
+        // A mensalidade no Asaas acompanha o que a equipe mudou.
+        await sincronizarMensalidade(org.id)
         return r.mudou
           ? { tipo: 'ok', texto: `${modulo === 'farol' ? 'Farol' : 'Fábrica'} ${ligar ? 'ligado' : 'desligado'} em /${org.slug}.` }
           : { tipo: 'info', texto: 'Já estava assim. Nada mudou.' }
@@ -305,6 +310,8 @@ export function criarConsole(cfg: ConfigDoConsole): Server {
       case 'farol-marcas': {
         const marcas = Number(campos.get('marcas'))
         const r = await op.definirMarcasDoFarol(org.id, marcas, { motivo, quem })
+        // A mensalidade no Asaas acompanha o que a equipe mudou.
+        await sincronizarMensalidade(org.id)
         return r.mudou
           ? { tipo: 'ok', texto: `/${org.slug}: ${r.de} → ${r.para} marca(s) do Farol contratada(s).` }
           : { tipo: 'info', texto: `/${org.slug} já tinha ${r.para} marca(s). Nada mudou.` }

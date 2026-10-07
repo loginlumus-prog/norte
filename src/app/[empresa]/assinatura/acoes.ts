@@ -18,7 +18,7 @@ import {
 } from '@/servidor/assinatura'
 import { PACOTES, PLANOS, PRECOS, ehPacote, milhar, mudanca, rs, type Pacote } from '@/servidor/planos'
 import { EMPRESA } from '@/servidor/legal'
-import { asaasLigado, ajustarAssinatura, cobrarPacote, cobrarPrimeiroMes, AsaasFalhou, FaltaDocumento } from '@/servidor/asaas'
+import { asaasLigado, ajustarAssinatura, cobrarDiferenca, cobrarPacote, cobrarPrimeiroMes, AsaasFalhou, FaltaDocumento } from '@/servidor/asaas'
 import { comoOrg } from '@/servidor/banco'
 
 const reais = rs
@@ -90,6 +90,9 @@ export async function trocar(
   // quando o Asaas avisa que o dinheiro entrou (servidor/asaas.ts). O pedido
   // continua no livro, para a equipe ver quem está no meio do caminho.
   if (!assinaturaLivre() && asaasLigado()) {
+    // O acesso do suporte do Norte não gera cobrança em nome da loja (o
+    // pedido já recusava, mas a cobrança saía antes dele).
+    exigirQueNaoSejaSuporte(s, 'mexe na Assinatura')
     const previa = mudanca(a.plano, alvo, a.uso)
     if (previa.impedimentos.length > 0) return { erro: previa.impedimentos.join(' ') }
     const assinando = a.situacao === 'TESTE' || a.plano === 'GRATIS' || !(await temAssinaturaAsaas(s.orgId))
@@ -117,8 +120,33 @@ export async function trocar(
         throw e
       }
     }
-    // Já paga pelo Asaas: muda na hora, e a mensalidade acompanha a partir
-    // da cobrança que ainda está em aberto.
+    // Já paga pelo Asaas e SOBE: paga a diferença dos dias que faltam até a
+    // próxima mensalidade, e o plano novo liga quando o pagamento cair (ver
+    // "subir de plano é pago" em servidor/asaas.ts). Diferença abaixo do
+    // mínimo do Asaas: sobe na hora, como descer.
+    if (previa.sentido === 'subir' && previa.novoMensal !== null) {
+      const novoCent = Math.round(previa.novoMensal * 100)
+      const atualCent = Math.round((previa.novoMensal - (previa.diferenca ?? 0)) * 100)
+      try {
+        const c = await cobrarDiferenca(s.orgId, { plano: alvo, atualCent, novoCent })
+        if (c) {
+          await registrarPedido(s, { tipo: 'plano', para: alvo })
+          revalidatePath(`/${slug}/assinatura`)
+          return {
+            pagar: c.invoiceUrl,
+            ok:
+              `Cobrança de ${reais(c.valorCent / 100)} gerada: a diferença dos ${c.dias} dia${c.dias === 1 ? '' : 's'} até a próxima mensalidade. ` +
+              `O plano ${PLANOS[alvo].titulo} liga assim que o pagamento cair, e a mensalidade passa a ${reais(previa.novoMensal)}.`,
+          }
+        }
+      } catch (e) {
+        const r = recadoDoAsaas(e)
+        if (r) return r
+        throw e
+      }
+    }
+    // Descer (ou subir por diferença pequena): muda na hora, e a mensalidade
+    // acompanha a partir da cobrança que ainda está em aberto.
     try {
       const m = await trocarPlano(s, alvo)
       await ajustarAssinatura(s.orgId, m.novoMensal === null ? null : Math.round(m.novoMensal * 100))
