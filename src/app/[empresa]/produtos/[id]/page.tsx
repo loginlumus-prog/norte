@@ -15,6 +15,8 @@ import { MENU } from '@/ui/menu'
 import { Cartao, Situacao, cx } from '@/ui/base'
 import { Secao, Numero, brl } from '@/ui/painel'
 import { Linhas } from '@/ui/Graficos'
+import { SeletorUnidade } from '@/ui/SeletorUnidade'
+import { escolherUnidade } from '@/servidor/unidade'
 import { Tabela } from '@/ui/Tabela'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor, type ProdutoNaTela } from '../Editor'
@@ -67,35 +69,45 @@ function noventaDias(linhas: { dia: string; quantidade: number; total: number }[
 
 export default async function FichaProduto({
   params,
+  searchParams,
 }: {
   params: Promise<{ empresa: string; id: string }>
+  searchParams: Promise<{ unidade?: string | string[] }>
 }) {
   const { empresa: slug, id } = await params
+  const pedida = (await searchParams).unidade
   const { empresa, sessao } = await exigirEntrada(slug)
   const tema = ((await cookies()).get('tema')?.value ?? 'sistema') as Tema
 
   if (!pode(sessao, 'produto.editar')) semAcesso(slug, 'cargo')
 
+  // A loja que a pessoa escolheu (a mesma do Estoque e das Vendas, lembrada
+  // no aparelho): quem olha a Vida Nova vê o que vendeu, o saldo e os
+  // movimentos da Vida Nova — antes a ficha somava todas as lojas e misturava
+  // as vendas do Vilão na conta de quem só cuida de uma.
+  const verEstoque = pode(sessao, 'estoque.ver')
+  const onde = await escolherUnidade(sessao, empresa, typeof pedida === 'string' ? pedida : undefined, verEstoque ? 'estoque.ver' : 'venda.ver')
+  const naVista = new Set(onde.ids)
+
   const noventa = new Date()
   noventa.setDate(noventa.getDate() - 90)
-  const [produto, eixos, categorias, vende, porLoja, movimentos] = await Promise.all([
+  const [produto, eixos, categorias, vende, todasAsLojas, movimentos] = await Promise.all([
     acharProduto(sessao, id),
     eixosDaEmpresa(sessao),
     comoOrg(sessao.orgId, (db) =>
       db.categoria.findMany({ orderBy: { ordem: 'asc' }, select: { id: true, nome: true } }),
     ),
-    comoVende(sessao, id),
-    pode(sessao, 'estoque.ver') ? estoqueDoProduto(sessao, id) : Promise.resolve([]),
-    pode(sessao, 'estoque.ver')
-      ? comoOrg(sessao.orgId, (db) => db.unidade.findMany({ where: { ativa: true }, select: { id: true } })).then((us) =>
-          listarMovimentos(sessao, { unidadeIds: us.map((u) => u.id), de: noventa, ate: new Date(Date.now() + 864e5), produtoId: id }),
-        )
+    comoVende(sessao, id, onde.ids),
+    verEstoque ? estoqueDoProduto(sessao, id) : Promise.resolve([]),
+    verEstoque
+      ? listarMovimentos(sessao, { unidadeIds: onde.ids, de: noventa, ate: new Date(Date.now() + 864e5), produtoId: id })
       : Promise.resolve([]),
   ])
 
   if (!produto) notFound()
 
   const dias = noventaDias(vende.porDia)
+  const porLoja = todasAsLojas.filter((l) => naVista.has(l.unidadeId))
   const lojas = [...new Map(porLoja.map((l) => [l.unidadeId, l.unidade])).entries()]
   // Custo e margem só para quem responde por alguma loja que vende este
   // produto — ver `podeVerCustoDe`.
@@ -104,7 +116,8 @@ export default async function FichaProduto({
   const pct = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
   // O saldo da ficha é o mesmo do Estoque consolidado: as lojas abertas que a
   // pessoa alcança (ver `acharProduto`), com a medida junto — "0,75 kg", não "0.75".
-  const saldoDe = (v: { estoques: { quantidade: unknown }[] }) => v.estoques.reduce((t, e) => t + Number(e.quantidade), 0)
+  const saldoDe = (v: { estoques: { unidadeId: string; quantidade: unknown }[] }) =>
+    v.estoques.reduce((t, e) => (naVista.has(e.unidadeId) ? t + Number(e.quantidade) : t), 0)
   const diasSemVender = vende.ultimaVenda ? Math.floor((Date.now() - vende.ultimaVenda.getTime()) / 864e5) : null
 
   // Quais opções estão marcadas hoje: sai da grade que existe, não de uma
@@ -158,6 +171,8 @@ export default async function FichaProduto({
         id: v.id,
         rotulo: v.opcoes.map((o) => valorDe.get(o.opcaoId)?.valor ?? '—').join(' · '),
         preco: emReais(Number(produto.precoVista ?? 0) + Number(v.ajustePreco ?? 0)),
+        // O custo próprio do item; vazio = usa o custo do produto.
+        custo: verCusto ? custoNoCampo(v.custo) : '',
       })),
     // Só as combinações que já venderam ou mexeram no estoque. Contar todas
     // fazia o aviso "já tem venda" aparecer no produto recém-cadastrado.
@@ -205,6 +220,7 @@ export default async function FichaProduto({
       titulo={produto.nome}
       acao={
         <span className="flex flex-wrap items-center gap-2">
+          {onde.mostrarSeletor && <SeletorUnidade opcoes={onde.opcoes} atual={onde.unidadeId} />}
           <Link href={`/${slug}/produtos`} className="text-sm font-medium text-tinta-2 hover:text-tinta">
             ← produtos
           </Link>
@@ -225,7 +241,7 @@ export default async function FichaProduto({
       {/* ── COMO VENDE ──
           A ficha sem isto é cadastro. "Vale repor?" e "por quanto está saindo?"
           se respondem aqui, antes de qualquer campo de edição. */}
-      <Secao titulo="Como vende">
+      <Secao titulo="Como vende" resumo={onde.mostrarSeletor ? onde.titulo : undefined}>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <Numero
             principal
@@ -373,7 +389,7 @@ export default async function FichaProduto({
       </Secao>
 
       {movimentos.length > 0 && (
-        <Secao titulo="Últimos movimentos" resumo="Últimos 90 dias.">
+        <Secao titulo="Últimos movimentos" resumo={onde.mostrarSeletor ? `${onde.titulo} · últimos 90 dias.` : 'Últimos 90 dias.'}>
           <Cartao caixa>
             <ul className="flex flex-col divide-y divide-borda-suave text-sm">
               {movimentos.slice(0, 20).map((m) => (
@@ -402,7 +418,7 @@ export default async function FichaProduto({
             {movimentos.length > 20 && (
               <p className="pt-2 text-xs text-tinta-3">
                 Mostrando 20 de {movimentos.length}. O resto está em{' '}
-                <Link href={`/${slug}/estoque?q=${encodeURIComponent(produto.nome)}&periodo=90d`} className="font-medium text-marca underline-offset-2 hover:underline">
+                <Link href={`/${slug}/estoque?q=${encodeURIComponent(produto.nome)}&periodo=90d${onde.unidadeId ? `&unidade=${onde.unidadeId}` : ''}`} className="font-medium text-marca underline-offset-2 hover:underline">
                   Estoque › Movimentos
                 </Link>
                 .

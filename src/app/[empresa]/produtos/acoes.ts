@@ -7,7 +7,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { exigirSessao, recadoDoErro } from '@/servidor/pagina'
-import { criarProduto, editarProduto, excluirProduto, reativarProduto, ajustarGrade, criarOpcaoDoEixo, criarEixoDaEmpresa, renomearEixo, renomearOpcao, excluirEixo, excluirOpcao, definirPrecosDosItens, GradeRecusada, PrecoDoItemRecusado, type EixoEscolhido } from '@/servidor/produto'
+import { criarProduto, editarProduto, excluirProduto, reativarProduto, ajustarGrade, criarOpcaoDoEixo, criarEixoDaEmpresa, renomearEixo, renomearOpcao, excluirEixo, excluirOpcao, definirPrecosDosItens, definirCustosDosItens, GradeRecusada, PrecoDoItemRecusado, type EixoEscolhido } from '@/servidor/produto'
 import { SemPermissao, pode, unidadesQuePodem, type Sessao } from '@/servidor/permissao'
 import { comoOrg } from '@/servidor/banco'
 import { alcanceComum, normalizarVendidoEm, vendidoEmDoGerente } from '@/servidor/catalogo-loja'
@@ -98,6 +98,38 @@ function precosDosItensDo(
     itens.push({ variacaoId: id, preco })
   }
   return Object.keys(campos).length > 0 ? { campos } : { itens }
+}
+
+/**
+ * O custo de cada item (`custoItem_<variacaoId>`). Vão TODOS os da tela, e não
+ * só os mudados: o custo do produto, quando muda, apaga o próprio de cada item
+ * (ver `editarProduto`), e o que ficou escrito aqui volta por cima. Vazio = o
+ * item usa o custo do produto. `mudados` é o que a pessoa mexeu, para o recado.
+ */
+function custosDosItensDo(
+  f: FormData,
+): { itens: { variacaoId: string; custo: number | null }[]; mudados: number } | { campos: Record<string, string> } {
+  const itens: { variacaoId: string; custo: number | null }[] = []
+  const campos: Record<string, string> = {}
+  let mudados = 0
+  for (const [chave, bruto] of f.entries()) {
+    if (!chave.startsWith('custoItem_')) continue
+    const id = chave.slice('custoItem_'.length)
+    const texto = String(bruto ?? '').trim()
+    let custo: number | null = null
+    if (texto) {
+      const c = texto.includes('%') ? null : lerCusto(texto, null)
+      if (!c || 'erro' in c) {
+        campos[chave] = 'Escreva o custo em reais, como 2,50.'
+        continue
+      }
+      custo = c.valor
+    }
+    const antes = String(f.get(`custoItemAntes_${id}`) ?? '').trim()
+    if (antes !== texto) mudados++
+    itens.push({ variacaoId: id, custo })
+  }
+  return Object.keys(campos).length > 0 ? { campos } : { itens, mudados }
 }
 
 /** O erro geral que acompanha os erros de campo: diz onde olhar. */
@@ -314,6 +346,8 @@ export async function editar(
   const vista = p.precoVista!
   const doItem = precosDosItensDo(form)
   if ('campos' in doItem) return { erro: ERRO_NOS_CAMPOS, campos: doItem.campos }
+  const custoItem = custosDosItensDo(form)
+  if ('campos' in custoItem) return { erro: ERRO_NOS_CAMPOS, campos: custoItem.campos }
   const atual = await comoOrg(sessao.orgId, (db) =>
     db.produto.findUnique({ where: { id: produtoId }, select: { vendidoEm: true } }),
   )
@@ -380,6 +414,19 @@ export async function editar(
       }
     }
 
+    // O custo de cada item vem depois do custo do produto, que apaga o deles.
+    if (custoItem.itens.length > 0) {
+      try {
+        await definirCustosDosItens(sessao, produtoId, custoItem.itens)
+      } catch (e) {
+        if (e instanceof PrecoDoItemRecusado) {
+          revalidatePath(`/${slug}/produtos/${produtoId}`)
+          return { erro: `O resto da ficha foi salvo, mas o custo dos itens não mudou. ${e.message}` }
+        }
+        throw e
+      }
+    }
+
     revalidatePath(`/${slug}/produtos`)
     revalidatePath(`/${slug}/produtos/${produtoId}`)
 
@@ -392,6 +439,7 @@ export async function editar(
       g.desativadas && `${plural(g.desativadas, 'desativada', 'desativadas')} (${palavra(g.desativadas, 'tinha', 'tinham')} histórico)`,
       g.apagadas && `${plural(g.apagadas, 'removida', 'removidas')}`,
       precosMudaram > 0 && `${plural(precosMudaram, 'preço de item mudou', 'preços de itens mudaram')}`,
+      custoItem.mudados > 0 && `${plural(custoItem.mudados, 'custo de item mudou', 'custos de itens mudaram')}`,
     ].filter(Boolean)
 
     return { ok: partes.length > 0 ? `Salvo. ${partes.join(', ')}.` : 'Salvo.' }

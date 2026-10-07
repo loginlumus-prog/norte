@@ -55,7 +55,7 @@ export type ProdutoNaTela = {
   /** As opções já marcadas hoje, por eixo. */
   marcadas: Record<string, string[]>
   /** Os itens da grade e o preço à vista de cada um (o do produto + a diferença dele). */
-  itens?: { id: string; rotulo: string; preco: string }[]
+  itens?: { id: string; rotulo: string; preco: string; custo: string }[]
   /** Pode mexer em preço: só então a ficha mostra o preço de cada item. */
   podePreco?: boolean
   /** Combinações que já têm venda ou movimento — não somem, desativam. */
@@ -685,17 +685,18 @@ export function Editor({
           comum a R$ 4 e a recheada a R$ 7. Aparece para quem mexe em preço e
           quando a grade já existe (salvou as variações): é sobre cada item. */}
       {produto && !travado && produto.podePreco && (produto.itens?.length ?? 0) >= 2 && (
-        <Cartao titulo="Preço de cada item">
+        <Cartao titulo={produto.verCusto ? 'Preço e custo de cada item' : 'Preço de cada item'}>
           <p className="mb-3 text-sm text-tinta-2">
-            Algum item custa diferente? Escreva o preço dele aqui — o estoque continua junto, no mesmo produto.
+            Algum item é vendido por outro preço? Escreva o preço dele aqui. O estoque continua junto, no mesmo produto.
             Item que fica igual ao preço de cima acompanha o produto quando você mudar o preço.
             No cartão e no crediário, soma a mesma diferença.
+            {produto.verCusto && ' O custo de cada item entra na margem de cada venda; em branco, o item usa o custo do produto.'}
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {produto.itens!.map((i) => (
-              <div key={i.id}>
+              <div key={i.id} className="flex flex-col gap-2">
                 <Campo
-                  rotulo={i.rotulo || 'Item'}
+                  rotulo={produto.verCusto ? `${i.rotulo || 'Item'} · preço` : i.rotulo || 'Item'}
                   name={`precoItem_${i.id}`}
                   defaultValue={i.preco}
                   placeholder="0,00"
@@ -704,6 +705,19 @@ export function Editor({
                 />
                 {/* O que estava na tela ao abrir: só vai para o servidor quem mudou. */}
                 <input type="hidden" name={`precoItemAntes_${i.id}`} value={i.preco} readOnly />
+                {produto.verCusto && (
+                  <>
+                    <Campo
+                      rotulo={`${i.rotulo || 'Item'} · custo`}
+                      name={`custoItem_${i.id}`}
+                      defaultValue={i.custo}
+                      placeholder={produto.custo ? `${produto.custo} (do produto)` : '0,00'}
+                      inputMode="decimal"
+                      erro={estado.campos?.[`custoItem_${i.id}`]}
+                    />
+                    <input type="hidden" name={`custoItemAntes_${i.id}`} value={i.custo} readOnly />
+                  </>
+                )}
               </div>
             ))}
           </div>

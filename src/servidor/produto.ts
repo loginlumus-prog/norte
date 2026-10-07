@@ -389,6 +389,24 @@ export async function editarProduto(
         ...(dados.ativo !== undefined && { ativo: dados.ativo }),
       },
     })
+    // O item com preço próprio não anda junto com o preço do produto. O banco
+    // guarda a DIFERENÇA para o produto; sem isto, baixar o Isopor de R$ 30
+    // para R$ 8 levava o de 3 L (R$ 8, diferença −22) a −R$ 14 — o que
+    // aconteceu na Sonhos Gelatos em 07/10/2026. Corrige a diferença para o
+    // preço final do item ficar onde estava. O item sem preço próprio (sem
+    // diferença) continua acompanhando o produto.
+    if (dados.precoVista !== undefined && mudou(dados.precoVista, antes.precoVista)) {
+      const desloca = Math.round(Number(antes.precoVista ?? 0) * 100) - Math.round(Number(dados.precoVista ?? 0) * 100)
+      const proprios = await db.variacao.findMany({
+        where: { produtoId, ajustePreco: { not: null } },
+        select: { id: true, ajustePreco: true },
+      })
+      for (const v of proprios) {
+        const novo = Math.round(Number(v.ajustePreco) * 100) + desloca
+        await db.variacao.update({ where: { id: v.id }, data: { ajustePreco: novo === 0 ? null : novo / 100 } })
+      }
+    }
+
     // O custo digitado na ficha é o custo de TODAS as variações: o custo
     // próprio que cada sabor ganhou na fábrica (ou cada tamanho na nota) sai,
     // senão continuaria valendo por cima do que a pessoa acabou de decidir.
@@ -512,6 +530,71 @@ export async function definirPrecosDosItens(
           usuarioId: sessao.usuarioId,
           quem: sessao.nome,
           acao: 'produto.preco.alterou',
+          alvoTipo: 'produto',
+          alvoId: produtoId,
+          alvoNome: produto.nome,
+          depois: { itens: depois },
+        },
+      })
+    }
+    return mudaram
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
+// O CUSTO DE CADA ITEM DA GRADE
+// ─────────────────────────────────────────────────────────────
+// O isopor de 3 L custa R$ 2 e o de 24 L custa R$ 12: um produto só no balcão
+// (com o tamanho para escolher), mas um custo para cada um — senão a margem
+// de cada venda mente. O banco já guardava (`Variacao.custo`, que a venda lê
+// antes do custo do produto); faltava a tela que o escrevesse.
+//
+// Vazio = o item usa o custo do produto. Chega a lista inteira dos itens da
+// tela: o custo digitado na ficha apaga o próprio de cada item (ver
+// `editarProduto`), e o que a pessoa deixou escrito aqui precisa voltar.
+
+export type CustoDoItem = { variacaoId: string; custo: number | null }
+
+/** Grava o custo próprio de cada item. Devolve quantos mudaram no banco. */
+export async function definirCustosDosItens(sessao: Sessao, produtoId: string, itens: CustoDoItem[]): Promise<number> {
+  exigir(sessao, 'produto.preco')
+  if (itens.length === 0) return 0
+  if (itens.some((i) => i.custo !== null && (!Number.isFinite(i.custo) || i.custo < 0))) {
+    throw new PrecoDoItemRecusado('O custo de cada item não pode ser negativo.')
+  }
+
+  return comoOrg(sessao.orgId, async (db) => {
+    const produto = await db.produto.findUnique({ where: { id: produtoId }, select: { nome: true, vendidoEm: true } })
+    if (!produto) throw new PrecoDoItemRecusado('Produto não encontrado.')
+    if (!podeVerCustoDe(sessao, produto.vendidoEm) || !alcancaOProduto(alcanceDe(sessao, 'produto.preco'), produto.vendidoEm)) {
+      throw new PrecoDoItemRecusado(MOTIVO_FORA_DO_ALCANCE)
+    }
+    const variacoes = await db.variacao.findMany({
+      where: { produtoId, id: { in: itens.map((i) => i.variacaoId) } },
+      select: { id: true, codigo: true, custo: true },
+    })
+    const porId = new Map(variacoes.map((v) => [v.id, v]))
+
+    let mudaram = 0
+    const depois: { codigo: string | null; custo: number | null }[] = []
+    for (const i of itens) {
+      const v = porId.get(i.variacaoId)
+      if (!v) continue
+      const antes = v.custo === null ? null : Math.round(Number(v.custo) * 10_000)
+      const novo = i.custo === null ? null : Math.round(i.custo * 10_000)
+      if (antes === novo) continue
+      await db.variacao.update({ where: { id: v.id }, data: { custo: novo === null ? null : novo / 10_000 } })
+      mudaram++
+      depois.push({ codigo: v.codigo, custo: i.custo })
+    }
+
+    if (mudaram > 0) {
+      await db.auditoria.create({
+        data: {
+          orgId: sessao.orgId,
+          usuarioId: sessao.usuarioId,
+          quem: sessao.nome,
+          acao: 'produto.custo.alterou',
           alvoTipo: 'produto',
           alvoId: produtoId,
           alvoNome: produto.nome,
@@ -1050,9 +1133,9 @@ export async function acharProduto(sessao: Sessao, produtoId: string) {
           orderBy: { codigo: 'asc' },
           select: {
             id: true, codigo: true, codigoBarras: true, ativa: true, padrao: true,
-            ajustePreco: true,
+            ajustePreco: true, custo: true,
             opcoes: { select: { opcaoId: true } },
-            estoques: { where: lojaNoAlcance(alcance), select: { quantidade: true } },
+            estoques: { where: lojaNoAlcance(alcance), select: { unidadeId: true, quantidade: true } },
             // O "já tem venda ou movimento" da ficha: contado, não suposto.
             _count: { select: { vendaItens: true, movimentos: true } },
           },

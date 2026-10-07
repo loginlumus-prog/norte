@@ -463,6 +463,37 @@ describe('o pagamento', () => {
     await db.exec(`delete from variacoes where id = 'var-cam-b'`)
   })
 
+  it('mudar o preço do produto não arrasta o item que tem preço próprio (o Isopor que foi a −R$ 14)', async () => {
+    const p = await import('../src/servidor/produto')
+    await db.exec(`insert into variacoes (id, org_id, produto_id, codigo, ativa) values ('var-cam-c', 'org-a', 'p-cam', 'CAM-3', true)`)
+    const [antes] = await linha<{ v: string }>(`select preco_vista::text v from produtos where id = 'p-cam'`)
+    const base = Number(antes!.v)
+    const final = async () => {
+      const [r] = await linha<{ v: string; a: string | null }>(
+        `select p.preco_vista::text v, va.ajuste_preco::text a from variacoes va join produtos p on p.id = va.produto_id where va.id = 'var-cam-c'`,
+      )
+      return Number(r!.v) + Number(r!.a ?? 0)
+    }
+    await p.definirPrecosDosItens(DONA, 'p-cam', [{ variacaoId: 'var-cam-c', preco: base + 22 }])
+
+    // O produto baixa 22: o item continua no preço dele, e não vai para baixo.
+    const r = await p.editarProduto(DONA, 'p-cam', { precoVista: base - 22 > 0 ? base - 22 : 1 })
+    expect(r.ok).toBe(true)
+    expect(await final()).toBe(base + 22)
+
+    // E o custo de cada item: o dele vale; vazio volta ao do produto.
+    expect(await p.definirCustosDosItens(DONA, 'p-cam', [{ variacaoId: 'var-cam-c', custo: 12.5 }])).toBe(1)
+    const custo = async () => (await linha<{ c: string | null }>(`select custo::text c from variacoes where id = 'var-cam-c'`))[0]!.c
+    expect(Number(await custo())).toBe(12.5)
+    expect(await p.definirCustosDosItens(DONA, 'p-cam', [{ variacaoId: 'var-cam-c', custo: 12.5 }])).toBe(0)
+    await expect(p.definirCustosDosItens(BALCAO, 'p-cam', [{ variacaoId: 'var-cam-c', custo: 1 }])).rejects.toThrow()
+    expect(await p.definirCustosDosItens(DONA, 'p-cam', [{ variacaoId: 'var-cam-c', custo: null }])).toBe(1)
+    expect(await custo()).toBeNull()
+
+    await p.editarProduto(DONA, 'p-cam', { precoVista: base })
+    await db.exec(`delete from variacoes where id = 'var-cam-c'`)
+  })
+
   it('o cargo "lança avaria" tira do estoque sem poder corrigir, dar entrada nem transferir', async () => {
     const e = await import('../src/servidor/estoque')
     // Um cargo da loja do Centro: vende, vê o estoque e lança avaria. Nada mais.
