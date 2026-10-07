@@ -349,6 +349,11 @@ export async function mexerEstoqueEm(
     } else {
       delta = TIRA.includes(m.tipo) ? -m.quantidade : m.quantidade
     }
+    // Três casas, as da coluna, ANTES de usar: o saldo arredondava
+    // `antigo + delta` e o livro arredondava o `delta` sozinho — e o Postgres
+    // arredonda o meio para longe do zero, então 1 kg − 0,0015 deixava saldo
+    // 0,999 e o livro somando 0,998. Com o mesmo delta nos dois, fecham.
+    delta = Math.round(delta * 1000) / 1000
 
     const permite = m.permitirNegativo || m.tipo === 'BALANCO'
 

@@ -601,33 +601,46 @@ export async function listarEncomendas(sessao: Sessao, f: FiltroEncomendas): Pro
   const digitos = soDigitos(q)
   const concluidas = sit === 'ENTREGUE' || sit === 'CANCELADA'
 
+  // "Todas" são as abertas (do que vence primeiro) e depois as concluídas
+  // (da mais recente). Numa consulta só, do vencimento mais antigo e cortada
+  // em 500, a loja com 500 entregues antigas não via a encomenda de amanhã.
+  const ABERTAS = ['ABERTA', 'PRONTA'] as SituacaoEncomenda[]
+  const FECHADAS = ['ENTREGUE', 'CANCELADA'] as SituacaoEncomenda[]
+  const partes: { situacao: { in: SituacaoEncomenda[] }; ordem: 'asc' | 'desc' }[] =
+    sit === 'abertas'
+      ? [{ situacao: { in: ABERTAS }, ordem: 'asc' }]
+      : sit === 'todas'
+        ? [{ situacao: { in: ABERTAS }, ordem: 'asc' }, { situacao: { in: FECHADAS }, ordem: 'desc' }]
+        : [{ situacao: { in: [sit] }, ordem: concluidas ? 'desc' : 'asc' }]
+
   return comoOrg(sessao.orgId, async (db) => {
-    const linhas = await db.encomenda.findMany({
-      where: {
-        unidadeId: { in: lojas },
-        ...(sit === 'abertas'
-          ? { situacao: { in: ['ABERTA', 'PRONTA'] as SituacaoEncomenda[] } }
-          : sit === 'todas'
-            ? {}
-            : { situacao: sit }),
-        ...(q
-          ? {
-              AND: [
-                {
-                  OR: [
-                    { clienteNome: { contains: q, mode: 'insensitive' as const } },
-                    { descricao: { contains: q, mode: 'insensitive' as const } },
-                    ...(digitos.length >= 3 ? [{ telefone: { contains: digitos } }] : []),
-                  ],
-                },
-              ],
-            }
-          : {}),
-      },
-      orderBy: { para: concluidas ? 'desc' : 'asc' },
-      take: 500,
-      select: SELECT,
-    })
+    const linhas: Awaited<ReturnType<typeof db.encomenda.findMany<{ select: typeof SELECT }>>> = []
+    for (const parte of partes) {
+      const falta: number = 500 - linhas.length
+      if (falta <= 0) break
+      linhas.push(...(await db.encomenda.findMany({
+        where: {
+          unidadeId: { in: lojas },
+          situacao: parte.situacao,
+          ...(q
+            ? {
+                AND: [
+                  {
+                    OR: [
+                      { clienteNome: { contains: q, mode: 'insensitive' as const } },
+                      { descricao: { contains: q, mode: 'insensitive' as const } },
+                      ...(digitos.length >= 3 ? [{ telefone: { contains: digitos } }] : []),
+                    ],
+                  },
+                ],
+              }
+            : {}),
+        },
+        orderBy: { para: parte.ordem },
+        take: falta,
+        select: SELECT,
+      })))
+    }
     const itens = await itensDe(db, linhas.filter((l) => l.origem === 'CATALOGO').map((l) => l.id))
     return linhas.map((l) => naLista(l, itens.get(l.id)))
   })
@@ -1094,13 +1107,24 @@ export async function editarEncomenda(
     //
     // A régua do pedido do catálogo é o que a cliente pediu (os produtos pelo
     // preço do pedido, mais a entrega): baixar em passos pequenos não soma
-    // desconto escondido. A da encomenda de balcão é o valor de antes — o
-    // valor dela foi a loja que deu, na hora de anotar.
+    // desconto escondido. A da encomenda de balcão é o MAIOR valor que ela já
+    // teve (o anotado, ou o que a loja subiu depois): medida contra o valor de
+    // antes, 120 → 110 → 100 → … → 50 passava em passos de menos de 10%, sem
+    // PIN, e chegava ao "entregar" sem nada a cobrar.
     const itensC = antes.origem === 'CATALOGO' ? await totalDosProdutos(db, id) : 0
+    const maior = itensC > 0
+      ? null
+      : await db.auditoria.aggregate({
+          where: { alvoTipo: 'encomenda', alvoId: id, acao: { in: ['encomenda.criou', 'encomenda.alterou'] } },
+          _max: { valor: true },
+        })
     const reguaC = itensC > 0
       ? itensC + (e.entrega ? taxaAntesC : 0)
-      : centavos(antes.valor) - (tiraTaxa ? taxaAntesC : 0)
-    const abatidoC = reguaC - e.valorC
+      : Math.max(centavos(antes.valor), maior?._max.valor != null ? centavos(maior._max.valor) : 0) - (tiraTaxa ? taxaAntesC : 0)
+    // Só pede o teto quando o valor DESCE nesta edição: mudar a hora de um
+    // pedido que já teve desconto autorizado não é dar desconto de novo.
+    const desceu = e.valorC < centavos(antes.valor) - (tiraTaxa ? taxaAntesC : 0)
+    const abatidoC = desceu ? reguaC - e.valorC : 0
     const empresa = await db.org.findUnique({ where: { id: sessao.orgId }, select: { descontoMaximo: true } })
     const teto = Number(empresa?.descontoMaximo ?? 0)
     const percentual = abatidoC > 0 ? (reguaC > 0 ? (abatidoC / reguaC) * 100 : 100) : 0
@@ -1374,7 +1398,9 @@ export async function mudarSituacao(
     if (!gaveta.ok) return { ok: false as const, erro: SEM_CAIXA_DEVOLUCAO }
 
     const r = await db.encomenda.updateMany({
-      where: { id, situacao: antes.situacao },
+      // O sinal também: a devolução é do sinal LIDO acima. Se uma edição o
+      // subiu de 50 para 100 no meio, cancelar devolveria só 50.
+      where: { id, situacao: antes.situacao, sinal: antes.sinal },
       data: {
         situacao: m.para,
         concluidaEm: m.para === 'ENTREGUE' ? agora : null,
@@ -1754,6 +1780,13 @@ export async function reabrirPelaVendaCancelada(
     data: { situacao: volta, concluidaEm: null },
   })
   if (r.count === 0) return false
+  // O pedido não foi entregue, afinal: a avaliação que a cliente deixou da
+  // entrega sai da vitrine (fica registrada, escondida — como a que a loja
+  // esconde à mão).
+  await db.avaliacaoCatalogo.updateMany({
+    where: { encomendaId: id, oculta: false },
+    data: { oculta: true, ocultaPor: sessao.nome, ocultaMotivo: `a venda ${venda.numero}, que entregou o pedido, foi cancelada` },
+  })
   await db.auditoria.create({
     data: {
       orgId: sessao.orgId,

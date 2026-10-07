@@ -31,7 +31,14 @@ const descreverVariacao = (v: { produto: { nome: string }; opcoes: { opcao: { va
 export async function expandir(
   db: BancoDaOrg,
   itens: Baixa[],
-): Promise<{ baixas: Baixa[]; nomes: Map<string, string>; custoDoComposto: Map<string, number | null>; compostos: Set<string> }> {
+): Promise<{
+  baixas: Baixa[]
+  nomes: Map<string, string>
+  custoDoComposto: Map<string, number | null>
+  compostos: Set<string>
+  /** O que UMA unidade de cada composto leva: componente → quantidade. */
+  receita: Map<string, Map<string, number>>
+}> {
   const ids = [...new Set(itens.map((i) => i.variacaoId))]
   const linhas = ids.length
     ? await db.composicao.findMany({
@@ -76,7 +83,8 @@ export async function expandir(
       baixas.push({ variacaoId: c.componenteId, quantidade: Math.round(i.quantidade * Number(c.quantidade) * 1000) / 1000 })
     }
   }
-  return { baixas, nomes, custoDoComposto, compostos: new Set(doItem.keys()) }
+  const receita = new Map([...doItem].map(([id, comps]) => [id, new Map(comps.map((c) => [c.componenteId, Number(c.quantidade)]))]))
+  return { baixas, nomes, custoDoComposto, compostos: new Set(doItem.keys()), receita }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -164,6 +172,20 @@ export async function definirComposicao(
     if (comps.some((c) => c.composicao.length > 0)) throw new ComposicaoRecusada('Um dos componentes já é composto. Use os itens que têm estoque.')
 
     const antes = await db.composicao.findMany({ where: { variacaoId }, select: { componenteId: true, quantidade: true } })
+    // Virar composto com saldo próprio deixava as peças presas: daí em diante
+    // a venda baixa os componentes, e o saldo do próprio item nunca mais sai.
+    if (limpos.size > 0 && antes.length === 0) {
+      const presos = await db.estoque.findMany({
+        where: { variacaoId, quantidade: { not: 0 } },
+        select: { quantidade: true, unidade: { select: { nome: true } } },
+      })
+      if (presos.length > 0) {
+        throw new ComposicaoRecusada(
+          `Este item ainda tem estoque próprio (${presos.map((p) => `${p.unidade.nome}: ${Number(p.quantidade).toLocaleString('pt-BR')}`).join('; ')}). ` +
+            'Zere antes na tela de Estoque e depois monte a composição.',
+        )
+      }
+    }
     await db.composicao.deleteMany({ where: { variacaoId } })
     if (limpos.size > 0) {
       await db.composicao.createMany({

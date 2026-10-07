@@ -276,7 +276,7 @@ export async function editarProduto(
       where: { id: produtoId },
       select: {
         nome: true, precoVista: true, precoCartao: true, precoCrediario: true, custo: true, ativo: true,
-        medida: true, vendidoEm: true, usoInterno: true,
+        medida: true, vendidoEm: true, usoInterno: true, servico: true,
       },
     })
     if (!antes) return { ok: false as const, motivo: 'Produto não encontrado.' }
@@ -341,6 +341,26 @@ export async function editarProduto(
           motivo:
             `Ainda tem saldo deste produto (${comSaldo.map((s) => `${s.loja}: ${s.quantidade.toLocaleString('pt-BR')}`).join('; ')}). ` +
             'Trocar a medida não converte o estoque. Zere antes na tela de Estoque — ou cadastre um produto novo na medida nova.',
+        }
+      }
+    }
+
+    // ── excluir, ou virar serviço, não esconde o que está na prateleira ──
+    // Produto desativado some de toda tela de Estoque (só listam os ativos), e
+    // serviço não mexe mais no saldo (venda, perda e entrada passam a ignorar
+    // o estoque): nos dois casos as peças ficavam presas, sem tela para
+    // transferir, contar ou dar baixa. É a mesma regra de tirar da grade.
+    const desativa = dados.ativo === false && antes.ativo
+    const viraServico = dados.servico === true && !antes.servico
+    if (desativa || viraServico) {
+      const comSaldo = await saldosDoProduto(db, produtoId)
+      if (comSaldo.length > 0) {
+        return {
+          ok: false as const,
+          motivo:
+            `Ainda tem saldo deste produto (${comSaldo.map((s) => `${s.loja}: ${s.quantidade.toLocaleString('pt-BR')}`).join('; ')}). ` +
+            `${desativa ? 'Excluir' : 'Virar serviço'} esconderia essas peças do Estoque. Zere antes na tela de Estoque — transfira, ` +
+            'registre a perda ou corrija pelo que foi contado.',
         }
       }
     }
@@ -974,7 +994,7 @@ export async function ajustarGrade(
         id: true,
         ativa: true,
         padrao: true,
-        opcoes: { select: { opcaoId: true, opcao: { select: { valor: true } } } },
+        opcoes: { select: { opcaoId: true, opcao: { select: { valor: true, eixoId: true } } } },
         _count: { select: { vendaItens: true, movimentos: true } },
         // Saldo em QUALQUER loja, aberta ou fechada: é mercadoria que existe.
         estoques: { where: { quantidade: { not: 0 } }, select: { quantidade: true, unidade: { select: { nome: true } } } },
@@ -988,6 +1008,38 @@ export async function ajustarGrade(
     const queridas = combinar(usados.map((e) => e.opcaoIds))
     const chavesQueridas = new Set(queridas.map(chave))
 
+    // ── eixo de UMA opção só que entra ou sai: muda o rótulo, não a peça ──
+    // "Sabor: Choc africano" num picolé que só tem esse sabor não separa peça
+    // nenhuma. Pela assinatura, tirar (ou pôr) esse eixo trocava a identidade
+    // de TODAS as variações: as velhas saíam (recusado enquanto houvesse saldo
+    // — o eixo ficava preso, e a caixinha "voltava a marcar" ao recarregar) e
+    // nasciam outras, com código de etiqueta novo. Agora a mesma variação só
+    // ganha ou perde a opção: mesmo id, código, saldo e história.
+    const eixosQueridos = new Set(usados.map((e) => e.eixoId))
+    const opcoesPorEixo = new Map<string, Set<string>>()
+    for (const v of atuais) {
+      if (!v.ativa) continue
+      for (const o of v.opcoes) opcoesPorEixo.set(o.opcao.eixoId, (opcoesPorEixo.get(o.opcao.eixoId) ?? new Set()).add(o.opcaoId))
+    }
+    const unicasNovas = usados.filter((e) => e.opcaoIds.length === 1 && !opcoesPorEixo.has(e.eixoId)).map((e) => e.opcaoIds[0]!)
+    const ajustes: { id: string; tirar: string[]; por: string[]; vazia: boolean }[] = []
+    for (const v of atuais) {
+      const k = chave(v.opcoes.map((o) => o.opcaoId))
+      if (!v.ativa || chavesQueridas.has(k)) continue
+      const tirar = v.opcoes.filter((o) => !eixosQueridos.has(o.opcao.eixoId) && opcoesPorEixo.get(o.opcao.eixoId)?.size === 1).map((o) => o.opcaoId)
+      // Pôr rótulo no item SEM variação nenhuma não é só rótulo: as 15
+      // camisetas "sem cor" não viram "Preta" por decreto — sai pelo caminho
+      // de sempre (com saldo, recusado). Aqui só a peça que já tem opção.
+      const por = v.opcoes.length > 0 ? unicasNovas : []
+      if (tirar.length === 0 && por.length === 0) continue
+      const ficam = [...v.opcoes.map((o) => o.opcaoId).filter((id) => !tirar.includes(id)), ...por]
+      const nova = chave(ficam)
+      if (!chavesQueridas.has(nova) || existente.has(nova)) continue
+      existente.delete(k)
+      existente.set(nova, v)
+      ajustes.push({ id: v.id, tirar, por, vazia: ficam.length === 0 })
+    }
+
     const r: MudancaGrade = { criadas: 0, desativadas: 0, reativadas: 0, apagadas: 0 }
 
     // ── muda alguma coisa? ──
@@ -998,7 +1050,7 @@ export async function ajustarGrade(
     const voltam = queridas.filter((c) => existente.get(chave(c))?.ativa === false)
     const saem = [...existente].filter(([k, v]) => !chavesQueridas.has(k) && (v.ativa || (v._count.vendaItens === 0 && v._count.movimentos === 0)))
     const eixosIguais = produto.eixos.map((e) => e.eixoId).join('|') === usados.map((e) => e.eixoId).join('|')
-    if (novas.length === 0 && voltam.length === 0 && saem.length === 0 && eixosIguais) return r
+    if (novas.length === 0 && voltam.length === 0 && saem.length === 0 && ajustes.length === 0 && eixosIguais) return r
     if (!alcancaOProduto(alcanceDe(sessao, 'produto.editar'), produto.vendidoEm)) {
       throw new Error(MOTIVO_FORA_DO_ALCANCE)
     }
@@ -1021,6 +1073,13 @@ export async function ajustarGrade(
         `Ainda tem saldo em ${partes.join('; ')}. Zere antes na tela de Estoque — transfira, ` +
           'registre a perda ou corrija pelo que foi contado — e depois tire da grade.',
       )
+    }
+
+    // ── a peça que só mudou de rótulo ──
+    for (const a of ajustes) {
+      if (a.tirar.length > 0) await db.variacaoOpcao.deleteMany({ where: { variacaoId: a.id, opcaoId: { in: a.tirar } } })
+      if (a.por.length > 0) await db.variacaoOpcao.createMany({ data: a.por.map((opcaoId) => ({ orgId: sessao.orgId, variacaoId: a.id, opcaoId })) })
+      await db.variacao.update({ where: { id: a.id }, data: { padrao: a.vazia } })
     }
 
     // ── o que entra ──
@@ -1079,7 +1138,7 @@ export async function ajustarGrade(
         alvoTipo: 'produto',
         alvoId: produtoId,
         alvoNome: produto.nome,
-        depois: { ...r },
+        depois: { ...r, ajustadas: ajustes.length },
       },
     })
 

@@ -378,7 +378,7 @@ export function Loja({
             forma: dados.forma as FormaPagamento,
             trocoPara: dados.forma === 'DINHEIRO' ? Number(dados.trocoPara.replace(/\./g, '').replace(',', '.')) || null : null,
             observacao: dados.observacao,
-            itens: sacola.map((i) => ({ variacaoId: i.variacaoId, quantidade: i.quantidade, observacao: i.observacao || null })),
+            itens: sacola.map((i) => ({ variacaoId: i.variacaoId, quantidade: i.quantidade, observacao: i.observacao || null, precoVisto: i.preco })),
           },
           carimbo,
           site.current?.value ?? '',
@@ -391,6 +391,10 @@ export function Loja({
         setErro(r.erro)
         // Algo acabou no meio: a vitrine se atualiza para mostrar.
         if (r.mudou) void carregar(categoria, '', 0)
+        // O preço subiu: a sacola passa a mostrar o de agora, e o próximo
+        // "Enviar" já vai com ele.
+        const novos = 'precos' in r ? r.precos : undefined
+        if (novos) mexerSacola((s) => s.map((i) => (novos[i.variacaoId] != null ? { ...i, preco: novos[i.variacaoId]! } : i)))
         return
       }
       gravar(CHAVE_DADOS, { nome: dados.nome, telefone: dados.telefone, endereco: dados.endereco })

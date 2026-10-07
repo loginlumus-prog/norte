@@ -402,10 +402,17 @@ export async function devolverEm(db: BancoDaOrg, sessao: Sessao, p: PedidoDevolu
   // maquininha — quem estorna o parcelamento é a operadora.
   // E o acréscimo fica de fora (ver `fatorPago`): a devolução nunca passa do
   // que a peça custou.
+  // A linha negativa do pedido do catálogo (o sinal já pago, abatido) é
+  // dinheiro que a cliente JÁ deu pelas peças: volta para os dois lados da
+  // conta. Sem isto, 2 × 100 com 150 de sinal e 10 de desconto davam fator
+  // 40/50 — devolvia 160 de 190 pagos.
+  const sinalCent = v.itens.reduce((s, i) => s + Math.max(0, -centavos(i.total)), 0)
+  // Só no fator: o dinheiro que sai da gaveta continua limitado ao que ESTA
+  // venda recebeu (o sinal entrou antes, por outro caminho — volta em vale).
   const subtotalCent = centavos(v.subtotal)
   const jurosCent = v.pagamentos.reduce((s, x) => s + centavos(x.juros), 0)
   const totalCent = centavos(v.total) - jurosCent
-  const fator = fatorPago(subtotalCent, totalCent, 0, centavos(v.acrescimo))
+  const fator = fatorPago(subtotalCent + sinalCent, totalCent + sinalCent, 0, centavos(v.acrescimo))
 
   const linhas = pedidos.map((ped) => {
     const item = porId.get(ped.vendaItemId)!

@@ -36,6 +36,7 @@ import { planoLibera } from './planos'
 import { aVendaNaLoja, alcancaOProduto } from './catalogo-loja'
 import { pedeInteiro } from './devolucao'
 import { codigoEncomenda } from './encomenda'
+import { expandir } from './composicao'
 import { aplicarPrecoDaLoja } from './preco-loja'
 import { avaliacaoDoPedido, extrasDaVitrine, midiaDaVitrine, type ExtrasDaVitrine, type SituacaoDaAvaliacao } from './vitrine'
 
@@ -110,7 +111,13 @@ export function situacaoParaCliente(e: { situacao: string; vistaEm: Date | null;
   return { passo: 0, titulo: 'Pedido enviado', texto: 'Esperando a loja confirmar.', cancelado: false }
 }
 
-export type ItemPedido = { variacaoId: string; quantidade: number; observacao?: string | null }
+export type ItemPedido = {
+  variacaoId: string
+  quantidade: number
+  observacao?: string | null
+  /** O preço que a cliente VIU na sacola. Se o de agora é maior, ela é avisada antes. */
+  precoVisto?: number | null
+}
 
 export type PedidoDoCatalogo = {
   nome: string
@@ -127,6 +134,8 @@ export type PedidoDoCatalogo = {
 }
 
 const CONTROLE = /[\u0000-\u001f\u007f]/
+/** O campo público vem de qualquer lugar: o que não é texto vira vazio (e não TypeError). */
+const texto = (x: unknown): string => (typeof x === 'string' ? x : '')
 const MAX_ITENS = 60
 const MAX_QTD = 999
 
@@ -135,16 +144,17 @@ export function conferirPedido(
   p: PedidoDoCatalogo,
   agora = new Date(),
 ): { ok: true; limpo: PedidoDoCatalogo & { telefone: string; paraData: Date | null } } | { ok: false; erro: string } {
-  const nome = (p.nome ?? '').trim().replace(/\s+/g, ' ')
+  const nome = texto(p.nome).trim().replace(/\s+/g, ' ')
   if (nome.length < 2 || nome.length > 80 || CONTROLE.test(nome)) return { ok: false, erro: 'Diga o seu nome.' }
-  const telefone = limparTelefone(p.telefone ?? '')
+  const telefone = limparTelefone(texto(p.telefone))
   if (!telefone) return { ok: false, erro: 'Confira o seu WhatsApp, com DDD: (71) 99999-0000.' }
   if (!FORMAS_DO_CATALOGO.some((f) => f.forma === p.forma)) return { ok: false, erro: 'Escolha como vai pagar.' }
-  const endereco = (p.endereco ?? '').trim()
-  if (p.entrega && (endereco.length < 8 || endereco.length > 300 || CONTROLE.test(endereco))) {
+  const entrega = p.entrega === true
+  const endereco = texto(p.endereco).trim()
+  if (entrega && (endereco.length < 8 || endereco.length > 300 || CONTROLE.test(endereco))) {
     return { ok: false, erro: 'Para entrega, diga o endereço completo: rua, número e bairro.' }
   }
-  const observacao = (p.observacao ?? '').trim()
+  const observacao = texto(p.observacao).trim()
   if (observacao.length > 500) return { ok: false, erro: 'A observação ficou longa demais (até 500 letras).' }
   if (!Array.isArray(p.itens) || p.itens.length === 0) return { ok: false, erro: 'O pedido está vazio.' }
   if (p.itens.length > MAX_ITENS) return { ok: false, erro: `No máximo ${MAX_ITENS} itens diferentes por pedido.` }
@@ -153,9 +163,15 @@ export function conferirPedido(
     if (typeof i?.variacaoId !== 'string' || !/^[\w-]{1,64}$/.test(i.variacaoId)) return { ok: false, erro: 'Um item do pedido não é válido.' }
     const q = Number(i.quantidade)
     if (!Number.isFinite(q) || q <= 0 || q > MAX_QTD) return { ok: false, erro: 'Confira as quantidades.' }
-    const obs = (i.observacao ?? '').trim().slice(0, 200) || null
+    const obs = texto(i.observacao).trim().slice(0, 200) || null
+    const visto = Number(i.precoVisto)
     const ja = juntos.get(i.variacaoId)
-    juntos.set(i.variacaoId, { variacaoId: i.variacaoId, quantidade: Math.round(((ja?.quantidade ?? 0) + q) * 1000) / 1000, observacao: obs ?? ja?.observacao ?? null })
+    juntos.set(i.variacaoId, {
+      variacaoId: i.variacaoId,
+      quantidade: Math.round(((ja?.quantidade ?? 0) + q) * 1000) / 1000,
+      observacao: obs ?? ja?.observacao ?? null,
+      precoVisto: Number.isFinite(visto) && visto > 0 ? visto : (ja?.precoVisto ?? null),
+    })
   }
   // Conferido DEPOIS de juntar: a quantidade grava com 3 casas (0,0004 kg
   // virava um item de zero, a R$ 0), e o teto vale para o item, não para cada
@@ -178,7 +194,8 @@ export function conferirPedido(
       ...p,
       nome,
       telefone,
-      endereco: p.entrega ? endereco : null,
+      entrega,
+      endereco: entrega ? endereco : null,
       observacao: observacao || null,
       trocoPara,
       itens: [...juntos.values()],
@@ -870,7 +887,7 @@ export type PedidoFeito =
       whatsapp: string | null
       mensagem: string
     }
-  | { ok: false; erro: string; mudou?: boolean }
+  | { ok: false; erro: string; mudou?: boolean; precos?: Record<string, number> }
 
 /**
  * A cliente pediu. Tudo numa transação: lê os preços, confere o que acabou,
@@ -938,6 +955,7 @@ export async function fazerPedidoPeloCatalogo(
     const porId = new Map(variacoes.map((x) => [x.id, { ...x, estoques: saldos.filter((e) => e.variacaoId === x.id) }]))
     const itens: { variacaoId: string; descricao: string; quantidade: number; precoC: number; totalC: number; observacao: string | null }[] = []
     const fora: string[] = []
+    const subiram: { descricao: string; precoC: number; variacaoId: string }[] = []
     for (const i of d.itens) {
       const x = porId.get(i.variacaoId)
       if (!x) {
@@ -981,7 +999,47 @@ export async function fazerPedidoPeloCatalogo(
         fora.push(descricao)
         continue
       }
-      itens.push({ variacaoId: x.id, descricao, quantidade, precoC, totalC: Math.round(precoC * quantidade), observacao: i.observacao ?? null })
+      // 0,001 kg de R$ 4,99 é R$ 0,00: item de graça não entra.
+      const totalItemC = Math.round(precoC * quantidade)
+      if (totalItemC <= 0) return { ok: false as const, erro: `${descricao}: a quantidade é pequena demais. Confira.` }
+      // O preço subiu enquanto ela escolhia: avisa antes de cobrar (o que ela
+      // viu na sacola é o que ela aceitou).
+      if (i.precoVisto != null && precoC > centavos(i.precoVisto)) subiram.push({ descricao, precoC, variacaoId: x.id })
+      itens.push({ variacaoId: x.id, descricao, quantidade, precoC, totalC: totalItemC, observacao: i.observacao ?? null })
+    }
+    if (subiram.length > 0) {
+      return {
+        ok: false as const,
+        mudou: true,
+        precos: Object.fromEntries(subiram.map((x) => [x.variacaoId, x.precoC / 100])),
+        erro: `O preço mudou enquanto você escolhia: ${subiram.map((x) => `${x.descricao} agora é ${brl(x.precoC)}`).join('; ')}. A sacola já foi atualizada — confira e mande de novo.`,
+      }
+    }
+    // O item que "monta na hora" (Casquinha + Água) não tem estoque próprio:
+    // o que acaba é o componente. Sem isto, o combo aparecia disponível e o
+    // pedido entrava com a casquinha zerada — e o balcão depois recusava.
+    if (!org.vendeSemEstoque && fora.length === 0) {
+      const comp = await expandir(
+        db,
+        itens.filter((i) => !porId.get(i.variacaoId)?.produto.servico && !porId.get(i.variacaoId)?.produto.feitoNoDia),
+      )
+      if (comp.compostos.size > 0) {
+        const precisa = new Map<string, number>()
+        for (const b of comp.baixas) precisa.set(b.variacaoId, (precisa.get(b.variacaoId) ?? 0) + b.quantidade)
+        const tem = await db.estoque.findMany({
+          where: { unidadeId: a.catalogo.unidadeId, variacaoId: { in: [...precisa.keys()] } },
+          select: { variacaoId: true, quantidade: true },
+        })
+        const curtos = new Set(tem.filter((e) => Number(e.quantidade) < (precisa.get(e.variacaoId) ?? 0) - 1e-9).map((e) => e.variacaoId))
+        const combos = itens.filter((i) => [...(comp.receita.get(i.variacaoId)?.keys() ?? [])].some((c) => curtos.has(c)))
+        if (combos.length > 0) {
+          return {
+            ok: false as const,
+            mudou: true,
+            erro: `Não dá para montar ${combos.map((c) => c.descricao).join(', ')} nessa quantidade agora: falta um dos itens que ${combos.length === 1 ? 'ele leva' : 'eles levam'}. Diminua ou tire do pedido.`,
+          }
+        }
+      }
     }
     if (fora.length > 0) {
       return {
@@ -996,8 +1054,54 @@ export async function fazerPedidoPeloCatalogo(
     const taxaC = d.entrega && a.catalogo.taxaEntrega ? centavos(a.catalogo.taxaEntrega) : 0
     const totalC = subtotalC + taxaC
 
-    const acompanhamento = randomBytes(16).toString('base64url')
     const forma = FORMAS_DO_CATALOGO.find((f) => f.forma === d.forma)!.rotulo
+    const descricaoDoPedido = resumoDosItens(itens.map((i) => ({ descricao: i.descricao, quantidade: i.quantidade })))
+    const responder = (encomendaId: string, acompanhamento: string) => {
+      const codigo = codigoEncomenda(encomendaId)
+      return {
+        ok: true as const,
+        encomendaId,
+        orgId: a.orgId,
+        codigo,
+        acompanhamento,
+        totalC,
+        whatsapp: a.catalogo.whatsapp,
+        mensagem: mensagemDoPedido({
+          codigo,
+          nome: d.nome,
+          itens: itens.map((i) => ({ descricao: i.descricao, quantidade: i.quantidade, totalC: i.totalC })),
+          totalC,
+          taxaC,
+          entrega: d.entrega,
+          endereco: d.endereco ?? null,
+          forma,
+          link: `${base}/${slug}/pedido/${acompanhamento}`,
+        }),
+      }
+    }
+
+    // ── o mesmo pedido de novo ──
+    // A resposta se perdeu ("Sem conexão… tente de novo") e ela mandou outra
+    // vez: o mesmo telefone, o mesmo pedido, há pouco — é o pedido que já
+    // entrou, e não um segundo (nem um segundo aviso no WhatsApp da equipe).
+    // A trava por telefone, lá em cima, faz o reenvio esperar o primeiro.
+    const igual = await db.encomenda.findFirst({
+      where: {
+        origem: 'CATALOGO',
+        unidadeId: a.catalogo.unidadeId,
+        telefone: d.telefone,
+        descricao: descricaoDoPedido,
+        valor: reais(totalC),
+        entrega: d.entrega,
+        situacao: { not: 'CANCELADA' },
+        criadaEm: { gte: new Date(agora.getTime() - 5 * 60_000) },
+      },
+      orderBy: { criadaEm: 'desc' },
+      select: { id: true, acompanhamento: true },
+    })
+    if (igual?.acompanhamento) return { ...responder(igual.id, igual.acompanhamento), repetido: true as const }
+
+    const acompanhamento = randomBytes(16).toString('base64url')
     const obs = [
       d.paraData ? null : 'Pediu para o quanto antes.',
       d.trocoPara ? `Troco para ${brl(centavos(d.trocoPara))}.` : null,
@@ -1012,7 +1116,7 @@ export async function fazerPedidoPeloCatalogo(
         unidadeId: a.catalogo.unidadeId,
         clienteNome: d.nome,
         telefone: d.telefone,
-        descricao: resumoDosItens(itens.map((i) => ({ descricao: i.descricao, quantidade: i.quantidade }))),
+        descricao: descricaoDoPedido,
         valor: reais(totalC),
         // "O quanto antes" ganha meia hora: com a hora de agora, o pedido já
         // nascia "atrasado" na tela de Encomendas.
@@ -1059,28 +1163,7 @@ export async function fazerPedidoPeloCatalogo(
         depois: { itens: itens.length, entrega: d.entrega, forma: d.forma },
       },
     })
-    const codigo = codigoEncomenda(criada.id)
-    const link = `${base}/${slug}/pedido/${acompanhamento}`
-    return {
-      ok: true as const,
-      encomendaId: criada.id,
-      orgId: a.orgId,
-      codigo,
-      acompanhamento,
-      totalC,
-      whatsapp: a.catalogo.whatsapp,
-      mensagem: mensagemDoPedido({
-        codigo,
-        nome: d.nome,
-        itens: itens.map((i) => ({ descricao: i.descricao, quantidade: i.quantidade, totalC: i.totalC })),
-        totalC,
-        taxaC,
-        entrega: d.entrega,
-        endereco: d.endereco ?? null,
-        forma,
-        link,
-      }),
-    }
+    return responder(criada.id, acompanhamento)
   })
 }
 

@@ -58,8 +58,9 @@ export async function pedir(
   if (c !== 'ok') return { ok: false, erro: 'Não foi possível enviar. Recarregue a página.' }
 
   const r = await fazerPedidoPeloCatalogo(slug, endereco, pedido, await deOndeVeio(), await base())
-  if (!r.ok) return { ok: false, erro: r.erro, mudou: r.mudou }
-  // O aviso para a equipe não segura a cliente: sai em segundo plano.
-  if (r.orgId && r.encomendaId) void avisarEquipeDoPedido(r.orgId, r.encomendaId).catch(() => {})
+  if (!r.ok) return { ok: false, erro: r.erro, mudou: r.mudou, precos: r.precos }
+  // O aviso para a equipe não segura a cliente: sai em segundo plano. O
+  // reenvio do mesmo pedido não avisa de novo.
+  if (r.orgId && r.encomendaId && !('repetido' in r)) void avisarEquipeDoPedido(r.orgId, r.encomendaId).catch(() => {})
   return { ok: true, codigo: r.codigo, acompanhamento: r.acompanhamento, totalC: r.totalC, whatsapp: r.whatsapp, mensagem: r.mensagem }
 }

@@ -756,6 +756,23 @@ export async function apagarTurno(sessao: Sessao, caixaId: string, motivo: strin
     if (c._count.recebimentos + c._count.recibosCrediario + c._count.pagamentosMensalidade > 0) {
       throw new TurnoNaoApaga('Este turno recebeu parcela ou mensalidade. Esse dinheiro é de verdade: o turno fica.')
     }
+    // Sangria de devolução ou de cancelamento (de venda de OUTRO turno) e o
+    // sinal de encomenda são dinheiro de verdade que passou pela gaveta: o
+    // movimento apagaria junto com o turno, e a devolução continuaria dizendo
+    // "paga em dinheiro" sem a saída em lugar nenhum.
+    const deVerdade = await db.caixaMovimento.count({
+      where: {
+        caixaId,
+        OR: [
+          { encomendaId: { not: null } },
+          { motivo: { startsWith: 'Devolução da venda' } },
+          { motivo: { startsWith: 'Cancelamento da venda' } },
+        ],
+      },
+    })
+    if (deVerdade > 0) {
+      throw new TurnoNaoApaga('Este turno tem dinheiro de devolução, cancelamento ou sinal de encomenda. Esse dinheiro é de verdade: o turno fica.')
+    }
 
     const canceladas = await db.venda.updateMany({ where: { caixaId }, data: { caixaId: null } })
     await db.caixa.delete({ where: { id: caixaId } })

@@ -56,7 +56,7 @@ describe('o pedido que chega da página', () => {
     expect(r.ok).toBe(true)
     if (r.ok) {
       expect(r.limpo.nome).toBe('Ana Souza')
-      expect(r.limpo.itens).toEqual([{ variacaoId: 'v-1', quantidade: 3, observacao: null }])
+      expect(r.limpo.itens).toEqual([{ variacaoId: 'v-1', quantidade: 3, observacao: null, precoVisto: null }])
       expect(r.limpo.paraData).toBeNull()
     }
   })

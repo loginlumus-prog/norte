@@ -226,11 +226,32 @@ export async function registrarEntradaEm(
 
     const variacoes = await db.variacao.findMany({
       where: { id: { in: itens.map((i) => i.variacaoId) } },
-      select: { id: true, produtoId: true, produto: { select: { nome: true, vendidoEm: true } } },
+      select: {
+        id: true,
+        produtoId: true,
+        ativa: true,
+        composicao: { select: { id: true }, take: 1 },
+        produto: { select: { nome: true, vendidoEm: true, ativo: true } },
+      },
     })
     const produtoDaVariacao = new Map(variacoes.map((v) => [v.id, v.produto]))
     if (variacoes.length !== new Set(itens.map((i) => i.variacaoId)).size) {
       return { ok: false as const, motivo: 'Um dos itens não existe nesta empresa.' }
+    }
+    // Item fora de uso some do Estoque: o saldo que entrasse nele ficaria
+    // invisível.
+    const parados = [...new Set(variacoes.filter((v) => !v.ativa || !v.produto.ativo).map((v) => v.produto.nome))]
+    if (parados.length > 0) {
+      return { ok: false as const, motivo: `${parados.join(', ')} não está em uso. Reative na ficha do produto antes de dar entrada.` }
+    }
+    // Item composto não tem estoque próprio: a venda baixa os componentes, e
+    // o que entrasse no próprio combo nunca mais sairia.
+    const compostos = [...new Set(variacoes.filter((v) => v.composicao.length > 0).map((v) => v.produto.nome))]
+    if (compostos.length > 0) {
+      return {
+        ok: false as const,
+        motivo: `${compostos.join(', ')} é montado com outros itens e não tem estoque próprio. Dê entrada nos componentes.`,
+      }
     }
 
     // Mercadoria só entra onde ela pode ser vendida — ou num depósito, que

@@ -794,6 +794,11 @@ export async function registrarVenda(
         doCatalogo
           .filter((i) => {
             const x = porId.get(i.variacaoId)
+            // A linha do pedido do catálogo já vendido (a cliente pediu, às
+            // vezes já pagou o sinal) sai mesmo que o produto tenha saído de
+            // linha depois: sem isto, o pedido ficava sem saída — o balcão
+            // recusava, e "marcar entregue" também.
+            if (x && precoDoPedido.has(i.variacaoId)) return false
             return !x || !x.ativa || !x.produto.ativo
           })
           .map((i) => descrever(porId.get(i.variacaoId))),
@@ -889,6 +894,21 @@ export async function registrarVenda(
       }
     }
     const saldoQueFaltou = new Map(faltando.map((f) => [f.variacaoId, f.tem]))
+    // O composto vendido com componente faltando também vira pendência — na
+    // linha DELE, que é a que existe na venda (a falta é do componente, e a
+    // linha da casquinha não está no pedido). O saldo dele é quantos o
+    // componente mais curto dava para montar.
+    const saldoDoComposto = (id: string): number | null => {
+      const r = comp.receita.get(id)
+      if (!r) return null
+      let menor: number | null = null
+      for (const [c, q] of r) {
+        if (!saldoQueFaltou.has(c) || q <= 0) continue
+        const da = Math.floor((Math.max(0, saldoQueFaltou.get(c)!) / q) * 1000) / 1000
+        menor = menor == null ? da : Math.min(menor, da)
+      }
+      return menor
+    }
 
     // ── 3. as contas, em centavos inteiros ──
     // O preço vem do banco como decimal exato; ler o TEXTO dele (e não o
@@ -982,7 +1002,7 @@ export async function registrarVenda(
           const c = va?.custo ?? va?.produto.custo
           return c != null ? Number(c) : null
         })(),
-        saldoNaVenda: saldoQueFaltou.has(i.variacaoId) ? saldoQueFaltou.get(i.variacaoId)! : null,
+        saldoNaVenda: saldoQueFaltou.has(i.variacaoId) ? saldoQueFaltou.get(i.variacaoId)! : saldoDoComposto(i.variacaoId),
         _cent: totalCent,
         _tabelaCent: multiplicar(tabelaCent, i.quantidade),
         _defasado: defasado,
@@ -1441,8 +1461,10 @@ export async function registrarVenda(
       // negativo (outro caixa levou a última, ou a peça veio em duas linhas).
       // Vira pendência como a outra — a peça saiu, o sistema não a tinha.
       if (vendeSemEstoque && r.saldo < 0 && !saldoQueFaltou.has(i.variacaoId)) {
+        // A linha é a do componente, ou a do composto que o levou.
+        const linhas = [i.variacaoId, ...[...comp.receita].filter(([, r2]) => r2.has(i.variacaoId)).map(([id]) => id)]
         await db.vendaItem.updateMany({
-          where: { vendaId: venda.id, variacaoId: i.variacaoId, saldoNaVenda: null },
+          where: { vendaId: venda.id, variacaoId: { in: linhas }, saldoNaVenda: null },
           data: { saldoNaVenda: r.saldo + i.quantidade },
         })
         saldoQueFaltou.set(i.variacaoId, r.saldo + i.quantidade)
@@ -2181,11 +2203,27 @@ async function cancelarNaTransacao(sessao: Sessao, vendaId: string, texto: strin
     // produto mostra os dois movimentos, um cancelando o outro, em vez de a
     // venda simplesmente sumir e o saldo "aparecer" sem explicação. Item
     // avulso não tem para onde voltar.
-    // O composto devolve o que leva (ver composicao.ts).
-    const volta = await expandir(
-      db,
-      v.itens.filter((i) => i.variacaoId).map((i) => ({ variacaoId: i.variacaoId!, quantidade: Number(i.quantidade) })),
-    )
+    // Volta o que a venda BAIXOU de fato, lido do histórico dela — e não o
+    // cadastro de hoje: o kit que ganhou composição depois de vendido
+    // devolvia escovas que nunca saíram (e o kit ficava baixado), e o produto
+    // que virou serviço não devolvia nada. Venda antiga sem histórico usa a
+    // composição de agora, como antes.
+    const baixou = await db.movimentoEstoque.groupBy({
+      by: ['variacaoId'],
+      where: { referencia: v.id, tipo: 'VENDA', unidadeId: v.unidadeId },
+      _sum: { quantidade: true },
+    })
+    const volta =
+      baixou.length > 0
+        ? {
+            baixas: baixou
+              .map((b) => ({ variacaoId: b.variacaoId, quantidade: Math.round(-Number(b._sum.quantidade ?? 0) * 1000) / 1000 }))
+              .filter((b) => b.quantidade > 0),
+          }
+        : await expandir(
+            db,
+            v.itens.filter((i) => i.variacaoId).map((i) => ({ variacaoId: i.variacaoId!, quantidade: Number(i.quantidade) })),
+          )
     for (const i of volta.baixas) {
       await mexerEstoqueEm(db, sessao, {
         variacaoId: i.variacaoId,
