@@ -74,7 +74,7 @@ export function BarraLateral({
 
   if (recolhida) {
     return (
-      <aside className="sticky top-0 hidden h-dvh w-[68px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-lado-borda bg-lado px-2 py-3 md:flex">
+      <aside className="sticky top-0 z-40 hidden h-dvh w-[68px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-lado-borda bg-lado px-2 py-3 md:flex">
         <div className="flex flex-col items-center gap-2">
           {marcaTrilho}
           {botao}
@@ -90,7 +90,7 @@ export function BarraLateral({
   // perdia Assinatura, Configurações e o "Sair" para baixo da dobra, sem
   // nenhum sinal de que havia mais.
   return (
-    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-0.5 border-r border-lado-borda bg-lado p-2.5 md:flex">
+    <aside className="sticky top-0 z-40 hidden h-dvh w-60 shrink-0 flex-col gap-0.5 border-r border-lado-borda bg-lado p-2.5 md:flex">
       <div className="relative shrink-0">
         {marcaCompleta}
         <span className="absolute top-0.5 right-0">{botao}</span>
