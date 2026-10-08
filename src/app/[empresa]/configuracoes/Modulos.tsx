@@ -18,18 +18,11 @@ import type { Plano } from '@prisma/client'
 import { Botao, Marcar, Aviso } from '@/ui/base'
 import { IconeCadeado } from '@/ui/Cadeado'
 import { BotaoDaLinha } from '@/ui/premium'
-import { MODULOS, ESCOLHIVEIS, type Modulo } from '@/servidor/modulos'
+import { MODULOS, ESCOLHIVEIS, EM_BREVE, type Modulo } from '@/servidor/modulos'
 import { ORDEM, doPlano, planoLibera } from '@/servidor/planos'
 import { salvarModulos, type EstadoComeco } from '../comecar/acoes'
 import { semApagar } from '@/ui/formulario'
 
-/**
- * Módulo que ainda não faz nada: a chave aparece, travada e com "Em breve".
- * A nota fiscal depende do emissor e do certificado de cada loja (ver
- * `MODULOS.notaFiscal`): marcar a caixa não emitia nota nenhuma, e a pessoa
- * achava que tinha ligado.
- */
-const EM_BREVE: readonly Modulo[] = ['notaFiscal']
 
 /** O plano mais barato que abre o módulo, ou null se nenhum abre ainda. */
 const primeiroQueAbre = (m: Modulo): Plano | null => ORDEM.find((p) => planoLibera(p, m)) ?? null

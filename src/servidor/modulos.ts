@@ -132,6 +132,13 @@ export const TODOS = Object.keys(MODULOS) as Modulo[]
 /** O módulo é contratado à parte (o Farol): a empresa não liga sozinha. */
 export const ehContratado = (m: Modulo): boolean => 'contratado' in MODULOS[m]
 
+/**
+ * Módulo que ainda não faz nada: a chave aparece travada, com "Em breve". A
+ * nota fiscal depende do emissor e do certificado de cada loja: marcar a
+ * caixa não emitia nota nenhuma, e a pessoa achava que tinha ligado.
+ */
+export const EM_BREVE: readonly Modulo[] = ['notaFiscal']
+
 /** As chaves que a empresa liga e desliga sozinha, em Configurações e no cadastro inicial. */
 export const ESCOLHIVEIS = TODOS.filter((m) => !ehContratado(m))
 
@@ -259,7 +266,7 @@ export const RAMOS = {
     titulo: 'Mercearia e conveniência',
     eixos: [],
     medida: 'UN',
-    sugere: ['notaFiscal'],
+    sugere: [],
     balcao: 'busca' as const,
     categorias: ['Bebidas', 'Mercearia', 'Limpeza', 'Higiene', 'Frios', 'Hortifrúti'],
     manual:
@@ -328,7 +335,7 @@ export const RAMOS = {
     titulo: 'Material de construção',
     eixos: [],
     medida: 'UN',
-    sugere: ['notaFiscal', 'encomenda'],
+    sugere: ['encomenda', 'crediario'],
     balcao: 'busca' as const,
     categorias: [
       'Cimento e argamassa',
@@ -346,7 +353,7 @@ export const RAMOS = {
     titulo: 'Distribuidora e atacado',
     eixos: [],
     medida: 'UN',
-    sugere: ['notaFiscal', 'multiUnidade', 'crediario'],
+    sugere: ['multiUnidade', 'crediario'],
     balcao: 'busca' as const,
     categorias: ['Bebidas', 'Alimentos', 'Descartáveis', 'Limpeza', 'Embalagens'],
     manual:
@@ -388,7 +395,7 @@ export const RAMOS = {
     titulo: 'Escola e cursos',
     eixos: [{ nome: 'Tamanho', ehCor: false, opcoes: ['4', '6', '8', '10', '12', '14', 'P', 'M', 'G'] }],
     medida: 'UN',
-    sugere: ['escola', 'ponto'],
+    sugere: ['escola', 'ponto', 'agente'],
     balcao: 'grade' as const,
     categorias: ['Material', 'Uniforme', 'Cursos livres'],
     manual:

@@ -180,12 +180,27 @@ export async function semearRamo(db: BancoDaOrg, orgId: string, ramo: Ramo) {
     novasCategorias.push(nome)
   }
 
-  const eixos = await db.eixo.findMany({ select: { nome: true, ordem: true } })
-  const temEixo = new Set(eixos.map((e) => chave(e.nome)))
+  const eixos = await db.eixo.findMany({ select: { id: true, nome: true, ordem: true, opcoes: { select: { valor: true, ordem: true } } } })
+  const porNome = new Map(eixos.map((e) => [chave(e.nome), e]))
   let ordemEixo = eixos.reduce((m, e) => Math.max(m, e.ordem), -1) + 1
   const novosEixos: string[] = []
   for (const e of preset.eixos) {
-    if (temEixo.has(chave(e.nome))) continue
+    // A grade com o mesmo nome já existe (a loja de roupa que abre a de
+    // uniforme escolar): ganha só as opções que faltam — o 4 ao 14 entra
+    // ao lado do PP ao GG, em vez de a loja nova ficar sem os tamanhos dela.
+    const ja = porNome.get(chave(e.nome))
+    if (ja) {
+      const tem = new Set(ja.opcoes.map((o) => chave(o.valor)))
+      let ordemOpcao = ja.opcoes.reduce((m, o) => Math.max(m, o.ordem), -1) + 1
+      let somou = false
+      for (const valor of e.opcoes) {
+        if (tem.has(chave(valor))) continue
+        await db.opcao.create({ data: { orgId, eixoId: ja.id, valor, ordem: ordemOpcao++ } })
+        somou = true
+      }
+      if (somou) novosEixos.push(`${ja.nome} (opções novas)`)
+      continue
+    }
     const eixo = await db.eixo.create({ data: { orgId, nome: e.nome, ordem: ordemEixo++, ehCor: e.ehCor } })
     for (const [j, valor] of e.opcoes.entries()) {
       await db.opcao.create({ data: { orgId, eixoId: eixo.id, valor, ordem: j } })

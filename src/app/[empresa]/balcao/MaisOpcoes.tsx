@@ -225,7 +225,7 @@ export function MaisOpcoes({
               </button>
             )}
           </div>
-          <p className="text-xs text-tinta-3">A peça saiu da promoção e a etiqueta ficou com o preço velho: some a diferença aqui.</p>
+          <p className="text-xs text-tinta-3">O item saiu da promoção e a etiqueta ficou com o preço velho: some a diferença aqui.</p>
         </section>
 
         {podeAvulso && (
@@ -272,7 +272,7 @@ export function MaisOpcoes({
                 </div>
                 {precoIlegivel && <p className="text-xs font-medium text-critico">{DINHEIRO_ILEGIVEL}</p>}
                 <p className="text-xs text-tinta-3">
-                  Não mexe em estoque e fica marcado no livro. Se a peça existe, cadastre.
+                  Não mexe em estoque e fica marcado no livro. Se o produto existe, cadastre.
                   {precisaPin && ' Ao concluir, pede o PIN de quem pode autorizar.'}
                 </p>
               </div>

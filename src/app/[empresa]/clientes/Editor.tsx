@@ -59,7 +59,20 @@ export type ClienteNaTela = {
   crediario?: { limite: string; podeLimite: boolean } | null
 }
 
-export function Editor({ slug, cliente, ofertas }: { slug: string; cliente?: ClienteNaTela; ofertas: OfertasNaTela }) {
+/** As palavras do ramo que a ficha usa: "Paciente", e o aviso de dado de saúde da clínica. */
+export type PalavrasDaFicha = { Pessoa: string; avisoObservacao: string | null }
+
+export function Editor({
+  slug,
+  cliente,
+  ofertas,
+  palavras = { Pessoa: 'Cliente', avisoObservacao: null },
+}: {
+  slug: string
+  cliente?: ClienteNaTela
+  ofertas: OfertasNaTela
+  palavras?: PalavrasDaFicha
+}) {
   const acao = cliente ? editar.bind(null, slug, cliente.id) : criar.bind(null, slug)
   const [estado, agir, pendente] = useActionState<EstadoCliente, FormData>(acao, {})
   const [escolha, setEscolha] = useState(ofertas.atual)
@@ -148,12 +161,18 @@ export function Editor({ slug, cliente, ofertas }: { slug: string; cliente?: Cli
             name="observacoes"
             rows={3}
             defaultValue={cliente?.observacoes ?? ''}
-            placeholder="Prefere ser avisada de manhã. Usa 38. Sempre leva conjunto."
+            placeholder={palavras.avisoObservacao ? 'Prefere horário pela manhã. Chega 10 minutos antes.' : 'Prefere ser avisada de manhã. Gosta de novidades.'}
             className="rounded-norte border border-borda bg-superficie px-3 py-2 text-sm text-tinta placeholder:text-tinta-3"
           />
           <span className="text-xs text-tinta-3">
-            O que a equipe precisa lembrar. O assistente também lê isto.
+            {palavras.avisoObservacao ?? 'O que a equipe precisa lembrar. O assistente também lê isto.'}
           </span>
+          {/* Clínica: a ficha não é prontuário (LGPD, art. 11) — o mesmo aviso da agenda. */}
+          {palavras.avisoObservacao && (
+            <span className="text-xs font-medium text-atencao">
+              O Norte não guarda prontuário. Informação de saúde fica com o profissional, no sistema próprio dele.
+            </span>
+          )}
         </label>
       </Cartao>
 
@@ -247,7 +266,7 @@ export function Editor({ slug, cliente, ofertas }: { slug: string; cliente?: Cli
           <Marcar
             name="ativo"
             defaultChecked={cliente.ativo}
-            titulo="Cliente ativo"
+            titulo={`${palavras.Pessoa} ativo`}
             resumo="Desmarcado, some da busca do balcão — e continua no histórico de tudo que já comprou."
           />
         </Cartao>

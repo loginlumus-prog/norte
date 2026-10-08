@@ -40,7 +40,7 @@ export function RegrasDoBalcao({
         name="vendeSemEstoque"
         defaultChecked={inicial.vendeSemEstoque}
         titulo="Vender o que o sistema diz que acabou"
-        resumo="O balcão avisa e deixa vender; o estoque fica negativo e a peça vai para “Vendido sem estoque — conferir”, em Estoque. Ligue se o estoque veio de outro sistema e ainda não teve balanço."
+        resumo="O balcão avisa e deixa vender; o estoque fica negativo e o item vai para “Vendido sem estoque — conferir”, em Estoque. Ligue se o estoque veio de outro sistema e ainda não teve balanço."
       />
       {variasLojas && (
         <Marcar

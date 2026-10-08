@@ -339,7 +339,7 @@ export function Entrada({
           {semCusto > 0 && (
             <p className="mt-3 text-xs text-tinta-3">
               {semCusto} {semCusto === 1 ? 'item' : 'itens'} sem custo. Sem ele o relatório não consegue calcular a
-              margem daquela peça — e o total abaixo fica incompleto.
+              margem daquele item — e o total abaixo fica incompleto.
             </p>
           )}
 
@@ -350,7 +350,7 @@ export function Entrada({
                 checked={lancarConta}
                 onChange={(e) => setLancarConta(e.currentTarget.checked)}
                 titulo={`Lançar a conta do fornecedor — ${brl(total)}`}
-                resumo="Entra em contas a pagar com o total desta entrada. Comprar mercadoria não é despesa do mês: vira custo quando a peça vende."
+                resumo="Entra em contas a pagar com o total desta entrada. Comprar mercadoria não é despesa do mês: vira custo quando o produto vende."
               />
               {lancarConta && (
                 <div className="grid gap-4 sm:grid-cols-3">

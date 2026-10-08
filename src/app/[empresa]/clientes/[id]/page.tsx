@@ -440,7 +440,7 @@ export default async function FichaCliente({
 
       {podeEditar && ofertas && (
         <Secao titulo="Cadastro">
-          <Editor slug={slug} cliente={naTela} ofertas={ofertas} />
+          <Editor slug={slug} cliente={naTela} ofertas={ofertas} palavras={{ Pessoa: vocab.Pessoa, avisoObservacao: vocab.avisoObservacao }} />
         </Secao>
       )}
 

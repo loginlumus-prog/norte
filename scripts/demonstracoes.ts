@@ -1185,7 +1185,7 @@ async function emFatias<T>(lista: T[], gravar: (fatia: T[]) => Promise<unknown>,
 // ─────────────────────────────────────────────────────────────
 
 type Loja = { id: string; nome: string; horario: Horario | null; fatia: number }
-type Pessoa = { id: string; nome: string; email: string; papel: Papel; loja: number | null; senha: string; sessao: Sessao }
+type Pessoa = { id: string; nome: string; email: string; papel: Papel; loja: number | null; senha: string; pin: string; sessao: Sessao }
 type Var = {
   id: string
   produto: ProdutoDemo
@@ -1314,8 +1314,23 @@ async function nascer(demo: Demo, slug: string): Promise<Ctx> {
   // O celular de cada um já vem CONFIRMADO (a chave do número, com data): é o
   // que a pessoa faria na primeira conversa com o assistente — e sem isso a
   // demonstração pelo WhatsApp começaria por "confirme o seu número".
+  // A empresa nasce pedindo o PIN em toda venda (o padrão de toda empresa
+  // nova): cada pessoa ganha um PIN sorteado, diferente dos outros, guardado
+  // junto da senha no arquivo do laptop. Sem ele, a venda de agora (e quem
+  // demonstra o balcão) parava em "Crie o seu PIN".
+  const pinsUsados = new Set<string>()
+  const sortearPin = () => {
+    for (;;) {
+      const pin = String(1000 + (randomBytes(2).readUInt16BE(0) % 9000))
+      if (!pinsUsados.has(pin) && new Set(pin).size > 2) {
+        pinsUsados.add(pin)
+        return pin
+      }
+    }
+  }
   for (const [n, p] of demo.pessoas.entries()) {
     const senha = randomBytes(12).toString('base64url')
+    const pin = sortearPin()
     const hash = await guardarSenha(senha)
     const email = `${p.login}@${slug}.test`
     const loja = p.loja ?? null
@@ -1328,13 +1343,14 @@ async function nascer(demo: Demo, slug: string): Promise<Ctx> {
         },
         select: { id: true },
       })
+      await db.usuario.update({ where: { id: u.id }, data: { pinHash: await guardarSenha(`pin:${u.id}:${pin}`) } })
       await db.acesso.create({
         data: { orgId, usuarioId: u.id, unidadeId: loja === null ? null : lojas[loja]!.id, papel: p.papel, criadoEm: criadaEm },
       })
       return u.id
     })
     pessoas.push({
-      id, nome: p.nome, email, papel: p.papel, loja, senha,
+      id, nome: p.nome, email, papel: p.papel, loja, senha, pin,
       sessao: { orgId, usuarioId: id, nome: p.nome, acessos: [{ papel: p.papel, unidadeId: loja === null ? null : lojas[loja]!.id }] },
     })
   }
@@ -2599,7 +2615,9 @@ async function escolaAoVivo(c: Ctx): Promise<ResumoEscola | null> {
   // ── 8. as saídas, no dia em que aconteceram ──
   for (const m of mats.filter((x) => x.saida)) {
     const s = m.saida!
-    const r = await mudarMatricula(s.para === 'TRANCADA' ? secretaria.sessao : dono.sessao, m.id, { para: s.para, motivo: s.motivo, dia: s.dia }, em(s.dia, 11 * 60))
+    // Pela dona: sair ou trancar dispensa as mensalidades seguintes, e isso é
+    // de quem ajusta mensalidade (a secretaria não tem esse poder).
+    const r = await mudarMatricula(dono.sessao, m.id, { para: s.para, motivo: s.motivo, dia: s.dia }, em(s.dia, 11 * 60))
     if (!r.ok) throw new Error(`mudarMatricula(${m.aluno.nome}): ${r.erro}`)
   }
 
@@ -2633,7 +2651,8 @@ async function vendaDeAgora(c: Ctx, retirada: string | null) {
   if (retirada) {
     const e = await naEmpresa(c.orgId, (db) => db.encomenda.findUnique({ where: { id: retirada }, select: { valor: true, sinal: true } }))
     const falta = Number(e!.valor) - Number(e!.sinal)
-    const r = await registrarVenda(c.balcao.sessao, { unidadeId: loja, itens: [], encomendaId: retirada, pagamentos: [{ forma: 'PIX', valor: falta }] })
+    const r = await registrarVenda(c.balcao.sessao, {
+    assinatura: { pin: c.balcao.pin }, unidadeId: loja, itens: [], encomendaId: retirada, pagamentos: [{ forma: 'PIX', valor: falta }] })
     if (!r.ok) throw new Error(`registrarVenda (encomenda): ${JSON.stringify(r)}`)
   }
 
@@ -2643,6 +2662,7 @@ async function vendaDeAgora(c: Ctx, retirada: string | null) {
   if (pendente?.produtoId) {
     const v = c.vars.find((x) => x.produtoId === pendente.produtoId)!
     const r = await registrarVenda(c.balcao.sessao, {
+    assinatura: { pin: c.balcao.pin },
       unidadeId: loja, clienteId: pendente.clienteId, agendamentoId: pendente.id,
       itens: [{ variacaoId: v.id, quantidade: 1 }], pagamentos: [{ forma: 'PIX', valor: v.produto.vista }],
     })
@@ -2656,6 +2676,7 @@ async function vendaDeAgora(c: Ctx, retirada: string | null) {
   if (!v) return 'nada com saldo para vender agora'
   const qtd = v.produto.medida === 'KG' ? 0.5 : 1
   const r = await registrarVenda(c.balcao.sessao, {
+    assinatura: { pin: c.balcao.pin },
     unidadeId: loja, itens: [{ variacaoId: v.id, quantidade: qtd }], pagamentos: [{ forma: 'PIX', valor: reais(multiplicar(centavos(v.produto.vista), qtd)) }],
   })
   if (!r.ok) throw new Error(`registrarVenda: ${JSON.stringify(r)}`)
@@ -2822,7 +2843,7 @@ try {
     process.stdout.write(`  ${slug.padEnd(18)} `)
     const c = await nascer(demo, slug)
     // O arquivo de senhas sai já aqui: se algo quebrar depois, ninguém fica trancado para fora.
-    senhas.set(slug, c.pessoas.map((p) => `${slug.padEnd(20)} ${p.papel.padEnd(9)} ${p.email.padEnd(36)} ${p.senha}`))
+    senhas.set(slug, c.pessoas.map((p) => `${slug.padEnd(20)} ${p.papel.padEnd(9)} ${p.email.padEnd(36)} ${p.senha}  PIN ${p.pin}`))
     gravarSenhas(senhas)
     await cadastrar(c)
     process.stdout.write('cadastro · ')

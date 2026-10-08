@@ -600,7 +600,7 @@ export default async function Financeiro({
           <p className="mt-3 text-xs text-tinta-3">
             As despesas contam pelo que foi <b>pago</b> no mês, não pelo que venceu — é o que
             bate com o extrato. A mercadoria é a exceção: comprar não é despesa, vira custo
-            quando a peça vende (a linha do CMV). Por isso a compra aparece separada, fora
+            quando o produto vende (a linha do CMV). Por isso a compra aparece separada, fora
             da conta do resultado.
             {dre.linhas.some((l) => l.chave === 'empresa') && (
               <>

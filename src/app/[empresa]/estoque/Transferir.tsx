@@ -46,7 +46,7 @@ export function Transferir({
       <button
         type="button"
         onClick={() => setAberto(true)}
-        title="Mandar peças desta loja para outra"
+        title="Mandar produtos desta loja para outra"
         className={classeDaAcao({ jeito: 'pilula' })}
       >
         <IconeDaAcao icone="trocar" tamanho={15} />

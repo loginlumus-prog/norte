@@ -139,7 +139,7 @@ export function PerguntaSemEstoque({ v }: { v: Venda }) {
       <span className="flex flex-col gap-2">
         <span>
           O sistema diz que acabou: <b className="font-semibold">{itens.join(', ')}</b>. Vende assim mesmo? O
-          estoque fica negativo e {palavra(itens.length, 'a peça vai', 'as peças vão')} para a lista
+          estoque fica negativo e {palavra(itens.length, 'o item vai', 'os itens vão')} para a lista
           “Vendido sem estoque — conferir”, em Estoque.
         </span>
         <span className="flex flex-wrap gap-2">

@@ -72,10 +72,10 @@ describe('tirar um do pedido (o clique direito)', () => {
 })
 
 describe('a contagem do pedido', () => {
-  it('na loja de roupa e de calçado conta peça; no resto, item', () => {
+  it('na loja de roupa conta peça, na de calçado par; no resto, item', () => {
     expect(contagemDoPedido('roupa', 1)).toBe('1 peça')
     expect(contagemDoPedido('roupa', 3)).toBe('3 peças')
-    expect(contagemDoPedido('calcados', 2)).toBe('2 peças')
+    expect(contagemDoPedido('calcados', 2)).toBe('2 pares')
     expect(contagemDoPedido('sorveteria', 2)).toBe('2 itens')
     expect(contagemDoPedido(null, 1)).toBe('1 item')
     expect(palavraDaContagem('bijuteria', 1)).toBe('peça')

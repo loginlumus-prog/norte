@@ -306,7 +306,7 @@ export const MODELOS = {
       { titulo: 'Conferir o troco do caixa', grupo: 'Ao abrir', prioridade: 4, descricao: 'Contar o fundo de troco e anotar se faltou moeda.' },
       { titulo: 'Ligar a maquininha e testar uma passagem', grupo: 'Ao abrir', prioridade: 3 },
       { titulo: 'Acender as luzes e conferir a vitrine', grupo: 'Ao abrir', prioridade: 2 },
-      { titulo: 'Repor as araras e prateleiras do que saiu ontem', grupo: 'Ao abrir', prioridade: 2 },
+      { titulo: 'Repor a vitrine e as prateleiras do que saiu ontem', grupo: 'Ao abrir', prioridade: 2 },
       { titulo: 'Fazer a sangria e guardar o dinheiro no cofre', grupo: 'Ao fechar', prioridade: 5 },
       { titulo: 'Fechar o caixa e conferir a diferença', grupo: 'Ao fechar', prioridade: 4 },
       { titulo: 'Anotar o que faltou para repor amanhã', grupo: 'Ao fechar', prioridade: 2 },
@@ -333,9 +333,9 @@ export const MODELOS = {
     cor: '#c2287a',
     grupos: ['Planejar', 'Preparar', 'No dia', 'Depois'],
     tarefas: [
-      { titulo: 'Escolher as peças da campanha e o desconto', grupo: 'Planejar', prioridade: 5 },
+      { titulo: 'Escolher os produtos da campanha e o desconto', grupo: 'Planejar', prioridade: 5 },
       { titulo: 'Definir a meta de venda da campanha', grupo: 'Planejar', prioridade: 3 },
-      { titulo: 'Conferir o estoque das peças em destaque', grupo: 'Preparar', prioridade: 4 },
+      { titulo: 'Conferir o estoque dos produtos em destaque', grupo: 'Preparar', prioridade: 4 },
       { titulo: 'Montar a vitrine temática', grupo: 'Preparar', prioridade: 3 },
       { titulo: 'Postar nas redes e avisar os clientes pelo WhatsApp', grupo: 'Preparar', prioridade: 3 },
       { titulo: 'Reforçar a equipe e o troco', grupo: 'No dia', prioridade: 4 },
@@ -344,16 +344,16 @@ export const MODELOS = {
   },
   mercadoria: {
     titulo: 'Chegada de mercadoria',
-    descricao: 'Da caixa fechada até a peça na arara com preço: nada entra na loja sem passar por aqui.',
+    descricao: 'Da caixa fechada até o produto exposto com preço: nada entra na loja sem passar por aqui.',
     cor: '#ef7208',
     grupos: ['Ao receber', 'Antes de vender'],
     tarefas: [
       { titulo: 'Conferir a nota contra o pedido', grupo: 'Ao receber', prioridade: 5 },
-      { titulo: 'Contar as peças e separar as com defeito', grupo: 'Ao receber', prioridade: 4 },
+      { titulo: 'Contar os itens e separar os com defeito', grupo: 'Ao receber', prioridade: 4 },
       { titulo: 'Dar entrada no estoque', grupo: 'Ao receber', prioridade: 4 },
       { titulo: 'Etiquetar e colocar preço', grupo: 'Antes de vender', prioridade: 3 },
-      { titulo: 'Fotografar as peças novas', grupo: 'Antes de vender', prioridade: 2 },
-      { titulo: 'Expor na vitrine e nas araras', grupo: 'Antes de vender', prioridade: 3 },
+      { titulo: 'Fotografar os produtos novos', grupo: 'Antes de vender', prioridade: 2 },
+      { titulo: 'Expor na vitrine e nas prateleiras', grupo: 'Antes de vender', prioridade: 3 },
     ],
   },
 } as const satisfies Record<string, Modelo>
@@ -361,8 +361,8 @@ export const MODELOS = {
 export type ChaveModelo = keyof typeof MODELOS
 
 // ── o modelo com a cara do negócio ───────────────────────────
-// "Repor as araras e prateleiras do que saiu ontem" é a abertura da loja de
-// roupa. Na clínica não há arara; no salão, a bancada é que se arruma; na
+// "Repor a vitrine e as prateleiras do que saiu ontem" é a abertura do
+// varejo. Na clínica não há prateleira; no salão, a bancada é que se arruma; na
 // padaria a primeira coisa é a vitrine da fornada. O modelo é o mesmo quadro
 // (abrir e fechar, receber o que chegou) com as tarefas do lugar — como no
 // RAMOS de modulos.ts, o ramo escolhe o que NASCE pronto, nunca o caminho do

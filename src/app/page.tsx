@@ -345,7 +345,9 @@ const RAMOS_VITRINE: RamoNaVitrine[] = VITRINE_RAMOS.map(({ id, frase, cor }) =>
     eixos: r.eixos.map((e) => ({ nome: e.nome, opcoes: [...e.opcoes] })),
     medida: r.medida,
     balcao: r.balcao,
-    funcoes: [...(r.sugere as readonly string[]), ...(id === 'sorveteria' || id === 'padaria' ? ['fabrica'] : [])]
+    // Só o que o cadastro liga de verdade para o ramo (`sugere`): a fábrica,
+    // que é contratada à parte, fica na frase ("se você produz").
+    funcoes: [...(r.sugere as readonly string[])]
       .filter((m): m is keyof typeof MODULOS => m in MODULOS)
       .map((m) => MODULOS[m].titulo),
   }

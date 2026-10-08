@@ -112,7 +112,7 @@ export function AcoesHorario({
   const itens: ReactNode[] = []
   if (podeMexer && situacao === 'MARCADO' && !confirmarAMostra) {
     itens.push(
-      <button key="confirmar" type="button" role="menuitem" className={itemMenu} title="O cliente disse que vem" onClick={() => { fechar(); mudar({ para: 'CONFIRMADO' }) }}>
+      <button key="confirmar" type="button" role="menuitem" className={itemMenu} title="Confirmou que vem" onClick={() => { fechar(); mudar({ para: 'CONFIRMADO' }) }}>
         Confirmar
       </button>,
     )
@@ -152,7 +152,7 @@ export function AcoesHorario({
             className={classeDaAcao({ jeito: 'pilula' })}
             disabled={indo}
             aria-busy={indo || undefined}
-            title="O cliente disse que vem"
+            title="Confirmou que vem"
             onClick={() => mudar({ para: 'CONFIRMADO' })}
           >
             <IconeDaAcao icone="conferir" tamanho={15} />

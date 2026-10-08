@@ -3,7 +3,11 @@
 import { useActionState, useState } from 'react'
 import { Botao, Campo, Selecao, Marcar, Aviso, Cartao } from '@/ui/base'
 import { PORTES, CATALOGOS, CANAIS, DORES } from '@/servidor/cadastro'
-import { MODULOS, RAMOS, ESCOLHIVEIS as TODOS, type Ramo } from '@/servidor/modulos'
+import { MODULOS, RAMOS, ESCOLHIVEIS, EM_BREVE, type Ramo } from '@/servidor/modulos'
+
+// O que ainda não faz nada (a nota fiscal) não se oferece no cadastro: marcada,
+// a caixa prometia uma nota que não sai — e Configurações a desmarcava depois.
+const TODOS = ESCOLHIVEIS.filter((m) => !EM_BREVE.includes(m))
 import { terminarCadastro, type EstadoComeco } from './acoes'
 import { semApagar } from '@/ui/formulario'
 

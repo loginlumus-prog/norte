@@ -642,7 +642,7 @@ export default async function TelaEstoque({
           plano={plano}
           slug={slug}
           verPlanos={podeVerPlanos(sessao)}
-          resumo="Diz quantos dias o saldo aguenta no ritmo de venda, e quando pedir para a peça não faltar."
+          resumo="Diz quantos dias o saldo aguenta no ritmo de venda, e quando pedir para o produto não faltar."
         >
           {vaiFaltar.length === 0 ? (
             <Vazio>

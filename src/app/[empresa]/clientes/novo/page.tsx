@@ -10,6 +10,7 @@ import { Secao } from '@/ui/painel'
 import type { Tema } from '@/ui/TrocaTema'
 import { Editor } from '../Editor'
 import { ofertasNaTela } from '../ofertasNaTela'
+import { palavrasDaFicha } from '../palavras'
 
 export async function generateMetadata({ params }: { params: Promise<{ empresa: string }> }): Promise<Metadata> {
   return { title: (await vocabularioDoEndereco((await params).empresa)).novo }
@@ -35,7 +36,7 @@ export default async function NovoCliente({ params }: { params: Promise<{ empres
       titulo={(await vocabularioDaEmpresa(sessao.orgId)).novo}
     >
       <Secao titulo="Cadastro">
-        <Editor slug={slug} ofertas={ofertas} />
+        <Editor slug={slug} ofertas={ofertas} palavras={await palavrasDaFicha(sessao.orgId)} />
       </Secao>
     </Estrutura>
   )

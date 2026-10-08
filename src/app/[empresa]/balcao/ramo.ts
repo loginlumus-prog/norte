@@ -191,12 +191,13 @@ export function pedeComplemento(
 // ─────────────────────────────────────────────────────────────
 
 /** Os ramos em que o pedido se conta em PEÇA: a vendedora confere a sacola peça por peça. */
-const CONTA_PECA = new Set(['roupa', 'calcados', 'bijuteria'])
+const CONTA_PECA = new Set(['roupa', 'bijuteria'])
 
-/** "peça"/"peças" na loja de roupa, "item"/"itens" no resto — só a palavra. */
+/** "peça"/"peças" na loja de roupa, "par"/"pares" na de calçado, "item"/"itens" no resto — só a palavra. */
 export function palavraDaContagem(ramo: string | null | undefined, n: number): string {
-  const peca = !!ramo && CONTA_PECA.has(ramo)
   const um = n === 1
+  if (ramo === 'calcados') return um ? 'par' : 'pares'
+  const peca = !!ramo && CONTA_PECA.has(ramo)
   return peca ? (um ? 'peça' : 'peças') : um ? 'item' : 'itens'
 }
 

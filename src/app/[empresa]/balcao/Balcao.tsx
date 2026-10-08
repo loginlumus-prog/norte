@@ -616,7 +616,7 @@ export function Balcao({
                     value={avulsoNome}
                     onChange={(e) => setAvulsoNome(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && lancarAvulso()}
-                    placeholder="Conserto de barra, peça sem cadastro..."
+                    placeholder="Taxa de entrega, item sem cadastro..."
                     className="rounded border border-borda bg-superficie px-2 py-1.5 text-sm text-tinta"
                   />
                 </label>

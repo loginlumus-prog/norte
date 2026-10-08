@@ -2642,7 +2642,7 @@ export const GUIA: Entrada[] = [
     caminho: '/comecar',
     abre: ['empresa.configurar'],
     oQueE:
-      'O cadastro inicial, no primeiro acesso: nome da empresa, razão social, CNPJ, regime, ramo (que prepara eixos de variação, categorias, medida e o manual do assistente), contato, a primeira unidade, como você trabalha, os módulos e o nome do assistente. Leva dois minutos, e tudo muda depois em Configurações. Quem criou a conta pelo site ("Começar grátis") chega aqui já com o ramo escolhido lá.',
+      'O cadastro inicial, no primeiro acesso: nome da empresa, razão social, CNPJ, regime, ramo (que prepara eixos de variação, categorias e o manual do assistente), contato, a primeira unidade, como você trabalha, os módulos e o nome do assistente. Leva dois minutos, e tudo muda depois em Configurações. Quem criou a conta pelo site ("Começar grátis") chega aqui já com o ramo escolhido lá.',
     comoFazer: [
       {
         titulo: 'Terminar o cadastro',
@@ -2671,9 +2671,11 @@ export const GUIA: Entrada[] = [
         titulo: 'O que o ramo prepara',
         passos: [
           'Roupas e acessórios: eixos Tamanho e Cor, categorias como Blusas e Calças, balcão por etiqueta, sugere crediário e metas.',
-          'Calçados: eixo Numeração, medida em par. Bijuteria: eixo Cor.',
-          'Sorveteria e açaí, lanchonete, padaria, mercearia, floricultura, serviço: balcão por botões, e a medida que o ramo usa (quilo, unidade).',
+          'Calçados: eixo Numeração. Bijuteria: eixo Cor.',
+          'Sorveteria e açaí, lanchonete, padaria, floricultura, serviço: balcão por botões. Mercearia: balcão por etiqueta e busca, para o catálogo grande.',
           'Pet shop, papelaria, brinquedos, autopeças, construção, distribuidora: categorias prontas e o manual do assistente com o que NÃO fazer no ramo.',
+          'Beleza e saúde: agenda de horários e os serviços. Saúde chama quem é atendido de paciente e lembra que o Norte não guarda prontuário. Escola: turmas, matrículas e mensalidades.',
+          'A medida de cada produto (unidade, quilo, par, litro) se escolhe na ficha dele: todo produto novo começa em unidade.',
           '"Outro" começa vazio. Nada disso é caminho no código: é só o que a empresa encontra pronto no primeiro dia.',
         ],
       },

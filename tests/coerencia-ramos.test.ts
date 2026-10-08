@@ -285,9 +285,10 @@ describe('feito no dia — zerado depois de fechar não é falta', () => {
 describe('o modelo de abertura tem a cara do negócio', () => {
   const tarefas = (ramo: string | null) => modeloPara('abertura', ramo).tarefas.map((t) => t.titulo).join(' | ')
 
-  it('só o varejo repõe arara', () => {
-    expect(tarefas('roupa')).toMatch(/araras/)
-    for (const ramo of ['saude', 'beleza', 'padaria', 'sorveteria', 'escola']) expect(tarefas(ramo)).not.toMatch(/arara/)
+  it('ninguém repõe arara: o varejo repõe vitrine e prateleiras (serve à loja de roupa e à mercearia)', () => {
+    expect(tarefas('roupa')).toMatch(/prateleiras/)
+    expect(tarefas('mercearia')).toMatch(/prateleiras/)
+    for (const ramo of ['roupa', 'mercearia', 'saude', 'beleza', 'padaria', 'sorveteria', 'escola']) expect(tarefas(ramo)).not.toMatch(/arara/)
   })
 
   it('cada jeito tem o que é dele', () => {
