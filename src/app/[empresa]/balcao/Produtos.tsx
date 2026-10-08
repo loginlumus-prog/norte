@@ -937,10 +937,32 @@ function EscolhaFolha({
   const variacoes = escolha.variacoes ?? []
   const eixos = useMemo(() => eixosDe(variacoes), [variacoes])
   const pedeQuanto = fracionado(escolha.medida)
+  // O produto vendido por QUILO aceita o peso em gramas: a atendente digita
+  // "350" em vez de "0,350". O preço continua por quilo — trocar a medida do
+  // produto para grama estragava o preço (R$ 54,90 o quilo viraria
+  // R$ 0,05 a grama, porque o preço guarda 2 casas). A escolha fica no
+  // aparelho: a sorveteria que digita em gramas não troca a cada venda.
+  const [emGramas, setEmGramas] = useState(false)
+  useEffect(() => {
+    try {
+      setEmGramas(localStorage.getItem('norte_peso_em_gramas') === '1')
+    } catch {}
+  }, [])
+  const gramas = escolha.medida === 'KG' && emGramas
+  const trocarGramas = (g: boolean) => {
+    setEmGramas(g)
+    setQuanto('')
+    try {
+      localStorage.setItem('norte_peso_em_gramas', g ? '1' : '0')
+    } catch {}
+  }
+  const medidaDoCampo = gramas ? 'G' : escolha.medida
   const un = UNIDADE[escolha.medida] ?? escolha.medida.toLowerCase()
-  const quantidade = Number(quanto.replace(',', '.'))
+  const unDoCampo = UNIDADE[medidaDoCampo] ?? medidaDoCampo.toLowerCase()
+  const digitado = Number(quanto.replace(',', '.'))
+  const quantidade = gramas ? Math.round(digitado) / 1000 : digitado
   const quantoOk = quantidade > 0 && Number.isFinite(quantidade)
-  const teclas = pedeQuanto ? teclasDePeso(ramo, escolha.medida) : []
+  const teclas = pedeQuanto ? teclasDePeso(ramo, medidaDoCampo) : []
   const pesa = escolha.medida === 'KG' || escolha.medida === 'G'
 
   // Tela de toque (tablet, celular): o teclado grande no lugar do teclado do
@@ -1046,7 +1068,7 @@ function EscolhaFolha({
                   : pedeQuanto
                     ? quantoOk
                       ? `Adicionar · ${brl(linhaCent({ ...achada, quantidade }, tabela) / 100)}`
-                      : `Diga quanto (${un})`
+                      : `Diga quanto (${unDoCampo})`
                     : `Adicionar ${rotuloDaVariacao(achada)} · ${brl(precoUnit ?? 0)}`}
             </Botao>
           </div>
@@ -1272,8 +1294,25 @@ function EscolhaFolha({
               </p>
             )}
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-semibold tracking-wide text-tinta-2 uppercase">
-                {escolha.medida === 'KG' || escolha.medida === 'G' ? 'Quanto pesou?' : 'Quanto?'}
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold tracking-wide text-tinta-2 uppercase">
+                  {escolha.medida === 'KG' || escolha.medida === 'G' ? 'Quanto pesou?' : 'Quanto?'}
+                </span>
+                {escolha.medida === 'KG' && (
+                  <span role="group" aria-label="Digitar o peso em" className="fichas inline-flex gap-0.5 rounded-xl p-1">
+                    {([['kg', false], ['g', true]] as const).map(([rotulo, g]) => (
+                      <button
+                        key={rotulo}
+                        type="button"
+                        onClick={() => trocarGramas(g)}
+                        aria-current={gramas === g ? 'true' : undefined}
+                        className="ficha rounded-lg px-3 py-1 text-sm font-bold"
+                      >
+                        em {rotulo}
+                      </button>
+                    ))}
+                  </span>
+                )}
               </span>
               <span className="flex items-center gap-3 rounded-2xl border-2 border-borda bg-superficie px-4 focus-within:border-marca">
                 <input
@@ -1290,11 +1329,11 @@ function EscolhaFolha({
                     }
                   }}
                   autoComplete="off"
-                  placeholder={escolha.medida === 'KG' ? '0,350' : '0'}
-                  aria-label={`Quantidade em ${un}`}
+                  placeholder={gramas ? '350' : escolha.medida === 'KG' ? '0,350' : '0'}
+                  aria-label={`Quantidade em ${unDoCampo}`}
                   className="numero h-16 min-w-0 flex-1 bg-transparent text-3xl font-bold text-tinta placeholder:text-tinta-3/60 focus:outline-none focus-visible:outline-none!"
                 />
-                <span className="text-xl font-semibold text-tinta-3">{un}</span>
+                <span className="text-xl font-semibold text-tinta-3">{unDoCampo}</span>
               </span>
             </label>
 
@@ -1353,7 +1392,7 @@ function EscolhaFolha({
               </div>
             )}
 
-            {pesa && <LerBalanca aoPesar={(kg) => setQuanto(pesoNoCampo(kg, escolha.medida))} />}
+            {pesa && <LerBalanca aoPesar={(kg) => setQuanto(pesoNoCampo(kg, medidaDoCampo))} />}
             {achada.saldo <= 0 &&
               (achada.semLancamento ? (
                 <Situacao nivel="neutro">sem estoque lançado nesta loja</Situacao>
