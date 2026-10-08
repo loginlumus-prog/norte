@@ -21,6 +21,7 @@ import { custoEmCentavos, cobrancaEmCentavos } from './custo-ia'
 import {
   PODERES,
   conferirPoder,
+  ehDono,
   PoderNegado,
   type AgenteConfig,
   type ChavePoder,
@@ -30,6 +31,23 @@ import { garantirCreditoDoMes, recadoSemRespostas, respostasDoMes, vencerTesteSe
 import { PLANOS, PRECOS, milhar, planoLibera, rs } from './planos'
 import { inicioDeHojeEmSP } from './dia'
 import { MAXIMO_RECADO } from './assistente/recado'
+import {
+  executarAjusteDoCatalogo,
+  executarBaixa,
+  executarCadastroDeCliente,
+  executarCadastroDeProduto,
+  executarContagem,
+  executarEdicaoDeCliente,
+  executarEdicaoDeProduto,
+  executarNovaEncomenda,
+  executarPedidoAFabrica,
+  executarPedidoDeCompra,
+  executarPerda,
+  executarPostagem,
+  executarReceita,
+  executarRecebimento,
+  executarTransferencia,
+} from './agente-acoes'
 
 export * from './poderes'
 export * from './custo-ia'
@@ -145,10 +163,11 @@ export type NovaProposta = {
   valor?: number
   descontoPct?: number
   /**
-   * Quem pediu, quando pediu pela conversa. É a única pessoa que pode
-   * responder "sim" ali mesmo, no WhatsApp (ver assistente/respostas.ts) — e
-   * ainda assim com a capacidade dela conferida na hora. Sem quem pediu (a
-   * rotina das 9h), a proposta só se confirma na tela.
+   * Quem pediu, quando pediu pela conversa. Se é o dono, ele mesmo responde
+   * "sim" ali (ver assistente/respostas.ts); se é alguém da equipe, o pedido
+   * vai para o dono aprovar (assistente/aprovacao.ts) e quem pediu só pode
+   * desistir. Sem quem pediu (a rotina das 9h), o dono confirma na tela — ou
+   * pelo código, no WhatsApp.
    */
   usuarioId?: string | null
 }
@@ -194,7 +213,8 @@ export type Resposta =
     }
   | {
       ok: false
-      motivo: 'nao_existe' | 'ja_respondida' | 'expirada' | 'sem_permissao' | 'falhou'
+      /** `so_o_dono`: quem respondeu não é dono — e só o dono aprova (ver `ehDono`). */
+      motivo: 'nao_existe' | 'ja_respondida' | 'expirada' | 'sem_permissao' | 'so_o_dono' | 'falhou'
       detalhe?: string
       /**
        * A recusa em palavras de gente, quando ela é de gente ("Esta
@@ -207,11 +227,14 @@ export type Resposta =
 /**
  * A pessoa responde. É o único caminho por onde a ação do agente acontece.
  *
- * Três conferências que parecem redundantes e não são:
+ * Quatro conferências que parecem redundantes e não são:
  *
- * 1. A PESSOA precisa ter a capacidade do poder. O agente nunca pode mais do
- *    que quem confirma — senão confirmar viraria o jeito de o balconista
- *    fazer, pelo agente, o que ele não pode fazer pela tela.
+ * 0. Só o DONO aprova (ver `ehDono` em poderes.ts) — na tela e no WhatsApp,
+ *    porque os dois passam por aqui. Quem não é dono só pode DESISTIR do que
+ *    ele mesmo pediu: recusar não executa nada, e a balconista que pediu
+ *    errado não precisa esperar o dono para tirar o pedido da fila.
+ * 1. O dono precisa ter a capacidade do poder. O agente nunca pode mais do
+ *    que quem confirma — o dono preso a uma loja não aprova o que é da outra.
  * 2. O TETO é conferido DE NOVO. O dono pode ter baixado o teto entre a
  *    proposta e o sim, e o que vale é o teto de agora.
  * 3. A VALIDADE. Proposta de ontem fala de um estoque que não existe mais.
@@ -231,8 +254,12 @@ export async function responderProposta(
   const p = PODERES[proposta.poder as ChavePoder] as Poder | undefined
   if (!p) return { ok: false, motivo: 'falhou', detalhe: 'poder desconhecido' }
 
+  // 0. só o dono aprova; quem pediu pode desistir do próprio pedido
+  const desiste = !aceita && !!proposta.usuarioId && proposta.usuarioId === sessao.usuarioId
+  if (!ehDono(sessao) && !desiste) return { ok: false, motivo: 'so_o_dono' }
+
   // 1. quem confirma precisa poder fazer sozinho
-  if (!pode(sessao, p.exige)) return { ok: false, motivo: 'sem_permissao' }
+  if (aceita && !pode(sessao, p.exige)) return { ok: false, motivo: 'sem_permissao' }
 
   if (proposta.expiraEm < new Date()) {
     await marcar(sessao.orgId, propostaId, 'EXPIRADA', sessao.nome)
@@ -422,6 +449,39 @@ async function executar(
       if (!r.ok) throw new Error(r.erro)
       return {}
     }
+
+    // Os poderes de "tudo, menos lançar venda": cada um pelo serviço da tela,
+    // em agente-acoes.ts.
+    case 'cliente.cadastrar':
+      return { feito: await executarCadastroDeCliente(sessao, dados) }
+    case 'cliente.editar':
+      return { feito: await executarEdicaoDeCliente(sessao, dados) }
+    case 'produto.cadastrar':
+      return { feito: await executarCadastroDeProduto(sessao, dados) }
+    case 'produto.editar':
+      return { feito: await executarEdicaoDeProduto(sessao, dados) }
+    case 'estoque.perda':
+      return { feito: await executarPerda(sessao, dados) }
+    case 'estoque.contagem':
+      return { feito: await executarContagem(sessao, dados) }
+    case 'estoque.transferir':
+      return { feito: await executarTransferencia(sessao, dados) }
+    case 'lancar.receita':
+      return { feito: await executarReceita(sessao, dados) }
+    case 'conta.pagar':
+      return { feito: await executarBaixa(sessao, dados) }
+    case 'encomenda.criar':
+      return { feito: await executarNovaEncomenda(sessao, dados) }
+    case 'crediario.receber':
+      return { feito: await executarRecebimento(sessao, dados) }
+    case 'compras.pedido':
+      return { feito: await executarPedidoDeCompra(sessao, dados) }
+    case 'fabrica.pedir':
+      return { feito: await executarPedidoAFabrica(sessao, dados) }
+    case 'catalogo.postar':
+      return { feito: await executarPostagem(sessao, dados) }
+    case 'catalogo.ajustar':
+      return { feito: await executarAjusteDoCatalogo(sessao, dados) }
 
     default:
       throw new Error(`"${poder}" ainda não sabe executar.`)

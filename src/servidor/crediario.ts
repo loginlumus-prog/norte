@@ -430,6 +430,64 @@ export async function situacaoDeCredito(
 }
 
 // ─────────────────────────────────────────────────────────────
+// AS PARCELAS EM ABERTO DE UM CLIENTE (para receber uma)
+// ─────────────────────────────────────────────────────────────
+
+export type ParcelaEmAberto = {
+  id: string
+  unidadeId: string
+  unidade: string
+  numero: number
+  de: number
+  vencimento: Date
+  /** O que falta do principal. */
+  restaC: number
+  /** Multa + juro de hoje, pela regra da empresa. */
+  atrasoC: number
+  diasAtraso: number
+}
+
+/**
+ * As parcelas em aberto de um cliente, nas lojas em que a pessoa recebe
+ * crediário, da mais antiga para a mais nova — cada uma com o atraso de HOJE.
+ *
+ * É a conta que o assistente precisa para propor "receber a parcela da
+ * Joana" (e conferir de novo no sim): o atraso muda de um dia para o outro, e
+ * receber com menos atraso do que a regra pede é perdão — que pede quem
+ * negocia, com motivo (ver `receberParcela`).
+ */
+export async function parcelasEmAberto(
+  sessao: Sessao,
+  clienteId: string,
+  unidadeIds: string[],
+  agora = new Date(),
+): Promise<ParcelaEmAberto[]> {
+  const permitidas = unidadeIds.filter((u) => pode(sessao, 'crediario.receber', u))
+  if (permitidas.length === 0) return []
+  return comoOrg(sessao.orgId, async (db) => {
+    const regra = await regraDoAtraso(db, sessao.orgId)
+    const parcelas = await db.parcela.findMany({
+      where: { clienteId, unidadeId: { in: permitidas }, quitadaEm: null },
+      orderBy: [{ vencimento: 'asc' }, { numero: 'asc' }, { id: 'asc' }],
+      take: 60,
+      select: {
+        id: true, unidadeId: true, numero: true, de: true, vencimento: true, valor: true, pago: true, desconto: true,
+        jurosAte: true, multaCobrada: true, unidade: { select: { nome: true } },
+      },
+    })
+    return parcelas.flatMap((p) => {
+      const restaC = restaDe(p)
+      if (restaC <= 0) return []
+      const e = encargosDeHoje({ restaC, vencimento: p.vencimento, jurosAte: p.jurosAte, multaCobrada: p.multaCobrada }, regra, agora)
+      return [{
+        id: p.id, unidadeId: p.unidadeId, unidade: p.unidade.nome, numero: p.numero, de: p.de, vencimento: p.vencimento,
+        restaC, atrasoC: e.multaC + e.jurosC, diasAtraso: e.dias,
+      }]
+    })
+  })
+}
+
+// ─────────────────────────────────────────────────────────────
 // RECEBER UMA PARCELA (o caminho antigo, por cima do recibo)
 // ─────────────────────────────────────────────────────────────
 

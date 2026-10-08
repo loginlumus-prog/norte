@@ -93,12 +93,28 @@ describe('o que vai para a mesa do modelo', () => {
     expect(poderesDaConversa(TUDO, LOJA, BALCAO)).toContain('consultar.produto')
   })
 
-  it('o balconista não ganha pelo WhatsApp o que não abre na tela', () => {
+  it('o balconista não LÊ pelo WhatsApp o que não abre na tela — mas PEDE qualquer escrita, que só o dono aprova', () => {
     const doBalcao = poderesDaConversa(TUDO, LOJA, BALCAO)
     expect(doBalcao).not.toContain('ver.resumo') // relatorio.ver
     expect(doBalcao).not.toContain('ver.contas') // financeiro.ver
-    expect(doBalcao).not.toContain('lancar.despesa') // financeiro.lancar
     expect(doBalcao).toContain('ver.estoque')
+    // Desde 08/10/2026: a equipe pede, o dono aprova (responderProposta confere o papel).
+    for (const p of TODOS_PODERES) {
+      const poder = PODERES[p] as { escreve: boolean; disponivel: boolean; semIA?: boolean; modulo?: string }
+      // (os de módulo dependem do módulo ligado — esta loja só tem o agente)
+      if (poder.escreve && poder.disponivel && !poder.semIA && !poder.modulo) {
+        expect(doBalcao, p).toContain(p)
+      }
+    }
+  })
+
+  it('o sistema diz que só o dono aprova, que a equipe pede, e que venda no balcão ele não lança', () => {
+    expect(REGRAS_DO_NORTE).toMatch(/SÓ O DONO aprova/)
+    expect(REGRAS_DO_NORTE).toMatch(/MENOS lançar venda no balcão/)
+    const [, doBalcao] = montarSistema({ nome: 'Nina' }, { empresa: 'Loja A', unidades: [] }, BALCAO)
+    const [, doDono] = montarSistema({ nome: 'Nina' }, { empresa: 'Loja A', unidades: [] }, DONO)
+    expect(doBalcao!.texto).toMatch(/NÃO é dono/)
+    expect(doDono!.texto).toMatch(/É DONO/)
   })
 
   it('poder que ainda não foi construído (desconto) nunca vai, nem ligado', () => {

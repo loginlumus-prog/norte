@@ -21,6 +21,7 @@
 import { useActionState, useState } from 'react'
 import { Botao, Campo, Marcar, Aviso, Cartao, cx } from '@/ui/base'
 import { PODERES, TODOS_PODERES, type ChavePoder, type Poder } from '@/servidor/poderes'
+import { MODULOS } from '@/servidor/modulos'
 import {
   HORAS_DE_HUMANO,
   HORAS_ENTRE_RECADOS,
@@ -148,12 +149,13 @@ export function Formulario({
       >
         <p className="mb-3 text-sm text-tinta-2">
           Isto é o que ele faz na conversa com você e a equipe. Consultar não muda nada no
-          sistema. <b>Agir</b> sempre passa por você: ele monta a proposta com o número e
-          espera o seu sim.
+          sistema. <b>Agir</b> sempre passa pelo dono: ele monta a proposta com o número e
+          espera o sim do dono. Quem da equipe pede, pede — o pedido chega ao dono no
+          WhatsApp para aprovar. Lançar venda no balcão ele não faz.
         </p>
 
         <Grupo titulo="Consultar" itens={CONSULTAR} ligados={ligados} modulos={modulos} alterna={alterna} />
-        <Grupo titulo="Agir (sempre com a sua confirmação)" itens={AGIR} ligados={ligados} modulos={modulos} alterna={alterna} />
+        <Grupo titulo="Agir (só com o sim do dono)" itens={AGIR} ligados={ligados} modulos={modulos} alterna={alterna} />
       </Cartao>
 
       {/* ── quando um cliente escreve ── */}
@@ -235,9 +237,9 @@ export function Formulario({
         {escreveAlgo && (
           <div className="mt-4">
             <Aviso nivel="atencao">
-              Você ligou pelo menos uma ação que mexe no sistema. Nada acontece sem a sua
-              confirmação — mas quem confirma precisa ter a permissão daquela ação, e tudo
-              fica assinado no livro.
+              Você ligou pelo menos uma ação que mexe no sistema. Nada acontece sem o sim
+              de um dono — a equipe pode pedir, e só o dono aprova —, e tudo fica assinado
+              no livro em nome de quem aprovou.
             </Aviso>
           </div>
         )}
@@ -308,7 +310,9 @@ function Grupo({
                           : 'border-borda text-tinta-3',
                       )}
                     >
-                      {semModulo ? 'precisa do crediário' : 'em breve'}
+                      {/* O módulo de cada poder, e não sempre "crediário": agenda, encomenda,
+                          compras e fábrica também têm poder que depende de módulo. */}
+                      {semModulo && p.modulo ? `precisa do módulo ${MODULOS[p.modulo].titulo}` : 'em breve'}
                     </span>
                   </span>
                   <span className="text-xs text-tinta-3">{p.resumo}</span>

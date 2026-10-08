@@ -25,6 +25,8 @@ export type PropostaNaTela = {
   resumo: string
   valor: number | null
   expiraEm: string
+  /** Quem da equipe pediu pelo WhatsApp (nulo: a rotina, ou o próprio dono). */
+  pedidoPor?: string | null
 }
 
 export function Propostas({ slug, itens }: { slug: string; itens: PropostaNaTela[] }) {
@@ -61,6 +63,7 @@ export function Propostas({ slug, itens }: { slug: string; itens: PropostaNaTela
               <span className="text-sm text-tinta">{p.resumo}</span>
               <span className="flex items-center gap-2">
                 <Situacao nivel="neutro">{p.poder}</Situacao>
+                {p.pedidoPor && <span className="text-xs text-tinta-3">pedido por {p.pedidoPor}</span>}
                 <span className="text-xs text-tinta-3">expira {daqui(p.expiraEm)}</span>
               </span>
             </span>
@@ -100,6 +103,7 @@ const RECADO: Record<string, string> = {
   ja_respondida: 'Alguém já respondeu essa.',
   expirada: 'Essa proposta venceu. Peça para ele propor de novo.',
   sem_permissao: 'Você não tem permissão para confirmar esta ação.',
+  so_o_dono: 'Só o dono aprova o que o assistente propõe.',
   falhou: 'A ação não foi concluída. Nada foi gravado.',
 }
 

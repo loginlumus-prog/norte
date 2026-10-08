@@ -157,10 +157,21 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
           where: { situacao: 'AGUARDANDO', expiraEm: { gt: agora } },
           orderBy: { criadaEm: 'asc' },
           take: 20,
-          select: { id: true, poder: true, resumo: true, valor: true, expiraEm: true },
+          select: { id: true, poder: true, resumo: true, valor: true, expiraEm: true, usuarioId: true },
         }),
       )
     : []
+  // Quem da equipe pediu: só o dono aprova, e ele decide sabendo de quem veio.
+  const idsQuePediram = [...new Set(propostas.map((p) => p.usuarioId).filter((u): u is string => !!u && u !== sessao.usuarioId))]
+  const quemPediu = new Map(
+    idsQuePediram.length === 0
+      ? []
+      : (
+          await comoOrg(sessao.orgId, (db) =>
+            db.usuario.findMany({ where: { id: { in: idsQuePediram } }, select: { id: true, nome: true } }),
+          )
+        ).map((u) => [u.id, u.nome] as const),
+  )
 
   const menu = MENU(slug).map((i) =>
     i.href === `/${slug}/agente` && propostas.length > 0
@@ -324,6 +335,7 @@ export default async function TelaAgente({ params }: { params: Promise<{ empresa
               resumo: p.resumo,
               valor: p.valor != null ? Number(p.valor) : null,
               expiraEm: p.expiraEm.toISOString(),
+              pedidoPor: p.usuarioId ? (quemPediu.get(p.usuarioId) ?? null) : null,
             }))}
           />
         </Secao>

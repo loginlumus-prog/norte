@@ -288,11 +288,19 @@ Responda *SIM ${c}* para confirmar ou *NÃO ${c}* para cancelar.`,
     expect(Number(novo.custo)).toBe(1.2)
   })
 
-  it('o balcão não dá entrada: a ferramenta nem vai para a mesa dele', async () => {
-    const api = apiFalsa(diz('Isso eu não consigo por aqui.'))
-    await processarMensagem(msg(BETO, 'comprei 10 kg de picanha'), { canal: new CanalFalso(), buscar: api.buscar })
-    expect(api.nomes(0)).not.toContain('estoque_entrada')
-    expect(api.nomes(0)).toContain('encomendas_ver')
+  it('o balcão PEDE a entrada: vira pedido para a dona, e o estoque fica parado', async () => {
+    const antes = await saldoPicanha()
+    const canal = new CanalFalso()
+    const api = apiFalsa(pede('estoque_entrada', { itens: [{ produto: 'picanha', quantidade: 3, unidade: 'kg' }] }), diz('Mandei para a dona.'))
+    const r = await processarMensagem(msg(BETO, 'chegaram 3 kg de picanha'), { canal, buscar: api.buscar })
+    expect(api.nomes(0)).toContain('estoque_entrada')
+    const p = await ultimaProposta()
+    expect(p).toMatchObject({ poder: 'estoque.entrada', situacao: 'AGUARDANDO', usuario_id: 'usr-beto' })
+    const c = codigoDaProposta(p.id)
+    // a dona recebe o pedido; o Beto lê que espera a aprovação dela
+    expect(canal.enviadas.find((m) => m.numero === ANA)?.texto).toContain(`Beto Balcão pediu pelo assistente`)
+    expect(r.tipo === 'respondida' && r.texto).toMatch(new RegExp(`Pedido para o dono aprovar:.*\\n.*${c}.*Só o dono aprova`))
+    expect(await saldoPicanha()).toBe(antes)
   })
 })
 
@@ -306,27 +314,38 @@ describe('o SIM: quem, qual e com que permissão', () => {
     expect((await ultimaProposta()).situacao).toBe('AGUARDANDO')
   })
 
-  it('a permissão é a de AGORA: perdeu o acesso entre o pedido e o sim, não lança', async () => {
-    await pedirEntrada(GIL, [{ produto: 'picanha', quantidade: 2 }])
+  it('o papel é o de AGORA: a dona que deixou de ser dona entre o pedido e o sim não aprova', async () => {
+    await pedirEntrada(ANA, [{ produto: 'picanha', quantidade: 2 }])
     const antes = await saldoPicanha()
-    await db.exec(`update acessos set papel = 'BALCAO' where id = 'ac-gil'`)
+    await db.exec(`update acessos set papel = 'GERENTE' where id = 'ac-ana'`)
     try {
       const canal = new CanalFalso()
-      const r = await processarMensagem(msg(GIL, 'confirmo'), { canal, buscar: apiFalsa(diz('x')).buscar })
+      const r = await processarMensagem(msg(ANA, 'confirmo'), { canal, buscar: apiFalsa(diz('x')).buscar })
       expect(r.tipo).toBe('atalho')
-      expect(canal.enviadas.at(-1)!.texto).toMatch(/não é do seu acesso/)
+      expect(canal.enviadas.at(-1)!.texto).toMatch(/esperando a aprovação do dono/)
       expect((await ultimaProposta()).situacao).toBe('AGUARDANDO')
       expect(await saldoPicanha()).toBe(antes)
     } finally {
-      await db.exec(`update acessos set papel = 'GERENTE' where id = 'ac-gil'`)
+      await db.exec(`update acessos set papel = 'DONO' where id = 'ac-ana'`)
     }
   })
 
-  it('o gerente com acesso confirma a dele', async () => {
-    await pedirEntrada(GIL, [{ produto: 'picanha', quantidade: 2 }])
+  it('o gerente pede a entrada: o "ok" dele não lança; o SIM da dona, pelo código, lança — e ele é avisado', async () => {
+    const { r } = await pedirEntrada(GIL, [{ produto: 'picanha', quantidade: 2 }])
+    expect(r.tipo === 'respondida' && r.texto).toMatch(/Pedido para o dono aprovar/)
+    const p = await ultimaProposta()
+    const c = codigoDaProposta(p.id)
     const antes = await saldoPicanha()
-    await processarMensagem(msg(GIL, 'ok'), { canal: new CanalFalso() })
+    const canal = new CanalFalso()
+    await processarMensagem(msg(GIL, 'ok'), { canal })
+    expect(canal.enviadas.at(-1)!.texto).toMatch(/esperando a aprovação do dono/)
+    expect(await saldoPicanha()).toBe(antes)
+
+    await processarMensagem(msg(ANA, `sim ${c}`), { canal })
     expect(await saldoPicanha()).toBe(antes + 2)
+    expect(canal.enviadas.find((m) => m.numero === ANA && m.texto.startsWith('Feito:'))).toBeTruthy()
+    const aviso = canal.enviadas.filter((m) => m.numero === GIL).at(-1)!
+    expect(aviso.texto).toMatch(new RegExp(`^Ana Dona aprovou o seu pedido \\*${c}\\*\\. Feito: entrada de 2 kg de Picanha`))
   })
 
   it('proposta vencida não executa, e diz por quê', async () => {
@@ -505,12 +524,14 @@ describe('as encomendas pelo WhatsApp', () => {
     expect(j.encomendas.find((e) => e.codigo === 'ENC-BAL789')).toMatchObject({ itens: 'Bolo de chocolate 2 kg' })
   })
 
-  it('o balcão não cancela pelo WhatsApp: a ferramenta recusa antes de propor', async () => {
-    const antes = await conta(`select count(*) n from propostas_agente`)
-    const api = apiFalsa(pede('encomenda_mudar', { codigo: 'ENC-BAL789', acao: 'cancelar', motivo: 'cliente desistiu' }), diz('Não posso.'))
-    await processarMensagem(msg(BETO, 'cancela o bolo'), { canal: new CanalFalso(), buscar: api.buscar })
-    expect(ultimoResultado(api.corpos[1]!)).toMatchObject({ is_error: true })
-    expect(await conta(`select count(*) n from propostas_agente`)).toBe(antes)
+  it('o balcão PEDE o cancelamento: vira pedido para a dona, e a encomenda continua aberta', async () => {
+    const api = apiFalsa(pede('encomenda_mudar', { codigo: 'ENC-BAL789', acao: 'cancelar', motivo: 'cliente desistiu' }), diz('Mandei para a dona.'))
+    const canal = new CanalFalso()
+    await processarMensagem(msg(BETO, 'cancela o bolo'), { canal, buscar: api.buscar })
+    expect(ultimoResultado(api.corpos[1]!).is_error).toBeFalsy()
+    expect(await ultimaProposta()).toMatchObject({ poder: 'encomenda.mudar', usuario_id: 'usr-beto', situacao: 'AGUARDANDO' })
+    expect(canal.enviadas.some((m) => m.numero === ANA && m.texto.includes('Cancelar a encomenda ENC-BAL789'))).toBe(true)
+    expect((await uma<{ s: string }>(`select situacao s from encomendas where id = 'encteste00bal789'`)).s).toBe('ABERTA')
   })
 
   it('aceitar pelo assistente: proposta, SIM, e a cliente avisada com o link', async () => {

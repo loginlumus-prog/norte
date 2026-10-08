@@ -1980,7 +1980,7 @@ export const GUIA: Entrada[] = [
         passos: [
           'Nome (até 40 letras) e "Jeito de falar". Isso decide o JEITO dele, e só isso — texto nunca dá permissão.',
           'O manual da loja: horário, troca, formas de pagamento, prazos de fornecedor — o que ele precisa saber para responder você e a equipe. Isto ele não descobre sozinho.',
-          'Marque os poderes: Consultar não muda nada no sistema; Agir sempre monta uma proposta com o número e espera o seu sim.',
+          'Marque os poderes: Consultar não muda nada no sistema; Agir sempre monta uma proposta com o número e espera o sim do dono. Ele ajuda em tudo — cliente, produto e preço, estoque, contas, encomendas, crediário, pedidos, catálogo —, menos lançar venda no Balcão.',
           'Até onde ele vai: valor máximo de uma proposta, desconto máximo (%), gasto de IA por dia (R$) e mensagens por dia. Esses números moram no banco; nenhuma mensagem muda.',
           '"Deixar funcionando" e "Salvar". Cada mudança de poder ou teto vai para o livro de auditoria com antes e depois.',
         ],
@@ -2010,9 +2010,10 @@ export const GUIA: Entrada[] = [
       {
         titulo: 'Responder uma proposta',
         passos: [
-          'Pelo WhatsApp: quem pediu responde SIM (ou NÃO) na própria conversa, até uma hora depois. Com várias esperando, ele lista numeradas e você responde "SIM 2".',
-          'Pela tela: em "Esperando você", leia a frase — ela já tem o número dentro — e "Não" ou "Confirmar", com o mesmo peso.',
-          'Quem confirma precisa ter a permissão daquela ação, pela tela ou pelo WhatsApp; o teto é conferido de novo na hora do sim.',
+          'Só o DONO aprova o que o assistente propõe — pela tela ou pelo WhatsApp. O dono que pediu responde SIM (ou NÃO) na própria conversa, até uma hora depois; com várias esperando, ele lista com o código de cada uma e você responde "SIM KP42".',
+          'Quem é da equipe e não é dono também pode pedir: o pedido chega ao dono no WhatsApp ("Pedido para aprovar", com quem pediu, o resumo e o código). Responda SIM ou NÃO com o código; quem pediu é avisado do que você decidiu. Quem pediu pode desistir com NÃO e o código, mas não aprova.',
+          'Pela tela: em "Esperando você", leia a frase — ela já tem o número dentro, e diz quem pediu — e "Não" ou "Confirmar", com o mesmo peso.',
+          'Quem aprova precisa ser dono e ter a permissão daquela ação, pela tela ou pelo WhatsApp; o teto é conferido de novo na hora do sim.',
           'Proposta vale 24 horas. Depois disso o estoque e o preço já são outros, e ele precisa propor de novo.',
         ],
         capacidade: 'agente.configurar',
@@ -2062,11 +2063,11 @@ export const GUIA: Entrada[] = [
       },
       {
         p: 'Por que alguns poderes aparecem apagados?',
-        r: '"em breve" é poder ainda não construído. "precisa do crediário" depende de ligar o módulo em Configurações.',
+        r: '"em breve" é poder ainda não construído. "precisa do módulo…" (Crediário, Agenda, Compras, Fábrica…) depende de ligar o módulo em Configurações.',
       },
       {
         p: 'Uma mensagem pode convencer o assistente a dar 90% de desconto?',
-        r: 'Não. Os poderes são uma lista fechada, os tetos moram no banco e são conferidos no servidor depois da resposta, e toda ação que mexe em dinheiro, preço ou estoque vira proposta que uma pessoa confirma.',
+        r: 'Não. Os poderes são uma lista fechada, os tetos moram no banco e são conferidos no servidor depois da resposta, e toda ação que mexe em dinheiro, preço, estoque ou cadastro vira proposta que só o dono aprova.',
       },
     ],
     palavras: ['assistente', 'agente', 'inteligência artificial', 'whatsapp', 'robô', 'bot', 'proposta', 'propostas', 'poderes', 'teto', 'crédito de ia', 'personalidade', 'manual da loja', 'chatbot', 'recado automático', 'resposta automática', 'atendimento', 'áudio', 'audio', 'mensagem de voz', 'lançar compra', 'compra pelo whatsapp', 'entrada pelo whatsapp', 'confirmar sim'],

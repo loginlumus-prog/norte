@@ -17,13 +17,14 @@
 //
 // ── escrever: nunca ──────────────────────────────────────────
 // A ferramenta de escrita monta a PROPOSTA (`propor` em agente.ts, que confere
-// o teto antes de gravar) e para. Quem executa é a pessoa que confirma — com
-// um SIM na própria conversa (ver respostas.ts, que não passa pelo modelo) ou
-// pela tela —, com a capacidade dela conferida de novo. Não existe neste
-// arquivo uma linha que escreva em lançamento, estoque ou preço.
+// o teto antes de gravar) e para. Quem executa é o DONO que confirma — com
+// um SIM na conversa (ver respostas.ts, que não passa pelo modelo) ou pela
+// tela —, com a capacidade dele conferida de novo. Quem pede pode ser
+// qualquer pessoa da equipe; o pedido vai ao dono (aprovacao.ts). Não existe
+// neste arquivo uma linha que escreva em lançamento, estoque ou preço.
 
 import { comoOrg } from '../banco'
-import { propor, AcimaDoTeto, PoderNegado, PODERES, type ChavePoder, type Poder } from '../agente'
+import { propor, sessaoDoPedido, AcimaDoTeto, PoderNegado, PODERES, type ChavePoder, type Poder } from '../agente'
 import { resumoDoPainel } from '../painel'
 import { janela, type Periodo } from '../periodo'
 import { previsaoDeRuptura } from '../ruptura'
@@ -51,6 +52,21 @@ import {
 } from './ferramentas-atendimento'
 import { escolherLoja, proporEntrada, proporMudancaEncomenda, verEncomendas } from './ferramentas-loja'
 import { aposentarAnteriores, RECADO_DO_FECHO } from './propostas'
+import {
+  proporCadastroDeCliente,
+  proporCadastroDeProduto,
+  proporEdicaoDeCliente,
+  proporEdicaoDeProduto,
+} from './ferramentas-cadastro'
+import {
+  proporBaixa,
+  proporContagem,
+  proporEncomenda,
+  proporPerda,
+  proporRecebimento,
+  proporTransferencia,
+} from './ferramentas-operacao'
+import { proporAjusteDoCatalogo, proporPedidoAFabrica, proporPedidoDeCompra, proporPostagem } from './ferramentas-pedidos'
 
 export type ResultadoFerramenta = { texto: string; erro?: boolean; propostaId?: string }
 
@@ -68,6 +84,11 @@ const numero = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v 
  * Executa a ferramenta que o modelo pediu. O chamador já conferiu que ela
  * estava na mesa desta conversa; aqui confere de novo a capacidade de quem
  * fala, porque conferir duas vezes é barato e esquecer uma vez não é.
+ *
+ * Ler pede a capacidade de quem fala. Escrever, não: qualquer pessoa da
+ * equipe PEDE, e o pedido é montado com a `sessaoDoPedido` (ela, vista como
+ * gerente e financeiro nas lojas dela — só para achar loja, produto, conta).
+ * Quem decide é o dono, no sim, com a sessão dele (ver poderes.ts).
  */
 export async function executarFerramenta(
   orgId: string,
@@ -78,7 +99,9 @@ export async function executarFerramenta(
 ): Promise<ResultadoFerramenta> {
   const p: Poder = PODERES[poder]
   if (p.semIA) return falha('Ferramenta indisponível nesta conversa.')
-  if (!p.sempre && !pode(quem.sessao, p.exige)) return falha('Esta pessoa não tem permissão para isso.')
+  if (!p.sempre && !p.escreve && !pode(quem.sessao, p.exige)) return falha('Esta pessoa não tem permissão para isso.')
+  // Só as ferramentas que PROPÕEM recebem esta sessão — e propor não escreve.
+  const pedido = p.escreve ? sessaoDoPedido(quem.sessao) : quem.sessao
 
   try {
     switch (poder) {
@@ -96,21 +119,51 @@ export async function executarFerramenta(
         return explicarSistema(empresa, quem.sessao, str(entrada.pergunta, 300), nomesNoGuia(await vocabularioDaEmpresa(orgId)))
       case 'lancar.despesa':
       case 'pedir.compra':
-        return await proporLancamento(orgId, empresa, poder, entrada, quem.sessao)
+        return await proporLancamento(orgId, empresa, poder, entrada, pedido)
+      case 'lancar.receita':
+        return await proporReceita(orgId, empresa, entrada, pedido)
       case 'ajustar.estoque':
-        return await proporAjuste(orgId, empresa, quem.sessao, entrada)
+        return await proporAjuste(orgId, empresa, pedido, entrada)
       case 'estoque.entrada':
-        return await proporEntrada(orgId, empresa, quem.sessao, entrada)
+        return await proporEntrada(orgId, empresa, pedido, entrada)
       case 'encomendas.ver':
         return await verEncomendas(quem.sessao)
       case 'encomenda.mudar':
-        return await proporMudancaEncomenda(orgId, empresa, quem.sessao, entrada)
+        return await proporMudancaEncomenda(orgId, empresa, pedido, entrada)
       case 'agenda.consultar':
         return await consultarAgenda(quem.sessao, entrada)
       case 'agenda.marcar':
-        return await proporMarcar(orgId, empresa, quem.sessao, entrada)
+        return await proporMarcar(orgId, empresa, pedido, entrada)
       case 'agenda.desmarcar':
-        return await proporDesmarcar(orgId, empresa, quem.sessao, entrada)
+        return await proporDesmarcar(orgId, empresa, pedido, entrada)
+      case 'cliente.cadastrar':
+        return await proporCadastroDeCliente(orgId, empresa, pedido, entrada)
+      case 'cliente.editar':
+        return await proporEdicaoDeCliente(orgId, empresa, pedido, entrada)
+      case 'produto.cadastrar':
+        return await proporCadastroDeProduto(orgId, empresa, pedido, entrada)
+      case 'produto.editar':
+        return await proporEdicaoDeProduto(orgId, empresa, pedido, entrada)
+      case 'estoque.perda':
+        return await proporPerda(orgId, empresa, pedido, entrada)
+      case 'estoque.contagem':
+        return await proporContagem(orgId, empresa, pedido, entrada)
+      case 'estoque.transferir':
+        return await proporTransferencia(orgId, empresa, pedido, entrada)
+      case 'conta.pagar':
+        return await proporBaixa(orgId, empresa, pedido, entrada)
+      case 'encomenda.criar':
+        return await proporEncomenda(orgId, empresa, pedido, entrada)
+      case 'crediario.receber':
+        return await proporRecebimento(orgId, empresa, pedido, entrada)
+      case 'compras.pedido':
+        return await proporPedidoDeCompra(orgId, empresa, pedido, entrada)
+      case 'fabrica.pedir':
+        return await proporPedidoAFabrica(orgId, empresa, pedido, entrada)
+      case 'catalogo.postar':
+        return await proporPostagem(orgId, empresa, pedido, entrada)
+      case 'catalogo.ajustar':
+        return await proporAjusteDoCatalogo(orgId, empresa, pedido, entrada)
       case 'pagamentos.consultar':
         return await consultarPagamentos(quem.sessao, empresa, entrada)
       case 'ponto.consultar':
@@ -401,11 +454,11 @@ async function proporLancamento(
   }
 }
 
-/** A categoria pelo nome que a pessoa disse; se não bater, "Outras despesas". */
-async function acharCategoria(orgId: string, nome: string) {
+/** A categoria pelo nome que a pessoa disse; se não bater, "Outras despesas" (ou "Outras receitas"). */
+async function acharCategoria(orgId: string, nome: string, tipo: 'DESPESA' | 'RECEITA' = 'DESPESA') {
   const todas = await comoOrg(orgId, (db) =>
     db.categoriaFinanceira.findMany({
-      where: { tipo: 'DESPESA' },
+      where: { tipo },
       orderBy: { ordem: 'asc' },
       select: { id: true, nome: true },
     }),
@@ -415,10 +468,63 @@ async function acharCategoria(orgId: string, nome: string) {
   return (
     (pedido && todas.find((c) => norm(c.nome) === pedido)) ||
     (pedido && todas.find((c) => norm(c.nome).includes(pedido))) ||
-    todas.find((c) => norm(c.nome) === 'outras despesas') ||
+    todas.find((c) => norm(c.nome) === (tipo === 'DESPESA' ? 'outras despesas' : 'outras receitas')) ||
     todas[0] ||
     null
   )
+}
+
+/**
+ * A receita lançada à mão: o mesmo caminho da despesa (a loja de quem pede,
+ * a categoria pelo nome, o teto de valor), com o "já recebido" que vira o dia
+ * do recebimento. Venda do balcão não passa por aqui — ela entra sozinha.
+ */
+async function proporReceita(
+  orgId: string,
+  empresa: ComModulos,
+  e: Record<string, unknown>,
+  sessao: Sessao,
+): Promise<ResultadoFerramenta> {
+  const descricao = str(e.descricao, 120)
+  const valor = numero(e.valor)
+  const diaPedido = str(e.vencimento, 10)
+  const vencimento = dataValida(diaPedido)
+  const recebido = e.recebido === true
+  if (!descricao) return falha('Falta dizer o que é a receita.')
+  if (!(valor > 0)) return falha('O valor precisa ser maior que zero.')
+  if (!vencimento) return falha('A data precisa ser AAAA-MM-DD.')
+  if (recebido && diaPedido > diaEmSP()) return falha('Receita já recebida não pode ter data depois de hoje.')
+  const onde = await lojaDoLancamento(sessao, str(e.loja, 60))
+  if ('pergunta' in onde) return falha(onde.pergunta)
+  const unidade = onde.unidade
+  const categoria = await acharCategoria(orgId, str(e.categoria, 60), 'RECEITA')
+  if (!categoria) return falha('O financeiro desta loja ainda não foi preparado; alguém precisa abrir a tela do Financeiro uma vez.')
+
+  const resumo =
+    `Lançar receita: "${descricao}" — ${brl(valor)}, ${recebido ? `recebida em ${dataBR(vencimento)}` : `a receber em ${dataBR(vencimento)}`}` +
+    ` (${categoria.nome})${unidade ? `, da ${unidade.nome}` : ''}.`
+  const proposta = await propor(orgId, empresa, {
+    poder: 'lancar.receita',
+    resumo,
+    valor,
+    usuarioId: sessao.usuarioId,
+    dados: {
+      categoriaId: categoria.id,
+      unidadeId: unidade?.id ?? null,
+      descricao,
+      valor,
+      vencimento: vencimento.toISOString(),
+      recebidoEm: recebido ? diaPedido : null,
+    },
+  })
+  const substituidas = await aposentarAnteriores(orgId, { usuarioId: sessao.usuarioId, poder: 'lancar.receita', novaId: proposta.id })
+  return {
+    texto:
+      `Proposta criada: ${resumo} Nada foi lançado ainda. ` +
+      (substituidas > 0 ? 'A receita que esta pessoa tinha deixado esperando foi substituída por esta. ' : '') +
+      RECADO_DO_FECHO,
+    propostaId: proposta.id,
+  }
 }
 
 async function proporAjuste(

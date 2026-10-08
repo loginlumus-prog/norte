@@ -337,11 +337,13 @@ describe('o recado fixo ao cliente', () => {
 
 describe('a conversa com a equipe: o que o modelo recebe e o que o servidor deixa acontecer', () => {
 
-  it('o balconista não recebe o faturamento pelo WhatsApp', async () => {
+  it('o balconista não recebe o faturamento pelo WhatsApp — mas pode PEDIR a conta, que vai para a dona', async () => {
     const api = apiFalsa(diz('ok'))
     await processarMensagem(msg('org-a', BETO, 'e aí, como foi ontem?'), { canal: new CanalFalso(), buscar: api.buscar })
     expect(api.nomes(0)).not.toContain('ver_resumo')
-    expect(api.nomes(0)).not.toContain('lancar_despesa')
+    expect(api.nomes(0)).not.toContain('ver_contas')
+    // Escrever é pedir: a ferramenta vai para a mesa, e só a dona aprova (ver assistente-aprovacao.test.ts).
+    expect(api.nomes(0)).toContain('lancar_despesa')
     expect(api.nomes(0)).toContain('ver_estoque')
   })
 

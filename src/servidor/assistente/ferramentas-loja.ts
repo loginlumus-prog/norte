@@ -244,7 +244,7 @@ const COM_ACENTO = 'áàâãäéèêëíìîïóòôõöúùûüçñ'
 const SEM_ACENTO = 'aaaaaeeeeiiiiooooouuuucn'
 
 /** Os candidatos do cadastro para as palavras pedidas (o filtro grosso; o fino é `escolherProduto`). */
-async function candidatosDe(orgId: string, pedidos: string[]): Promise<Candidato[]> {
+export async function candidatosDe(orgId: string, pedidos: string[]): Promise<Candidato[]> {
   const termos = new Set<string>()
   const codigos = new Set<string>()
   for (const p of pedidos) {

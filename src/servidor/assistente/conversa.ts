@@ -39,11 +39,13 @@
 // código nenhum segue o caminho de sempre.
 //
 // ── o SIM, antes do modelo ───────────────────────────────────
-// "sim", "pode lançar", "não", "sim KP42" de quem pediu uma proposta na
-// última hora — e o ACEITAR / PRONTO do pedido do catálogo — são tratados sem
-// IA (ver respostas.ts), com a permissão de quem respondeu conferida pelo
-// mesmo caminho da tela. O modelo nunca confirma nada. E a resposta que criou
-// proposta termina com o resumo do SERVIDOR e o código (ver propostas.ts).
+// "sim", "pode lançar", "não", "sim KP42" do DONO — à proposta dele, ao
+// pedido da equipe que acabou de chegar a ele, ou a qualquer uma pelo código
+// — e o ACEITAR / PRONTO do pedido do catálogo são tratados sem IA (ver
+// respostas.ts), com a permissão de quem respondeu conferida pelo mesmo
+// caminho da tela. O modelo nunca confirma nada. A resposta que criou
+// proposta termina com o resumo do SERVIDOR e o código (ver propostas.ts) —
+// e, se quem pediu não é dono, o pedido vai para os donos (aprovacao.ts).
 //
 // ── o áudio da equipe ────────────────────────────────────────
 // Quem é da equipe pode falar em vez de digitar: o áudio vira texto
@@ -60,7 +62,7 @@ import { createHash } from 'node:crypto'
 import type { Agente } from '@prisma/client'
 import { comoOrg } from '../banco'
 import { inicioDeHojeEmSP } from '../dia'
-import { podeGastarHoje, paraConfig } from '../agente'
+import { ehDono, podeGastarHoje, paraConfig } from '../agente'
 import { avisoDeRespostas } from '../assinatura'
 import {
   conversarComFerramentas,
@@ -91,6 +93,7 @@ import { agoraEmSP, ferramentasParaModelo, montarSistema, poderDaFerramenta, pod
 import { executarFerramenta } from './ferramentas'
 import { responderPeloWhatsApp } from './respostas'
 import { fechoDasPropostas } from './propostas'
+import { encaminharAosDonos, fechoDoPedido } from './aprovacao'
 import { custoDaTranscricaoCent, ecoDoAudio, ouvirMedindo, type AudioRecebido } from './transcricao'
 import { decidirRecado, humanoAteDepoisDe, recadoDe, type DecisaoRecado } from './recado'
 import { chaveTelefone, mesmoTelefone } from './telefone'
@@ -522,9 +525,15 @@ async function conversarComEquipe(
   // A proposta que o laço criou fecha a mensagem com o resumo DO SERVIDOR e
   // o código (ver propostas.ts): o SIM confirma o que a pessoa leu aqui, não
   // a descrição do modelo, que pode ter dito outra coisa.
+  //
+  // Quem não é dono não confirma (só o dono aprova — ver aprovacao.ts): o
+  // pedido vai para os donos, cada um com o código, e o fecho de quem pediu
+  // diz que ele espera o dono.
   if (propostas.length > 0) {
     try {
-      const fecho = await fechoDasPropostas(orgId, propostas)
+      const fecho = ehDono(quem.sessao)
+        ? await fechoDasPropostas(orgId, propostas)
+        : await fechoDoPedido(orgId, propostas, await encaminharAosDonos(ctx.org, agente, quem, propostas, deps.canal))
       if (fecho) resposta = `${resposta}\n\n${fecho}`
     } catch (erro) {
       console.error(`[assistente] ${orgId}: o fecho da proposta falhou:`, erro instanceof Error ? erro.message : erro)

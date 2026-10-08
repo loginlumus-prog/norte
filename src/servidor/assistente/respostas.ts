@@ -7,11 +7,17 @@
 // a frase "sim" nem chega a ele quando há proposta esperando.
 //
 // ── quem pode dizer sim, e a qual proposta ───────────────────
-// Só quem PEDIU a proposta (`PropostaAgente.usuarioId`, gravado por `propor`
-// a partir da conversa), e só para o que pediu na última hora: o "ok" de
-// amanhã não confirma a conta de hoje. O sim de outra pessoa da equipe não
-// alcança proposta alheia — ela confirma na tela, se puder. Proposta sem
-// quem pediu (a rotina das 9h) é só da tela, como sempre foi.
+// Só o DONO aprova (ver `ehDono` em poderes.ts — e `responderProposta`
+// confere de novo, também pela tela). O sim sem código do dono vale para o
+// que ELE pediu na última hora e para o pedido da equipe que chegou a ele
+// nesta conversa na última hora (aprovacao.ts): o "ok" de amanhã não
+// confirma a conta de hoje. Com o código ("sim KP42"), o dono alcança
+// qualquer proposta que espera na empresa — inclusive a da rotina das 9h.
+//
+// Quem NÃO é dono não aprova nem o que pediu: o "sim" dele volta dizendo que
+// o pedido espera o dono, e nada executa. O "não" dele desiste do próprio
+// pedido. Pedido de outra pessoa ele não alcança. Quando o dono responde a
+// um pedido da equipe, quem pediu recebe o desfecho no WhatsApp.
 //
 // A confirmação é `responderProposta` — o MESMO caminho da tela —, com a
 // sessão de quem respondeu montada do banco agora (os papéis de agora, não
@@ -42,7 +48,7 @@
 
 import type { Agente } from '@prisma/client'
 import { comoOrg } from '../banco'
-import { responderProposta, type Resposta } from '../agente'
+import { ehDono, responderProposta, type Resposta } from '../agente'
 import { codigoEncomenda, marcarVista, mudarSituacao } from '../encomenda'
 import { moduloLigado } from '../modulos'
 import { SemPermissao } from '../permissao'
@@ -53,6 +59,7 @@ import type { Equipe } from './regras'
 import { acharPeloCodigo } from './ferramentas-loja'
 import { avisarClienteDaEncomenda, PREFIXO_PEDIDO_NOVO } from './avisos-encomenda'
 import { codigoDaProposta } from './propostas'
+import { avisarQuemPediu, codigosEncaminhados } from './aprovacao'
 
 /** Até quanto tempo depois de pedir o "sim" na conversa vale. */
 export const MINUTOS_DO_SIM = 60
@@ -158,7 +165,7 @@ export async function responderPeloWhatsApp(
 ): Promise<Atalho | null> {
   const curta = lerRespostaCurta(texto)
   const resposta = curta
-    ? await responderAProposta(ctx, quem, conversa, curta)
+    ? await responderAProposta(ctx, quem, conversa, curta, canal)
     : await atalhoDeEncomenda(ctx, quem, conversa, texto)
   if (resposta === null) return null
   const saida = await enviarEGravar(canal, ctx.agente, conversa, eco ? `${eco}\n\n${resposta}` : resposta)
@@ -168,14 +175,18 @@ export async function responderPeloWhatsApp(
 /** Resumo de proposta numa linha de lista: cortado, que a lista é para escolher. */
 const linha = (resumo: string) => (resumo.length > 220 ? `${resumo.slice(0, 219).trimEnd()}…` : resumo)
 
-function lista(propostas: { id: string; resumo: string }[]): string {
+function lista(propostas: { id: string; resumo: string; usuarioId?: string | null }[], eu?: string): string {
   const primeiro = codigoDaProposta(propostas[0]!.id)
+  const todasMinhas = !eu || propostas.every((p) => p.usuarioId === eu)
   return [
-    `Tem ${propostas.length} propostas suas esperando:`,
+    todasMinhas ? `Tem ${propostas.length} propostas suas esperando:` : `Tem ${propostas.length} propostas esperando a sua resposta:`,
     ...propostas.map((p) => `• *${codigoDaProposta(p.id)}* — ${linha(p.resumo)}`),
     `Responda SIM e o código (ex.: SIM ${primeiro}) para confirmar uma, ou NÃO e o código para cancelar.`,
   ].join('\n')
 }
+
+/** A recusa de quem não é dono tentando aprovar. */
+export const SO_O_DONO = 'Só o dono aprova o que o assistente propõe.'
 
 /** A frase que volta depois de `responderProposta`. */
 export function fraseDaResposta(r: Resposta, aceita: boolean, resumo: string): string {
@@ -184,6 +195,8 @@ export function fraseDaResposta(r: Resposta, aceita: boolean, resumo: string): s
     return `Feito: ${r.feito ?? linha(resumo)}`
   }
   switch (r.motivo) {
+    case 'so_o_dono':
+      return SO_O_DONO
     case 'sem_permissao':
       return 'Isso não é do seu acesso pela tela, então também não por aqui. Quem pode confirma na tela do assistente — a proposta continua lá.'
     case 'expirada':
@@ -199,60 +212,104 @@ export function fraseDaResposta(r: Resposta, aceita: boolean, resumo: string): s
   }
 }
 
+type Esperando = { id: string; resumo: string; expiraEm: Date; usuarioId: string | null; criadaEm: Date }
+
+const SELECT_ESPERANDO = { id: true, resumo: true, expiraEm: true, usuarioId: true, criadaEm: true } as const
+
+/**
+ * As que esperam resposta na empresa, de qualquer pessoa (e as da rotina) —
+ * para achar pelo código. Até um pouco além da validade: a vencida responde
+ * "venceu", e não "não achei".
+ */
+async function esperandoNaEmpresa(orgId: string, agora: Date): Promise<Esperando[]> {
+  return comoOrg(orgId, (db) =>
+    db.propostaAgente.findMany({
+      where: { situacao: 'AGUARDANDO', respondidaEm: null, criadaEm: { gte: new Date(agora.getTime() - 25 * 3600_000) } },
+      orderBy: { criadaEm: 'asc' },
+      take: 300,
+      select: SELECT_ESPERANDO,
+    }),
+  )
+}
+
+/** A última coisa que o assistente disse nesta conversa traz este código? */
+async function ultimaMensagemTraz(orgId: string, conversa: Conversa, codigo: string): Promise<boolean> {
+  const ultima = await comoOrg(orgId, (db) =>
+    db.mensagemAgente.findFirst({
+      where: { conversaId: conversa.id, de: 'AGENTE' },
+      orderBy: { criadaEm: 'desc' },
+      select: { texto: true },
+    }),
+  )
+  return !!ultima?.texto.includes(codigo)
+}
+
 async function responderAProposta(
   ctx: Contexto & { agente: Agente },
   quem: Equipe,
   conversa: Conversa,
   curta: RespostaCurta,
+  canal: Canal,
 ): Promise<string | null> {
   const orgId = ctx.org.id
   const agora = new Date()
-  const recentes = await comoOrg(orgId, (db) =>
+  const desde = new Date(agora.getTime() - MINUTOS_DO_SIM * 60_000)
+  const minhas = await comoOrg(orgId, (db) =>
     db.propostaAgente.findMany({
       where: {
         usuarioId: quem.sessao.usuarioId,
         situacao: 'AGUARDANDO',
         respondidaEm: null,
-        criadaEm: { gte: new Date(agora.getTime() - MINUTOS_DO_SIM * 60_000) },
+        criadaEm: { gte: desde },
       },
       orderBy: { criadaEm: 'asc' },
       take: 10,
-      select: { id: true, resumo: true, expiraEm: true },
+      select: SELECT_ESPERANDO,
     }),
   )
-  // Nada que esta pessoa pediu há pouco: o "ok" é só um ok. O modelo responde.
-  if (recentes.length === 0) return null
+  if (!ehDono(quem.sessao)) return respostaDeQuemPede(ctx, quem, conversa, curta, minhas, agora)
 
+  // O dono: as que ele pediu, e os pedidos da equipe que chegaram a ELE,
+  // nesta conversa, há pouco (ver aprovacao.ts). Pelo código, qualquer uma
+  // que espera na empresa — inclusive a da rotina das 9h.
+  const codigos = await codigosEncaminhados(orgId, conversa, desde)
+  const encaminhadas =
+    codigos.size === 0 ? [] : (await esperandoNaEmpresa(orgId, agora)).filter((p) => codigos.has(codigoDaProposta(p.id)))
+  const vistas = new Set<string>()
+  const recentes = [...minhas, ...encaminhadas]
+    .filter((p) => !vistas.has(p.id) && !!vistas.add(p.id))
+    .sort((a, b) => a.criadaEm.getTime() - b.criadaEm.getTime())
+
+  const eu = quem.sessao.usuarioId
   const valendo = recentes.filter((p) => p.expiraEm > agora)
-  let alvo: (typeof recentes)[number] | undefined
+  let alvo: Esperando | undefined
   if (curta.codigo !== null) {
     // O código escolhe sem ambiguidade — e vale até para "ok KP42".
-    const achadas = recentes.filter((p) => codigoDaProposta(p.id) === curta.codigo)
-    if (achadas.length > 1) return 'Esse código bate com mais de uma proposta sua. Confirme pela tela do assistente.'
+    let achadas = recentes.filter((p) => codigoDaProposta(p.id) === curta.codigo)
+    if (achadas.length === 0) {
+      achadas = (await esperandoNaEmpresa(orgId, agora)).filter((p) => codigoDaProposta(p.id) === curta.codigo)
+    }
+    if (achadas.length > 1) return 'Esse código bate com mais de uma proposta. Confirme pela tela do assistente.'
     alvo = achadas[0]
     if (!alvo) {
       return valendo.length > 0
-        ? `Não achei a proposta ${curta.codigo}.\n${lista(valendo)}`
+        ? `Não achei a proposta ${curta.codigo}.\n${lista(valendo, eu)}`
         : `Não achei a proposta ${curta.codigo}.`
     }
+  } else if (recentes.length === 0) {
+    // Nada que o dono pediu (ou recebeu) há pouco: o "ok" é só um ok.
+    return null
   } else if (curta.numero !== null && valendo.length > 0) {
     // Número de lista não escolhe mais (a lista mudava a cada resposta):
     // mostra os códigos e a pessoa responde de novo.
     return valendo.length === 1
       ? `Para não confundir, responda com o código: SIM ${codigoDaProposta(valendo[0]!.id)} (${linha(valendo[0]!.resumo)}).`
-      : lista(valendo)
+      : lista(valendo, eu)
   } else if (curta.frouxa) {
     // "ok", "isso", "pode", "não": só se a proposta foi a ÚLTIMA coisa que
     // o assistente disse aqui, e só há ela. Senão era resposta a outra pergunta.
     if (valendo.length !== 1) return null
-    const ultima = await comoOrg(orgId, (db) =>
-      db.mensagemAgente.findFirst({
-        where: { conversaId: conversa.id, de: 'AGENTE' },
-        orderBy: { criadaEm: 'desc' },
-        select: { texto: true },
-      }),
-    )
-    if (!ultima?.texto.includes(codigoDaProposta(valendo[0]!.id))) return null
+    if (!(await ultimaMensagemTraz(orgId, conversa, codigoDaProposta(valendo[0]!.id)))) return null
     alvo = valendo[0]
   } else if (valendo.length === 0) {
     // Só vencidas: `responderProposta` diz isso e marca a proposta.
@@ -260,14 +317,76 @@ async function responderAProposta(
   } else if (valendo.length === 1) {
     alvo = valendo[0]
   } else {
-    return lista(valendo)
+    return lista(valendo, eu)
   }
 
   const r = await responderProposta(quem.sessao, ctx.org, alvo!.id, curta.aceita)
   if (!r.ok && r.motivo === 'falhou' && !r.recado && r.detalhe) {
     console.error(`[assistente] ${orgId}: o sim pelo WhatsApp falhou na execução`)
   }
+  // O pedido era de outra pessoa da equipe: ela fica sabendo do desfecho.
+  if (alvo!.usuarioId && alvo!.usuarioId !== eu) {
+    await avisarQuemPediu(ctx.org, alvo!.id, quem.sessao, curta.aceita, r, canal)
+  }
   return fraseDaResposta(r, curta.aceita, alvo!.resumo)
+}
+
+/**
+ * O SIM (ou o NÃO) de quem NÃO é dono. Ele não aprova nada — nem o que ele
+ * mesmo pediu: o SIM responde que o pedido espera o dono, sem executar. O
+ * NÃO desiste do próprio pedido (recusar não faz nada, e a fila do dono fica
+ * limpa). Pedido de outra pessoa, nem uma coisa nem outra.
+ *
+ * As mesmas réguas do dono para o que é frouxo: "ok", "pode" e "não" sem
+ * código só valem logo depois do pedido; fora disso, vão para o modelo.
+ */
+async function respostaDeQuemPede(
+  ctx: Contexto & { agente: Agente },
+  quem: Equipe,
+  conversa: Conversa,
+  curta: RespostaCurta,
+  minhas: Esperando[],
+  agora: Date,
+): Promise<string | null> {
+  const orgId = ctx.org.id
+  const eu = quem.sessao.usuarioId
+  const valendo = minhas.filter((p) => p.expiraEm > agora)
+  let alvo: Esperando | undefined
+  if (curta.codigo !== null) {
+    const achadas = (await esperandoNaEmpresa(orgId, agora)).filter((p) => codigoDaProposta(p.id) === curta.codigo)
+    if (achadas.length > 1) return 'Esse código bate com mais de um pedido. O dono resolve pela tela do assistente.'
+    alvo = achadas[0]
+    if (!alvo) return minhas.length > 0 ? `Não achei o pedido ${curta.codigo}.` : null
+    if (alvo.usuarioId !== eu) return SO_O_DONO
+  } else if (valendo.length === 0) {
+    return null
+  } else if (curta.frouxa || curta.numero !== null) {
+    if (valendo.length !== 1) return null
+    if (!(await ultimaMensagemTraz(orgId, conversa, codigoDaProposta(valendo[0]!.id)))) return null
+    alvo = valendo[0]
+  } else if (valendo.length === 1) {
+    alvo = valendo[0]
+  } else if (curta.aceita) {
+    return [
+      'Os seus pedidos esperam a aprovação do dono — só o dono aprova:',
+      ...valendo.map((p) => `• *${codigoDaProposta(p.id)}* — ${linha(p.resumo)}`),
+      'Assim que ele responder, eu te aviso aqui.',
+    ].join('\n')
+  } else {
+    return [
+      `Tem ${valendo.length} pedidos seus esperando o dono:`,
+      ...valendo.map((p) => `• *${codigoDaProposta(p.id)}* — ${linha(p.resumo)}`),
+      `Para desistir de um, responda NÃO e o código (ex.: NÃO ${codigoDaProposta(valendo[0]!.id)}).`,
+    ].join('\n')
+  }
+
+  const c = codigoDaProposta(alvo!.id)
+  if (curta.aceita) {
+    return `O pedido *${c}* está esperando a aprovação do dono — só o dono aprova o que o assistente propõe. Assim que ele responder, eu te aviso aqui.`
+  }
+  const r = await responderProposta(quem.sessao, ctx.org, alvo!.id, false)
+  if (r.ok) return `Certo, desisti do pedido *${c}*. Nada foi feito: ${linha(alvo!.resumo)}`
+  return fraseDaResposta(r, false, alvo!.resumo)
 }
 
 // ── ACEITAR / PRONTO ─────────────────────────────────────────

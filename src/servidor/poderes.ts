@@ -19,9 +19,10 @@
 //   2. os TETOS — números no banco, conferidos no servidor DEPOIS de o
 //      modelo responder. Mesmo que o modelo peça 90%, quem decide é daqui.
 //
-// E a terceira trava, que é comportamental: mexeu em dinheiro, preço ou
-// estoque, ele PROPÕE e uma pessoa confirma. Nenhuma escrita do agente
-// acontece direto. É o que impede o dono de descobrir depois.
+// E a terceira trava, que é comportamental: mexeu em dinheiro, preço,
+// estoque ou cadastro, ele PROPÕE e o DONO confirma. Nenhuma escrita do
+// agente acontece direto — e nenhuma acontece sem o dono (ver `ehDono`). É o
+// que impede o dono de descobrir depois.
 //
 // ═══════════════════════════════════════════════════════════════
 
@@ -29,7 +30,7 @@
 // faça. É a mesma razão de `permissao.ts` ser puro — é barato de testar
 // exaustivamente, e é o lugar mais perigoso para errar.
 
-import { type Capacidade } from './permissao'
+import { type Acesso, type Capacidade, type Papel, type Sessao } from './permissao'
 import { moduloLigado, type ComModulos, type Modulo } from './modulos'
 import { reais } from './dinheiro'
 import { PLANOS, planoPermitePoder } from './planos'
@@ -43,8 +44,10 @@ import { PLANOS, planoPermitePoder } from './planos'
  *
  * `exige`   — a capacidade humana equivalente. O agente NUNCA pode mais do
  *             que a pessoa que confirma poderia fazer sozinha. É o que
- *             impede "o agente é um superusuário disfarçado".
- * `escreve` — se true, a ação vira proposta e espera confirmação.
+ *             impede "o agente é um superusuário disfarçado". Na LEITURA, é
+ *             de quem pergunta; na ESCRITA, de quem confirma — o dono (quem
+ *             pede pode ser qualquer pessoa da equipe, ver `sessaoDoPedido`).
+ * `escreve` — se true, a ação vira proposta e espera o sim do dono.
  * `modulo`  — só existe se a empresa usa. Quem não vende fiado não tem a
  *             ferramenta de cobrança nem oferecida ao modelo.
  * `teto`    — qual número limita. `valor` em centavos, `desconto` em %.
@@ -207,7 +210,7 @@ export const PODERES = {
   'ajustar.estoque': {
     titulo: 'Corrigir o estoque',
     resumo:
-      'Somar peça que apareceu na contagem, sempre com motivo escrito. Perda e quebra continuam na tela de Estoque.',
+      'Somar peça que apareceu sem estar contada, sempre com motivo escrito. Perda e contagem têm poder próprio.',
     exige: 'estoque.ajustar',
     escreve: true,
     disponivel: true,
@@ -248,6 +251,131 @@ export const PODERES = {
     exige: 'agenda.marcar',
     escreve: true,
     modulo: 'agenda',
+    disponivel: true,
+  },
+  // ── cadastros: cliente e produto ────────────────────────────
+  'cliente.cadastrar': {
+    titulo: 'Cadastrar cliente',
+    resumo: 'Nome, WhatsApp, CPF, aniversário, endereço e observações — ele monta a ficha, e ela nasce depois do SIM do dono.',
+    exige: 'cliente.editar',
+    escreve: true,
+    disponivel: true,
+  },
+  'cliente.editar': {
+    titulo: 'Corrigir a ficha de um cliente',
+    resumo: 'Trocar telefone, endereço, CPF, aniversário ou observações, ou desativar a ficha — só o que a pessoa pediu muda.',
+    exige: 'cliente.editar',
+    escreve: true,
+    disponivel: true,
+  },
+  'produto.cadastrar': {
+    titulo: 'Cadastrar produto',
+    resumo: 'Nome, preço à vista e no cartão, custo, medida, categoria e em quais lojas vende.',
+    exige: 'produto.cadastrar',
+    escreve: true,
+    disponivel: true,
+  },
+  // Preço mexe com `produto.preco`, que o serviço da tela confere na hora do
+  // sim — o `exige` daqui é a porta de entrada (editar a ficha).
+  'produto.editar': {
+    titulo: 'Mudar preço e ficha de produto',
+    resumo: 'Preço à vista e no cartão, custo, categoria, estoque mínimo por loja, em quais lojas vende, tirar de venda ou voltar.',
+    exige: 'produto.editar',
+    escreve: true,
+    disponivel: true,
+  },
+  // ── estoque: o que saiu sem venda, o que foi contado, o que mudou de loja ──
+  'estoque.perda': {
+    titulo: 'Lançar perda (avaria)',
+    resumo: 'O que quebrou, venceu ou derreteu sai do estoque, com o motivo no livro.',
+    exige: 'estoque.perda',
+    escreve: true,
+    disponivel: true,
+  },
+  'estoque.contagem': {
+    titulo: 'Corrigir o estoque pelo contado',
+    resumo: 'Você diz quanto contou na prateleira; ele mostra a diferença para o sistema e corrige depois do SIM.',
+    exige: 'estoque.ajustar',
+    escreve: true,
+    disponivel: true,
+  },
+  'estoque.transferir': {
+    titulo: 'Transferir entre lojas',
+    resumo: 'Tira de uma loja (ou do depósito) e põe na outra, com as duas pontas no histórico.',
+    exige: 'estoque.ajustar',
+    escreve: true,
+    disponivel: true,
+  },
+  // ── dinheiro que entra e conta que se paga ──────────────────
+  'lancar.receita': {
+    titulo: 'Lançar uma receita',
+    resumo: 'Dinheiro que entra fora do balcão (aluguel de espaço, serviço, repasse) — a receber ou já recebido.',
+    exige: 'financeiro.lancar',
+    escreve: true,
+    teto: 'valor',
+    disponivel: true,
+  },
+  'conta.pagar': {
+    titulo: 'Dar baixa numa conta',
+    resumo: 'Marca como paga a conta a pagar (ou recebida a conta a receber), no dia em que o dinheiro se moveu.',
+    exige: 'financeiro.lancar',
+    escreve: true,
+    teto: 'valor',
+    disponivel: true,
+  },
+  // ── encomenda e crediário ───────────────────────────────────
+  'encomenda.criar': {
+    titulo: 'Anotar encomenda',
+    resumo: 'Para quem, o que é, o valor, o sinal e quando sai — a encomenda nasce no caderno depois do SIM do dono.',
+    exige: 'venda.criar',
+    escreve: true,
+    modulo: 'encomenda',
+    disponivel: true,
+  },
+  // ── pedidos: ao fornecedor e à fábrica ──────────────────────
+  // Montar o pedido de compra é compromisso de pagar: tem o teto de valor
+  // (o total estimado pelo custo). Ele nasce RASCUNHO — mandar ao fornecedor
+  // continua na tela de Compras, onde se confere item por item.
+  'compras.pedido': {
+    titulo: 'Montar pedido de compra',
+    resumo: 'O que pedir ao fornecedor, quanto e para qual loja — o pedido nasce como rascunho na tela de Compras.',
+    exige: 'compra.gerir',
+    escreve: true,
+    modulo: 'compras',
+    teto: 'valor',
+    disponivel: true,
+  },
+  'fabrica.pedir': {
+    titulo: 'Pedir à fábrica',
+    resumo: 'O pedido da loja à fábrica: os itens e as quantidades, para a fábrica produzir e mandar.',
+    exige: 'fabrica.pedir',
+    escreve: true,
+    modulo: 'fabrica',
+    disponivel: true,
+  },
+  // ── o catálogo on-line ──────────────────────────────────────
+  // Configurar o catálogo é `empresa.configurar` na tela; o dono que aprova
+  // tem. Foto não vai pelo WhatsApp: a postagem daqui é de texto.
+  'catalogo.postar': {
+    titulo: 'Postar no catálogo',
+    resumo: 'Um recado na vitrine do catálogo ("Sabor novo: pistache"), com ou sem produto ligado — de texto.',
+    exige: 'empresa.configurar',
+    escreve: true,
+    disponivel: true,
+  },
+  'catalogo.ajustar': {
+    titulo: 'Abrir, fechar e ajustar o catálogo',
+    resumo: 'Abrir ou fechar o catálogo de uma loja, ligar entrega ou retirada, a taxa de entrega e o pedido mínimo.',
+    exige: 'empresa.configurar',
+    escreve: true,
+    disponivel: true,
+  },
+  'crediario.receber': {
+    titulo: 'Receber parcela do crediário',
+    resumo: '"A Joana pagou a parcela no Pix": ele acha a parcela mais antiga em aberto, soma o atraso de hoje e recebe depois do SIM.',
+    exige: 'crediario.receber',
+    escreve: true,
+    modulo: 'crediario',
     disponivel: true,
   },
   'dar.desconto': {
@@ -385,4 +513,69 @@ export function conferirPoder(
   if (p.teto === 'desconto' && descontoPct != null && descontoPct > agente.descontoMaxPct) {
     throw new AcimaDoTeto(descontoPct, agente.descontoMaxPct, '%')
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// QUEM APROVA, E QUEM PEDE
+// ─────────────────────────────────────────────────────────────
+//
+// ── só o dono aprova ─────────────────────────────────────────
+// Decisão do dono do produto (08/10/2026): o que o assistente propõe, só o
+// DONO (o sócio) confirma — na tela ou pelo WhatsApp. Até aqui confirmava
+// quem tivesse a capacidade, e o gerente aprovava pelo assistente o que ele
+// mesmo tinha pedido. Agora o assistente é o caminho de a EQUIPE pedir e o
+// dono decidir; a capacidade continua conferida (o dono preso a uma loja não
+// aprova o que é de outra), mas ela sozinha não basta.
+//
+// É o raro lugar em que o código pergunta o PAPEL, e não a capacidade (ver o
+// alto de permissao.ts): "dono" aqui não é um conjunto de poderes, é quem
+// responde pela empresa. Um cargo criado com tudo marcado continua não sendo
+// dono.
+
+/** A sessão é de um DONO (acesso de papel DONO valendo agora)? */
+export function ehDono(sessao: Pick<Sessao, 'acessos'>, agora: Date = new Date()): boolean {
+  return sessao.acessos.some((a) => a.papel === 'DONO' && (!a.expiraEm || a.expiraEm > agora))
+}
+
+/**
+ * Os papéis com que quem NÃO é dono monta um pedido: tudo o que a operação
+ * da loja faz (gerente) e o dinheiro (financeiro). Dono, configurar empresa e
+ * assistente ficam de fora — não há pedido disso.
+ */
+const PAPEIS_DO_PEDIDO: readonly Papel[] = ['GERENTE', 'FINANCEIRO']
+
+/**
+ * A sessão com que a ferramenta de ESCRITA monta a proposta.
+ *
+ * ── por que existe ───────────────────────────────────────────
+ * A balconista manda "cadastra o produto X a 10 reais". Ela não cadastra
+ * produto pela tela — e não precisa: o pedido vai para o dono, e é o dono
+ * quem confirma, com a sessão DELE conferida de novo no serviço da tela. Mas
+ * para MONTAR a proposta a ferramenta precisa achar a loja, o produto, a
+ * conta — e as ferramentas acham pela sessão de quem pede (`unidadesVisiveis`,
+ * a loja da entrada, a categoria). Com a sessão dela crua, a loja dela não
+ * apareceria em lugar nenhum.
+ *
+ * ── o que ela ganha, e onde ──────────────────────────────────
+ * Para montar o pedido, quem não é dono é visto como gerente e financeiro
+ * NAS LOJAS DELA (o acesso sem loja continua sem loja). Nada além: a loja
+ * alheia continua de fora, e o dono que confirma é quem decide de verdade.
+ *
+ * ── e a trava ────────────────────────────────────────────────
+ * Esta sessão NUNCA executa nada: ela só passa por `executarFerramenta` nas
+ * ferramentas que propõem, e propor não escreve fora de `propostas_agente`.
+ * Quem lê dado (o relatório, as contas) continua com a sessão de verdade. O
+ * dono, que confirma, monta com a dele mesmo.
+ */
+export function sessaoDoPedido(sessao: Sessao, agora: Date = new Date()): Sessao {
+  if (ehDono(sessao, agora)) return sessao
+  const lojas = new Set(
+    sessao.acessos
+      .filter((a) => a.papel !== 'SUPORTE' && (!a.expiraEm || a.expiraEm > agora))
+      .map((a) => a.unidadeId),
+  )
+  const extras: Acesso[] = [...lojas].flatMap((unidadeId) =>
+    PAPEIS_DO_PEDIDO.map((papel) => ({ papel, unidadeId })),
+  )
+  return { ...sessao, acessos: [...sessao.acessos, ...extras] }
 }

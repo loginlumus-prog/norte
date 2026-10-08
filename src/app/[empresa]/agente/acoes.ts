@@ -28,6 +28,7 @@ import {
   type QrNaTela,
 } from '@/servidor/assistente/conexao'
 import { conectarPelaMeta, desconectarMeta, recriarModelos } from '@/servidor/assistente/meta-conexao'
+import { avisarQuemPediu } from '@/servidor/assistente/aprovacao'
 
 export type EstadoAgente = { erro?: string; ok?: string }
 
@@ -83,13 +84,18 @@ export async function salvar(
   return { ok: 'Salvo.' }
 }
 
-/** Confirmar ou recusar uma proposta pela tela. Pelo WhatsApp é o mesmo caminho. */
+/**
+ * Confirmar ou recusar uma proposta pela tela. Pelo WhatsApp é o mesmo
+ * caminho — e só o dono aprova (`responderProposta` confere). Quando o
+ * pedido era de outra pessoa da equipe, ela recebe o desfecho no WhatsApp.
+ */
 export async function responder(slug: string, propostaId: string, aceita: boolean) {
   const sessao = await exigirSessao(slug)
   const empresa = await acharOrgPorSlug(slug)
   if (!empresa) return { ok: false as const, motivo: 'nao_existe' as const }
 
   const r = await responderProposta(sessao, empresa, propostaId, aceita)
+  await avisarQuemPediu(empresa, propostaId, sessao, aceita, r)
   revalidatePath(`/${slug}/agente`)
   return r
 }
